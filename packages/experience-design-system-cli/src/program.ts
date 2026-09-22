@@ -1,4 +1,3 @@
-import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { readFileSync } from 'node:fs';
@@ -21,7 +20,7 @@ import {
 } from './analytics/index.js';
 import { readExperiencesCredentials } from './credentials-store.js';
 import { findPkgRoot } from './lib/cli-path.js';
-import { resolveSpawn } from '@contentful/experience-design-system-generation';
+import { spawnBinary } from '@contentful/experience-design-system-generation';
 
 // Read via findPkgRoot() rather than a hardcoded-depth require — this file's
 // depth under dist/ changes once the CLI is bundled into a single dist/src/index.js.
@@ -94,17 +93,9 @@ function registerBuildCommand(program: Command): void {
     .action(async () => {
       const pkgRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
       process.stderr.write('⚙  Building from source...\n');
-      // pnpm is a `.cmd` shim on Windows, which spawn can neither find nor start
-      // directly. Fall back to the bare name so a missing pnpm still surfaces
-      // through runBuild's existing 'error' handling.
-      const launch = resolveSpawn('pnpm', ['build']) ?? { command: 'pnpm', args: ['build'] };
       const { exitCode } = await runBuild({
-        spawnFn: () =>
-          spawn(launch.command, launch.args, {
-            cwd: pkgRoot,
-            stdio: 'inherit',
-            ...(launch.windowsVerbatimArguments ? { windowsVerbatimArguments: true } : {}),
-          }) as SpawnedChild,
+        // spawnBinary: pnpm is a `.cmd` shim on Windows.
+        spawnFn: () => spawnBinary('pnpm', ['build'], { cwd: pkgRoot, stdio: 'inherit' }) as SpawnedChild,
         stderrWrite: (s) => process.stderr.write(s),
       });
       process.exit(exitCode);

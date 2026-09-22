@@ -4,7 +4,6 @@ import { readFile } from 'node:fs/promises';
 import type { Command } from 'commander';
 import {
   AGENT_NAMES,
-  agentSupportsStdinPrompt,
   buildPrompt,
   createLocalCliAgentInvoker,
   describeAgentFailure,
@@ -40,7 +39,7 @@ import { bindAnalyticsSessionId, exitWithAnalytics } from '../analytics/index.js
 import { MapTokensView } from './tui/MapTokensView.js';
 import type { MapTokensViewResult } from './tui/MapTokensView.js';
 import { resolveTokenDefaults } from './resolve-defaults.js';
-import { die, assertBinaryInPath } from '../lib/cli-errors.js';
+import { die, assertAgentCanReceivePrompt, assertBinaryInPath } from '../lib/cli-errors.js';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 5 * 60 * 1000);
 
@@ -261,18 +260,7 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
       );
     }
 
-    // See generate/command.ts: copilot can only take the prompt as a command-line
-    // argument, and the map-tokens prompt (~10KB) exceeds the Windows 8191-character
-    // command-line limit. Every stdin-capable agent is unaffected.
-    if (process.platform === 'win32' && !agentSupportsStdinPrompt(agent)) {
-      die(
-        `Error: --agent ${agent} does not work on Windows.\n` +
-          `Its CLI only accepts the prompt as a command-line argument, and Windows limits a command\n` +
-          `line to 8191 characters — shorter than the prompts this command sends.\n` +
-          `\n` +
-          `Every other agent works on Windows. Use --agent claude, codex, opencode, or cursor.`,
-      );
-    }
+    assertAgentCanReceivePrompt(agent);
 
     const stepId = createStep(db, sessionId, 'map tokens', { agent, model: model ?? '' });
 

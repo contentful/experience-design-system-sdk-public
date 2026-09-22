@@ -17,24 +17,16 @@
  * Both take `platform` as an argument so tests can assert Windows behaviour
  * while running on macOS or Linux.
  */
+import { spawn, type ChildProcess, type SpawnOptions } from 'node:child_process';
 import { accessSync, constants } from 'node:fs';
 import { delimiter, isAbsolute, join } from 'node:path';
 
-/**
- * Executable suffixes to try for a bare command name. The POSIX case is a
- * single empty string: the name is already the whole filename.
- */
+/** Suffixes to try for a bare command name; POSIX names carry their own. */
 function executableExtensions(platform: NodeJS.Platform): string[] {
   return platform === 'win32' ? ['.exe', '.cmd', '.bat', '.com'] : [''];
 }
 
-/**
- * Resolve a command to an absolute path, or null when it isn't on PATH.
- *
- * Replaces shelling out to `which`, which doesn't exist on Windows. An absolute
- * path is checked directly — on Windows `which` wouldn't resolve one anyway, and
- * `isAbsolute` recognises `C:\...` where a `startsWith('/')` test does not.
- */
+/** Resolve a command to an absolute path, or null when it isn't on PATH. */
 export function findBinary(binary: string, platform: NodeJS.Platform = process.platform): string | null {
   const extensions = executableExtensions(platform);
 
@@ -52,8 +44,8 @@ export function findBinary(binary: string, platform: NodeJS.Platform = process.p
   }
 
   for (const directory of (process.env['PATH'] ?? '').split(delimiter)) {
-    // Skip empty and relative PATH entries: resolving a command against the cwd
-    // would make the result depend on where the CLI happens to be run from.
+    // Skip relative entries: resolving against the cwd would make the result
+    // depend on where the CLI was run from.
     if (!directory || !isAbsolute(directory)) continue;
     for (const extension of extensions) {
       const candidate = join(directory, binary + extension);
@@ -81,21 +73,14 @@ export type SpawnSpec = {
 };
 
 /**
- * Build the argv for launching an already-resolved executable.
+ * Build the argv for launching an already-resolved executable. A real `.exe`, and
+ * anything off Windows, passes straight through.
  *
- * Off Windows, and for a real `.exe`/`.com`, this passes straight through. A
- * Windows `.cmd`/`.bat` is wrapped in `cmd.exe /d /s /c "..."`, which is the only
- * way to start one.
- *
- * Quoting note: the wrapped form re-parses the command line, so arguments are
- * quoted here. That quoting is deliberately simple — double quotes are doubled
- * and each argument wrapped — which is sufficient because the arguments reaching
- * this path are our own flags and model names. Large or user-controlled text
- * (agent prompts) travels over stdin instead, and must keep doing so. If
- * user-controlled values ever need to go through argv here, replace this with
- * `cross-spawn` rather than extending the escaping: it implements the full
- * cmd.exe rules, including the double-escaping that `node_modules/.bin` shims
- * require.
+ * The quoting is deliberately simple, and is only safe because the arguments
+ * reaching it are our own flags and model names — prompts travel over stdin and
+ * must keep doing so. If user-controlled text ever needs to go through argv here,
+ * switch to `cross-spawn` rather than extending this: it implements the full
+ * cmd.exe rules, including the double-escaping `node_modules/.bin` shims need.
  */
 export function spawnSpec(resolved: string, args: string[], platform: NodeJS.Platform = process.platform): SpawnSpec {
   if (platform !== 'win32' || /\.(exe|com)$/i.test(resolved)) {
@@ -127,4 +112,20 @@ export function resolveSpawn(
   const resolved = findBinary(binary, platform);
   if (!resolved) return null;
   return spawnSpec(resolved, args, platform);
+}
+
+/**
+ * `child_process.spawn`, with Windows shim resolution applied.
+ *
+ * Use this instead of `spawn` for anything installed by a package manager. When
+ * the command can't be resolved it is passed through unchanged, so a missing
+ * binary still surfaces as the caller's usual `error` event rather than throwing
+ * from here.
+ */
+export function spawnBinary(command: string, args: string[], options: SpawnOptions = {}): ChildProcess {
+  const launch = resolveSpawn(command, args) ?? { command, args };
+  return spawn(launch.command, launch.args, {
+    ...options,
+    ...(launch.windowsVerbatimArguments ? { windowsVerbatimArguments: true } : {}),
+  });
 }

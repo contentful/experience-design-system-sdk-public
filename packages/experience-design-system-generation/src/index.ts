@@ -54,5 +54,4 @@ export type { ComponentSourceRef, GeneratedCdf, Mode, PromptOptions, Skill } fro
 export { formatGenerateProgressLine } from './progress.js';
 
 // Cross-platform binary lookup and launch (Windows .cmd shims, PATHEXT)
-export { binaryExists, findBinary, resolveSpawn, spawnSpec } from './lib/binary-launch.js';
-export type { SpawnSpec } from './lib/binary-launch.js';
+export { binaryExists, findBinary, spawnBinary } from './lib/binary-launch.js';

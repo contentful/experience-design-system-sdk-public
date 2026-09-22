@@ -1,4 +1,3 @@
-import { spawn } from 'node:child_process';
 import { appendFile, readFile, access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
@@ -19,7 +18,7 @@ import { findPkgRoot } from '../lib/cli-path.js';
 import {
   agentSupportsStdinPrompt,
   findBinary,
-  resolveSpawn,
+  spawnBinary,
   type AgentName,
 } from '@contentful/experience-design-system-generation';
 
@@ -133,8 +132,6 @@ async function confirm(question: string, defaultYes = true): Promise<boolean> {
 // ── Shell helpers ─────────────────────────────────────────────────────────────
 
 async function binaryExists(name: string): Promise<boolean> {
-  // Was `which <name>`, which doesn't exist on Windows. findBinary also matches
-  // the `.cmd` shims npm creates there for pnpm, claude, codex and friends.
   return findBinary(name) !== null;
 }
 
@@ -144,16 +141,12 @@ function runSpawn(
   opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
-    // pnpm/corepack/npm are `.cmd` shims on Windows: spawn can't find them
-    // (libuv ignores PATHEXT) and can't start them directly (EINVAL). This was
-    // the reported `experiences setup` failure at "Step 2: pnpm". Fall back to
-    // the bare name so a missing binary still lands in the 'error' handler below.
-    const launch = resolveSpawn(cmd, args) ?? { command: cmd, args };
-    const child = spawn(launch.command, launch.args, {
+    // spawnBinary, not spawn: pnpm/corepack/npm are `.cmd` shims on Windows, which
+    // was the reported `experiences setup` failure at "Step 2: pnpm".
+    const child = spawnBinary(cmd, args, {
       cwd: opts.cwd,
       env: opts.env ?? process.env,
       stdio: ['ignore', 'pipe', 'pipe'],
-      ...(launch.windowsVerbatimArguments ? { windowsVerbatimArguments: true } : {}),
     });
     let settled = false;
     let stdout = '';
@@ -164,10 +157,10 @@ function runSpawn(
         resolve({ exitCode: 1, stdout: '', stderr: err.message });
       }
     });
-    child.stdout.on('data', (d: Buffer) => {
+    child.stdout?.on('data', (d: Buffer) => {
       stdout += String(d);
     });
-    child.stderr.on('data', (d: Buffer) => {
+    child.stderr?.on('data', (d: Buffer) => {
       stderr += String(d);
     });
     child.on('exit', (code) => {

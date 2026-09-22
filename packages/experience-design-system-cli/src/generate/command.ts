@@ -7,7 +7,6 @@ import {
   type AgentName,
   AGENT_NAMES,
   agentSupportsBedrock,
-  agentSupportsStdinPrompt,
   createLocalCliAgentInvoker,
   describeAgentFailure,
   formatCustomPromptBanner,
@@ -53,7 +52,7 @@ import type { RawComponentDefinition } from '../types.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { addAgentModelOptions } from '../lib/agent-model-options.js';
 import { bindAnalyticsSessionId, exitWithAnalytics } from '../analytics/index.js';
-import { die, assertBinaryInPath } from '../lib/cli-errors.js';
+import { die, assertAgentCanReceivePrompt, assertBinaryInPath } from '../lib/cli-errors.js';
 import { pathExists } from '../lib/path-exists.js';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 5 * 60 * 1000);
@@ -571,23 +570,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
     await exitWithAnalytics(1);
   }
 
-  // Windows caps a command line at 8191 characters, and every skill prompt is
-  // larger than that (components ~54KB, select ~17KB, tokens ~11KB, map-tokens
-  // ~10KB). Agents that read the prompt on stdin are unaffected — claude, codex,
-  // opencode and cursor all do. copilot is the one exception: its `-p` takes the
-  // prompt as the flag's value, so there is nowhere for stdin to go.
-  //
-  // Checked by capability rather than measured size: the prompt is built later,
-  // per skill, and all of them exceed the limit anyway.
-  if (process.platform === 'win32' && !agentSupportsStdinPrompt(agent)) {
-    die(
-      `Error: --agent ${agent} does not work on Windows.\n` +
-        `Its CLI only accepts the prompt as a command-line argument, and Windows limits a command\n` +
-        `line to 8191 characters — shorter than the prompts this command sends.\n` +
-        `\n` +
-        `Every other agent works on Windows. Use --agent claude, codex, opencode, or cursor.`,
-    );
-  }
+  assertAgentCanReceivePrompt(agent);
 
   if (skill === 'components' && allComponents && sessionId) {
     const db = openPipelineDb();
