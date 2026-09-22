@@ -174,7 +174,6 @@ Pass `--select-prompt-path <path>` and/or `--generate-prompt-path <path>` to swa
 | `--cma-token <token>`             | `CONTENTFUL_MANAGEMENT_TOKEN` env      | CMA personal access token                                                                                    |
 | `--project <path>`                | `.`                                    | Project root to analyze                                                                                      |
 | `--out <path>`                    | `<project>/.contentful`                | Headless-mode output directory                                                                               |
-| `--out-dir <path>`                | _(prompt)_                             | Save directory for `components.json` / `tokens.json`; bypasses inline save-path prompt                       |
 | `--agent <name>`                  | saved by setup / `claude`              | Agent for `analyze select-agent` and internal generation                                                     |
 | `--model <name>`                  | agent default                          | Model name                                                                                                   |
 | `--atomic`                        | **default**                            | Flat import, no embedded-component hierarchy (composition stripped on push)                                   |

@@ -14,7 +14,7 @@ import { replayRun, modifyRun } from '../runs/replay-helpers.js';
 import { pickerPushRun } from '../runs/push-launcher.js';
 import { shouldShowRunPicker } from '../runs/run-picker-mount.js';
 import type { RunPickerSelection } from '../runs/run-picker.js';
-import { buildPickerCredentialOptions, buildPickerModifyOptions, dispatchPickerSelection } from './picker-dispatch.js';
+import { buildPickerCredentialOptions, dispatchPickerSelection } from './picker-dispatch.js';
 import { buildCompositionForwardingOptions } from './composition-options.js';
 import { getInteractiveTerminalSupport, requireInteractiveTerminal } from '../lib/terminal-capabilities.js';
 
@@ -73,10 +73,6 @@ export function registerImportCommand(program: Command): void {
       [] as string[],
     )
     .option(
-      '--out-dir <path>',
-      'Save components.json / tokens.json to this directory; bypasses the inline save-path prompt',
-    )
-    .option(
       '--select-prompt-path <path>',
       'Path to a custom .md skill prompt for analyze select-agent (bypasses bundled invariants)',
     )
@@ -117,7 +113,6 @@ export function registerImportCommand(program: Command): void {
         generateMap?: string;
         prompt?: string[];
         livePreview?: boolean;
-        outDir?: string;
         selectPromptPath?: string;
         generatePromptPath?: string;
         pushFromRun?: string;
@@ -196,7 +191,6 @@ export function registerImportCommand(program: Command): void {
           await runImportAction(() =>
             modifyRun({
               runIdOrPath,
-              ...(opts.outDir ? { outDir: opts.outDir } : {}),
             }),
           );
           return;
@@ -248,7 +242,6 @@ export function registerImportCommand(program: Command): void {
             skipMapTokens?: boolean;
             autoFilter?: boolean;
             livePreview?: boolean;
-            outDirOverride?: string;
             selectPromptPath?: string;
             generatePromptPath?: string;
             initialRawTokensPath?: string;
@@ -305,7 +298,6 @@ export function registerImportCommand(program: Command): void {
               skipMapTokens: opts.skipMapTokens ?? false,
               autoFilter: resolveAutoFilter({}, creds.autoFilter),
               livePreview: true,
-              ...(opts.outDir ? { outDirOverride: resolve(opts.outDir) } : {}),
               selectPromptPath: opts.selectPromptPath ?? creds.selectPromptPath,
               generatePromptPath: opts.generatePromptPath ?? creds.generatePromptPath,
               ...(opts.rawTokens ? { initialRawTokensPath: normalizePath(opts.rawTokens) } : {}),
@@ -319,7 +311,6 @@ export function registerImportCommand(program: Command): void {
               pickerSelection,
               {
                 ...buildPickerCredentialOptions(opts),
-                ...buildPickerModifyOptions(opts),
               },
               { replayRun, modifyRun, pickerPushRun },
             );

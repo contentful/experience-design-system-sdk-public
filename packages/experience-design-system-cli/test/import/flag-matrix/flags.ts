@@ -163,13 +163,6 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     incompatibleWith: [],
   },
   {
-    flag: '--out-dir',
-    kind: 'value',
-    sampleValue: '/tmp/eds-save',
-    modes: ['pty', 'headless'],
-    incompatibleWith: [],
-  },
-  {
     flag: '--select-prompt-path',
     kind: 'value',
     sampleValue: '/tmp/select-prompt.md',
