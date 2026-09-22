@@ -73,10 +73,6 @@ export function registerImportCommand(program: Command): void {
       [] as string[],
     )
     .option(
-      '--select-prompt-path <path>',
-      'Path to a custom .md skill prompt for analyze select-agent (bypasses bundled invariants)',
-    )
-    .option(
       '--generate-prompt-path <path>',
       'Path to a custom .md skill prompt for generate components (bypasses bundled invariants)',
     )
@@ -113,7 +109,6 @@ export function registerImportCommand(program: Command): void {
         generateMap?: string;
         prompt?: string[];
         livePreview?: boolean;
-        selectPromptPath?: string;
         generatePromptPath?: string;
         pushFromRun?: string;
         modify?: string;
@@ -298,7 +293,7 @@ export function registerImportCommand(program: Command): void {
               skipMapTokens: opts.skipMapTokens ?? false,
               autoFilter: resolveAutoFilter({}, creds.autoFilter),
               livePreview: true,
-              selectPromptPath: opts.selectPromptPath ?? creds.selectPromptPath,
+              selectPromptPath: creds.selectPromptPath,
               generatePromptPath: opts.generatePromptPath ?? creds.generatePromptPath,
               ...(opts.rawTokens ? { initialRawTokensPath: normalizePath(opts.rawTokens) } : {}),
               ...pickerProps,
@@ -360,7 +355,7 @@ export function registerImportCommand(program: Command): void {
             noCache: opts.cache === false,
             yes: false,
             host: opts.host,
-            selectPromptPath: opts.selectPromptPath,
+            selectPromptPath: headlessCreds.selectPromptPath,
             allowDeletions: opts.allowDeletions ?? false,
             compositionMode: headlessCompositionMode,
             ...buildCompositionForwardingOptions(opts),
