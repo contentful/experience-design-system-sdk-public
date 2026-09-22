@@ -1,7 +1,7 @@
 import { useInput } from 'ink';
 import type { DsiConfiguration } from './config-store.js';
 
-export type FieldKey = keyof DsiConfiguration;
+type FieldKey = keyof DsiConfiguration;
 
 export type Field = { key: FieldKey; label: string; maskable?: boolean };
 
