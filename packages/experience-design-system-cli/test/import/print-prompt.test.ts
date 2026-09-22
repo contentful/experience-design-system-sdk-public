@@ -57,10 +57,10 @@ describe('experiences import prompt flags', () => {
     expect(stdout).not.toContain('--print-prompt');
   });
 
-  it('marks --dry-run as deprecated in --help text', async () => {
+  it('does not list --dry-run in --help text', async () => {
     const { stdout, code } = await run(['import', '--help']);
     expect(code).toBe(0);
-    expect(stdout.toLowerCase()).toMatch(/deprecat/);
+    expect(stdout).not.toContain('--dry-run');
   });
 
 

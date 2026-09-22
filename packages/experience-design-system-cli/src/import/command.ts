@@ -12,7 +12,6 @@ import { readExperiencesCredentials } from '../credentials-store.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
 import { replayRun, modifyRun } from '../runs/replay-helpers.js';
 import { pickerPushRun } from '../runs/push-launcher.js';
-import { resolvePromptFlags } from './print-prompt.js';
 import { shouldShowRunPicker } from '../runs/run-picker-mount.js';
 import type { RunPickerSelection } from '../runs/run-picker.js';
 import { buildPickerCredentialOptions, buildPickerModifyOptions, dispatchPickerSelection } from './picker-dispatch.js';
@@ -55,10 +54,6 @@ export function registerImportCommand(program: Command): void {
     .option('--exclude-invalid', 'Automatically reject components with validation errors (empty names, collisions)')
     .option('--viewports <path>', 'JSON file with viewport array (passed to apply push)')
     .option('--host <url>', 'Override API base URL (passed to apply push)')
-    .option(
-      '--dry-run',
-      "(deprecated, will change semantics in a future release) Print generate components prompt without invoking the agent, or use '--dry-run --no-push' for manifest-preview semantics.",
-    )
     ;
   addCompositionOptions(cmd);
   addAllowDeletionsOption(cmd);
@@ -132,7 +127,6 @@ export function registerImportCommand(program: Command): void {
         excludeInvalid?: boolean;
         viewports?: string;
         host?: string;
-        dryRun?: boolean;
         composite?: boolean;
         atomic?: boolean;
         compositionMap?: string;
@@ -293,13 +287,7 @@ export function registerImportCommand(program: Command): void {
           }
         }
 
-        const promptFlags = resolvePromptFlags({
-          ...(opts.dryRun !== undefined ? { dryRun: opts.dryRun } : {}),
-        });
-        if (promptFlags.deprecationNotice) {
-          process.stderr.write(promptFlags.deprecationNotice);
-        }
-        const dryRunForward = promptFlags.forwardDryRun;
+        const dryRunForward = false;
 
         // "Don't push" is one user intent (--no-push); --skip-apply is a
         // deprecated alias. Interactive runs (TTY) take the wizard and stop
@@ -373,7 +361,6 @@ export function registerImportCommand(program: Command): void {
               ...(opts.pushFromRun !== undefined ? { pushFromRun: opts.pushFromRun } : {}),
               ...(opts.modify !== undefined ? { modify: opts.modify } : {}),
               ...(opts.project !== '.' ? { project: opts.project } : {}),
-              ...(opts.dryRun ? { dryRun: true } : {}),
             },
             isTTY: !!process.stdin.isTTY,
           });

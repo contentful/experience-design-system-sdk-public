@@ -83,7 +83,6 @@ describe('import — help output lists all flags', () => {
       '--verbose',
       '--viewports',
       '--host',
-      '--dry-run',
     ];
 
     for (const flag of flags) {
@@ -226,12 +225,6 @@ describe('import — agent and model flags', () => {
     expect(code).toBe(0);
   });
 
-  it('--dry-run is accepted with --skip-apply (no external deps)', async () => {
-    // --dry-run tells the pipeline to print the generate prompt rather than invoking the agent.
-    const { stderr, code } = await run([...skipAll(), '--dry-run'], baseEnv());
-    expect(stderr).not.toContain("unknown option '--dry-run'");
-    expect(code).toBe(0);
-  });
 });
 
 describe('import — output flags', () => {

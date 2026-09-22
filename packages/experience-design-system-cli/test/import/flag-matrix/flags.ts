@@ -131,14 +131,6 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     incompatibleWith: [],
   },
   {
-    flag: '--dry-run',
-    kind: 'boolean',
-    modes: ['headless'],
-    incompatibleWith: [],
-    forcesHeadless: true,
-    notes: 'Deprecated prompt-print mode; forwards dry-run and triggers headless.',
-  },
-  {
     flag: '--composite',
     kind: 'boolean',
     modes: ['pty', 'headless'],
