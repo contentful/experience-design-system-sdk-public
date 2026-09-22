@@ -52,7 +52,6 @@ export function registerImportCommand(program: Command): void {
     .option('--no-cache', 'Re-run all steps even if output already exists')
     .option('--verbose', 'Show full agent output and all entity progress')
     .option('--exclude-invalid', 'Automatically reject components with validation errors (empty names, collisions)')
-    .option('--viewports <path>', 'JSON file with viewport array (passed to apply push)')
     .option('--host <url>', 'Override API base URL (passed to apply push)')
     ;
   addCompositionOptions(cmd);
@@ -126,7 +125,6 @@ export function registerImportCommand(program: Command): void {
         yes?: boolean;
         verbose?: boolean;
         excludeInvalid?: boolean;
-        viewports?: string;
         host?: string;
         composite?: boolean;
         atomic?: boolean;

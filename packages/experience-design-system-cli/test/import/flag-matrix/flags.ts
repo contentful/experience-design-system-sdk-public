@@ -118,13 +118,6 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     incompatibleWith: [],
   },
   {
-    flag: '--viewports',
-    kind: 'value',
-    sampleValue: '/tmp/viewports.json',
-    modes: ['headless'],
-    incompatibleWith: [],
-  },
-  {
     flag: '--host',
     kind: 'value',
     sampleValue: 'http://127.0.0.1:9999',

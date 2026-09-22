@@ -81,7 +81,6 @@ describe('import — help output lists all flags', () => {
       '--skip-map-tokens',
       '--no-cache',
       '--verbose',
-      '--viewports',
       '--host',
     ];
 
@@ -329,11 +328,6 @@ describe('import — push-related flags', () => {
     expect(code).not.toBe(0);
   });
 
-  it('--viewports <path> is accepted without error', async () => {
-    const { stderr, code } = await run([...skipAll(), '--viewports', '/dev/null'], baseEnv());
-    expect(stderr).not.toContain("unknown option '--viewports'");
-    expect(code).toBe(0);
-  });
 });
 
 describe('import — project path flag', () => {

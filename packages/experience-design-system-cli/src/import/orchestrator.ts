@@ -34,7 +34,6 @@ export interface PipelineOptions {
   noCache: boolean;
   yes: boolean;
   verbose: boolean;
-  viewports?: string;
   host?: string;
   dryRun?: boolean;
   excludeInvalid?: boolean;
@@ -628,7 +627,6 @@ export async function runPipeline(
       pushArgs.push('--components', componentsPath);
     }
 
-    if (opts.viewports) pushArgs.push('--viewports', opts.viewports);
     if (opts.host) pushArgs.push('--host', opts.host);
     if (opts.verbose) pushArgs.push('--verbose');
     if (opts.allowDeletions) pushArgs.push('--allow-deletions');
