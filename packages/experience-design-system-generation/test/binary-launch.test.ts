@@ -21,8 +21,6 @@ beforeAll(async () => {
   await chmod(join(binDir, 'claude'), 0o755);
   await writeFile(join(binDir, 'claude.cmd'), '@echo off\n');
   await chmod(join(binDir, 'claude.cmd'), 0o755);
-  await writeFile(join(binDir, 'realbin.exe'), '');
-  await chmod(join(binDir, 'realbin.exe'), 0o755);
 });
 
 afterAll(async () => {
