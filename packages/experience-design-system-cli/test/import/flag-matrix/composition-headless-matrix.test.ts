@@ -178,7 +178,7 @@ describe('flag-matrix: composition flags forwarded through the HEADLESS dispatch
     expect(extractCall!.join(' ')).toContain('--composition-map /tmp/map.json');
   });
 
-  // ── composition × --no-push / --no-save / --skip-apply forks ───────────────
+  // ── composition × --no-push fork ───────────────────────────────────────────
   // In the headless dispatcher these forks affect apply push, not the extract
   // subprocess. Composition forwarding to extract must be independent of them.
   it('composition forwards under --skip-apply (no push subprocess spawned)', async () => {
