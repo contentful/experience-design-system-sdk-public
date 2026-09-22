@@ -50,7 +50,6 @@ export function registerImportCommand(program: Command): void {
       'Skip agentic token restrictions while still resolving deterministic token-default paths',
     )
     .option('--no-cache', 'Re-run all steps even if output already exists')
-    .option('--exclude-invalid', 'Automatically reject components with validation errors (empty names, collisions)')
     .option('--host <url>', 'Override API base URL (passed to apply push)');
   addCompositionOptions(cmd);
   addAllowDeletionsOption(cmd);
@@ -115,7 +114,6 @@ export function registerImportCommand(program: Command): void {
         skipMapTokens?: boolean;
         cache?: boolean;
         yes?: boolean;
-        excludeInvalid?: boolean;
         host?: string;
         composite?: boolean;
         atomic?: boolean;
@@ -407,7 +405,6 @@ export function registerImportCommand(program: Command): void {
             skipApply,
             noCache: opts.cache === false,
             yes: false,
-            excludeInvalid: opts.excludeInvalid ?? false,
             host: opts.host,
             dryRun: dryRunForward,
             selectPromptPath: opts.selectPromptPath,
