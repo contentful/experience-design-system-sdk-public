@@ -140,3 +140,163 @@ export function collectRenderedComponentReferences(
 
   return [...found].sort();
 }
+
+/**
+ * Signal D — data-array render: the component's render body maps an array-
+ * typed prop to a known child component (e.g. `{items.map(x => <ItemRow
+ * .../>)}` inside a parent whose `items` prop is a plain data array).
+ *
+ * Fires only when ALL strict-gating conditions hold, to keep false positives
+ * off in the common case where mapping over data doesn't imply an authorable
+ * compositional slot:
+ *
+ *   1. The `.map` callee is an identifier that matches a declared prop on
+ *      the parent (`propNames`).
+ *   2. The callback returns a JSX element whose tag is an identifier
+ *      resolving to a known component (`componentNames`).
+ *   3. That child component is NOT rendered anywhere else in the parent's
+ *      body — the map is the only render site.
+ *   4. The prop's declared type text is a plain data array — not
+ *      `ReactNode[]` / `ReactElement<...>[]` / `React.ReactNode[]`, etc.
+ *      (those cases are already covered by the typed-slot pass, so firing
+ *      this signal for them would double-count.)
+ *
+ * When all four hold, the mapped child is a strong candidate for a
+ * synthesised default slot on the parent — the extractor treats it that way
+ * only when there's no other slot to hang the evidence on (see the caller in
+ * react.ts).
+ */
+export function collectArrayMapRenderComponentReferences(
+  funcNode: FunctionLike,
+  componentNames: ReadonlySet<string>,
+  ownComponentName: string,
+  propTypesByName: ReadonlyMap<string, string>,
+): string[] {
+  const found = new Set<string>();
+  const propNames = new Set(propTypesByName.keys());
+
+  const renderCountByComponent = new Map<string, number>();
+  const bumpRenderCount = (name: string): void => {
+    renderCountByComponent.set(name, (renderCountByComponent.get(name) ?? 0) + 1);
+  };
+  for (const jsxElement of [
+    ...funcNode.getDescendantsOfKind(SyntaxKind.JsxSelfClosingElement),
+    ...funcNode.getDescendantsOfKind(SyntaxKind.JsxOpeningElement),
+  ]) {
+    const tagName = jsxElement.getTagNameNode().getText();
+    if (isIntrinsicJsxElement(tagName)) continue;
+    if (tagName === ownComponentName) continue;
+    if (!componentNames.has(tagName)) continue;
+    bumpRenderCount(tagName);
+  }
+
+  for (const callExpr of funcNode.getDescendantsOfKind(SyntaxKind.CallExpression)) {
+    const callee = callExpr.getExpression();
+    if (!Node.isPropertyAccessExpression(callee)) continue;
+    if (callee.getName() !== 'map') continue;
+
+    // Condition 1: callee's receiver must be a bare prop identifier.
+    const receiver = callee.getExpression();
+    if (!Node.isIdentifier(receiver)) continue;
+    const propName = receiver.getText();
+    if (!propNames.has(propName)) continue;
+
+    // Condition 4: prop's declared type must be a plain data array — reject
+    // ReactNode / ReactElement / JSX.Element unions so we don't overlap with
+    // the typed-slot pass.
+    const propTypeText = propTypesByName.get(propName) ?? '';
+    if (isJsxCarryingTypeText(propTypeText)) continue;
+
+    // Callback: first arg must be a function expression whose return is JSX.
+    const [callbackArg] = callExpr.getArguments();
+    if (!callbackArg) continue;
+    if (!Node.isArrowFunction(callbackArg) && !Node.isFunctionExpression(callbackArg)) continue;
+
+    const returnedJsxTag = getReturnedJsxTagName(callbackArg);
+    if (!returnedJsxTag) continue;
+    if (returnedJsxTag === ownComponentName) continue;
+    if (!componentNames.has(returnedJsxTag)) continue;
+
+    // Condition 3: the child must ONLY be rendered inside this map. Any
+    // additional render site elsewhere in the parent means it's a private
+    // implementation detail, not a composable slot child.
+    const totalRenders = renderCountByComponent.get(returnedJsxTag) ?? 0;
+    if (totalRenders !== 1) continue;
+
+    found.add(returnedJsxTag);
+  }
+
+  return [...found].sort();
+}
+
+/**
+ * Returns the tag identifier of the JSX element the callback returns, or
+ * `undefined` if the callback doesn't return exactly one identifier-tagged
+ * JSX element. Accepts both arrow-with-expression bodies and function bodies
+ * with a single return statement. Fragment wrappers with a single JSX child
+ * are unwrapped.
+ */
+function getReturnedJsxTagName(callback: ArrowFunction | FunctionExpression): string | undefined {
+  const body = callback.getBody();
+  const jsxNode = unwrapReturnedJsx(body);
+  if (!jsxNode) return undefined;
+
+  if (Node.isJsxSelfClosingElement(jsxNode) || Node.isJsxOpeningElement(jsxNode)) {
+    return jsxNode.getTagNameNode().getText();
+  }
+  if (Node.isJsxElement(jsxNode)) {
+    return jsxNode.getOpeningElement().getTagNameNode().getText();
+  }
+  return undefined;
+}
+
+function unwrapReturnedJsx(bodyOrExpr: Node): Node | undefined {
+  // Arrow with expression body: `(x) => <Foo/>` or `(x) => <><Foo/></>`
+  if (
+    Node.isJsxElement(bodyOrExpr) ||
+    Node.isJsxSelfClosingElement(bodyOrExpr) ||
+    Node.isJsxOpeningElement(bodyOrExpr)
+  ) {
+    return bodyOrExpr;
+  }
+  if (Node.isJsxFragment(bodyOrExpr)) {
+    return unwrapSingleJsxChildOfFragment(bodyOrExpr);
+  }
+  if (Node.isParenthesizedExpression(bodyOrExpr)) {
+    return unwrapReturnedJsx(bodyOrExpr.getExpression());
+  }
+
+  // Block body: look for a single `return <Foo/>;` at the top level.
+  if (Node.isBlock(bodyOrExpr)) {
+    const returns = bodyOrExpr.getStatements().filter(Node.isReturnStatement);
+    if (returns.length !== 1) return undefined;
+    const expr = returns[0].getExpression();
+    if (!expr) return undefined;
+    return unwrapReturnedJsx(expr);
+  }
+
+  return undefined;
+}
+
+function unwrapSingleJsxChildOfFragment(fragment: Node): Node | undefined {
+  if (!Node.isJsxFragment(fragment)) return undefined;
+  const jsxChildren = fragment
+    .getJsxChildren()
+    .filter((child) => Node.isJsxElement(child) || Node.isJsxSelfClosingElement(child));
+  if (jsxChildren.length !== 1) return undefined;
+  return jsxChildren[0];
+}
+
+const JSX_CARRYING_TYPE_TOKENS = ['ReactNode', 'ReactElement', 'JSX.Element'];
+
+/**
+ * True if the type text refers to a React-JSX-carrying type. Used to reject
+ * `items: ReactNode[]`-style props from the array-map signal so we don't
+ * overlap with the typed-slot pass, which already handles those.
+ */
+function isJsxCarryingTypeText(typeText: string): boolean {
+  for (const token of JSX_CARRYING_TYPE_TOKENS) {
+    if (typeText.includes(token)) return true;
+  }
+  return false;
+}

@@ -34,6 +34,7 @@ import {
   collectTypePredicateComponentReferences,
   collectRuntimeTypeCheckComponentReferences,
   collectRenderedComponentReferences,
+  collectArrayMapRenderComponentReferences,
 } from './structural-slot-evidence.js';
 
 const REACT_ELEMENT_GENERIC_TEST = /(?:React\.)?ReactElement\s*<\s*[A-Za-z_$][\w$.]*/;
@@ -2134,8 +2135,22 @@ export async function extractReactComponents(filePaths: string[]): Promise<Compo
   for (const c of components) {
     const fromFile = structuralNamesForFile(c.source);
     const fromRender = c._funcNode ? collectRenderedComponentReferences(c._funcNode, componentNames, c.name) : [];
-    const structural = new Set([...fromFile, ...fromRender]);
+    const propTypesByName = new Map(c.props.map((p) => [p.name, p.type]));
+    const fromArrayMap = c._funcNode
+      ? collectArrayMapRenderComponentReferences(c._funcNode, componentNames, c.name, propTypesByName)
+      : [];
+    const structural = new Set([...fromFile, ...fromRender, ...fromArrayMap]);
     if (structural.size === 0) continue;
+
+    // Signal D — array-map render — is the only signal that can imply an
+    // authorable compositional slot the parent didn't declare. When it fires
+    // and the parent has no declared slots at all, synthesise a default
+    // `children` slot so the evidence has somewhere to land. Signals A/B/C
+    // still only decorate existing slots to keep the current provenance
+    // guarantees intact.
+    if (fromArrayMap.length > 0 && c.slots.length === 0) {
+      (c.slots as RawSlotDefinitionInternal[]).push({ name: 'children', isDefault: true });
+    }
 
     for (const slot of c.slots as RawSlotDefinitionInternal[]) {
       if (slot.allowedComponents && slot.allowedComponents.length > 0) continue;
