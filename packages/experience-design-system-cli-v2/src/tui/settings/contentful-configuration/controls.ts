@@ -48,6 +48,9 @@ export function useConfigurationControls({
         const field = fields[focusIdx]!.key;
         setConfig((c) => ({ ...c, [field]: editBuffer }));
         setMode('navigate');
+        if (key.return) {
+          setFocusIdx((i) => (i + 1) % fields.length);
+        }
         return;
       }
       if (key.backspace || key.delete) {
