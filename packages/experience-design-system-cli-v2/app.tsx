@@ -5,7 +5,7 @@ import { SavedRunsScreen } from './src/tui/saved-runs/PageContainer.js';
 import { HelpScreen } from './src/tui/help/PageContainer.js';
 import { SettingsScreen } from './src/tui/settings/PageContainer.js';
 import { OptInAnalyticsScreen } from './src/tui/settings/opt-in-analytics/screen.js';
-import { ConfigurationScreen } from './src/tui/settings/push-configuration/screen.js';
+import { ConfigurationScreen } from './src/tui/settings/contentful-configuration/screen.js';
 import { UpgradeScreen } from './src/tui/upgrade/PageContainer.js';
 
 export type Screen =
