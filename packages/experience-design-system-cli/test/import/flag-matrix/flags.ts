@@ -105,12 +105,6 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     incompatibleWith: [],
   },
   {
-    flag: '--verbose',
-    kind: 'boolean',
-    modes: ['pty', 'headless'],
-    incompatibleWith: [],
-  },
-  {
     flag: '--exclude-invalid',
     kind: 'boolean',
     modes: ['pty', 'headless'],

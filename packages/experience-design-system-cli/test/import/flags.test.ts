@@ -80,7 +80,6 @@ describe('import — help output lists all flags', () => {
       '--model',
       '--skip-map-tokens',
       '--no-cache',
-      '--verbose',
       '--host',
     ];
 
@@ -240,11 +239,6 @@ describe('import — output flags', () => {
     expect(code).toBe(0);
   });
 
-  it('--verbose is accepted without error', async () => {
-    const { stderr, code } = await run([...skipAll(), '--verbose'], baseEnv());
-    expect(stderr).not.toContain("unknown option '--verbose'");
-    expect(code).toBe(0);
-  });
 });
 
 describe('import — selection flags', () => {

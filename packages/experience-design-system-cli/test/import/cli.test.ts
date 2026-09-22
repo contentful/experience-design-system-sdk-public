@@ -40,7 +40,6 @@ describe('import command — help', () => {
     expect(stdout).not.toContain('--skip-generate');
     expect(stdout).not.toContain('--skip-apply');
     expect(stdout).not.toContain('--yes');
-    expect(stdout).toContain('--verbose');
   });
 
   it('does not expose removed output flags', async () => {
