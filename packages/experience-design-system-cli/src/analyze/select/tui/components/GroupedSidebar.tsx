@@ -1,5 +1,4 @@
 import React from 'react';
-import figures from 'figures';
 import { Box, Text } from 'ink';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 import {
@@ -613,10 +612,10 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
           <Box key={row.key}>
             {isCursor ? (
               <Text color={PALETTE.info} bold>
-                {figures.pointer}
+                {'▶'}
               </Text>
             ) : (
-              <Text> </Text>
+              <Text>{'  '}</Text>
             )}
             <PreviewBadge badge={badge} />
             {selectionStateByKey !== undefined &&

@@ -45,7 +45,6 @@
     "@vue/compiler-sfc": "^3.5.31",
     "commander": "^13.1.0",
     "contentful-management": "^12.17.0",
-    "figures": "6.1.0",
     "ink": "^5.2.1",
     "react": "^18.3.1",
     "react-devtools-core": "^4.19.1",

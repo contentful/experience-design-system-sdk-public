@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import figures from 'figures';
 import { PALETTE } from '../theme.js';
 import { Box, Text } from 'ink';
 import {
@@ -310,9 +309,7 @@ function EditableListItem({
   }
   return (
     <Box gap={1} paddingLeft={2}>
-      <Text color={active ? PALETTE.info : PALETTE.inverse}>
-        {active ? `${figures.pointer} ${value}` : `  ${value}`}
-      </Text>
+      <Text color={active ? PALETTE.info : PALETTE.inverse}>{active ? `▶ ${value}` : `  ${value}`}</Text>
     </Box>
   );
 }
@@ -671,7 +668,7 @@ function SlotRow({
                         const isCursor = absIdx === cursor;
                         return (
                           <Text key={name} color={isCursor ? PALETTE.info : undefined} dimColor={!isCursor}>
-                            {isCursor ? `  ${figures.pointer} ${name}` : `    ${name}`}
+                            {isCursor ? `  ▶ ${name}` : `    ${name}`}
                           </Text>
                         );
                       })}

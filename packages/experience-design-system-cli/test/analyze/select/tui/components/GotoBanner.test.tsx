@@ -23,14 +23,14 @@ describe('GotoBanner', () => {
     expect(out).toContain('Breaking changes');
   });
 
-  it('marks the highlighted row by cursor with a ❯ pointer', () => {
+  it('marks the highlighted row by cursor with a ▶ pointer', () => {
     const out = render(<GotoBanner title="Goto" rows={buildRows(3)} cursor={1} />).lastFrame() ?? '';
     const lines = out.split('\n');
     const cursorLine = lines.find((l) => l.includes('Target1'));
     expect(cursorLine).toBeDefined();
-    expect(cursorLine ?? '').toContain('❯');
+    expect(cursorLine ?? '').toContain('▶');
     const otherLine = lines.find((l) => l.includes('Target0'));
-    expect(otherLine ?? '').not.toContain('❯');
+    expect(otherLine ?? '').not.toContain('▶');
   });
 
   it('renders the footer hint when given', () => {
@@ -72,7 +72,7 @@ describe('GotoBanner', () => {
     const children = el.props.children as React.ReactElement[];
     const rowEls = children.flat().filter(Boolean);
     const pointerRow = rowEls.find(
-      (c) => typeof c === 'object' && c?.props?.children && JSON.stringify(c.props.children).includes('❯'),
+      (c) => typeof c === 'object' && c?.props?.children && JSON.stringify(c.props.children).includes('▶'),
     );
     const frame = JSON.stringify(pointerRow);
     expect(frame).toContain(PALETTE.info);

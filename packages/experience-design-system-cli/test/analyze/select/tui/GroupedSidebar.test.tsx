@@ -511,7 +511,7 @@ describe('GroupedSidebar', () => {
       expect(mediaLine).toContain('[✗]');
     });
 
-    it('cycle row renders the ❯ cursor glyph when selected + focused', () => {
+    it('cycle row renders the ▶ cursor glyph when selected + focused', () => {
       const { lastFrame } = renderSidebar({
         items: [item('Card', { slots: { s: ['Media'] } }), item('Media', { slots: { s: ['Card'] } })],
         cycleParticipants: new Set(['Card', 'Media']),
@@ -520,12 +520,12 @@ describe('GroupedSidebar', () => {
       });
       const frame = lastFrame() ?? '';
       const cardLine = frame.split('\n').find((l) => l.includes('Card')) ?? '';
-      expect(cardLine).toContain('❯');
+      expect(cardLine).toContain('▶');
     });
   });
 
   describe('cursor glyph', () => {
-    it('cursor row is prefixed with a ❯ glyph when focused', () => {
+    it('cursor row is prefixed with a ▶ glyph when focused', () => {
       const { lastFrame } = renderSidebar({
         items: [item('Alpha'), item('Bravo')],
         selectedIdx: 0,
@@ -533,10 +533,10 @@ describe('GroupedSidebar', () => {
       });
       const frame = lastFrame() ?? '';
       const alphaLine = frame.split('\n').find((l) => l.includes('Alpha')) ?? '';
-      expect(alphaLine).toContain('❯');
+      expect(alphaLine).toContain('▶');
     });
 
-    it('non-cursor rows do NOT have the ❯ glyph (leading space reserved instead)', () => {
+    it('non-cursor rows do NOT have the ▶ glyph (leading space reserved instead)', () => {
       const { lastFrame } = renderSidebar({
         items: [item('Alpha'), item('Bravo')],
         selectedIdx: 0,
@@ -544,7 +544,7 @@ describe('GroupedSidebar', () => {
       });
       const frame = lastFrame() ?? '';
       const bravoLine = frame.split('\n').find((l) => l.includes('Bravo')) ?? '';
-      expect(bravoLine).not.toContain('❯');
+      expect(bravoLine).not.toContain('▶');
     });
 
     it('cursor row on a shared-dep suffix row is NOT dimmed', () => {
@@ -573,9 +573,9 @@ describe('GroupedSidebar', () => {
       // visually. Assert the cursor glyph is present at least once and that
       // the shared-suffix row still renders its "(shared)" text without
       // being hidden.
-      expect(frame).toContain('❯');
+      expect(frame).toContain('▶');
       expect(frame).toContain('(shared)');
-      const cursorLine = frame.split('\n').find((l) => l.includes('❯')) ?? '';
+      const cursorLine = frame.split('\n').find((l) => l.includes('▶')) ?? '';
       expect(cursorLine).toContain('S');
     });
 
@@ -587,7 +587,7 @@ describe('GroupedSidebar', () => {
         dimPredicate: () => true,
       });
       const frame = lastFrame() ?? '';
-      const cursorLine = frame.split('\n').find((l) => l.includes('❯')) ?? '';
+      const cursorLine = frame.split('\n').find((l) => l.includes('▶')) ?? '';
       expect(cursorLine).toContain('Alpha');
     });
   });
@@ -848,10 +848,10 @@ describe('visibleItemOrder — navigation contract', () => {
     ];
     const { lastFrame } = renderSidebar({ items, visibleRows, selectedIdx: 0, selectedRowIdx: 1 });
     const frame = lastFrame() ?? '';
-    const cursorCount = (frame.match(/❯/g) ?? []).length;
+    const cursorCount = (frame.match(/▶/g) ?? []).length;
     expect(cursorCount).toBe(1);
     const lines = frame.split('\n');
-    const cursorLine = lines.find((l) => l.includes('❯')) ?? '';
+    const cursorLine = lines.find((l) => l.includes('▶')) ?? '';
     expect(cursorLine).toContain('SECOND_CARD_ROW');
   });
 

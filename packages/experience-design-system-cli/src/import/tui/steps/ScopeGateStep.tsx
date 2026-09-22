@@ -1,7 +1,6 @@
 import { Box, Text, useStdout } from 'ink';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import figures from 'figures';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
 import {
@@ -981,7 +980,7 @@ export function ScopeGateStep({
               <Text key={i}>
                 {isCursor ? (
                   <Text color={PALETTE.info} bold>
-                    {figures.pointer}
+                    {'▶'}
                   </Text>
                 ) : (
                   <Text> </Text>
@@ -1184,7 +1183,7 @@ function AddedColumn<T extends AddedColumnEntry>(props: AddedColumnProps<T>): Re
                 <Box>
                   {isCursor ? (
                     <Text color={PALETTE.info} bold>
-                      {figures.pointer}
+                      {'▶'}
                     </Text>
                   ) : (
                     <Text> </Text>
