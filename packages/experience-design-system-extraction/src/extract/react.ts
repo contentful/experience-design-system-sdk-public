@@ -2148,13 +2148,20 @@ export async function extractReactComponents(filePaths: string[]): Promise<Compo
     // `children` slot so the evidence has somewhere to land. Signals A/B/C
     // still only decorate existing slots to keep the current provenance
     // guarantees intact.
-    if (fromArrayMap.length > 0 && c.slots.length === 0) {
-      (c.slots as RawSlotDefinitionInternal[]).push({ name: 'children', isDefault: true });
+    const synthesisedSlot: RawSlotDefinitionInternal | undefined =
+      fromArrayMap.length > 0 && c.slots.length === 0 ? { name: 'children', isDefault: true } : undefined;
+    if (synthesisedSlot) {
+      (c.slots as RawSlotDefinitionInternal[]).push(synthesisedSlot);
     }
 
     for (const slot of c.slots as RawSlotDefinitionInternal[]) {
       if (slot.allowedComponents && slot.allowedComponents.length > 0) continue;
-      slot.structuralAllowedComponents = [...structural].sort();
+      // Synthesised slots carry ONLY Signal D's mapped children — the strict
+      // signal is what earned the slot; unioning in Signal C's render-body
+      // hits would smuggle private structural pieces (icons, headings) into
+      // an authorable slot the caller can't actually compose against.
+      // Declared slots keep the existing union so A/B/C still enrich them.
+      slot.structuralAllowedComponents = slot === synthesisedSlot ? [...fromArrayMap].sort() : [...structural].sort();
     }
   }
 
