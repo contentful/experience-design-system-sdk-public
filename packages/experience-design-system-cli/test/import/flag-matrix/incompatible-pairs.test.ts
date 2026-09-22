@@ -37,14 +37,9 @@ const rejectionCells: RejectionCell[] = [
     expectStderr: /--push-from-run and --no-push are mutually exclusive/,
   },
   {
-    name: '--push-from-run ⊗ --overwrite',
-    args: ['import', '--push-from-run', 'run-1', '--overwrite'],
-    expectStderr: /--overwrite and --save-as-new only apply with --modify/,
-  },
-  {
     name: '--push-from-run ⊗ --save-as-new',
     args: ['import', '--push-from-run', 'run-1', '--save-as-new'],
-    expectStderr: /--overwrite and --save-as-new only apply with --modify/,
+    expectStderr: /--save-as-new only applies with --modify/,
   },
   {
     name: '--modify ⊗ --project',
@@ -52,19 +47,9 @@ const rejectionCells: RejectionCell[] = [
     expectStderr: /--modify and --project are mutually exclusive/,
   },
   {
-    name: '--modify + --overwrite + --save-as-new',
-    args: ['import', '--modify', 'run-1', '--overwrite', '--save-as-new'],
-    expectStderr: /--overwrite and --save-as-new are mutually exclusive/,
-  },
-  {
-    name: '--overwrite requires --modify',
-    args: ['import', '--overwrite'],
-    expectStderr: /--overwrite and --save-as-new require --modify/,
-  },
-  {
     name: '--save-as-new requires --modify',
     args: ['import', '--save-as-new'],
-    expectStderr: /--overwrite and --save-as-new require --modify/,
+    expectStderr: /--save-as-new requires --modify/,
   },
   {
     name: '--no-save ⊗ --no-push',
