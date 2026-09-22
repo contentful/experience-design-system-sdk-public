@@ -14,14 +14,14 @@ const FIELDS: { key: FieldKey; label: string; maskable?: boolean }[] = [
   { key: 'space_id', label: 'Space ID' },
   { key: 'env_id', label: 'Environment ID' },
   { key: 'cma_token', label: 'CMA Token', maskable: true },
-  { key: 'api_endpoint', label: 'API Endpoint' },
+  { key: 'host', label: 'Host' },
 ];
 
 const EMPTY_CONFIGURATION: DsiConfiguration = {
   space_id: '',
   env_id: '',
   cma_token: '',
-  api_endpoint: '',
+  host: '',
 };
 
 function mask(value: string): string {

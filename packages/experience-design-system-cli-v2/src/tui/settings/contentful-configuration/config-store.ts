@@ -8,14 +8,14 @@ export type DsiConfiguration = {
   space_id: string;
   env_id: string;
   cma_token: string;
-  api_endpoint: string;
+  host: string;
 };
 
 const EMPTY_CONFIGURATION: DsiConfiguration = {
   space_id: '',
   env_id: '',
   cma_token: '',
-  api_endpoint: '',
+  host: '',
 };
 
 export function dsiConfigurationPath(): string {
