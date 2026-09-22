@@ -123,7 +123,7 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
               ? '⏎/Esc commit edit'
               : `↑/↓ move · ⏎ edit · ${
                   FIELDS[focusIdx]!.maskable ? 'v reveal · ' : ''
-                }s save · S save & quit · q quit (discard)`}
+                }s save · S save & quit · C copy JSON · q quit (discard)`}
           </Text>
         </>
       )}

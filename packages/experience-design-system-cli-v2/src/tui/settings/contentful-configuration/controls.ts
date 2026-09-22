@@ -1,4 +1,5 @@
 import { useInput } from 'ink';
+import clipboard from 'clipboardy';
 import type { DsiConfiguration } from './config-store.js';
 
 type FieldKey = keyof DsiConfiguration;
@@ -97,6 +98,15 @@ export function useConfigurationControls({
       save(config).then((ok) => {
         if (ok) setStatus({ kind: 'success', message: 'Saved' });
       });
+      return;
+    }
+    if (input === 'C') {
+      clipboard
+        .write(`${JSON.stringify(config, null, 2)}\n`)
+        .then(() => setStatus({ kind: 'success', message: 'Copied configuration JSON to clipboard (includes token)' }))
+        .catch((err: unknown) => {
+          setStatus({ kind: 'error', message: `Copy failed: ${err instanceof Error ? err.message : String(err)}` });
+        });
       return;
     }
     if (input === 'S') {
