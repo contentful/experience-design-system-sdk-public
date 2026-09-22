@@ -15,6 +15,12 @@ export function addContentfulTargetOptions(cmd: Command): Command {
     .option('--host <url>', 'Override API base URL');
 }
 
+export function addCompositionOptions(cmd: Command): Command {
+  return cmd
+    .option('--composite', 'Import embedded-component hierarchy (opt in; default is atomic)')
+    .option('--atomic', 'Import flat components with no embedded-component hierarchy (default)');
+}
+
 function collectOptionValue(value: string, previous: string[]): string[] {
   return [...previous, value];
 }

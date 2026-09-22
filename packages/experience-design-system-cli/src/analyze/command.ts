@@ -31,6 +31,7 @@ import {
   storeCompositionCache,
 } from '../session/db.js';
 import { findSlotCycles, suggestCycleBreakEdge } from './cycle-detection.js';
+import { resolveCompositionMode, type CompositionMode } from '../lib/composition-mode.js';
 import { resolveMapping } from './composition/resolve-mapping.js';
 import { loadUserMap, resolveCompositionSources } from './composition/resolve-mapping-cli.js';
 import { selectCandidateFiles, capCandidatesToPromptBudget } from './composition/candidate-files.js';
@@ -50,6 +51,7 @@ import {
   runAgent,
   type AgentName,
 } from '@contentful/experience-design-system-generation';
+import { readExperiencesCredentials } from '../credentials-store.js';
 import { buildAnalyzeViewRows, partitionGlobalWarnings } from './build-analyze-view-rows.js';
 import { getInteractiveTerminalSupport } from '../lib/terminal-capabilities.js';
 import {
@@ -65,6 +67,8 @@ interface AnalyzeExtractOptions {
   project: string;
   dir?: string;
   resolveUnreachable?: 'auto' | 'always' | 'never';
+  composite?: boolean;
+  atomic?: boolean;
   compositionMap?: string;
   compositionAgent?: boolean;
   compositionRefresh?: boolean;
@@ -207,6 +211,15 @@ export async function collectSourceFiles(
   return files.sort();
 }
 
+/** Read the persisted default composition mode; missing config is fine. */
+async function safeReadCompositionMode(): Promise<CompositionMode | undefined> {
+  try {
+    return (await readExperiencesCredentials()).compositionMode;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Build a { version, groups } interchange skeleton (spec T1) from the resolved
  * components' slot allowedComponents — reflecting BOTH typed-slot edges the
@@ -278,10 +291,18 @@ export function registerAnalyzeCommand(program: Command): void {
       "Retry pass for unresolved Svelte Props types: 'auto' (default), 'always', or 'never'",
       'auto',
     )
-    .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map')
-    .option('--composition-agent', 'Opt into agentic mapping resolution when deterministic sources find no groups')
-    .option('--composition-refresh', 'Force the mapping agent to run even where deterministic sources answered')
-    .option('--generate-map <path>', 'Write a skeleton interchange map from resolved composition')
+    .option('--composite', 'Resolve embedded-component composition (opt in; default is atomic)')
+    .option('--atomic', 'Skip composition resolution — flat components only (default)')
+    .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map (implies --composite)')
+    .option(
+      '--composition-agent',
+      'Opt into agentic mapping resolution when deterministic sources find no groups (implies --composite)',
+    )
+    .option(
+      '--composition-refresh',
+      'Force the mapping agent to run even where deterministic sources answered (implies --composite)',
+    )
+    .option('--generate-map <path>', 'Write a skeleton interchange map from resolved composition (implies --composite)')
     .option(
       '--prompt <stage=value>',
       'Override a stage prompt (repeatable). value is a file path or literal text, e.g. --prompt composition=./p.md',
@@ -423,10 +444,11 @@ export function registerAnalyzeCommand(program: Command): void {
       }
       let validatedComponents = validateExtractedComponents(filteredComponents);
 
-      // Composition mapping resolution (spec U2). Runs when a source is
-      // provided (user map / agent opt-in) — otherwise falls through to the
-      // extractor's typed-slot edges alone.
-      {
+      // Composition mapping resolution (spec U2). Only in composite mode and
+      // only when a source is provided (user map / agent opt-in).
+      // Atomic (default) never resolves — it would only be stripped later.
+      const compositionMode = resolveCompositionMode(opts, (await safeReadCompositionMode()) ?? undefined);
+      if (compositionMode === 'composite') {
         const sources = resolveCompositionSources(opts);
 
         const { overrides: promptOverrides, errors: promptErrors } = parsePromptOverrides(opts.prompt ?? []);

@@ -106,16 +106,13 @@ describe('experiences import --push-from-run — delegation', () => {
     const warn = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
     try {
       const program = buildProgram();
-      await program.parseAsync(
-        ['import', '--push-from-run', '01HXYZ', '--composition-map', '/tmp/map.json', '--composition-agent'],
-        {
-          from: 'user',
-        },
-      );
+      await program.parseAsync(['import', '--push-from-run', '01HXYZ', '--composite', '--composition-agent'], {
+        from: 'user',
+      });
       const stderr = warn.mock.calls.map((c) => String(c[0])).join('');
-      expect(stderr).toMatch(/--composition-map/);
+      expect(stderr).toMatch(/--composite/);
       expect(stderr).toMatch(/ignored with --push-from-run/);
-      expect(stderr).toMatch(/composition inputs come from the recorded run/);
+      expect(stderr).toMatch(/composition mode comes from the recorded run/);
       expect(mockReplayRun).toHaveBeenCalledWith(expect.objectContaining({ runIdOrPath: '01HXYZ' }));
     } finally {
       warn.mockRestore();

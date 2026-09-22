@@ -121,19 +121,20 @@ describe('flag-matrix: --auto-reject-cycles behavior in the HEADLESS dispatcher'
     expect(calls.filter((c) => c.includes('--exclude-components')).length).toBe(0);
   });
 
-  // ── --auto-reject-cycles × composition: composition sub-flags still forwarded ──
-  it('--auto-reject-cycles combined with composition still forwards composition sub-flags to extract', async () => {
+  // ── --auto-reject-cycles × --composite: composition still forwarded ────────
+  it('--auto-reject-cycles combined with --composite still forwards --composite to extract', async () => {
     const { runPipeline } = await import('../../../src/import/orchestrator.js');
     const calls: string[][] = [];
+    // Fresh analyze this time so the extract subprocess is actually spawned.
     cycleAwareExecFile(calls);
     const result = await runPipeline(
-      cycleOpts({ autoRejectCycles: true, skipAnalyze: false, compositionMap: '/tmp/map.json' }),
+      cycleOpts({ autoRejectCycles: true, skipAnalyze: false, compositionMode: 'composite' }),
       () => {},
       'fake-cli-path',
     );
     expect(result.cycleError).toBeUndefined();
     const extractCall = calls.find((c) => c.includes('analyze') && c.includes('extract'));
     expect(extractCall).toBeDefined();
-    expect(extractCall!.join(' ')).toContain('--composition-map /tmp/map.json');
+    expect(extractCall).toContain('--composite');
   });
 });
