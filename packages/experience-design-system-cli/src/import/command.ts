@@ -92,10 +92,6 @@ export function registerImportCommand(program: Command): void {
     .option('--auto-reject-cycles', 'Automatically reject components involved in slot cycles and retry')
     .option('--auto-filter', 'Force the AI auto-filter ON (overrides the credentials.json autoFilter preference)')
     .option(
-      '--no-live-preview',
-      'Skip the automatic preview re-run after each FieldEditor save',
-    )
-    .option(
       '--no-push',
       'Import without pushing to Contentful. Interactive: runs the full wizard (extract → scope-gate → generate → final-review) and stops before push. Non-interactive (piped/CI): runs headless through generate. No credentials needed either way.',
     )
@@ -444,7 +440,7 @@ export function registerImportCommand(program: Command): void {
               noCache: opts.cache === false,
               skipMapTokens: opts.skipMapTokens ?? false,
               autoFilter: resolveAutoFilter({ autoFilter: opts.autoFilter }, creds.autoFilter),
-              livePreview: opts.livePreview !== false,
+              livePreview: true,
               noPush: noPushRequested,
               noSave: opts.save === false,
               ...(opts.outDir ? { outDirOverride: resolve(opts.outDir) } : {}),
