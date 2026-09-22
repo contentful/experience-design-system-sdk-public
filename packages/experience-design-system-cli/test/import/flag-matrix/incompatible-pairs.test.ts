@@ -27,11 +27,6 @@ const rejectionCells: RejectionCell[] = [
     expectStderr: /--push-from-run and --project are mutually exclusive/,
   },
   {
-    name: '--push-from-run ⊗ --no-save',
-    args: ['import', '--push-from-run', 'run-1', '--no-save'],
-    expectStderr: /--push-from-run and --no-save are mutually exclusive/,
-  },
-  {
     name: '--push-from-run ⊗ --no-push',
     args: ['import', '--push-from-run', 'run-1', '--no-push'],
     expectStderr: /--push-from-run and --no-push are mutually exclusive/,
@@ -40,16 +35,6 @@ const rejectionCells: RejectionCell[] = [
     name: '--modify ⊗ --project',
     args: ['import', '--modify', 'run-1', '--project', '/tmp/x'],
     expectStderr: /--modify and --project are mutually exclusive/,
-  },
-  {
-    name: '--no-save ⊗ --no-push',
-    args: ['import', '--no-save', '--no-push'],
-    expectStderr: /--no-save and --no-push together would do nothing/,
-  },
-  {
-    name: '--no-save ⊗ --out-dir',
-    args: ['import', '--no-save', '--out-dir', '/tmp/x'],
-    expectStderr: /--no-save and --out-dir are mutually exclusive/,
   },
 ];
 
