@@ -12,6 +12,7 @@ async function createTempDir(prefix: string): Promise<string> {
   tempDirs.push(dir);
   return dir;
 }
+
 afterAll(async () => {
   await Promise.all(tempDirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));
 });
@@ -19,7 +20,7 @@ afterAll(async () => {
 let dbPath: string;
 
 beforeAll(async () => {
-  const base = await createTempDir('import-print-prompt-');
+  const base = await createTempDir('import-help-flags-');
   dbPath = join(base, 'pipeline.db');
 });
 
@@ -43,18 +44,11 @@ function run(
   });
 }
 
-describe('experiences import prompt flags', () => {
-  it('does not list --print-prompt in --help', async () => {
+describe('experiences import help', () => {
+  it('does not list removed prompt flags in --help', async () => {
     const { stdout, code } = await run(['import', '--help']);
     expect(code).toBe(0);
     expect(stdout).not.toContain('--print-prompt');
-  });
-
-  it('does not list --dry-run in --help text', async () => {
-    const { stdout, code } = await run(['import', '--help']);
-    expect(code).toBe(0);
     expect(stdout).not.toContain('--dry-run');
   });
-
-  it.todo('--dry-run --no-push delegates to manifest-preview semantics (follow-up PR)');
 });
