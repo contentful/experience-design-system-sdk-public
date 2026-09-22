@@ -108,7 +108,6 @@ export function registerImportCommand(program: Command): void {
       '--modify <id-or-path>',
       'Re-open the wizard at final-review with a prior run pre-populated for field edits. Accepts a run-id or filesystem path.',
     )
-    .option('--force', 'Bypass staleness checks when paired with --push-from-run or --modify.')
     .action(
       async (opts: {
         spaceId?: string;
@@ -147,7 +146,6 @@ export function registerImportCommand(program: Command): void {
         generatePromptPath?: string;
         pushFromRun?: string;
         modify?: string;
-        force?: boolean;
         allowDeletions?: boolean;
       }) => {
         const interactiveTerminalSupported = getInteractiveTerminalSupport().supported;
@@ -218,7 +216,6 @@ export function registerImportCommand(program: Command): void {
               ...(opts.cmaToken ? { cmaToken: opts.cmaToken } : {}),
               ...(opts.host ? { host: opts.host } : {}),
               interactive: interactiveTerminalSupported,
-              ...(opts.force ? { force: true } : {}),
               ...(opts.allowDeletions ? { allowDeletions: true } : {}),
             }),
           );
@@ -241,7 +238,6 @@ export function registerImportCommand(program: Command): void {
             modifyRun({
               runIdOrPath,
               ...(opts.outDir ? { outDir: opts.outDir } : {}),
-              ...(opts.force ? { force: true } : {}),
               ...(opts.allowDeletions ? { allowDeletions: true } : {}),
             }),
           );
