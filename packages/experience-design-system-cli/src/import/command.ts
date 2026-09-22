@@ -148,7 +148,7 @@ export function registerImportCommand(program: Command): void {
               ...buildCompositionForwardingOptions(opts),
               noCache: opts.cache === false,
               skipMapTokens: opts.skipMapTokens ?? false,
-              autoFilter: resolveAutoFilter({}, creds.autoFilter),
+              autoFilter: resolveAutoFilter(creds.autoFilter),
               livePreview: true,
               selectPromptPath: creds.selectPromptPath,
               ...(opts.rawTokens ? { initialRawTokensPath: normalizePath(opts.rawTokens) } : {}),
