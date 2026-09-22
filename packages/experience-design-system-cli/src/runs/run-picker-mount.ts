@@ -26,7 +26,6 @@ export type RunPickerFlags = {
   modify?: string;
   /** Set only when the operator explicitly passed `--project`. */
   project?: string;
-  autoAcceptScope?: boolean;
   printPrompt?: boolean;
   dryRun?: boolean;
 };
@@ -47,7 +46,6 @@ function hasBlockingFlag(flags: RunPickerFlags): boolean {
   if (flags.pushFromRun !== undefined) return true;
   if (flags.modify !== undefined) return true;
   if (flags.project !== undefined) return true;
-  if (flags.autoAcceptScope) return true;
   if (flags.printPrompt) return true;
   if (flags.dryRun) return true;
   return false;

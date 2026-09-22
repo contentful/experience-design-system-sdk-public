@@ -24,7 +24,6 @@ export type ModifyLauncherInput = {
   /** Composition mode from the run record, so the modify wizard resumes in the
    *  same mode. Omitted → the wizard's default (`atomic`). */
   compositionMode?: CompositionMode;
-  outDirOverride?: string;
   /** Pre-fill space id (from the run record's pushedTo). */
   initialSpaceId?: string;
   /** Pre-fill environment id (from the run record's pushedTo). */
@@ -51,8 +50,6 @@ export async function launchModifyWizard(input: ModifyLauncherInput): Promise<vo
   };
   applyWizardSeedProps(props, input);
   if (input.compositionMode) props.compositionMode = input.compositionMode;
-  if (input.saveMode === 'overwrite') props.outDirOverride = input.savePath;
-  if (input.outDirOverride) props.outDirOverride = input.outDirOverride;
   if (input.allowDeletions !== undefined) props.allowDeletions = input.allowDeletions;
   await launchWizard(props);
 }

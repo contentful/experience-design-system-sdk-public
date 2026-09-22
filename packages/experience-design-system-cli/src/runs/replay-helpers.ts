@@ -1,4 +1,3 @@
-import { resolve } from 'node:path';
 import { resolveRunTarget } from './resolve-run-target.js';
 import { updateRun } from './store.js';
 import { pushRunSession } from './push-helpers.js';
@@ -165,7 +164,6 @@ export type ModifyRunOptions = {
   runIdOrPath: string;
   saveAsNew?: boolean;
   overwrite?: boolean;
-  outDir?: string;
   /** When true, bypass the source/saved-file staleness check. */
   force?: boolean;
   /** From `--allow-deletions` flag. Forwarded through the modify wizard's push step. */
@@ -209,7 +207,6 @@ export async function modifyRun(opts: ModifyRunOptions): Promise<void> {
     entryStep: 'final-review',
     saveMode,
     ...(run.compositionMode ? { compositionMode: run.compositionMode } : {}),
-    ...(opts.outDir ? { outDirOverride: resolve(opts.outDir) } : {}),
     ...(mergedSpaceId ? { initialSpaceId: mergedSpaceId } : {}),
     ...(mergedEnvironmentId ? { initialEnvironmentId: mergedEnvironmentId } : {}),
     ...(mergedHost ? { initialHost: mergedHost } : {}),
