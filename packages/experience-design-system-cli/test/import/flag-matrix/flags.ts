@@ -95,13 +95,6 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     incompatibleWith: [],
   },
   {
-    flag: '--composition-refresh',
-    kind: 'boolean',
-    modes: ['pty'],
-    incompatibleWith: [],
-    notes: 'Implies --composite.',
-  },
-  {
     flag: '--generate-map',
     kind: 'value',
     sampleValue: '/tmp/skeleton.json',

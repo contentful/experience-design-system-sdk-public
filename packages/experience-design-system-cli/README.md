@@ -59,13 +59,14 @@ When more than one source speaks to the same relationship, the higher-precedence
 
 ### The composition agent
 
-`--composition-agent` asks a coding agent to list parent→child relationships as edges. The output is cached by the candidate-file set + agent identity, so repeated runs over the same code reuse the resolved edges without re-invoking the agent.
+`--composition-agent` doesn't ask the model to *list* relationships (which would be non-deterministic and unauditable). Instead the agent **writes a small parser** — a pure `(ctx) => Edge[]` function — which the CLI runs in a locked-down sandbox (separate process, no filesystem/network, memory + wall-clock limits), caches by the parser's own source, and replays. Repeated runs over the same code are stable and inspectable.
 
-- `--composition-refresh` — ignore the cache and re-resolve from scratch, forcing the agent to run.
-- `--agent <name>` — which coding agent resolves composition (`claude`, `codex`, `opencode`, `cursor`, `copilot`).
+- `--composition-agent-mode <parser|edges>` — `parser` (default; the sandboxed-parser design above) or `edges` (agent lists relationships directly; less robust).
+- `--no-cache` — ignore caches and re-resolve composition from scratch, forcing the agent to run.
+- `--agent <name>` — which coding agent authors the parser (`claude`, `codex`, `opencode`, `cursor`, `copilot`).
 - `--prompt composition=<file-or-text>` — override the composition stage's prompt.
 
-Because the agent path spawns a coding agent, it adds latency and cost and is best-effort. For reproducible results, prefer `--composition-map`.
+Because the agent path spawns a coding agent, it adds latency and cost and is best-effort (parser quality can vary run to run). For reproducible results, prefer `--composition-map`.
 
 ### Slot cycles
 
@@ -172,10 +173,10 @@ Custom `.md` skill prompt paths can be saved via `experiences setup`; the CLI em
 | `--composition-map <path>`        | —                                      | Consume a hand-authored parent→children interchange map (implies `--composite`)                              |
 | `--generate-map <path>`           | —                                      | Also write a composition-map skeleton from the resolved composition (implies `--composite`)                  |
 | `--composition-agent`             | —                                      | Opt into agentic resolution when deterministic sources find no groups (implies `--composite`)                |
-| `--composition-refresh`           | —                                      | Bypass the composition cache and re-resolve from scratch, forcing the agent to run (implies `--composite`)   |
+| `--composition-agent-mode <mode>` | `parser`                               | `parser` (agent writes a sandboxed parser) or `edges` (agent lists edges directly)                           |
 | `--prompt <stage=value>`          | —                                      | Override a stage prompt (repeatable); value is a file path or literal text, e.g. `--prompt composition=./p.md` |
 | `--skip-map-tokens`               | —                                      | Skip the `map tokens` step between internal generation and apply                                             |
-| `--no-cache`                      | cache on                               | Bypass extract/select/internal-generation/map-tokens fine-grained caches and force re-run                    |
+| `--no-cache`                      | cache on                               | Bypass extract/select/internal-generation/map-tokens/composition caches and force re-run                    |
 | `--host <url>`                    | `https://api.contentful.com`           | Override API base URL                                                                                        |
 
 ### Run-picker at wizard start
@@ -238,6 +239,7 @@ experiences analyze extract --project <path> [--dir <src-dir>] [composition flag
 | `--generate-map <path>` | — | Write a skeleton interchange map from the resolved composition (implies `--composite`) |
 | `--composition-agent` | — | Opt into agentic resolution when deterministic sources find no groups (implies `--composite`) |
 | `--composition-refresh` | — | Bypass the composition cache and re-resolve from scratch, forcing the agent to run (implies `--composite`) |
+| `--composition-agent-mode <mode>` | `parser` | `parser` (agent writes a sandboxed parser — deterministic) or `edges` (agent lists edges directly) |
 | `--agent <name>` | saved by setup | Coding agent for composition resolution: `claude`, `codex`, `opencode`, `cursor`, `copilot` |
 | `--prompt <stage=value>` | — | Override a stage prompt (repeatable); value is a file path or literal text, e.g. `--prompt composition=./p.md` |
 
