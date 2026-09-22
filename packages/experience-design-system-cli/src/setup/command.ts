@@ -16,7 +16,12 @@ import { promptDebugModePreference } from './debug-mode-prompt.js';
 import { promptAnalyticsPreference } from './analytics-prompt.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
 import { findPkgRoot } from '../lib/cli-path.js';
-import { findBinary, resolveSpawn, type AgentName } from '@contentful/experience-design-system-generation';
+import {
+  agentSupportsStdinPrompt,
+  findBinary,
+  resolveSpawn,
+  type AgentName,
+} from '@contentful/experience-design-system-generation';
 
 const REQUIRED_NODE_MAJOR = 24;
 
@@ -421,7 +426,13 @@ async function setupAgent(): Promise<{ agent: AgentName | undefined; agentModel:
   info('experiences import uses a coding agent to generate component definitions.');
   info('');
 
-  const found = (await Promise.all(AGENT_DEFS.map(async (a) => ((await binaryExists(a.binary)) ? a : null)))).filter(
+  // Don't offer an agent that can't work on this platform. copilot takes the
+  // prompt only as a command-line argument, which cannot hold a skill prompt
+  // within the Windows 8191-character limit — better to leave it out of the list
+  // than to let it be chosen and fail at generate time.
+  const candidates = AGENT_DEFS.filter((a) => agentSupportsStdinPrompt(a.binary) || process.platform !== 'win32');
+
+  const found = (await Promise.all(candidates.map(async (a) => ((await binaryExists(a.binary)) ? a : null)))).filter(
     (a): a is (typeof AGENT_DEFS)[number] => a !== null,
   );
 
@@ -859,7 +870,9 @@ async function checkBuild(pkgRoot: string): Promise<boolean> {
 async function checkAgent(): Promise<boolean> {
   section('Checking coding agent');
 
-  const agents = AGENT_DEFS;
+  // Same platform filter as setupAgent: don't report an agent as usable here if
+  // generate would refuse it (copilot on Windows — argv-only prompt delivery).
+  const agents = AGENT_DEFS.filter((a) => agentSupportsStdinPrompt(a.binary) || process.platform !== 'win32');
 
   const creds = await readExperiencesCredentials();
   const savedAgent = creds.agent;

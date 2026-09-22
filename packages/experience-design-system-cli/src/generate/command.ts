@@ -571,18 +571,21 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
     await exitWithAnalytics(1);
   }
 
-  // Skill prompts run to ~50KB. Agents that accept the prompt on stdin are fine
-  // anywhere, but copilot requires it as a command-line argument, and Windows caps
-  // a command line at 8191 characters — so this combination cannot work at all.
-  // Fail with a clear message instead of letting the agent reject a truncated
-  // command line. Checked by capability rather than measured size: the prompt is
-  // built later, per skill, and every skill prompt exceeds the limit.
+  // Windows caps a command line at 8191 characters, and every skill prompt is
+  // larger than that (components ~54KB, select ~17KB, tokens ~11KB, map-tokens
+  // ~10KB). Agents that read the prompt on stdin are unaffected — claude, codex,
+  // opencode and cursor all do. copilot is the one exception: its `-p` takes the
+  // prompt as the flag's value, so there is nowhere for stdin to go.
+  //
+  // Checked by capability rather than measured size: the prompt is built later,
+  // per skill, and all of them exceed the limit anyway.
   if (process.platform === 'win32' && !agentSupportsStdinPrompt(agent)) {
     die(
-      `Error: the '${agent}' agent is not supported on Windows.\n` +
-        `Its CLI requires the prompt as a command-line argument, and these prompts exceed the\n` +
-        `Windows command-line limit of 8191 characters.\n` +
-        `Use --agent claude or --agent codex instead.`,
+      `Error: --agent ${agent} does not work on Windows.\n` +
+        `Its CLI only accepts the prompt as a command-line argument, and Windows limits a command\n` +
+        `line to 8191 characters — shorter than the prompts this command sends.\n` +
+        `\n` +
+        `Every other agent works on Windows. Use --agent claude, codex, opencode, or cursor.`,
     );
   }
 

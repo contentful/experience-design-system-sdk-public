@@ -261,14 +261,16 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
       );
     }
 
-    // See generate/command.ts: agents that need the prompt on argv can't carry a
-    // ~50KB skill prompt within the Windows 8191-character command-line limit.
+    // See generate/command.ts: copilot can only take the prompt as a command-line
+    // argument, and the map-tokens prompt (~10KB) exceeds the Windows 8191-character
+    // command-line limit. Every stdin-capable agent is unaffected.
     if (process.platform === 'win32' && !agentSupportsStdinPrompt(agent)) {
       die(
-        `Error: the '${agent}' agent is not supported on Windows.\n` +
-          `Its CLI requires the prompt as a command-line argument, and these prompts exceed the\n` +
-          `Windows command-line limit of 8191 characters.\n` +
-          `Use --agent claude or --agent codex instead.`,
+        `Error: --agent ${agent} does not work on Windows.\n` +
+          `Its CLI only accepts the prompt as a command-line argument, and Windows limits a command\n` +
+          `line to 8191 characters — shorter than the prompts this command sends.\n` +
+          `\n` +
+          `Every other agent works on Windows. Use --agent claude, codex, opencode, or cursor.`,
       );
     }
 
