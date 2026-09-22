@@ -31,7 +31,7 @@ export function registerImportCommand(program: Command): void {
     )
     .option('--no-cache', 'Re-run all steps even if output already exists')
     .option('--host <url>', 'Override API base URL (passed to apply push)');
-  addCompositionOptions(cmd);
+  addCompositionOptions(cmd, { includeAtomic: false });
   cmd
     .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map (implies --composite)')
     .option(
@@ -67,7 +67,6 @@ export function registerImportCommand(program: Command): void {
         cache?: boolean;
         host?: string;
         composite?: boolean;
-        atomic?: boolean;
         compositionMap?: string;
         compositionAgent?: boolean;
         compositionAgentMode?: string;
