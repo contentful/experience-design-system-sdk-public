@@ -37,8 +37,8 @@ describe('resolve-mapping-cli (T2/T6 flag routing)', () => {
   });
 
   describe('resolveCompositionSources', () => {
-    it('flags useAgent when --composition-agent is set', () => {
-      const opts: CompositionCliOptions = { compositionAgent: true };
+    it('enables edge emission by default', () => {
+      const opts: CompositionCliOptions = {};
       const res = resolveCompositionSources(opts);
       expect(res.useAgent).toBe(true);
     });
@@ -48,9 +48,9 @@ describe('resolve-mapping-cli (T2/T6 flag routing)', () => {
       expect(res.forceAgent).toBe(true);
     });
 
-    it('no composition flags → no agent', () => {
+    it('keeps edge emission enabled when no refresh is requested', () => {
       const res = resolveCompositionSources({});
-      expect(res.useAgent).toBeFalsy();
+      expect(res.useAgent).toBe(true);
       expect(res.forceAgent).toBeFalsy();
     });
   });

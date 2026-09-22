@@ -35,14 +35,6 @@ export function registerImportCommand(program: Command): void {
   cmd
     .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map (implies --composite)')
     .option(
-      '--composition-agent',
-      'Opt into agentic mapping resolution when deterministic sources find no groups (implies --composite)',
-    )
-    .option(
-      '--composition-agent-mode <mode>',
-      "Agent mode: 'parser' (agent writes a sandboxed parser, default) or 'edges' (agent lists edges)",
-    )
-    .option(
       '--generate-map <path>',
       'Also write a composition-map skeleton from resolved edges during extract (implies --composite)',
     )
@@ -64,8 +56,6 @@ export function registerImportCommand(program: Command): void {
         host?: string;
         composite?: boolean;
         compositionMap?: string;
-        compositionAgent?: boolean;
-        compositionAgentMode?: string;
         generateMap?: string;
         prompt?: string[];
       }) => {
@@ -104,8 +94,6 @@ export function registerImportCommand(program: Command): void {
             host?: string;
             compositionMode?: CompositionMode;
             compositionMap?: string;
-            compositionAgent?: boolean;
-            compositionAgentMode?: string;
             generateMap?: string;
             promptOverrides?: string[];
             noCache?: boolean;

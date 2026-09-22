@@ -77,6 +77,8 @@ describe('import — help output lists all flags', () => {
     }
     expect(stdout).not.toContain('--atomic');
     expect(stdout).not.toContain('--composition-refresh');
+    expect(stdout).not.toContain('--composition-agent');
+    expect(stdout).not.toContain('--composition-agent-mode');
   });
 
   it('shows default agent value as "claude" in --help output', async () => {
