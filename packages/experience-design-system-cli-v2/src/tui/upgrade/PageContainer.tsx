@@ -3,9 +3,7 @@ import { Box, Text, useInput } from 'ink';
 import { FOCUS_MARKER, PALETTE } from '../home/home.theme.js';
 import { checkForUpgrade, type UpgradeCheckResult } from './version.js';
 
-const GLOBAL_INSTALL_COMMANDS = [
-  'npm install -g @contentful/experience-design-system-cli-v2@latest --@contentful:registry=https://npm.pkg.github.com',
-];
+const UPGRADE_COMMANDS = ['git pull', 'pnpm install', 'pnpm build'];
 
 export function UpgradeScreen({ onDone }: { onDone: () => void }): React.ReactElement {
   const [upgradeCheck, setUpgradeCheck] = useState<UpgradeCheckResult>();
@@ -57,12 +55,12 @@ function renderBody(upgradeCheck: UpgradeCheckResult | undefined): React.ReactEl
         <Text bold color={PALETTE.success}>
           v{upgradeCheck.latest}
         </Text>{' '}
-        is available (you're on <Text bold>v{upgradeCheck.current}</Text>). Exit this program and run the following to
-        upgrade:
+        is available (you're on <Text bold>v{upgradeCheck.current}</Text>). Exit this program, cd into the root of your
+        local clone of contentful/experience-design-system-sdk-public, then run:
       </Text>
       <Text> </Text>
       <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.border} paddingX={1}>
-        {GLOBAL_INSTALL_COMMANDS.map((cmd) => (
+        {UPGRADE_COMMANDS.map((cmd) => (
           <Text bold key={cmd}>
             {cmd}
           </Text>
