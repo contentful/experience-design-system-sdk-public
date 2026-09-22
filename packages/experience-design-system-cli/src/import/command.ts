@@ -106,9 +106,8 @@ export function registerImportCommand(program: Command): void {
     )
     .option(
       '--modify <id-or-path>',
-      'Re-open the wizard at final-review with a prior run pre-populated for field edits. Accepts a run-id or filesystem path. Pair with --overwrite or --save-as-new to pick the save mode.',
+      'Re-open the wizard at final-review with a prior run pre-populated for field edits. Accepts a run-id or filesystem path.',
     )
-    .option('--overwrite', "Only valid with --modify: save back to the run's recorded savePath")
     .option('--save-as-new', 'Only valid with --modify: always save to a new path (prompts for one)')
     .option('--force', 'Bypass staleness checks when paired with --push-from-run or --modify.')
     .action(
@@ -149,7 +148,6 @@ export function registerImportCommand(program: Command): void {
         generatePromptPath?: string;
         pushFromRun?: string;
         modify?: string;
-        overwrite?: boolean;
         saveAsNew?: boolean;
         force?: boolean;
         allowDeletions?: boolean;
@@ -213,8 +211,8 @@ export function registerImportCommand(program: Command): void {
             process.exit(1);
             return;
           }
-          if (opts.overwrite || opts.saveAsNew) {
-            process.stderr.write('Error: --overwrite and --save-as-new only apply with --modify.\n');
+          if (opts.saveAsNew) {
+            process.stderr.write('Error: --save-as-new only applies with --modify.\n');
             process.exit(1);
             return;
           }
@@ -242,11 +240,6 @@ export function registerImportCommand(program: Command): void {
             process.exit(1);
             return;
           }
-          if (opts.overwrite && opts.saveAsNew) {
-            process.stderr.write('Error: --overwrite and --save-as-new are mutually exclusive.\n');
-            process.exit(1);
-            return;
-          }
           requireInteractiveTerminal({
             alternative: 'start a fresh headless import with the required credentials',
           });
@@ -254,7 +247,6 @@ export function registerImportCommand(program: Command): void {
           await runImportAction(() =>
             modifyRun({
               runIdOrPath,
-              ...(opts.overwrite ? { overwrite: true } : {}),
               ...(opts.saveAsNew ? { saveAsNew: true } : {}),
               ...(opts.outDir ? { outDir: opts.outDir } : {}),
               ...(opts.force ? { force: true } : {}),
@@ -264,8 +256,8 @@ export function registerImportCommand(program: Command): void {
           return;
         }
 
-        if (opts.overwrite || opts.saveAsNew) {
-          process.stderr.write('Error: --overwrite and --save-as-new require --modify.\n');
+        if (opts.saveAsNew) {
+          process.stderr.write('Error: --save-as-new requires --modify.\n');
           process.exit(1);
           return;
         }
