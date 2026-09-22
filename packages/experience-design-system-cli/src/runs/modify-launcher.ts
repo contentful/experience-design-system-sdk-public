@@ -3,7 +3,6 @@
  * up the real Ink wizard. The production implementation lives here.
  */
 
-import type { CompositionMode } from '../lib/composition-mode.js';
 import type { WizardAppProps } from '../import/tui/WizardApp.js';
 import { launchWizard } from './wizard-launcher.js';
 import { applyWizardSeedProps } from './wizard-seed.js';
@@ -21,9 +20,6 @@ export type ModifyLauncherInput = {
   savePath: string;
   entryStep: 'scope-gate' | 'final-review';
   saveMode: 'overwrite' | 'new' | 'prompt';
-  /** Composition mode from the run record, so the modify wizard resumes in the
-   *  same mode. Omitted → the wizard's default (`atomic`). */
-  compositionMode?: CompositionMode;
   outDirOverride?: string;
   /** Pre-fill space id (from the run record's pushedTo). */
   initialSpaceId?: string;
@@ -50,7 +46,6 @@ export async function launchModifyWizard(input: ModifyLauncherInput): Promise<vo
     initialStep: input.entryStep,
   };
   applyWizardSeedProps(props, input);
-  if (input.compositionMode) props.compositionMode = input.compositionMode;
   if (input.saveMode === 'overwrite') props.outDirOverride = input.savePath;
   if (input.outDirOverride) props.outDirOverride = input.outDirOverride;
   if (input.allowDeletions !== undefined) props.allowDeletions = input.allowDeletions;

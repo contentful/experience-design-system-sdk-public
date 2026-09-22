@@ -64,7 +64,6 @@ import {
 import { ScopeGateHost, type ScopeComponent } from './scope-gate-host.js';
 import { mergeAiDecisions } from './merge-ai-decisions.js';
 import { FinalReviewHost } from './final-review-host.js';
-import type { CompositionMode } from '../../lib/composition-mode.js';
 import { runScopeGate } from './runScopeGate.js';
 import { buildAutoFilterErrorTail } from './auto-filter-error.js';
 import { checkAgentAuth, type AgentName } from '@contentful/experience-design-system-generation';
@@ -366,7 +365,6 @@ export type WizardAppProps = {
   host?: string;
   autoAcceptScope?: boolean;
   autoRejectCycles?: boolean;
-  compositionMode?: CompositionMode;
   compositionMap?: string;
   compositionAgent?: boolean;
   compositionAgentMode?: string;
@@ -406,7 +404,6 @@ export function WizardApp({
   host,
   autoAcceptScope = false,
   autoRejectCycles = false,
-  compositionMode = 'atomic',
   compositionMap,
   compositionAgent = false,
   compositionAgentMode,
@@ -765,18 +762,15 @@ export function WizardApp({
     const outDir = join(resolve(projectPath), '.contentful');
     update({ step: 'extracting', outDir, extractProgress: null, compositionPhase: null });
     const extractArgs = [findCliPath(), 'analyze', 'extract', '--project', projectPath];
-    if (compositionMode === 'composite') {
-      extractArgs.push('--composite');
-      if (compositionMap) extractArgs.push('--composition-map', compositionMap);
-      if (compositionAgent) extractArgs.push('--composition-agent');
-      if (compositionAgentMode) extractArgs.push('--composition-agent-mode', compositionAgentMode);
-      if (compositionRefresh) extractArgs.push('--composition-refresh');
-      if (generateMap) extractArgs.push('--generate-map', generateMap);
-      for (const p of promptOverrides ?? []) extractArgs.push('--prompt', p);
-      // Composition resolution uses the same agent the user picked for the run.
-      if (state.agent) extractArgs.push('--agent', state.agent);
-      if (state.bedrock) extractArgs.push('--bedrock');
-    }
+    if (compositionMap) extractArgs.push('--composition-map', compositionMap);
+    if (compositionAgent) extractArgs.push('--composition-agent');
+    if (compositionAgentMode) extractArgs.push('--composition-agent-mode', compositionAgentMode);
+    if (compositionRefresh) extractArgs.push('--composition-refresh');
+    if (generateMap) extractArgs.push('--generate-map', generateMap);
+    for (const p of promptOverrides ?? []) extractArgs.push('--prompt', p);
+    // Composition resolution uses the same agent the user picked for the run.
+    if (state.agent) extractArgs.push('--agent', state.agent);
+    if (state.bedrock) extractArgs.push('--bedrock');
     const r = await runSpawnedCli(extractArgs, (chunk) => {
       for (const line of chunk.split('\n')) {
         const scanMatch = /^progress=scan:(\d+)$/.exec(line.trim());
@@ -1708,7 +1702,6 @@ export function WizardApp({
           generateSessionId: state.generateSessionId,
           sourceFingerprint,
           savedFingerprint,
-          compositionMode,
         });
         setState((prev) => ({ ...prev, lastRunId: record.id }));
       } catch (err) {
@@ -1949,7 +1942,6 @@ export function WizardApp({
           <ScopeGateHost
             components={components}
             autoAccept={autoAcceptScope}
-            compositionMode={compositionMode}
             aiFilterStatus={state.aiFilterStatus}
             aiFilterProgress={state.aiFilterProgress}
             aiFilterError={state.aiFilterError}
@@ -2028,7 +2020,6 @@ export function WizardApp({
             tokenSessionId={state.tokenSessionId}
             generatedCount={state.generatedCount}
             autoAccept={autoAcceptScope}
-            compositionMode={compositionMode}
             livePreview={livePreview}
             spaceId={state.spaceId}
             environmentId={state.environmentId}

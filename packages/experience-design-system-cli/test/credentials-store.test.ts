@@ -396,8 +396,8 @@ describe('ExperiencesCredentials.analyticsDisabled round-trip', () => {
   });
 });
 
-describe('ExperiencesCredentials.compositionMode round-trip', () => {
-  it('keeps only values accepted by the canonical composition mode guard', async () => {
+describe('ExperiencesCredentials — legacy compositionMode field', () => {
+  it('silently drops the field on read (legacy files stay usable)', async () => {
     mockReadFile.mockResolvedValue(
       JSON.stringify({
         spaceId: 'abc',
@@ -407,21 +407,11 @@ describe('ExperiencesCredentials.compositionMode round-trip', () => {
       }),
     );
 
-    expect((await readExperiencesCredentials()).compositionMode).toBe('composite');
-
-    mockReadFile.mockResolvedValue(
-      JSON.stringify({
-        spaceId: 'abc',
-        environmentId: 'master',
-        cmaToken: 'tok',
-        compositionMode: 'flat',
-      }),
-    );
-
-    expect((await readExperiencesCredentials()).compositionMode).toBeUndefined();
+    const creds = (await readExperiencesCredentials()) as Record<string, unknown>;
+    expect(creds).not.toHaveProperty('compositionMode');
   });
 
-  it.each(['composite', 'atomic'] as const)('writes accepted mode %s', async (compositionMode) => {
+  it('does not write compositionMode on save', async () => {
     mockMkdir.mockResolvedValue(undefined);
     mockWriteFile.mockResolvedValue(undefined);
 
@@ -429,22 +419,6 @@ describe('ExperiencesCredentials.compositionMode round-trip', () => {
       spaceId: 'space1',
       environmentId: 'master',
       cmaToken: 'token',
-      compositionMode,
-    });
-
-    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string) as Record<string, unknown>;
-    expect(written.compositionMode).toBe(compositionMode);
-  });
-
-  it('omits an invalid composition mode when writing credentials', async () => {
-    mockMkdir.mockResolvedValue(undefined);
-    mockWriteFile.mockResolvedValue(undefined);
-
-    await writeExperiencesCredentials({
-      spaceId: 'space1',
-      environmentId: 'master',
-      cmaToken: 'token',
-      compositionMode: 'flat' as never,
     });
 
     const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string) as Record<string, unknown>;

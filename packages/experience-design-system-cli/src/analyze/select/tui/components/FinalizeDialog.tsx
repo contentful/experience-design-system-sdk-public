@@ -32,8 +32,6 @@ export function FinalizeDialog({
   onConfirm,
   onCancel,
   removed = [],
-  // Default 'done' so callers that pass a ready `removed` list (e.g. the atomic
-  // review step) render it immediately without threading a status.
   previewStatus = 'done',
   removedScrollOffset = 0,
 }: FinalizeDialogProps): React.ReactElement {

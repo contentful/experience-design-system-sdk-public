@@ -6,7 +6,7 @@ import { PALETTE } from '../../../src/analyze/select/tui/theme.js';
 
 const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
 
-describe('legendEntry (L11 atomic legend helper)', () => {
+describe('legendEntry (legend helper)', () => {
   it('renders the key and label adjacent as one unit', () => {
     const { lastFrame } = render(<Box>{legendEntry('[w]', 'broken')}</Box>);
     expect(stripAnsi(lastFrame() ?? '')).toContain('[w] broken');

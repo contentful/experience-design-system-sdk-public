@@ -12,8 +12,6 @@ export interface FlagSpec {
 }
 
 export const COMPOSITION_FLAGS = [
-  '--composite',
-  '--atomic',
   '--composition-map',
   '--composition-agent',
   '--composition-agent-mode',
@@ -215,33 +213,17 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     notes: 'Passes the non-TTY guard; in a non-TTY run it falls through to the headless dispatcher.',
   },
   {
-    flag: '--composite',
-    kind: 'boolean',
-    modes: ['pty', 'headless'],
-    incompatibleWith: [],
-    notes: 'Composition opt-in; wins over --atomic when both are passed (precedence, not an error).',
-  },
-  {
-    flag: '--atomic',
-    kind: 'boolean',
-    modes: ['pty', 'headless'],
-    incompatibleWith: [],
-    notes: 'Default mode. Accepted for symmetry; --composite wins if both passed.',
-  },
-  {
     flag: '--composition-map',
     kind: 'value',
     sampleValue: '/tmp/map.json',
     modes: ['pty', 'headless'],
     incompatibleWith: [],
-    notes: 'Implies --composite.',
   },
   {
     flag: '--composition-agent',
     kind: 'boolean',
     modes: ['pty', 'headless'],
     incompatibleWith: [],
-    notes: 'Implies --composite.',
   },
   {
     flag: '--composition-agent-mode',
@@ -255,7 +237,6 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     kind: 'boolean',
     modes: ['pty', 'headless'],
     incompatibleWith: [],
-    notes: 'Implies --composite.',
   },
   {
     flag: '--generate-map',
@@ -263,7 +244,6 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     sampleValue: '/tmp/skeleton.json',
     modes: ['pty', 'headless'],
     incompatibleWith: [],
-    notes: 'Implies --composite.',
   },
   {
     flag: '--prompt',
