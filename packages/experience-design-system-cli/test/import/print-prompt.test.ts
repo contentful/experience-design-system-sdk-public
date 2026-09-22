@@ -16,12 +16,10 @@ afterAll(async () => {
   await Promise.all(tempDirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));
 });
 
-let projectDir: string;
 let dbPath: string;
 
 beforeAll(async () => {
   const base = await createTempDir('import-print-prompt-');
-  projectDir = base;
   dbPath = join(base, 'pipeline.db');
 });
 
@@ -45,11 +43,6 @@ function run(
   });
 }
 
-// Help output exercises parsing without running the pipeline.
-function args(extra: string[]): string[] {
-  return ['import', '--help', ...extra];
-}
-
 describe('experiences import prompt flags', () => {
   it('does not list --print-prompt in --help', async () => {
     const { stdout, code } = await run(['import', '--help']);
@@ -62,7 +55,6 @@ describe('experiences import prompt flags', () => {
     expect(code).toBe(0);
     expect(stdout).not.toContain('--dry-run');
   });
-
 
   it.todo('--dry-run --no-push delegates to manifest-preview semantics (follow-up PR)');
 });

@@ -395,7 +395,17 @@ describe('--token-map file content is embedded in the generated prompt', () => {
     const { dbPath, sessionId } = await makeFreshDb();
 
     const result = await runCliWithEnv(
-      ['__generate', 'components', '--agent', 'claude', '--session', sessionId, '--dry-run', '--token-map', tokenMapPath],
+      [
+        '__generate',
+        'components',
+        '--agent',
+        'claude',
+        '--session',
+        sessionId,
+        '--dry-run',
+        '--token-map',
+        tokenMapPath,
+      ],
       { EDS_PIPELINE_DB_PATH: dbPath, NODE_NO_WARNINGS: '1' },
     );
 

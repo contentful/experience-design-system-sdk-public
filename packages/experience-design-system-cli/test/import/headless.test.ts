@@ -20,11 +20,7 @@ describe('import — headless mode', () => {
 
   it('fails when --project points to nonexistent directory', async () => {
     // analyze extract will fail when the project directory doesn't exist
-    const { code } = await runCliWithEnv(
-      ['import', '--project', '/nonexistent/path/does/not/exist'],
-      baseEnv(),
-      30000,
-    );
+    const { code } = await runCliWithEnv(['import', '--project', '/nonexistent/path/does/not/exist'], baseEnv(), 30000);
     expect(code).not.toBe(0);
   });
 });

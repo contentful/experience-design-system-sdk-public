@@ -1,7 +1,6 @@
 import { resolve } from 'node:path';
 import { Command } from 'commander';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { registerApplyCommand } from '../../src/apply/command.js';
 import { registerPrintCommand } from '../../src/print/command.js';
 
 const componentsPath = resolve(import.meta.dirname, '../fixtures/import/components.json');

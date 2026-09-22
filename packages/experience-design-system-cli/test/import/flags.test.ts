@@ -185,20 +185,14 @@ describe('import — skip flags', () => {
     // Regression: previously --no-push (unlike --skip-apply) demanded credentials
     // and/or errored "experiences import is interactive" when stdout was a pipe.
     // --no-push is now the canonical "don't push" flag and works in both contexts.
-    const { stderr } = await run(
-      ['import', '--help', '--no-push'],
-      baseEnv(),
-    );
+    const { stderr } = await run(['import', '--help', '--no-push'], baseEnv());
     expect(stderr).not.toContain('--space-id');
     expect(stderr).not.toContain('--cma-token');
     expect(stderr).not.toContain('is interactive');
   });
 
   it('--no-push and --skip-apply are interchangeable for the credential requirement', async () => {
-    const noPush = await run(
-      ['import', '--help', '--no-push'],
-      baseEnv(),
-    );
+    const noPush = await run(['import', '--help', '--no-push'], baseEnv());
     const skipApply = await run(skipAll(), baseEnv());
     expect(noPush.code).toBe(skipApply.code);
     expect(noPush.stderr).not.toContain('--cma-token');
@@ -222,7 +216,6 @@ describe('import — agent and model flags', () => {
     expect(stderr).not.toContain('unknown option');
     expect(code).toBe(0);
   });
-
 });
 
 describe('import — output flags', () => {
@@ -238,7 +231,6 @@ describe('import — output flags', () => {
     expect(stderr).not.toContain("unknown option '--out'");
     expect(code).toBe(0);
   });
-
 });
 
 describe('import — selection flags', () => {
@@ -247,7 +239,6 @@ describe('import — selection flags', () => {
     expect(code).not.toBe(0);
     expect(stderr).toContain("unknown option '--select-all'");
   });
-
 });
 
 describe('import — removed flags', () => {
@@ -292,14 +283,9 @@ describe('import — push-related flags', () => {
   it('--no-cache is accepted and forces a re-run', async () => {
     // Isolated project/DB: --no-cache forces a real analyze extract run, which
     // would otherwise leave a session in the shared DB for later tests to pick up.
-    const freshProjectDir = await createTempDir('no-cache-project-');
     const freshDbPath = join(await createTempDir('no-cache-db-'), 'pipeline.db');
     const { stderr } = await run(
-      [
-        'import',
-        '--help',
-        '--no-cache',
-      ],
+      ['import', '--help', '--no-cache'],
       { EDS_PIPELINE_DB_PATH: freshDbPath, NODE_NO_WARNINGS: '1' },
       30_000,
     );
@@ -321,24 +307,17 @@ describe('import — push-related flags', () => {
     expect(stderr).toContain('/nonexistent/raw-tokens.scss');
     expect(code).not.toBe(0);
   });
-
 });
 
 describe('import — project path flag', () => {
   it('--project <path> is accepted with a valid directory', async () => {
-    const { stderr, code } = await run(
-      ['import', '--help', '--project', projectDir],
-      baseEnv(),
-    );
+    const { stderr, code } = await run(['import', '--help', '--project', projectDir], baseEnv());
     expect(stderr).not.toContain('unknown option');
     expect(code).toBe(0);
   });
 
   it('fails with a nonexistent --project path', async () => {
-    const { stderr, code } = await run(
-      ['import', '--help', '--project', '/nonexistent/does/not/exist'],
-      baseEnv(),
-    );
+    const { stderr, code } = await run(['import', '--help', '--project', '/nonexistent/does/not/exist'], baseEnv());
     // The pipeline may fail, but it should not be due to an unknown option
     expect(stderr).not.toContain("unknown option '--project'");
     expect(code).toBe(0);
@@ -364,10 +343,10 @@ describe('import — ~ expansion for --project and --raw-tokens', () => {
   it('--project ~/myproj resolves against $HOME, not a literal ~ directory', async () => {
     const fakeHome = await createTempDir('fake-home-');
     await cp(REAL_PROJECT_DIR, join(fakeHome, 'myproj'), { recursive: true });
-    const { stdout, code } = await run(
-      ['import', '--help', '--project', '~/myproj'],
-      { NODE_NO_WARNINGS: '1', HOME: fakeHome },
-    );
+    const { stdout, code } = await run(['import', '--help', '--project', '~/myproj'], {
+      NODE_NO_WARNINGS: '1',
+      HOME: fakeHome,
+    });
 
     expect(code).toBe(0);
     expect(stdout).toContain('--project');

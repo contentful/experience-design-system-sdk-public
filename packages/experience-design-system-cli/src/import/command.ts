@@ -51,8 +51,7 @@ export function registerImportCommand(program: Command): void {
     )
     .option('--no-cache', 'Re-run all steps even if output already exists')
     .option('--exclude-invalid', 'Automatically reject components with validation errors (empty names, collisions)')
-    .option('--host <url>', 'Override API base URL (passed to apply push)')
-    ;
+    .option('--host <url>', 'Override API base URL (passed to apply push)');
   addCompositionOptions(cmd);
   addAllowDeletionsOption(cmd);
   cmd
@@ -221,7 +220,6 @@ export function registerImportCommand(program: Command): void {
           );
           return;
         }
-
 
         if (opts.rawTokens !== undefined) {
           const { access } = await import('node:fs/promises');

@@ -382,5 +382,4 @@ describe('experiences import flag surface', () => {
     expect(code).not.toBe(0);
     expect(stderr).toMatch(/TTY/i);
   });
-
 });

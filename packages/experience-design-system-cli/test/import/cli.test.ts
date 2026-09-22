@@ -69,5 +69,4 @@ describe('import command — help', () => {
     const { code } = await run(['import', '--space-id', 'abc123', '--environment-id', 'master']);
     expect(code).not.toBe(0);
   });
-
 });
