@@ -4,9 +4,7 @@ import { validateInterchangeMap, type InterchangeMap } from './interchange-schem
 export type CompositionCliOptions = {
   /** `--composition-map <path>` — hand-authored interchange file. */
   compositionMap?: string;
-  /** `--composition-agent` — opt into agentic resolution. */
-  compositionAgent?: boolean;
-  /** `--composition-refresh` — force the agent to run even over resolved residue. */
+  /** `--composition-refresh` — force edge emission to run even over resolved residue. */
   compositionRefresh?: boolean;
 };
 
@@ -38,7 +36,7 @@ export type ResolvedCompositionSources = {
 
 export function resolveCompositionSources(opts: CompositionCliOptions): ResolvedCompositionSources {
   return {
-    useAgent: !!opts.compositionAgent,
+    useAgent: true,
     forceAgent: !!opts.compositionRefresh,
   };
 }

@@ -6,7 +6,7 @@ Accepted — implemented via a graph consolidation plan (milestones M1-M5).
 
 Revised 2026-07-15: added the `compositionMode` axis (`composite | atomic`, default `atomic`). The matrix below describes `composite`; atomic degenerates every graph-derived rule to its trivial value (see "The `compositionMode` axis"). This is a provenance-noted revision, not a new competing decision.
 
-Revised 2026-08-11: the resolution precedence has since grown a step. An explicit `--atomic` flag was added for symmetry with `--composite`, and passing any composition-source option (`--composition-map`, `--composition-agent`, `--composition-refresh`, `--generate-map`) now implies composite without a separate `--composite` flag. Current precedence is `explicit flag > implied composition-source option > env > persisted config > default`, with `--atomic` winning over an implied source if both are present. See `lib/composition-mode.ts`. This does not change the composite/atomic behavior matrix below — only how the mode is selected.
+Revised 2026-08-11: the resolution precedence has since grown a step. An explicit `--atomic` flag was added for symmetry with `--composite`, and passing any composition-source option (`--composition-map`, `--composition-refresh`, `--generate-map`) now implies composite without a separate `--composite` flag. Current precedence is `explicit flag > implied composition-source option > env > persisted config > default`, with `--atomic` winning over an implied source if both are present. See `lib/composition-mode.ts`. This does not change the composite/atomic behavior matrix below — only how the mode is selected.
 
 ## Date
 

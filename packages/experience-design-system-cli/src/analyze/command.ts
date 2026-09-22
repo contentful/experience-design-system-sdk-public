@@ -66,7 +66,6 @@ interface AnalyzeExtractOptions {
   composite?: boolean;
   atomic?: boolean;
   compositionMap?: string;
-  compositionAgent?: boolean;
   compositionRefresh?: boolean;
   generateMap?: string;
   prompt?: string[];
@@ -290,10 +289,6 @@ export function registerAnalyzeCommand(program: Command): void {
     .option('--atomic', 'Skip composition resolution — flat components only (default)')
     .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map (implies --composite)')
     .option(
-      '--composition-agent',
-      'Opt into agentic mapping resolution when deterministic sources find no groups (implies --composite)',
-    )
-    .option(
       '--composition-refresh',
       'Force the mapping agent to run even where deterministic sources answered (implies --composite)',
     )
@@ -433,8 +428,8 @@ export function registerAnalyzeCommand(program: Command): void {
     }
     let validatedComponents = validateExtractedComponents(filteredComponents);
 
-    // Composition mapping resolution (spec U2). Only in composite mode and
-    // only when a source is provided (user map / agent opt-in).
+    // Composition mapping resolution (spec U2). Only in composite mode;
+    // direct edge emission is enabled by default.
     // Atomic (default) never resolves — it would only be stripped later.
     const compositionMode = resolveCompositionMode(opts, (await safeReadCompositionMode()) ?? undefined);
     if (compositionMode === 'composite') {
@@ -484,11 +479,16 @@ export function registerAnalyzeCommand(program: Command): void {
 
         emitCompositionProgress('resolving');
         const allFiles = await readCandidateFiles(validatedComponents, sourceFiles);
-        // `promptFiles`: bounded candidate SAMPLE inlined into the agent
-        // prompt so it sees the convention without ingesting the whole repo.
-        // `manifestDocFiles`: EVERY scanned file, fed to the deterministic
-        // manifest/doc scanner below — no LLM, no context-window concern.
+        // Decouple the two file sets (design: candidate-heuristic fragility):
+        //  - `promptFiles`: a bounded candidate SAMPLE inlined into the agent
+        //    prompt so it sees the convention without ingesting the whole repo.
+        //  - `allFiles`: EVERY scanned file, used for deterministic evidence
+        //    and candidate selection so a candidate-filter miss cannot starve
+        //    resolution of a definition file.
         const selectedCandidates = selectCandidateFiles(allFiles).map((c) => ({ path: c.path, content: c.content }));
+        // Cap the inlined set so a large design system can't overflow the
+        // agent's context window and fail resolution outright (see the budget
+        // constant).
         const capped = capCandidatesToPromptBudget(selectedCandidates);
         const promptFiles = capped.kept;
         if (capped.dropped.length > 0) {
@@ -496,7 +496,7 @@ export function registerAnalyzeCommand(program: Command): void {
             `Warning: composition — ${capped.dropped.length} candidate file(s) omitted from the agent prompt to fit the context budget; resolution runs on the ${promptFiles.length} highest-value files.\n`,
           );
         }
-        const manifestDocFiles = allFiles.map((c) => ({ path: c.path, content: c.content }));
+        const runtimeFiles = allFiles.map((c) => ({ path: c.path, content: c.content }));
 
         const resolverAgent = resolveCompositionAgentName(opts.agent);
         const componentNameSet = new Set(validatedComponents.map((c) => c.name));
@@ -523,22 +523,24 @@ export function registerAnalyzeCommand(program: Command): void {
         };
 
         // Manifest (Figma `manifest.json`)/doc (`AGENTS.md`) evidence — rank
-        // 4/5, deterministic (no LLM), runs over the FULL file set since it's
-        // cheap and code/design-adjacent rather than agent-derived.
-        const manifestDocEdges = collectManifestDocEdges(manifestDocFiles, validatedComponents, componentNameSet);
-        const extraEdges = [...manifestDocEdges];
+        // 4/5, deterministic (no LLM), runs over the FULL file set
+        // regardless of composition mode/agent settings since it's cheap
+        // and code/design-adjacent rather than agent-derived.
+        const manifestDocEdges = collectManifestDocEdges(runtimeFiles, validatedComponents, componentNameSet);
+        const extraEdges = manifestDocEdges;
 
+        // Edge-emission cache keyed on prompt files and agent identity.
         const agentCacheKey = buildCompositionInputHash({
           files: promptFiles,
           agent: resolverAgent,
+          kind: 'edges',
         });
-        const useEdgeEmission = sources.useAgent;
         const result = await resolveMapping({
           components: validatedComponents,
           ...(userMap ? { userMap } : {}),
           ...(extraEdges.length > 0 ? { extraEdges } : {}),
-          useAgent: useEdgeEmission,
-          forceAgent: sources.forceAgent && useEdgeEmission,
+          useAgent: sources.useAgent,
+          forceAgent: sources.forceAgent,
           files: promptFiles,
           ...(compositionPrompt ? { promptOverride: compositionPrompt } : {}),
           runAgentFn: async ({ prompt }) => {

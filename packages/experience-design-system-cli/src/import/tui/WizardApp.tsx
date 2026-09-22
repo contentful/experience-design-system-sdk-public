@@ -360,8 +360,6 @@ export type WizardAppProps = {
   autoRejectCycles?: boolean;
   compositionMode?: CompositionMode;
   compositionMap?: string;
-  compositionAgent?: boolean;
-  compositionAgentMode?: string;
   generateMap?: string;
   promptOverrides?: string[];
   noCache?: boolean;
@@ -394,8 +392,6 @@ export function WizardApp({
   autoRejectCycles = false,
   compositionMode = 'atomic',
   compositionMap,
-  compositionAgent = false,
-  compositionAgentMode,
   generateMap,
   promptOverrides,
   noCache = false,
@@ -741,8 +737,6 @@ export function WizardApp({
     if (compositionMode === 'composite') {
       extractArgs.push('--composite');
       if (compositionMap) extractArgs.push('--composition-map', compositionMap);
-      if (compositionAgent) extractArgs.push('--composition-agent');
-      if (compositionAgentMode) extractArgs.push('--composition-agent-mode', compositionAgentMode);
       if (noCache) extractArgs.push('--composition-refresh');
       if (generateMap) extractArgs.push('--generate-map', generateMap);
       for (const p of promptOverrides ?? []) extractArgs.push('--prompt', p);

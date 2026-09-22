@@ -12,13 +12,12 @@ export function isCompositionMode(value: string): value is CompositionMode {
  */
 export type CompositionSourceOptions = {
   compositionMap?: string;
-  compositionAgent?: boolean;
   compositionRefresh?: boolean;
   generateMap?: string;
 };
 
 function hasCompositionSource(opts: CompositionSourceOptions): boolean {
-  return !!opts.compositionMap || !!opts.compositionAgent || !!opts.compositionRefresh || !!opts.generateMap;
+  return !!opts.compositionMap || !!opts.compositionRefresh || !!opts.generateMap;
 }
 
 /**

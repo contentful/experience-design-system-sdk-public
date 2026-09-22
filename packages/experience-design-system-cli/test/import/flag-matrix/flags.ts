@@ -81,20 +81,6 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     notes: 'Implies --composite.',
   },
   {
-    flag: '--composition-agent',
-    kind: 'boolean',
-    modes: ['pty'],
-    incompatibleWith: [],
-    notes: 'Implies --composite.',
-  },
-  {
-    flag: '--composition-agent-mode',
-    kind: 'value',
-    sampleValue: 'parser',
-    modes: ['pty'],
-    incompatibleWith: [],
-  },
-  {
     flag: '--generate-map',
     kind: 'value',
     sampleValue: '/tmp/skeleton.json',

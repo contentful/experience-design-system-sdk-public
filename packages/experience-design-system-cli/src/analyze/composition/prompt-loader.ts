@@ -2,11 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-/**
- * Resolve a bundled prompt file from the package-root `prompts/` directory.
- * Walks up from this module so it works from both `src/` and `dist/src/`,
- * mirroring `resolveSkillPath` for the skills/ directory.
- */
+/** Resolve a bundled composition prompt from the package-root prompts directory. */
 export function resolvePromptPath(fileName: string): string {
   const thisDir = dirname(fileURLToPath(import.meta.url));
   let dir = thisDir;

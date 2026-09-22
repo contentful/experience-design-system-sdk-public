@@ -55,10 +55,6 @@ describe('resolveCompositionMode (flag > env > config > default)', () => {
   });
 
   describe('implicit composite from a composition source', () => {
-    it('the composition agent implies composite', () => {
-      expect(resolveCompositionMode({ compositionAgent: true }, undefined)).toBe('composite');
-    });
-
     it('a user map implies composite', () => {
       expect(resolveCompositionMode({ compositionMap: './m.json' }, undefined)).toBe('composite');
     });
@@ -81,7 +77,7 @@ describe('resolveCompositionMode (flag > env > config > default)', () => {
     });
 
     it('explicit --composite is unaffected', () => {
-      expect(resolveCompositionMode({ composite: true, compositionAgent: true }, undefined)).toBe('composite');
+      expect(resolveCompositionMode({ composite: true }, undefined)).toBe('composite');
     });
 
     it('no source and nothing else → still atomic default', () => {
