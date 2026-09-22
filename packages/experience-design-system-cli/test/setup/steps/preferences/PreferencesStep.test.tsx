@@ -52,13 +52,7 @@ describe('PreferencesStep', () => {
     expect(frame).toContain('Colors on');
   });
 
-  it('marks defaults hollow and changed settings filled, with a legend', async () => {
-    store.read.mockResolvedValue({
-      spaceId: '',
-      environmentId: '',
-      cmaToken: '',
-      debug: true,
-    });
+  it('separates each preference name from its current value', async () => {
     const { lastFrame } = renderStep();
 
     const frame = await waitForFrame(
@@ -66,9 +60,10 @@ describe('PreferencesStep', () => {
       (f) => f.includes('Preferences — open one'),
     );
 
-    expect(frame).toMatch(/○ AI auto-filter\s+Filtering irrelevant components/);
-    expect(frame).toMatch(/● Debug logging\s+Verbose traces/);
-    expect(frame).toContain('○ default   ● changed');
+    // The value column is padded clear of the longest name, so short names get a
+    // wide gap rather than sitting against their value.
+    expect(frame).toMatch(/AI auto-filter {10,}Filtering irrelevant components/);
+    expect(frame).toMatch(/Performance concurrency {2,}Default/);
   });
 
   it('opens a profile preference whose variable is already set', async () => {
