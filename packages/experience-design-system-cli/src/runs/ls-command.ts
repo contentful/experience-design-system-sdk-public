@@ -45,10 +45,7 @@ function makeColumns(staleness: Staleness[]): Column[] {
 
 function renderFooter(runs: RunRecord[], write: (s: string) => void): void {
   if (runs.length === 0) return;
-  const id = runs[0]!.id;
   write('\n');
-  write(`Push run ${id}:    experiences import --push-from-run ${id}\n`);
-  write(`Modify run ${id}:  experiences import --modify ${id}\n`);
 }
 
 async function renderDetail(run: RunRecord, write: (s: string) => void): Promise<void> {
@@ -74,8 +71,6 @@ async function renderDetail(run: RunRecord, write: (s: string) => void): Promise
   }
   lines.push(
     '',
-    `Push to Contentful:   experiences import --push-from-run ${run.id}`,
-    `Modify in wizard:     experiences import --modify ${run.id}`,
     '',
   );
   write(lines.join('\n'));

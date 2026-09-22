@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { buildRunTeaserLine } from '../../../src/import/tui/run-teaser.js';
 
 describe('buildRunTeaserLine', () => {
-  it('renders the teaser with push-from-run and modify shortcuts', () => {
+  it('renders the saved run teaser', () => {
     expect(buildRunTeaserLine('01HXYZ')).toBe(
-      "Run saved as 01HXYZ — modify with 'experiences import --modify 01HXYZ'.",
+      'Run saved as 01HXYZ.',
     );
   });
 

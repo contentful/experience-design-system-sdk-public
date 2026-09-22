@@ -156,9 +156,6 @@ After every successful wizard session, the CLI appends a record to `~/.config/ex
 
 | Flag                              | What it does                                                                                                            |
 | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `--modify <id-or-path>`           | Re-open the wizard at final-review with the prior run pre-populated. |
-
-The flag accepts either a run id or a filesystem path that matches a recorded `savePath`.
 
 ### Custom skill prompts
 
@@ -182,16 +179,11 @@ Custom `.md` skill prompt paths can be saved via `experiences setup`; the CLI em
 | `--composition-agent`             | —                                      | Opt into agentic resolution when deterministic sources find no groups (implies `--composite`)                |
 | `--composition-refresh`           | —                                      | Bypass the composition cache and re-resolve from scratch, forcing the agent to run (implies `--composite`)   |
 | `--prompt <stage=value>`          | —                                      | Override a stage prompt (repeatable); value is a file path or literal text, e.g. `--prompt composition=./p.md` |
-| `--modify <id-or-path>`           | —                                      | Re-open the wizard at final-review with a prior run loaded                                                   |
 | `--skip-map-tokens`               | —                                      | Skip the `map tokens` step between internal generation and apply                                             |
 | `--no-cache`                      | cache on                               | Bypass extract/select/internal-generation/map-tokens fine-grained caches and force re-run                    |
 | `--host <url>`                    | `https://api.contentful.com`           | Override API base URL                                                                                        |
 
 ### Run-picker at wizard start
-
-### `--modify` end-to-end behavior
-
-`--modify <id-or-path>` is fully wired: the wizard loads the recorded session from `pipeline.db` (skipping extract and internal generation), pre-fills credentials from the run record's `pushedTo` target, and lands directly on `final-review` — or on `scope-gate` if the run record carries an `entryStep` hint.
 
 ### `--model` and `--agent` overrides
 
