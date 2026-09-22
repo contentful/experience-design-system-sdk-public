@@ -13,12 +13,7 @@ import { PathPrompt } from '../../runs/path-prompt.js';
 import { RunPicker, type RunPickerSelection } from '../../runs/run-picker.js';
 import type { RunRecord } from '../../runs/store.js';
 import { SaveConflictGate } from '../../runs/save-conflict.js';
-import {
-  detectSaveConflict,
-  buildTimestampedSubdir,
-  resolveSavePath,
-  type ConflictMode,
-} from '../../runs/save-path-resolver.js';
+import { detectSaveConflict, buildTimestampedSubdir } from '../../runs/save-path-resolver.js';
 import { appendRun, updateRun } from '../../runs/store.js';
 import { buildSourceFingerprint, buildSavedFingerprint } from '../../runs/fingerprint.js';
 import { TopBar } from '../../analyze/select/tui/components/TopBar.js';
@@ -362,7 +357,6 @@ export type WizardAppProps = {
   bedrock?: boolean;
   initialProjectPath?: string;
   host?: string;
-  autoAcceptScope?: boolean;
   autoRejectCycles?: boolean;
   compositionMode?: CompositionMode;
   compositionMap?: string;
@@ -373,8 +367,6 @@ export type WizardAppProps = {
   noCache?: boolean;
   autoFilter?: boolean;
   livePreview?: boolean;
-  outDirOverride?: string;
-  onConflictMode?: ConflictMode;
   selectPromptPath?: string;
   generatePromptPath?: string;
   skipMapTokens?: boolean;
@@ -399,7 +391,6 @@ export function WizardApp({
   bedrock = false,
   initialProjectPath,
   host,
-  autoAcceptScope = false,
   autoRejectCycles = false,
   compositionMode = 'atomic',
   compositionMap,
@@ -410,8 +401,6 @@ export function WizardApp({
   noCache = false,
   autoFilter = true,
   livePreview = true,
-  outDirOverride,
-  onConflictMode,
   selectPromptPath,
   generatePromptPath,
   skipMapTokens = false,
@@ -1612,27 +1601,6 @@ export function WizardApp({
 
   const startSaveFlow = async (opts: { skipGate?: boolean; andPush?: boolean } = {}): Promise<void> => {
     pendingSaveOptionsRef.current = opts;
-    if (outDirOverride) {
-      await mkdir(outDirOverride, { recursive: true });
-      if (onConflictMode) {
-        const resolved = await resolveSavePath(outDirOverride, { onConflict: onConflictMode });
-        if (resolved.kind === 'fail') {
-          const files = resolved.conflict.files.join(', ');
-          process.stderr.write(
-            `Error: --on-conflict fail — refusing to overwrite ${files} at ${resolved.conflict.path}.\n`,
-          );
-          process.exit(1);
-          return;
-        }
-        if (resolved.kind === 'write') {
-          await mkdir(resolved.path, { recursive: true });
-          await proceedToWrite(resolved.path);
-          return;
-        }
-      }
-      await proceedToWrite(outDirOverride);
-      return;
-    }
     setState((prev) => ({ ...prev, step: 'path-prompt' }));
   };
 
@@ -1928,7 +1896,7 @@ export function WizardApp({
         return (
           <ScopeGateHost
             components={components}
-            autoAccept={autoAcceptScope}
+            autoAccept={false}
             compositionMode={compositionMode}
             aiFilterStatus={state.aiFilterStatus}
             aiFilterProgress={state.aiFilterProgress}
@@ -1957,7 +1925,6 @@ export function WizardApp({
                 },
                 onAdvanceToPushFlow: (count) => {
                   update({ acceptedCount: count, autoRejectedCount: 0 });
-                  const next = nextStepAfterScopeGate({ acceptedCount: count });
                   advanceToPushFlow(count);
                 },
               });
@@ -2003,7 +1970,7 @@ export function WizardApp({
             extractSessionId={state.extractSessionId}
             tokenSessionId={state.tokenSessionId}
             generatedCount={state.generatedCount}
-            autoAccept={autoAcceptScope}
+            autoAccept={false}
             compositionMode={compositionMode}
             livePreview={livePreview}
             spaceId={state.spaceId}
@@ -2108,11 +2075,6 @@ export function WizardApp({
               const allowEmptyDeleteAll = acceptedCount === 0;
               allowEmptyDeleteAllRef.current = allowEmptyDeleteAll;
               update({ finalReviewPassed: true });
-              if (autoAcceptScope) {
-                update({ generatedAcceptedCount: acceptedCount });
-                void runSaveAndPush();
-                return;
-              }
               update({ generatedAcceptedCount: acceptedCount, step: 'push-decision-gate' });
             }}
             onQuit={() => process.exit(0)}

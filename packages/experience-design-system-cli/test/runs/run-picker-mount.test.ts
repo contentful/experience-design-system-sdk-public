@@ -83,7 +83,6 @@ describe('shouldShowRunPicker', () => {
     ['pushFromRun', { pushFromRun: 'ABC' } as RunPickerFlags],
     ['modify', { modify: 'ABC' } as RunPickerFlags],
     ['project', { project: '/some/path' } as RunPickerFlags],
-    ['autoAcceptScope', { autoAcceptScope: true } as RunPickerFlags],
     ['printPrompt', { printPrompt: true } as RunPickerFlags],
     ['dryRun', { dryRun: true } as RunPickerFlags],
   ])('returns shouldShow=false when --%s is set', async (_label, flags) => {
