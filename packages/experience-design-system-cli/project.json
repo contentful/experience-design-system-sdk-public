@@ -14,9 +14,9 @@
       "options": {
         "parallel": false,
         "commands": [
-          "rm -rf packages/experience-design-system-cli/dist",
-          "rm -rf packages/experience-design-system-cli/skills",
-          "cp -r packages/experience-design-system-generation/skills packages/experience-design-system-cli/skills",
+          "node scripts/fs-util.mjs rm packages/experience-design-system-cli/dist",
+          "node scripts/fs-util.mjs rm packages/experience-design-system-cli/skills",
+          "node scripts/fs-util.mjs cp packages/experience-design-system-generation/skills packages/experience-design-system-cli/skills",
           "nx run experience-design-system-cli:compile"
         ]
       },
@@ -98,7 +98,7 @@
     "clean": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "rm -rf dist",
+        "command": "node ../../scripts/fs-util.mjs rm dist",
         "cwd": "packages/experience-design-system-cli"
       }
     },

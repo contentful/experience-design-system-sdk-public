@@ -11,7 +11,7 @@
       "options": {
         "parallel": false,
         "commands": [
-          "rm -rf packages/experience-design-system-cli-v2/dist",
+          "node scripts/fs-util.mjs rm packages/experience-design-system-cli-v2/dist",
           "nx run experience-design-system-cli-v2:compile",
           "nx run experience-design-system-cli-v2:compile-app"
         ]
@@ -75,7 +75,7 @@
     },
     "clean": {
       "executor": "nx:run-commands",
-      "options": { "command": "rm -rf dist", "cwd": "packages/experience-design-system-cli-v2" }
+      "options": { "command": "node ../../scripts/fs-util.mjs rm dist", "cwd": "packages/experience-design-system-cli-v2" }
     },
     "nx-release-publish": {
       "executor": "@nx/js:release-publish",
