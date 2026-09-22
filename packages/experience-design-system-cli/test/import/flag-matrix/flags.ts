@@ -136,14 +136,7 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     modes: ['headless'],
     incompatibleWith: [],
     forcesHeadless: true,
-    notes: 'Deprecated prompt-print alias for --print-prompt; forwards dry-run and triggers headless.',
-  },
-  {
-    flag: '--print-prompt',
-    kind: 'boolean',
-    modes: ['headless'],
-    incompatibleWith: [],
-    forcesHeadless: true,
+    notes: 'Deprecated prompt-print mode; forwards dry-run and triggers headless.',
   },
   {
     flag: '--composite',
