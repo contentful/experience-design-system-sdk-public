@@ -108,7 +108,6 @@ export function registerImportCommand(program: Command): void {
       '--modify <id-or-path>',
       'Re-open the wizard at final-review with a prior run pre-populated for field edits. Accepts a run-id or filesystem path.',
     )
-    .option('--save-as-new', 'Only valid with --modify: always save to a new path (prompts for one)')
     .option('--force', 'Bypass staleness checks when paired with --push-from-run or --modify.')
     .action(
       async (opts: {
@@ -148,7 +147,6 @@ export function registerImportCommand(program: Command): void {
         generatePromptPath?: string;
         pushFromRun?: string;
         modify?: string;
-        saveAsNew?: boolean;
         force?: boolean;
         allowDeletions?: boolean;
       }) => {
@@ -211,11 +209,6 @@ export function registerImportCommand(program: Command): void {
             process.exit(1);
             return;
           }
-          if (opts.saveAsNew) {
-            process.stderr.write('Error: --save-as-new only applies with --modify.\n');
-            process.exit(1);
-            return;
-          }
           const runIdOrPath = opts.pushFromRun;
           await runImportAction(() =>
             replayRun({
@@ -247,18 +240,11 @@ export function registerImportCommand(program: Command): void {
           await runImportAction(() =>
             modifyRun({
               runIdOrPath,
-              ...(opts.saveAsNew ? { saveAsNew: true } : {}),
               ...(opts.outDir ? { outDir: opts.outDir } : {}),
               ...(opts.force ? { force: true } : {}),
               ...(opts.allowDeletions ? { allowDeletions: true } : {}),
             }),
           );
-          return;
-        }
-
-        if (opts.saveAsNew) {
-          process.stderr.write('Error: --save-as-new requires --modify.\n');
-          process.exit(1);
           return;
         }
 

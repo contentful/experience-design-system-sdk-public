@@ -37,19 +37,9 @@ const rejectionCells: RejectionCell[] = [
     expectStderr: /--push-from-run and --no-push are mutually exclusive/,
   },
   {
-    name: '--push-from-run ⊗ --save-as-new',
-    args: ['import', '--push-from-run', 'run-1', '--save-as-new'],
-    expectStderr: /--save-as-new only applies with --modify/,
-  },
-  {
     name: '--modify ⊗ --project',
     args: ['import', '--modify', 'run-1', '--project', '/tmp/x'],
     expectStderr: /--modify and --project are mutually exclusive/,
-  },
-  {
-    name: '--save-as-new requires --modify',
-    args: ['import', '--save-as-new'],
-    expectStderr: /--save-as-new requires --modify/,
   },
   {
     name: '--no-save ⊗ --no-push',
