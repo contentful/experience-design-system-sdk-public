@@ -69,10 +69,7 @@ async function renderDetail(run: RunRecord, write: (s: string) => void): Promise
     const staleness = await checkRunStaleness(run);
     lines.push(...formatStalenessDetail(staleness));
   }
-  lines.push(
-    '',
-    '',
-  );
+  lines.push('', '');
   write(lines.join('\n'));
 }
 

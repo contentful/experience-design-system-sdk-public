@@ -103,10 +103,7 @@ export function registerImportCommand(program: Command): void {
           }
         }
 
-        const isHeadless =
-          !!opts.spaceId ||
-          !!opts.environmentId ||
-          !!opts.cmaToken;
+        const isHeadless = !!opts.spaceId || !!opts.environmentId || !!opts.cmaToken;
 
         if (!interactiveTerminalSupported && !isHeadless) {
           requireInteractiveTerminal({
