@@ -17,8 +17,6 @@ in both modes. This matrix does.
 | `inventory.test.ts` | **Trip-wire.** Registers the real import command and asserts its flags EXACTLY equal the inventory keys. Also checks value flags have samples and incompatibilities are symmetric. |
 | `composition-headless-matrix.test.ts` | Behavioral: composition flags × mode, composition sub-flags forwarded to the spawned `analyze extract`, composition × headless-trigger flags, and save/push forks. Uses the `execFile`-mock pattern to inspect forwarded subprocess argv. |
 | `incompatible-pairs.test.ts` | Behavioral: every declared incompatible pair REJECTS (exit 1 + right message) via the real CLI subprocess. Includes a coverage guard that fails if a declared `incompatibleWith` edge lacks a rejection cell. |
-| `pty-coverage.test.ts` | Marker that reports PTY cells as **NOT verified** (skipped-with-label) unless `PTY_TESTS=1`. Never green-by-default. |
-| `../../../tools/dsi-pty-harness/test/import/flag-matrix.pty.test.mjs` | The interactive composition × PTY half. Opt-in via `PTY_TESTS=1`, runs against `dist/`. |
 
 ## How to add a flag
 
@@ -33,8 +31,7 @@ in both modes. This matrix does.
 4. **Add a behavioral cell:**
    - Headless single-flag/pair → extend `composition-headless-matrix.test.ts`
      (subprocess-argv assertion) or add a `runCli` cell.
-   - Interactive → extend `flag-matrix.pty.test.mjs` (drive the wizard, assert
-     an on-screen effect).
+   - Interactive → add a focused Ink component test under the CLI package.
    - Incompatible pair → add a rejection cell to `incompatible-pairs.test.ts`
      (the coverage guard will otherwise fail).
 5. **Green again.**
@@ -45,13 +42,7 @@ in both modes. This matrix does.
 # Headless matrix + inventory (main suite)
 ./node_modules/.bin/vitest run test/import/flag-matrix
 
-# PTY cells (opt-in, against dist/)
-pnpm exec nx build experience-design-system-cli
-cd tools/dsi-pty-harness && PTY_TESTS=1 ./node_modules/.bin/vitest run test/import/flag-matrix.pty.test.mjs
 ```
-
-Without `PTY_TESTS=1`, `pty-coverage.test.ts` reports the PTY cells as **NOT
-verified** (a skipped, labelled marker) — it never silently passes as green.
 
 ## Revert-check (proving the net catches the fish)
 
