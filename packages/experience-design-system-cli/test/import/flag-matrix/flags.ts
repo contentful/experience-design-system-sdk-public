@@ -163,12 +163,6 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     incompatibleWith: [],
   },
   {
-    flag: '--no-push',
-    kind: 'boolean',
-    modes: ['pty', 'headless'],
-    incompatibleWith: ['--push-from-run'],
-  },
-  {
     flag: '--out-dir',
     kind: 'value',
     sampleValue: '/tmp/eds-save',
@@ -194,7 +188,7 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     kind: 'value',
     sampleValue: 'run-123',
     modes: ['pty', 'headless'],
-    incompatibleWith: ['--modify', '--project', '--no-push'],
+    incompatibleWith: ['--modify', '--project'],
   },
   {
     flag: '--modify',
