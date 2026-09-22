@@ -185,7 +185,6 @@ Custom `.md` skill prompt paths can be saved via `experiences setup`; the CLI em
 | `--prompt <stage=value>`          | —                                      | Override a stage prompt (repeatable); value is a file path or literal text, e.g. `--prompt composition=./p.md` |
 | `--push-from-run <id-or-path>`    | —                                      | Re-push a prior run; never writes to disk                                                                    |
 | `--modify <id-or-path>`           | —                                      | Re-open the wizard at final-review with a prior run loaded                                                   |
-| `--generate-prompt-path <path>`   | saved by setup                         | Custom `.md` skill prompt for internal component generation                                                  |
 | `--skip-map-tokens`               | —                                      | Skip the `map tokens` step between internal generation and apply                                             |
 | `--no-cache`                      | cache on                               | Bypass extract/select/internal-generation/map-tokens fine-grained caches and force re-run                    |
 | `--host <url>`                    | `https://api.contentful.com`           | Override API base URL                                                                                        |
