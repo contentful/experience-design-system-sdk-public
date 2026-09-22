@@ -57,11 +57,7 @@ export function registerImportCommand(program: Command): void {
     .option('--host <url>', 'Override API base URL (passed to apply push)')
     .option(
       '--dry-run',
-      "(deprecated, will change semantics in a future release) Print generate components prompt without invoking the agent. Use --print-prompt for the same behaviour explicitly, or '--dry-run --no-push' for the upcoming manifest-preview semantics.",
-    )
-    .option(
-      '--print-prompt',
-      'Print the generate components prompt without invoking the agent. Replaces the legacy --dry-run prompt-print behaviour on this command.',
+      "(deprecated, will change semantics in a future release) Print generate components prompt without invoking the agent, or use '--dry-run --no-push' for manifest-preview semantics.",
     )
     ;
   addCompositionOptions(cmd);
@@ -141,7 +137,6 @@ export function registerImportCommand(program: Command): void {
         viewports?: string;
         host?: string;
         dryRun?: boolean;
-        printPrompt?: boolean;
         composite?: boolean;
         atomic?: boolean;
         compositionMap?: string;
@@ -307,7 +302,6 @@ export function registerImportCommand(program: Command): void {
 
         const promptFlags = resolvePromptFlags({
           ...(opts.dryRun !== undefined ? { dryRun: opts.dryRun } : {}),
-          ...(opts.printPrompt !== undefined ? { printPrompt: opts.printPrompt } : {}),
         });
         if (promptFlags.deprecationNotice) {
           process.stderr.write(promptFlags.deprecationNotice);

@@ -204,9 +204,8 @@ Pass `--select-prompt-path <path>` and/or `--generate-prompt-path <path>` to swa
 | `--exclude-invalid`               | off (fail loud)                        | Auto-reject components with validation errors instead of refusing to proceed                                 |
 | `--viewports <path>`              | catch-all viewport                     | JSON file with viewport array (passed to `apply push`)                                                       |
 | `--host <url>`                    | `https://api.contentful.com`           | Override API base URL                                                                                        |
-| `--print-prompt`                  | —                                      | Print the generate prompt to stdout and exit. Replaces the prompt-print semantics of `--dry-run`.            |
 | `--allow-deletions`               | off (non-destructive)                  | Allow the push to delete remote ComponentTypes/DesignTokens missing from the manifest. Default skips them instead of deleting. Without this flag, preview responses suppress the removed-entity list and return a count instead; interactive confirm screens show an opt-out toggle (never opt-in) only when the flag is passed. Forwarded to headless subprocess pushes and `--push-from-run`. |
-| `--dry-run`                       | _(deprecated)_                         | Deprecated alias for `--print-prompt`. Emits a stderr deprecation notice; prompt-print semantics will be removed in a future release. |
+| `--dry-run`                       | _(deprecated)_                         | Print the generate prompt to stdout and exit.                                                                |
 
 ### Run-picker at wizard start
 
