@@ -1,18 +1,4 @@
-import { execFile } from 'node:child_process';
-import { resolve } from 'node:path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-const bin = resolve(import.meta.dirname, '../../bin/cli.js');
-
-// ── Integration: parse-time mutex errors (real CLI) ────────────────────────
-
-function run(args: string[]): Promise<{ stdout: string; stderr: string; code: number | null }> {
-  return new Promise((res) => {
-    execFile('node', [bin, ...args], { env: { ...process.env } }, (error, stdout, stderr) => {
-      res({ stdout, stderr, code: error?.code ? Number(error.code) : 0 });
-    });
-  });
-}
 
 // ── Unit: planSaveFlow honours --on-conflict ──────────────────────────────
 
