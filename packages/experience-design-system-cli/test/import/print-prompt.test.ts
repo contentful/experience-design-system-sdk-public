@@ -50,11 +50,11 @@ function args(extra: string[]): string[] {
   return ['import', '--help', ...extra];
 }
 
-describe('experiences import — --print-prompt', () => {
-  it('lists --print-prompt in --help', async () => {
+describe('experiences import prompt flags', () => {
+  it('does not list --print-prompt in --help', async () => {
     const { stdout, code } = await run(['import', '--help']);
     expect(code).toBe(0);
-    expect(stdout).toContain('--print-prompt');
+    expect(stdout).not.toContain('--print-prompt');
   });
 
   it('marks --dry-run as deprecated in --help text', async () => {
