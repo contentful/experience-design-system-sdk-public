@@ -11,8 +11,8 @@ export function SettingsScreen({
 }): React.ReactElement {
   const [focusIdx, setFocusIdx] = useState(0);
   const items: { label: string; screen: Screen }[] = [
-    { label: 'Opt-in Analytics', screen: 'settings-opt-in-analytics' },
     { label: 'Configuration', screen: 'settings-configuration' },
+    { label: 'Opt-in Analytics', screen: 'settings-opt-in-analytics' },
   ];
 
   useInput((input, key) => {
