@@ -5,9 +5,9 @@ and Upgrade flows. Each file records what you did on a screen and what the CLI
 did in response — useful for reproducing an issue with Contentful's dev team.
 
 - `sessions/<sessionId>/` — one directory per terminal session, created the
-  moment the CLI boots. `sessionId` is a `YYYYMMDD-HHMMSS` timestamp, so
-  sessions sort chronologically by name — the most recent run is always the
-  last one alphabetically.
+  moment the CLI boots. `sessionId` is `MM-DD-YYYY-N`, where `N` increments
+  each time you start a new session that day (`1`, `2`, `3`, ...) — easy to
+  tell apart run-to-run without decoding a timestamp.
 - Inside a session directory, subdirectories mirror the menu options you ran
   (e.g. `settings/contentful-configuration/`, `upgrade/`), same as before —
   just nested one level deeper under the session.

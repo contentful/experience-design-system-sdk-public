@@ -1,4 +1,5 @@
 import { mkdir, writeFile } from 'node:fs/promises';
+import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { findPackageRoot } from './package-root.js';
 import { readPackageVersion } from './upgrade/version.js';
@@ -26,18 +27,39 @@ export function generateRunId(): string {
   return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
 }
 
+function sessionsRootDir(): string {
+  return join(findPackageRoot(import.meta.url, PACKAGE_NAME), '.contentful', 'debug', 'sessions');
+}
+
+// MM-DD-YYYY-N: N increments per terminal session started that day (1, 2, 3, ...),
+// so runs from the same day group together and still sort in the order they happened.
+function generateSessionId(): string {
+  const now = new Date();
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  const datePrefix = `${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${now.getFullYear()}`;
+
+  const root = sessionsRootDir();
+  const existing = existsSync(root) ? readdirSync(root) : [];
+  const seqPattern = new RegExp(`^${datePrefix}-(\\d+)$`);
+  const maxSeq = existing.reduce((max, entry) => {
+    const match = seqPattern.exec(entry);
+    return match ? Math.max(max, Number(match[1])) : max;
+  }, 0);
+
+  return `${datePrefix}-${maxSeq + 1}`;
+}
+
 // Computed once, at module load, rather than lazily — this module is pulled in via
 // app.tsx's static imports as soon as the TUI boots, so "once per module load" is
-// "once per terminal session." Reuses the runId timestamp format so a session
-// directory and the run files inside it sort chronologically the same way.
-const SESSION_ID = generateRunId();
+// "once per terminal session."
+const SESSION_ID = generateSessionId();
 
 export function getSessionId(): string {
   return SESSION_ID;
 }
 
 function sessionDebugDir(): string {
-  return join(findPackageRoot(import.meta.url, PACKAGE_NAME), '.contentful', 'debug', 'sessions', SESSION_ID);
+  return join(sessionsRootDir(), SESSION_ID);
 }
 
 // Fire-and-forget so a user who never visits a wired flow still sees an (empty)
