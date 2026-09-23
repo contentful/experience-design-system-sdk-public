@@ -148,18 +148,19 @@ export function collectRenderedComponentReferences(
  *
  * Fires only when ALL strict-gating conditions hold, to keep false positives
  * off in the common case where mapping over data doesn't imply an authorable
- * compositional slot:
+ * compositional slot. Conditions are listed in check order (cheap fails
+ * first) so the loop-body labels line up 1-to-1 with this list:
  *
  *   1. The `.map` callee is an identifier that matches a declared prop on
  *      the parent (`propNames`).
- *   2. The callback returns a JSX element whose tag is an identifier
- *      resolving to a known component (`componentNames`).
- *   3. That child component is NOT rendered anywhere else in the parent's
- *      body — the map is the only render site.
- *   4. The prop's declared type text is a plain data array — not
+ *   2. The prop's declared type text is a plain data array — not
  *      `ReactNode[]` / `ReactElement<...>[]` / `React.ReactNode[]`, etc.
  *      (those cases are already covered by the typed-slot pass, so firing
  *      this signal for them would double-count.)
+ *   3. The callback returns a JSX element whose tag is an identifier
+ *      resolving to a known component (`componentNames`).
+ *   4. That child component is NOT rendered anywhere else in the parent's
+ *      body — the map is the only render site.
  *
  * When all four hold, the mapped child is a strong candidate for a
  * synthesised default slot on the parent — the extractor treats it that way
@@ -201,13 +202,14 @@ export function collectArrayMapRenderComponentReferences(
     const propName = receiver.getText();
     if (!propNames.has(propName)) continue;
 
-    // Condition 4: prop's declared type must be a plain data array — reject
+    // Condition 2: prop's declared type must be a plain data array — reject
     // ReactNode / ReactElement / JSX.Element unions so we don't overlap with
     // the typed-slot pass.
     const propTypeText = propTypesByName.get(propName) ?? '';
     if (isJsxCarryingTypeText(propTypeText)) continue;
 
-    // Callback: first arg must be a function expression whose return is JSX.
+    // Condition 3: callback must be a function expression whose return is a
+    // JSX element resolving to a known component.
     const [callbackArg] = callExpr.getArguments();
     if (!callbackArg) continue;
     if (!Node.isArrowFunction(callbackArg) && !Node.isFunctionExpression(callbackArg)) continue;
@@ -217,7 +219,7 @@ export function collectArrayMapRenderComponentReferences(
     if (returnedJsxTag === ownComponentName) continue;
     if (!componentNames.has(returnedJsxTag)) continue;
 
-    // Condition 3: the child must ONLY be rendered inside this map. Any
+    // Condition 4: the child must ONLY be rendered inside this map. Any
     // additional render site elsewhere in the parent means it's a private
     // implementation detail, not a composable slot child.
     const totalRenders = renderCountByComponent.get(returnedJsxTag) ?? 0;
