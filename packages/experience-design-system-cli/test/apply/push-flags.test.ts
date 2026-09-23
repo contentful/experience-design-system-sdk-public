@@ -234,34 +234,4 @@ describe('apply push — flag variations', () => {
     });
     expect(code).toBe(0);
   });
-
-  // ── --allow-deletions ────────────────────────────────────────────────────
-
-  it('sends allowDeletions: true in the apply body when --allow-deletions is passed', async () => {
-    const requestsBefore = server.requests.length;
-    const args = [...baseArgs(), '--allow-deletions'];
-    const { code } = await runCliWithEnv(args, baseEnv());
-    expect(code).toBe(0);
-
-    const applyRequest = server.requests
-      .slice(requestsBefore)
-      .filter((r) => r.method === 'POST' && r.url.includes('/design_systems/imports/apply'))
-      .at(-1);
-    expect(applyRequest).toBeDefined();
-    expect((applyRequest!.body as { allowDeletions?: boolean }).allowDeletions).toBe(true);
-  });
-
-  it('sends allowDeletions: false in the apply body when --allow-deletions is omitted', async () => {
-    const requestsBefore = server.requests.length;
-    const args = baseArgs();
-    const { code } = await runCliWithEnv(args, baseEnv());
-    expect(code).toBe(0);
-
-    const applyRequest = server.requests
-      .slice(requestsBefore)
-      .filter((r) => r.method === 'POST' && r.url.includes('/design_systems/imports/apply'))
-      .at(-1);
-    expect(applyRequest).toBeDefined();
-    expect((applyRequest!.body as { allowDeletions?: boolean }).allowDeletions).toBe(false);
-  });
 });

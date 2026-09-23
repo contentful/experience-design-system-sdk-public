@@ -33,7 +33,6 @@ describe('apply command — help', () => {
         .sort();
 
     expect(flags('push')).toEqual([
-      '--allow-deletions',
       '--atomic',
       '--cma-token',
       '--components',
