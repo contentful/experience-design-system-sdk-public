@@ -83,7 +83,7 @@ describe('FinalizeDialog', () => {
     expect(frame).toContain('Hero');
   });
 
-  it('omits the removed section when removed is empty (e.g. --no-push, no live preview)', () => {
+  it('omits the removed section when removed is empty', () => {
     const { lastFrame } = render(
       <FinalizeDialog accepted={3} rejected={0} needsReview={0} removed={[]} onConfirm={vi.fn()} onCancel={vi.fn()} />,
     );
