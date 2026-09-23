@@ -10,8 +10,6 @@ import { mkdir } from 'node:fs/promises';
 import { buildRunTeaserLine } from './run-teaser.js';
 import { getDebugLogger } from '../../lib/debug-logger.js';
 import { PathPrompt } from '../../runs/path-prompt.js';
-import { RunPicker, type RunPickerSelection } from '../../runs/run-picker.js';
-import type { RunRecord } from '../../runs/store.js';
 import { SaveConflictGate } from '../../runs/save-conflict.js';
 import { detectSaveConflict, buildTimestampedSubdir } from '../../runs/save-path-resolver.js';
 import { appendRun, updateRun } from '../../runs/store.js';
@@ -81,7 +79,6 @@ import {
 import { findCliPath } from '../../lib/cli-path.js';
 
 type WizardStep =
-  | 'run-picker'
   | 'welcome'
   | 'token-input'
   | 'token-reuse-gate'
@@ -97,7 +94,6 @@ type WizardStep =
   | 'final-review'
   | 'push-decision-gate'
   | 'credentials'
-  | 'push-from-picker'
   | 'previewing'
   | 'preview-gate'
   | 'pushing'
@@ -365,14 +361,7 @@ export type WizardAppProps = {
   selectPromptPath?: string;
   generatePromptPath?: string;
   skipMapTokens?: boolean;
-  seedExtractSessionId?: string;
-  seedGenerateSessionId?: string;
-  seedTokenSessionId?: string;
-  seedTokensPath?: string;
-  initialStep?: 'scope-gate' | 'final-review' | 'push-from-picker';
   initialRawTokensPath?: string;
-  initialRuns?: RunRecord[];
-  onRunPicked?: (selection: RunPickerSelection) => void;
 };
 
 export function WizardApp({
@@ -394,14 +383,7 @@ export function WizardApp({
   selectPromptPath,
   generatePromptPath,
   skipMapTokens = false,
-  seedExtractSessionId,
-  seedGenerateSessionId,
-  seedTokenSessionId,
-  seedTokensPath,
-  initialStep,
   initialRawTokensPath,
-  initialRuns,
-  onRunPicked,
 }: WizardAppProps = {}): React.ReactElement {
   const defaultConfiguredHost = toConfiguredHost(host || process.env['EDS_HOST']) ?? DEFAULT_CONFIGURED_HOST;
   const resolveWizardHost = (hostValue?: string): string => hostValue || defaultConfiguredHost;
@@ -438,48 +420,30 @@ export function WizardApp({
     stderr: string;
   }> | null>(null);
 
-  const modifyEntryReady = !!seedExtractSessionId && initialStep === 'final-review';
-  const pushFromPickerReady = !!seedExtractSessionId && initialStep === 'push-from-picker';
-  const rawTokensEntryReady = !modifyEntryReady && !pushFromPickerReady && !!initialRawTokensPath;
+  const rawTokensEntryReady = !!initialRawTokensPath;
   const effectiveNoCache = resolveNoCacheForGenerate({ cliNoCache: noCache });
-  const initialStepResolved: WizardStep = modifyEntryReady
-    ? 'final-review'
-    : pushFromPickerReady
-      ? 'push-from-picker'
-      : rawTokensEntryReady
-        ? 'generating-tokens'
-        : initialProjectPath
-          ? 'token-input'
-          : 'welcome';
+  const initialStepResolved: WizardStep = rawTokensEntryReady
+    ? 'generating-tokens'
+    : initialProjectPath
+      ? 'token-input'
+      : 'welcome';
   const initialOutDir = initialProjectPath ? join(resolve(initialProjectPath), '.contentful') : '';
-  // Only point at tokens.json when the run actually had a tokens session. A run
-  // saved without tokens has no tokens.json on disk, so assuming one exists made
-  // modify/push-from-picker fail with "file not found: .../tokens.json".
-  const initialTokensPath =
-    (modifyEntryReady || pushFromPickerReady) && initialOutDir && seedTokenSessionId
-      ? join(initialOutDir, 'tokens.json')
-      : '';
 
   const [state, setState] = useState<WizardState>({
-    step:
-      modifyEntryReady || rawTokensEntryReady || pushFromPickerReady
-        ? initialStepResolved
-        : initialRuns && initialRuns.length > 0
-          ? 'run-picker'
-          : initialStepResolved,
+    step: initialStepResolved,
     agent: initialAgent ?? 'claude',
     ...(initialModel ? { agentModel: initialModel } : {}),
     ...(bedrock ? { bedrock: true } : {}),
     projectPath: initialProjectPath ?? '',
     outDir: initialOutDir,
     rawTokensPath: rawTokensEntryReady ? initialRawTokensPath! : '',
-    tokensPath: seedTokensPath ?? initialTokensPath,
+    tokensPath: '',
     tokenSourceChanged: null,
     skipComponents: false,
-    tokenSessionId: seedTokenSessionId ?? null,
+    tokenSessionId: null,
     tokenCount: 0,
-    extractSessionId: seedExtractSessionId ?? null,
-    generateSessionId: seedGenerateSessionId ?? null,
+    extractSessionId: null,
+    generateSessionId: null,
     acceptedCount: 0,
     autoRejectedCount: 0,
     generatedCount: 0,
@@ -518,7 +482,7 @@ export function WizardApp({
     existingEntitiesPath: null,
     lastRunId: null,
     finalizeErrorBanner: null,
-    finalReviewPassed: modifyEntryReady || pushFromPickerReady,
+    finalReviewPassed: false,
   });
 
   useEffect(() => {
@@ -1689,23 +1653,7 @@ export function WizardApp({
     }
   }, [state.step]);
 
-  const pushFromPickerDispatched = useRef(false);
-  useEffect(() => {
-    if (state.step !== 'push-from-picker') return;
-    if (pushFromPickerDispatched.current) return;
-    pushFromPickerDispatched.current = true;
-    void runPreview(
-      state.extractSessionId,
-      state.tokensPath,
-      state.spaceId,
-      state.environmentId,
-      state.cmaToken,
-      state.host,
-    );
-  }, [state.step]);
-
   const noQuitSteps: WizardStep[] = [
-    'run-picker',
     'checking-claude-auth',
     'validating-credentials',
     'generating-tokens',
@@ -1714,7 +1662,6 @@ export function WizardApp({
     'mapping-tokens',
     'printing',
     'previewing',
-    'push-from-picker',
     'pushing',
   ];
   const hints = noQuitSteps.includes(state.step) ? [] : [{ key: 'q', label: 'quit' }];
@@ -1725,21 +1672,6 @@ export function WizardApp({
 
   const stepContent = (() => {
     switch (state.step) {
-      case 'run-picker':
-        return (
-          <RunPicker
-            runs={initialRuns ?? []}
-            onSelect={(selection) => {
-              if (selection.action === 'new') {
-                update({ step: 'welcome' });
-                return;
-              }
-              onRunPicked?.(selection);
-            }}
-            onCancel={() => process.exit(0)}
-          />
-        );
-
       case 'welcome':
         return (
           <WelcomeStep
@@ -2084,7 +2016,6 @@ export function WizardApp({
           />
         );
 
-      case 'push-from-picker':
       case 'previewing':
         return (
           <RunningStep
