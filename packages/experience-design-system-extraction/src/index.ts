@@ -14,7 +14,6 @@ export { stripScoringFields } from './types.js';
 
 // Core extraction pipeline
 export { extractComponents } from './extract/pipeline.js';
-export { extractConcurrency } from './extract/file-extraction-workers.js';
 
 // Framework-specific extractors
 export { extractReactComponents } from './extract/react.js';

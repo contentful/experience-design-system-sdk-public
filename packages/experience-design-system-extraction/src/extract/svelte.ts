@@ -1,3 +1,4 @@
+import os from 'node:os';
 import { basename, dirname, resolve, join } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -12,7 +13,7 @@ import type {
 } from '../types.js';
 import { computeExtractionScore, deriveNeedsReview } from './scoring.js';
 import { extractAllowedComponentsFromTypeText } from './slot-allowed-components.js';
-import { runFileExtractionWorkers, extractConcurrency } from './file-extraction-workers.js';
+import { runFileExtractionWorkers } from './file-extraction-workers.js';
 import { resolveLocalModule } from './resolve-local-module.js';
 
 type RawSlotDefinitionInternal = RawSlotDefinition & {
@@ -47,7 +48,7 @@ export async function extractSvelteComponents(
   const retryContexts = new Map<string, RetryContext>();
   const { items: components, warnings } = await runFileExtractionWorkers(
     svelteFiles,
-    extractConcurrency(),
+    os.cpus().length,
     async (filePath, source) => {
       const { component, warnings: fileWarnings, retryContext } = await extractFromSvelteFile(filePath, source);
       return { item: component, warnings: fileWarnings, metadata: retryContext };

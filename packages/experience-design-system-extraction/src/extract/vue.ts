@@ -1,3 +1,4 @@
+import os from 'node:os';
 import { basename, dirname, resolve, join } from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
@@ -9,11 +10,7 @@ import type {
   RawSlotDefinition,
   ComponentExtractionResult,
 } from '../types.js';
-import {
-  createSortedExtractionResult,
-  runFileExtractionWorkers,
-  extractConcurrency,
-} from './file-extraction-workers.js';
+import { createSortedExtractionResult, runFileExtractionWorkers } from './file-extraction-workers.js';
 import { resolveLocalModule } from './resolve-local-module.js';
 import { resolveTypeProperty } from './resolve-type-property.js';
 
@@ -53,7 +50,7 @@ export async function extractVueComponents(
   const vueFiles = filePaths.filter((f) => f.endsWith('.vue'));
   const { items: components, warnings } = await runFileExtractionWorkers(
     vueFiles,
-    extractConcurrency(),
+    os.cpus().length,
     async (filePath, source) => {
       const { component, warnings: fileWarnings } = await extractFromVueSFC(filePath, source);
       return { item: component, warnings: fileWarnings };

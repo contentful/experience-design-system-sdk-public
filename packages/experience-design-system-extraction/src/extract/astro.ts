@@ -1,3 +1,4 @@
+import os from 'node:os';
 import { basename } from 'node:path';
 import { Project, Node } from 'ts-morph';
 import type {
@@ -6,11 +7,7 @@ import type {
   RawSlotDefinition,
   ComponentExtractionResult,
 } from '../types.js';
-import {
-  createSortedExtractionResult,
-  runFileExtractionWorkers,
-  extractConcurrency,
-} from './file-extraction-workers.js';
+import { createSortedExtractionResult, runFileExtractionWorkers } from './file-extraction-workers.js';
 import { resolveTypeProperty } from './resolve-type-property.js';
 import { getSourceLineMetadata } from './source-line-metadata.js';
 
@@ -272,7 +269,7 @@ export async function extractAstroComponents(
   const astroFiles = filePaths.filter((f) => f.endsWith('.astro'));
   const { items: components, warnings } = await runFileExtractionWorkers(
     astroFiles,
-    extractConcurrency(),
+    os.cpus().length,
     async (filePath, source) => ({
       item: extractFromAstroFile(filePath, source),
     }),

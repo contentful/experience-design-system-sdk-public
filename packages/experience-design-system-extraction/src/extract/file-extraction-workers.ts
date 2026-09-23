@@ -1,15 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import os from 'node:os';
 import type { Project, SourceFile } from 'ts-morph';
-
-/**
- * How many files to extract at once, defaulting to one worker per CPU core.
- * `EDS_EXTRACT_CONCURRENCY` overrides it; read per call so a value set after
- * import still applies.
- */
-export function extractConcurrency(): number {
-  return Number(process.env['EDS_EXTRACT_CONCURRENCY'] ?? 0) || os.cpus().length;
-}
 
 export type FileExtractionOutcome<T, M = undefined> = {
   item: T | null;
