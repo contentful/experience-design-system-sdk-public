@@ -64,6 +64,9 @@ importers:
       contentful-management:
         specifier: ^12.17.0
         version: 12.17.0
+      figures:
+        specifier: 6.1.0
+        version: 6.1.0
       ink:
         specifier: ^5.2.1
         version: 5.2.1(@types/react@18.3.28)(react-devtools-core@4.28.5)(react@18.3.1)
