@@ -1,7 +1,7 @@
+import os from 'node:os';
 import { basename, dirname, resolve, join } from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import os from 'node:os';
 import { parse as parseSFC } from '@vue/compiler-sfc';
 import { Project, Node } from 'ts-morph';
 import type {
@@ -43,8 +43,6 @@ interface TemplateAstNode {
   children?: (TemplateAstNode | unknown)[];
 }
 
-const VUE_EXTRACT_CONCURRENCY = Number(process.env['EDS_EXTRACT_CONCURRENCY'] ?? 0) || os.cpus().length;
-
 export async function extractVueComponents(
   filePaths: string[],
   onProgress?: (p: { filesProcessed: number; componentsFound: number }) => void,
@@ -52,7 +50,7 @@ export async function extractVueComponents(
   const vueFiles = filePaths.filter((f) => f.endsWith('.vue'));
   const { items: components, warnings } = await runFileExtractionWorkers(
     vueFiles,
-    VUE_EXTRACT_CONCURRENCY,
+    os.cpus().length,
     async (filePath, source) => {
       const { component, warnings: fileWarnings } = await extractFromVueSFC(filePath, source);
       return { item: component, warnings: fileWarnings };
