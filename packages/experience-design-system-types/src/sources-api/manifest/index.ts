@@ -3,4 +3,9 @@ export interface ManifestPayload {
   tokensManifest?: Record<string, unknown>;
 }
 
-export { buildManifest, buildFilteredManifest, stripUnsupportedSlotFields } from './utils.js';
+export {
+  buildManifest,
+  buildFilteredManifest,
+  stripUnsupportedSlotFields,
+  validateManifestSlotReferences,
+} from './utils.js';

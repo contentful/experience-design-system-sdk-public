@@ -3,7 +3,13 @@ import { render } from 'ink';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Command } from 'commander';
-import { validateCDF, flattenDTCG, validateDTCG, buildManifest } from '@contentful/experience-design-system-types';
+import {
+  validateCDF,
+  flattenDTCG,
+  validateDTCG,
+  buildManifest,
+  validateManifestSlotReferences,
+} from '@contentful/experience-design-system-types';
 import type { CDFComponentEntry, DTCGTokenEntry } from '@contentful/experience-design-system-types';
 import { ApiError, ImportApiClient } from './api-client.js';
 import { formatApiError, formatEdsiError } from '../lib/error-parser.js';
@@ -423,6 +429,27 @@ export async function assertNoSlotCycles(components: Array<{ key: string; entry:
   await exitWithAnalytics(1);
 }
 
+/**
+ * Client-side pre-flight for `$allowedComponents` references that are absent
+ * from this manifest, so a typo'd or renamed reference fails fast instead of
+ * waiting on the `previewImport`/`applyImport` round-trip. Only catches
+ * manifest-internal misses — a name that resolves against an *existing*
+ * target-environment Component still needs the network round-trip to
+ * confirm, so this cannot replace the server-side check.
+ */
+export async function assertNoUnresolvedSlotReferences(
+  components: Array<{ key: string; entry: CDFComponentEntry }>,
+): Promise<void> {
+  const errors = validateManifestSlotReferences(components);
+  if (errors.length === 0) return;
+  const lines = ['Error: manifest slot $allowedComponents references failed to resolve locally. Push refused.'];
+  for (const error of errors) {
+    lines.push(`  - ${error.message} (${error.path})`);
+  }
+  process.stderr.write(lines.join('\n') + '\n');
+  await exitWithAnalytics(1);
+}
+
 export function extractComponentsFromManifest(
   manifest: { componentsManifest?: Record<string, unknown> } | null | undefined,
 ): Array<{ key: string; entry: CDFComponentEntry }> {
@@ -542,6 +569,7 @@ export function registerApplyCommand(program: Command): void {
       });
 
       await assertNoSlotCycles(components);
+      await assertNoUnresolvedSlotReferences(components);
 
       try {
         await client.validateToken();
