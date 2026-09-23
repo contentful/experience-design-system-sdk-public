@@ -28,9 +28,9 @@ in both modes. This matrix does.
    "registered flags missing from flags.ts inventory". That is the red.
 3. **Add a `FlagSpec` entry to `flags.ts`**: set `kind`, a usable `sampleValue`
    for value flags (must not error before mode dispatch, e.g.
-   `--composition-agent-mode parser`, `--on-conflict overwrite`), the `modes`
-   it is meaningful in, and any `incompatibleWith` edges (declare them on BOTH
-   flags — the symmetry check enforces this).
+   `--on-conflict overwrite`), the `modes` it is meaningful in, and any
+   `incompatibleWith` edges (declare them on BOTH flags — the symmetry check
+   enforces this).
 4. **Add a behavioral cell:**
    - Headless single-flag/pair → extend `composition-headless-matrix.test.ts`
      (subprocess-argv assertion) or add a `runCli` cell.

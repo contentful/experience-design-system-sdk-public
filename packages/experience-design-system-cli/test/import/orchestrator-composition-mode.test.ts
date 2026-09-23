@@ -94,7 +94,6 @@ describe('runPipeline composition mode forwarding', () => {
         compositionMode: 'composite',
         compositionMap: '/tmp/map.json',
         compositionAgent: true,
-        compositionAgentMode: 'edges',
         compositionRefresh: true,
         generateMap: '/tmp/skeleton.json',
         promptOverrides: ['composition=./p.md', 'grouping=./g.md'],
@@ -110,7 +109,6 @@ describe('runPipeline composition mode forwarding', () => {
     expect(joined).toContain('--composite');
     expect(joined).toContain('--composition-map /tmp/map.json');
     expect(joined).toContain('--composition-agent');
-    expect(joined).toContain('--composition-agent-mode edges');
     expect(joined).toContain('--composition-refresh');
     expect(joined).toContain('--generate-map /tmp/skeleton.json');
     expect(extractCall!.filter((a) => a === '--prompt').length).toBe(2);

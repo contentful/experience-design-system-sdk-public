@@ -62,7 +62,6 @@ function findPushCalls(calls: string[][]): string[][] {
 const COMPOSITE_SUBFLAG_OPTS: Partial<PipelineOptions> = {
   compositionMap: '/tmp/map.json',
   compositionAgent: true,
-  compositionAgentMode: 'edges',
   compositionRefresh: true,
   generateMap: '/tmp/skeleton.json',
   promptOverrides: ['composition=./p.md'],
@@ -119,7 +118,6 @@ describe('flag-matrix: composition flags forwarded through the HEADLESS dispatch
     { flag: '--composite', assert: (j) => expect(j).toContain('--composite') },
     { flag: '--composition-map', assert: (j) => expect(j).toContain('--composition-map /tmp/map.json') },
     { flag: '--composition-agent', assert: (j) => expect(j).toContain('--composition-agent') },
-    { flag: '--composition-agent-mode', assert: (j) => expect(j).toContain('--composition-agent-mode edges') },
     { flag: '--composition-refresh', assert: (j) => expect(j).toContain('--composition-refresh') },
     { flag: '--generate-map', assert: (j) => expect(j).toContain('--generate-map /tmp/skeleton.json') },
     {

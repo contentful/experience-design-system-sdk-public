@@ -53,7 +53,6 @@ export interface PipelineOptions {
   compositionMode?: CompositionMode;
   compositionMap?: string;
   compositionAgent?: boolean;
-  compositionAgentMode?: string;
   compositionRefresh?: boolean;
   generateMap?: string;
   promptOverrides?: string[];
@@ -325,7 +324,6 @@ export async function runPipeline(
       analyzeArgs.push('--composite');
       if (opts.compositionMap) analyzeArgs.push('--composition-map', opts.compositionMap);
       if (opts.compositionAgent) analyzeArgs.push('--composition-agent');
-      if (opts.compositionAgentMode) analyzeArgs.push('--composition-agent-mode', opts.compositionAgentMode);
       if (opts.compositionRefresh) analyzeArgs.push('--composition-refresh');
       if (opts.generateMap) analyzeArgs.push('--generate-map', opts.generateMap);
       for (const p of opts.promptOverrides ?? []) analyzeArgs.push('--prompt', p);

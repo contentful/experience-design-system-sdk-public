@@ -3,7 +3,7 @@ import { groupsToEdges, type CompositionEdge, type InterchangeMap } from './inte
 import { mergeEdges, type EdgeConflict } from './merge-edges.js';
 import { parseMapEdges } from './parse-map-edges.js';
 import { applyMapping } from './apply-mapping.js';
-import { loadPrompt } from './agent-parser/load-prompt.js';
+import { loadPrompt } from './load-prompt.js';
 
 export type ResolveMappingResult = {
   components: RawComponentDefinition[];
