@@ -1,6 +1,6 @@
 import { createElement } from 'react';
 import { render } from 'ink';
-import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, stat } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import type { Command } from 'commander';
 import { addAgentModelOptions } from '../lib/agent-model-options.js';
@@ -34,12 +34,11 @@ import {
 import { findSlotCycles, suggestCycleBreakEdge } from './cycle-detection.js';
 import { resolveCompositionMode, type CompositionMode } from '../lib/composition-mode.js';
 import { resolveMapping } from './composition/resolve-mapping.js';
-import { resolveCompositionSources } from './composition/resolve-mapping-cli.js';
+import { loadUserMap, resolveCompositionSources } from './composition/resolve-mapping-cli.js';
 import { selectCandidateFiles, capCandidatesToPromptBudget } from './composition/candidate-files.js';
 import { buildCompositionInputHash } from './composition/composition-cache-key.js';
 import { collectManifestDocEdges } from './composition/manifest-doc-evidence.js';
 import type { InterchangeMap } from './composition/interchange-schema.js';
-import type { RawSlotDefinition } from '../types.js';
 import { parsePromptOverrides, resolvePromptOverride } from '../lib/prompt-overrides.js';
 import {
   agentSupportsBedrock,
@@ -66,7 +65,7 @@ interface AnalyzeExtractOptions {
   resolveUnreachable?: 'auto' | 'always' | 'never';
   composite?: boolean;
   compositionRefresh?: boolean;
-  generateMap?: string;
+  compositionMap?: string;
   prompt?: string[];
   agent?: string;
   bedrock?: boolean;
@@ -213,27 +212,6 @@ async function safeReadCompositionMode(): Promise<CompositionMode | undefined> {
   }
 }
 
-/**
- * Build a { version, groups } interchange skeleton (spec T1) from the resolved
- * components' slot allowedComponents — reflecting BOTH typed-slot edges the
- * extractor found and anything the mapping resolver added.
- */
-export function componentsToInterchangeMap(
-  components: Array<{ name: string; slots: RawSlotDefinition[] }>,
-): InterchangeMap {
-  const groups: Record<string, string[]> = {};
-  for (const c of components) {
-    const children = new Set<string>();
-    for (const slot of c.slots) {
-      for (const child of slot.allowedComponents ?? []) children.add(child);
-    }
-    if (children.size > 0) groups[c.name] = [...children].sort();
-  }
-  const sorted: Record<string, string[]> = {};
-  for (const parent of Object.keys(groups).sort()) sorted[parent] = groups[parent];
-  return { version: 1, groups: sorted };
-}
-
 /** Resolve which coding-agent runs mapping resolution: `--agent` flag > env > default. */
 function resolveCompositionAgentName(flagValue?: string): AgentName {
   if (flagValue && isAgentName(flagValue)) return flagValue;
@@ -288,7 +266,7 @@ export function registerAnalyzeCommand(program: Command): void {
       '--composition-refresh',
       'Force the mapping agent to run even where deterministic sources answered (implies --composite)',
     )
-    .option('--generate-map <path>', 'Write a skeleton interchange map from resolved composition (implies --composite)')
+    .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map (implies --composite)')
     .option(
       '--prompt <stage=value>',
       'Override a stage prompt (repeatable). value is a file path or literal text, e.g. --prompt composition=./p.md',
@@ -432,6 +410,16 @@ export function registerAnalyzeCommand(program: Command): void {
     if (compositionMode === 'composite') {
       const sources = resolveCompositionSources(opts);
 
+      let userMap: InterchangeMap | undefined;
+      if (opts.compositionMap) {
+        const loaded = await loadUserMap(opts.compositionMap);
+        if (!loaded.ok) {
+          process.stderr.write(`Error: ${loaded.error}\n`);
+          process.exit(1);
+        }
+        userMap = loaded.map;
+      }
+
       const { overrides: promptOverrides, errors: promptErrors } = parsePromptOverrides(opts.prompt ?? []);
       for (const err of promptErrors) {
         process.stderr.write(`Error: ${err}\n`);
@@ -534,6 +522,7 @@ export function registerAnalyzeCommand(program: Command): void {
         });
         const result = await resolveMapping({
           components: validatedComponents,
+          ...(userMap ? { userMap } : {}),
           ...(extraEdges.length > 0 ? { extraEdges } : {}),
           forceAgent: sources.forceAgent,
           files: promptFiles,
@@ -564,15 +553,6 @@ export function registerAnalyzeCommand(program: Command): void {
         }
 
         validatedComponents = result.components as typeof validatedComponents;
-
-        if (opts.generateMap) {
-          // Reflect the FULL resolved composition — typed-slot edges already
-          // on the extracted components PLUS anything the resolver added — not
-          // just the resolver's own contributed edges.
-          const skeleton = componentsToInterchangeMap(validatedComponents);
-          await writeFile(opts.generateMap, JSON.stringify(skeleton, null, 2) + '\n');
-          process.stderr.write(`Wrote composition map skeleton to ${opts.generateMap}\n`);
-        }
       }
     }
 

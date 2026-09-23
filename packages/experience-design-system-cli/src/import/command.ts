@@ -33,10 +33,7 @@ export function registerImportCommand(program: Command): void {
     .option('--host <url>', 'Override API base URL (passed to apply push)');
   addCompositionOptions(cmd, { includeAtomic: false });
   cmd
-    .option(
-      '--generate-map <path>',
-      'Also write a composition-map skeleton from resolved edges during extract (implies --composite)',
-    )
+    .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map (implies --composite)')
     .option(
       '--prompt <stage=value>',
       'Override a stage prompt (repeatable). value is a file path or literal text, e.g. --prompt composition=./p.md',
@@ -54,7 +51,7 @@ export function registerImportCommand(program: Command): void {
         cache?: boolean;
         host?: string;
         composite?: boolean;
-        generateMap?: string;
+        compositionMap?: string;
         prompt?: string[];
       }) => {
         const interactiveTerminalSupported = getInteractiveTerminalSupport().supported;
@@ -91,7 +88,7 @@ export function registerImportCommand(program: Command): void {
             initialProjectPath?: string;
             host?: string;
             compositionMode?: CompositionMode;
-            generateMap?: string;
+            compositionMap?: string;
             promptOverrides?: string[];
             noCache?: boolean;
             skipMapTokens?: boolean;
@@ -129,6 +126,7 @@ export function registerImportCommand(program: Command): void {
               autoFilter: resolveAutoFilter(creds.autoFilter),
               livePreview: true,
               selectPromptPath: creds.selectPromptPath,
+              generatePromptPath: creds.generatePromptPath,
               ...(opts.rawTokens ? { initialRawTokensPath: normalizePath(opts.rawTokens) } : {}),
             }),
           );
