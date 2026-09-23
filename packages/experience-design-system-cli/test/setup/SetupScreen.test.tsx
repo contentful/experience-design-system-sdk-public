@@ -1,7 +1,7 @@
 import { render } from 'ink-testing-library';
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { SetupScreen } from '../../src/setup/SetupScreen.js';
+import { SetupScreen, formatSetupCompletionMessage, type SetupResultEntry } from '../../src/setup/SetupScreen.js';
 import { waitForFrame } from '../helpers/wait-for-frame.js';
 import { acceptDefault, choose } from './steps/select-helpers.js';
 
@@ -93,6 +93,20 @@ describe('SetupScreen', () => {
     );
 
     expect(frame).toContain('[1]  2  3  4');
+  });
+
+  it('pushes the version to the right edge when the terminal is wide', async () => {
+    const { lastFrame } = renderScreen({ columns: 60, skip: ALL_SKIPPED });
+
+    const frame = await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('v2.32.0'),
+    );
+
+    // 60 columns minus one column of padding on each side.
+    expect(frame.split('\n')[0]).toBe(
+      ` experiences setup${' '.repeat(58 - 'experiences setup'.length - 'v2.32.0'.length)}v2.32.0`,
+    );
   });
 
   it('keeps the version inline when the terminal is too narrow to right-align it', async () => {
@@ -241,5 +255,36 @@ describe('SetupScreen', () => {
     const outcome = onComplete.mock.calls[0]![0] as { results: Array<{ name: string; status: string }> };
     expect(outcome.results.find((result) => result.name === 'Preferences')?.status).toBe('skipped');
     expect(store.write).not.toHaveBeenCalled();
+  });
+});
+
+describe('formatSetupCompletionMessage', () => {
+  const results: SetupResultEntry[] = [
+    { name: 'Node.js 24+', status: 'completed', required: true },
+    { name: 'pnpm', status: 'completed', required: true },
+    { name: 'coding agent', status: 'skipped', required: false },
+    { name: 'Contentful credentials', status: 'failed', required: false },
+  ];
+
+  it('ignores optional failures', () => {
+    expect(formatSetupCompletionMessage(results)).toBe('✓ Setup complete. You can now run: experiences import');
+  });
+
+  it('reports the number of incomplete required steps', () => {
+    const withFailures: SetupResultEntry[] = [
+      ...results,
+      { name: 'install & build', status: 'failed', required: true },
+    ];
+
+    expect(formatSetupCompletionMessage(withFailures)).toBe('⚠ 1 required step incomplete.');
+  });
+
+  it('pluralizes multiple incomplete required steps', () => {
+    const withFailures: SetupResultEntry[] = [
+      { name: 'pnpm', status: 'failed', required: true },
+      { name: 'install & build', status: 'failed', required: true },
+    ];
+
+    expect(formatSetupCompletionMessage(withFailures)).toBe('⚠ 2 required steps incomplete.');
   });
 });

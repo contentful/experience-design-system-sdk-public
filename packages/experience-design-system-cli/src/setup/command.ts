@@ -17,7 +17,6 @@ async function runSetup(opts: SetupSkipFlags): Promise<void> {
   if (!getInteractiveTerminalSupport().supported) {
     process.stderr.write(`${SETUP_REQUIRES_TTY_MESSAGE}\n`);
     process.exit(1);
-    return;
   }
 
   const { render } = await import('ink');
@@ -51,7 +50,6 @@ async function runSetup(opts: SetupSkipFlags): Promise<void> {
   const finished = completion.outcome;
   if (!finished) {
     process.exit(1);
-    return;
   }
 
   process.exit(finished.exitCode);

@@ -33,6 +33,12 @@ describe('SetupStepper', () => {
     expect(lastFrame()).toBe('✓  ✓  [3]  4');
   });
 
+  it('lists the four setup screens in order', () => {
+    const { lastFrame } = render(<SetupStepper activeStep={2} columns={120} />);
+
+    expect(lastFrame()).toBe('✓ Prerequisites  ·  [2 Coding agent]  ·  3 Contentful  ·  4 Preferences');
+  });
+
   it('falls back to the compact stepper when the terminal width is unknown', () => {
     const { lastFrame } = render(<SetupStepper activeStep={1} />);
 

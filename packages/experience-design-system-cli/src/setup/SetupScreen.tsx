@@ -1,13 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, useStdout } from 'ink';
 import { PALETTE } from '../analyze/select/tui/theme.js';
-import {
-  SETUP_TITLE,
-  countRequiredFailures,
-  formatSetupCompletionMessage,
-  shouldAlignVersionRight,
-  type SetupResultEntry,
-} from './lib/layout.js';
 import { SetupStepper } from './SetupStepper.js';
 import { CodingAgentScreen } from './steps/CodingAgentScreen.js';
 import { ContentfulCredentialsScreen } from './steps/ContentfulCredentialsScreen.js';
@@ -15,6 +8,22 @@ import type { StepStatus } from './steps/StepLayout.js';
 import { PreferencesMenu } from './steps/preferences/PreferencesMenu.js';
 import { PrerequisitesScreen } from './steps/prerequisites/PrerequisitesScreen.js';
 import type { PrerequisitesOutcome } from './steps/prerequisites/deps.js';
+
+export type SetupResultEntry = {
+  name: string;
+  status: 'completed' | 'skipped' | 'failed';
+  required: boolean;
+};
+
+function countRequiredFailures(results: readonly SetupResultEntry[]): number {
+  return results.filter((result) => result.required && result.status === 'failed').length;
+}
+
+export function formatSetupCompletionMessage(results: readonly SetupResultEntry[]): string {
+  const requiredFailed = countRequiredFailures(results);
+  if (requiredFailed === 0) return '✓ Setup complete. You can now run: experiences import';
+  return `⚠ ${requiredFailed} required step${requiredFailed === 1 ? '' : 's'} incomplete.`;
+}
 
 /** Prompts and output are UI-owned; the screen supplies the rest itself. */
 export type SetupSkipFlags = {
@@ -151,15 +160,15 @@ export function SetupScreen({
     // would restart setup mid-flight.
   }, []);
 
-  const versionLabel = `v${version}`;
-  const alignRight = shouldAlignVersionRight(version, columns);
-
   return (
     <Box flexDirection="column" paddingX={1}>
-      <Box>
-        <Text bold>{SETUP_TITLE}</Text>
-        {alignRight ? <Box flexGrow={1} /> : <Text> </Text>}
-        <Text dimColor>{versionLabel}</Text>
+      <Box justifyContent="space-between" columnGap={1} {...(columns !== undefined ? { width: columns - 2 } : {})}>
+        <Box flexShrink={0}>
+          <Text bold>experiences setup</Text>
+        </Box>
+        <Box flexShrink={0}>
+          <Text dimColor>v{version}</Text>
+        </Box>
       </Box>
       <Box marginTop={1}>
         <SetupStepper activeStep={activeStep} columns={columns} />

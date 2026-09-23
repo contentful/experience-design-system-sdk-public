@@ -8,11 +8,8 @@ export type StepStatus = 'completed' | 'skipped' | 'failed';
 export type StepDone = (status: StepStatus) => void;
 
 type StepLayoutProps = {
-  /** Explanation of the setting, rendered dimmed below the prompt. */
   helpText?: string;
-  /** Lines the step has already resolved, rendered above the prompt. */
   children: React.ReactNode;
-  /** The active prompt, if the step is waiting on input. */
   prompt?: React.ReactNode;
 };
 
@@ -39,7 +36,16 @@ export function StepWarning({ children }: { children: React.ReactNode }): React.
 }
 
 export function StepValue({ label, value }: { label: string; value: string | undefined }): React.ReactElement {
-  const padded = label.padEnd('Environment ID'.length + 2);
-  if (!value) return <StepWarning>{`${padded}(not set)`}</StepWarning>;
-  return <Text> {`${padded}${value}`}</Text>;
+  const color = value ? undefined : PALETTE.warning;
+  return (
+    <Box>
+      <Box width={2}>
+        <Text color={color}>{value ? '' : '⚠'}</Text>
+      </Box>
+      <Box width={20} flexShrink={0}>
+        <Text color={color}>{label}</Text>
+      </Box>
+      <Text color={color}>{value || '(not set)'}</Text>
+    </Box>
+  );
 }
