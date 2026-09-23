@@ -31,22 +31,32 @@ function sessionsRootDir(): string {
   return join(findPackageRoot(import.meta.url, PACKAGE_NAME), '.contentful', 'debug', 'sessions');
 }
 
-// MM-DD-YYYY-N: N increments per terminal session started that day (1, 2, 3, ...),
+function datePrefix(now: Date = new Date()): string {
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return `${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${now.getFullYear()}`;
+}
+
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+// MM-DD-YYYY-session-N: N increments per terminal session started that day (1, 2, 3, ...),
 // so runs from the same day group together and still sort in the order they happened.
 function generateSessionId(): string {
-  const now = new Date();
-  const pad = (n: number): string => String(n).padStart(2, '0');
-  const datePrefix = `${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${now.getFullYear()}`;
+  const today = datePrefix();
 
   const root = sessionsRootDir();
   const existing = existsSync(root) ? readdirSync(root) : [];
-  const seqPattern = new RegExp(`^${datePrefix}-(\\d+)$`);
+  const seqPattern = new RegExp(`^${today}-session-(\\d+)$`);
   const maxSeq = existing.reduce((max, entry) => {
     const match = seqPattern.exec(entry);
     return match ? Math.max(max, Number(match[1])) : max;
   }, 0);
 
-  return `${datePrefix}-${maxSeq + 1}`;
+  return `${today}-session-${maxSeq + 1}`;
 }
 
 // Computed once, at module load, rather than lazily — this module is pulled in via
@@ -127,12 +137,28 @@ export async function finishDebugRun({
   const content = renderMarkdown(run, { outputs: redact(outputs), status, exitMethod, durationMs });
 
   const flowSegments = run.flow.split('/');
-  const flowSlug = flowSegments.join('-');
   const dir = join(sessionDebugDir(), ...flowSegments);
-  const filename = `${run.runId}__${flowSlug}__${run.step}.md`;
 
   await mkdir(dir, { recursive: true });
+  const filename = nextAttemptFilename(dir, run.menuOption);
   await writeFile(join(dir, filename), content, { mode: 0o600 });
+}
+
+// MM-DD-YYYY-<menu-option>-attempt-N.md: same date convention as the session directory,
+// then the active menu option, then an attempt counter — so repeat visits to the same
+// screen within a session don't collide and still sort in the order they happened.
+function nextAttemptFilename(dir: string, menuOption: string): string {
+  const today = datePrefix();
+  const optionSlug = slugify(menuOption);
+
+  const existing = existsSync(dir) ? readdirSync(dir) : [];
+  const attemptPattern = new RegExp(`^${today}-${optionSlug}-attempt-(\\d+)\\.md$`);
+  const maxAttempt = existing.reduce((max, entry) => {
+    const match = attemptPattern.exec(entry);
+    return match ? Math.max(max, Number(match[1])) : max;
+  }, 0);
+
+  return `${today}-${optionSlug}-attempt-${maxAttempt + 1}.md`;
 }
 
 function renderMarkdown(
