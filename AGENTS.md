@@ -138,7 +138,7 @@ The output protocol for `analyze select-agent`: the agent emits exactly one JSON
 
 `src/analyze/select-agent/command.ts` implements `analyze select-agent`, which runs one agent invocation per component to decide whether each component belongs in Contentful ExO as a Component Type.
 
-- Runs with concurrency 5 (respects `EDS_GENERATE_CONCURRENCY`)
+- Runs with concurrency 10 (respects `EDS_GENERATE_CONCURRENCY`)
 - Uses `OutputFormatter` for pretty-printing: `+ ComponentName  reason` for accepted, `–  ComponentName  reason` for rejected
 - Writes decisions to the review session state file at `~/.contentful/experience-design-system-cli/reviews/<sessionId>/current-review-state.json` (same format as `analyze select` TUI)
 - Records an `analyze select` step in the pipeline DB

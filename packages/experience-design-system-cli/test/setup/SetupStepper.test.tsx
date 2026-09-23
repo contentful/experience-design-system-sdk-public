@@ -1,6 +1,6 @@
 import { render } from 'ink-testing-library';
 import { describe, expect, it } from 'vitest';
-import { SetupStepper } from '../../../src/setup/tui/SetupStepper.js';
+import { SetupStepper } from '../../src/setup/SetupStepper.js';
 
 describe('SetupStepper', () => {
   it('shows labelled steps and marks the active one on a wide terminal', () => {

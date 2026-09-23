@@ -1,12 +1,11 @@
 import { render } from 'ink-testing-library';
-import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import {
   CodingAgentScreen,
   detectAgents,
   needsCodexModel,
   type CodingAgentDeps,
-} from '../../../src/setup/steps/coding-agent.js';
+} from '../../../src/setup/steps/CodingAgentScreen.js';
 import type { StepStatus } from '../../../src/setup/steps/StepLayout.js';
 import { waitForFrame } from '../../helpers/wait-for-frame.js';
 

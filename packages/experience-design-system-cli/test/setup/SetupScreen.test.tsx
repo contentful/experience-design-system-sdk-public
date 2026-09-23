@@ -1,9 +1,9 @@
 import { render } from 'ink-testing-library';
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { SetupScreen } from '../../../src/setup/tui/SetupScreen.js';
-import { waitForFrame } from '../../helpers/wait-for-frame.js';
-import { acceptDefault, choose } from '../steps/select-helpers.js';
+import { SetupScreen } from '../../src/setup/SetupScreen.js';
+import { waitForFrame } from '../helpers/wait-for-frame.js';
+import { acceptDefault, choose } from './steps/select-helpers.js';
 
 /**
  * Each step now reads and writes for itself, so the wizard's own tests stub the
@@ -17,13 +17,13 @@ const shell = vi.hoisted(() => ({
   REQUIRED_NODE_MAJOR: 24,
 }));
 
-vi.mock('../../../src/credentials-store.js', () => ({
+vi.mock('../../src/credentials-store.js', () => ({
   readExperiencesCredentials: store.read,
   writeExperiencesCredentials: store.write,
   experiencesCredentialsPath: () => '/home/tester/.config/experiences/credentials.json',
 }));
 
-vi.mock('../../../src/setup/lib/shell.js', () => shell);
+vi.mock('../../src/setup/lib/shell.js', () => shell);
 
 function resetMocks(): void {
   store.read.mockReset().mockResolvedValue({ spaceId: '', environmentId: '', cmaToken: '' });

@@ -1,7 +1,10 @@
 import { render } from 'ink-testing-library';
-import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { ContentfulCredentialsScreen, envShadowingWarning, maskToken } from '../../../src/setup/steps/ContentfulCredentialsScreen.js';
+import {
+  ContentfulCredentialsScreen,
+  envShadowingWarning,
+  maskToken,
+} from '../../../src/setup/steps/ContentfulCredentialsScreen.js';
 import { waitForFrame } from '../../helpers/wait-for-frame.js';
 import { acceptDefault, choose } from './select-helpers.js';
 
