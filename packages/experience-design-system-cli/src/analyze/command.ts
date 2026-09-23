@@ -4,6 +4,7 @@ import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import type { Command } from 'commander';
 import { addAgentModelOptions } from '../lib/agent-model-options.js';
+import { addCompositionOptions } from '../lib/command-options.js';
 import {
   extractComponents,
   preClassifyComponent,
@@ -64,7 +65,6 @@ interface AnalyzeExtractOptions {
   dir?: string;
   resolveUnreachable?: 'auto' | 'always' | 'never';
   composite?: boolean;
-  atomic?: boolean;
   compositionRefresh?: boolean;
   generateMap?: string;
   prompt?: string[];
@@ -284,8 +284,6 @@ export function registerAnalyzeCommand(program: Command): void {
       "Retry pass for unresolved Svelte Props types: 'auto' (default), 'always', or 'never'",
       'auto',
     )
-    .option('--composite', 'Resolve embedded-component composition (opt in; default is atomic)')
-    .option('--atomic', 'Skip composition resolution — flat components only (default)')
     .option(
       '--composition-refresh',
       'Force the mapping agent to run even where deterministic sources answered (implies --composite)',
@@ -297,6 +295,7 @@ export function registerAnalyzeCommand(program: Command): void {
       (v: string, acc: string[]) => [...acc, v],
       [] as string[],
     );
+  addCompositionOptions(extractCmd, { includeAtomic: false });
   addAgentModelOptions(extractCmd, {
     includeModel: false,
     agentDescription: 'Coding agent for composition mapping resolution (claude|codex|opencode|cursor)',

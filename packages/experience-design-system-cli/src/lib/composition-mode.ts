@@ -22,15 +22,8 @@ function hasCompositionSource(opts: CompositionSourceOptions): boolean {
 /**
  * Resolve the effective composition mode with precedence
  * `explicit flag > implied source > env > persisted config > default`.
- * Default is `atomic` (composition OFF); `--composite` opts into the hierarchy
- * machinery.
- *
- * `--atomic` is accepted for symmetry and wins when passed — even alongside a
- * composition source, since it's an explicit "no" that overrides the implicit
- * opt-in. If both `--composite` and `--atomic` are present, `--composite`
- * wins. Passing a composition source (
- * `--composition-refresh`, or `--generate-map`) implies composite without a
- * separate `--composite`.
+ * Default is `atomic` (composition OFF); opting into composite mode enables
+ * the hierarchy machinery. Passing a composition source implies composite.
  */
 export function resolveCompositionMode(
   opts: { composite?: boolean; atomic?: boolean } & CompositionSourceOptions,
