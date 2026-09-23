@@ -662,7 +662,7 @@ export async function checkAgentAuth(agent: AgentName): Promise<AgentAuthStatus>
       );
       return;
     }
-    const child = spawn(process.platform === 'win32' ? 'where' : 'which', [binary], { stdio: 'ignore' });
+    const child = spawn('which', [binary], { stdio: 'ignore' });
     child.on('close', (code) => resolve(code === 0));
   });
   if (!binaryExists) return 'not-found';
