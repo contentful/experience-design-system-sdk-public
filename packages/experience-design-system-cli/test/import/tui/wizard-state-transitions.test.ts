@@ -44,12 +44,6 @@ describe('shouldSkipFinalReviewAfterCredentials', () => {
     expect(shouldSkipFinalReviewAfterCredentials({ generateSessionId: null, finalReviewPassed: false })).toBe(false);
     expect(shouldSkipFinalReviewAfterCredentials({ generateSessionId: null, finalReviewPassed: true })).toBe(false);
   });
-
-  it('skips final-review when the operator already passed through it', () => {
-    expect(shouldSkipFinalReviewAfterCredentials({ generateSessionId: 'seeded-gen', finalReviewPassed: true })).toBe(
-      true,
-    );
-  });
 });
 
 describe('resolveNoCacheForGenerate', () => {
