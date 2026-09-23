@@ -3,16 +3,6 @@ import { EventEmitter } from 'node:events';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { waitForFrame } from '../../helpers/wait-for-frame.js';
 
-/**
- * Modify-entry spec: when the launcher seeds an extract session id and
- * sets `initialStep: 'final-review'`, the wizard must:
- *   1. NOT render welcome / token-input / extracting / scope-gate.
- *   2. Land directly on the final-review screen using the seeded session.
- *   3. Pre-fill credentials state from `initialSpaceId` / `initialHost`.
- *
- * When the seed props are absent, behavior matches the welcome path.
- */
-
 vi.mock('../../../src/apply/api-client.js', () => ({
   DEFAULT_HOST: 'https://api.contentful.com',
   ImportApiClient: vi.fn().mockImplementation(() => ({})),
@@ -86,29 +76,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe('WizardApp modify-entry short-circuit', () => {
-  it("lands on final-review when seedExtractSessionId + initialStep:'final-review' are set", async () => {
-    const { lastFrame } = render(
-      <WizardApp
-        initialProjectPath="/tmp/modify-test"
-        seedExtractSessionId="e1"
-        seedGenerateSessionId="g1"
-        initialStep="final-review"
-      />,
-    );
-
-    // The welcome screen renders "Project path"; the token-input screen
-    // renders "Design tokens"; both must be absent. The final-review screen
-    // (GenerateReviewStep) renders content driven by extractSessionId.
-    const frame = await waitForFrame(
-      () => lastFrame(),
-      (f) => f.length > 0,
-      3000,
-    );
-    expect(frame).not.toContain('Project path');
-    expect(frame).not.toContain('Design tokens');
-  });
-
+describe('WizardApp initial paths', () => {
   it('does NOT short-circuit when seed props are absent (welcome path)', async () => {
     const { lastFrame } = render(<WizardApp />);
     const frame = await waitForFrame(
@@ -117,20 +85,6 @@ describe('WizardApp modify-entry short-circuit', () => {
       3000,
     );
     expect(frame).toContain('Project path');
-  });
-
-  it('does NOT short-circuit when initialStep is omitted even if seed IDs are present', async () => {
-    const { lastFrame } = render(
-      <WizardApp initialProjectPath="/tmp/modify-test" seedExtractSessionId="e1" seedGenerateSessionId="g1" />,
-    );
-    // Without initialStep:'final-review', the wizard falls back to its
-    // standard `initialProjectPath ? 'token-input' : 'welcome'` rule.
-    const frame = await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('Token path') || f.includes('Design tokens'),
-      3000,
-    );
-    expect(frame).toMatch(/Token path|Design tokens/);
   });
 });
 
@@ -150,28 +104,5 @@ describe('WizardApp initialRawTokensPath short-circuit', () => {
     );
     expect(frame).not.toContain('Project path');
     expect(frame).not.toContain('Design tokens');
-  });
-
-  it('modify-entry seed props take precedence over initialRawTokensPath', async () => {
-    const { lastFrame } = render(
-      <WizardApp
-        initialProjectPath="/tmp/modify-vs-raw"
-        initialRawTokensPath="/tmp/modify-vs-raw/tokens.scss"
-        seedExtractSessionId="e1"
-        seedGenerateSessionId="g1"
-        initialStep="final-review"
-      />,
-    );
-    const frame = await waitForFrame(
-      () => lastFrame(),
-      (f) => f.length > 0,
-      3000,
-    );
-    // Modify-entry path skips straight to final-review, NOT generating-tokens.
-    expect(frame).not.toContain('Project path');
-    expect(frame).not.toContain('Design tokens');
-    // generating-tokens step renders agent auth check / spinner content;
-    // make sure that path didn't win. We assert via the welcome / token-input
-    // negations above plus the modify-entry assertion that no errors surface.
   });
 });

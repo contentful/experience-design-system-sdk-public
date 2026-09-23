@@ -45,7 +45,7 @@ describe('shouldSkipFinalReviewAfterCredentials', () => {
     expect(shouldSkipFinalReviewAfterCredentials({ generateSessionId: null, finalReviewPassed: true })).toBe(false);
   });
 
-  it('modify-entry / push-from-picker seed states short-circuit on re-entry', () => {
+  it('skips final-review when the operator already passed through it', () => {
     expect(shouldSkipFinalReviewAfterCredentials({ generateSessionId: 'seeded-gen', finalReviewPassed: true })).toBe(
       true,
     );
