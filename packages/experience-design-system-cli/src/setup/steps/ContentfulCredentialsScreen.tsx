@@ -33,7 +33,7 @@ type Field = 'spaceId' | 'environmentId' | 'cmaToken' | 'host';
 
 const FIELD_ORDER: Field[] = ['spaceId', 'environmentId', 'cmaToken', 'host'];
 
-export function ContentfulScreen({ onDone }: { onDone: StepDone }): React.ReactElement {
+export function ContentfulCredentialsScreen({ onDone }: { onDone: StepDone }): React.ReactElement {
   const [stored, setStored] = useState<ExperiencesCredentials | null>(null);
   const [field, setField] = useState<Field | 'confirm'>('confirm');
   // Each input's onSubmit closes over the render that created it, so the

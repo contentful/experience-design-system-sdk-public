@@ -1,7 +1,7 @@
 import { render } from 'ink-testing-library';
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { ContentfulScreen, envShadowingWarning, maskToken } from '../../../src/setup/steps/contentful-credentials.js';
+import { ContentfulCredentialsScreen, envShadowingWarning, maskToken } from '../../../src/setup/steps/ContentfulCredentialsScreen.js';
 import { waitForFrame } from '../../helpers/wait-for-frame.js';
 import { acceptDefault, choose } from './select-helpers.js';
 
@@ -22,7 +22,7 @@ function renderScreen(stored: Record<string, unknown> = EMPTY) {
   credentialsStore.read.mockReset().mockResolvedValue(stored);
   credentialsStore.write.mockReset().mockResolvedValue(undefined);
   const onDone = vi.fn();
-  return { ...render(<ContentfulScreen onDone={onDone} />), onDone, write: credentialsStore.write };
+  return { ...render(<ContentfulCredentialsScreen onDone={onDone} />), onDone, write: credentialsStore.write };
 }
 
 /** Type a value and submit it, the way a terminal delivers a pasted answer. */

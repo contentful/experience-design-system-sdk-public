@@ -11,7 +11,7 @@ import {
 } from './lib/layout.js';
 import { SetupStepper } from './SetupStepper.js';
 import { CodingAgentScreen } from './steps/CodingAgentScreen.js';
-import { ContentfulScreen } from './steps/contentful-credentials.js';
+import { ContentfulCredentialsScreen } from './steps/ContentfulCredentialsScreen.js';
 import type { StepStatus } from './steps/StepLayout.js';
 import { PreferencesStep } from './steps/preferences/PreferencesStep.js';
 import { PrerequisitesScreen } from './steps/prerequisites/PrerequisitesScreen.js';
@@ -143,7 +143,7 @@ export function SetupScreen({
       if (skip.skipCredentials) {
         results.push({ name: 'Contentful credentials', status: 'skipped', required: false });
       } else {
-        const status = await runScreen<StepStatus>((done) => <ContentfulScreen onDone={done} />);
+        const status = await runScreen<StepStatus>((done) => <ContentfulCredentialsScreen onDone={done} />);
         results.push({ name: 'Contentful credentials', status, required: false });
       }
 
