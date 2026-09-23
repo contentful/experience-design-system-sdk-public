@@ -41,8 +41,8 @@ export type RunRecord = {
    *  generated for the run. Added in runs.json v2. */
   tokensPath: string | null;
   /** Pipeline.db session id for the generated tokens. Null when no tokens
-   *  step ran. Added in runs.json v2 so replay/push and modify can re-emit
-   *  or re-push tokens. */
+   *  step ran. Added in runs.json v2 so replay and push can re-emit or
+   *  re-push tokens. */
   tokenSessionId: string | null;
   agent: string;
   pushedTo: { spaceId: string; environmentId: string; host: string } | null;
@@ -58,7 +58,7 @@ export type RunRecord = {
    *  writers always populate. Added in runs.json v3. Optional for the same
    *  reason as `sourceFingerprint`. */
   savedFingerprint?: SavedFingerprint | null;
-  /** Composition mode the run was produced in, so modify/replay resumes in the
+  /** Composition mode the run was produced in, so replay resumes in the
    *  same mode (`composite` vs `atomic`). Absent on records written before this
    *  field existed; callers treat a missing value as `atomic` (the default). */
   compositionMode?: CompositionMode;

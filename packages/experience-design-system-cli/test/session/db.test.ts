@@ -1627,7 +1627,7 @@ describe('CDF builder: $token.allowed', () => {
     });
   });
 
-  it('round-trips $token.allowed through an import --modify replay and re-print', async () => {
+  it('round-trips $token.allowed through a session replay and re-print', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
@@ -1663,7 +1663,7 @@ describe('CDF builder: $token.allowed', () => {
       expect(rows).toEqual([{ position: 0, path: 'color.brand.primary' }]);
       expect(printed[0]?.entry.$properties['variant']?.['$token.allowed']).toEqual(['color.brand.primary']);
 
-      // Reimport the printed CDF verbatim, as `import --modify` would replay it.
+      // Reimport the printed CDF verbatim, as a session replay would.
       storeCDFComponents(db, sessionId, printed);
       const reprinted = loadCDFComponents(db, sessionId);
       expect(reprinted).toEqual(printed);
