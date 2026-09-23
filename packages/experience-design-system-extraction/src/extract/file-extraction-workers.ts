@@ -4,10 +4,8 @@ import type { Project, SourceFile } from 'ts-morph';
 
 /**
  * How many files to extract at once, defaulting to one worker per CPU core.
- *
- * Read per call rather than once at module load: the CLI resolves the operator's
- * stored preference into `EDS_EXTRACT_CONCURRENCY` while starting up, which
- * happens after this module has already been imported.
+ * `EDS_EXTRACT_CONCURRENCY` overrides it; read per call so a value set after
+ * import still applies.
  */
 export function extractConcurrency(): number {
   return Number(process.env['EDS_EXTRACT_CONCURRENCY'] ?? 0) || os.cpus().length;

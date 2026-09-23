@@ -6,7 +6,6 @@ import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { profileContains } from '../../lib/shell.js';
 import { StepLayout, type StepDone } from '../StepLayout.js';
 import { PREFERENCE_OPTIONS, type PreferenceKey } from './index.js';
-import { DEFAULT_LABEL as CONCURRENCY_DEFAULT_LABEL } from './ExtractionConcurrencyScreen.js';
 import { PROFILE_VARIABLE as NO_COLOR_VARIABLE } from './ColorPreferenceScreen.js';
 
 /** The value the trailing row reports; no PreferenceKey contains a colon. */
@@ -38,9 +37,6 @@ export function summarisePreferences(
 ): PreferenceSummary {
   return {
     autoFilter: (credentials.autoFilter ?? true) ? 'Filtering irrelevant components' : 'Keeping every component',
-    concurrency: credentials.extractConcurrency
-      ? `${credentials.extractConcurrency} files at once`
-      : CONCURRENCY_DEFAULT_LABEL,
     customPrompts: describeCustomPrompts(credentials),
     debug: (credentials.debug ?? false) ? 'Verbose traces' : 'Quiet',
     analytics: (credentials.analyticsDisabled ?? false) ? 'Not sharing usage data' : 'Sharing usage data',

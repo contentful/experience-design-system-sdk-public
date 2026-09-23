@@ -7,7 +7,7 @@ import {
   applyCustomSkillPath,
   customSkillPathQuestion,
   parseCustomSkillPath,
-} from '../../../../src/setup/steps/preferences/custom-prompts.js';
+} from '../../../../src/setup/steps/preferences/CustomPromptScreen.js';
 import { waitForFrame } from '../../../helpers/wait-for-frame.js';
 
 const store = vi.hoisted(() => ({ read: vi.fn(), write: vi.fn() }));

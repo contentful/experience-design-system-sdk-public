@@ -1,7 +1,6 @@
 import type { StepDone } from '../StepLayout.js';
 import { AnalyticsScreen } from './AnalyticsScreen.js';
 import { AutoFilterScreen } from './AutoFilterScreen.js';
-import { ConcurrencyScreen } from './ExtractionConcurrencyScreen.js';
 import { CustomPromptsScreen } from './CustomPromptScreen.js';
 import { DebugLogsScreen } from './DebugLogsScreen.js';
 import { ColorPreferenceScreen } from './ColorPreferenceScreen.js';
@@ -21,11 +20,6 @@ export const PREFERENCE_OPTIONS = [
     key: 'autoFilter',
     label: 'AI auto-filter',
     Screen: ({ onDone }: PreferenceScreenProps) => <AutoFilterScreen onDone={onDone} />,
-  },
-  {
-    key: 'concurrency',
-    label: 'Performance concurrency',
-    Screen: ({ onDone }: PreferenceScreenProps) => <ConcurrencyScreen onDone={onDone} />,
   },
   {
     key: 'customPrompts',

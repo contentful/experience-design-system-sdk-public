@@ -14,8 +14,6 @@ export type ExperiencesCredentials = {
   selectPromptPath?: string;
   generatePromptPath?: string;
   autoFilter?: boolean;
-  /** Files to extract at once; unset means one per CPU core. */
-  extractConcurrency?: number;
   debug?: boolean;
   analyticsDisabled?: boolean;
   compositionMode?: CompositionMode;
@@ -40,9 +38,6 @@ export async function readExperiencesCredentials(): Promise<ExperiencesCredentia
       ...(parsed.selectPromptPath ? { selectPromptPath: parsed.selectPromptPath } : {}),
       ...(parsed.generatePromptPath ? { generatePromptPath: parsed.generatePromptPath } : {}),
       ...(typeof parsed.autoFilter === 'boolean' ? { autoFilter: parsed.autoFilter } : {}),
-      ...(typeof parsed.extractConcurrency === 'number' && parsed.extractConcurrency > 0
-        ? { extractConcurrency: parsed.extractConcurrency }
-        : {}),
       ...(typeof parsed.debug === 'boolean' ? { debug: parsed.debug } : {}),
       ...(typeof parsed.analyticsDisabled === 'boolean' ? { analyticsDisabled: parsed.analyticsDisabled } : {}),
       ...(typeof parsed.compositionMode === 'string' && isCompositionMode(parsed.compositionMode)
@@ -68,7 +63,6 @@ export async function writeExperiencesCredentials(creds: ExperiencesCredentials)
     selectPromptPath,
     generatePromptPath,
     autoFilter,
-    extractConcurrency,
     debug,
     analyticsDisabled,
     compositionMode,
@@ -87,7 +81,6 @@ export async function writeExperiencesCredentials(creds: ExperiencesCredentials)
         ...(selectPromptPath ? { selectPromptPath } : {}),
         ...(generatePromptPath ? { generatePromptPath } : {}),
         ...(typeof autoFilter === 'boolean' ? { autoFilter } : {}),
-        ...(typeof extractConcurrency === 'number' && extractConcurrency > 0 ? { extractConcurrency } : {}),
         ...(typeof debug === 'boolean' ? { debug } : {}),
         ...(typeof analyticsDisabled === 'boolean' ? { analyticsDisabled } : {}),
         ...(compositionMode && isCompositionMode(compositionMode) ? { compositionMode } : {}),

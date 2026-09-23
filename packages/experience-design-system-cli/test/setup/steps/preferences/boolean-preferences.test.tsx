@@ -2,9 +2,9 @@ import { render } from 'ink-testing-library';
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { ExperiencesCredentials } from '../../../../src/credentials-store.js';
-import { AnalyticsScreen } from '../../../../src/setup/steps/preferences/analytics.js';
-import { AutoFilterScreen } from '../../../../src/setup/steps/preferences/auto-filter.js';
-import { DebugScreen } from '../../../../src/setup/steps/preferences/debug.js';
+import { AnalyticsScreen } from '../../../../src/setup/steps/preferences/AnalyticsScreen.js';
+import { AutoFilterScreen } from '../../../../src/setup/steps/preferences/AutoFilterScreen.js';
+import { DebugLogsScreen } from '../../../../src/setup/steps/preferences/DebugLogsScreen.js';
 import type { StepDone } from '../../../../src/setup/steps/StepLayout.js';
 import { waitForFrame } from '../../../helpers/wait-for-frame.js';
 import { acceptDefault, choose } from '../select-helpers.js';
@@ -76,9 +76,9 @@ describe('AutoFilterScreen', () => {
   });
 });
 
-describe('DebugScreen', () => {
+describe('DebugLogsScreen', () => {
   it('defaults to off, so declining changes nothing', async () => {
-    const { lastFrame, stdin, onDone, write } = setup(DebugScreen);
+    const { lastFrame, stdin, onDone, write } = setup(DebugLogsScreen);
     await waitForFrame(
       () => lastFrame(),
       (f) => f.includes('Debug logging'),
@@ -90,7 +90,7 @@ describe('DebugScreen', () => {
   });
 
   it('persists debug logging when the operator opts in', async () => {
-    const { lastFrame, stdin, write } = setup(DebugScreen);
+    const { lastFrame, stdin, write } = setup(DebugLogsScreen);
     await waitForFrame(
       () => lastFrame(),
       (f) => f.includes('Debug logging'),

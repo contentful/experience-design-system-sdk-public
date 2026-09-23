@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import { PALETTE } from '../../analyze/select/tui/theme.js';
-import { setupStepperEntries, setupStepperSeparator, type SetupStepState } from '../lib/layout.js';
+import { PALETTE } from '../analyze/select/tui/theme.js';
+import { setupStepperEntries, setupStepperSeparator, type SetupStepState } from './lib/layout.js';
 
 type SetupStepperProps = {
   activeStep: number;

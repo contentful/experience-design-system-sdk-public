@@ -8,7 +8,6 @@ describe('PREFERENCE_OPTIONS', () => {
   it('lists every preference in the order the menu shows them', () => {
     expect(PREFERENCE_OPTIONS.map((option) => option.key)).toEqual([
       'autoFilter',
-      'concurrency',
       'customPrompts',
       'debug',
       'analytics',
@@ -30,7 +29,6 @@ describe('summarisePreferences', () => {
 
     expect(summary).toEqual({
       autoFilter: 'Filtering irrelevant components',
-      concurrency: 'One per CPU core',
       customPrompts: 'Built-in prompts',
       debug: 'Quiet',
       analytics: 'Sharing usage data',
@@ -60,16 +58,6 @@ describe('summarisePreferences', () => {
     const summary = summarisePreferences({ spaceId: '', environmentId: '', cmaToken: '' }, { noColor: true });
 
     expect(summary.noColor).toBe('Colors off');
-  });
-
-  it('reports a stored extract concurrency from the credentials file', () => {
-    // Concurrency moved out of the shell profile so it works on Windows too.
-    const summary = summarisePreferences(
-      { spaceId: '', environmentId: '', cmaToken: '', extractConcurrency: 8 },
-      NO_PROFILE,
-    );
-
-    expect(summary.concurrency).toBe('8 files at once');
   });
 
   it('counts how many custom prompt paths are set', () => {

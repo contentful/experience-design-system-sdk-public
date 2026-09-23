@@ -60,10 +60,10 @@ describe('PreferencesStep', () => {
       (f) => f.includes('Preferences — open one'),
     );
 
-    // The value column is padded clear of the longest name, so short names get a
-    // wide gap rather than sitting against their value.
-    expect(frame).toMatch(/AI auto-filter {10,}Filtering irrelevant components/);
-    expect(frame).toMatch(/Performance concurrency {2,}One per CPU core/);
+    // The value column is padded clear of the longest name, so shorter names get
+    // a wider gap rather than sitting against their value.
+    expect(frame).toMatch(/Debug logging {8,}Quiet/);
+    expect(frame).toMatch(/Terminal colors {6,}Colors on/);
   });
 
   it('opens a profile preference whose variable is already set', async () => {
@@ -93,26 +93,6 @@ describe('PreferencesStep', () => {
       (f) => f.includes('Preferences — open one'),
     );
     expect(back).toContain('Terminal colors');
-  });
-
-  it('opens the concurrency preference, which no longer touches the shell profile', async () => {
-    // It used to auto-skip whenever EDS_EXTRACT_CONCURRENCY was exported; now the
-    // value lives in the credentials file, so the row always opens.
-    shell.profileContains.mockResolvedValue(true);
-    const { lastFrame, stdin } = renderStep();
-
-    await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('Preferences — open one'),
-    );
-    await choose(stdin, lastFrame, 'Performance concurrency');
-
-    const opened = await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('Extract 8 files at once'),
-    );
-    expect(opened).not.toContain('already set');
-    expect(opened).not.toContain('.zshrc');
   });
 
   it('reflects a changed preference in the menu row after returning', async () => {

@@ -1,7 +1,7 @@
 import { render } from 'ink-testing-library';
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { NoColorScreen } from '../../../../src/setup/steps/preferences/no-color.js';
+import { ColorPreferenceScreen } from '../../../../src/setup/steps/preferences/ColorPreferenceScreen.js';
 import type { StepDone } from '../../../../src/setup/steps/StepLayout.js';
 import { waitForFrame } from '../../../helpers/wait-for-frame.js';
 import { choose } from '../select-helpers.js';
@@ -22,9 +22,9 @@ function setup(Screen: React.ComponentType<{ profilePath: string; onDone: StepDo
   return { ...render(<Screen profilePath={PROFILE} onDone={onDone} />), onDone, append: shell.appendToProfile };
 }
 
-describe('NoColorScreen', () => {
+describe('ColorPreferenceScreen', () => {
   it('appends NO_COLOR when the operator opts in', async () => {
-    const { lastFrame, stdin, append } = setup(NoColorScreen);
+    const { lastFrame, stdin, append } = setup(ColorPreferenceScreen);
     await waitForFrame(
       () => lastFrame(),
       (f) => f.includes('Terminal colors'),
@@ -35,7 +35,7 @@ describe('NoColorScreen', () => {
   });
 
   it('asks about the effect, not the variable name', async () => {
-    const { lastFrame } = setup(NoColorScreen);
+    const { lastFrame } = setup(ColorPreferenceScreen);
     const frame = await waitForFrame(
       () => lastFrame(),
       (f) => f.includes('Terminal colors'),
