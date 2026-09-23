@@ -5,7 +5,7 @@ import type { Command } from 'commander';
 import { findPkgRoot } from '../lib/cli-path.js';
 import { getInteractiveTerminalSupport } from '../lib/terminal-capabilities.js';
 import { detectShellProfile, runSpawn } from './lib/shell.js';
-import type { SetupOutcome, SetupSkipFlags } from './tui/SetupScreen.js';
+import type { SetupOutcome, SetupSkipFlags } from './SetupScreen.js';
 
 export const SETUP_REQUIRES_TTY_MESSAGE = 'Error: experiences setup requires an interactive terminal.';
 
@@ -24,7 +24,7 @@ async function runSetup(opts: SetupSkipFlags): Promise<void> {
 
   const { render } = await import('ink');
   const { createElement } = await import('react');
-  const { SetupScreen } = await import('./tui/SetupScreen.js');
+  const { SetupScreen } = await import('./SetupScreen.js');
 
   const repoRoot = join(findPkgRoot(), '..', '..');
   const profilePath = await detectShellProfile();

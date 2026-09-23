@@ -1,21 +1,21 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, useStdout } from 'ink';
 import { ConfirmInput } from '@inkjs/ui';
-import { PALETTE } from '../../analyze/select/tui/theme.js';
+import { PALETTE } from '../analyze/select/tui/theme.js';
 import {
   SETUP_TITLE,
   countRequiredFailures,
   formatSetupCompletionMessage,
   shouldAlignVersionRight,
   type SetupResultEntry,
-} from '../lib/layout.js';
+} from './lib/layout.js';
 import { SetupStepper } from './SetupStepper.js';
-import { CodingAgentScreen } from '../steps/coding-agent.js';
-import { ContentfulScreen } from '../steps/contentful-credentials.js';
-import type { StepStatus } from '../steps/StepLayout.js';
-import { PreferencesStep } from '../steps/preferences/PreferencesStep.js';
-import { PrerequisitesScreen } from '../steps/prerequisites/PrerequisitesScreen.js';
-import type { PrerequisitesOutcome } from '../steps/prerequisites/deps.js';
+import { CodingAgentScreen } from './steps/coding-agent.js';
+import { ContentfulScreen } from './steps/contentful-credentials.js';
+import type { StepStatus } from './steps/StepLayout.js';
+import { PreferencesStep } from './steps/preferences/PreferencesStep.js';
+import { PrerequisitesScreen } from './steps/prerequisites/PrerequisitesScreen.js';
+import type { PrerequisitesOutcome } from './steps/prerequisites/deps.js';
 
 /** Prompts and output are UI-owned; the screen supplies the rest itself. */
 export type SetupSkipFlags = {
