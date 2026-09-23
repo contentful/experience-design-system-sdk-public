@@ -10,6 +10,7 @@ import {
   type DsiConfiguration,
 } from './config-store.js';
 import { useConfigurationControls, type Field } from './controls.js';
+import { startDebugRun } from '../../debug-store.js';
 
 const FIELDS: Field[] = [
   { key: 'space_id', label: 'Space ID' },
@@ -37,6 +38,12 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
     readDsiConfiguration().then((loaded) => {
       setConfig(loaded);
       setLoading(false);
+      startDebugRun({
+        flow: 'settings/contentful-configuration',
+        step: '01-configuration',
+        menuOption: 'Configuration',
+        inputs: loaded,
+      });
     });
   }, []);
 

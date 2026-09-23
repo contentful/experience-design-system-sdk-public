@@ -13,6 +13,7 @@ export function SettingsScreen({
   const items: { label: string; screen: Screen }[] = [
     { label: 'Configuration', screen: 'settings-configuration' },
     { label: 'Opt-in Analytics', screen: 'settings-opt-in-analytics' },
+    { label: 'Debug Mode', screen: 'settings-debug-mode' },
   ];
 
   useInput((input, key) => {
