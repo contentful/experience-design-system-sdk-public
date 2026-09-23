@@ -19,7 +19,7 @@ vi.mock('../../../../src/credentials-store.js', () => ({
 
 vi.mock('../../../../src/setup/lib/shell.js', () => shell);
 
-const { PreferencesStep } = await import('../../../../src/setup/steps/preferences/PreferencesStep.js');
+const { PreferencesMenu } = await import('../../../../src/setup/steps/preferences/PreferencesMenu.js');
 
 beforeEach(() => {
   store.read.mockReset().mockResolvedValue({ spaceId: '', environmentId: '', cmaToken: '' });
@@ -28,11 +28,11 @@ beforeEach(() => {
 
 function renderStep(): ReturnType<typeof render> & { onDone: ReturnType<typeof vi.fn> } {
   const onDone = vi.fn();
-  const result = render(<PreferencesStep onDone={onDone} />);
+  const result = render(<PreferencesMenu onDone={onDone} />);
   return { ...result, onDone };
 }
 
-describe('PreferencesStep', () => {
+describe('PreferencesMenu', () => {
   it('shows each preference with its current value', async () => {
     const { lastFrame } = renderStep();
 

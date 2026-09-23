@@ -14,11 +14,6 @@ export type PreferenceScreenProps = {
   onDone: StepDone;
 };
 
-/**
- * The preferences the wizard walks, in the order it presents them. Each entry
- * pairs its label with the screen that owns that setting's help text, prompt,
- * and persistence — so adding a preference means adding a file and a row here.
- */
 export const PREFERENCE_OPTIONS = [
   {
     key: 'autoFilter',
@@ -52,15 +47,12 @@ export type PreferenceKey = (typeof PREFERENCE_OPTIONS)[number]['key'];
 /** The value the trailing row reports; no PreferenceKey contains a colon. */
 const DONE_VALUE = 'menu:done';
 
-/** Spaces between the longest preference name and the current-value column. */
-const VALUE_GAP = 6;
-
 export const PREFERENCES_MENU_HELP = 'Every preference already has a working default — open one only to change it.';
 
 /** What each preference currently resolves to, for the menu's summary column. */
 export type PreferenceSummary = Record<PreferenceKey, string>;
 
-type PreferencesMenuProps = {
+type PreferenceListProps = {
   /** Preferences changed so far this visit; decides what Done reports. */
   changed: ReadonlySet<PreferenceKey>;
   onOpen: (key: PreferenceKey) => void;
@@ -88,10 +80,35 @@ function describeCustomPrompts(credentials: ExperiencesCredentials): string {
 }
 
 /**
- * The preferences step opens here instead of walking every setting, so the
- * operator reads the current values and opens only what they want to change.
+ * The preferences step: a menu the operator returns to after each setting they
+ * open, rather than a forced walk through every one. It reports `completed`
+ * only if something actually changed, so an operator who just looks and leaves
+ * is recorded as having skipped it.
  */
-export function PreferencesMenu({ changed, onOpen, onDone }: PreferencesMenuProps): React.ReactElement {
+export function PreferencesMenu({ onDone }: { onDone: StepDone }): React.ReactElement {
+  const [open, setOpen] = useState<PreferenceKey | null>(null);
+  const [changed, setChanged] = useState<ReadonlySet<PreferenceKey>>(new Set());
+
+  const entry = open === null ? undefined : PREFERENCE_OPTIONS.find((option) => option.key === open);
+  if (!entry) return <PreferenceList changed={changed} onOpen={setOpen} onDone={onDone} />;
+
+  const { key, Screen } = entry;
+  return (
+    <Screen
+      key={key}
+      onDone={(status) => {
+        if (status === 'completed') setChanged((current) => new Set(current).add(key));
+        setOpen(null);
+      }}
+    />
+  );
+}
+
+/**
+ * The list itself, so the operator reads the current values and opens only
+ * what they want to change.
+ */
+function PreferenceList({ changed, onOpen, onDone }: PreferenceListProps): React.ReactElement {
   const [summary, setSummary] = useState<PreferenceSummary | null>(null);
 
   const load = useCallback(
@@ -99,7 +116,7 @@ export function PreferencesMenu({ changed, onOpen, onDone }: PreferencesMenuProp
     [],
   );
 
-  // The step unmounts this menu while a preference screen is open, so mounting is
+  // The menu unmounts this list while a preference screen is open, so mounting is
   // what refreshes the rows — a setting the operator just changed reads back here.
   useEffect(() => {
     let active = true;
@@ -115,12 +132,10 @@ export function PreferencesMenu({ changed, onOpen, onDone }: PreferencesMenuProp
 
   const labelWidth = Math.max(...PREFERENCE_OPTIONS.map((option) => option.label.length));
   const options = [
-    // Select renders a label node as-is, so the current value keeps its own
-    // muted color even on the focused row, where the label wrapper is blue.
     ...PREFERENCE_OPTIONS.map((option) => ({
       label: (
         <Text>
-          {option.label.padEnd(labelWidth + VALUE_GAP)}
+          {option.label.padEnd(labelWidth + 10)}
           <Text color={PALETTE.muted}>{summary[option.key]}</Text>
         </Text>
       ) as unknown as string,

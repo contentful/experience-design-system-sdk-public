@@ -12,7 +12,7 @@ import { SetupStepper } from './SetupStepper.js';
 import { CodingAgentScreen } from './steps/CodingAgentScreen.js';
 import { ContentfulCredentialsScreen } from './steps/ContentfulCredentialsScreen.js';
 import type { StepStatus } from './steps/StepLayout.js';
-import { PreferencesStep } from './steps/preferences/PreferencesStep.js';
+import { PreferencesMenu } from './steps/preferences/PreferencesMenu.js';
 import { PrerequisitesScreen } from './steps/prerequisites/PrerequisitesScreen.js';
 import type { PrerequisitesOutcome } from './steps/prerequisites/deps.js';
 
@@ -138,7 +138,7 @@ export function SetupScreen({
       } else {
         // Preferences open on a menu rather than a forced walk: the operator
         // picks the ones they want and the step owns returning to the list.
-        const status = await runScreen<StepStatus>((done) => <PreferencesStep onDone={done} />);
+        const status = await runScreen<StepStatus>((done) => <PreferencesMenu onDone={done} />);
         results.push({ name: 'Preferences', status, required: false });
       }
 
