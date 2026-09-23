@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { StepDone } from '../StepLayout.js';
-import { PREFERENCE_OPTIONS, type PreferenceKey } from './index.js';
+import { PREFERENCE_OPTIONS, type PreferenceKey } from './PreferencesMenu.js';
 import { PreferencesMenu } from './PreferencesMenu.js';
 
 /**

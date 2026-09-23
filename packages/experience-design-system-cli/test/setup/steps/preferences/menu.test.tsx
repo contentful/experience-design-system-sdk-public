@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PREFERENCE_OPTIONS } from '../../../../src/setup/steps/preferences/index.js';
-import { summarisePreferences } from '../../../../src/setup/steps/preferences/PreferencesMenu.js';
+import { PREFERENCE_OPTIONS, summarisePreferences } from '../../../../src/setup/steps/preferences/PreferencesMenu.js';
 
 describe('PREFERENCE_OPTIONS', () => {
   it('lists every preference in the order the menu shows them', () => {
