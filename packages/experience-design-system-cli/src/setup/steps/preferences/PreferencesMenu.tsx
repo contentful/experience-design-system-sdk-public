@@ -44,47 +44,35 @@ export const PREFERENCE_OPTIONS = [
 
 type PreferenceKey = (typeof PREFERENCE_OPTIONS)[number]['key'];
 
-/** The value the trailing row reports; no PreferenceKey contains a colon. */
-const DONE_VALUE = 'menu:done';
+\const DONE_VALUE = 'menu:done';
 
-const PREFERENCES_MENU_HELP = 'Every preference already has a working default — open to change it.';
+const PREFERENCES_MENU_HELP = 'Every preference already has a working default — open one to change it.';
 
-/** What each preference currently resolves to, for the menu's summary column. */
 type PreferenceSummary = Record<PreferenceKey, string>;
 
 type PreferenceListProps = {
-  /** Preferences changed so far this visit; decides what Done reports. */
   changed: ReadonlySet<PreferenceKey>;
   onOpen: (key: PreferenceKey) => void;
   onDone: StepDone;
 };
 
-/**
- * Describe each preference the way the operator reads it, so a row says what the
- * setting currently does rather than which field stores it.
- */
+
 export function summarisePreferences(credentials: ExperiencesCredentials): PreferenceSummary {
   return {
-    autoFilter: (credentials.autoFilter ?? true) ? 'Filtering out irrelevant components' : 'Keeping every component',
+    autoFilter: (credentials.autoFilter ?? true) ? 'filtering out irrelevant components' : 'keeping every component',
     customPrompts: describeCustomPrompts(credentials),
-    debug: (credentials.debug ?? false) ? 'Verbose traces' : 'Quiet',
-    analytics: (credentials.analyticsDisabled ?? false) ? 'Not sharing usage data' : 'Sharing usage data',
-    noColor: (credentials.noColor ?? false) ? 'Colors off' : 'Colors on',
+    debug: (credentials.debug ?? false) ? 'verbose traces' : 'quiet',
+    analytics: (credentials.analyticsDisabled ?? false) ? 'not sharing usage data' : 'sharing usage data',
+    noColor: (credentials.noColor ?? false) ? 'colors off' : 'colors on',
   };
 }
 
 function describeCustomPrompts(credentials: ExperiencesCredentials): string {
   const count = [credentials.selectPromptPath, credentials.generatePromptPath].filter(Boolean).length;
-  if (count === 0) return 'Built-in prompts';
-  return count === 2 ? 'Custom select and generate' : 'One custom prompt';
+  if (count === 0) return 'built-in prompts';
+  return count === 2 ? 'custom select and generate' : 'one custom prompt';
 }
 
-/**
- * The preferences step: a menu the operator returns to after each setting they
- * open, rather than a forced walk through every one. It reports `completed`
- * only if something actually changed, so an operator who just looks and leaves
- * is recorded as having skipped it.
- */
 export function PreferencesMenu({ onDone }: { onDone: StepDone }): React.ReactElement {
   const [open, setOpen] = useState<PreferenceKey | null>(null);
   const [changed, setChanged] = useState<ReadonlySet<PreferenceKey>>(new Set());
@@ -104,10 +92,6 @@ export function PreferencesMenu({ onDone }: { onDone: StepDone }): React.ReactEl
   );
 }
 
-/**
- * The list itself, so the operator reads the current values and opens only
- * what they want to change.
- */
 function PreferenceList({ changed, onOpen, onDone }: PreferenceListProps): React.ReactElement {
   const [summary, setSummary] = useState<PreferenceSummary | null>(null);
 
@@ -130,13 +114,12 @@ function PreferenceList({ changed, onOpen, onDone }: PreferenceListProps): React
 
   if (!summary) return <Text dimColor>Reading saved preferences…</Text>;
 
-  const labelWidth = Math.max(...PREFERENCE_OPTIONS.map((option) => option.label.length));
   const options = [
     ...PREFERENCE_OPTIONS.map((option) => ({
       label: (
         <Text>
-          {option.label.padEnd(labelWidth + 10)}
-          <Text color={PALETTE.muted}>{summary[option.key]}</Text>
+          {option.label}
+          <Text color={PALETTE.muted}> — {summary[option.key]}</Text>
         </Text>
       ) as unknown as string,
       value: option.key as string,

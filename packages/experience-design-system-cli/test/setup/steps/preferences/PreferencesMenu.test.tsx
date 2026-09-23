@@ -41,29 +41,24 @@ describe('PreferencesMenu', () => {
       (f) => f.includes('Preferences — open one'),
     );
 
-    expect(frame).toContain('Filtering out irrelevant components');
-    expect(frame).toContain('Quiet');
-    expect(frame).toContain('Sharing usage data');
-    expect(frame).toContain('Colors on');
+    expect(frame).toContain('filtering out irrelevant components');
+    expect(frame).toContain('quiet');
+    expect(frame).toContain('sharing usage data');
+    expect(frame).toContain('colors on');
   });
 
-  it('separates each preference name from its current value', async () => {
+  it('reads each row as a name followed by its current value', async () => {
     const { lastFrame } = renderStep();
 
     const frame = await waitForFrame(
       () => lastFrame(),
       (f) => f.includes('Preferences — open one'),
     );
-
-    // The value column is padded clear of the longest name, so shorter names get
-    // a wider gap rather than sitting against their value.
-    expect(frame).toMatch(/Debug logging {8,}Quiet/);
-    expect(frame).toMatch(/Terminal colors {6,}Colors on/);
+    expect(frame).toMatch(/Debug logging — quiet/);
+    expect(frame).toMatch(/Terminal colors — colors on/);
   });
 
   it('opens the color preference and returns to the menu', async () => {
-    // It used to live in the shell profile; now it reads from the credentials
-    // file like the rest, so the row opens a normal on/off choice.
     const { lastFrame, stdin } = renderStep();
 
     await waitForFrame(
@@ -79,7 +74,6 @@ describe('PreferencesMenu', () => {
     expect(opened).not.toContain('already set');
     expect(opened).not.toContain('Preferences — open one');
 
-    // Keeping colors on writes nothing and returns to the menu.
     await acceptDefault(stdin);
     const back = await waitForFrame(
       () => lastFrame(),
@@ -114,7 +108,7 @@ describe('PreferencesMenu', () => {
       () => lastFrame(),
       (f) => f.includes('Preferences — open one'),
     );
-    expect(back).toContain('Keeping every component');
+    expect(back).toContain('keeping every component');
   });
 
   it('reports completed when a preference changed', async () => {
@@ -154,8 +148,6 @@ describe('PreferencesMenu', () => {
       () => lastFrame(),
       (f) => f.includes('Filters out components irrelevant'),
     );
-    // Accepting the highlighted row keeps the current setting, which the screen
-    // reports as skipped.
     await acceptDefault(stdin);
     await waitForFrame(
       () => lastFrame(),

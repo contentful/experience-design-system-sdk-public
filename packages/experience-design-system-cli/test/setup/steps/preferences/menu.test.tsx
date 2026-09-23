@@ -25,11 +25,11 @@ describe('summarisePreferences', () => {
     const summary = summarisePreferences({ spaceId: '', environmentId: '', cmaToken: '' });
 
     expect(summary).toEqual({
-      autoFilter: 'Filtering out irrelevant components',
-      customPrompts: 'Built-in prompts',
-      debug: 'Quiet',
-      analytics: 'Sharing usage data',
-      noColor: 'Colors on',
+      autoFilter: 'filtering out irrelevant components',
+      customPrompts: 'built-in prompts',
+      debug: 'quiet',
+      analytics: 'sharing usage data',
+      noColor: 'colors on',
     });
   });
 
@@ -43,23 +43,23 @@ describe('summarisePreferences', () => {
       analyticsDisabled: true,
     });
 
-    expect(summary.autoFilter).toBe('Keeping every component');
-    expect(summary.debug).toBe('Verbose traces');
-    expect(summary.analytics).toBe('Not sharing usage data');
+    expect(summary.autoFilter).toBe('keeping every component');
+    expect(summary.debug).toBe('verbose traces');
+    expect(summary.analytics).toBe('not sharing usage data');
   });
 
   it('reports the stored color preference from the credentials file', () => {
     const summary = summarisePreferences({ spaceId: '', environmentId: '', cmaToken: '', noColor: true });
 
-    expect(summary.noColor).toBe('Colors off');
+    expect(summary.noColor).toBe('colors off');
   });
 
   it('counts how many custom prompt paths are set', () => {
     const base = { spaceId: '', environmentId: '', cmaToken: '' };
 
-    expect(summarisePreferences({ ...base, selectPromptPath: '/tmp/s.md' }).customPrompts).toBe('One custom prompt');
+    expect(summarisePreferences({ ...base, selectPromptPath: '/tmp/s.md' }).customPrompts).toBe('one custom prompt');
     expect(
       summarisePreferences({ ...base, selectPromptPath: '/tmp/s.md', generatePromptPath: '/tmp/g.md' }).customPrompts,
-    ).toBe('Custom select and generate');
+    ).toBe('custom select and generate');
   });
 });
