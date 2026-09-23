@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { FOCUS_MARKER, PALETTE } from '../home/home.theme.js';
-import { checkForUpgrade, readPackageVersion, type UpgradeCheckResult } from './version.js';
-import { startDebugRun, finishDebugRun } from '../debug-store.js';
+import { checkForUpgrade, type UpgradeCheckResult } from './version.js';
 
 const UPGRADE_COMMANDS = ['git pull', 'pnpm install', 'pnpm build'];
 
@@ -10,12 +9,6 @@ export function UpgradeScreen({ onDone }: { onDone: () => void }): React.ReactEl
   const [upgradeCheck, setUpgradeCheck] = useState<UpgradeCheckResult>();
 
   useEffect(() => {
-    startDebugRun({
-      flow: 'upgrade',
-      step: '01-upgrade',
-      menuOption: 'Upgrade',
-      inputs: { currentVersion: readPackageVersion() },
-    });
     checkForUpgrade()
       .then(setUpgradeCheck)
       .catch(() => setUpgradeCheck({ status: 'error' }));
@@ -23,11 +16,6 @@ export function UpgradeScreen({ onDone }: { onDone: () => void }): React.ReactEl
 
   useInput((_input, key) => {
     if (key.return) {
-      void finishDebugRun({
-        outputs: upgradeCheck ?? {},
-        status: upgradeCheck?.status === 'error' ? 'error' : 'success',
-        exitMethod: 'saved',
-      });
       onDone();
       return;
     }
