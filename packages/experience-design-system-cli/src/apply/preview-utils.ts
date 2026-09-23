@@ -5,14 +5,10 @@ import type { ServerPreviewResponse } from '@contentful/experience-design-system
  * every diff bucket (components, tokens, taxonomies). Used by:
  *   - `experiences apply` (CLI): short-circuit the confirm-and-push step.
  *   - `experiences import` wizard: block finalize when the resulting push
- *     would be a pure no-op (INTEG-4411 refined guard).
+ *     would be a pure no-op.
  *
  * A push that produces ANY entry in ANY bucket — including a rejection that
- * removes a server-side component — is NOT empty. Note the server hides
- * removals entirely (empty removed[]) unless the preview was fetched with
- * allowDeletions: true, so "empty" here also correctly describes a preview
- * with pending-but-hidden deletions: pushing without --allow-deletions is a
- * genuine no-op in that case too, since the apply gate hides them the same way.
+ * removes a server-side component — is NOT empty.
  */
 export function isEmptyPreview(preview: ServerPreviewResponse): boolean {
   const { components, tokens, taxonomies } = preview;
