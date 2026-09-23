@@ -152,6 +152,7 @@ type WizardState = {
   errorStep: string;
   errorMessage: string;
   errorAllowCredentialRetry: boolean;
+  errorAllowBreakingChangeAcknowledgment: boolean;
   authCheckStepNumber: number;
   previewValidationErrors: PreviewValidationError[];
   previewValidationMissingNames: string[];
@@ -467,6 +468,7 @@ export function WizardApp({
     errorStep: '',
     errorMessage: '',
     errorAllowCredentialRetry: false,
+    errorAllowBreakingChangeAcknowledgment: false,
     authCheckStepNumber: 1,
     previewValidationErrors: [],
     previewValidationMissingNames: [],
@@ -1343,7 +1345,7 @@ export function WizardApp({
       return;
     }
 
-    update({ step: 'pushing', pushProgress: null });
+    update({ step: 'pushing', pushProgress: null, errorAllowBreakingChangeAcknowledgment: false });
     try {
       const resolvedHost = resolveWizardHost(host);
       const client = new ImportApiClient({
@@ -1494,7 +1496,13 @@ export function WizardApp({
         step: 'error',
         errorStep: 'apply push',
         errorMessage: msg,
-        errorAllowCredentialRetry: true,
+        errorAllowCredentialRetry: !(
+          e instanceof ApiError &&
+          e.status === 422 &&
+          /acknowledgeBreakingChanges/i.test(e.body || e.message)
+        ),
+        errorAllowBreakingChangeAcknowledgment:
+          e instanceof ApiError && e.status === 422 && /acknowledgeBreakingChanges/i.test(e.body || e.message),
       });
     }
   };
@@ -2177,6 +2185,20 @@ export function WizardApp({
             onExit={() => process.exit(1)}
             onRetryCredentials={
               state.errorAllowCredentialRetry ? () => update({ step: 'credentials', credentialsError: '' }) : undefined
+            }
+            onAcknowledgeBreakingChanges={
+              state.errorAllowBreakingChangeAcknowledgment && state.manifest
+                ? () =>
+                    void runPush(
+                      state.manifest!,
+                      state.spaceId,
+                      state.environmentId,
+                      state.cmaToken,
+                      state.host,
+                      true,
+                      state.serverPreview,
+                    )
+                : undefined
             }
           />
         );
