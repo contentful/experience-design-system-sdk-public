@@ -168,7 +168,7 @@ Custom `.md` skill prompt paths can be saved via `experiences setup`; the CLI em
 | `--agent <name>`                  | saved by setup / `claude`              | Agent for `analyze select-agent` and internal generation                                                     |
 | `--model <name>`                  | agent default                          | Model name                                                                                                   |
 | `--composite`                     | —                                      | Import the embedded-component hierarchy (any composition flag implies this)                                   |
-| `--generate-map <path>`           | —                                      | Also write a composition-map skeleton from the resolved composition (implies `--composite`)                  |
+| `--composition-map <path>`        | —                                      | Consume a hand-authored parent→children interchange map (implies `--composite`)                              |
 | `--prompt <stage=value>`          | —                                      | Override a stage prompt (repeatable); value is a file path or literal text, e.g. `--prompt composition=./p.md` |
 | `--skip-map-tokens`               | —                                      | Skip the `map tokens` step between internal generation and apply                                             |
 | `--no-cache`                      | cache on                               | Bypass extract/select/internal-generation/map-tokens/composition caches and force re-run                    |
@@ -230,7 +230,7 @@ experiences analyze extract --project <path> [--dir <src-dir>] [composition flag
 | `--resolve-unreachable <mode>` | `auto` | Retry pass for unresolved Svelte `Props` types: `auto`, `always`, or `never` |
 | `--atomic` | **default** | Skip composition resolution — flat components only |
 | `--composite` | — | Resolve embedded-component composition (any composition flag implies this) |
-| `--generate-map <path>` | — | Write a skeleton interchange map from the resolved composition (implies `--composite`) |
+| `--composition-map <path>` | — | Consume a hand-authored parent→children interchange map (implies `--composite`) |
 | `--composition-refresh` | — | Bypass the composition cache and re-resolve from scratch, forcing the agent to run (implies `--composite`) |
 | `--agent <name>` | saved by setup | Coding agent for composition resolution: `claude`, `codex`, `opencode`, `cursor`, `copilot` |
 | `--prompt <stage=value>` | — | Override a stage prompt (repeatable); value is a file path or literal text, e.g. `--prompt composition=./p.md` |

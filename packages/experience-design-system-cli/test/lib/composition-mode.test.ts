@@ -55,8 +55,8 @@ describe('resolveCompositionMode (flag > env > config > default)', () => {
   });
 
   describe('implicit composite from a composition source', () => {
-    it('--generate-map implies composite', () => {
-      expect(resolveCompositionMode({ generateMap: './out.json' }, undefined)).toBe('composite');
+    it('--composition-map implies composite', () => {
+      expect(resolveCompositionMode({ compositionMap: './map.json' }, undefined)).toBe('composite');
     });
 
     it('composition-refresh implies composite', () => {
@@ -65,11 +65,11 @@ describe('resolveCompositionMode (flag > env > config > default)', () => {
 
     it('an implied source beats env and config', () => {
       process.env[ENV] = 'atomic';
-      expect(resolveCompositionMode({ generateMap: './m.json' }, 'atomic')).toBe('composite');
+      expect(resolveCompositionMode({ compositionMap: './m.json' }, 'atomic')).toBe('composite');
     });
 
     it('explicit --atomic still wins over an implied source (contradictory input, user said no)', () => {
-      expect(resolveCompositionMode({ atomic: true, generateMap: './m.json' }, undefined)).toBe('atomic');
+      expect(resolveCompositionMode({ atomic: true, compositionMap: './m.json' }, undefined)).toBe('atomic');
     });
 
     it('explicit --composite is unaffected', () => {

@@ -354,7 +354,7 @@ export type WizardAppProps = {
   initialProjectPath?: string;
   host?: string;
   compositionMode?: CompositionMode;
-  generateMap?: string;
+  compositionMap?: string;
   promptOverrides?: string[];
   noCache?: boolean;
   autoFilter?: boolean;
@@ -376,7 +376,7 @@ export function WizardApp({
   initialProjectPath,
   host,
   compositionMode = 'atomic',
-  generateMap,
+  compositionMap,
   promptOverrides,
   noCache = false,
   autoFilter = true,
@@ -696,7 +696,7 @@ export function WizardApp({
     if (compositionMode === 'composite') {
       extractArgs.push('--composite');
       if (noCache) extractArgs.push('--composition-refresh');
-      if (generateMap) extractArgs.push('--generate-map', generateMap);
+      if (compositionMap) extractArgs.push('--composition-map', compositionMap);
       for (const p of promptOverrides ?? []) extractArgs.push('--prompt', p);
       // Composition resolution uses the same agent the user picked for the run.
       if (state.agent) extractArgs.push('--agent', state.agent);
