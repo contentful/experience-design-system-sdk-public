@@ -3,7 +3,7 @@ import { render } from 'ink-testing-library';
 import { ErrorStep } from '../../../src/import/tui/steps/ErrorStep.js';
 
 describe('ErrorStep', () => {
-  it('offers breaking-change acknowledgment and retries when a is pressed', () => {
+  it('offers breaking-change acknowledgment and retries when Enter is pressed', () => {
     const onAcknowledge = vi.fn();
     const { lastFrame, stdin } = render(
       <ErrorStep
@@ -15,7 +15,8 @@ describe('ErrorStep', () => {
     );
 
     expect(lastFrame()).toContain('Acknowledge and apply');
-    stdin.write('a');
+    expect(lastFrame()).toContain('[Esc / q] Exit');
+    stdin.write('\r');
     expect(onAcknowledge).toHaveBeenCalledOnce();
   });
 
