@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import type { Command } from 'commander';
 import { findPkgRoot } from '../lib/cli-path.js';
 import { getInteractiveTerminalSupport } from '../lib/terminal-capabilities.js';
-import { detectShellProfile, runSpawn } from './lib/shell.js';
+import { runSpawn } from './lib/shell.js';
 import type { SetupOutcome, SetupSkipFlags } from './SetupScreen.js';
 
 export const SETUP_REQUIRES_TTY_MESSAGE = 'Error: experiences setup requires an interactive terminal.';
@@ -27,7 +27,6 @@ async function runSetup(opts: SetupSkipFlags): Promise<void> {
   const { SetupScreen } = await import('./SetupScreen.js');
 
   const repoRoot = join(findPkgRoot(), '..', '..');
-  const profilePath = await detectShellProfile();
 
   const completion: { outcome: SetupOutcome | null } = { outcome: null };
   let unmountInk: (() => void) | null = null;
@@ -36,7 +35,6 @@ async function runSetup(opts: SetupSkipFlags): Promise<void> {
     createElement(SetupScreen, {
       version: getCliVersion(),
       repoRoot,
-      profilePath,
       skip: {
         ...(opts.skipBuild !== undefined ? { skipBuild: opts.skipBuild } : {}),
         ...(opts.skipAgent !== undefined ? { skipAgent: opts.skipAgent } : {}),

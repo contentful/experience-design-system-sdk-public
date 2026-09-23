@@ -3,10 +3,8 @@ import { Box, Text } from 'ink';
 import { Select } from '@inkjs/ui';
 import { readExperiencesCredentials, type ExperiencesCredentials } from '../../../credentials-store.js';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
-import { profileContains } from '../../lib/shell.js';
 import { StepLayout, type StepDone } from '../StepLayout.js';
 import { PREFERENCE_OPTIONS, type PreferenceKey } from './index.js';
-import { PROFILE_VARIABLE as NO_COLOR_VARIABLE } from './ColorPreferenceScreen.js';
 
 /** The value the trailing row reports; no PreferenceKey contains a colon. */
 const DONE_VALUE = 'menu:done';
@@ -20,7 +18,6 @@ export const PREFERENCES_MENU_HELP = 'Every preference already has a working def
 export type PreferenceSummary = Record<PreferenceKey, string>;
 
 type PreferencesMenuProps = {
-  profilePath: string;
   /** Preferences changed so far this visit; decides what Done reports. */
   changed: ReadonlySet<PreferenceKey>;
   onOpen: (key: PreferenceKey) => void;
@@ -31,16 +28,13 @@ type PreferencesMenuProps = {
  * Describe each preference the way the operator reads it, so a row says what the
  * setting currently does rather than which field stores it.
  */
-export function summarisePreferences(
-  credentials: ExperiencesCredentials,
-  profile: { noColor: boolean },
-): PreferenceSummary {
+export function summarisePreferences(credentials: ExperiencesCredentials): PreferenceSummary {
   return {
     autoFilter: (credentials.autoFilter ?? true) ? 'Filtering irrelevant components' : 'Keeping every component',
     customPrompts: describeCustomPrompts(credentials),
     debug: (credentials.debug ?? false) ? 'Verbose traces' : 'Quiet',
     analytics: (credentials.analyticsDisabled ?? false) ? 'Not sharing usage data' : 'Sharing usage data',
-    noColor: profile.noColor ? 'Colors off' : 'Colors on',
+    noColor: (credentials.noColor ?? false) ? 'Colors off' : 'Colors on',
   };
 }
 
@@ -54,16 +48,13 @@ function describeCustomPrompts(credentials: ExperiencesCredentials): string {
  * The preferences step opens here instead of walking every setting, so the
  * operator reads the current values and opens only what they want to change.
  */
-export function PreferencesMenu({ profilePath, changed, onOpen, onDone }: PreferencesMenuProps): React.ReactElement {
+export function PreferencesMenu({ changed, onOpen, onDone }: PreferencesMenuProps): React.ReactElement {
   const [summary, setSummary] = useState<PreferenceSummary | null>(null);
 
-  const load = useCallback(async (): Promise<PreferenceSummary> => {
-    const [credentials, noColor] = await Promise.all([
-      readExperiencesCredentials(),
-      profileContains(profilePath, NO_COLOR_VARIABLE),
-    ]);
-    return summarisePreferences(credentials, { noColor });
-  }, [profilePath]);
+  const load = useCallback(
+    async (): Promise<PreferenceSummary> => summarisePreferences(await readExperiencesCredentials()),
+    [],
+  );
 
   // The step unmounts this menu while a preference screen is open, so mounting is
   // what refreshes the rows — a setting the operator just changed reads back here.

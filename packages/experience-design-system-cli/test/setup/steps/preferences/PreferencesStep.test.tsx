@@ -8,9 +8,6 @@ const shell = vi.hoisted(() => ({
   binaryExists: vi.fn(),
   pathExists: vi.fn(),
   runSpawn: vi.fn(),
-  profileContains: vi.fn(),
-  appendToProfile: vi.fn(),
-  detectShellProfile: vi.fn(),
   REQUIRED_NODE_MAJOR: 24,
 }));
 
@@ -27,13 +24,11 @@ const { PreferencesStep } = await import('../../../../src/setup/steps/preference
 beforeEach(() => {
   store.read.mockReset().mockResolvedValue({ spaceId: '', environmentId: '', cmaToken: '' });
   store.write.mockReset().mockResolvedValue(undefined);
-  shell.profileContains.mockReset().mockResolvedValue(false);
-  shell.appendToProfile.mockReset().mockResolvedValue(undefined);
 });
 
 function renderStep(): ReturnType<typeof render> & { onDone: ReturnType<typeof vi.fn> } {
   const onDone = vi.fn();
-  const result = render(<PreferencesStep profilePath="/home/tester/.zshrc" onDone={onDone} />);
+  const result = render(<PreferencesStep onDone={onDone} />);
   return { ...result, onDone };
 }
 
@@ -66,11 +61,9 @@ describe('PreferencesStep', () => {
     expect(frame).toMatch(/Terminal colors {6,}Colors on/);
   });
 
-  it('opens a profile preference whose variable is already set', async () => {
-    // Regression: the screen used to report back the moment it saw the variable,
-    // which bounced the operator to the menu and looked like the row would not open.
-    // NO_COLOR is the remaining profile-backed preference.
-    shell.profileContains.mockResolvedValue(true);
+  it('opens the color preference and returns to the menu', async () => {
+    // It used to live in the shell profile; now it reads from the credentials
+    // file like the rest, so the row opens a normal on/off choice.
     const { lastFrame, stdin } = renderStep();
 
     await waitForFrame(
@@ -81,18 +74,19 @@ describe('PreferencesStep', () => {
 
     const opened = await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('already set'),
+      (f) => f.includes('Turn colors off'),
     );
-    expect(opened).toContain('NO_COLOR is already set');
+    expect(opened).not.toContain('already set');
     expect(opened).not.toContain('Preferences — open one');
 
-    // And Back returns to the menu.
+    // Keeping colors on writes nothing and returns to the menu.
     await acceptDefault(stdin);
     const back = await waitForFrame(
       () => lastFrame(),
       (f) => f.includes('Preferences — open one'),
     );
     expect(back).toContain('Terminal colors');
+    expect(store.write).not.toHaveBeenCalled();
   });
 
   it('reflects a changed preference in the menu row after returning', async () => {

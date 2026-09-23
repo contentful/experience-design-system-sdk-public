@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ExperiencesCredentials } from '../../../../src/credentials-store.js';
 import { AnalyticsScreen } from '../../../../src/setup/steps/preferences/AnalyticsScreen.js';
 import { AutoFilterScreen } from '../../../../src/setup/steps/preferences/AutoFilterScreen.js';
+import { ColorPreferenceScreen } from '../../../../src/setup/steps/preferences/ColorPreferenceScreen.js';
 import { DebugLogsScreen } from '../../../../src/setup/steps/preferences/DebugLogsScreen.js';
 import type { StepDone } from '../../../../src/setup/steps/StepLayout.js';
 import { waitForFrame } from '../../../helpers/wait-for-frame.js';
@@ -123,5 +124,41 @@ describe('AnalyticsScreen', () => {
     await choose(stdin, lastFrame, "Don't share usage data");
 
     expect(write).toHaveBeenCalledWith(expect.objectContaining({ analyticsDisabled: true }));
+  });
+});
+
+describe('ColorPreferenceScreen', () => {
+  it('stores the choice in the credentials file, never the shell profile', async () => {
+    const { lastFrame, stdin, onDone, write } = setup(ColorPreferenceScreen);
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('Terminal colors'),
+    );
+    await choose(stdin, lastFrame, 'Turn colors off');
+
+    expect(write).toHaveBeenCalledWith(expect.objectContaining({ noColor: true }));
+    expect(onDone).toHaveBeenCalledWith('completed');
+  });
+
+  it('turns colors back on from the menu, which a profile line could not do', async () => {
+    const { lastFrame, stdin, write } = setup(ColorPreferenceScreen, { ...EMPTY, noColor: true });
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('Terminal colors'),
+    );
+    await choose(stdin, lastFrame, 'Keep colors on');
+
+    expect(write).toHaveBeenCalledWith(expect.objectContaining({ noColor: false }));
+  });
+
+  it('asks about the effect, not the variable name', async () => {
+    const { lastFrame } = setup(ColorPreferenceScreen);
+    const frame = await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('Terminal colors'),
+    );
+
+    expect(frame).not.toContain('NO_COLOR');
+    expect(frame).not.toContain('.zshrc');
   });
 });

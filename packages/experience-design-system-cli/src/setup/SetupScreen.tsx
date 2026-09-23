@@ -35,7 +35,6 @@ export type SetupOutcome = {
 type SetupScreenProps = {
   version: string;
   repoRoot: string;
-  profilePath: string;
   skip?: SetupSkipFlags;
   /** Defaults to the live Ink stdout columns. */
   columns?: number;
@@ -52,7 +51,6 @@ type PendingConfirm = {
 export function SetupScreen({
   version,
   repoRoot,
-  profilePath,
   skip = {},
   columns: columnsOverride,
   offerDoctor = false,
@@ -153,9 +151,7 @@ export function SetupScreen({
       } else {
         // Preferences open on a menu rather than a forced walk: the operator
         // picks the ones they want and the step owns returning to the list.
-        const status = await runScreen<StepStatus>((done) => (
-          <PreferencesStep profilePath={profilePath} onDone={done} />
-        ));
+        const status = await runScreen<StepStatus>((done) => <PreferencesStep onDone={done} />);
         results.push({ name: 'Preferences', status, required: false });
       }
 

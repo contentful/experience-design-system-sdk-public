@@ -2,8 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { PREFERENCE_OPTIONS } from '../../../../src/setup/steps/preferences/index.js';
 import { summarisePreferences } from '../../../../src/setup/steps/preferences/PreferencesMenu.js';
 
-const NO_PROFILE = { noColor: false };
-
 describe('PREFERENCE_OPTIONS', () => {
   it('lists every preference in the order the menu shows them', () => {
     expect(PREFERENCE_OPTIONS.map((option) => option.key)).toEqual([
@@ -25,7 +23,7 @@ describe('PREFERENCE_OPTIONS', () => {
 
 describe('summarisePreferences', () => {
   it('describes the defaults an untouched install runs with', () => {
-    const summary = summarisePreferences({ spaceId: '', environmentId: '', cmaToken: '' }, NO_PROFILE);
+    const summary = summarisePreferences({ spaceId: '', environmentId: '', cmaToken: '' });
 
     expect(summary).toEqual({
       autoFilter: 'Filtering irrelevant components',
@@ -37,25 +35,22 @@ describe('summarisePreferences', () => {
   });
 
   it('reports stored credential preferences', () => {
-    const summary = summarisePreferences(
-      {
-        spaceId: '',
-        environmentId: '',
-        cmaToken: '',
-        autoFilter: false,
-        debug: true,
-        analyticsDisabled: true,
-      },
-      NO_PROFILE,
-    );
+    const summary = summarisePreferences({
+      spaceId: '',
+      environmentId: '',
+      cmaToken: '',
+      autoFilter: false,
+      debug: true,
+      analyticsDisabled: true,
+    });
 
     expect(summary.autoFilter).toBe('Keeping every component');
     expect(summary.debug).toBe('Verbose traces');
     expect(summary.analytics).toBe('Not sharing usage data');
   });
 
-  it('reports NO_COLOR from the shell profile, not the credentials', () => {
-    const summary = summarisePreferences({ spaceId: '', environmentId: '', cmaToken: '' }, { noColor: true });
+  it('reports the stored color preference from the credentials file', () => {
+    const summary = summarisePreferences({ spaceId: '', environmentId: '', cmaToken: '', noColor: true });
 
     expect(summary.noColor).toBe('Colors off');
   });
@@ -63,12 +58,9 @@ describe('summarisePreferences', () => {
   it('counts how many custom prompt paths are set', () => {
     const base = { spaceId: '', environmentId: '', cmaToken: '' };
 
-    expect(summarisePreferences({ ...base, selectPromptPath: '/tmp/s.md' }, NO_PROFILE).customPrompts).toBe(
-      'One custom prompt',
-    );
+    expect(summarisePreferences({ ...base, selectPromptPath: '/tmp/s.md' }).customPrompts).toBe('One custom prompt');
     expect(
-      summarisePreferences({ ...base, selectPromptPath: '/tmp/s.md', generatePromptPath: '/tmp/g.md' }, NO_PROFILE)
-        .customPrompts,
+      summarisePreferences({ ...base, selectPromptPath: '/tmp/s.md', generatePromptPath: '/tmp/g.md' }).customPrompts,
     ).toBe('Custom select and generate');
   });
 });

@@ -15,6 +15,8 @@ export type ExperiencesCredentials = {
   generatePromptPath?: string;
   autoFilter?: boolean;
   debug?: boolean;
+  /** Print plain text with no color; an exported NO_COLOR still wins. */
+  noColor?: boolean;
   analyticsDisabled?: boolean;
   compositionMode?: CompositionMode;
 };
@@ -39,6 +41,7 @@ export async function readExperiencesCredentials(): Promise<ExperiencesCredentia
       ...(parsed.generatePromptPath ? { generatePromptPath: parsed.generatePromptPath } : {}),
       ...(typeof parsed.autoFilter === 'boolean' ? { autoFilter: parsed.autoFilter } : {}),
       ...(typeof parsed.debug === 'boolean' ? { debug: parsed.debug } : {}),
+      ...(typeof parsed.noColor === 'boolean' ? { noColor: parsed.noColor } : {}),
       ...(typeof parsed.analyticsDisabled === 'boolean' ? { analyticsDisabled: parsed.analyticsDisabled } : {}),
       ...(typeof parsed.compositionMode === 'string' && isCompositionMode(parsed.compositionMode)
         ? { compositionMode: parsed.compositionMode }
@@ -64,6 +67,7 @@ export async function writeExperiencesCredentials(creds: ExperiencesCredentials)
     generatePromptPath,
     autoFilter,
     debug,
+    noColor,
     analyticsDisabled,
     compositionMode,
     ...rest
@@ -82,6 +86,7 @@ export async function writeExperiencesCredentials(creds: ExperiencesCredentials)
         ...(generatePromptPath ? { generatePromptPath } : {}),
         ...(typeof autoFilter === 'boolean' ? { autoFilter } : {}),
         ...(typeof debug === 'boolean' ? { debug } : {}),
+        ...(typeof noColor === 'boolean' ? { noColor } : {}),
         ...(typeof analyticsDisabled === 'boolean' ? { analyticsDisabled } : {}),
         ...(compositionMode && isCompositionMode(compositionMode) ? { compositionMode } : {}),
       },

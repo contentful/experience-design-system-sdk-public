@@ -6,7 +6,6 @@ import { DebugLogsScreen } from './DebugLogsScreen.js';
 import { ColorPreferenceScreen } from './ColorPreferenceScreen.js';
 
 export type PreferenceScreenProps = {
-  profilePath: string;
   onDone: StepDone;
 };
 
@@ -39,9 +38,7 @@ export const PREFERENCE_OPTIONS = [
   {
     key: 'noColor',
     label: 'Terminal colors',
-    Screen: ({ profilePath, onDone }: PreferenceScreenProps) => (
-      <ColorPreferenceScreen profilePath={profilePath} onDone={onDone} />
-    ),
+    Screen: ({ onDone }: PreferenceScreenProps) => <ColorPreferenceScreen onDone={onDone} />,
   },
 ] as const;
 

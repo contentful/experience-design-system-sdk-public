@@ -14,9 +14,6 @@ const shell = vi.hoisted(() => ({
   binaryExists: vi.fn(),
   pathExists: vi.fn(),
   runSpawn: vi.fn(),
-  profileContains: vi.fn(),
-  appendToProfile: vi.fn(),
-  detectShellProfile: vi.fn(),
   REQUIRED_NODE_MAJOR: 24,
 }));
 
@@ -34,23 +31,13 @@ function resetMocks(): void {
   shell.binaryExists.mockReset().mockImplementation(async (binary: string) => binary === 'pnpm');
   shell.pathExists.mockReset().mockResolvedValue(false);
   shell.runSpawn.mockReset().mockResolvedValue({ exitCode: 0, stdout: '10.0.0\n', stderr: '' });
-  shell.profileContains.mockReset().mockResolvedValue(false);
-  shell.appendToProfile.mockReset().mockResolvedValue(undefined);
-  shell.detectShellProfile.mockReset().mockResolvedValue('/home/tester/.zshrc');
 }
 
 function renderScreen(props: Partial<React.ComponentProps<typeof SetupScreen>> = {}) {
   resetMocks();
   const onComplete = vi.fn();
   const result = render(
-    <SetupScreen
-      version="2.32.0"
-      repoRoot="/repo"
-      profilePath="/home/tester/.zshrc"
-      columns={120}
-      onComplete={onComplete}
-      {...props}
-    />,
+    <SetupScreen version="2.32.0" repoRoot="/repo" columns={120} onComplete={onComplete} {...props} />,
   );
   return { ...result, onComplete };
 }

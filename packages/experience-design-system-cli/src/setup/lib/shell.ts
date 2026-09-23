@@ -1,7 +1,5 @@
 import { execFile, spawn } from 'node:child_process';
-import { appendFile, readFile, access } from 'node:fs/promises';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { access } from 'node:fs/promises';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
@@ -57,31 +55,4 @@ export function runSpawn(
     });
     child.on('exit', (code) => settle({ exitCode: code ?? 1, stdout, stderr }));
   });
-}
-
-export async function detectShellProfile(): Promise<string> {
-  const shell = process.env['SHELL'] ?? '';
-  const home = homedir();
-
-  if (shell.includes('zsh')) return join(home, '.zshrc');
-  if (shell.includes('bash')) {
-    // Prefer .bash_profile on macOS (login shell), .bashrc on Linux.
-    const bashProfile = join(home, '.bash_profile');
-    return (await pathExists(bashProfile)) ? bashProfile : join(home, '.bashrc');
-  }
-  if (shell.includes('fish')) return join(home, '.config', 'fish', 'config.fish');
-  return join(home, '.profile');
-}
-
-export async function profileContains(profilePath: string, value: string): Promise<boolean> {
-  try {
-    const content = await readFile(profilePath, 'utf8');
-    return content.includes(value);
-  } catch {
-    return false;
-  }
-}
-
-export async function appendToProfile(profilePath: string, lines: string): Promise<void> {
-  await appendFile(profilePath, `\n${lines}\n`, 'utf8');
 }

@@ -396,6 +396,41 @@ describe('ExperiencesCredentials.analyticsDisabled round-trip', () => {
   });
 });
 
+describe('ExperiencesCredentials.noColor round-trip', () => {
+  it('reads noColor:true from the file', async () => {
+    mockReadFile.mockResolvedValue(
+      JSON.stringify({ spaceId: 'abc', environmentId: 'master', cmaToken: 'tok', noColor: true }),
+    );
+
+    const creds = await readExperiencesCredentials();
+
+    expect(creds.noColor).toBe(true);
+  });
+
+  it('ignores a noColor value that is not a boolean', async () => {
+    mockReadFile.mockResolvedValue(
+      JSON.stringify({ spaceId: 'abc', environmentId: 'master', cmaToken: 'tok', noColor: 'yes' }),
+    );
+
+    const creds = await readExperiencesCredentials();
+
+    expect(creds).not.toHaveProperty('noColor');
+  });
+
+  it('writes noColor when set and omits it when undefined', async () => {
+    mockMkdir.mockResolvedValue(undefined);
+    mockWriteFile.mockResolvedValue(undefined);
+
+    await writeExperiencesCredentials({ spaceId: 's', environmentId: 'master', cmaToken: 't', noColor: false });
+    await writeExperiencesCredentials({ spaceId: 's', environmentId: 'master', cmaToken: 't' });
+
+    const withValue = JSON.parse(mockWriteFile.mock.calls[0][1] as string) as Record<string, unknown>;
+    const without = JSON.parse(mockWriteFile.mock.calls[1][1] as string) as Record<string, unknown>;
+    expect(withValue.noColor).toBe(false);
+    expect(without).not.toHaveProperty('noColor');
+  });
+});
+
 describe('ExperiencesCredentials.compositionMode round-trip', () => {
   it('keeps only values accepted by the canonical composition mode guard', async () => {
     mockReadFile.mockResolvedValue(
