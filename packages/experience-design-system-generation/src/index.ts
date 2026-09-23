@@ -5,6 +5,7 @@ export type { AgentName } from './agent-names.js';
 // Agent invocation (low-level)
 export {
   agentSupportsBedrock,
+  agentSupportsStdinPrompt,
   buildArgs,
   checkAgentAuth,
   describeAgentFailure,
@@ -16,6 +17,7 @@ export {
   resolveAgentModel,
   resolveBinary,
   runAgent,
+  shouldUseStdinPrompt,
 } from './agent-runner.js';
 export type {
   AgentAuthStatus,
@@ -49,3 +51,6 @@ export type { ComponentSourceRef, GeneratedCdf, Mode, PromptOptions, Skill } fro
 
 // Progress reporting
 export { formatGenerateProgressLine } from './progress.js';
+
+// Cross-platform binary lookup and launch (Windows .cmd shims, PATHEXT)
+export { binaryExists, findBinary, spawnBinary } from './lib/binary-launch.js';

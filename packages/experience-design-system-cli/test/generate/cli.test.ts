@@ -275,10 +275,11 @@ describe('generate components — --dry-run', () => {
 
 describe('generate components — agent binary not found', () => {
   it('prints fallback instructions when agent is not in PATH', async () => {
-    const fakeBinDir = await createTempDir('fake-which-bin-');
-    const fakeWhich = join(fakeBinDir, 'which');
-    await writeFile(fakeWhich, '#!/bin/sh\nexit 1\n');
-    await chmod(fakeWhich, 0o755);
+    // Point PATH at an empty directory so the agent genuinely cannot be found.
+    // This previously stubbed a `which` that exited 1, but lookup no longer
+    // shells out to `which` (it doesn't exist on Windows) — so the stub would
+    // pass regardless of whether the lookup worked.
+    const fakeBinDir = await createTempDir('empty-path-bin-');
 
     const dbDir = await createTempDir('gen-no-bin-db-');
     const dbPath = join(dbDir, 'pipeline.db');
@@ -290,12 +291,16 @@ describe('generate components — agent binary not found', () => {
       code: number | null;
     }>((res) => {
       execFile(
-        'node',
+        process.execPath,
         [bin, 'generate', 'components', '--agent', 'claude', '--session', sid],
         {
           env: {
             ...process.env,
-            PATH: `${fakeBinDir}:${process.env.PATH}`,
+            // Replace PATH entirely, rather than prepending: the agent must be
+            // absent from every entry for the lookup to report it missing. The
+            // CLI is launched via process.execPath below, so emptying PATH here
+            // doesn't hide the node binary from the test itself.
+            PATH: fakeBinDir,
             EDS_PIPELINE_DB_PATH: dbPath,
           },
         },

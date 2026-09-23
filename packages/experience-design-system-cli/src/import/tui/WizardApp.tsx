@@ -294,7 +294,7 @@ export function formatAcceptanceSummary(opts: { accepted: number; autoRejected: 
 
 function runCli(args: string[]): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   return new Promise((res) => {
-    execFile('node', [findCliPath(), ...args], (error, stdout, stderr) => {
+    execFile(process.execPath, [findCliPath(), ...args], (error, stdout, stderr) => {
       res({ exitCode: error?.code ? Number(error.code) : 0, stdout, stderr });
     });
   });
@@ -304,7 +304,7 @@ type SpawnedCliResult = { exitCode: number; stdout: string; stderr: string };
 
 function runSpawnedCli(args: string[], onStderr?: (chunk: string) => void): Promise<SpawnedCliResult> {
   return new Promise((res) => {
-    const child = spawn('node', args);
+    const child = spawn(process.execPath, args);
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (d: Buffer) => {
@@ -861,7 +861,7 @@ export function WizardApp({
         noCache,
         ...(state.existingEntitiesPath ? { existingEntitiesPath: state.existingEntitiesPath } : {}),
       });
-      const child = spawn('node', [findCliPath(), ...args]);
+      const child = spawn(process.execPath, [findCliPath(), ...args]);
       autoFilterChildRef.current = child;
       let stderr = '';
       child.stderr.on('data', (d: Buffer) => {
@@ -979,7 +979,7 @@ export function WizardApp({
     const args = buildGenerateArgs(extractSessionId, tokensPath);
     let progressCursor: GenerateProgressState = null;
     const { child, donePromise } = spawnGenerateChild({
-      command: 'node',
+      command: process.execPath,
       args,
       onStderr: (chunk) => {
         const nextProgress = parseGenerateStderrChunk(chunk, progressCursor);
@@ -1037,7 +1037,7 @@ export function WizardApp({
     const args = buildGenerateArgs(extractSessionId, tokensPath, generatePromptPath);
     let progressCursor: GenerateProgressState = state.generateProgress;
     const { donePromise } = spawnGenerateChild({
-      command: 'node',
+      command: process.execPath,
       args,
       onStderr: (chunk) => {
         const nextProgress = parseGenerateStderrChunk(chunk, progressCursor);

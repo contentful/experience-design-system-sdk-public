@@ -1,10 +1,8 @@
-import { execFile, spawn } from 'node:child_process';
 import { appendFile, readFile, access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline';
-import { promisify } from 'node:util';
 import type { Command } from 'commander';
 import {
   readExperiencesCredentials,
@@ -17,9 +15,7 @@ import { promptDebugModePreference } from './debug-mode-prompt.js';
 import { promptAnalyticsPreference } from './analytics-prompt.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
 import { findPkgRoot } from '../lib/cli-path.js';
-import type { AgentName } from '@contentful/experience-design-system-generation';
-
-const execFileAsync = promisify(execFile);
+import { findBinary, spawnBinary, type AgentName } from '@contentful/experience-design-system-generation';
 
 const REQUIRED_NODE_MAJOR = 24;
 
@@ -131,12 +127,7 @@ async function confirm(question: string, defaultYes = true): Promise<boolean> {
 // ── Shell helpers ─────────────────────────────────────────────────────────────
 
 async function binaryExists(name: string): Promise<boolean> {
-  try {
-    await execFileAsync('which', [name]);
-    return true;
-  } catch {
-    return false;
-  }
+  return findBinary(name) !== null;
 }
 
 function runSpawn(
@@ -145,7 +136,8 @@ function runSpawn(
   opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
-    const child = spawn(cmd, args, {
+    // spawnBinary, not spawn: pnpm/corepack/npm are `.cmd` shims on Windows.
+    const child = spawnBinary(cmd, args, {
       cwd: opts.cwd,
       env: opts.env ?? process.env,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -159,10 +151,10 @@ function runSpawn(
         resolve({ exitCode: 1, stdout: '', stderr: err.message });
       }
     });
-    child.stdout.on('data', (d: Buffer) => {
+    child.stdout?.on('data', (d: Buffer) => {
       stdout += String(d);
     });
-    child.stderr.on('data', (d: Buffer) => {
+    child.stderr?.on('data', (d: Buffer) => {
       stderr += String(d);
     });
     child.on('exit', (code) => {

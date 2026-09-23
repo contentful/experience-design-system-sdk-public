@@ -1,5 +1,5 @@
-import { spawn } from 'node:child_process';
 import type { AgentName } from './agent-names.js';
+import { findBinary, spawnBinary } from './lib/binary-launch.js';
 
 export { AGENT_NAMES, DEFAULT_AGENT_NAME, isAgentName, type AgentName } from './agent-names.js';
 
@@ -493,6 +493,43 @@ function codexBedrockConfigArgs(): string[] {
 
 export type AgentDebugEvent = (name: string, payload?: Record<string, unknown>) => void;
 
+/**
+ * Agents that can read the prompt from stdin instead of argv.
+ *
+ * copilot cannot: its `-p` flag requires the prompt as the flag's value (see
+ * buildArgs), so there is nowhere for stdin to go.
+ */
+const STDIN_CAPABLE_AGENTS = new Set<AgentName>(['claude', 'codex', 'opencode', 'cursor']);
+
+export function agentSupportsStdinPrompt(agent: AgentName): boolean {
+  return STDIN_CAPABLE_AGENTS.has(agent);
+}
+
+/**
+ * Windows caps a command line at 8191 characters through cmd.exe, and 32767 in
+ * CreateProcess. Our skill prompts are far larger than both — generate-components
+ * alone is ~50KB — so passing one as an argv positional cannot work there. POSIX
+ * is far more generous (ARG_MAX ~1MB on macOS) but not unlimited.
+ *
+ * Kept deliberately low: stdin is the better path for any prompt of real size, and
+ * there is no benefit to argv beyond the few agents that require it.
+ */
+const ARGV_PROMPT_LIMIT = 4096;
+
+/**
+ * Decide how to deliver the prompt.
+ *
+ * Prefer stdin whenever the agent supports it and the prompt is large enough for
+ * argv limits to matter. This is what makes `generate components` work on Windows,
+ * and it removes a latent ARG_MAX failure on macOS as the skills grow.
+ *
+ * Exported so callers can detect the case that has no answer: a large prompt for an
+ * agent that can only accept argv.
+ */
+export function shouldUseStdinPrompt(agent: AgentName, prompt: string): boolean {
+  return agentSupportsStdinPrompt(agent) && prompt.length > ARGV_PROMPT_LIMIT;
+}
+
 export function buildArgs(
   agent: AgentName,
   prompt: string,
@@ -504,10 +541,17 @@ export function buildArgs(
   // entirely so the CLI picks its own account-compatible default.
   const resolvedModel = resolveAgentModel(agent, model, bedrock);
   const modelArg = resolvedModel ? ['--model', resolvedModel] : [];
-  // When the prompt is delivered on stdin, omit it from argv — a large prompt
-  // as a command-line argument overflows ARG_MAX (spawn E2BIG). All four CLIs
-  // read the prompt from stdin when it isn't passed positionally.
-  const promptArg = promptViaStdin ? [] : [prompt];
+  // Ignore a stdin request for an agent that has no stdin path. copilot's `-p`
+  // takes the prompt as its value, so honouring the request would emit a bare
+  // `-p` and silently drop the prompt. runAgent already avoids asking, but keep
+  // the guard here so the function can't be misused.
+  const useStdin = promptViaStdin && agentSupportsStdinPrompt(agent);
+  // When the prompt is delivered on stdin, omit it from argv — a large prompt as
+  // a command-line argument overflows ARG_MAX on POSIX (E2BIG) and cannot be
+  // passed at all on Windows, whose command line caps at 8191 characters through
+  // cmd.exe. These CLIs read the prompt from stdin when it isn't passed
+  // positionally.
+  const promptArg = useStdin ? [] : [prompt];
   switch (agent) {
     case 'claude':
       return ['--print', ...modelArg, ...promptArg];
@@ -552,9 +596,12 @@ export async function runAgent(options: {
   bedrock?: boolean;
   onOutput?: (chunk: string) => void;
   /**
-   * Deliver the prompt on stdin instead of as an argv positional. Required for
-   * large prompts (e.g. the composition resolver inlining candidate files),
-   * which overflow ARG_MAX when passed as an argument.
+   * Force the prompt onto stdin instead of an argv positional.
+   *
+   * Usually unnecessary: a prompt large enough for argv limits to matter is sent
+   * on stdin automatically (see shouldUseStdinPrompt). Set this to opt in for a
+   * small prompt too. It cannot force stdin for an agent that has no stdin path —
+   * copilot requires the prompt as its `-p` value.
    */
   promptViaStdin?: boolean;
   /** Optional debug-event sink; callers own how/where events get logged. */
@@ -568,7 +615,11 @@ export async function runAgent(options: {
   const bedrock = options.bedrock ?? process.env.EDS_BEDROCK === '1';
 
   const binary = resolveBinary(agent);
-  const useStdin = !!promptViaStdin;
+  // Send a large prompt on stdin even when the caller didn't ask: a ~50KB skill
+  // prompt exceeds every Windows command-line limit, so argv simply cannot carry
+  // it. Honour an explicit promptViaStdin for smaller prompts, but never route to
+  // stdin for an agent that can't read it (copilot).
+  const useStdin = agentSupportsStdinPrompt(agent) && (!!promptViaStdin || shouldUseStdinPrompt(agent, prompt));
   const args = buildArgs(agent, prompt, model, useStdin, bedrock);
 
   const startedAt = Date.now();
@@ -584,7 +635,7 @@ export async function runAgent(options: {
 
   return new Promise((resolve) => {
     const bedrockEnv = bedrock ? BEDROCK_ENV_BY_AGENT[agent] : undefined;
-    const child = spawn(binary, args, {
+    const child = spawnBinary(binary, args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       ...(bedrockEnv ? { env: { ...process.env, ...bedrockEnv } } : {}),
     });
@@ -648,24 +699,10 @@ export async function checkAgentAuth(agent: AgentName): Promise<AgentAuthStatus>
   const binary = resolveBinary(agent);
 
   // Verify the selected agent's binary exists first — for EVERY agent, not
-  // just claude. When `binary` is an absolute path (e.g. set via
-  // EDS_AGENT_BINARY_<AGENT>=/opt/custom/bin), `which` on some shells doesn't
-  // resolve it — check the filesystem directly for absolute paths, and fall
-  // back to `which` for bare names on $PATH.
-  const binaryExists = await new Promise<boolean>((resolve) => {
-    if (binary.startsWith('/')) {
-      import('node:fs/promises').then((fs) =>
-        fs.access(binary).then(
-          () => resolve(true),
-          () => resolve(false),
-        ),
-      );
-      return;
-    }
-    const child = spawn('which', [binary], { stdio: 'ignore' });
-    child.on('close', (code) => resolve(code === 0));
-  });
-  if (!binaryExists) return 'not-found';
+  // just claude. Handles an absolute EDS_AGENT_BINARY_<AGENT> override as well as
+  // a bare name on PATH.
+  const resolvedBinary = findBinary(binary);
+  if (!resolvedBinary) return 'not-found';
 
   // Only Claude exposes `auth status --json`. Non-Claude agents are considered
   // authenticated once their binary is present — never gate them on claude
@@ -675,7 +712,7 @@ export async function checkAgentAuth(agent: AgentName): Promise<AgentAuthStatus>
   // Use `claude auth status` — fast, no API call, works regardless of which
   // auth provider (direct, Bedrock, Vertex) or whether AWS_PROFILE is set.
   return new Promise((resolve) => {
-    const child = spawn(binary, ['auth', 'status', '--json'], {
+    const child = spawnBinary(resolvedBinary, ['auth', 'status', '--json'], {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
