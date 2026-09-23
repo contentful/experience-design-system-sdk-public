@@ -1,6 +1,7 @@
 import { useInput } from 'ink';
 import clipboard from 'clipboardy';
 import type { DsiConfiguration } from './config-store.js';
+import { finishDebugRun } from '../../debug-store.js';
 
 type FieldKey = keyof DsiConfiguration;
 
@@ -111,11 +112,13 @@ export function useConfigurationControls({
     }
     if (input === 'S') {
       save(config).then((ok) => {
+        void finishDebugRun({ outputs: config, status: ok ? 'success' : 'error', exitMethod: 'saved' });
         if (ok) onDone();
       });
       return;
     }
     if (input === 'q' || key.escape) {
+      void finishDebugRun({ outputs: config, status: 'success', exitMethod: 'discarded' });
       onDone();
       return;
     }
