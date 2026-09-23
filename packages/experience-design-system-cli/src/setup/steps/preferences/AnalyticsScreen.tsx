@@ -1,4 +1,4 @@
-import React from 'react';
+git checimport React from 'react';
 import type { StepDone } from '../StepLayout.js';
 import { BooleanInput } from './BooleanInput.js';
 

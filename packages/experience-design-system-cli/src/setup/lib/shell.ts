@@ -14,7 +14,7 @@ export interface ShellCommandResult {
 
 export async function binaryExists(name: string): Promise<boolean> {
   try {
-    await execFileAsync('which', [name]);
+    await execFileAsync(process.platform === 'win32' ? 'where' : 'which', [name]);
     return true;
   } catch {
     return false;
