@@ -41,7 +41,7 @@ describe('PreferencesStep', () => {
       (f) => f.includes('Preferences — open one'),
     );
 
-    expect(frame).toContain('Filtering irrelevant components');
+    expect(frame).toContain('Filtering out irrelevant components');
     expect(frame).toContain('Quiet');
     expect(frame).toContain('Sharing usage data');
     expect(frame).toContain('Colors on');

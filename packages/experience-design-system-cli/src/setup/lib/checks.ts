@@ -61,8 +61,7 @@ export async function detectPnpm(
 /**
  * `detectPnpm` plus proof that pnpm can execute inside the repo. A store built
  * against a different Node version still passes `--version` but fails there,
- * which is the failure operators actually hit — so doctor checks it, while the
- * setup wizard only needs to know pnpm exists before it installs.
+ * which is the failure operators actually hit — so both doctor and setup check it.
  */
 export async function checkPnpm(pkgRoot: string, deps: PnpmDeps = { binaryExists, run: runSpawn }): Promise<PnpmCheck> {
   const detected = await detectPnpm(deps);

@@ -54,7 +54,7 @@ describe('PrerequisitesScreen', () => {
     await settle();
 
     expect(onDone).toHaveBeenCalledWith(expect.objectContaining({ node: { passed: true }, pnpm: { passed: true } }));
-    expect(run).toHaveBeenCalledTimes(1);
+    expect(run).toHaveBeenCalledTimes(2);
     expect(run).toHaveBeenCalledWith('pnpm', ['--version']);
   });
 

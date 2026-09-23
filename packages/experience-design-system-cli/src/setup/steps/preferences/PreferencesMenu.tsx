@@ -30,7 +30,7 @@ type PreferencesMenuProps = {
  */
 export function summarisePreferences(credentials: ExperiencesCredentials): PreferenceSummary {
   return {
-    autoFilter: (credentials.autoFilter ?? true) ? 'Filtering irrelevant components' : 'Keeping every component',
+    autoFilter: (credentials.autoFilter ?? true) ? 'Filtering out irrelevant components' : 'Keeping every component',
     customPrompts: describeCustomPrompts(credentials),
     debug: (credentials.debug ?? false) ? 'Verbose traces' : 'Quiet',
     analytics: (credentials.analyticsDisabled ?? false) ? 'Not sharing usage data' : 'Sharing usage data',

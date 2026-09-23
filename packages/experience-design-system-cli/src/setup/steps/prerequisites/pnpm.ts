@@ -1,11 +1,18 @@
-import { detectPnpm } from '../../lib/checks.js';
+import { checkPnpm } from '../../lib/checks.js';
 import { emit, type PrerequisiteDeps, type PrerequisiteResult } from './deps.js';
 
-export async function runPnpmSetup(dependencies: PrerequisiteDeps): Promise<PrerequisiteResult> {
-  const detected = await detectPnpm(dependencies);
+export async function runPnpmSetup(dependencies: PrerequisiteDeps, repoRoot: string): Promise<PrerequisiteResult> {
+  const detected = await checkPnpm(repoRoot, dependencies);
   if (detected.status === 'ok') {
     emit(dependencies, 'success', `pnpm v${detected.version} — already installed`);
     return { passed: true };
+  }
+  // pnpm is installed, so installing it again would not help. This is usually a
+  // global store built against a different Node version.
+  if (detected.status === 'unusable-in-repo') {
+    emit(dependencies, 'failure', `pnpm v${detected.version} cannot run in the repo`);
+    emit(dependencies, 'info', 'Its global store may not match your Node version. Fix: npm install -g pnpm --force');
+    return { passed: false };
   }
 
   emit(dependencies, 'failure', 'pnpm not found');

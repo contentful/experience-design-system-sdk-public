@@ -26,7 +26,7 @@ describe('summarisePreferences', () => {
     const summary = summarisePreferences({ spaceId: '', environmentId: '', cmaToken: '' });
 
     expect(summary).toEqual({
-      autoFilter: 'Filtering irrelevant components',
+      autoFilter: 'Filtering out irrelevant components',
       customPrompts: 'Built-in prompts',
       debug: 'Quiet',
       analytics: 'Sharing usage data',

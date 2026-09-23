@@ -13,7 +13,7 @@ export async function runPrerequisitesSetup(
   const node = await runNodeSetup(dependencies);
   if (!node.passed) return { node };
 
-  const pnpm = await runPnpmSetup(dependencies);
+  const pnpm = await runPnpmSetup(dependencies, repoRoot);
   if (!pnpm.passed || options.skipBuild) return { node, pnpm };
 
   const build = await runBuildSetup(dependencies, repoRoot);

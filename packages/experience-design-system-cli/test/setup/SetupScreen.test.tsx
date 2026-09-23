@@ -145,10 +145,9 @@ describe('SetupScreen', () => {
     expect(frame).toContain('– Contentful credentials — skipped');
     expect(frame).toContain('– Preferences — skipped');
     expect(frame).toContain('✓ Setup complete. You can now run: experiences import');
+    expect(frame).toContain('Run experiences doctor any time to re-check.');
 
-    expect(onComplete).toHaveBeenCalledWith(
-      expect.objectContaining({ exitCode: 0, restartRequired: false, runDoctor: false }),
-    );
+    expect(onComplete).toHaveBeenCalledWith({ results: expect.any(Array), exitCode: 0, restartRequired: false });
   });
 
   it('reports a failed required action and a non-zero exit code', async () => {
@@ -171,18 +170,18 @@ describe('SetupScreen', () => {
     expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ exitCode: 1 }));
   });
 
-  it('offers experiences doctor after the summary when asked to', async () => {
-    const { lastFrame, stdin, onComplete } = renderScreen({ offerDoctor: true, skip: ALL_SKIPPED });
+  it('finishes on the summary without asking to run doctor', async () => {
+    const { lastFrame, onComplete } = renderScreen({ skip: ALL_SKIPPED });
 
-    await waitForFrame(
+    const frame = await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Run experiences doctor now'),
+      (f) => f.includes('Summary'),
     );
-    stdin.write('y');
 
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
-    expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ runDoctor: true, exitCode: 0 }));
+    // One summary and done: doctor would repeat the install and build setup
+    // just ran, so it is left for the operator to run later.
+    expect(frame).not.toContain('Run experiences doctor now');
+    expect(onComplete).toHaveBeenCalledTimes(1);
   });
 
   it('opens preferences on a menu rather than walking each setting', async () => {

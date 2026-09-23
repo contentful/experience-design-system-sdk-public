@@ -51,8 +51,28 @@ describe('prerequisites step', () => {
       node: { passed: true },
       pnpm: { passed: true },
     });
-    expect(run).toHaveBeenCalledTimes(1);
+    expect(run).toHaveBeenCalledTimes(2);
     expect(run).toHaveBeenCalledWith('pnpm', ['--version']);
+    expect(run).toHaveBeenCalledWith('pnpm', ['exec', 'node', '--version'], { cwd: '/repo' });
+  });
+
+  it('fails pnpm without reinstalling it when pnpm cannot run in the repo', async () => {
+    const events: PrerequisiteEvent[] = [];
+    const run = vi
+      .fn()
+      .mockResolvedValueOnce({ exitCode: 0, stdout: '10.0.0\n', stderr: '' })
+      .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'ERR_PNPM' });
+    const confirm = vi.fn();
+    const dependencies = createDependencies({ run, confirm, emit: (event) => events.push(event) });
+
+    await expect(runPrerequisitesSetup(dependencies, '/repo')).resolves.toEqual({
+      node: { passed: true },
+      pnpm: { passed: false },
+    });
+    expect(events).toContainEqual({ kind: 'failure', message: 'pnpm v10.0.0 cannot run in the repo' });
+    // pnpm is installed, so offering corepack or npm again would not fix it.
+    expect(confirm).not.toHaveBeenCalled();
+    expect(run).toHaveBeenCalledTimes(2);
   });
 
   it('returns typed prerequisite results after installing dependencies and building the CLI', async () => {
