@@ -122,8 +122,6 @@ describe('flag-matrix: incompatible flag pairs REJECT with exit 1 and the right 
       }
     }
 
-    // --composite/--atomic is a documented precedence, not a rejection, and is
-    // intentionally not declared incompatible in the inventory.
     const uncovered = [...declaredEdges].filter((edge) => !covered.has(edge));
     expect(uncovered, `declared incompatible pairs lacking a rejection cell: ${uncovered.join(', ')}`).toEqual([]);
   });

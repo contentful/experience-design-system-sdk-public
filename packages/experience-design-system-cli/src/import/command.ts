@@ -6,8 +6,7 @@ import { runPipeline } from './orchestrator.js';
 import { resolveAutoFilter } from './auto-filter-resolve.js';
 import { resolveAgent, resolveModel } from './agent-model-resolve.js';
 import { addAgentModelOptions } from '../lib/agent-model-options.js';
-import { resolveCompositionMode, type CompositionMode } from '../lib/composition-mode.js';
-import { addAllowDeletionsOption, addCompositionOptions } from '../lib/command-options.js';
+import { addAllowDeletionsOption } from '../lib/command-options.js';
 import { isConflictMode, type ConflictMode } from '../runs/save-path-resolver.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
@@ -84,26 +83,19 @@ export function registerImportCommand(program: Command): void {
       'Print the generate components prompt without invoking the agent. Replaces the legacy --dry-run prompt-print behaviour on this command.',
     )
     .option('--auto-accept-scope', 'Accept all extracted components without prompting (for scripted/non-TTY callers)');
-  addCompositionOptions(cmd);
   addAllowDeletionsOption(cmd);
   cmd
-    .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map (implies --composite)')
-    .option(
-      '--composition-agent',
-      'Opt into agentic mapping resolution when deterministic sources find no groups (implies --composite)',
-    )
+    .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map')
+    .option('--composition-agent', 'Opt into agentic mapping resolution when deterministic sources find no groups')
     .option(
       '--composition-refresh',
-      'Bypass the composition cache and re-resolve from scratch, forcing the agent to run (implies --composite)',
+      'Bypass the composition cache and re-resolve from scratch, forcing the agent to run',
     )
     .option(
       '--composition-agent-mode <mode>',
       "Agent mode: 'parser' (agent writes a sandboxed parser, default) or 'edges' (agent lists edges)",
     )
-    .option(
-      '--generate-map <path>',
-      'Also write a composition-map skeleton from resolved edges during extract (implies --composite)',
-    )
+    .option('--generate-map <path>', 'Also write a composition-map skeleton from resolved edges during extract')
     .option(
       '--prompt <stage=value>',
       'Override a stage prompt (repeatable). value is a file path or literal text, e.g. --prompt composition=./p.md',
@@ -188,8 +180,6 @@ export function registerImportCommand(program: Command): void {
         dryRun?: boolean;
         printPrompt?: boolean;
         autoAcceptScope?: boolean;
-        composite?: boolean;
-        atomic?: boolean;
         compositionMap?: string;
         compositionAgent?: boolean;
         compositionAgentMode?: string;
@@ -214,13 +204,12 @@ export function registerImportCommand(program: Command): void {
       }) => {
         const interactiveTerminalSupported = getInteractiveTerminalSupport().supported;
 
-        // --modify and --push-from-run resume a recorded session; the composition
-        // mode comes from that run's record, so composition flags on the command
-        // line don't apply. Warn and clear them rather than let them mislead.
+        // --modify and --push-from-run resume a recorded session; composition
+        // flags on the command line don't apply because the recorded run
+        // already determined the composition inputs. Warn and clear them
+        // rather than let them mislead.
         if (opts.modify !== undefined || opts.pushFromRun !== undefined) {
           const passedCompositionFlags = [
-            opts.composite ? '--composite' : null,
-            opts.atomic ? '--atomic' : null,
             opts.compositionMap ? '--composition-map' : null,
             opts.compositionAgent ? '--composition-agent' : null,
             opts.compositionAgentMode ? '--composition-agent-mode' : null,
@@ -230,10 +219,8 @@ export function registerImportCommand(program: Command): void {
           if (passedCompositionFlags.length > 0) {
             const entry = opts.modify !== undefined ? '--modify' : '--push-from-run';
             process.stderr.write(
-              `Note: ${passedCompositionFlags.join(', ')} ignored with ${entry} — composition mode comes from the recorded run.\n`,
+              `Note: ${passedCompositionFlags.join(', ')} ignored with ${entry} — composition inputs come from the recorded run.\n`,
             );
-            opts.composite = undefined;
-            opts.atomic = undefined;
             opts.compositionMap = undefined;
             opts.compositionAgent = undefined;
             opts.compositionAgentMode = undefined;
@@ -418,7 +405,6 @@ export function registerImportCommand(program: Command): void {
             host?: string;
             autoAcceptScope?: boolean;
             autoRejectCycles?: boolean;
-            compositionMode?: CompositionMode;
             compositionMap?: string;
             compositionAgent?: boolean;
             compositionAgentMode?: string;
@@ -443,7 +429,6 @@ export function registerImportCommand(program: Command): void {
           const creds = await readExperiencesCredentials();
           const resolvedAgent = resolveAgent(opts.agent, creds.agent);
           const resolvedModel = resolveModel(opts.model, creds.agentModel);
-          const resolvedCompositionMode = resolveCompositionMode(opts, creds.compositionMode);
 
           if (opts.bedrock && !(isAgentName(resolvedAgent) && agentSupportsBedrock(resolvedAgent))) {
             process.stderr.write(`Error: --bedrock is not supported for --agent ${resolvedAgent}\n`);
@@ -488,7 +473,6 @@ export function registerImportCommand(program: Command): void {
               host: opts.host,
               autoAcceptScope,
               autoRejectCycles: opts.autoRejectCycles ?? false,
-              compositionMode: resolvedCompositionMode,
               ...buildCompositionForwardingOptions(opts),
               noCache: opts.cache === false,
               skipMapTokens: opts.skipMapTokens ?? false,
@@ -541,7 +525,6 @@ export function registerImportCommand(program: Command): void {
         const headlessCreds = await readExperiencesCredentials();
         const headlessAgent = resolveAgent(opts.agent, headlessCreds.agent);
         const headlessModel = resolveModel(opts.model, headlessCreds.agentModel);
-        const headlessCompositionMode = resolveCompositionMode(opts, headlessCreds.compositionMode);
 
         if (opts.bedrock && !(isAgentName(headlessAgent) && agentSupportsBedrock(headlessAgent))) {
           process.stderr.write(`Error: --bedrock is not supported for --agent ${headlessAgent}\n`);
@@ -577,7 +560,6 @@ export function registerImportCommand(program: Command): void {
             selectPromptPath: opts.selectPromptPath,
             autoRejectCycles: opts.autoRejectCycles ?? false,
             allowDeletions: opts.allowDeletions ?? false,
-            compositionMode: headlessCompositionMode,
             ...buildCompositionForwardingOptions(opts),
           },
           (line) => process.stderr.write(line + '\n'),

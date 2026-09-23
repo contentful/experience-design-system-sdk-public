@@ -2575,8 +2575,8 @@ describe('generation cache', () => {
     expect(computeComponentInputHash(base)).toBe(computeComponentInputHash(enrichedByLLM));
   });
 
-  it('computeComponentInputHash includes slot composition edges (allowedComponents) so composite and atomic runs never collide', () => {
-    const atomic = {
+  it('computeComponentInputHash includes slot composition edges (allowedComponents)', () => {
+    const bare = {
       component_id: 'abc123',
       name: 'Card',
       source: 'src/Card.tsx',
@@ -2584,23 +2584,23 @@ describe('generation cache', () => {
       props: [{ name: 'title', type: 'string', required: true }],
       slots: [{ name: 'children', isDefault: true }],
     };
-    const composite = {
-      ...atomic,
+    const withEdges = {
+      ...bare,
       slots: [{ name: 'children', isDefault: true, allowedComponents: ['Button', 'Icon'] }],
     };
-    expect(computeComponentInputHash(atomic)).not.toBe(computeComponentInputHash(composite));
+    expect(computeComponentInputHash(bare)).not.toBe(computeComponentInputHash(withEdges));
 
     const differentEdges = {
-      ...atomic,
+      ...bare,
       slots: [{ name: 'children', isDefault: true, allowedComponents: ['Button'] }],
     };
-    expect(computeComponentInputHash(composite)).not.toBe(computeComponentInputHash(differentEdges));
+    expect(computeComponentInputHash(withEdges)).not.toBe(computeComponentInputHash(differentEdges));
 
     const sameEdges = {
-      ...atomic,
+      ...bare,
       slots: [{ name: 'children', isDefault: true, allowedComponents: ['Button', 'Icon'] }],
     };
-    expect(computeComponentInputHash(composite)).toBe(computeComponentInputHash(sameEdges));
+    expect(computeComponentInputHash(withEdges)).toBe(computeComponentInputHash(sameEdges));
   });
 
   it('computeComponentInputHash changes when extractor-stable fields change', () => {

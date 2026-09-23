@@ -20,16 +20,12 @@ import { isEmptyPreview } from './preview-utils.js';
 import { ServerPreviewApp, ServerPreviewConfirm, ServerApplyProgress, ServerApplyDone } from './tui/ServerApplyView.js';
 import { SelectView, makeSelectKey, type SelectableEntity } from './tui/SelectView.js';
 import { buildPostPushUrl } from '../lib/contentful-urls.js';
-import { resolveCompositionMode, type CompositionMode } from '../lib/composition-mode.js';
 import {
   addAllowDeletionsOption,
   addArtifactInputOptions,
-  addCompositionOptions,
   addContentfulTargetOptions,
   addSelectionOptions,
 } from '../lib/command-options.js';
-import { stripAllowedComponents } from '../import/strip-allowed-components.js';
-import { readExperiencesCredentials } from '../credentials-store.js';
 import { getInteractiveTerminalSupport, requireInteractiveTerminal } from '../lib/terminal-capabilities.js';
 import {
   bindAnalyticsSessionId,
@@ -156,8 +152,6 @@ interface SharedImportOptions {
   environmentId?: string;
   cmaToken?: string;
   host?: string;
-  composite?: boolean;
-  atomic?: boolean;
 }
 
 interface PreviewOptions extends SharedImportOptions {
@@ -185,7 +179,6 @@ type SharedInputs = Awaited<ReturnType<typeof resolveSharedInputs>>;
 function addSharedApplyOptions(command: Command): void {
   addArtifactInputOptions(command);
   addContentfulTargetOptions(command);
-  addCompositionOptions(command);
 }
 
 function splitSelectedKeys(selectedKeys: Set<string>): {
@@ -413,21 +406,6 @@ async function resolveSharedInputs(opts: SharedImportOptions): Promise<{
       );
     }
     components = result.components;
-  }
-
-  // Atomic mode (spec T8/T12): strip embedded-component composition at the
-  // single serialization boundary, regardless of load path. Normalizing here
-  // (rather than only in loadCDFComponents) also covers hand-authored
-  // `--components` files. Starving `$allowedComponents` at this one point
-  // means slot-cycle detection downstream structurally returns zero.
-  let configMode: CompositionMode | undefined;
-  try {
-    configMode = (await readExperiencesCredentials()).compositionMode;
-  } catch {
-    // Missing credentials.json → resolver falls through to default (atomic).
-  }
-  if (resolveCompositionMode(opts, configMode) === 'atomic') {
-    components = stripAllowedComponents(components);
   }
 
   let tokens: DTCGTokenEntry[] = [];
