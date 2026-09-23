@@ -130,8 +130,6 @@ describe('runLsCommand', () => {
       expect(text).toContain('Agent:');
       expect(text).toContain('Pushed:');
       expect(text).toContain('fhuxdukarhrp/dsi100');
-      expect(text).toContain('experiences import --push-from-run 01HXYZABCDEFGHJKMNPQRSTVWXY');
-      expect(text).toContain('experiences import --modify 01HXYZABCDEFGHJKMNPQRSTVWXY');
       expect(text).not.toMatch(/^ID\s+CREATED/m);
     });
 
@@ -227,33 +225,6 @@ describe('runLsCommand', () => {
       await expect(runLsCommand({ write: () => undefined, pushed: true, notPushed: true })).rejects.toThrow(
         /mutually exclusive|cannot.*both/i,
       );
-    });
-  });
-
-  describe('footer hints', () => {
-    it('renders next-command hints after the table using the newest run id', async () => {
-      mockListRuns.mockResolvedValueOnce([sampleRun({ id: 'NEWEST' }), sampleRun({ id: 'OLDER' })]);
-      const out: string[] = [];
-      await runLsCommand({ write: (s) => out.push(s) });
-      const text = out.join('');
-      expect(text).toContain('experiences import --push-from-run NEWEST');
-      expect(text).toContain('experiences import --modify NEWEST');
-      const tail = text.slice(text.length - 200);
-      expect(tail).toContain('--push-from-run');
-    });
-
-    it('suppresses the footer when there are no runs', async () => {
-      mockListRuns.mockResolvedValueOnce([]);
-      const out: string[] = [];
-      await runLsCommand({ write: (s) => out.push(s) });
-      expect(out.join('')).not.toContain('--push-from-run');
-    });
-
-    it('suppresses the footer under --json', async () => {
-      mockListRuns.mockResolvedValueOnce([sampleRun()]);
-      const out: string[] = [];
-      await runLsCommand({ write: (s) => out.push(s), json: true });
-      expect(out.join('')).not.toContain('experiences import --push-from-run');
     });
   });
 });
