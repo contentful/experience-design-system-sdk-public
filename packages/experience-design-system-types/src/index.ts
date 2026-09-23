@@ -54,4 +54,9 @@ export type {
 
 // Sources API — Manifest
 export type { ManifestPayload } from './sources-api/manifest/index.js';
-export { buildManifest, buildFilteredManifest, stripUnsupportedSlotFields } from './sources-api/manifest/index.js';
+export {
+  buildManifest,
+  buildFilteredManifest,
+  stripUnsupportedSlotFields,
+  validateManifestSlotReferences,
+} from './sources-api/manifest/index.js';

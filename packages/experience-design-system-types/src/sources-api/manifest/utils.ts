@@ -1,5 +1,5 @@
 import { CDF_V1_SCHEMA_URL } from '../../cdf/index.js';
-import type { CDFComponentEntry } from '../../cdf/index.js';
+import type { CDFComponentEntry, CDFValidationError } from '../../cdf/index.js';
 import type { DTCGTokenEntry } from '../../dtcg/types.js';
 import type { ManifestPayload } from './index.js';
 
@@ -42,6 +42,42 @@ export function buildManifest(
     manifest.tokensManifest = tokensObj;
   }
   return manifest;
+}
+
+/**
+ * Manifest-local pre-flight for `$allowedComponents` references: every entry
+ * must resolve to another component in the same manifest, or be left for the
+ * server to resolve against the target environment (this function has no
+ * network access, so it cannot tell "doesn't exist anywhere" from "exists
+ * only in the target env" — it only flags names absent from `components`).
+ *
+ * Mirrors the error shape `previewImport`/`applyImport` return for the
+ * equivalent server-side check, so callers can route both through the same
+ * `path`/`message` handling — just without a round-trip when the typo is
+ * local to the manifest itself.
+ */
+export function validateManifestSlotReferences(
+  components: Array<{ key: string; entry: CDFComponentEntry }>,
+): CDFValidationError[] {
+  const manifestKeys = new Set(components.map((c) => c.key));
+
+  const errors: CDFValidationError[] = [];
+  for (const { key, entry } of components) {
+    const slots = entry.$slots ?? {};
+    for (const [slotKey, slot] of Object.entries(slots)) {
+      const allowed = slot?.$allowedComponents ?? [];
+      const unresolved = allowed.filter((name) => !manifestKeys.has(name));
+      if (unresolved.length === 0) continue;
+      errors.push({
+        path: `manifest:components/${key}/$slots/${slotKey}/$allowedComponents`,
+        message:
+          `Unresolved $allowedComponents reference(s): ${unresolved.join(', ')}. ` +
+          `Not found in this manifest — if not an existing Component in the target ` +
+          `environment either, the server will reject this on preview/apply.`,
+      });
+    }
+  }
+  return errors;
 }
 
 export function buildFilteredManifest(
