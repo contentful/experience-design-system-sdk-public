@@ -371,10 +371,12 @@ export class ImportApiClient {
   async previewImport(manifest: ManifestPayload): Promise<ServerPreviewResponse> {
     const debug = getDebugLogger();
     const startedAt = Date.now();
+    const componentCount = Object.keys(manifest.componentsManifest ?? {}).filter((key) => key !== '$schema').length;
+    const tokenCount = Object.keys(manifest.tokensManifest ?? {}).length;
     debug.event('apply', 'preview.request', {
       url: `${this.base()}/design_systems/imports/preview`,
-      componentCount: (manifest as { components?: unknown[] }).components?.length ?? 0,
-      tokenCount: (manifest as { designTokens?: unknown[] }).designTokens?.length ?? 0,
+      componentCount,
+      tokenCount,
     });
     const result = await this.requestWithRetry('preview', PREVIEW_ERROR_PREFIX, () =>
       designSystemImportSourcelessPreview({

@@ -256,6 +256,29 @@ describe('ImportApiClient — validateToken', () => {
 });
 
 describe('ImportApiClient — previewImport', () => {
+  it('logs manifest component and token counts from the manifest fields', async () => {
+    const serverResponse: ServerPreviewResponse = {
+      components: { new: [], changed: [], unchanged: [], removed: [] },
+      tokens: { new: [], changed: [], unchanged: [], removed: [] },
+      taxonomies: { new: [], changed: [], unchanged: [], removed: [] },
+    };
+    const event = vi.fn();
+    vi.spyOn(debugLogger, 'getDebugLogger').mockReturnValue({ enabled: true, path: null, event });
+    mockFetch.mockResolvedValue(jsonResponse(200, serverResponse));
+
+    const client = createClient();
+    await client.previewImport({
+      componentsManifest: { $schema: 'schema', Button: {}, Card: {} },
+      tokensManifest: { 'color.brand.primary': {}, 'color.brand.secondary': {} },
+    });
+
+    expect(event).toHaveBeenCalledWith(
+      'apply',
+      'preview.request',
+      expect.objectContaining({ componentCount: 2, tokenCount: 2 }),
+    );
+  });
+
   it('sends POST with manifest body and returns parsed response', async () => {
     const serverResponse: ServerPreviewResponse = {
       components: { new: [], changed: [], unchanged: [], removed: [] },
