@@ -22,15 +22,7 @@ type BooleanPreferenceProps = {
   onDone: StepDone;
 };
 
-const ON = 'on';
-const OFF = 'off';
-
-/**
- * The three boolean preferences differ only in their wording and which field
- * they persist, so they share one screen. The operator's current setting starts
- * highlighted, so pressing Enter keeps it and writes nothing.
- */
-export function BooleanPreference({
+export function BooleanInput({
   helpText,
   question,
   labels,
@@ -65,22 +57,18 @@ export function BooleanPreference({
           <Text>{question}</Text>
           <Box marginTop={1}>
             <Select
-              // Select always highlights its first option and only reports a
-              // value that differs from `defaultValue`, so the current setting
-              // leads the list and no `defaultValue` is given — otherwise
-              // choosing the current setting would report nothing at all.
               options={
                 current
                   ? [
-                      { label: labels.on, value: ON },
-                      { label: labels.off, value: OFF },
+                      { label: labels.on, value: 'on' },
+                      { label: labels.off, value: 'off' },
                     ]
                   : [
-                      { label: labels.off, value: OFF },
-                      { label: labels.on, value: ON },
+                      { label: labels.off, value: 'off' },
+                      { label: labels.on, value: 'on' },
                     ]
               }
-              onChange={(value) => submit(value === ON)}
+              onChange={(value) => submit(value === 'on')}
             />
           </Box>
         </Box>

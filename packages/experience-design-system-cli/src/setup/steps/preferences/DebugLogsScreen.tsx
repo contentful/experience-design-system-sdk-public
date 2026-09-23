@@ -1,12 +1,12 @@
 import React from 'react';
 import type { StepDone } from '../StepLayout.js';
-import { BooleanPreference } from './BooleanPreference.js';
+import { BooleanInput } from './BooleanInput.js';
 
 export const DEBUG_HELP = 'Writes a verbose trace of every command decision, for troubleshooting.';
 
-export function DebugScreen({ onDone }: { onDone: StepDone }): React.ReactElement {
+export function DebugLogsScreen({ onDone }: { onDone: StepDone }): React.ReactElement {
   return (
-    <BooleanPreference
+    <BooleanInput
       helpText={DEBUG_HELP}
       question="Debug logging"
       labels={{ on: 'Write verbose traces', off: 'Stay quiet' }}

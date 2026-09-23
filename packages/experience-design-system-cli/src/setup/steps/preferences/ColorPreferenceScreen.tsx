@@ -6,7 +6,7 @@ export const NO_COLOR_HELP = 'Prints plain text with no color, which suits CI lo
 
 export const PROFILE_VARIABLE = 'NO_COLOR';
 
-export function NoColorScreen({ profilePath, onDone }: { profilePath: string; onDone: StepDone }): React.ReactElement {
+export function ColorPreferenceScreen({ profilePath, onDone }: { profilePath: string; onDone: StepDone }): React.ReactElement {
   return (
     <ProfilePreference
       helpText={NO_COLOR_HELP}

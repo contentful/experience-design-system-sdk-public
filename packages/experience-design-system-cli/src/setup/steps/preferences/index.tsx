@@ -1,10 +1,10 @@
 import type { StepDone } from '../StepLayout.js';
-import { AnalyticsScreen } from './analytics.js';
-import { AutoFilterScreen } from './auto-filter.js';
-import { ConcurrencyScreen } from './concurrency.js';
-import { CustomPromptsScreen } from './custom-prompts.js';
-import { DebugScreen } from './debug.js';
-import { NoColorScreen } from './no-color.js';
+import { AnalyticsScreen } from './AnalyticsScreen.js';
+import { AutoFilterScreen } from './AutoFilterScreen.js';
+import { ConcurrencyScreen } from './ExtractionConcurrencyScreen.js';
+import { CustomPromptsScreen } from './CustomPromptScreen.js';
+import { DebugLogsScreen } from './DebugLogsScreen.js';
+import { ColorPreferenceScreen } from './ColorPreferenceScreen.js';
 
 export type PreferenceScreenProps = {
   profilePath: string;
@@ -35,7 +35,7 @@ export const PREFERENCE_OPTIONS = [
   {
     key: 'debug',
     label: 'Debug logging',
-    Screen: ({ onDone }: PreferenceScreenProps) => <DebugScreen onDone={onDone} />,
+    Screen: ({ onDone }: PreferenceScreenProps) => <DebugLogsScreen onDone={onDone} />,
   },
   {
     key: 'analytics',
@@ -46,7 +46,7 @@ export const PREFERENCE_OPTIONS = [
     key: 'noColor',
     label: 'Terminal colors',
     Screen: ({ profilePath, onDone }: PreferenceScreenProps) => (
-      <NoColorScreen profilePath={profilePath} onDone={onDone} />
+      <ColorPreferenceScreen profilePath={profilePath} onDone={onDone} />
     ),
   },
 ] as const;

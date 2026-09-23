@@ -15,16 +15,11 @@ export const CONCURRENCY_HELP = 'Analyzes more components at once, which is fast
 export const DEFAULT_LABEL = 'One per CPU core';
 
 const BOOSTED = 8;
-
-/** The value Select reports for leaving the setting alone. */
 const KEEP = 'keep';
 
 /**
  * Files to extract at once. Stored in the credentials file rather than the shell
- * profile: it is our own setting, and a profile export would not reach a Windows
- * shell. The extractor reads `EDS_EXTRACT_CONCURRENCY` from the environment,
- * which the CLI fills in from this value while starting up, so an operator who
- * exports it themselves still wins.
+ * profile
  */
 export function ConcurrencyScreen({ onDone }: { onDone: StepDone }): React.ReactElement {
   const [stored, setStored] = useState<ExperiencesCredentials | null>(null);

@@ -10,7 +10,7 @@ import {
   type SetupResultEntry,
 } from './lib/layout.js';
 import { SetupStepper } from './SetupStepper.js';
-import { CodingAgentScreen } from './steps/coding-agent.js';
+import { CodingAgentScreen } from './steps/CodingAgentScreen.js';
 import { ContentfulScreen } from './steps/contentful-credentials.js';
 import type { StepStatus } from './steps/StepLayout.js';
 import { PreferencesStep } from './steps/preferences/PreferencesStep.js';
