@@ -26,6 +26,27 @@ export function generateRunId(): string {
   return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
 }
 
+// Computed once, at module load, rather than lazily — this module is pulled in via
+// app.tsx's static imports as soon as the TUI boots, so "once per module load" is
+// "once per terminal session." Reuses the runId timestamp format so a session
+// directory and the run files inside it sort chronologically the same way.
+const SESSION_ID = generateRunId();
+
+export function getSessionId(): string {
+  return SESSION_ID;
+}
+
+function sessionDebugDir(): string {
+  return join(findPackageRoot(import.meta.url, PACKAGE_NAME), '.contentful', 'debug', 'sessions', SESSION_ID);
+}
+
+// Fire-and-forget so a user who never visits a wired flow still sees an (empty)
+// session directory the moment they boot — matches startDebugRun's fail-open style.
+void isDebugModeEnabled().then((enabled) => {
+  if (!enabled) return undefined;
+  return mkdir(sessionDebugDir(), { recursive: true });
+});
+
 export async function isDebugModeEnabled(): Promise<boolean> {
   try {
     return (await readDebugModeSetting()).enabled;
@@ -85,7 +106,7 @@ export async function finishDebugRun({
 
   const flowSegments = run.flow.split('/');
   const flowSlug = flowSegments.join('-');
-  const dir = join(findPackageRoot(import.meta.url, PACKAGE_NAME), '.contentful', 'debug', ...flowSegments);
+  const dir = join(sessionDebugDir(), ...flowSegments);
   const filename = `${run.runId}__${flowSlug}__${run.step}.md`;
 
   await mkdir(dir, { recursive: true });
