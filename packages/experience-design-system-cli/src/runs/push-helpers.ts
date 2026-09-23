@@ -36,7 +36,7 @@ export type PushSessionOptions = {
 /**
  * Push a recorded pipeline.db session's components + tokens to Contentful by
  * shelling out to `experiences apply push --session <id>`. Does no local
- * file I/O — that is the whole point of --push-from-run.
+ * file I/O because the recorded session is the source of truth.
  */
 export async function pushRunSession(opts: PushSessionOptions): Promise<PushSessionResult> {
   const args = [

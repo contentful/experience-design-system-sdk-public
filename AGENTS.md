@@ -161,7 +161,7 @@ The apply flow validates the target, builds a `ManifestPayload` through the shar
 
 By default, headless `import` runs `analyze select-agent` to select components automatically. Manual selection is available through the standalone `analyze select` command.
 
-Headless mode is entered when credentials or `--no-push` are provided. In a non-TTY without a supported headless entry point the command exits 1 with a fail-loud message rather than hanging.
+In a non-TTY without a supported entry point the command exits 1 with a fail-loud message rather than hanging.
 
 Keep the orchestrator thin. Logic belongs in the individual command implementations.
 

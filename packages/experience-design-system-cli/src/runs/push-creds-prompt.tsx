@@ -1,7 +1,7 @@
 import React from 'react';
 
 /**
- * Interactive credentials fallback for `experiences import --push-from-run`.
+ * Interactive credentials fallback for recorded-session pushes.
  *
  * The wizard ships a full `CredentialsStep` Ink component already — rather
  * than reimplementing the field-entry UI, we mount that step in a tiny Ink
