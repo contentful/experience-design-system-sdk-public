@@ -36,7 +36,6 @@ export type SetupSkipFlags = {
 export type SetupOutcome = {
   results: SetupResultEntry[];
   exitCode: number;
-  restartRequired: boolean;
 };
 
 type SetupScreenProps = {
@@ -82,10 +81,6 @@ export function SetupScreen({
         setScreen(build(resolve));
       });
 
-    const enterStep = (step: number): void => {
-      setActiveStep(step);
-    };
-
     void (async () => {
       const results: SetupResultEntry[] = [];
 
@@ -104,11 +99,7 @@ export function SetupScreen({
 
       if (!prerequisites.node.passed) {
         setNotice('Node.js setup requires a shell restart. Re-run experiences setup afterwards.');
-        const restartOutcome: SetupOutcome = {
-          results,
-          exitCode: 0,
-          restartRequired: prerequisites.node.restartRequired ?? false,
-        };
+        const restartOutcome: SetupOutcome = { results, exitCode: 0 };
         setOutcome(restartOutcome);
         onComplete(restartOutcome);
         return;
@@ -125,7 +116,7 @@ export function SetupScreen({
         results.push({ name: 'Install & build', status: 'skipped', required: false });
       }
 
-      enterStep(2);
+      setActiveStep(2);
       if (skip.skipAgent) {
         results.push({ name: 'Coding agent', status: 'skipped', required: false });
       } else {
@@ -133,7 +124,7 @@ export function SetupScreen({
         results.push({ name: 'Coding agent', status, required: true });
       }
 
-      enterStep(3);
+      setActiveStep(3);
       if (skip.skipCredentials) {
         results.push({ name: 'Contentful credentials', status: 'skipped', required: false });
       } else {
@@ -141,7 +132,7 @@ export function SetupScreen({
         results.push({ name: 'Contentful credentials', status, required: false });
       }
 
-      enterStep(4);
+      setActiveStep(4);
       if (skip.skipOptional) {
         results.push({ name: 'Preferences', status: 'skipped', required: false });
       } else {
@@ -152,7 +143,7 @@ export function SetupScreen({
       }
 
       const exitCode = countRequiredFailures(results) === 0 ? 0 : 1;
-      const finalOutcome: SetupOutcome = { results, exitCode, restartRequired: false };
+      const finalOutcome: SetupOutcome = { results, exitCode };
       setOutcome(finalOutcome);
       onComplete(finalOutcome);
     })();

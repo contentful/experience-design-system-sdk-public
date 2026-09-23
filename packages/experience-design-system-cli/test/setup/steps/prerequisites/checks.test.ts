@@ -31,7 +31,7 @@ describe('prerequisites step', () => {
     });
 
     await expect(runPrerequisitesSetup(dependencies, '/repo')).resolves.toEqual({
-      node: { passed: false, restartRequired: true },
+      node: { passed: false },
     });
     expect(events).toContainEqual({
       kind: 'warning',

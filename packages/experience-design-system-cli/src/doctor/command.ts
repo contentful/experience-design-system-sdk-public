@@ -4,7 +4,7 @@ import { c } from '../output/format.js';
 import { reportAgent, reportBuild, reportDependencies, reportNode, reportPnpm } from './checks.js';
 import { fail, info, ok, section, warn } from './report.js';
 
-export interface DoctorOptions {
+interface DoctorOptions {
   skipBuild?: boolean;
   skipAgent?: boolean;
 }
@@ -68,7 +68,7 @@ function printSummary(results: CheckOutcome[]): number {
   return 1;
 }
 
-export async function runDoctor(opts: DoctorOptions): Promise<void> {
+async function runDoctor(opts: DoctorOptions): Promise<void> {
   process.stderr.write(`${c.bold('experiences doctor')} — checking your environment\n`);
   process.exitCode = printSummary(await runChecks(opts));
 }

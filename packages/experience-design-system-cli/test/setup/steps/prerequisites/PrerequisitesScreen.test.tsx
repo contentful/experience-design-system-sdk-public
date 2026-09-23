@@ -58,7 +58,7 @@ describe('PrerequisitesScreen', () => {
     expect(run).toHaveBeenCalledWith('pnpm', ['--version']);
   });
 
-  it('marks a Node version manager install as restart-required', async () => {
+  it('tells the operator to open a new shell after installing a version manager', async () => {
     const { lastFrame, stdin, onDone } = setup(makeDeps({ nodeVersion: '22.0.0', binaryExists: async () => false }));
 
     await waitForFrame(
@@ -68,10 +68,11 @@ describe('PrerequisitesScreen', () => {
     stdin.write('y');
     await settle();
 
-    expect(onDone).toHaveBeenCalledWith(expect.objectContaining({ node: { passed: false, restartRequired: true } }));
+    expect(lastFrame()).toContain('nvm installed. Open a new shell, then re-run experiences setup.');
+    expect(onDone).toHaveBeenCalledWith(expect.objectContaining({ node: { passed: false } }));
   });
 
-  it('reports no restart when the version manager install is declined', async () => {
+  it('points at a manual install when the version manager install is declined', async () => {
     const { lastFrame, stdin, onDone } = setup(makeDeps({ nodeVersion: '22.0.0', binaryExists: async () => false }));
 
     await waitForFrame(
@@ -81,6 +82,7 @@ describe('PrerequisitesScreen', () => {
     stdin.write('n');
     await settle();
 
+    expect(lastFrame()).toContain('Install Node 24 manually from https://nodejs.org');
     expect(onDone).toHaveBeenCalledWith(expect.objectContaining({ node: { passed: false } }));
   });
 

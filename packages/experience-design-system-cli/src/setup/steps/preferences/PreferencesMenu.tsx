@@ -10,7 +10,7 @@ import { ColorPreferenceScreen } from './ColorPreferenceScreen.js';
 import { CustomPromptsScreen } from './CustomPromptScreen.js';
 import { DebugLogsScreen } from './DebugLogsScreen.js';
 
-export type PreferenceScreenProps = {
+type PreferenceScreenProps = {
   onDone: StepDone;
 };
 
@@ -42,15 +42,15 @@ export const PREFERENCE_OPTIONS = [
   },
 ] as const;
 
-export type PreferenceKey = (typeof PREFERENCE_OPTIONS)[number]['key'];
+type PreferenceKey = (typeof PREFERENCE_OPTIONS)[number]['key'];
 
 /** The value the trailing row reports; no PreferenceKey contains a colon. */
 const DONE_VALUE = 'menu:done';
 
-export const PREFERENCES_MENU_HELP = 'Every preference already has a working default — open one only to change it.';
+const PREFERENCES_MENU_HELP = 'Every preference already has a working default — open to change it.';
 
 /** What each preference currently resolves to, for the menu's summary column. */
-export type PreferenceSummary = Record<PreferenceKey, string>;
+type PreferenceSummary = Record<PreferenceKey, string>;
 
 type PreferenceListProps = {
   /** Preferences changed so far this visit; decides what Done reports. */
@@ -165,8 +165,6 @@ function PreferenceList({ changed, onOpen, onDone }: PreferenceListProps): React
           </Box>
         </Box>
       }
-    >
-      {null}
-    </StepLayout>
+    />
   );
 }

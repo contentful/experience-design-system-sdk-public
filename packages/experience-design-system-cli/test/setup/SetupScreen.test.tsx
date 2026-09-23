@@ -161,7 +161,7 @@ describe('SetupScreen', () => {
     expect(frame).toContain('✓ Setup complete. You can now run: experiences import');
     expect(frame).toContain('Run experiences doctor any time to re-check.');
 
-    expect(onComplete).toHaveBeenCalledWith({ results: expect.any(Array), exitCode: 0, restartRequired: false });
+    expect(onComplete).toHaveBeenCalledWith({ results: expect.any(Array), exitCode: 0 });
   });
 
   it('reports a failed required action and a non-zero exit code', async () => {

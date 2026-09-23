@@ -1,7 +1,7 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { readExperiencesCredentials } from '../credentials-store.js';
-import { AGENT_DEFS } from '../lib/agent-definitions.js';
+import { AGENT_DEFS, INSTALLABLE_AGENTS, installCommand } from '../lib/agent-definitions.js';
 import { binaryExists, pathExists } from '../setup/lib/shell.js';
 import {
   buildCli,
@@ -145,8 +145,9 @@ export async function reportAgent(): Promise<boolean> {
   warn('No coding agent found on PATH');
   info('The coding agent is required for the generate steps in experiences import.');
   info('Install one of:');
-  info('  • Claude Code:   npm install -g @anthropic-ai/claude-code');
-  info('  • OpenAI Codex:  npm install -g @openai/codex');
-  info('  • OpenCode:      npm install -g opencode-ai');
+  const labelWidth = Math.max(...INSTALLABLE_AGENTS.map((agent) => agent.name.length + 1)) + 2;
+  for (const agent of INSTALLABLE_AGENTS) {
+    info(`  • ${`${agent.name}:`.padEnd(labelWidth)}${installCommand(agent)}`);
+  }
   return false;
 }

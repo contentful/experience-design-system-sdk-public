@@ -49,7 +49,7 @@ export type PnpmCheck =
 type PnpmDeps = { binaryExists: typeof binaryExists; run: typeof runSpawn };
 
 /** Whether pnpm is on PATH and reports a version. */
-export async function detectPnpm(
+async function detectPnpm(
   deps: PnpmDeps = { binaryExists, run: runSpawn },
 ): Promise<Extract<PnpmCheck, { status: 'missing' | 'broken' | 'ok' }>> {
   if (!(await deps.binaryExists('pnpm'))) return { status: 'missing' };
@@ -73,7 +73,7 @@ export async function checkPnpm(pkgRoot: string, deps: PnpmDeps = { binaryExists
   return detected;
 }
 
-export interface InstallCheck {
+export interface CommandCheck {
   passed: boolean;
   result: ShellCommandResult;
 }
@@ -81,20 +81,15 @@ export interface InstallCheck {
 export async function installDependencies(
   repoRoot: string,
   deps: { run: typeof runSpawn } = { run: runSpawn },
-): Promise<InstallCheck> {
+): Promise<CommandCheck> {
   const result = await deps.run('pnpm', ['install', '--frozen-lockfile'], { cwd: repoRoot });
   return { passed: result.exitCode === 0, result };
-}
-
-export interface BuildCheck {
-  passed: boolean;
-  result: ShellCommandResult;
 }
 
 export async function buildCli(
   repoRoot: string,
   deps: { run: typeof runSpawn } = { run: runSpawn },
-): Promise<BuildCheck> {
+): Promise<CommandCheck> {
   const result = await deps.run('pnpm', ['--filter', '@contentful/experience-design-system-cli', 'run', 'build'], {
     cwd: repoRoot,
   });

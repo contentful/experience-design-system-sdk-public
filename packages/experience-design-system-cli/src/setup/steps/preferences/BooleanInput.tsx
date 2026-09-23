@@ -73,8 +73,6 @@ export function BooleanInput({
           </Box>
         </Box>
       }
-    >
-      {null}
-    </StepLayout>
+    />
   );
 }

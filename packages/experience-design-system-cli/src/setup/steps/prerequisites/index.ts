@@ -3,8 +3,6 @@ import { runBuildSetup } from './build.js';
 import { runNodeSetup } from './node.js';
 import { runPnpmSetup } from './pnpm.js';
 
-export { runBuildSetup, runNodeSetup, runPnpmSetup };
-
 export async function runPrerequisitesSetup(
   dependencies: PrerequisiteDeps,
   repoRoot: string,

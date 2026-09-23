@@ -7,7 +7,7 @@ import type { SetupOutcome, SetupSkipFlags } from './SetupScreen.js';
 
 export const SETUP_REQUIRES_TTY_MESSAGE = 'Error: experiences setup requires an interactive terminal.';
 
-export function getCliVersion(): string {
+function getCliVersion(): string {
   const pkg = JSON.parse(readFileSync(join(findPkgRoot(), 'package.json'), 'utf8')) as { version: string };
   return pkg.version;
 }

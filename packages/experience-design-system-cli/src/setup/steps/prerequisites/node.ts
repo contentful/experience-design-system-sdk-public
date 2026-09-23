@@ -2,9 +2,7 @@ import { checkNodeVersion, detectNodeVersionManagers } from '../../lib/checks.js
 import { REQUIRED_NODE_MAJOR } from '../../lib/shell.js';
 import { emit, type PrerequisiteDeps, type PrerequisiteResult } from './deps.js';
 
-export async function runNodeSetup(
-  dependencies: PrerequisiteDeps,
-): Promise<PrerequisiteResult & { restartRequired?: boolean }> {
+export async function runNodeSetup(dependencies: PrerequisiteDeps): Promise<PrerequisiteResult> {
   const check = checkNodeVersion(dependencies.nodeVersion);
   if (check.passed) {
     emit(dependencies, 'success', `Node.js v${check.version} — already good`);
@@ -42,7 +40,7 @@ export async function runNodeSetup(
       'success',
       `Node ${REQUIRED_NODE_MAJOR} installed via nvm. Re-run experiences setup in a fresh shell to pick it up.`,
     );
-    return { passed: false, restartRequired: true };
+    return { passed: false };
   }
 
   if (hasFnm) {
@@ -84,7 +82,7 @@ export async function runNodeSetup(
       'success',
       `Node ${REQUIRED_NODE_MAJOR} installed via fnm. Re-run experiences setup in a fresh shell.`,
     );
-    return { passed: false, restartRequired: true };
+    return { passed: false };
   }
 
   emit(dependencies, 'info', 'No Node version manager detected (nvm or fnm).');
@@ -101,5 +99,5 @@ export async function runNodeSetup(
     return { passed: false };
   }
   emit(dependencies, 'success', 'nvm installed. Open a new shell, then re-run experiences setup.');
-  return { passed: false, restartRequired: true };
+  return { passed: false };
 }

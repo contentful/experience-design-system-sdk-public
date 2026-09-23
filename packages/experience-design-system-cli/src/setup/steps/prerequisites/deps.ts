@@ -31,7 +31,7 @@ export interface PrerequisiteResult {
 }
 
 export interface PrerequisitesOutcome {
-  node: PrerequisiteResult & { restartRequired?: boolean };
+  node: PrerequisiteResult;
   pnpm?: PrerequisiteResult;
   build?: PrerequisiteResult;
 }

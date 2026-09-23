@@ -8,7 +8,7 @@ import {
 } from '../../../credentials-store.js';
 import { StepLayout, type StepDone } from '../StepLayout.js';
 
-export const CUSTOM_PROMPTS_HELP =
+const CUSTOM_PROMPTS_HELP =
   'Replaces the built-in instructions the coding agent follows when it selects and generates components.';
 
 export type SkillPromptKind = 'select' | 'generate';
@@ -83,9 +83,7 @@ export function CustomPromptsScreen({ onDone }: { onDone: StepDone }): React.Rea
             />
           </Box>
         }
-      >
-        {null}
-      </StepLayout>
+      />
     );
   }
 
@@ -100,8 +98,6 @@ export function CustomPromptsScreen({ onDone }: { onDone: StepDone }): React.Rea
           <TextInput key={phase} onSubmit={(value) => submit(phase, value)} />
         </Box>
       }
-    >
-      {null}
-    </StepLayout>
+    />
   );
 }

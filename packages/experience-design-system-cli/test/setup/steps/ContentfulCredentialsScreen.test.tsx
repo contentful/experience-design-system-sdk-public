@@ -61,11 +61,10 @@ describe('ContentfulScreen', () => {
       () => lastFrame(),
       (f) => f.includes('Current values'),
     );
-
-    expect(frame).toContain('Space ID        space');
-    expect(frame).toContain('Environment ID  master');
-    expect(frame).toContain('CMA Token       ••••••••...');
-    expect(frame).toContain('API Host        api.contentful.com');
+    expect(frame).toMatch(/Space ID +space/);
+    expect(frame).toMatch(/Environment ID +master/);
+    expect(frame).toMatch(/CMA Token +••••••••\.\.\./);
+    expect(frame).toMatch(/API Host +api\.contentful\.com/);
     expect(frame).not.toContain('✓ Space ID');
   });
 
@@ -77,8 +76,8 @@ describe('ContentfulScreen', () => {
       (f) => f.includes('Current values'),
     );
 
-    expect(frame).toContain('⚠ Environment ID  (not set)');
-    expect(frame).toContain('⚠ CMA Token       (not set)');
+    expect(frame).toMatch(/⚠ +Environment ID +\(not set\)/);
+    expect(frame).toMatch(/⚠ +CMA Token +\(not set\)/);
   });
 
   it('renders the credentials path as dimmed help text', async () => {

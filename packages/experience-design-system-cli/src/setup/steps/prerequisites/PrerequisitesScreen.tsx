@@ -3,7 +3,7 @@ import { Box, Text } from 'ink';
 import { ConfirmInput } from '@inkjs/ui';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { binaryExists, pathExists, runSpawn } from '../../lib/shell.js';
-import { StepLayout, type StepDone } from '../StepLayout.js';
+import { StepLayout } from '../StepLayout.js';
 import type { PrerequisiteDeps, PrerequisiteEvent, PrerequisitesOutcome } from './deps.js';
 import { runPrerequisitesSetup } from './index.js';
 
@@ -100,5 +100,3 @@ export function PrerequisitesScreen({
     </StepLayout>
   );
 }
-
-export type { StepDone };

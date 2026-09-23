@@ -3,13 +3,11 @@ import { Box, Text } from 'ink';
 import { PALETTE } from '../../analyze/select/tui/theme.js';
 
 export type StepStatus = 'completed' | 'skipped' | 'failed';
-
-/** What a step reports back to the wizard when it finishes. */
 export type StepDone = (status: StepStatus) => void;
 
 type StepLayoutProps = {
   helpText?: string;
-  children: React.ReactNode;
+  children?: React.ReactNode;
   prompt?: React.ReactNode;
 };
 

@@ -2,21 +2,12 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text } from 'ink';
 import { Select, TextInput } from '@inkjs/ui';
 import type { AgentName } from '@contentful/experience-design-system-generation';
-import { AGENT_DEFS, type AgentDefinition } from '../../lib/agent-definitions.js';
+import { AGENT_DEFS, INSTALLABLE_AGENTS, installHint, type AgentDefinition } from '../../lib/agent-definitions.js';
 import { readExperiencesCredentials, writeExperiencesCredentials } from '../../credentials-store.js';
 import { binaryExists, runSpawn } from '../lib/shell.js';
 import { StepLayout, StepSuccess, StepWarning, type StepDone } from './StepLayout.js';
 
-/** The agents setup offers to install; Copilot is detected but not installed here. */
-const INSTALLABLE = AGENT_DEFS.slice(0, 3);
-
-const PACKAGE_NAMES: Partial<Record<AgentName, string>> = {
-  claude: '@anthropic-ai/claude-code',
-  codex: '@openai/codex',
-  opencode: 'opencode-ai',
-};
-
-export const AGENT_HELP = 'Experiences import requires a coding agent to generate component definitions.';
+const AGENT_HELP = 'Experiences import requires a coding agent to generate component definitions.';
 
 /** The value Select reports for the trailing Skip row, which no agent can collide with. */
 const SKIP_VALUE = '\u0000skip';
@@ -98,13 +89,7 @@ export function CodingAgentScreen({ onDone, deps }: CodingAgentScreenProps): Rea
 
   const install = async (agent: AgentDefinition): Promise<void> => {
     setPhase({ kind: 'installing', agent });
-    const packageName = PACKAGE_NAMES[agent.binary];
-    if (!packageName) {
-      setPhase({ kind: 'failed', message: 'Install failed' });
-      onDone('failed');
-      return;
-    }
-    const result = await run('npm', ['install', '-g', packageName]);
+    const result = await run('npm', ['install', '-g', agent.packageName]);
     if (result.exitCode !== 0 || !(await exists(agent.binary))) {
       setPhase({ kind: 'failed', message: 'Install failed' });
       onDone('failed');
@@ -154,11 +139,8 @@ export function CodingAgentScreen({ onDone, deps }: CodingAgentScreenProps): Rea
     return (
       <StepLayout
         helpText={AGENT_HELP}
-        prompt={chooser(
-          'Choose one to install:',
-          [...INSTALLABLE],
-          (agent) => agent.installHint,
-          (agent) => (agent ? void install(agent) : onDone('skipped')),
+        prompt={chooser('Choose one to install:', [...INSTALLABLE_AGENTS], installHint, (agent) =>
+          agent ? void install(agent) : onDone('skipped'),
         )}
       >
         {notes}
