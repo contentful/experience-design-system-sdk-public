@@ -19,7 +19,7 @@ export function ErrorStep({
   onAcknowledgeBreakingChanges,
 }: ErrorStepProps): React.ReactElement {
   useImmediateInput((input, key) => {
-    if (input === 'a' && onAcknowledgeBreakingChanges) {
+    if (key.return && onAcknowledgeBreakingChanges) {
       onAcknowledgeBreakingChanges();
       return;
     }
@@ -39,8 +39,14 @@ export function ErrorStep({
       </Text>
       <Text color={PALETTE.error}>{message}</Text>
       <Box gap={3} marginTop={1}>
-        <Text dimColor>[Enter / q] Exit</Text>
-        {onAcknowledgeBreakingChanges && <Text dimColor>[a] Acknowledge and apply</Text>}
+        {onAcknowledgeBreakingChanges ? (
+          <>
+            <Text dimColor>[Enter] Acknowledge and apply</Text>
+            <Text dimColor>[Esc / q] Exit</Text>
+          </>
+        ) : (
+          <Text dimColor>[Enter / q] Exit</Text>
+        )}
         {onRetryCredentials && <Text dimColor>[r] Re-enter credentials</Text>}
       </Box>
     </Box>
