@@ -3,7 +3,6 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { Command } from 'commander';
-import { registerAnalyzeCommand } from './analyze/command.js';
 import { registerInternalGenerateCommand } from './generate/command.js';
 import { registerApplyCommand } from './apply/command.js';
 import { registerPrintCommand } from './print/command.js';
@@ -105,7 +104,6 @@ export function createProgram(): Command {
     .description('Static analysis, validation, generation, and import of Contentful design system artifacts')
     .version(pkg.version, '--version', 'Print version number');
 
-  registerAnalyzeCommand(program);
   registerInternalGenerateCommand(program);
   registerPrintCommand(program);
   registerMapTokensCommand(program);

@@ -29,6 +29,12 @@ describe('CLI entry point', () => {
     expect(code).not.toBe(0);
     expect(stderr).toContain("unknown command 'nonexistent'");
   });
+
+  it('does not expose the internal analyze command tree', async () => {
+    const { stderr, code } = await run('analyze');
+    expect(code).not.toBe(0);
+    expect(stderr).toContain("unknown command 'analyze'");
+  });
 });
 
 describe('experiences import flag surface', () => {

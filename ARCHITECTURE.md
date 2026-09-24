@@ -28,9 +28,7 @@ Design system codebase
     ├── runs                    → list/detail/replay prior wizard runs from ~/.config/experiences/runs.json
     │                              (positional <id-or-path>, --json, --pushed, --not-pushed)
     ├── import generation (internal) → session DB (CDF/DTCG artifacts via coding agent)
-    ├── analyze extract         → session DB (raw components)
-    ├── analyze select          → session DB (accepted/rejected decisions, standalone JsonEditor TUI)
-    ├── analyze select-agent    → session DB (agentic accept/reject + per-component rationale)
+    ├── import internals        → session DB (raw components and accepted/rejected decisions)
     ├── map tokens (standalone)  → deterministic default paths, then optional agentic $token.allowed inference
     ├── print validate          → validates CDF / DTCG files, exits 0/1
     ├── print components|tokens → write artifacts from the session DB
