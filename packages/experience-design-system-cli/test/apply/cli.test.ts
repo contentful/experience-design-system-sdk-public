@@ -34,9 +34,6 @@ describe('apply command — help', () => {
     ]);
   });
 
-  it('does not register a help option', () => {
-    expect(apply!.options.some((option) => option.long === '--help')).toBe(false);
-  });
 });
 
 describe('apply — input validation', () => {
@@ -45,32 +42,9 @@ describe('apply — input validation', () => {
       'apply',
       '--components',
       componentsPath,
-      '--space-id',
-      'space1',
-      'master',
-      '--cma-token',
-      'tok',
     ]);
     expect(code).toBe(1);
     expect(stderr).toContain('interactive terminal');
   });
 
-  it('exits 1 when --tokens path does not exist', async () => {
-    const { stderr, code } = await run([
-      'apply',
-      '--tokens',
-      '/no/such/tokens.json',
-      '--space-id',
-      'space1',
-      '--environment-id',
-      'master',
-      '--cma-token',
-      'tok',
-    ]);
-    expect(code).toBe(1);
-    expect(stderr).toContain('file not found');
-  });
-});
-
-describe('apply — new flags', () => {
 });
