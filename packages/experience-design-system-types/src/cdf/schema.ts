@@ -1,20 +1,28 @@
 import { CDF_PROPERTY_TYPES, CDF_PROPERTY_CATEGORIES } from './vocabularies.js';
+import { DESIGN_TOKEN_TYPES } from '../dtcg/token-types.js';
 
-export const CDF_V1_SCHEMA_URL = 'https://contentful.com/schemas/cdf/v1';
+export const CDF_SCHEMA_URL = 'https://contentful.com/schemas/cdf';
 
-export const cdfV1JsonSchema = {
+/**
+ * Components and design tokens live in one recursive tree. A leaf's `$type`
+ * decides what it is ('component' vs. a DESIGN_TOKEN_TYPES member), so the
+ * same `group` container can hold either kind side by side. There is no
+ * separate manifest envelope — this document is the single file/wire
+ * payload sent to preview/apply.
+ */
+export const cdfJsonSchema = {
   $schema: 'http://json-schema.org/draft-07/schema#',
-  $id: CDF_V1_SCHEMA_URL,
-  title: 'CDF Component Definition Format v1',
+  $id: CDF_SCHEMA_URL,
+  title: 'CDF Component + Design Token Definition Format',
   type: 'object',
   required: ['$schema'],
   properties: {
-    $schema: { type: 'string', const: CDF_V1_SCHEMA_URL },
+    $schema: { type: 'string', const: CDF_SCHEMA_URL },
   },
-  additionalProperties: { $ref: '#/definitions/groupOrComponent' },
+  additionalProperties: { $ref: '#/definitions/groupOrEntry' },
   definitions: {
-    groupOrComponent: {
-      oneOf: [{ $ref: '#/definitions/component' }, { $ref: '#/definitions/group' }],
+    groupOrEntry: {
+      oneOf: [{ $ref: '#/definitions/component' }, { $ref: '#/definitions/token' }, { $ref: '#/definitions/group' }],
     },
     component: {
       type: 'object',
@@ -57,10 +65,20 @@ export const cdfV1JsonSchema = {
       },
       additionalProperties: false,
     },
+    token: {
+      type: 'object',
+      required: ['$type', '$value'],
+      properties: {
+        $type: { type: 'string', enum: [...DESIGN_TOKEN_TYPES] },
+        $value: {},
+        $description: { type: 'string' },
+      },
+      additionalProperties: false,
+    },
     group: {
       type: 'object',
       properties: { $description: { type: 'string' } },
-      additionalProperties: { $ref: '#/definitions/groupOrComponent' },
+      additionalProperties: { $ref: '#/definitions/groupOrEntry' },
     },
   },
 } as const;

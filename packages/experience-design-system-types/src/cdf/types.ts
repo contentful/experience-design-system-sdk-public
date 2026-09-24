@@ -1,5 +1,6 @@
 import * as z from 'zod/mini';
 import { CDF_PROPERTY_TYPES, CDF_PROPERTY_CATEGORIES } from './vocabularies.js';
+import { DESIGN_TOKEN_TYPES } from '../dtcg/token-types.js';
 
 export const CDFPropertySchema = z.strictObject({
   $type: z.enum(CDF_PROPERTY_TYPES),
@@ -43,8 +44,19 @@ export interface CDFValidationError {
   actual?: string;
 }
 
+/** A token leaf — same shape as a DTCG token entry, but discovered inside
+ * the CDF tree rather than a standalone DTCG document. */
+export const CDFTokenSchema = z.strictObject({
+  $type: z.enum(DESIGN_TOKEN_TYPES),
+  $value: z.unknown(),
+  $description: z.optional(z.string()),
+});
+
+export type CDFTokenEntry = z.infer<typeof CDFTokenSchema>;
+
 export interface CDFValidationResult {
   valid: boolean;
   errors: CDFValidationError[];
   components: Array<{ key: string; entry: CDFComponentEntry }>;
+  tokens: Array<{ path: string; entry: CDFTokenEntry }>;
 }
