@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { findLegacyCliPath } from './legacy-cli-path.js';
 
-export interface StepResult {
+interface StepResult {
   step: string;
   status: 'complete' | 'failed' | 'skipped';
   durationMs?: number;
@@ -17,7 +17,7 @@ export interface PipelineResult {
   cycleError?: { report: string[] };
 }
 
-export interface CompositeImportCredentials {
+interface CompositeImportCredentials {
   spaceId: string;
   environmentId: string;
   cmaToken: string;
