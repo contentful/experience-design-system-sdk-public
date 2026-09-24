@@ -9,6 +9,7 @@ import { validateDTCGTokenFile } from './validate/validators/dtcg-validator.js';
 import { formatDiagnostics } from './validate/validators/format-errors.js';
 import { ValidateView } from './validate/tui/ValidateView.js';
 import type { ValidateViewEntry } from './validate/tui/ValidateView.js';
+import { CDF_SCHEMA_URL } from '@contentful/experience-design-system-types';
 import type { DTCGTokenGroupNode } from '@contentful/experience-design-system-types';
 import { getInteractiveTerminalSupport } from '../lib/terminal-capabilities.js';
 import { bindAnalyticsSessionId, exitWithAnalytics } from '../analytics/index.js';
@@ -104,7 +105,7 @@ export function registerPrintCommand(program: Command): void {
     .option('--out <path>', 'Output file path', 'components.json')
     .option(
       '--allow-empty',
-      'Write an empty-but-present components manifest when no components are accepted (a subsequent push then removes ALL components from the target space). Without this, an empty accepted set is an error.',
+      'Write an empty-but-present CDF file when no components are accepted (a subsequent push then removes ALL components from the target space). Without this, an empty accepted set is an error.',
     )
     .action(async (opts: { session?: string; out: string; allowEmpty?: boolean }) => {
       const outPath = resolve(opts.out);
@@ -140,10 +141,10 @@ export function registerPrintCommand(program: Command): void {
           // "clear the space" intent, but it's destructive, so require --allow-empty.
           if (!opts.allowEmpty) {
             await die(
-              `Error: all ${rejectedCount} generated component${rejectedCount === 1 ? ' was' : 's were'} rejected or left unresolved at final review in session '${sessionId}', so there is nothing to save. Accept at least one component (press [a] on a row, or [A] to accept all), or pass --allow-empty to write an empty manifest that will DELETE all components from the target space on push.`,
+              `Error: all ${rejectedCount} generated component${rejectedCount === 1 ? ' was' : 's were'} rejected or left unresolved at final review in session '${sessionId}', so there is nothing to save. Accept at least one component (press [a] on a row, or [A] to accept all), or pass --allow-empty to write an empty CDF file that will DELETE all components from the target space on push.`,
             );
           }
-          // Fall through: write an empty-but-present components manifest so a
+          // Fall through: write an empty-but-present CDF file so a
           // subsequent push removes every component from the target space.
         } else {
           await die(`Error: no generated components in session '${sessionId}'. Run generate components first.`);
@@ -156,7 +157,7 @@ export function registerPrintCommand(program: Command): void {
         );
       }
 
-      const cdfObj: Record<string, unknown> = { $schema: 'https://contentful.com/schemas/cdf/v1' };
+      const cdfObj: Record<string, unknown> = { $schema: CDF_SCHEMA_URL };
       const missingDescription: string[] = [];
       for (const { key, entry } of components) {
         cdfObj[key] = entry;

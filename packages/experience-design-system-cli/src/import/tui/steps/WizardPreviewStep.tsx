@@ -7,7 +7,7 @@ import type {
   ServerPreviewResponse,
   DesignTokenSummary,
 } from '@contentful/experience-design-system-types';
-import { hasBreakingChangesWithImpact } from '../../../apply/manifest.js';
+import { hasBreakingChangesWithImpact } from '../../../apply/tokens.js';
 import { computeComponentDiffLines } from './preview-diff.js';
 import { StepHeader } from '../components/StepHeader.js';
 import { SpaceEnvironment } from '../components/SpaceEnvironment.js';

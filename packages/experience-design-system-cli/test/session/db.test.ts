@@ -45,7 +45,7 @@ import type {
   DTCGTokenGroup,
   ComponentTypeSummary,
 } from '@contentful/experience-design-system-types';
-import { CDF_V1_SCHEMA_URL, validateCDF } from '@contentful/experience-design-system-types';
+import { CDF_SCHEMA_URL, validateCDF } from '@contentful/experience-design-system-types';
 
 const tempDirs: string[] = [];
 
@@ -1619,7 +1619,7 @@ describe('CDF builder: $token.allowed', () => {
       expect(prop?.['$token.kind']).toBe('color');
 
       const cdf = {
-        $schema: CDF_V1_SCHEMA_URL,
+        $schema: CDF_SCHEMA_URL,
         ...Object.fromEntries(loaded.map(({ key, entry }) => [key, entry])),
       };
       expect(validateCDF(cdf).valid).toBe(true);
@@ -3471,7 +3471,7 @@ describe('renameEmptySlots', () => {
 });
 
 describe('loadCDFComponents — empty-key sanitization (Option D / hallucination insurance)', () => {
-  it('drops empty-named slots from the CDF entry so buildManifest never sees them', async () => {
+  it('drops empty-named slots from the CDF entry so buildCDF never sees them', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
@@ -3501,8 +3501,8 @@ describe('loadCDFComponents — empty-key sanitization (Option D / hallucination
     });
   });
 
-  it('end-to-end: rename → generate → loadCDFComponents → buildManifest produces no empty keys', async () => {
-    const { buildManifest } = await import('@contentful/experience-design-system-types');
+  it('end-to-end: rename → generate → loadCDFComponents → buildCDF produces no empty keys', async () => {
+    const { buildCDF } = await import('@contentful/experience-design-system-types');
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
@@ -3549,10 +3549,8 @@ describe('loadCDFComponents — empty-key sanitization (Option D / hallucination
       const components = loadCDFComponents(db, sessionId);
       db.close();
 
-      const manifest = buildManifest(components, []);
-      const slotKeys = Object.keys(
-        (manifest.componentsManifest?.['PageLink'] as { $slots?: Record<string, unknown> }).$slots ?? {},
-      );
+      const cdf = buildCDF(components, [])!;
+      const slotKeys = Object.keys((cdf['PageLink'] as { $slots?: Record<string, unknown> }).$slots ?? {});
       expect(slotKeys).toEqual(['children']);
       expect(slotKeys).not.toContain('');
     });

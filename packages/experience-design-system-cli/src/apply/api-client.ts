@@ -1,5 +1,6 @@
+import { parseCDFComponents } from '@contentful/experience-design-system-types';
 import type {
-  ManifestPayload,
+  CDFDocument,
   ServerPreviewResponse,
   ApplyOperationResponse,
   BreakingChange,
@@ -368,22 +369,24 @@ export class ImportApiClient {
     throw new ApiError(`preflight failed: ${res.status}`, res.status, body);
   }
 
-  async previewImport(manifest: ManifestPayload): Promise<ServerPreviewResponse> {
+  async previewImport(cdf: CDFDocument): Promise<ServerPreviewResponse> {
     const debug = getDebugLogger();
     const startedAt = Date.now();
-    const componentCount = Object.keys(manifest.componentsManifest ?? {}).filter((key) => key !== '$schema').length;
-    const tokenCount = Object.keys(manifest.tokensManifest ?? {}).length;
+    const { components, tokens } = parseCDFComponents(cdf);
     debug.event('apply', 'preview.request', {
       url: `${this.base()}/design_systems/imports/preview`,
-      componentCount,
-      tokenCount,
+      componentCount: components.length,
+      tokenCount: tokens.length,
     });
     const result = await this.requestWithRetry('preview', PREVIEW_ERROR_PREFIX, () =>
       designSystemImportSourcelessPreview({
         baseUrl: this.host,
         headers: this.headers(),
         path: { spaceId: this.spaceId, environmentId: this.environmentId },
-        body: manifest,
+        // The generated request type still expects the old componentsManifest/
+        // tokensManifest envelope, pending the server-side merge; we send the
+        // single CDF document ahead of that.
+        body: cdf as unknown as Record<string, unknown>,
         parseAs: 'json',
       }),
     );
@@ -402,7 +405,7 @@ export class ImportApiClient {
   }
 
   async applyImport(
-    manifest: ManifestPayload,
+    cdf: CDFDocument,
     options: { acknowledgeBreakingChanges: boolean },
   ): Promise<ApplyOperationResponse> {
     const { acknowledgeBreakingChanges } = options;
@@ -418,7 +421,8 @@ export class ImportApiClient {
         baseUrl: this.host,
         headers: this.headers(),
         path: { spaceId: this.spaceId, environmentId: this.environmentId },
-        body: { ...manifest, acknowledgeBreakingChanges },
+        // Same pre-server-migration note as previewImport above.
+        body: { ...cdf, acknowledgeBreakingChanges } as unknown as Record<string, unknown>,
         parseAs: 'json',
       });
     } catch (error) {

@@ -59,7 +59,7 @@ vi.mock('../../../../src/session/db.js', () => ({
   }),
 }));
 
-vi.mock('../../../../src/apply/manifest.js', () => ({
+vi.mock('../../../../src/apply/tokens.js', () => ({
   readTokensFromPath: vi.fn().mockResolvedValue([
     { path: 'colors.file.only', $type: 'color', $value: '#0f0' },
     { path: 'radius.file.small', $type: 'dimension', $value: '2px' },

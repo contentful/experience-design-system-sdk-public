@@ -7,10 +7,16 @@ import {
   validateCDF,
   flattenDTCG,
   validateDTCG,
-  buildManifest,
-  validateManifestSlotReferences,
+  parseCDFComponents,
+  buildCDF,
+  validateSlotReferences,
 } from '@contentful/experience-design-system-types';
-import type { CDFComponentEntry, CDFValidationError, DTCGTokenEntry } from '@contentful/experience-design-system-types';
+import type {
+  CDFComponentEntry,
+  CDFTokenEntry,
+  CDFValidationError,
+  DTCGTokenEntry,
+} from '@contentful/experience-design-system-types';
 import { ApiError, ImportApiClient } from './api-client.js';
 import { formatApiError, formatEdsiError } from '../lib/error-parser.js';
 import { findSlotCycles, suggestCycleBreakEdge, formatCyclePath } from '../analyze/cycle-detection.js';
@@ -139,6 +145,12 @@ export async function readTokensFromPath(flag: string, p: string): Promise<DTCGT
   return flattenDTCG(raw as Record<string, unknown>, '');
 }
 
+/** Adapts flat DTCGTokenEntry[] (path alongside the leaf) into the
+ * {path, entry} pairs buildCDF/buildFilteredCDF expect. */
+export function toCDFTokens(tokens: DTCGTokenEntry[]): Array<{ path: string; entry: CDFTokenEntry }> {
+  return tokens.map(({ path, ...entry }) => ({ path, entry }));
+}
+
 interface SharedImportOptions {
   components?: string;
   tokens?: string;
@@ -206,14 +218,14 @@ function createApplyProgressHandlers(
 
 async function applyAndPoll(
   client: ImportApiClient,
-  manifest: Parameters<ImportApiClient['applyImport']>[0],
+  cdf: Parameters<ImportApiClient['applyImport']>[0],
   options: ApplyAndPollOptions,
 ): Promise<ApplyOperationResponse | null> {
   options.onProgress?.('applying');
 
   let operation: ApplyOperationResponse;
   try {
-    operation = await client.applyImport(manifest, {
+    operation = await client.applyImport(cdf, {
       acknowledgeBreakingChanges: options.acknowledgeBreakingChanges,
     });
   } catch (e) {
@@ -242,7 +254,7 @@ async function applyAndPoll(
 
 interface InteractiveApplyOptions {
   client: ImportApiClient;
-  manifest: Parameters<ImportApiClient['applyImport']>[0];
+  cdf: Parameters<ImportApiClient['applyImport']>[0];
   spaceId: string;
   environmentId: string;
   host?: string;
@@ -253,7 +265,7 @@ interface InteractiveApplyOptions {
 
 interface NonInteractiveApplyOptions {
   client: ImportApiClient;
-  manifest: Parameters<ImportApiClient['applyImport']>[0];
+  cdf: Parameters<ImportApiClient['applyImport']>[0];
   spaceId: string;
   environmentId: string;
   host?: string;
@@ -261,7 +273,7 @@ interface NonInteractiveApplyOptions {
 }
 
 async function runNonInteractiveApply(options: NonInteractiveApplyOptions): Promise<void> {
-  const operation = await applyAndPoll(options.client, options.manifest, {
+  const operation = await applyAndPoll(options.client, options.cdf, {
     acknowledgeBreakingChanges: options.acknowledgeBreakingChanges,
     onStarted: (operationId) => {
       process.stderr.write(`Apply operation started: ${operationId}\n`);
@@ -277,7 +289,7 @@ async function runNonInteractiveApply(options: NonInteractiveApplyOptions): Prom
 }
 
 async function runInteractiveApply(options: InteractiveApplyOptions): Promise<void> {
-  const operation = await applyAndPoll(options.client, options.manifest, {
+  const operation = await applyAndPoll(options.client, options.cdf, {
     acknowledgeBreakingChanges: options.acknowledgeBreakingChanges,
     ...createApplyProgressHandlers(options.rerender, options.spaceId, options.environmentId, (error) =>
       formatApiError(error),
@@ -400,18 +412,18 @@ export async function assertNoSlotCycles(components: Array<{ key: string; entry:
 
 /**
  * Client-side pre-flight for `$allowedComponents` references that are absent
- * from this manifest, so a typo'd or renamed reference fails fast instead of
+ * from this document, so a typo'd or renamed reference fails fast instead of
  * waiting on the `previewImport`/`applyImport` round-trip. Only catches
- * manifest-internal misses — a name that resolves against an *existing*
+ * document-internal misses — a name that resolves against an *existing*
  * target-environment Component still needs the network round-trip to
  * confirm, so this cannot replace the server-side check.
  *
- * `validateManifestSlotReferences` is the detection step (shared with
+ * `validateSlotReferences` is the detection step (shared with
  * `WizardApp.tsx` via `formatUnresolvedSlotReferences` below, mirroring how
  * `detectSlotCycles`/`formatSlotCycleReport` split for the cycle check).
  */
 export function formatUnresolvedSlotReferences(errors: CDFValidationError[]): string[] {
-  const lines = ['Error: manifest slot $allowedComponents references failed to resolve locally. Push refused.'];
+  const lines = ['Error: CDF slot $allowedComponents references failed to resolve locally. Push refused.'];
   for (const error of errors) {
     lines.push(`  - ${error.message} (${error.path})`);
   }
@@ -421,24 +433,17 @@ export function formatUnresolvedSlotReferences(errors: CDFValidationError[]): st
 export async function assertNoUnresolvedSlotReferences(
   components: Array<{ key: string; entry: CDFComponentEntry }>,
 ): Promise<void> {
-  const errors = validateManifestSlotReferences(components);
+  const errors = validateSlotReferences(components);
   if (errors.length === 0) return;
   process.stderr.write(formatUnresolvedSlotReferences(errors).join('\n') + '\n');
   await exitWithAnalytics(1);
 }
 
-export function extractComponentsFromManifest(
-  manifest: { componentsManifest?: Record<string, unknown> } | null | undefined,
+export function extractComponents(
+  cdf: Record<string, unknown> | null | undefined,
 ): Array<{ key: string; entry: CDFComponentEntry }> {
-  const componentsManifest = manifest?.componentsManifest;
-  if (!componentsManifest) return [];
-  const out: Array<{ key: string; entry: CDFComponentEntry }> = [];
-  for (const [key, value] of Object.entries(componentsManifest)) {
-    if (key === '$schema') continue;
-    if (!value || typeof value !== 'object') continue;
-    out.push({ key, entry: value as CDFComponentEntry });
-  }
-  return out;
+  if (!cdf) return [];
+  return parseCDFComponents(cdf).components;
 }
 
 export function hasBreakingChangesWithImpact(preview: ServerPreviewResponse): boolean {
@@ -542,11 +547,12 @@ export function registerApplyCommand(program: Command): void {
         throw e;
       }
 
-      const manifest = buildManifest(components, tokens);
+      const cdf = buildCDF(components, toCDFTokens(tokens));
+      if (!cdf) return await die('Error: nothing to push — no components or tokens resolved');
 
       let preview: ServerPreviewResponse;
       try {
-        preview = await client.previewImport(manifest);
+        preview = await client.previewImport(cdf);
       } catch (e) {
         if (e instanceof ApiError)
           return await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
@@ -576,7 +582,7 @@ export function registerApplyCommand(program: Command): void {
         }
         await runNonInteractiveApply({
           client,
-          manifest,
+          cdf,
           spaceId,
           environmentId,
           acknowledgeBreakingChanges: false,
@@ -589,7 +595,7 @@ export function registerApplyCommand(program: Command): void {
         const runApply = async (acknowledge: boolean) => {
           await runInteractiveApply({
             client,
-            manifest,
+            cdf,
             spaceId,
             environmentId,
             host,

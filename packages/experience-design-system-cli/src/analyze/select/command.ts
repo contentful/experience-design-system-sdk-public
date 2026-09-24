@@ -330,7 +330,7 @@ export async function patchReviewStateWithValidationErrors(
  *
  * Two stores are updated:
  *   - Pipeline DB (`raw_components.status` → `'generate-rejected'`) so that
- *     `loadCDFComponents()` excludes them from the next manifest. This is the
+ *     `loadCDFComponents()` excludes them from the next CDF document. This is the
  *     load-bearing change — preview reads from the DB, not the JSON file.
  *   - Review state JSON (`status` → `'rejected'`) so that if the user re-enters
  *     the analyze-select TUI later, the rejected status is reflected.
