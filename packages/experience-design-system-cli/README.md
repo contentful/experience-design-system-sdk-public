@@ -284,10 +284,10 @@ This command is the non-wizard route to the same diff and push logic. Its flag s
 `apply` emits a Contentful webapp view URL for the imported components in its JSON summary (`viewUrl`) so callers can deep-link into the management UI after a successful push.
 
 ```bash
-experiences apply    --space-id <id> --environment-id <env> [--yes]
+experiences apply    --environment-id <env> [--yes]
 ```
 
-Shared flags: `--components`, `--tokens`, `--space-id`, `--environment-id`, `--cma-token`, `--host`. `apply` adds `--yes`, `--verbose`, `--force`, and `--dry-run`. Remote ComponentTypes and DesignTokens missing from the pushed manifest are always skipped.
+Shared flags: `--components`, `--tokens`, `--environment-id`, `--cma-token`, `--host`. `apply` adds `--yes`, `--verbose`, `--force`, and `--dry-run`. Remote ComponentTypes and DesignTokens missing from the pushed manifest are always skipped.
 
 Design tokens are written first (component types may reference token kinds). Each entity write is recorded in the session database atomically — interrupted pushes resume from where they left off.
 

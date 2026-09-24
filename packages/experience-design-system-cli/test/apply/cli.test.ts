@@ -37,7 +37,6 @@ describe('apply command — help', () => {
       '--environment-id',
       '--force',
       '--host',
-      '--space-id',
       '--tokens',
       '--verbose',
       '--yes',
