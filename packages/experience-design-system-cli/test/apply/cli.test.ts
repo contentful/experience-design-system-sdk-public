@@ -31,7 +31,6 @@ describe('apply command — help', () => {
     expect(flags).toEqual([
       '--components',
       '--dry-run',
-      '--force',
       '--tokens',
     ]);
   });
@@ -84,22 +83,10 @@ describe('apply — input validation', () => {
 });
 
 describe('apply — new flags', () => {
-  it('prints --force in help output', async () => {
-    const { stdout, code } = await run(['apply', '--help']);
-    expect(code).toBe(0);
-    expect(stdout).toContain('--force');
-  });
-
   it('prints --dry-run in help output', async () => {
     const { stdout, code } = await run(['apply', '--help']);
     expect(code).toBe(0);
     expect(stdout).toContain('--dry-run');
-  });
-
-  it('--force description mentions breaking changes', async () => {
-    const { stdout, code } = await run(['apply', '--help']);
-    expect(code).toBe(0);
-    expect(stdout).toContain('breaking changes');
   });
 
   it('--dry-run description mentions preview only', async () => {

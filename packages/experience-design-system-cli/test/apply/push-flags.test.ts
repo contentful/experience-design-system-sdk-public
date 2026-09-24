@@ -156,18 +156,6 @@ describe('apply — flag variations', () => {
     expect(code).toBe(0);
   });
 
-  // ── --force flag ──────────────────────────────────────────────────────────
-
-  it('--force skips breaking change confirmation and exits 0', async () => {
-    const { code } = await runCliWithEnv([...baseArgs(), '--force'], baseEnv());
-    expect(code).toBe(0);
-  });
-
-  it('--force combined with --dry-run exits 0', async () => {
-    const { code } = await runCliWithEnv([...baseArgs(), '--force', '--dry-run'], baseEnv());
-    expect(code).toBe(0);
-  });
-
   // ── --components + --tokens combined ─────────────────────────────────────
 
   it('--components and --tokens combined sends both to preview endpoint', async () => {
