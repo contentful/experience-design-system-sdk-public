@@ -466,8 +466,14 @@ export function registerAnalyzeCommand(program: Command): void {
         userMap = loaded.map;
       }
 
-      const hasSource = !!userMap || sources.useAgent || sources.forceAgent;
-      if (hasSource || opts.generateMap) {
+      {
+        // Composition-resolution runs unconditionally so structural evidence
+        // (typed slots + Signal A/B/C/D) and manifest/doc edges always reach
+        // the selection UI. The agent inside `resolveMapping` is still gated
+        // separately by `--composition-agent` / `--composition-refresh` —
+        // when neither is passed, the deterministic passes still merge and
+        // apply, but no LLM call is made.
+        //
         // Composition progress mirrors the scan/extract progress convention:
         // emit `progress=composition:<phase>` on stderr so the wizard can
         // render a second progress line during the (potentially slow, agent-

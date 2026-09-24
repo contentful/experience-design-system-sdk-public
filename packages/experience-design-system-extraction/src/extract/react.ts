@@ -34,6 +34,7 @@ import {
   collectTypePredicateComponentReferences,
   collectRuntimeTypeCheckComponentReferences,
   collectRenderedComponentReferences,
+  collectArrayMapRenderComponentReferences,
 } from './structural-slot-evidence.js';
 
 const REACT_ELEMENT_GENERIC_TEST = /(?:React\.)?ReactElement\s*<\s*[A-Za-z_$][\w$.]*/;
@@ -2134,12 +2135,33 @@ export async function extractReactComponents(filePaths: string[]): Promise<Compo
   for (const c of components) {
     const fromFile = structuralNamesForFile(c.source);
     const fromRender = c._funcNode ? collectRenderedComponentReferences(c._funcNode, componentNames, c.name) : [];
-    const structural = new Set([...fromFile, ...fromRender]);
+    const propTypesByName = new Map(c.props.map((p) => [p.name, p.type]));
+    const fromArrayMap = c._funcNode
+      ? collectArrayMapRenderComponentReferences(c._funcNode, componentNames, c.name, propTypesByName)
+      : [];
+    const structural = new Set([...fromFile, ...fromRender, ...fromArrayMap]);
     if (structural.size === 0) continue;
+
+    // Signal D — array-map render — is the only signal that can imply an
+    // authorable compositional slot the parent didn't declare. When it fires
+    // and the parent has no declared slots at all, synthesise a default
+    // `children` slot so the evidence has somewhere to land. Signals A/B/C
+    // still only decorate existing slots to keep the current provenance
+    // guarantees intact.
+    const synthesisedSlot: RawSlotDefinitionInternal | undefined =
+      fromArrayMap.length > 0 && c.slots.length === 0 ? { name: 'children', isDefault: true } : undefined;
+    if (synthesisedSlot) {
+      (c.slots as RawSlotDefinitionInternal[]).push(synthesisedSlot);
+    }
 
     for (const slot of c.slots as RawSlotDefinitionInternal[]) {
       if (slot.allowedComponents && slot.allowedComponents.length > 0) continue;
-      slot.structuralAllowedComponents = [...structural].sort();
+      // Synthesised slots carry ONLY Signal D's mapped children — the strict
+      // signal is what earned the slot; unioning in Signal C's render-body
+      // hits would smuggle private structural pieces (icons, headings) into
+      // an authorable slot the caller can't actually compose against.
+      // Declared slots keep the existing union so A/B/C still enrich them.
+      slot.structuralAllowedComponents = slot === synthesisedSlot ? [...fromArrayMap].sort() : [...structural].sort();
     }
   }
 
