@@ -43,12 +43,12 @@ const NON_EMPTY_ROUTES = {
   },
 };
 
-const baseEnv = () => ({
+const baseEnv = (host: string) => ({
   NODE_NO_WARNINGS: '1',
-  CONTENTFUL_SPACE_ID: '',
-  CONTENTFUL_ENVIRONMENT_ID: '',
-  CONTENTFUL_MANAGEMENT_TOKEN: '',
-  EDS_HOST: pushServer.url,
+  CONTENTFUL_SPACE_ID: 'test-space',
+  CONTENTFUL_ENVIRONMENT_ID: 'master',
+  CONTENTFUL_MANAGEMENT_TOKEN: 'test-token',
+  EDS_HOST: host,
 });
 
 describe('apply — viewUrl emission (Gap 4)', () => {
@@ -67,14 +67,8 @@ describe('apply — viewUrl emission (Gap 4)', () => {
       'apply',
       '--components',
       componentsPath,
-      '--space-id',
-      'test-space',
-      '--environment-id',
-      'master',
-      '--cma-token',
-      'test-token',
     ];
-    const { stdout, code } = await runCliWithEnv(args, baseEnv());
+    const { stdout, code } = await runCliWithEnv(args, baseEnv(pushServer.url));
     expect(code).toBe(0);
     const payload = JSON.parse(stdout);
     expect(typeof payload.viewUrl).toBe('string');

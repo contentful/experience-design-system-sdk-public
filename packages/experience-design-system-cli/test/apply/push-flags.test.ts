@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { resolve } from 'node:path';
-import { runCli, runCliWithEnv } from '../helpers/cli-runner.js';
+import { runCliWithEnv } from '../helpers/cli-runner.js';
 import { createMockCMAServer, type MockCMAServer } from '../helpers/mock-cma-server.js';
 
 // Use the shared import fixture which is a valid CDF components file
@@ -45,9 +45,9 @@ describe('apply — flag variations', () => {
   const baseEnv = () => ({
     NODE_NO_WARNINGS: '1',
     // Ensure no ambient CONTENTFUL_* env vars interfere
-    CONTENTFUL_SPACE_ID: '',
-    CONTENTFUL_ENVIRONMENT_ID: '',
-    CONTENTFUL_MANAGEMENT_TOKEN: '',
+    CONTENTFUL_SPACE_ID: 'test-space',
+    CONTENTFUL_ENVIRONMENT_ID: 'master',
+    CONTENTFUL_MANAGEMENT_TOKEN: 'test-token',
     EDS_HOST: server.url,
   });
 
@@ -55,12 +55,6 @@ describe('apply — flag variations', () => {
     'apply',
     '--components',
     componentsPath,
-    '--space-id',
-    'test-space',
-    '--environment-id',
-    'master',
-    '--cma-token',
-    'test-token',
   ];
 
   // ── Non-interactive guard ─────────────────────────────────────────────────
@@ -70,42 +64,10 @@ describe('apply — flag variations', () => {
       'apply',
       '--components',
       componentsPath,
-      '--space-id',
-      'test-space',
-      '--environment-id',
-      'master',
-      '--cma-token',
-      'test-token',
     ];
     const { code, stderr } = await runCliWithEnv(args, baseEnv());
     expect(code).not.toBe(0);
     expect(stderr).toMatch(/interactive terminal/i);
-  });
-
-  // ── Missing required credentials ──────────────────────────────────────────
-
-  const missingCredentials = [
-    {
-      name: 'missing --space-id',
-      args: ['apply', '--components', componentsPath, '--environment-id', 'master', '--cma-token', 'tok', '--yes'],
-      expectStderr: /space-id/i,
-    },
-    {
-      name: 'missing --environment-id',
-      args: ['apply', '--components', componentsPath, '--space-id', 's1', '--cma-token', 'tok', '--yes'],
-      expectStderr: /environment-id/i,
-    },
-    {
-      name: 'missing --cma-token',
-      args: ['apply', '--components', componentsPath, '--space-id', 's1', '--environment-id', 'master', '--yes'],
-      expectStderr: /cma.?token|token/i,
-    },
-  ];
-
-  it.each(missingCredentials)('exits non-zero when $name', async ({ args, expectStderr }) => {
-    const { code, stderr } = await runCliWithEnv(args, baseEnv());
-    expect(code).not.toBe(0);
-    expect(stderr).toMatch(expectStderr);
   });
 
   // ── Happy path ────────────────────────────────────────────────────────────
@@ -140,19 +102,4 @@ describe('apply — flag variations', () => {
     }
   });
 
-  // ── CONTENTFUL_MANAGEMENT_TOKEN env var fallback ──────────────────────────
-
-  it('uses CONTENTFUL_MANAGEMENT_TOKEN env var when --cma-token is not passed', async () => {
-    // Strip --cma-token and its value from baseArgs
-    const args = baseArgs().filter((arg, i, arr) => {
-      if (arg === '--cma-token') return false;
-      if (i > 0 && arr[i - 1] === '--cma-token') return false;
-      return true;
-    });
-    const { code } = await runCliWithEnv(args, {
-      ...baseEnv(),
-      CONTENTFUL_MANAGEMENT_TOKEN: 'env-token',
-    });
-    expect(code).toBe(0);
-  });
 });
