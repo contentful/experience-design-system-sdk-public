@@ -14,7 +14,7 @@ Nx monorepo with five packages:
 
 The CLI extracts React/Vue/Astro/Stencil/Web Component definitions from customer codebases using the TypeScript compiler API (ts-morph), invokes a coding agent to produce CDF artifacts, validates them against JSON schemas, and provides interactive terminal UIs (Ink) for reviewing, finalizing, and pushing them to Contentful ExO.
 
-The supported import pipeline is: **analyze extract → analyze select-agent → internal generation → print/validate → apply.** When a raw token source is supplied, the wizard performs token generation internally before component extraction and generation; standalone `map tokens` runs only after CDF and DTCG data are available in the same session, and `experiences import` does not invoke it. `analyze select-agent` runs one agent invocation per component to decide which components belong in Contentful ExO; `analyze select` (the standalone JsonEditor TUI) is the manual alternative.
+The supported import pipeline is internal to `experiences import`: **extract → select-agent → internal generation → validate → apply.** When a raw token source is supplied, the wizard performs token generation internally before component extraction and generation; standalone `map tokens` runs only after CDF and DTCG data are available in the same session, and `experiences import` does not invoke it. The extraction and selection stages are implementation modules, not public commands.
 
 ### Wizard step machine (`src/import/tui/`)
 

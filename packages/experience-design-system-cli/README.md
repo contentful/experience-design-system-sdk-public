@@ -16,19 +16,13 @@ The rest of this README uses `experiences`.
 
 ## CLI Overview
 
-There are two ways to use the CLI:
+The CLI has two primary workflows:
 
 1. **`experiences import`** — the wizard. Drives the full pipeline (extract → AI select → scope-gate → internal generation → final-review → save/push) from a single command in a full-screen interactive TUI. **This is the recommended path for almost everyone.**
 
-2. **Standalone subcommands** — for piping into other tools, CI parity with the wizard, or for debugging individual steps:
+2. **`experiences apply`** — applies generated component and token definitions to Contentful.
 
-   ```
-   analyze extract   →   analyze select-agent   →   apply
-   ```
-
-   `analyze select-agent` is the agent-driven selection step the wizard uses. You can replace it with `analyze select` for the older manual JsonEditor TUI.
-
-**Determinism boundary.** `analyze extract` is fully deterministic: ts-morph AST parsing produces the same component list and prop shape on every run, then a deterministic pre-classifier and a structural non-authorable filter shape the output. AI enters the pipeline at `analyze select-agent` and the import wizard's generation step. This split keeps the extracted artifact reproducible — if an extracted component looks wrong, the cause is in the rules, not in agent variability.
+The import wizard owns extraction, selection, generation, validation, and apply orchestration internally; those implementation stages are not exposed as standalone commands.
 
 All intermediate data flows through a local SQLite session database (`~/.contentful/experience-design-system-cli/pipeline.db`). No JSON files are written between steps — each pipeline step reads its inputs from the session and writes its outputs back to it.
 
@@ -177,91 +171,6 @@ Custom `.md` skill prompt paths can be saved via `experiences setup`; the CLI em
 `--agent <name>` works the same way and is a fully functional wizard override — earlier releases plumbed the flag but the commander default shadowed it; the flag now wins over the saved value as expected.
 
 ---
-
-## Standalone subcommands
-
-The standalone subcommands below are pinned by snapshot test (`test/analyze/select-flags.test.ts` and friends) and remain backwards-compatible. The wizard internally calls these same commands.
-
-### `analyze extract`
-
-Extract component definitions from a project source tree.
-
-```bash
-experiences analyze extract --project <path> [--dir <src-dir>] [composition flags]
-```
-
-| Option | Default | Description |
-|---|---|---|
-| `--project <path>` | _(required)_ | Path to the project root |
-| `--dir <path>` | `src` (falls back to project root) | Source directory relative to project root |
-| `--resolve-unreachable <mode>` | `auto` | Retry pass for unresolved Svelte `Props` types: `auto`, `always`, or `never` |
-| `--atomic` | **default** | Skip composition resolution — flat components only |
-| `--composite` | — | Resolve embedded-component composition (any composition flag implies this) |
-| `--composition-map <path>` | — | Consume a hand-authored parent→children interchange map (implies `--composite`) |
-| `--composition-refresh` | — | Bypass the composition cache and re-resolve from scratch, forcing the agent to run (implies `--composite`) |
-| `--agent <name>` | saved by setup | Coding agent for composition resolution: `claude`, `codex`, `opencode`, `cursor`, `copilot` |
-| `--prompt <stage=value>` | — | Override a stage prompt (repeatable); value is a file path or literal text, e.g. `--prompt composition=./p.md` |
-
-Scans `.tsx`, `.ts`, `.jsx`, `.js`, `.vue`, and `.astro` files. Ignores `node_modules`, `dist`, `build`, `.next`, `.nuxt`, `coverage`, `storybook-static`, `out`, `demo(s)`, and `example(s)` directories. Also ignores `*.stories.*`, `*.story.*`, `*.spec.*`, and `*.test.*` files.
-
-Writes extracted components to the session database and prints `session=<id>` to stdout. In an interactive terminal, a scrollable TUI displays the extraction summary; press `q` or `Enter` to exit.
-
-The deterministic non-authorable filter drops infrastructure components with no authoring surface (Context providers, refs-only wrappers, etc.); each drop is reported as a warning so the operator can audit.
-
-Extraction is **atomic by default** — flat components, no embedded hierarchy. See [Composite components & composition](#composite-components--composition) for how `--composite` and the composition flags resolve parent→child relationships.
-
----
-
-### `analyze select`
-
-Standalone JsonEditor TUI for picking which components to include. Alias: `analyze edit`. **Untouched by the wizard rebuild** — the rich full-screen editor remains the way to operate outside the wizard.
-
-```bash
-experiences analyze select [--session <id>] [--project-root <path>]
-```
-
-| Option | Default | Description |
-|---|---|---|
-| `--session <id>` | most recent completed `analyze extract` | Session ID from `analyze extract` |
-| `--project-root <path>` | `cwd` | Project root for resolving component source files |
-| `--select-all` | — | Select all components without launching the TUI |
-| `--select <pattern>` | — | Select components whose name contains pattern (repeatable) |
-| `--deselect <pattern>` | — | Deselect components whose name contains pattern (repeatable) |
-| `--accept-all` | — | Alias for `--select-all` |
-| `--reject <pattern>` | — | Alias for `--deselect <pattern>` (repeatable) |
-| `--patch <path>` | — | Path to a JSON patch file for structured overrides |
-| `--exclude-invalid` | — | With `--select-all`: auto-reject components with validation errors |
-| `--exclude-components <names>` | — | Comma-separated names to force-reject regardless of other flags |
-
-Launches a full-screen TUI requiring 60+ columns. Keyboard reference and patch-file format are unchanged from prior releases.
-
----
-
-### `analyze select-agent`
-
-Use an AI agent to decide which extracted components belong in Contentful Experience Orchestration. Runs one agent invocation per component at configurable concurrency.
-
-```bash
-experiences analyze select-agent [--agent <name>] [--session <id>]
-```
-
-| Option | Default | Description |
-|---|---|---|
-| `--agent <name>` | saved by `experiences setup` | Agent: `claude`, `codex`, `opencode`, `cursor`, or `copilot` |
-| `--session <id>` | most recent completed `analyze extract` | Session ID from `analyze extract` |
-| `--project-root <path>` | `cwd` | Project root for resolving component source files |
-| `--model <name>` | agent default | Model to use |
-| `--verbose` | — | Show full agent output including reasoning text |
-| `--dry-run` | — | Print the prompt for the first component without invoking the agent |
-| `--select-prompt-path <path>` | saved by setup | Custom `.md` skill prompt (bypasses bundled invariants); emits a banner at invocation |
-| `--no-select-cache` | cache on | Skip the per-component select cache and re-LLM every component |
-| `--no-cache` | cache on | Skip all fine-grained caches (extract, select, generate) |
-| `--show-rationale` | — | Read-only mode. Print the recorded accept / reject rationale for every component in the session and exit. Reads `raw_components.reject_reason` from the pipeline DB — no LLM call, no schema change. |
-| `--json` | — | With `--show-rationale`: emit the rationale rows as JSON for scripting. |
-
-Decisions are written to the same review state file used by `analyze select`, so the import wizard's generation step picks them up automatically. Each `(component-hash, prompt-hash, cli-version)` triple is cached; changing the prompt file via `--select-prompt-path` already busts the corresponding cache entries.
-
-`--show-rationale` is a separate read-only mode — it does not invoke the agent and is safe to run against a completed session at any time. Pair with `--session <id>` to target a specific session; otherwise it auto-resolves to the most recent completed `analyze extract`.
 
 ### `print components` / `print tokens` / `print validate`
 

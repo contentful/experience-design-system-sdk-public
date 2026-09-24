@@ -68,13 +68,13 @@ The wizard saves a run record after each session. Use `experiences runs` to list
 
 Pass `--project` to start a fresh extraction.
 
-For scripted operation alongside an existing checked-in `components.json`, use the standalone analyze, print, and apply commands described in the CLI reference.
+For scripted operation alongside an existing checked-in `components.json`, use the supported import and apply commands described in the CLI reference.
 
 ## Packages
 
 | Package                                                                                  | Description                                                                                     |
 | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| [`@contentful/experience-design-system-cli`](packages/experience-design-system-cli/)     | The CLI + interactive wizard — analyze, review, generate, validate, and push component definitions |
+| [`@contentful/experience-design-system-cli`](packages/experience-design-system-cli/)     | The CLI + interactive wizard — review, generate, validate, and push component definitions |
 | [`@contentful/experience-design-system-types`](packages/experience-design-system-types/) | Shared types and schemas for the CDF and DTCG data formats                                      |
 
 ## Command Reference
@@ -87,9 +87,6 @@ Full documentation for every flag and every subcommand lives in [`packages/exper
 | `experiences doctor`               | Health check — verify Node version, credentials, and agent binaries                |
 | `experiences import`               | Run the full interactive wizard (extract → select → internal generation → push) |
 | `experiences runs`                 | List prior wizard runs, or pass `<id-or-path>` for a single-run detail view (supports `--json`, `--pushed`, `--not-pushed`) |
-| `experiences analyze extract`      | Scan source files and extract raw component definitions                            |
-| `experiences analyze select`       | Interactively pick which components to include (standalone JsonEditor TUI)         |
-| `experiences analyze select-agent` | AI agent picks which components belong in Experiences; pass `--show-rationale [--json]` for read-only rationale output |
 | `experiences apply`           | Write component types and design tokens to Contentful; emits webapp view URL       |
 | `experiences print components`     | Export generated components to `components.json`                                   |
 | `experiences print tokens`         | Export generated tokens to `tokens.json`                                           |
