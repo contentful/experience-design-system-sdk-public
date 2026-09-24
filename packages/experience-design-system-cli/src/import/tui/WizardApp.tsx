@@ -3,7 +3,7 @@ import { PALETTE } from '../../analyze/select/tui/theme.js';
 import { Box, Text, useStdout } from 'ink';
 import { join, resolve } from 'node:path';
 import { appendFileSync, writeFileSync } from 'node:fs';
-import { access, readFile, stat } from 'node:fs/promises';
+import { access, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { execFile, spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
@@ -13,7 +13,7 @@ import { PathPrompt } from '../../runs/path-prompt.js';
 import { SaveConflictGate } from '../../runs/save-conflict.js';
 import { detectSaveConflict, buildTimestampedSubdir } from '../../runs/save-path-resolver.js';
 import { appendRun, updateRun } from '../../runs/store.js';
-import { buildSourceFingerprint, buildSavedFingerprint } from '../../runs/fingerprint.js';
+import { buildSourceFingerprint } from '../../runs/fingerprint.js';
 import { TopBar } from '../../analyze/select/tui/components/TopBar.js';
 import { CustomPromptBanner } from './CustomPromptBanner.js';
 import { WelcomeStep } from './steps/WelcomeStep.js';
@@ -1593,7 +1593,6 @@ export function WizardApp({
     if (result.ok) {
       try {
         let sourceFingerprint: Awaited<ReturnType<typeof buildSourceFingerprint>> | null = null;
-        let savedFingerprint: ReturnType<typeof buildSavedFingerprint> | null = null;
         try {
           if (state.extractSessionId) {
             const db = openPipelineDb();
@@ -1612,18 +1611,6 @@ export function WizardApp({
             `Warning: failed to compute source fingerprint: ${err instanceof Error ? err.message : String(err)}\n`,
           );
         }
-        try {
-          const componentsBuf = await readFile(join(path, 'components.json')).catch(() => null);
-          const tokensBuf = recordedTokensPath ? await readFile(recordedTokensPath).catch(() => null) : null;
-          savedFingerprint = buildSavedFingerprint({
-            componentsJson: componentsBuf,
-            tokensJson: tokensBuf,
-          });
-        } catch (err) {
-          process.stderr.write(
-            `Warning: failed to compute saved fingerprint: ${err instanceof Error ? err.message : String(err)}\n`,
-          );
-        }
         const record = await appendRun({
           projectPath: state.projectPath,
           savePath: path,
@@ -1636,7 +1623,6 @@ export function WizardApp({
           extractSessionId: state.extractSessionId ?? '',
           generateSessionId: state.generateSessionId,
           sourceFingerprint,
-          savedFingerprint,
           compositionMode,
         });
         setState((prev) => ({ ...prev, lastRunId: record.id }));

@@ -54,12 +54,6 @@ describe('command option builders', () => {
         mandatory: false,
         defaultValue: undefined,
       },
-      {
-        flag: '--atomic',
-        description: 'Import flat components with no embedded-component hierarchy (default)',
-        mandatory: false,
-        defaultValue: undefined,
-      },
     ]);
   });
 });
