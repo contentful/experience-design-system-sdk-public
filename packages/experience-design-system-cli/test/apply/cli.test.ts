@@ -34,7 +34,6 @@ describe('apply command — help', () => {
       '--force',
       '--tokens',
       '--verbose',
-      '--yes',
     ]);
   });
 
@@ -48,12 +47,12 @@ describe('apply command — help', () => {
   it('prints apply help', async () => {
     const { stdout, code } = await run(['apply', '--help']);
     expect(code).toBe(0);
-    expect(stdout).toContain('--yes');
+    expect(stdout).not.toContain('--yes');
   });
 });
 
 describe('apply — input validation', () => {
-  it('exits 1 in non-TTY mode without --yes', async () => {
+  it('exits 1 in non-interactive mode', async () => {
     const { stderr, code } = await run([
       'apply',
       '--components',
@@ -65,7 +64,7 @@ describe('apply — input validation', () => {
       'tok',
     ]);
     expect(code).toBe(1);
-    expect(stderr).toContain('--yes');
+    expect(stderr).toContain('interactive terminal');
   });
 
   it('exits 1 when --tokens path does not exist', async () => {
@@ -79,7 +78,6 @@ describe('apply — input validation', () => {
       'master',
       '--cma-token',
       'tok',
-      '--yes',
     ]);
     expect(code).toBe(1);
     expect(stderr).toContain('file not found');
