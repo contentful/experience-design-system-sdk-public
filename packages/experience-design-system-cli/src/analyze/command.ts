@@ -273,7 +273,7 @@ export function registerAnalyzeCommand(program: Command): void {
       (v: string, acc: string[]) => [...acc, v],
       [] as string[],
     );
-  addCompositionOptions(extractCmd, { includeAtomic: false });
+  addCompositionOptions(extractCmd);
   addAgentModelOptions(extractCmd, {
     includeModel: false,
     agentDescription: 'Coding agent for composition mapping resolution (claude|codex|opencode|cursor)',

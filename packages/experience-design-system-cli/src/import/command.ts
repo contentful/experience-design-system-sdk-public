@@ -30,7 +30,7 @@ export function registerImportCommand(program: Command): void {
       'Skip agentic token restrictions while still resolving deterministic token-default paths',
     )
     .option('--no-cache', 'Re-run all steps even if output already exists');
-  addCompositionOptions(cmd, { includeAtomic: false });
+  addCompositionOptions(cmd);
   cmd
     .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map (implies --composite)')
     .option(

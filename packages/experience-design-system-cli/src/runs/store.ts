@@ -23,13 +23,6 @@ type SourceFingerprint = {
   rawTokensContentHash: string | null;
 };
 
-/** SHA-256 hashes of the JSON artifacts the wizard wrote to disk. Used on
- *  replay to detect manual edits to components.json / tokens.json. */
-type SavedFingerprint = {
-  componentsJsonHash: string | null;
-  tokensJsonHash: string | null;
-};
-
 export type RunRecord = {
   id: string;
   createdAt: string;
@@ -54,10 +47,6 @@ export type RunRecord = {
    *  satisfy `RunRecord`; `appendRun` always normalizes a missing value to
    *  null on the way to disk. */
   sourceFingerprint?: SourceFingerprint | null;
-  /** Saved-artifact fingerprint. Null on v1/v2 records read from disk; v3
-   *  writers always populate. Added in runs.json v3. Optional for the same
-   *  reason as `sourceFingerprint`. */
-  savedFingerprint?: SavedFingerprint | null;
   /** Composition mode the run was produced in, so replay resumes in the
    *  same mode (`composite` vs `atomic`). Absent on records written before this
    *  field existed; callers treat a missing value as `atomic` (the default). */
@@ -109,8 +98,8 @@ function generateUlid(now: number = Date.now()): string {
   return (ts + rand).toUpperCase();
 }
 
-type RunRecordV1 = Omit<RunRecord, 'tokensPath' | 'tokenSessionId' | 'sourceFingerprint' | 'savedFingerprint'>;
-type RunRecordV2 = Omit<RunRecord, 'sourceFingerprint' | 'savedFingerprint'>;
+type RunRecordV1 = Omit<RunRecord, 'tokensPath' | 'tokenSessionId' | 'sourceFingerprint'>;
+type RunRecordV2 = Omit<RunRecord, 'sourceFingerprint'>;
 type RunsFileV1 = { version: 1; runs: RunRecordV1[] };
 type RunsFileV2 = { version: 2; runs: RunRecordV2[] };
 
@@ -120,7 +109,6 @@ function migrateRecord(rec: RunRecord | RunRecordV1 | RunRecordV2): RunRecord {
     tokensPath: (rec as RunRecord).tokensPath ?? null,
     tokenSessionId: (rec as RunRecord).tokenSessionId ?? null,
     sourceFingerprint: (rec as RunRecord).sourceFingerprint ?? null,
-    savedFingerprint: (rec as RunRecord).savedFingerprint ?? null,
   };
 }
 
@@ -160,7 +148,6 @@ export async function appendRun(input: AppendInput): Promise<RunRecord> {
     id: input.id ?? generateUlid(),
     createdAt: input.createdAt ?? new Date().toISOString(),
     sourceFingerprint: input.sourceFingerprint ?? null,
-    savedFingerprint: input.savedFingerprint ?? null,
   };
   const runs = existing ? [record, ...existing.runs] : [record];
   if (runs.length > RUNS_FILE_CAP) {

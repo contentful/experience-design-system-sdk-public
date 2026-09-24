@@ -165,7 +165,10 @@ type SharedInputs = Awaited<ReturnType<typeof resolveSharedInputs>>;
 function addSharedApplyOptions(command: Command): void {
   addArtifactInputOptions(command);
   addContentfulTargetOptions(command);
-  addCompositionOptions(command);
+  addCompositionOptions(command).option(
+    '--atomic',
+    'Import flat components with no embedded-component hierarchy (default)',
+  );
 }
 
 async function resolveSharedInputsOrDie(opts: SharedImportOptions, verbose?: boolean): Promise<SharedInputs> {
