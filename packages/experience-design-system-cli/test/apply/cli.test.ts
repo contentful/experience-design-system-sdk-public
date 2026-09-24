@@ -29,7 +29,6 @@ describe('apply command — help', () => {
     const flags = apply!.options.map((option) => option.long).sort();
 
     expect(flags).toEqual([
-      '--atomic',
       '--components',
       '--dry-run',
       '--force',
