@@ -50,7 +50,6 @@ describe('apply — actionable preview diagnostics', () => {
         'master',
         '--cma-token',
         'test-token',
-        '--yes',
       ],
       {
         NODE_NO_WARNINGS: '1',

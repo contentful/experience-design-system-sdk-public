@@ -73,7 +73,6 @@ describe('apply — viewUrl emission (Gap 4)', () => {
       'master',
       '--cma-token',
       'test-token',
-      '--yes',
     ];
     const { stdout, code } = await runCliWithEnv(args, baseEnv());
     expect(code).toBe(0);

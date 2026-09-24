@@ -151,7 +151,6 @@ interface SharedImportOptions {
 }
 
 interface ApplyOptions extends SharedImportOptions {
-  yes?: boolean;
   verbose?: boolean;
   force?: boolean;
   dryRun?: boolean;
@@ -251,32 +250,6 @@ async function applyAndPoll(
   }
 
   return operation;
-}
-
-interface NonInteractiveApplyOptions {
-  client: ImportApiClient;
-  manifest: Parameters<ImportApiClient['applyImport']>[0];
-  spaceId: string;
-  environmentId: string;
-  host?: string;
-  acknowledgeBreakingChanges: boolean;
-  verbose?: boolean;
-}
-
-async function runNonInteractiveApply(options: NonInteractiveApplyOptions): Promise<void> {
-  const operation = await applyAndPoll(options.client, options.manifest, {
-    acknowledgeBreakingChanges: options.acknowledgeBreakingChanges,
-    onStarted: (operationId) => {
-      process.stderr.write(`Apply operation started: ${operationId}\n`);
-    },
-    onApiError: (error) => dieWithApiError(error, options.verbose),
-  });
-  if (!operation) return;
-
-  const summary = buildApplyOutput(operation, options.spaceId, options.environmentId, options.host);
-  recordApplyOutcome(options.client, options.spaceId, options.environmentId, operation);
-  process.stdout.write(JSON.stringify(summary, null, 2) + '\n');
-  await exitWithAnalytics(operation.sys.status === 'succeeded' ? 0 : 1);
 }
 
 interface InteractiveApplyOptions {
@@ -535,15 +508,14 @@ export function registerApplyCommand(program: Command): void {
   const applyCmd = program.command('apply').description('Write component types and design tokens to Contentful ExO');
   addSharedApplyOptions(applyCmd);
   applyCmd
-    .option('--yes', 'Skip interactive confirmation')
     .option('--verbose', 'Show all entity progress including skipped/unchanged')
     .option('--force', 'Skip confirmation for breaking changes (for CI)')
     .option('--dry-run', 'Run preview only without applying')
     .action(async (opts: ApplyOptions) => {
       const isTTY = getInteractiveTerminalSupport().supported;
 
-      if (!isTTY && !opts.yes) {
-        process.stderr.write('Error: apply requires --yes in non-interactive mode\n');
+      if (!isTTY) {
+        process.stderr.write('Error: apply requires an interactive terminal\n');
         await exitWithAnalytics(1);
       }
 
@@ -598,7 +570,7 @@ export function registerApplyCommand(program: Command): void {
       }
 
       if (isEmptyPreview(preview)) {
-        if (isTTY && !opts.yes) {
+        if (isTTY) {
           process.stderr.write('Nothing to change — design system is up to date.\n');
         } else {
           process.stdout.write(JSON.stringify(buildPreviewOutput(preview, spaceId, environmentId), null, 2) + '\n');
@@ -607,32 +579,6 @@ export function registerApplyCommand(program: Command): void {
       }
 
       const breakingWithImpact = hasBreakingChangesWithImpact(preview);
-
-      if (!isTTY || opts.yes) {
-        if (breakingWithImpact && !opts.force) {
-          process.stderr.write(
-            'Error: breaking changes with downstream impact detected. Use --force to acknowledge.\n',
-          );
-          process.stdout.write(JSON.stringify(buildPreviewOutput(preview, spaceId, environmentId), null, 2) + '\n');
-          await exitWithAnalytics(1);
-        }
-
-        const verbose = opts.verbose ?? false;
-        if (verbose) {
-          process.stderr.write(JSON.stringify(buildPreviewOutput(preview, spaceId, environmentId), null, 2) + '\n');
-        }
-
-        await runNonInteractiveApply({
-          client,
-          manifest,
-          spaceId,
-          environmentId,
-          acknowledgeBreakingChanges: breakingWithImpact || opts.force === true,
-          host: opts.host,
-          verbose: opts.verbose,
-        });
-        return;
-      }
 
       await new Promise<void>((resolvePromise) => {
         const runApply = async (acknowledge: boolean) => {

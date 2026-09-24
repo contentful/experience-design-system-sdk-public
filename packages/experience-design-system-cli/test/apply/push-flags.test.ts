@@ -61,7 +61,6 @@ describe('apply — flag variations', () => {
     'master',
     '--cma-token',
     'test-token',
-    '--yes',
   ];
 
   // ── Help ──────────────────────────────────────────────────────────────────
@@ -76,7 +75,7 @@ describe('apply — flag variations', () => {
 
   // ── Non-interactive guard ─────────────────────────────────────────────────
 
-  it('exits non-zero in non-TTY mode without --yes', async () => {
+  it('exits non-zero in non-interactive mode', async () => {
     const args = [
       'apply',
       '--components',
@@ -90,7 +89,7 @@ describe('apply — flag variations', () => {
     ];
     const { code, stderr } = await runCliWithEnv(args, baseEnv());
     expect(code).not.toBe(0);
-    expect(stderr).toMatch(/--yes/i);
+    expect(stderr).toMatch(/interactive terminal/i);
   });
 
   // ── Missing required credentials ──────────────────────────────────────────
