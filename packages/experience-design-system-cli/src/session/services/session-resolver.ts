@@ -26,7 +26,7 @@ export function getOrCreateSessionForCommand(
   }
 
   if (!getSessionById(db, sessionFlag)) {
-    throw new Error(`session '${sessionFlag}' not found. Run 'session list' to see active sessions.`);
+    throw new Error(`session '${sessionFlag}' not found.`);
   }
   return { sessionId: sessionFlag, isNew: false, isResumed: false };
 }
