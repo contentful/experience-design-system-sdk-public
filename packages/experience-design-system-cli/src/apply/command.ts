@@ -164,10 +164,6 @@ function addSharedApplyOptions(command: Command): void {
     .option('--components <path>', 'Path to components.json (CDF)')
     .option('--tokens <path>', 'Path to tokens.json (DTCG)');
   command
-  command.option(
-    '--atomic',
-    'Import flat components with no embedded-component hierarchy (default)',
-  );
 }
 
 async function resolveSharedInputsOrDie(opts: SharedImportOptions, verbose?: boolean): Promise<SharedInputs> {
