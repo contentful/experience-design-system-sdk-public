@@ -70,7 +70,7 @@ describe('import — help output lists all flags', () => {
     const { stdout, code } = await run(['import', '--help']);
     expect(code).toBe(0);
 
-    const flags = ['--project', '--agent', '--model', '--skip-map-tokens', '--no-cache', '--host'];
+    const flags = ['--project', '--agent', '--model', '--skip-map-tokens', '--no-cache'];
 
     for (const flag of flags) {
       expect(stdout, `expected ${flag} in help output`).toContain(flag);
@@ -165,18 +165,6 @@ describe('import — removed flags', () => {
 });
 
 describe('import — push-related flags', () => {
-  it('--host <url> is accepted without error', async () => {
-    const { stderr, code } = await run([...skipAll(), '--host', 'https://api.contentful.com'], baseEnv());
-    expect(stderr).not.toContain("unknown option '--host'");
-    expect(code).toBe(0);
-  });
-
-  it('--host <hostname> is accepted without requiring https://', async () => {
-    const { stderr, code } = await run([...skipAll(), '--host', 'api.contentful.com'], baseEnv());
-    expect(stderr).not.toContain("unknown option '--host'");
-    expect(code).toBe(0);
-  });
-
   it('--no-cache is accepted and forces a re-run', async () => {
     // Isolated project/DB: --no-cache forces a real analyze extract run, which
     // would otherwise leave a session in the shared DB for later tests to pick up.

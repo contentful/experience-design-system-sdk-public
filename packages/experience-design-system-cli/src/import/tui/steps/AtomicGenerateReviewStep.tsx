@@ -49,7 +49,7 @@ type GenerateReviewStepProps = {
    * Feature 2 (live preview after every save). When `true` (default), the
    * wizard re-runs `previewImport` after each successful FieldEditor Ctrl+S
    * (debounced 500ms) and refreshes the sidebar's previewAnnotation badges.
-   * Operator opts out via `experiences import --no-live-preview`.
+   * Live preview is enabled for the wizard flow.
    */
   livePreview?: boolean;
   // Creds + tokens path threaded from the wizard so the live-preview hook

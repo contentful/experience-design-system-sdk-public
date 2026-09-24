@@ -29,8 +29,7 @@ export function registerImportCommand(program: Command): void {
       '--skip-map-tokens',
       'Skip agentic token restrictions while still resolving deterministic token-default paths',
     )
-    .option('--no-cache', 'Re-run all steps even if output already exists')
-    .option('--host <url>', 'Override API base URL (passed to apply push)');
+    .option('--no-cache', 'Re-run all steps even if output already exists');
   addCompositionOptions(cmd, { includeAtomic: false });
   cmd
     .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map (implies --composite)')
@@ -49,7 +48,6 @@ export function registerImportCommand(program: Command): void {
         rawTokens?: string;
         skipMapTokens?: boolean;
         cache?: boolean;
-        host?: string;
         composite?: boolean;
         compositionMap?: string;
         prompt?: string[];
@@ -86,7 +84,6 @@ export function registerImportCommand(program: Command): void {
             initialModel?: string;
             bedrock?: boolean;
             initialProjectPath?: string;
-            host?: string;
             compositionMode?: CompositionMode;
             compositionMap?: string;
             promptOverrides?: string[];
@@ -113,12 +110,11 @@ export function registerImportCommand(program: Command): void {
               initialSpaceId: creds.spaceId,
               initialEnvironmentId: creds.environmentId || 'master',
               initialCmaToken: creds.cmaToken,
-              initialHost: toConfiguredHost(opts.host ?? creds.host) ?? DEFAULT_CONFIGURED_HOST,
+              initialHost: toConfiguredHost(creds.host) ?? DEFAULT_CONFIGURED_HOST,
               initialAgent: resolvedAgent,
               ...(resolvedModel ? { initialModel: resolvedModel } : {}),
               ...(opts.bedrock ? { bedrock: true } : {}),
               initialProjectPath: opts.project !== '.' ? normalizePath(opts.project) : undefined,
-              host: opts.host,
               compositionMode: resolvedCompositionMode,
               ...buildCompositionForwardingOptions(opts),
               noCache: opts.cache === false,
