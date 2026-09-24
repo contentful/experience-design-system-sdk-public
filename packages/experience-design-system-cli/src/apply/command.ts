@@ -12,11 +12,12 @@ import {
 } from '@contentful/experience-design-system-types';
 import type { CDFComponentEntry, CDFValidationError, DTCGTokenEntry } from '@contentful/experience-design-system-types';
 import { ApiError, ImportApiClient } from './api-client.js';
-import { formatApiError } from '../lib/error-parser.js';
+import { formatApiError, formatEdsiError } from '../lib/error-parser.js';
 import { findSlotCycles, suggestCycleBreakEdge, formatCyclePath } from '../analyze/cycle-detection.js';
 import type { ServerPreviewResponse, ApplyOperationResponse } from '@contentful/experience-design-system-types';
 import { isEmptyPreview } from './preview-utils.js';
 import { ServerPreviewConfirm, ServerApplyProgress, ServerApplyDone } from './tui/ServerApplyView.js';
+import { buildPostPushUrl } from '../lib/contentful-urls.js';
 import { resolveCompositionMode, type CompositionMode } from '../lib/composition-mode.js';
 import { stripAllowedComponents } from '../import/strip-allowed-components.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
@@ -256,6 +257,31 @@ interface InteractiveApplyOptions {
   onDone: () => void;
 }
 
+interface NonInteractiveApplyOptions {
+  client: ImportApiClient;
+  manifest: Parameters<ImportApiClient['applyImport']>[0];
+  spaceId: string;
+  environmentId: string;
+  host?: string;
+  acknowledgeBreakingChanges: boolean;
+}
+
+async function runNonInteractiveApply(options: NonInteractiveApplyOptions): Promise<void> {
+  const operation = await applyAndPoll(options.client, options.manifest, {
+    acknowledgeBreakingChanges: options.acknowledgeBreakingChanges,
+    onStarted: (operationId) => {
+      process.stderr.write(`Apply operation started: ${operationId}\n`);
+    },
+    onApiError: (error) => dieWithApiError(error),
+  });
+  if (!operation) return;
+
+  const summary = buildApplyOutput(operation, options.spaceId, options.environmentId, options.host);
+  recordApplyOutcome(options.client, options.spaceId, options.environmentId, operation);
+  process.stdout.write(JSON.stringify(summary, null, 2) + '\n');
+  await exitWithAnalytics(operation.sys.status === 'succeeded' ? 0 : 1);
+}
+
 async function runInteractiveApply(options: InteractiveApplyOptions): Promise<void> {
   const operation = await applyAndPoll(options.client, options.manifest, {
     acknowledgeBreakingChanges: options.acknowledgeBreakingChanges,
@@ -458,6 +484,41 @@ function buildPreviewOutput(preview: ServerPreviewResponse, spaceId: string, env
   };
 }
 
+function buildApplyOutput(
+  operation: ApplyOperationResponse,
+  spaceId: string,
+  environmentId: string,
+  host: string | undefined,
+) {
+  const items = operation.items ?? [];
+  const componentItems = items.filter((i) => i.entityType === 'ComponentType');
+  const tokenItems = items.filter((i) => i.entityType === 'DesignToken');
+  const countByAction = (subset: typeof items) => ({
+    created: subset.filter((i) => i.action === 'create' && i.status === 'succeeded').length,
+    updated: subset.filter((i) => i.action === 'update' && i.status === 'succeeded').length,
+    failed: subset.filter((i) => i.status === 'failed').length,
+  });
+
+  return {
+    status: operation.sys.status,
+    operationId: operation.sys.id,
+    spaceId,
+    environmentId,
+    summary: operation.summary,
+    componentTypes: countByAction(componentItems),
+    designTokens: countByAction(tokenItems),
+    viewUrl: buildPostPushUrl({ host: host ?? 'api.contentful.com', spaceId, environmentId }),
+    tokensUrl: buildPostPushUrl({ host: host ?? 'api.contentful.com', spaceId, environmentId, view: 'design_tokens' }),
+    failures: items
+      .filter((item) => item.status === 'failed')
+      .map((item) => ({
+        entityType: item.entityType,
+        entityId: item.id,
+        error: formatEdsiError(item.error),
+      })),
+  };
+}
+
 export function registerApplyCommand(program: Command): void {
   const applyCmd = program
     .command('apply')
@@ -467,11 +528,6 @@ export function registerApplyCommand(program: Command): void {
   applyCmd
     .action(async (opts: SharedImportOptions) => {
       const isTTY = getInteractiveTerminalSupport().supported;
-
-      if (!isTTY) {
-        process.stderr.write('Error: apply requires an interactive terminal\n');
-        await exitWithAnalytics(1);
-      }
 
       const inputs = await resolveSharedInputsOrDie(opts);
 
@@ -517,6 +573,25 @@ export function registerApplyCommand(program: Command): void {
       }
 
       const breakingWithImpact = hasBreakingChangesWithImpact(preview);
+
+      if (!isTTY) {
+        if (breakingWithImpact) {
+          process.stderr.write(
+            'Error: breaking changes with downstream impact detected; run apply in an interactive terminal to acknowledge them.\n',
+          );
+          process.stdout.write(JSON.stringify(buildPreviewOutput(preview, spaceId, environmentId), null, 2) + '\n');
+          await exitWithAnalytics(1);
+        }
+        await runNonInteractiveApply({
+          client,
+          manifest,
+          spaceId,
+          environmentId,
+          acknowledgeBreakingChanges: false,
+          host: opts.host,
+        });
+        return;
+      }
 
       await new Promise<void>((resolvePromise) => {
         const runApply = async (acknowledge: boolean) => {
