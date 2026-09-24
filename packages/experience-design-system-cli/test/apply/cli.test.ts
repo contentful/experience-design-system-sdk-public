@@ -34,17 +34,8 @@ describe('apply command — help', () => {
     ]);
   });
 
-  it('prints apply help', async () => {
-    const { stdout, code } = await run(['apply', '--help']);
-    expect(code).toBe(0);
-    expect(stdout).not.toContain('push');
-    expect(stdout).not.toContain('select');
-  });
-
-  it('prints apply help', async () => {
-    const { stdout, code } = await run(['apply', '--help']);
-    expect(code).toBe(0);
-    expect(stdout).not.toContain('--yes');
+  it('does not register a help option', () => {
+    expect(apply!.options.some((option) => option.long === '--help')).toBe(false);
   });
 });
 

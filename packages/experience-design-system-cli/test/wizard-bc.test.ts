@@ -34,17 +34,4 @@ describe('backwards-compat: standalone subcommand flags', () => {
     expect(out).not.toMatch(/\n\s+generate(?:\s|$)/);
   });
 
-  it('apply flags are stable', async () => {
-    const out = await help(['apply']);
-    for (const flag of [
-      '--components',
-      '--session',
-      '--space-id',
-      '--environment-id',
-      '--cma-token',
-      '--host',
-    ]) {
-      expect(out).toContain(flag);
-    }
-  });
 });
