@@ -19,7 +19,7 @@ import { isEmptyPreview } from './preview-utils.js';
 import { ServerPreviewApp, ServerPreviewConfirm, ServerApplyProgress, ServerApplyDone } from './tui/ServerApplyView.js';
 import { buildPostPushUrl } from '../lib/contentful-urls.js';
 import { resolveCompositionMode, type CompositionMode } from '../lib/composition-mode.js';
-import { addCompositionOptions, addContentfulTargetOptions } from '../lib/command-options.js';
+import { addCompositionOptions } from '../lib/command-options.js';
 import { stripAllowedComponents } from '../import/strip-allowed-components.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { getInteractiveTerminalSupport } from '../lib/terminal-capabilities.js';
@@ -164,7 +164,10 @@ function addSharedApplyOptions(command: Command): void {
   command
     .option('--components <path>', 'Path to components.json (CDF)')
     .option('--tokens <path>', 'Path to tokens.json (DTCG)');
-  addContentfulTargetOptions(command);
+  command
+    .option('--environment-id <id>', 'Contentful environment ID')
+    .option('--cma-token <token>', 'CMA personal access token (or set CONTENTFUL_MANAGEMENT_TOKEN)')
+    .option('--host <url>', 'Override API base URL');
   addCompositionOptions(command).option(
     '--atomic',
     'Import flat components with no embedded-component hierarchy (default)',
@@ -324,7 +327,8 @@ async function resolveSharedInputs(opts: SharedImportOptions): Promise<{
 }> {
   if (!opts.components && !opts.tokens) return await die('Error: at least one of --components or --tokens is required');
 
-  const spaceId = opts.spaceId ?? process.env.CONTENTFUL_SPACE_ID;
+  const credentials = await readExperiencesCredentials();
+  const spaceId = opts.spaceId ?? credentials.spaceId;
   const environmentId = opts.environmentId ?? process.env.CONTENTFUL_ENVIRONMENT_ID;
   if (!spaceId) return await die('Error: --space-id is required (or set CONTENTFUL_SPACE_ID)');
   if (!environmentId) return await die('Error: --environment-id is required (or set CONTENTFUL_ENVIRONMENT_ID)');
