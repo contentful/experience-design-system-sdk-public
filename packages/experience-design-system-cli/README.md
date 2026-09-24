@@ -30,7 +30,7 @@ There are two ways to use the CLI:
 
 **Determinism boundary.** `analyze extract` is fully deterministic: ts-morph AST parsing produces the same component list and prop shape on every run, then a deterministic pre-classifier and a structural non-authorable filter shape the output. AI enters the pipeline at `analyze select-agent` and the import wizard's generation step. This split keeps the extracted artifact reproducible — if an extracted component looks wrong, the cause is in the rules, not in agent variability.
 
-All intermediate data flows through a local SQLite session database (`~/.contentful/experience-design-system-cli/pipeline.db`). No JSON files are written between steps — each command reads its inputs from the session and writes its outputs back to it. Use `print` to export session data to JSON files on demand. The wizard additionally maintains a separate **runs.json** file (`~/.config/experiences/runs.json`) that records each successful wizard session.
+All intermediate data flows through a local SQLite session database (`~/.contentful/experience-design-system-cli/pipeline.db`). No JSON files are written between steps — each pipeline step reads its inputs from the session and writes its outputs back to it.
 
 ---
 
@@ -149,13 +149,6 @@ The auto-filter (`analyze select-agent` invoked before scope-gate) is on by defa
 
 The push-decision-gate defaults to **save AND push**: it writes `components.json` and `tokens.json` to disk *and* pushes to Contentful in one step.
 
-### Replaying prior runs
-
-After every successful wizard session, the CLI appends a record to `~/.config/experiences/runs.json` and prints a teaser pointing at the run-id. Subsequent invocations can reuse that record:
-
-| Flag                              | What it does                                                                                                            |
-| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-
 ### Custom skill prompts
 
 Custom `.md` skill prompt paths can be saved via `experiences setup`; the CLI emits a banner at agent invocation when an override is active.
@@ -172,9 +165,6 @@ Custom `.md` skill prompt paths can be saved via `experiences setup`; the CLI em
 | `--prompt <stage=value>`          | —                                      | Override a stage prompt (repeatable); value is a file path or literal text, e.g. `--prompt composition=./p.md` |
 | `--skip-map-tokens`               | —                                      | Skip the `map tokens` step between internal generation and apply                                             |
 | `--no-cache`                      | cache on                               | Bypass extract/select/internal-generation/map-tokens/composition caches and force re-run                    |
-| `--host <url>`                    | `https://api.contentful.com`           | Override API base URL                                                                                        |
-
-### Run-picker at wizard start
 
 ### `--model` and `--agent` overrides
 
@@ -185,29 +175,6 @@ Custom `.md` skill prompt paths can be saved via `experiences setup`; the CLI em
 3. Built-in default for the chosen agent
 
 `--agent <name>` works the same way and is a fully functional wizard override — earlier releases plumbed the flag but the commander default shadowed it; the flag now wins over the saved value as expected.
-
----
-
-## `experiences runs`
-
-List recorded wizard runs from `~/.config/experiences/runs.json`, or print the detail view for a single run.
-
-```bash
-experiences runs [<id-or-path>] [--project <path>] [--limit <n>] [--pushed | --not-pushed] [--json]
-```
-
-| Option              | Description                                                                              |
-| ------------------- | ---------------------------------------------------------------------------------------- |
-| `<id-or-path>`      | Positional. Print the detail view for a single run by id or recorded save path. Path resolution sniffs for `/`, `./`, or `~/` prefix (and the bare `.` / `~` values) via `resolveRunTarget()`. |
-| `--project <path>`  | Filter by source project path (absolute).                                                |
-| `--limit <n>`       | Cap the number of rows printed.                                                          |
-| `--pushed`          | Show only runs that were pushed to Contentful. Mutex with `--not-pushed`.                |
-| `--not-pushed`      | Show only runs that were never pushed. Mutex with `--pushed`.                            |
-| `--json`            | Emit machine-readable output: `RunRecord[]` for the list view; a single `RunRecord` object when combined with `<id-or-path>`. |
-
-Each row prints the run id, creation time, project path, save path, component count, and push target (or `(not pushed)`). Table columns auto-expand to fit content — long project / save paths are no longer truncated.
-
-Use `experiences runs` to inspect prior session records.
 
 ---
 
@@ -326,17 +293,9 @@ Design tokens are written first (component types may reference token kinds). Eac
 
 ---
 
-### `session list` / `session show` / `session stats` / `session prune`
-
-Lower-level pipeline-session management. Unchanged from prior releases; see `experiences session --help` for the full flag surface. Most operators should use `experiences runs` instead.
-
----
-
 ## Session Database
 
 All pipeline state is stored in `~/.contentful/experience-design-system-cli/pipeline.db` (SQLite). The path can be overridden with the `EDS_PIPELINE_DB_PATH` environment variable. The push-resumption database is at `~/.contentful/experience-design-system-cli/import.db` (override with `EDS_IMPORT_DB_PATH`).
-
-Wizard run history is separate: `~/.config/experiences/runs.json`.
 
 ---
 

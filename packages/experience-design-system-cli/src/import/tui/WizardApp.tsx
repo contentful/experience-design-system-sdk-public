@@ -1275,7 +1275,7 @@ export function WizardApp({
               `  Space:       ${spaceId}\n` +
               `  Environment: ${environmentId}\n` +
               (resolvedHost ? `  Host:        ${resolvedHost}\n` : '') +
-              `\nIf using a custom --host, make sure the space exists on that host.`,
+              `\nIf using a custom host configuration, make sure the space exists on that host.`,
           });
           return;
         }

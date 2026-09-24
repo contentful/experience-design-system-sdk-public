@@ -209,8 +209,3 @@ export async function updateRun(id: string, patch: Partial<Omit<RunRecord, 'id'>
   await writeAtomic(file);
   return updated;
 }
-
-export async function findAllRunsBySavePath(savePath: string): Promise<RunRecord[]> {
-  const file = await readFileMaybe();
-  return file?.runs.filter((r) => r.savePath === savePath) ?? [];
-}

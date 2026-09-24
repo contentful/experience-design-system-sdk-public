@@ -21,7 +21,7 @@ describe('import flag inventory completeness', () => {
   const inventoryFlags = [...new Set(IMPORT_FLAGS.map((f) => f.flag))].sort();
 
   it('registers the current import flag set', () => {
-    expect(parsedFlags.length).toBeGreaterThanOrEqual(11);
+    expect(parsedFlags.length).toBeGreaterThanOrEqual(10);
   });
 
   it('every inventory flag key is unique', () => {
