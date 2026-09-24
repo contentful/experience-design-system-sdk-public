@@ -23,7 +23,7 @@ There are two ways to use the CLI:
 2. **Standalone subcommands** — for piping into other tools, CI parity with the wizard, or for debugging individual steps:
 
    ```
-   analyze extract   →   analyze select-agent   →   apply push
+   analyze extract   →   analyze select-agent   →   apply
    ```
 
    `analyze select-agent` is the agent-driven selection step the wizard uses. You can replace it with `analyze select` for the older manual JsonEditor TUI.
@@ -68,7 +68,7 @@ Because the agent path spawns a coding agent, it adds latency and cost and is be
 
 ### Slot cycles
 
-If the resolved graph contains a circular slot dependency (A slots B, B slots A), it is detected before push. `apply push` and the wizard's push path **refuse to send a manifest with cycles**; the cycle path is reported so you can break it.
+If the resolved graph contains a circular slot dependency (A slots B, B slots A), it is detected before push. `apply` and the wizard's push path **refuse to send a manifest with cycles**; the cycle path is reported so you can break it.
 
 ---
 
@@ -92,7 +92,7 @@ The CLI invokes the agent non-interactively in a subprocess. If the binary is no
 
 ### Contentful credentials
 
-`apply push` and `import` (when pushing) require access to a Contentful space. Set these environment variables or pass the equivalent flags:
+`apply` and `import` (when pushing) require access to a Contentful space. Set these environment variables or pass the equivalent flags:
 
 ```bash
 export CONTENTFUL_MANAGEMENT_TOKEN=<your-cma-token>   # required
@@ -277,17 +277,17 @@ experiences print validate   [--components <path>] [--tokens <path>]
 
 ---
 
-### `apply push`
+### `apply`
 
-These subcommands are the non-wizard route to the same diff and push logic. Flag surfaces are unchanged.
+This command is the non-wizard route to the same diff and push logic. Its flag surface is unchanged.
 
-`apply push` emits a Contentful webapp view URL for the imported components in its JSON summary (`viewUrl`) so callers can deep-link into the management UI after a successful push.
+`apply` emits a Contentful webapp view URL for the imported components in its JSON summary (`viewUrl`) so callers can deep-link into the management UI after a successful push.
 
 ```bash
-experiences apply push    --space-id <id> --environment-id <env> --session <id> [--yes]
+experiences apply    --space-id <id> --environment-id <env> --session <id> [--yes]
 ```
 
-Shared flags: `--components`, `--tokens`, `--session`, `--space-id`, `--environment-id`, `--cma-token`, `--host`. `apply push` adds `--yes`, `--verbose`, `--force`, and `--dry-run`. Remote ComponentTypes and DesignTokens missing from the pushed manifest are always skipped.
+Shared flags: `--components`, `--tokens`, `--session`, `--space-id`, `--environment-id`, `--cma-token`, `--host`. `apply` adds `--yes`, `--verbose`, `--force`, and `--dry-run`. Remote ComponentTypes and DesignTokens missing from the pushed manifest are always skipped.
 
 Design tokens are written first (component types may reference token kinds). Each entity write is recorded in the session database atomically — interrupted pushes resume from where they left off.
 

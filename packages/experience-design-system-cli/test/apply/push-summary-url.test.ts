@@ -50,7 +50,7 @@ const baseEnv = () => ({
   CONTENTFUL_MANAGEMENT_TOKEN: '',
 });
 
-describe('apply push — viewUrl emission (Gap 4)', () => {
+describe('apply — viewUrl emission (Gap 4)', () => {
   let pushServer: MockCMAServer;
 
   beforeAll(async () => {
@@ -61,10 +61,9 @@ describe('apply push — viewUrl emission (Gap 4)', () => {
     pushServer.close();
   });
 
-  it('non-TTY apply push JSON summary includes viewUrl', async () => {
+  it('non-TTY apply JSON summary includes viewUrl', async () => {
     const args = [
       'apply',
-      'push',
       '--components',
       componentsPath,
       '--space-id',

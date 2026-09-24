@@ -43,7 +43,7 @@ export type CommandName =
   | 'analyze select'
   | 'generate components'
   | 'generate tokens'
-  | 'apply push'
+  | 'apply'
   | 'print components'
   | 'print tokens'
   | 'map tokens'

@@ -11,7 +11,7 @@ const validationBody = {
   details: { errors: [{ name: 'invalid_union', path: [], details: 'Invalid input' }] },
 };
 
-describe('apply push — actionable preview diagnostics', () => {
+describe('apply — actionable preview diagnostics', () => {
   let server: Server;
   let host: string;
 
@@ -42,7 +42,6 @@ describe('apply push — actionable preview diagnostics', () => {
     const { code, stderr } = await runCliWithEnv(
       [
         'apply',
-        'push',
         '--components',
         componentsPath,
         '--space-id',

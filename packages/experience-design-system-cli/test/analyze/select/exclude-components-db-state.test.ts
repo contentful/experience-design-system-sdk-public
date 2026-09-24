@@ -10,9 +10,9 @@ import type { RawComponentDefinition } from '../../../src/types.js';
 /**
  * Verification test for the SP-4 retry-loop concern raised during review:
  * does `analyze select --select-all --exclude-components <names>` leave the
- * surviving components in a state where the next `apply push` can find them?
+ * surviving components in a state where the next `apply` can find them?
  *
- * Specifically: `loadCDFComponents` (called by `apply push` and the wizard's
+ * Specifically: `loadCDFComponents` (called by `apply` and the wizard's
  * runPreview) reads `raw_components WHERE status = 'generated'` and joins
  * `raw_props WHERE cdf_type IS NOT NULL`. If `--exclude-components` resets
  * either of those, the retry sends an empty manifest and the loop is broken.
@@ -151,7 +151,7 @@ describe('--exclude-components — DB state after retry-loop invocation', () => 
     expect(cdfNames.sort()).toEqual(['A', 'B', 'C']);
   });
 
-  it('after `analyze select --exclude-components B` (the orchestrator retry-loop call), surviving components stay visible to the next apply push', async () => {
+  it('after `analyze select --exclude-components B` (the orchestrator retry-loop call), surviving components stay visible to the next apply', async () => {
     // This is the orchestrator retry-loop invocation, verbatim. See
     // orchestrator.ts in this branch:
     //   analyze select --session <id> --exclude-components <names>
@@ -169,7 +169,7 @@ describe('--exclude-components — DB state after retry-loop invocation', () => 
     expect(statuses['A']).toBe('generated');
     expect(statuses['C']).toBe('generated');
 
-    // CRITICAL: A and C must still be loadable by apply push. Otherwise the
+    // CRITICAL: A and C must still be loadable by apply. Otherwise the
     // retry sends an empty manifest and the loop never recovers.
     expect(cdfNames.sort()).toEqual(['A', 'C']);
   });
@@ -186,7 +186,7 @@ describe('--exclude-components — DB state after retry-loop invocation', () => 
     //
     // This test pins the sealed contract: even if a caller passes the
     // combination, the post-generate DB state survives and the next
-    // `apply push` still finds the surviving components.
+    // `apply` still finds the surviving components.
     const result = await runCli(
       [
         'analyze',

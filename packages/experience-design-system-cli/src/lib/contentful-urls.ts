@@ -1,7 +1,7 @@
 /**
  * Shared Contentful webapp URL builders.
  *
- * This module centralizes the formatter so the wizard and `apply push` emit
+ * This module centralizes the formatter so the wizard and `apply` emit
  * the same URL shape.
  */
 

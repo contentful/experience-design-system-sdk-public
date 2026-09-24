@@ -31,7 +31,7 @@ const MOCK_ROUTES = {
   },
 };
 
-describe('apply push — flag variations', () => {
+describe('apply — flag variations', () => {
   let server: MockCMAServer;
 
   beforeAll(async () => {
@@ -52,7 +52,6 @@ describe('apply push — flag variations', () => {
 
   const baseArgs = () => [
     'apply',
-    'push',
     '--components',
     componentsPath,
     '--space-id',
@@ -69,7 +68,7 @@ describe('apply push — flag variations', () => {
   // ── Help ──────────────────────────────────────────────────────────────────
 
   it('prints help with --help', async () => {
-    const { stdout, code } = await runCli(['apply', 'push', '--help']);
+    const { stdout, code } = await runCli(['apply', '--help']);
     expect(code).toBe(0);
     expect(stdout).toContain('--space-id');
     expect(stdout).toContain('--environment-id');
@@ -81,7 +80,6 @@ describe('apply push — flag variations', () => {
   it('exits non-zero in non-TTY mode without --yes', async () => {
     const args = [
       'apply',
-      'push',
       '--components',
       componentsPath,
       '--space-id',
@@ -103,37 +101,17 @@ describe('apply push — flag variations', () => {
   const missingCredentials = [
     {
       name: 'missing --space-id',
-      args: [
-        'apply',
-        'push',
-        '--components',
-        componentsPath,
-        '--environment-id',
-        'master',
-        '--cma-token',
-        'tok',
-        '--yes',
-      ],
+      args: ['apply', '--components', componentsPath, '--environment-id', 'master', '--cma-token', 'tok', '--yes'],
       expectStderr: /space-id/i,
     },
     {
       name: 'missing --environment-id',
-      args: ['apply', 'push', '--components', componentsPath, '--space-id', 's1', '--cma-token', 'tok', '--yes'],
+      args: ['apply', '--components', componentsPath, '--space-id', 's1', '--cma-token', 'tok', '--yes'],
       expectStderr: /environment-id/i,
     },
     {
       name: 'missing --cma-token',
-      args: [
-        'apply',
-        'push',
-        '--components',
-        componentsPath,
-        '--space-id',
-        's1',
-        '--environment-id',
-        'master',
-        '--yes',
-      ],
+      args: ['apply', '--components', componentsPath, '--space-id', 's1', '--environment-id', 'master', '--yes'],
       expectStderr: /cma.?token|token/i,
     },
   ];

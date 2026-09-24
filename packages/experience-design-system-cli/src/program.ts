@@ -149,7 +149,7 @@ export function createProgram(): Command {
       process.env.EDS_BEDROCK = '1';
     }
 
-    // Build a `command` label out of the actual subcommand chain (e.g. "apply push").
+    // Build a `command` label out of the actual subcommand chain (e.g. "apply").
     const chain: string[] = [];
     for (let c: Command | null = actionCommand; c && c.parent; c = c.parent) chain.unshift(c.name());
     const commandChain = chain.join(' ') || actionCommand.name();
