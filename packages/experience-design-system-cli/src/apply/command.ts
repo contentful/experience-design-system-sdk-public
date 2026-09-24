@@ -19,7 +19,6 @@ import { isEmptyPreview } from './preview-utils.js';
 import { ServerPreviewApp, ServerPreviewConfirm, ServerApplyProgress, ServerApplyDone } from './tui/ServerApplyView.js';
 import { buildPostPushUrl } from '../lib/contentful-urls.js';
 import { resolveCompositionMode, type CompositionMode } from '../lib/composition-mode.js';
-import { addCompositionOptions } from '../lib/command-options.js';
 import { stripAllowedComponents } from '../import/strip-allowed-components.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { getInteractiveTerminalSupport } from '../lib/terminal-capabilities.js';
@@ -165,7 +164,7 @@ function addSharedApplyOptions(command: Command): void {
     .option('--components <path>', 'Path to components.json (CDF)')
     .option('--tokens <path>', 'Path to tokens.json (DTCG)');
   command
-  addCompositionOptions(command).option(
+  command.option(
     '--atomic',
     'Import flat components with no embedded-component hierarchy (default)',
   );
