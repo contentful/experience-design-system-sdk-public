@@ -34,7 +34,7 @@ Design system codebase
     ├── map tokens (standalone)  → deterministic default paths, then optional agentic $token.allowed inference
     ├── print validate          → validates CDF / DTCG files, exits 0/1
     ├── print components|tokens → write artifacts from the session DB
-    ├── apply push              → manifest preview, apply operation, and operation polling
+    ├── apply              → manifest preview, apply operation, and operation polling
     ├── session list|show|...   → lower-level pipeline-session management
     ├── setup                   → interactive prereq + credentials wizard
     └── doctor                  → prereq health check
@@ -44,7 +44,7 @@ Design system codebase
                 (component types + design tokens)
 ```
 
-Component-analysis data between pipeline steps flows through a local SQLite session database (`~/.contentful/experience-design-system-cli/pipeline.db`). Optional token preparation writes the explicit `tokens.json` sidecar for internal generation or apply. The standalone `map tokens` command enriches its session before `print components` / `print tokens` write artifacts on demand; `experiences import` does not invoke it. `apply push` reads those files (or reads directly from the session DB via `--session`) and builds a manifest for the sources API.
+Component-analysis data between pipeline steps flows through a local SQLite session database (`~/.contentful/experience-design-system-cli/pipeline.db`). Optional token preparation writes the explicit `tokens.json` sidecar for internal generation or apply. The standalone `map tokens` command enriches its session before `print components` / `print tokens` write artifacts on demand; `experiences import` does not invoke it. `apply` reads those files (or reads directly from the session DB via `--session`) and builds a manifest for the sources API.
 
 A separate JSON file at `~/.config/experiences/runs.json` records each successful wizard session (id, project path, save path, push target, component count) for list and detail views.
 
@@ -120,7 +120,7 @@ interface RawSlotDefinition {
 
 ### CDF (Component Definition Format)
 
-The finalized format for Contentful ExO import. Produced by the import wizard's internal generation step, consumed by `apply push`:
+The finalized format for Contentful ExO import. Produced by the import wizard's internal generation step, consumed by `apply`:
 
 ```typescript
 interface CDFFile {
@@ -151,7 +151,7 @@ For design-category token properties, extraction stores the raw default in `raw_
 
 ### DTCG (W3C Design Token Format)
 
-Design token files following the W3C DTCG spec. Produced by the import wizard's internal generation step, consumed by `apply push`:
+Design token files following the W3C DTCG spec. Produced by the import wizard's internal generation step, consumed by `apply`:
 
 ```typescript
 interface DTCGTokenLeaf {
@@ -302,7 +302,7 @@ sequenceDiagram
     participant MT as map tokens
     participant Print as print components|tokens
     participant Val as print validate
-    participant AP as apply push
+    participant AP as apply
     participant CMS as Contentful ExO
 
     opt raw token source supplied
@@ -356,7 +356,7 @@ sequenceDiagram
     Dev->>Val: experiences print validate --components components.json
     Val-->>Dev: Exit 0 (valid) or exit 1 + errors
 
-    Dev->>AP: experiences apply push --components components.json --space-id ... --yes
+    Dev->>AP: experiences apply --components components.json --space-id ... --yes
     AP->>AP: Build ManifestPayload with componentsManifest and tokensManifest
     AP->>CMS: POST manifest preview
     AP-->>Dev: Preview summary and confirmation (skipped with --yes)
@@ -432,7 +432,7 @@ Do not use agent SDKs or APIs — the import wizard invokes agents as subprocess
 
 ## The Apply Command
 
-`apply push` is the only command that uses the sources API manifest contract. It builds a complete manifest, previews it, optionally confirms, submits the apply operation, and polls it to completion.
+`apply` is the only command that uses the sources API manifest contract. It builds a complete manifest, previews it, optionally confirms, submits the apply operation, and polls it to completion.
 
 `src/apply/command.ts` owns input resolution, slot-cycle checks, selection, and the preview/apply orchestration. It calls `buildManifest` and `buildFilteredManifest` from `experience-design-system-types` to construct `componentsManifest` from CDF component entries and `tokensManifest` from DTCG token entries. `src/apply/manifest.ts` only re-exports apply input helpers. `src/apply/api-client.ts` uses the generated client for token validation, manifest preview, manifest apply, and operation polling; `preview-utils.ts` and `tui/` provide response helpers and views.
 
@@ -494,7 +494,7 @@ All commands have two output modes:
 | `analyze select` (alias `analyze edit`) | Standalone JsonEditor: `App`, `Sidebar`, `ComponentDetail`, `JsonEditor`, `SourcePanel`, dialogs (untouched by wizard rebuild; pinned by snapshot test) |
 | `import` internal generation | `GenerateView` |
 | `print validate` | `ValidateView` |
-| `apply push` | `ServerPreviewView`, `ServerApplyView` |
+| `apply` | `ServerPreviewView`, `ServerApplyView` |
 | `import` (wizard) | `WizardApp` + step components in `src/import/tui/steps/` (`WelcomeStep`, `CredentialsStep`, `ScopeGateStep`, `GenerateReviewStep`, `WizardPreviewStep`, `PushDecisionGateStep`, `PushingStep`, `DoneStep`, `ErrorStep`, `PreviewValidationErrorStep`), plus hosts (`scope-gate-host`, `final-review-host`) |
 
 The TUI uses React hooks for state (`useState`, `useReducer`), Ink's `useInput` for keyboard, and a custom `useUndo` hook for the JSON editor.

@@ -14,7 +14,7 @@ Nx monorepo with five packages:
 
 The CLI extracts React/Vue/Astro/Stencil/Web Component definitions from customer codebases using the TypeScript compiler API (ts-morph), invokes a coding agent to produce CDF artifacts, validates them against JSON schemas, and provides interactive terminal UIs (Ink) for reviewing, finalizing, and pushing them to Contentful ExO.
 
-The supported import pipeline is: **analyze extract → analyze select-agent → internal generation → print/validate → apply push.** When a raw token source is supplied, the wizard performs token generation internally before component extraction and generation; standalone `map tokens` runs only after CDF and DTCG data are available in the same session, and `experiences import` does not invoke it. `analyze select-agent` runs one agent invocation per component to decide which components belong in Contentful ExO; `analyze select` (the standalone JsonEditor TUI) is the manual alternative.
+The supported import pipeline is: **analyze extract → analyze select-agent → internal generation → print/validate → apply.** When a raw token source is supplied, the wizard performs token generation internally before component extraction and generation; standalone `map tokens` runs only after CDF and DTCG data are available in the same session, and `experiences import` does not invoke it. `analyze select-agent` runs one agent invocation per component to decide which components belong in Contentful ExO; `analyze select` (the standalone JsonEditor TUI) is the manual alternative.
 
 ### Wizard step machine (`src/import/tui/`)
 
@@ -147,7 +147,7 @@ The skill file `skills/select-components.md` provides detailed instructions and 
 
 `src/apply/` contains:
 
-- `command.ts` — registers `push`; loads CDF/DTCG artifacts or a session, builds manifests, and drives preview/apply operation polling
+- `command.ts` — registers `apply`; loads CDF/DTCG artifacts or a session, builds manifests, and drives preview/apply operation polling
 - `manifest.ts` — compatibility re-exports for apply input helpers
 - `api-client.ts` — `ImportApiClient` calls the generated sources API client for token validation, manifest preview, manifest apply, and operation polling
 - `preview-utils.ts` — detects empty server previews before confirmation or apply

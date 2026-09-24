@@ -552,11 +552,9 @@ function buildApplyOutput(
 }
 
 export function registerApplyCommand(program: Command): void {
-  const applyCmd = program.command('apply').description('Preview or push design system entities to Contentful ExO');
-
-  const pushCmd = applyCmd.command('push').description('Write component types and design tokens to Contentful ExO');
-  addSharedApplyOptions(pushCmd);
-  pushCmd
+  const applyCmd = program.command('apply').description('Write component types and design tokens to Contentful ExO');
+  addSharedApplyOptions(applyCmd);
+  applyCmd
     .option('--yes', 'Skip interactive confirmation')
     .option('--verbose', 'Show all entity progress including skipped/unchanged')
     .option('--force', 'Skip confirmation for breaking changes (for CI)')
@@ -565,7 +563,7 @@ export function registerApplyCommand(program: Command): void {
       const isTTY = getInteractiveTerminalSupport().supported;
 
       if (!isTTY && !opts.yes) {
-        process.stderr.write('Error: apply push requires --yes in non-interactive mode\n');
+        process.stderr.write('Error: apply requires --yes in non-interactive mode\n');
         await exitWithAnalytics(1);
       }
 

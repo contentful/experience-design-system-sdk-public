@@ -165,7 +165,7 @@ export function registerPrintCommand(program: Command): void {
 
       if (missingDescription.length > 0) {
         process.stderr.write(
-          `Warning: ${missingDescription.length} component${missingDescription.length === 1 ? '' : 's'} missing $description (will fail at apply push): ${missingDescription.join(', ')}\n`,
+          `Warning: ${missingDescription.length} component${missingDescription.length === 1 ? '' : 's'} missing $description (will fail at apply): ${missingDescription.join(', ')}\n`,
         );
       }
 

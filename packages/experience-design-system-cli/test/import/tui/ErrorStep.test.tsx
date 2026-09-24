@@ -7,7 +7,7 @@ describe('ErrorStep', () => {
     const onAcknowledge = vi.fn();
     const { lastFrame, stdin } = render(
       <ErrorStep
-        stepName="apply push"
+        stepName="apply"
         message="Apply contains breaking Component changes affecting 1 Fragment(s). Set acknowledgeBreakingChanges: true to proceed."
         onExit={() => {}}
         onAcknowledgeBreakingChanges={onAcknowledge}
@@ -21,7 +21,7 @@ describe('ErrorStep', () => {
   });
 
   it('does not show the acknowledgment action for ordinary errors', () => {
-    const { lastFrame } = render(<ErrorStep stepName="apply push" message="Unexpected failure" onExit={() => {}} />);
+    const { lastFrame } = render(<ErrorStep stepName="apply" message="Unexpected failure" onExit={() => {}} />);
 
     expect(lastFrame()).not.toContain('Acknowledge and apply');
   });

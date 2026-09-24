@@ -20,19 +20,15 @@ function run(
 }
 
 describe('apply command — help', () => {
-  it('keeps each subcommand flag inventory stable when options are registered through helpers', () => {
+  it('keeps the apply flag inventory stable when options are registered through helpers', () => {
     const program = new Command();
     registerApplyCommand(program);
     const apply = program.commands.find((command) => command.name() === 'apply');
     expect(apply).toBeDefined();
 
-    const flags = (name: string) =>
-      apply!.commands
-        .find((command) => command.name() === name)!
-        .options.map((option) => option.long)
-        .sort();
+    const flags = apply!.options.map((option) => option.long).sort();
 
-    expect(flags('push')).toEqual([
+    expect(flags).toEqual([
       '--atomic',
       '--cma-token',
       '--components',
@@ -52,22 +48,21 @@ describe('apply command — help', () => {
   it('prints apply help', async () => {
     const { stdout, code } = await run(['apply', '--help']);
     expect(code).toBe(0);
-    expect(stdout).toContain('push');
+    expect(stdout).not.toContain('push');
     expect(stdout).not.toContain('select');
   });
 
-  it('prints apply push help', async () => {
-    const { stdout, code } = await run(['apply', 'push', '--help']);
+  it('prints apply help', async () => {
+    const { stdout, code } = await run(['apply', '--help']);
     expect(code).toBe(0);
     expect(stdout).toContain('--yes');
   });
 });
 
-describe('apply push — input validation', () => {
+describe('apply — input validation', () => {
   it('exits 1 in non-TTY mode without --yes', async () => {
     const { stderr, code } = await run([
       'apply',
-      'push',
       '--components',
       componentsPath,
       '--space-id',
@@ -84,7 +79,6 @@ describe('apply push — input validation', () => {
   it('exits 1 when --tokens path does not exist', async () => {
     const { stderr, code } = await run([
       'apply',
-      'push',
       '--tokens',
       '/no/such/tokens.json',
       '--space-id',
@@ -100,27 +94,27 @@ describe('apply push — input validation', () => {
   });
 });
 
-describe('apply push — new flags', () => {
+describe('apply — new flags', () => {
   it('prints --force in help output', async () => {
-    const { stdout, code } = await run(['apply', 'push', '--help']);
+    const { stdout, code } = await run(['apply', '--help']);
     expect(code).toBe(0);
     expect(stdout).toContain('--force');
   });
 
   it('prints --dry-run in help output', async () => {
-    const { stdout, code } = await run(['apply', 'push', '--help']);
+    const { stdout, code } = await run(['apply', '--help']);
     expect(code).toBe(0);
     expect(stdout).toContain('--dry-run');
   });
 
   it('--force description mentions breaking changes', async () => {
-    const { stdout, code } = await run(['apply', 'push', '--help']);
+    const { stdout, code } = await run(['apply', '--help']);
     expect(code).toBe(0);
     expect(stdout).toContain('breaking changes');
   });
 
   it('--dry-run description mentions preview only', async () => {
-    const { stdout, code } = await run(['apply', 'push', '--help']);
+    const { stdout, code } = await run(['apply', '--help']);
     expect(code).toBe(0);
     expect(stdout).toContain('preview only');
   });

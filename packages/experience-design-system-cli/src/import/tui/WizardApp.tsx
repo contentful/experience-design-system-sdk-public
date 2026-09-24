@@ -1343,7 +1343,7 @@ export function WizardApp({
     if (cycles.length > 0) {
       update({
         step: 'error',
-        errorStep: 'apply push',
+        errorStep: 'apply',
         errorMessage: formatSlotCycleReport(cycles).join('\n'),
         errorAllowCredentialRetry: false,
       });
@@ -1354,7 +1354,7 @@ export function WizardApp({
     if (unresolvedSlotReferences.length > 0) {
       update({
         step: 'error',
-        errorStep: 'apply push',
+        errorStep: 'apply',
         errorMessage: formatUnresolvedSlotReferences(unresolvedSlotReferences).join('\n'),
         errorAllowCredentialRetry: false,
       });
@@ -1510,7 +1510,7 @@ export function WizardApp({
       }
       update({
         step: 'error',
-        errorStep: 'apply push',
+        errorStep: 'apply',
         errorMessage: msg,
         errorAllowCredentialRetry: !(
           e instanceof ApiError &&

@@ -34,8 +34,8 @@ describe('backwards-compat: standalone subcommand flags', () => {
     expect(out).not.toMatch(/\n\s+generate(?:\s|$)/);
   });
 
-  it('apply push flags are stable', async () => {
-    const out = await help(['apply', 'push']);
+  it('apply flags are stable', async () => {
+    const out = await help(['apply']);
     for (const flag of [
       '--components',
       '--session',

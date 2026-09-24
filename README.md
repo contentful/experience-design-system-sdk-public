@@ -90,7 +90,7 @@ Full documentation for every flag and every subcommand lives in [`packages/exper
 | `experiences analyze extract`      | Scan source files and extract raw component definitions                            |
 | `experiences analyze select`       | Interactively pick which components to include (standalone JsonEditor TUI)         |
 | `experiences analyze select-agent` | AI agent picks which components belong in Experiences; pass `--show-rationale [--json]` for read-only rationale output |
-| `experiences apply push`           | Write component types and design tokens to Contentful; emits webapp view URL       |
+| `experiences apply`           | Write component types and design tokens to Contentful; emits webapp view URL       |
 | `experiences print components`     | Export generated components to `components.json`                                   |
 | `experiences print tokens`         | Export generated tokens to `tokens.json`                                           |
 | `experiences print validate`       | Validate CDF or DTCG files against their schemas                                   |
