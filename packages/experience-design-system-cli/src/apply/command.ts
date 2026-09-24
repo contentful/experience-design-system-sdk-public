@@ -150,10 +150,6 @@ interface SharedImportOptions {
   atomic?: boolean;
 }
 
-interface ApplyOptions extends SharedImportOptions {
-  dryRun?: boolean;
-}
-
 type SharedInputs = Awaited<ReturnType<typeof resolveSharedInputs>>;
 
 function addSharedApplyOptions(command: Command): void {
@@ -505,8 +501,7 @@ export function registerApplyCommand(program: Command): void {
   const applyCmd = program.command('apply').description('Write component types and design tokens to Contentful ExO');
   addSharedApplyOptions(applyCmd);
   applyCmd
-    .option('--dry-run', 'Run preview only without applying')
-    .action(async (opts: ApplyOptions) => {
+    .action(async (opts: SharedImportOptions) => {
       const isTTY = getInteractiveTerminalSupport().supported;
 
       if (!isTTY) {
@@ -547,22 +542,6 @@ export function registerApplyCommand(program: Command): void {
       }
 
       recordContentfulContext(client, spaceId, environmentId);
-
-      if (opts.dryRun) {
-        if (isTTY) {
-          const { waitUntilExit } = render(
-            createElement(ServerPreviewApp, {
-              preview,
-              spaceId,
-              environmentId,
-            }),
-          );
-          await waitUntilExit();
-        } else {
-          process.stdout.write(JSON.stringify(buildPreviewOutput(preview, spaceId, environmentId), null, 2) + '\n');
-        }
-        await exitWithAnalytics(0);
-      }
 
       if (isEmptyPreview(preview)) {
         if (isTTY) {
