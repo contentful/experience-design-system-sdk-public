@@ -32,7 +32,12 @@ import { nextStateAfterPrint } from './run-print-files-helpers.js';
 import { PushDecisionGateStep } from './steps/PushDecisionGateStep.js';
 import { chooseGateAction } from './push-decision-gate-helpers.js';
 import { ImportApiClient, ApiError, type PreviewValidationError } from '../../apply/api-client.js';
-import { detectSlotCycles, extractComponentsFromManifest, formatSlotCycleReport } from '../../apply/command.js';
+import {
+  detectSlotCycles,
+  extractComponentsFromManifest,
+  formatSlotCycleReport,
+  formatUnresolvedSlotReferences,
+} from '../../apply/command.js';
 import { findSlotCycles } from '../../analyze/cycle-detection.js';
 import { buildComponentGraph } from '../../analyze/slot-graph.js';
 import { formatApiError, formatEdsiError } from '../../lib/error-parser.js';
@@ -41,7 +46,7 @@ import { parseGenerateStderrChunk, type GenerateProgressState } from './wizard-g
 import { spawnGenerateChild } from './spawn-generate.js';
 import { readTokensFromPath, hasBreakingChangesWithImpact } from '../../apply/manifest.js';
 import { isEmptyPreview } from '../../apply/preview-utils.js';
-import { buildManifest } from '@contentful/experience-design-system-types';
+import { buildManifest, validateManifestSlotReferences } from '@contentful/experience-design-system-types';
 import type { ServerPreviewResponse, ManifestPayload } from '@contentful/experience-design-system-types';
 import {
   openPipelineDb,
@@ -1340,6 +1345,17 @@ export function WizardApp({
         step: 'error',
         errorStep: 'apply push',
         errorMessage: formatSlotCycleReport(cycles).join('\n'),
+        errorAllowCredentialRetry: false,
+      });
+      return;
+    }
+
+    const unresolvedSlotReferences = validateManifestSlotReferences(extractComponentsFromManifest(manifest));
+    if (unresolvedSlotReferences.length > 0) {
+      update({
+        step: 'error',
+        errorStep: 'apply push',
+        errorMessage: formatUnresolvedSlotReferences(unresolvedSlotReferences).join('\n'),
         errorAllowCredentialRetry: false,
       });
       return;

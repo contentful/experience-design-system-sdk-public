@@ -518,7 +518,6 @@ export function registerAnalyzeCommand(program: Command): void {
         const agentCacheKey = buildCompositionInputHash({
           files: promptFiles,
           agent: resolverAgent,
-          kind: 'edges',
         });
         const result = await resolveMapping({
           components: validatedComponents,
