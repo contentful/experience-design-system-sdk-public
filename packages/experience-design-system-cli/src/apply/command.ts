@@ -10,7 +10,7 @@ import {
   buildManifest,
   validateManifestSlotReferences,
 } from '@contentful/experience-design-system-types';
-import type { CDFComponentEntry, DTCGTokenEntry } from '@contentful/experience-design-system-types';
+import type { CDFComponentEntry, CDFValidationError, DTCGTokenEntry } from '@contentful/experience-design-system-types';
 import { ApiError, ImportApiClient } from './api-client.js';
 import { formatApiError, formatEdsiError } from '../lib/error-parser.js';
 import { openPipelineDb, loadCDFComponents } from '../session/db.js';
@@ -436,17 +436,25 @@ export async function assertNoSlotCycles(components: Array<{ key: string; entry:
  * manifest-internal misses — a name that resolves against an *existing*
  * target-environment Component still needs the network round-trip to
  * confirm, so this cannot replace the server-side check.
+ *
+ * `validateManifestSlotReferences` is the detection step (shared with
+ * `WizardApp.tsx` via `formatUnresolvedSlotReferences` below, mirroring how
+ * `detectSlotCycles`/`formatSlotCycleReport` split for the cycle check).
  */
+export function formatUnresolvedSlotReferences(errors: CDFValidationError[]): string[] {
+  const lines = ['Error: manifest slot $allowedComponents references failed to resolve locally. Push refused.'];
+  for (const error of errors) {
+    lines.push(`  - ${error.message} (${error.path})`);
+  }
+  return lines;
+}
+
 export async function assertNoUnresolvedSlotReferences(
   components: Array<{ key: string; entry: CDFComponentEntry }>,
 ): Promise<void> {
   const errors = validateManifestSlotReferences(components);
   if (errors.length === 0) return;
-  const lines = ['Error: manifest slot $allowedComponents references failed to resolve locally. Push refused.'];
-  for (const error of errors) {
-    lines.push(`  - ${error.message} (${error.path})`);
-  }
-  process.stderr.write(lines.join('\n') + '\n');
+  process.stderr.write(formatUnresolvedSlotReferences(errors).join('\n') + '\n');
   await exitWithAnalytics(1);
 }
 

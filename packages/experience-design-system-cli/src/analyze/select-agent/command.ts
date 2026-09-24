@@ -42,6 +42,7 @@ import { readExperiencesCredentials } from '../../credentials-store.js';
 import { c } from '../../output/format.js';
 import { buildRepoContextIndex, buildSelectionContext, type SelectionContext } from './context-builder.js';
 import { runShowRationale } from './show-rationale.js';
+import { overrideRejectionsForCompositionDependencies } from './composition-overrides.js';
 import { isAbsolute, resolve } from 'node:path';
 import { getDebugLogger } from '../../lib/debug-logger.js';
 import { invokeAgentWithOutput } from '../../lib/agent-output.js';
@@ -688,6 +689,26 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
             // rejected component to accepted.
             reasons.set(r.componentKey, null);
           }
+        }
+
+        // Self-heal (INTEG): composition mapping (analyze extract) ran on the
+        // full extracted set before this selection narrowed it down, so a
+        // component rejected here (validation or the AI's own judgment) can
+        // still be a real slot dependency of a component that WAS accepted.
+        // Composition reflects actual source usage, so it wins — force the
+        // dependency back to accepted rather than letting the manifest ship
+        // with a reference that can never resolve.
+        const compositionOverrides = overrideRejectionsForCompositionDependencies(
+          validatedComponents,
+          decisions,
+          componentKey,
+        );
+        for (const [key, name] of compositionOverrides) {
+          decisions.set(key, 'accepted');
+          reasons.set(key, null);
+          process.stderr.write(
+            `Notice: "${name}" re-included — referenced by an accepted component's slot composition.\n`,
+          );
         }
 
         // Feature 3: persist decisions to raw_components (status + reject_reason)
