@@ -222,12 +222,17 @@ type(scope): description
 
 Valid types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `perf`, `ci`, `build`, `revert`
 
+## Pull Requests
+
+- Base branch is `development`, not `main`. Branch off `development` and open PRs against `development`.
+- `main` is the release branch — it's what CI publishes stable versions from. Never branch off it or target it directly.
+
 ## Sharp Edges
 
 - **DOM prop inflation**: The single most common source of bugs in the React extractor. Always verify extracted prop counts after changing extraction logic. `Button` should have ~32 props, `Input` ~28, SVG icon components ~11.
 - **No intermediary JSON files**: `analyze extract` does not write `raw-components.json`. `generate components` reads from the session DB. If you see file-based handoffs, they are wrong.
 - **Session auto-resolution**: Commands that accept `--session` will auto-resolve to the most recent completed `analyze extract` step if the flag is omitted. Tests must always pass an explicit `--session` or set `EDS_PIPELINE_DB_PATH` to a seeded temp DB.
-- **Stacked PRs and Nx affected**: When a base branch is merged to main before the stacked branch, `pnpm affected:*` may report "no packages changed" because `NX_BASE` points to the merged tip. This is expected — not a test failure.
+- **Stacked PRs and Nx affected**: When a base branch is merged to `development` before the stacked branch, `pnpm affected:*` may report "no packages changed" because `NX_BASE` points to the merged tip. This is expected — not a test failure.
 - **ESM import paths**: TypeScript source imports `.js` extensions. Do not change them to `.ts`. The TypeScript compiler resolves them correctly.
 - **Pre-commit hook failures**: If `lint-staged` or `commitlint` fails, fix the issue and re-commit. Never use `--no-verify`. The pre-commit hook runs `lint:fix` with `--skip-nx-cache` so formatting errors are always caught.
 

@@ -1,4 +1,5 @@
 import React from 'react';
+import figures from 'figures';
 import { PALETTE } from '../theme.js';
 import { Text } from 'ink';
 import type { LineageEntry, LineageJumpable } from '../../../../import/tui/hooks/useLineage.js';
@@ -63,7 +64,7 @@ export function LineagePanel({
           <Text key={i}>
             {isCursor ? (
               <Text color={PALETTE.info} bold>
-                {'▶'}
+                {figures.pointer}
               </Text>
             ) : (
               <Text> </Text>

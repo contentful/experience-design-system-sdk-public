@@ -35,13 +35,9 @@ import { resolveCompositionMode, type CompositionMode } from '../lib/composition
 import { resolveMapping } from './composition/resolve-mapping.js';
 import { loadUserMap, resolveCompositionSources } from './composition/resolve-mapping-cli.js';
 import { selectCandidateFiles, capCandidatesToPromptBudget } from './composition/candidate-files.js';
-import { critiqueCandidates } from './composition/candidate-critic.js';
-import { buildDirCriticPrompt, parseDirCriticReply } from './composition/candidate-critic-agent.js';
 import { buildCompositionInputHash } from './composition/composition-cache-key.js';
 import { collectManifestDocEdges } from './composition/manifest-doc-evidence.js';
-import type { InterchangeMap, CompositionEdge } from './composition/interchange-schema.js';
-import { runParserInSandbox } from './composition/agent-parser/sandbox.js';
-import { resolveViaAgentParser } from './composition/agent-parser/resolve-via-parser.js';
+import type { InterchangeMap } from './composition/interchange-schema.js';
 import type { RawSlotDefinition } from '../types.js';
 import { parsePromptOverrides, resolvePromptOverride } from '../lib/prompt-overrides.js';
 import {
@@ -72,7 +68,6 @@ interface AnalyzeExtractOptions {
   compositionMap?: string;
   compositionAgent?: boolean;
   compositionRefresh?: boolean;
-  compositionAgentMode?: string;
   generateMap?: string;
   prompt?: string[];
   agent?: string;
@@ -312,448 +307,357 @@ export function registerAnalyzeCommand(program: Command): void {
   addAgentModelOptions(extractCmd, {
     includeModel: false,
     agentDescription: 'Coding agent for composition mapping resolution (claude|codex|opencode|cursor)',
-  })
-    .option(
-      '--composition-agent-mode <mode>',
-      "Agent resolution mode: 'parser' (agent writes a sandboxed parser — deterministic, default) or 'edges' (agent lists edges directly)",
-      'parser',
-    )
-    .action(async (opts: AnalyzeExtractOptions) => {
-      const resolveUnreachable: 'auto' | 'always' | 'never' = (() => {
-        const v = opts.resolveUnreachable ?? 'auto';
-        if (v !== 'auto' && v !== 'always' && v !== 'never') {
-          process.stderr.write(`Error: --resolve-unreachable must be one of 'auto', 'always', 'never' (got '${v}')\n`);
-          process.exit(1);
-        }
-        return v;
-      })();
-      if (opts.bedrock) {
-        const bedrockAgent = resolveCompositionAgentName(opts.agent);
-        if (!agentSupportsBedrock(bedrockAgent)) {
-          process.stderr.write(`Error: --bedrock is not supported for --agent ${bedrockAgent}\n`);
-          process.exit(1);
-        }
+  }).action(async (opts: AnalyzeExtractOptions) => {
+    const resolveUnreachable: 'auto' | 'always' | 'never' = (() => {
+      const v = opts.resolveUnreachable ?? 'auto';
+      if (v !== 'auto' && v !== 'always' && v !== 'never') {
+        process.stderr.write(`Error: --resolve-unreachable must be one of 'auto', 'always', 'never' (got '${v}')\n`);
+        process.exit(1);
       }
-
-      const projectRoot = resolve(opts.project);
-      const outDir = join(projectRoot, '.contentful');
-
-      let sourceDirectory: string;
-      if (opts.dir !== undefined) {
-        sourceDirectory = resolveFromProjectRoot(projectRoot, opts.dir);
-        if (!(await pathExists(sourceDirectory))) {
-          process.stderr.write(`Error: source directory does not exist: ${sourceDirectory}\n`);
-          process.exit(1);
-        }
-      } else {
-        const srcPath = resolveFromProjectRoot(projectRoot, 'src');
-        sourceDirectory = (await pathExists(srcPath)) ? srcPath : projectRoot;
+      return v;
+    })();
+    if (opts.bedrock) {
+      const bedrockAgent = resolveCompositionAgentName(opts.agent);
+      if (!agentSupportsBedrock(bedrockAgent)) {
+        process.stderr.write(`Error: --bedrock is not supported for --agent ${bedrockAgent}\n`);
+        process.exit(1);
       }
+    }
 
-      const sourceFiles = await collectSourceFiles(sourceDirectory, (count) => {
+    const projectRoot = resolve(opts.project);
+    const outDir = join(projectRoot, '.contentful');
+
+    let sourceDirectory: string;
+    if (opts.dir !== undefined) {
+      sourceDirectory = resolveFromProjectRoot(projectRoot, opts.dir);
+      if (!(await pathExists(sourceDirectory))) {
+        process.stderr.write(`Error: source directory does not exist: ${sourceDirectory}\n`);
+        process.exit(1);
+      }
+    } else {
+      const srcPath = resolveFromProjectRoot(projectRoot, 'src');
+      sourceDirectory = (await pathExists(srcPath)) ? srcPath : projectRoot;
+    }
+
+    const sourceFiles = await collectSourceFiles(sourceDirectory, (count) => {
+      if (!process.stdout.isTTY) {
+        process.stderr.write(`progress=scan:${count}\n`);
+      }
+    });
+
+    const extraction = await extractComponents(
+      sourceFiles,
+      ({ filesProcessed, componentsFound }) => {
         if (!process.stdout.isTTY) {
-          process.stderr.write(`progress=scan:${count}\n`);
+          process.stderr.write(`progress=extract:${filesProcessed}/${sourceFiles.length}:${componentsFound}\n`);
         }
-      });
+      },
+      { resolveUnreachable, projectRoot },
+    );
 
-      const extraction = await extractComponents(
-        sourceFiles,
-        ({ filesProcessed, componentsFound }) => {
-          if (!process.stdout.isTTY) {
-            process.stderr.write(`progress=extract:${filesProcessed}/${sourceFiles.length}:${componentsFound}\n`);
-          }
-        },
-        { resolveUnreachable, projectRoot },
-      );
+    await mkdir(outDir, { recursive: true });
 
-      await mkdir(outDir, { recursive: true });
+    const db = openPipelineDb();
+    const { sessionId } = getOrCreateSession(db, undefined, undefined, {
+      command: 'analyze extract',
+      inputPath: projectRoot,
+      outDir,
+    });
+    await bindAnalyticsSessionId(sessionId);
+    if (!isPipelineAnalyticsChild()) {
+      await emitSessionStarted('analyze_extract');
+    }
+    const stepId = createStep(db, sessionId, 'analyze extract', {
+      project: projectRoot,
+    });
+    const classifiedComponents = extraction.components.map(preClassifyComponent);
+    const inspectedComponents = await Promise.all(
+      classifiedComponents.map(async (component) => ({
+        component,
+        inspection: await inspectComponentSource(component),
+      })),
+    );
+    const filteredComponents: typeof classifiedComponents = [];
+    const filterWarnings: string[] = [];
+    for (const { component, inspection } of inspectedComponents) {
+      const verdict = isNonAuthorableComponent(component);
+      const keepDespiteZeroSurface =
+        verdict.skip && verdict.reason === 'component has no props and no slots' && inspection.keepDespiteZeroSurface;
+      const retainedForReview = verdict.skip && !keepDespiteZeroSurface;
 
-      const db = openPipelineDb();
-      const { sessionId } = getOrCreateSession(db, undefined, undefined, {
-        command: 'analyze extract',
-        inputPath: projectRoot,
-        outDir,
-      });
-      await bindAnalyticsSessionId(sessionId);
-      if (!isPipelineAnalyticsChild()) {
-        await emitSessionStarted('analyze_extract');
+      if (retainedForReview) {
+        filterWarnings.push(`${component.name}: requires operator review (${verdict.reason})`);
       }
-      const stepId = createStep(db, sessionId, 'analyze extract', {
-        project: projectRoot,
-      });
-      const classifiedComponents = extraction.components.map(preClassifyComponent);
-      const inspectedComponents = await Promise.all(
-        classifiedComponents.map(async (component) => ({
-          component,
-          inspection: await inspectComponentSource(component),
-        })),
-      );
-      const filteredComponents: typeof classifiedComponents = [];
-      const filterWarnings: string[] = [];
-      for (const { component, inspection } of inspectedComponents) {
-        const verdict = isNonAuthorableComponent(component);
-        const keepDespiteZeroSurface =
-          verdict.skip && verdict.reason === 'component has no props and no slots' && inspection.keepDespiteZeroSurface;
-        const retainedForReview = verdict.skip && !keepDespiteZeroSurface;
 
-        if (retainedForReview) {
-          filterWarnings.push(`${component.name}: requires operator review (${verdict.reason})`);
+      if (keepDespiteZeroSurface) {
+        filterWarnings.push(
+          `${component.name}: retained despite 0 props/slots because the source renders visible or compositional UI`,
+        );
+      }
+
+      if (inspection.reviewReasons.length > 0) {
+        const reviewNotes = describeReviewReasons(inspection.reviewReasons)
+          .filter((note) => note !== 'high-confidence data-fetch wrapper')
+          .join('; ');
+        if (reviewNotes) {
+          filterWarnings.push(`${component.name}: ${reviewNotes}`);
         }
+      }
 
-        if (keepDespiteZeroSurface) {
-          filterWarnings.push(
-            `${component.name}: retained despite 0 props/slots because the source renders visible or compositional UI`,
+      // Preserve any extractor-level review reasons (e.g. `props-type-unresolved`
+      // from the Svelte parser) by merging them into the post-processing recompute.
+      // Without this, recomputing here clobbers the per-extractor signal.
+      const extractorReasons = component.reviewReasons ?? [];
+      const nonAuthorableReason = retainedForReview ? [`non-authorable:${verdict.reason}`] : [];
+      const { confidence, reasons } = computeExtractionScore(component, {
+        additionalIssueCount:
+          wrapperConfidenceToIssueCount(inspection.wrapperConfidence) +
+          extractorReasons.length +
+          nonAuthorableReason.length,
+        additionalReasons: [...extractorReasons, ...inspection.reviewReasons, ...nonAuthorableReason],
+      });
+      filteredComponents.push({
+        ...component,
+        extractionConfidence: confidence,
+        reviewReasons: reasons,
+        needsReview:
+          deriveNeedsReview(confidence) ||
+          inspection.wrapperConfidence >= 4 ||
+          inspection.keepDespiteZeroSurface ||
+          retainedForReview ||
+          // An extractor-level type-resolution failure is a strong signal regardless
+          // of the otherwise-derived confidence threshold; force review.
+          extractorReasons.includes('props-type-unresolved') ||
+          (component.needsReview ?? false),
+      });
+    }
+    let validatedComponents = validateExtractedComponents(filteredComponents);
+
+    // Composition mapping resolution (spec U2). Only in composite mode and
+    // only when a source is provided (user map / agent opt-in).
+    // Atomic (default) never resolves — it would only be stripped later.
+    const compositionMode = resolveCompositionMode(opts, (await safeReadCompositionMode()) ?? undefined);
+    if (compositionMode === 'composite') {
+      const sources = resolveCompositionSources(opts);
+
+      const { overrides: promptOverrides, errors: promptErrors } = parsePromptOverrides(opts.prompt ?? []);
+      for (const err of promptErrors) {
+        process.stderr.write(`Error: ${err}\n`);
+        process.exit(1);
+      }
+      let compositionPrompt: string | undefined;
+      const compositionOverride = promptOverrides.get('composition');
+      if (compositionOverride) {
+        try {
+          compositionPrompt = await resolvePromptOverride(compositionOverride);
+        } catch (e) {
+          process.stderr.write(`Error: ${e instanceof Error ? e.message : String(e)}\n`);
+          process.exit(1);
+        }
+      }
+
+      let userMap;
+      if (opts.compositionMap) {
+        const loaded = await loadUserMap(opts.compositionMap);
+        if (!loaded.ok) {
+          process.stderr.write(`Error: ${loaded.error}\n`);
+          process.exit(1);
+        }
+        userMap = loaded.map;
+      }
+
+      const hasSource = !!userMap || sources.useAgent || sources.forceAgent;
+      if (hasSource || opts.generateMap) {
+        // Composition progress mirrors the scan/extract progress convention:
+        // emit `progress=composition:<phase>` on stderr so the wizard can
+        // render a second progress line during the (potentially slow, agent-
+        // backed) resolution instead of appearing frozen.
+        const emitCompositionProgress = (phase: string): void => {
+          if (!process.stdout.isTTY) process.stderr.write(`progress=composition:${phase}\n`);
+        };
+
+        emitCompositionProgress('resolving');
+        const allFiles = await readCandidateFiles(validatedComponents, sourceFiles);
+        // `promptFiles`: bounded candidate SAMPLE inlined into the agent
+        // prompt so it sees the convention without ingesting the whole repo.
+        // `manifestDocFiles`: EVERY scanned file, fed to the deterministic
+        // manifest/doc scanner below — no LLM, no context-window concern.
+        const selectedCandidates = selectCandidateFiles(allFiles).map((c) => ({ path: c.path, content: c.content }));
+        const capped = capCandidatesToPromptBudget(selectedCandidates);
+        const promptFiles = capped.kept;
+        if (capped.dropped.length > 0) {
+          process.stderr.write(
+            `Warning: composition — ${capped.dropped.length} candidate file(s) omitted from the agent prompt to fit the context budget; resolution runs on the ${promptFiles.length} highest-value files.\n`,
+          );
+        }
+        const manifestDocFiles = allFiles.map((c) => ({ path: c.path, content: c.content }));
+
+        const resolverAgent = resolveCompositionAgentName(opts.agent);
+        const componentNameSet = new Set(validatedComponents.map((c) => c.name));
+        const cacheVersion = await getCliCacheVersion();
+
+        // Tracks the exit code of the most recent spawnAgent call so the
+        // caching sites can refuse to persist a failed run (a non-zero exit —
+        // e.g. a context-window overflow — otherwise poisons the cache and
+        // replays the error on every subsequent run).
+        let lastAgentExitCode = 0;
+        const spawnAgent = async (prompt: string): Promise<string> => {
+          const res = await runAgent({
+            agent: resolverAgent,
+            prompt,
+            timeoutMs: 120_000,
+            promptViaStdin: true,
+            onDebugEvent: (name, payload) => getDebugLogger().event('agent', name, payload),
+          });
+          lastAgentExitCode = res.exitCode;
+          if (res.exitCode !== 0 && res.stderr.trim()) {
+            process.stderr.write(`Warning: composition — agent exited ${res.exitCode}: ${res.stderr.trim()}\n`);
+          }
+          return res.stdout;
+        };
+
+        // Manifest (Figma `manifest.json`)/doc (`AGENTS.md`) evidence — rank
+        // 4/5, deterministic (no LLM), runs over the FULL file set since it's
+        // cheap and code/design-adjacent rather than agent-derived.
+        const manifestDocEdges = collectManifestDocEdges(manifestDocFiles, validatedComponents, componentNameSet);
+        const extraEdges = [...manifestDocEdges];
+
+        const agentCacheKey = buildCompositionInputHash({
+          files: promptFiles,
+          agent: resolverAgent,
+        });
+        const useEdgeEmission = sources.useAgent;
+        const result = await resolveMapping({
+          components: validatedComponents,
+          ...(userMap ? { userMap } : {}),
+          ...(extraEdges.length > 0 ? { extraEdges } : {}),
+          useAgent: useEdgeEmission,
+          forceAgent: sources.forceAgent && useEdgeEmission,
+          files: promptFiles,
+          ...(compositionPrompt ? { promptOverride: compositionPrompt } : {}),
+          runAgentFn: async ({ prompt }) => {
+            if (!opts.compositionRefresh) {
+              const cached = lookupCompositionCache(db, agentCacheKey, cacheVersion);
+              if (cached !== null) {
+                emitCompositionProgress('cache-hit');
+                return cached;
+              }
+            }
+            emitCompositionProgress(`agent:${resolverAgent}`);
+            const stdout = await spawnAgent(prompt);
+            if (lastAgentExitCode === 0) {
+              storeCompositionCache(db, agentCacheKey, cacheVersion, stdout);
+            }
+            return stdout;
+          },
+        });
+        emitCompositionProgress('done');
+
+        for (const w of result.warnings) process.stderr.write(`Warning: composition — ${w}\n`);
+        for (const c of result.conflicts) {
+          process.stderr.write(
+            `Warning: composition conflict on ${c.parent}→${c.child}: kept ${c.winner}, dropped ${c.loser}\n`,
           );
         }
 
-        if (inspection.reviewReasons.length > 0) {
-          const reviewNotes = describeReviewReasons(inspection.reviewReasons)
-            .filter((note) => note !== 'high-confidence data-fetch wrapper')
-            .join('; ');
-          if (reviewNotes) {
-            filterWarnings.push(`${component.name}: ${reviewNotes}`);
-          }
-        }
+        validatedComponents = result.components as typeof validatedComponents;
 
-        // Preserve any extractor-level review reasons (e.g. `props-type-unresolved`
-        // from the Svelte parser) by merging them into the post-processing recompute.
-        // Without this, recomputing here clobbers the per-extractor signal.
-        const extractorReasons = component.reviewReasons ?? [];
-        const nonAuthorableReason = retainedForReview ? [`non-authorable:${verdict.reason}`] : [];
-        const { confidence, reasons } = computeExtractionScore(component, {
-          additionalIssueCount:
-            wrapperConfidenceToIssueCount(inspection.wrapperConfidence) +
-            extractorReasons.length +
-            nonAuthorableReason.length,
-          additionalReasons: [...extractorReasons, ...inspection.reviewReasons, ...nonAuthorableReason],
-        });
-        filteredComponents.push({
-          ...component,
-          extractionConfidence: confidence,
-          reviewReasons: reasons,
-          needsReview:
-            deriveNeedsReview(confidence) ||
-            inspection.wrapperConfidence >= 4 ||
-            inspection.keepDespiteZeroSurface ||
-            retainedForReview ||
-            // An extractor-level type-resolution failure is a strong signal regardless
-            // of the otherwise-derived confidence threshold; force review.
-            extractorReasons.includes('props-type-unresolved') ||
-            (component.needsReview ?? false),
-        });
+        if (opts.generateMap) {
+          // Reflect the FULL resolved composition — typed-slot edges already
+          // on the extracted components PLUS anything the resolver added — not
+          // just the resolver's own contributed edges.
+          const skeleton = componentsToInterchangeMap(validatedComponents);
+          await writeFile(opts.generateMap, JSON.stringify(skeleton, null, 2) + '\n');
+          process.stderr.write(`Wrote composition map skeleton to ${opts.generateMap}\n`);
+        }
       }
-      let validatedComponents = validateExtractedComponents(filteredComponents);
+    }
 
-      // Composition mapping resolution (spec U2). Only in composite mode and
-      // only when a source is provided (user map / agent opt-in).
-      // Atomic (default) never resolves — it would only be stripped later.
-      const compositionMode = resolveCompositionMode(opts, (await safeReadCompositionMode()) ?? undefined);
-      if (compositionMode === 'composite') {
-        const sources = resolveCompositionSources(opts);
+    storeRawComponents(db, sessionId, validatedComponents);
 
-        const { overrides: promptOverrides, errors: promptErrors } = parsePromptOverrides(opts.prompt ?? []);
-        for (const err of promptErrors) {
-          process.stderr.write(`Error: ${err}\n`);
-          process.exit(1);
-        }
-        let compositionPrompt: string | undefined;
-        const compositionOverride = promptOverrides.get('composition');
-        if (compositionOverride) {
-          try {
-            compositionPrompt = await resolvePromptOverride(compositionOverride);
-          } catch (e) {
-            process.stderr.write(`Error: ${e instanceof Error ? e.message : String(e)}\n`);
-            process.exit(1);
-          }
-        }
+    const cycleInput = validatedComponents.map((c) => ({
+      name: c.name,
+      slots: c.slots.map((s) => ({ name: s.name, allowedComponents: s.allowedComponents })),
+    }));
+    const cycles = findSlotCycles(cycleInput);
+    const withBreaks = cycles.map((cycle) => ({
+      ...cycle,
+      suggestedBreak: suggestCycleBreakEdge(cycle, cycles),
+    }));
+    storeSlotCycles(db, sessionId, withBreaks);
 
-        let userMap;
-        if (opts.compositionMap) {
-          const loaded = await loadUserMap(opts.compositionMap);
-          if (!loaded.ok) {
-            process.stderr.write(`Error: ${loaded.error}\n`);
-            process.exit(1);
-          }
-          userMap = loaded.map;
-        }
+    storeScannedFiles(
+      db,
+      sessionId,
+      sourceFiles.map((f) => relative(projectRoot, f)),
+    );
+    updateStep(db, stepId, 'complete', { sessionId });
+    enrichCommandResult({ extracted_component_count: validatedComponents.length });
+    db.close();
 
-        const hasSource = !!userMap || sources.useAgent || sources.forceAgent;
-        if (hasSource || opts.generateMap) {
-          // Composition progress mirrors the scan/extract progress convention:
-          // emit `progress=composition:<phase>` on stderr so the wizard can
-          // render a second progress line during the (potentially slow, agent-
-          // backed) resolution instead of appearing frozen.
-          const emitCompositionProgress = (phase: string): void => {
-            if (!process.stdout.isTTY) process.stderr.write(`progress=composition:${phase}\n`);
-          };
+    const allWarnings = [...extraction.warnings, ...filterWarnings];
 
-          emitCompositionProgress('resolving');
-          const allFiles = await readCandidateFiles(validatedComponents, sourceFiles);
-          // Decouple the two file sets (design: candidate-heuristic fragility):
-          //  - `promptFiles`: a bounded candidate SAMPLE inlined into the agent
-          //    prompt so it sees the convention without ingesting the whole repo.
-          //  - `allFiles`: EVERY scanned file, handed to the authored parser at
-          //    runtime. The parser is deterministic code — give it everything so
-          //    a candidate-filter miss can never starve it of a definition file.
-          const selectedCandidates = selectCandidateFiles(allFiles).map((c) => ({ path: c.path, content: c.content }));
-          // Cap the inlined set so a large design system can't overflow the
-          // agent's context window and fail resolution outright (see the budget
-          // constant). The runtime parser still sees EVERY file.
-          const capped = capCandidatesToPromptBudget(selectedCandidates);
-          let promptFiles = capped.kept;
-          if (capped.dropped.length > 0) {
-            process.stderr.write(
-              `Warning: composition — ${capped.dropped.length} candidate file(s) omitted from the agent prompt to fit the context budget; resolution runs on the ${promptFiles.length} highest-value files.\n`,
-            );
-          }
-          const runtimeFiles = allFiles.map((c) => ({ path: c.path, content: c.content }));
+    const { rows: componentRows, totalErrors } = buildAnalyzeViewRows(
+      filteredComponents,
+      validatedComponents,
+      allWarnings,
+    );
 
-          const resolverAgent = resolveCompositionAgentName(opts.agent);
-          const parserMode = (opts.compositionAgentMode ?? 'parser') !== 'edges';
-          const componentNameSet = new Set(validatedComponents.map((c) => c.name));
-          const cacheVersion = await getCliCacheVersion();
+    // Split warnings: per-component (those whose prefix matches a surviving component name)
+    // are rendered under that component in the TUI; global ones (retry summaries,
+    // non-authorable skips, anything else) are rendered at the top of the warnings panel
+    // so they don't disappear into the count. `partitionGlobalWarnings` shares its
+    // matching rule with `buildAnalyzeViewRows` to keep the two halves symmetric.
+    const globalWarnings = partitionGlobalWarnings(
+      allWarnings,
+      componentRows.map((r) => r.name),
+    );
 
-          // Tracks the exit code of the most recent spawnAgent call so the
-          // caching sites can refuse to persist a failed run (a non-zero exit —
-          // e.g. a context-window overflow — otherwise poisons the cache and
-          // replays the error on every subsequent run).
-          let lastAgentExitCode = 0;
-          const spawnAgent = async (prompt: string): Promise<string> => {
-            const res = await runAgent({
-              agent: resolverAgent,
-              prompt,
-              timeoutMs: 120_000,
-              promptViaStdin: true,
-              onDebugEvent: (name, payload) => getDebugLogger().event('agent', name, payload),
-            });
-            lastAgentExitCode = res.exitCode;
-            if (res.exitCode !== 0 && res.stderr.trim()) {
-              process.stderr.write(`Warning: composition — agent exited ${res.exitCode}: ${res.stderr.trim()}\n`);
-            }
-            return res.stdout;
-          };
+    const analyzeResult: AnalyzeViewResult = {
+      sourceDirectory,
+      sessionId,
+      fileCount: sourceFiles.length,
+      components: componentRows,
+      totalWarnings: allWarnings.length,
+      totalErrors,
+      globalWarnings,
+    };
 
-          // Completeness critic: let the agent flag composition-relevant dirs
-          // the keyword filter missed (by path/name alone — cheap). It can only
-          // ADD to the prompt sample. Runs ONLY on a genuine authoring pass (see
-          // the cache-miss branch below) so a parser cache hit pays nothing.
-          const runCandidateCritic = async (): Promise<void> => {
-            const critic = await critiqueCandidates(runtimeFiles, promptFiles, async (dirs) =>
-              parseDirCriticReply(await spawnAgent(buildDirCriticPrompt(dirs)), dirs),
-            );
-            if (critic.addedDirs.length > 0) {
-              promptFiles = critic.files;
-              if (process.env['EDS_DEBUG']) {
-                process.stderr.write(`[composition-debug] critic added dirs: ${critic.addedDirs.join(', ')}\n`);
-              }
-            }
-          };
+    if (getInteractiveTerminalSupport().supported) {
+      const { waitUntilExit } = render(
+        createElement(AnalyzeView, {
+          result: analyzeResult,
+          onExit: () => void exitWithAnalytics(0),
+        }),
+      );
+      await waitUntilExit();
+    } else {
+      const sessionLine = `session=${sessionId}\n`;
+      process.stdout.write(sessionLine);
 
-          // Agent-authored parser path (default): the agent writes a sandboxed
-          // (ctx) => Edge[] parser we run deterministically, cached by parser
-          // SOURCE. Falls back to direct edge-emission if authoring fails.
-          let parserEdges: CompositionEdge[] | undefined;
-          if (sources.useAgent && parserMode) {
-            const parserCacheKey = buildCompositionInputHash({
-              files: runtimeFiles,
-              agent: resolverAgent,
-              kind: 'parser',
-            });
-            const cachedSource = opts.compositionRefresh
-              ? null
-              : lookupCompositionCache(db, parserCacheKey, cacheVersion);
-            if (cachedSource !== null) {
-              emitCompositionProgress('cache-hit');
-              const ran = await runParserInSandbox(cachedSource, {
-                files: runtimeFiles,
-                componentNames: [...componentNameSet],
-              });
-              if (!ran.error) {
-                parserEdges = ran.edges.filter(
-                  (e) => e.parent !== e.child && componentNameSet.has(e.parent) && componentNameSet.has(e.child),
-                );
-              }
-            }
-            if (parserEdges === undefined) {
-              await runCandidateCritic();
-              const pr = await resolveViaAgentParser({
-                files: promptFiles,
-                runtimeFiles,
-                componentNames: componentNameSet,
-                runAgentFn: ({ prompt }) => spawnAgent(prompt),
-                ...(compositionPrompt ? { instructionOverride: compositionPrompt } : {}),
-                onPhase: (phase) => emitCompositionProgress(phase),
-                // The candidate filter selected these files because they carry
-                // composition markers, so a clean 0-edge parse is suspicious —
-                // let the resolver spend its one repair round on it.
-                retryOnEmpty: promptFiles.length > 0,
-              });
-              for (const w of pr.warnings) process.stderr.write(`Warning: composition — ${w}\n`);
-              if (!pr.usedFallback) {
-                parserEdges = pr.edges;
-                if (pr.parserSource && lastAgentExitCode === 0) {
-                  storeCompositionCache(db, parserCacheKey, cacheVersion, pr.parserSource);
-                }
-              } else {
-                process.stderr.write('Warning: composition — parser mode failed; falling back to edge emission\n');
-              }
-            }
-          }
-
-          if (process.env['EDS_DEBUG'] && parserEdges) {
-            process.stderr.write(
-              `[composition-debug] prompt files: ${promptFiles.length}; runtime files: ${runtimeFiles.length}; componentNames: ${componentNameSet.size}; parser edges: ${parserEdges.length}\n`,
-            );
-            for (const e of parserEdges) process.stderr.write(`[composition-debug]   edge ${e.parent} -> ${e.child}\n`);
-          }
-
-          // Manifest (Figma `manifest.json`)/doc (`AGENTS.md`) evidence — rank
-          // 4/5, deterministic (no LLM), runs over the FULL file set
-          // regardless of composition mode/agent settings since it's cheap
-          // and code/design-adjacent rather than agent-derived.
-          const manifestDocEdges = collectManifestDocEdges(runtimeFiles, validatedComponents, componentNameSet);
-          const extraEdges = [...(parserEdges ?? []), ...manifestDocEdges];
-
-          // Edge-emission cache (used for both explicit edges-mode and the
-          // parser-mode fallback). Keyed on prompt files + agent identity — the
-          // agent emits edges directly from what it reads in the prompt.
-          const agentCacheKey = buildCompositionInputHash({
-            files: promptFiles,
-            agent: resolverAgent,
-            kind: 'edges',
-          });
-          const useEdgeEmission = sources.useAgent && parserEdges === undefined;
-          const result = await resolveMapping({
-            components: validatedComponents,
-            ...(userMap ? { userMap } : {}),
-            ...(extraEdges.length > 0 ? { extraEdges } : {}),
-            useAgent: useEdgeEmission,
-            forceAgent: sources.forceAgent && useEdgeEmission,
-            files: promptFiles,
-            ...(compositionPrompt ? { promptOverride: compositionPrompt } : {}),
-            runAgentFn: async ({ prompt }) => {
-              if (!opts.compositionRefresh) {
-                const cached = lookupCompositionCache(db, agentCacheKey, cacheVersion);
-                if (cached !== null) {
-                  emitCompositionProgress('cache-hit');
-                  return cached;
-                }
-              }
-              emitCompositionProgress(`agent:${resolverAgent}`);
-              const stdout = await spawnAgent(prompt);
-              if (lastAgentExitCode === 0) {
-                storeCompositionCache(db, agentCacheKey, cacheVersion, stdout);
-              }
-              return stdout;
-            },
-          });
-          emitCompositionProgress('done');
-
-          for (const w of result.warnings) process.stderr.write(`Warning: composition — ${w}\n`);
-          for (const c of result.conflicts) {
-            process.stderr.write(
-              `Warning: composition conflict on ${c.parent}→${c.child}: kept ${c.winner}, dropped ${c.loser}\n`,
-            );
-          }
-
-          validatedComponents = result.components as typeof validatedComponents;
-
-          if (opts.generateMap) {
-            // Reflect the FULL resolved composition — typed-slot edges already
-            // on the extracted components PLUS anything the resolver added — not
-            // just the resolver's own contributed edges.
-            const skeleton = componentsToInterchangeMap(validatedComponents);
-            await writeFile(opts.generateMap, JSON.stringify(skeleton, null, 2) + '\n');
-            process.stderr.write(`Wrote composition map skeleton to ${opts.generateMap}\n`);
+      const summaryLines = [
+        `Scanned ${pluralize(sourceFiles.length, 'source file')} in ${sourceDirectory}`,
+        `Extracted ${pluralize(extraction.components.length, 'component')}`,
+      ];
+      if (totalErrors > 0) {
+        summaryLines.push(`Errors (${totalErrors}):`);
+        for (const c of componentRows) {
+          for (const e of c.errors) {
+            summaryLines.push(`- ${c.name}: ${e}`);
           }
         }
       }
-
-      storeRawComponents(db, sessionId, validatedComponents);
-
-      const cycleInput = validatedComponents.map((c) => ({
-        name: c.name,
-        slots: c.slots.map((s) => ({ name: s.name, allowedComponents: s.allowedComponents })),
-      }));
-      const cycles = findSlotCycles(cycleInput);
-      const withBreaks = cycles.map((cycle) => ({
-        ...cycle,
-        suggestedBreak: suggestCycleBreakEdge(cycle, cycles),
-      }));
-      storeSlotCycles(db, sessionId, withBreaks);
-
-      storeScannedFiles(
-        db,
-        sessionId,
-        sourceFiles.map((f) => relative(projectRoot, f)),
-      );
-      updateStep(db, stepId, 'complete', { sessionId });
-      enrichCommandResult({ extracted_component_count: validatedComponents.length });
-      db.close();
-
-      const allWarnings = [...extraction.warnings, ...filterWarnings];
-
-      const { rows: componentRows, totalErrors } = buildAnalyzeViewRows(
-        filteredComponents,
-        validatedComponents,
-        allWarnings,
-      );
-
-      // Split warnings: per-component (those whose prefix matches a surviving component name)
-      // are rendered under that component in the TUI; global ones (retry summaries,
-      // non-authorable skips, anything else) are rendered at the top of the warnings panel
-      // so they don't disappear into the count. `partitionGlobalWarnings` shares its
-      // matching rule with `buildAnalyzeViewRows` to keep the two halves symmetric.
-      const globalWarnings = partitionGlobalWarnings(
-        allWarnings,
-        componentRows.map((r) => r.name),
-      );
-
-      const analyzeResult: AnalyzeViewResult = {
-        sourceDirectory,
-        sessionId,
-        fileCount: sourceFiles.length,
-        components: componentRows,
-        totalWarnings: allWarnings.length,
-        totalErrors,
-        globalWarnings,
-      };
-
-      if (getInteractiveTerminalSupport().supported) {
-        const { waitUntilExit } = render(
-          createElement(AnalyzeView, {
-            result: analyzeResult,
-            onExit: () => void exitWithAnalytics(0),
-          }),
-        );
-        await waitUntilExit();
-      } else {
-        const sessionLine = `session=${sessionId}\n`;
-        process.stdout.write(sessionLine);
-
-        const summaryLines = [
-          `Scanned ${pluralize(sourceFiles.length, 'source file')} in ${sourceDirectory}`,
-          `Extracted ${pluralize(extraction.components.length, 'component')}`,
-        ];
-        if (totalErrors > 0) {
-          summaryLines.push(`Errors (${totalErrors}):`);
-          for (const c of componentRows) {
-            for (const e of c.errors) {
-              summaryLines.push(`- ${c.name}: ${e}`);
-            }
-          }
-        }
-        if (allWarnings.length > 0) {
-          summaryLines.push(`Warnings (${allWarnings.length}):`);
-          summaryLines.push(...allWarnings.map((w) => `- ${w}`));
-        } else if (totalErrors === 0) {
-          summaryLines.push('Warnings: none');
-        }
-        process.stderr.write(summaryLines.join('\n') + '\n');
-
-        await exitWithAnalytics(0);
+      if (allWarnings.length > 0) {
+        summaryLines.push(`Warnings (${allWarnings.length}):`);
+        summaryLines.push(...allWarnings.map((w) => `- ${w}`));
+      } else if (totalErrors === 0) {
+        summaryLines.push('Warnings: none');
       }
-    });
+      process.stderr.write(summaryLines.join('\n') + '\n');
+
+      await exitWithAnalytics(0);
+    }
+  });
 
   registerAnalyzeEditCommand(analyze);
   registerAnalyzeSelectAgentCommand(analyze);

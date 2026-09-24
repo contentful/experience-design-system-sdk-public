@@ -97,10 +97,6 @@ export function registerImportCommand(program: Command): void {
       'Bypass the composition cache and re-resolve from scratch, forcing the agent to run (implies --composite)',
     )
     .option(
-      '--composition-agent-mode <mode>',
-      "Agent mode: 'parser' (agent writes a sandboxed parser, default) or 'edges' (agent lists edges)",
-    )
-    .option(
       '--generate-map <path>',
       'Also write a composition-map skeleton from resolved edges during extract (implies --composite)',
     )
@@ -192,7 +188,6 @@ export function registerImportCommand(program: Command): void {
         atomic?: boolean;
         compositionMap?: string;
         compositionAgent?: boolean;
-        compositionAgentMode?: string;
         compositionRefresh?: boolean;
         generateMap?: string;
         prompt?: string[];
@@ -223,7 +218,6 @@ export function registerImportCommand(program: Command): void {
             opts.atomic ? '--atomic' : null,
             opts.compositionMap ? '--composition-map' : null,
             opts.compositionAgent ? '--composition-agent' : null,
-            opts.compositionAgentMode ? '--composition-agent-mode' : null,
             opts.compositionRefresh ? '--composition-refresh' : null,
             opts.generateMap ? '--generate-map' : null,
           ].filter((f): f is string => f !== null);
@@ -236,7 +230,6 @@ export function registerImportCommand(program: Command): void {
             opts.atomic = undefined;
             opts.compositionMap = undefined;
             opts.compositionAgent = undefined;
-            opts.compositionAgentMode = undefined;
             opts.compositionRefresh = undefined;
             opts.generateMap = undefined;
           }
@@ -421,7 +414,6 @@ export function registerImportCommand(program: Command): void {
             compositionMode?: CompositionMode;
             compositionMap?: string;
             compositionAgent?: boolean;
-            compositionAgentMode?: string;
             compositionRefresh?: boolean;
             generateMap?: string;
             promptOverrides?: string[];

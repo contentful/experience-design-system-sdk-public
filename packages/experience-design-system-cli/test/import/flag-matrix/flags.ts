@@ -16,7 +16,6 @@ export const COMPOSITION_FLAGS = [
   '--atomic',
   '--composition-map',
   '--composition-agent',
-  '--composition-agent-mode',
   '--composition-refresh',
   '--generate-map',
   '--prompt',
@@ -242,13 +241,6 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     modes: ['pty', 'headless'],
     incompatibleWith: [],
     notes: 'Implies --composite.',
-  },
-  {
-    flag: '--composition-agent-mode',
-    kind: 'value',
-    sampleValue: 'parser',
-    modes: ['pty', 'headless'],
-    incompatibleWith: [],
   },
   {
     flag: '--composition-refresh',
