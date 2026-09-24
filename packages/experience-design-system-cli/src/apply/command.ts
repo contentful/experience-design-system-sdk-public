@@ -517,8 +517,7 @@ function buildApplyOutput(
 export function registerApplyCommand(program: Command): void {
   const applyCmd = program
     .command('apply')
-    .description('Write component types and design tokens to Contentful ExO')
-    .helpOption(false);
+    .description('Write component types and design tokens to Contentful ExO');
   addSharedApplyOptions(applyCmd);
   applyCmd
     .action(async (opts: SharedImportOptions) => {
