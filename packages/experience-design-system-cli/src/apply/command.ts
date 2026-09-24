@@ -165,7 +165,6 @@ function addSharedApplyOptions(command: Command): void {
     .option('--components <path>', 'Path to components.json (CDF)')
     .option('--tokens <path>', 'Path to tokens.json (DTCG)');
   command
-    .option('--cma-token <token>', 'CMA personal access token (or set CONTENTFUL_MANAGEMENT_TOKEN)')
     .option('--host <url>', 'Override API base URL');
   addCompositionOptions(command).option(
     '--atomic',
@@ -334,9 +333,9 @@ async function resolveSharedInputs(opts: SharedImportOptions): Promise<{
   opts.spaceId = spaceId;
   opts.environmentId = environmentId;
 
-  const cmaToken = opts.cmaToken ?? process.env.CONTENTFUL_MANAGEMENT_TOKEN;
+  const cmaToken = opts.cmaToken ?? credentials.cmaToken;
   if (!cmaToken) {
-    return await die('Error: CMA token is required. Pass --cma-token or set CONTENTFUL_MANAGEMENT_TOKEN');
+    return await die('Error: CMA token is required. Configure it with experiences setup or CONTENTFUL_MANAGEMENT_TOKEN');
   }
 
   if (opts.components) await assertFileExists('--components', opts.components);

@@ -30,11 +30,9 @@ describe('apply command — help', () => {
 
     expect(flags).toEqual([
       '--atomic',
-      '--cma-token',
       '--components',
       '--composite',
       '--dry-run',
-      '--environment-id',
       '--force',
       '--host',
       '--tokens',
