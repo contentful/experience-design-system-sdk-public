@@ -142,12 +142,6 @@ export async function readTokensFromPath(flag: string, p: string): Promise<DTCGT
 interface SharedImportOptions {
   components?: string;
   tokens?: string;
-  spaceId?: string;
-  environmentId?: string;
-  cmaToken?: string;
-  host?: string;
-  composite?: boolean;
-  atomic?: boolean;
 }
 
 type SharedInputs = Awaited<ReturnType<typeof resolveSharedInputs>>;
@@ -307,18 +301,19 @@ async function resolveSharedInputs(opts: SharedImportOptions): Promise<{
   components: Array<{ key: string; entry: CDFComponentEntry }>;
   tokens: DTCGTokenEntry[];
   client: ImportApiClient;
+  spaceId: string;
+  environmentId: string;
+  host?: string;
 }> {
   if (!opts.components && !opts.tokens) return await die('Error: at least one of --components or --tokens is required');
 
   const credentials = await readExperiencesCredentials();
-  const spaceId = opts.spaceId ?? credentials.spaceId;
-  const environmentId = opts.environmentId ?? credentials.environmentId;
-  if (!spaceId) return await die('Error: --space-id is required (or set CONTENTFUL_SPACE_ID)');
-  if (!environmentId) return await die('Error: --environment-id is required (or set CONTENTFUL_ENVIRONMENT_ID)');
-  opts.spaceId = spaceId;
-  opts.environmentId = environmentId;
+  const spaceId = credentials.spaceId;
+  const environmentId = credentials.environmentId;
+  if (!spaceId) return await die('Error: Contentful space ID is missing; configure it with experiences setup');
+  if (!environmentId) return await die('Error: Contentful environment ID is missing; configure it with experiences setup');
 
-  const cmaToken = opts.cmaToken ?? credentials.cmaToken;
+  const cmaToken = credentials.cmaToken;
   if (!cmaToken) {
     return await die('Error: CMA token is required. Configure it with experiences setup or CONTENTFUL_MANAGEMENT_TOKEN');
   }
@@ -348,7 +343,7 @@ async function resolveSharedInputs(opts: SharedImportOptions): Promise<{
   } catch {
     // Missing credentials.json → resolver falls through to default (atomic).
   }
-  if (resolveCompositionMode(opts, configMode) === 'atomic') {
+  if (resolveCompositionMode({}, configMode) === 'atomic') {
     components = stripAllowedComponents(components);
   }
 
@@ -358,13 +353,13 @@ async function resolveSharedInputs(opts: SharedImportOptions): Promise<{
   }
 
   const client = new ImportApiClient({
-    host: opts.host ?? credentials.host,
+    host: credentials.host,
     cmaToken,
     spaceId,
     environmentId,
   });
 
-  return { components, tokens, client };
+  return { components, tokens, client, spaceId, environmentId, host: credentials.host };
 }
 
 export function detectSlotCycles(
@@ -531,9 +526,7 @@ export function registerApplyCommand(program: Command): void {
 
       const inputs = await resolveSharedInputsOrDie(opts);
 
-      const { components, tokens, client } = inputs;
-      const spaceId = opts.spaceId!;
-      const environmentId = opts.environmentId!;
+      const { components, tokens, client, spaceId, environmentId, host } = inputs;
       await bindAnalyticsSessionId(undefined, {
         space_key: spaceId,
         environment_key: environmentId,
@@ -588,7 +581,7 @@ export function registerApplyCommand(program: Command): void {
           spaceId,
           environmentId,
           acknowledgeBreakingChanges: false,
-          host: opts.host,
+          host,
         });
         return;
       }
@@ -600,7 +593,7 @@ export function registerApplyCommand(program: Command): void {
             manifest,
             spaceId,
             environmentId,
-            host: opts.host,
+            host,
             acknowledgeBreakingChanges: acknowledge,
             rerender: (element) => instance.rerender(element),
             onDone: resolvePromise,
