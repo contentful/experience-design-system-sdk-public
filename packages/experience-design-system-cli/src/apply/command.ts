@@ -498,7 +498,10 @@ function buildApplyOutput(
 }
 
 export function registerApplyCommand(program: Command): void {
-  const applyCmd = program.command('apply').description('Write component types and design tokens to Contentful ExO');
+  const applyCmd = program
+    .command('apply')
+    .description('Write component types and design tokens to Contentful ExO')
+    .helpOption(false);
   addSharedApplyOptions(applyCmd);
   applyCmd
     .action(async (opts: SharedImportOptions) => {

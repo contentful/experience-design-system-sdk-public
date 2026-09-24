@@ -63,16 +63,6 @@ describe('apply — flag variations', () => {
     'test-token',
   ];
 
-  // ── Help ──────────────────────────────────────────────────────────────────
-
-  it('prints help with --help', async () => {
-    const { stdout, code } = await runCli(['apply', '--help']);
-    expect(code).toBe(0);
-    expect(stdout).toContain('--space-id');
-    expect(stdout).toContain('--environment-id');
-    expect(stdout).toContain('--cma-token');
-  });
-
   // ── Non-interactive guard ─────────────────────────────────────────────────
 
   it('exits non-zero in non-interactive mode', async () => {
