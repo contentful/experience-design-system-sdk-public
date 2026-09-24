@@ -48,6 +48,7 @@ describe('apply — flag variations', () => {
     CONTENTFUL_SPACE_ID: '',
     CONTENTFUL_ENVIRONMENT_ID: '',
     CONTENTFUL_MANAGEMENT_TOKEN: '',
+    EDS_HOST: server.url,
   });
 
   const baseArgs = () => [
@@ -61,8 +62,6 @@ describe('apply — flag variations', () => {
     '--cma-token',
     'test-token',
     '--yes',
-    '--host',
-    server.url,
   ];
 
   // ── Help ──────────────────────────────────────────────────────────────────
@@ -88,8 +87,6 @@ describe('apply — flag variations', () => {
       'master',
       '--cma-token',
       'test-token',
-      '--host',
-      server.url,
     ];
     const { code, stderr } = await runCliWithEnv(args, baseEnv());
     expect(code).not.toBe(0);

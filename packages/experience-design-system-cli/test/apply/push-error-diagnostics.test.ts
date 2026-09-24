@@ -51,14 +51,13 @@ describe('apply — actionable preview diagnostics', () => {
         '--cma-token',
         'test-token',
         '--yes',
-        '--host',
-        host,
       ],
       {
         NODE_NO_WARNINGS: '1',
         CONTENTFUL_SPACE_ID: '',
         CONTENTFUL_ENVIRONMENT_ID: '',
         CONTENTFUL_MANAGEMENT_TOKEN: '',
+        EDS_HOST: host,
       },
     );
 

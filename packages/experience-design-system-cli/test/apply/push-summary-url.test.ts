@@ -48,6 +48,7 @@ const baseEnv = () => ({
   CONTENTFUL_SPACE_ID: '',
   CONTENTFUL_ENVIRONMENT_ID: '',
   CONTENTFUL_MANAGEMENT_TOKEN: '',
+  EDS_HOST: pushServer.url,
 });
 
 describe('apply — viewUrl emission (Gap 4)', () => {
@@ -73,8 +74,6 @@ describe('apply — viewUrl emission (Gap 4)', () => {
       '--cma-token',
       'test-token',
       '--yes',
-      '--host',
-      pushServer.url,
     ];
     const { stdout, code } = await runCliWithEnv(args, baseEnv());
     expect(code).toBe(0);

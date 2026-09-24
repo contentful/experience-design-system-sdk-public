@@ -165,7 +165,6 @@ function addSharedApplyOptions(command: Command): void {
     .option('--components <path>', 'Path to components.json (CDF)')
     .option('--tokens <path>', 'Path to tokens.json (DTCG)');
   command
-    .option('--host <url>', 'Override API base URL');
   addCompositionOptions(command).option(
     '--atomic',
     'Import flat components with no embedded-component hierarchy (default)',
@@ -373,7 +372,7 @@ async function resolveSharedInputs(opts: SharedImportOptions): Promise<{
   }
 
   const client = new ImportApiClient({
-    host: opts.host,
+    host: opts.host ?? credentials.host,
     cmaToken,
     spaceId,
     environmentId,
