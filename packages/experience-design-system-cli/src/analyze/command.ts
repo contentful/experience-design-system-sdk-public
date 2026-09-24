@@ -436,16 +436,6 @@ export function registerAnalyzeCommand(program: Command): void {
         }
       }
 
-      let userMap;
-      if (opts.compositionMap) {
-        const loaded = await loadUserMap(opts.compositionMap);
-        if (!loaded.ok) {
-          process.stderr.write(`Error: ${loaded.error}\n`);
-          process.exit(1);
-        }
-        userMap = loaded.map;
-      }
-
       {
         // Composition-resolution runs unconditionally so structural evidence
         // (typed slots + Signal A/B/C/D) and manifest/doc edges always reach
