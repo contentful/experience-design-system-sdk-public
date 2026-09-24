@@ -165,7 +165,6 @@ function addSharedApplyOptions(command: Command): void {
     .option('--components <path>', 'Path to components.json (CDF)')
     .option('--tokens <path>', 'Path to tokens.json (DTCG)');
   command
-    .option('--environment-id <id>', 'Contentful environment ID')
     .option('--cma-token <token>', 'CMA personal access token (or set CONTENTFUL_MANAGEMENT_TOKEN)')
     .option('--host <url>', 'Override API base URL');
   addCompositionOptions(command).option(
@@ -329,7 +328,7 @@ async function resolveSharedInputs(opts: SharedImportOptions): Promise<{
 
   const credentials = await readExperiencesCredentials();
   const spaceId = opts.spaceId ?? credentials.spaceId;
-  const environmentId = opts.environmentId ?? process.env.CONTENTFUL_ENVIRONMENT_ID;
+  const environmentId = opts.environmentId ?? credentials.environmentId;
   if (!spaceId) return await die('Error: --space-id is required (or set CONTENTFUL_SPACE_ID)');
   if (!environmentId) return await die('Error: --environment-id is required (or set CONTENTFUL_ENVIRONMENT_ID)');
   opts.spaceId = spaceId;
