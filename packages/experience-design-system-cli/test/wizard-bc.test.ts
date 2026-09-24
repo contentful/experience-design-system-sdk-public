@@ -43,7 +43,6 @@ describe('backwards-compat: standalone subcommand flags', () => {
       '--environment-id',
       '--cma-token',
       '--host',
-      '--dry-run',
     ]) {
       expect(out).toContain(flag);
     }

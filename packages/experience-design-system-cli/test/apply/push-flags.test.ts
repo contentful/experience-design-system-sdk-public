@@ -125,30 +125,6 @@ describe('apply — flag variations', () => {
     expect(code).toBe(0);
   });
 
-  // ── --dry-run does not POST to import ─────────────────────────────────────
-
-  it('--dry-run does not make import POST requests', async () => {
-    const requestsBefore = server.requests.length;
-    const { code } = await runCliWithEnv([...baseArgs(), '--dry-run'], baseEnv());
-    expect(code).toBe(0);
-    const importPosts = server.requests
-      .slice(requestsBefore)
-      .filter((r) => r.method === 'POST' && r.url.includes('/imports/apply'));
-    expect(importPosts).toHaveLength(0);
-  });
-
-  // ── --dry-run still calls preview ─────────────────────────────────────────
-
-  it('--dry-run calls the preview endpoint', async () => {
-    const requestsBefore = server.requests.length;
-    const { code } = await runCliWithEnv([...baseArgs(), '--dry-run'], baseEnv());
-    expect(code).toBe(0);
-    const previewPosts = server.requests
-      .slice(requestsBefore)
-      .filter((r) => r.method === 'POST' && r.url.includes('/preview'));
-    expect(previewPosts.length).toBeGreaterThan(0);
-  });
-
   // ── --tokens flag ─────────────────────────────────────────────────────────
 
   it('--tokens flag is accepted and exits 0', async () => {

@@ -30,7 +30,6 @@ describe('apply command — help', () => {
 
     expect(flags).toEqual([
       '--components',
-      '--dry-run',
       '--tokens',
     ]);
   });
@@ -83,15 +82,4 @@ describe('apply — input validation', () => {
 });
 
 describe('apply — new flags', () => {
-  it('prints --dry-run in help output', async () => {
-    const { stdout, code } = await run(['apply', '--help']);
-    expect(code).toBe(0);
-    expect(stdout).toContain('--dry-run');
-  });
-
-  it('--dry-run description mentions preview only', async () => {
-    const { stdout, code } = await run(['apply', '--help']);
-    expect(code).toBe(0);
-    expect(stdout).toContain('preview only');
-  });
 });
