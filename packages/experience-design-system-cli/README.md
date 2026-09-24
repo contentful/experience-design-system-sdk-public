@@ -287,7 +287,7 @@ This command is the non-wizard route to the same diff and push logic. Its flag s
 experiences apply    [--yes]
 ```
 
-Shared flags: `--components`, `--tokens`, `--host`. `apply` adds `--yes`, `--verbose`, `--force`, and `--dry-run`. Credentials are loaded from `experiences setup` or environment variables. Remote ComponentTypes and DesignTokens missing from the pushed manifest are always skipped.
+Shared flags: `--components`, `--tokens`. `apply` adds `--yes`, `--verbose`, `--force`, and `--dry-run`. Credentials are loaded from `experiences setup` or environment variables. Remote ComponentTypes and DesignTokens missing from the pushed manifest are always skipped.
 
 Design tokens are written first (component types may reference token kinds). Each entity write is recorded in the session database atomically — interrupted pushes resume from where they left off.
 

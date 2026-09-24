@@ -34,7 +34,6 @@ describe('apply command — help', () => {
       '--composite',
       '--dry-run',
       '--force',
-      '--host',
       '--tokens',
       '--verbose',
       '--yes',
