@@ -151,7 +151,6 @@ interface SharedImportOptions {
 }
 
 interface ApplyOptions extends SharedImportOptions {
-  force?: boolean;
   dryRun?: boolean;
 }
 
@@ -506,7 +505,6 @@ export function registerApplyCommand(program: Command): void {
   const applyCmd = program.command('apply').description('Write component types and design tokens to Contentful ExO');
   addSharedApplyOptions(applyCmd);
   applyCmd
-    .option('--force', 'Skip confirmation for breaking changes (for CI)')
     .option('--dry-run', 'Run preview only without applying')
     .action(async (opts: ApplyOptions) => {
       const isTTY = getInteractiveTerminalSupport().supported;
