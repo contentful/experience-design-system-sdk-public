@@ -8,21 +8,15 @@ This package is a bundled dependency of `@contentful/experience-design-system-cl
 
 ### CDF — Component Definition Format
 
-Typed and validated structure for `.cdf.json` component definition files that describe a design system's component library.
+One typed, validated document for a design system's components and design tokens together — the request body sent to both the preview and apply endpoints. A leaf's `$type` decides what it is (`'component'` vs. a `DESIGN_TOKEN_TYPES` member), so groups can nest either kind side by side. There is no separate manifest envelope.
 
-**Exports:** `validateCDF`, `CDF_V1_SCHEMA_URL`, `CDF_PROPERTY_TYPES`, `CDFComponentEntry`, `CDFPropertyDefinition`, `CDFValidationError`
+**Exports:** `validateCDF`, `parseCDFComponents`, `buildCDF`, `buildFilteredCDF`, `validateSlotReferences`, `CDF_SCHEMA_URL`, `CDF_PROPERTY_TYPES`, `CDFComponentEntry`, `CDFTokenEntry`, `CDFPropertyDefinition`, `CDFValidationError`, `CDFValidationResult`, `CDFDocument`
 
 ### DTCG — Design Token Community Group
 
-Types for `.tokens.json` files following the [W3C DTCG format](https://tr.designtokens.org/format/) that describe a design system's token library.
+Types for standalone `.tokens.json` files following the [W3C DTCG format](https://tr.designtokens.org/format/) — used when generating or ingesting raw design tokens ahead of merging them into a CDF document.
 
 **Exports:** `DESIGN_TOKEN_TYPES`, `DesignTokenType`, `DTCGTokenEntry`, `DTCGTokenGroup`, `DTCGTokenNode`, `DTCGTokenGroupNode`
-
-### Sources API — Manifest
-
-Request body sent to both the preview and apply endpoints.
-
-**Exports:** `ManifestPayload`
 
 ### Sources API — Preview
 

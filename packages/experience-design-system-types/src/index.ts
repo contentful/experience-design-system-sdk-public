@@ -1,17 +1,27 @@
-// CDF (Component Definition Format) exports
+// CDF (Component Definition Format) exports — one schema/file for both
+// components and design tokens, no separate manifest envelope.
 export {
   validateCDF,
   parseCDFComponents,
-  CDF_V1_SCHEMA_URL,
+  CDF_SCHEMA_URL,
+  cdfJsonSchema,
   CDF_PROPERTY_TYPES,
   CDF_PROPERTY_CATEGORIES,
   CDFComponentSchema,
   CDFPropertySchema,
   CDFSlotSchema,
+  CDFTokenSchema,
+  buildCDF,
+  buildFilteredCDF,
+  stripUnsupportedSlotFields,
+  validateSlotReferences,
   type CDFComponentEntry,
   type CDFPropertyDefinition,
   type CDFSlotDefinition,
+  type CDFTokenEntry,
   type CDFValidationError,
+  type CDFValidationResult,
+  type CDFDocument,
 } from './cdf/index.js';
 
 // DTCG (W3C Design Token Community Group)
@@ -51,12 +61,3 @@ export type {
   ApplyOperationResponse,
   ApplyGateError,
 } from './sources-api/apply/index.js';
-
-// Sources API — Manifest
-export type { ManifestPayload } from './sources-api/manifest/index.js';
-export {
-  buildManifest,
-  buildFilteredManifest,
-  stripUnsupportedSlotFields,
-  validateManifestSlotReferences,
-} from './sources-api/manifest/index.js';
