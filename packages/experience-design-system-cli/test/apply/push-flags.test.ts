@@ -156,13 +156,6 @@ describe('apply — flag variations', () => {
     expect(code).toBe(0);
   });
 
-  // ── --verbose flag ────────────────────────────────────────────────────────
-
-  it('--verbose flag is accepted and exits 0', async () => {
-    const { code } = await runCliWithEnv([...baseArgs(), '--verbose'], baseEnv());
-    expect(code).toBe(0);
-  });
-
   // ── --force flag ──────────────────────────────────────────────────────────
 
   it('--force skips breaking change confirmation and exits 0', async () => {

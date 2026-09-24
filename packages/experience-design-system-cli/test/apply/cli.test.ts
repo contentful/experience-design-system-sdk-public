@@ -33,7 +33,6 @@ describe('apply command — help', () => {
       '--dry-run',
       '--force',
       '--tokens',
-      '--verbose',
     ]);
   });
 

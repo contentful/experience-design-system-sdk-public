@@ -43,7 +43,6 @@ describe('backwards-compat: standalone subcommand flags', () => {
       '--environment-id',
       '--cma-token',
       '--host',
-      '--verbose',
       '--force',
       '--dry-run',
     ]) {

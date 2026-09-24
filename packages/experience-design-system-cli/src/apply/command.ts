@@ -37,8 +37,8 @@ async function die(message: string, fields: CommandFailure = {}): Promise<never>
   return exitWithAnalytics(1, fields);
 }
 
-function dieWithApiError(error: ApiError, verbose?: boolean): Promise<never> {
-  return die(`Error: ${formatApiError(error, verbose)}`, failureFromApiError(error));
+function dieWithApiError(error: ApiError): Promise<never> {
+  return die(`Error: ${formatApiError(error)}`, failureFromApiError(error));
 }
 
 async function assertFileExists(flag: string, p: string): Promise<void> {
@@ -151,7 +151,6 @@ interface SharedImportOptions {
 }
 
 interface ApplyOptions extends SharedImportOptions {
-  verbose?: boolean;
   force?: boolean;
   dryRun?: boolean;
 }
@@ -165,11 +164,11 @@ function addSharedApplyOptions(command: Command): void {
   command
 }
 
-async function resolveSharedInputsOrDie(opts: SharedImportOptions, verbose?: boolean): Promise<SharedInputs> {
+async function resolveSharedInputsOrDie(opts: SharedImportOptions): Promise<SharedInputs> {
   try {
     return await resolveSharedInputs(opts);
   } catch (e) {
-    if (e instanceof ApiError) return await dieWithApiError(e, verbose);
+    if (e instanceof ApiError) return await dieWithApiError(e);
     throw e;
   }
 }
@@ -259,7 +258,6 @@ interface InteractiveApplyOptions {
   environmentId: string;
   host?: string;
   acknowledgeBreakingChanges: boolean;
-  verbose?: boolean;
   rerender: (element: React.ReactElement) => void;
   onDone: () => void;
 }
@@ -268,7 +266,7 @@ async function runInteractiveApply(options: InteractiveApplyOptions): Promise<vo
   const operation = await applyAndPoll(options.client, options.manifest, {
     acknowledgeBreakingChanges: options.acknowledgeBreakingChanges,
     ...createApplyProgressHandlers(options.rerender, options.spaceId, options.environmentId, (error) =>
-      formatApiError(error, options.verbose),
+      formatApiError(error),
     ),
   });
   if (!operation) return;
@@ -508,7 +506,6 @@ export function registerApplyCommand(program: Command): void {
   const applyCmd = program.command('apply').description('Write component types and design tokens to Contentful ExO');
   addSharedApplyOptions(applyCmd);
   applyCmd
-    .option('--verbose', 'Show all entity progress including skipped/unchanged')
     .option('--force', 'Skip confirmation for breaking changes (for CI)')
     .option('--dry-run', 'Run preview only without applying')
     .action(async (opts: ApplyOptions) => {
@@ -519,7 +516,7 @@ export function registerApplyCommand(program: Command): void {
         await exitWithAnalytics(1);
       }
 
-      const inputs = await resolveSharedInputsOrDie(opts, opts.verbose);
+      const inputs = await resolveSharedInputsOrDie(opts);
 
       const { components, tokens, client } = inputs;
       const spaceId = opts.spaceId!;
@@ -536,7 +533,7 @@ export function registerApplyCommand(program: Command): void {
         await client.validateToken();
       } catch (e) {
         if (e instanceof ApiError)
-          return await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
+          return await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
         throw e;
       }
 
@@ -547,7 +544,7 @@ export function registerApplyCommand(program: Command): void {
         preview = await client.previewImport(manifest);
       } catch (e) {
         if (e instanceof ApiError)
-          return await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
+          return await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
         throw e;
       }
 
@@ -589,7 +586,6 @@ export function registerApplyCommand(program: Command): void {
             environmentId,
             host: opts.host,
             acknowledgeBreakingChanges: acknowledge,
-            verbose: opts.verbose,
             rerender: (element) => instance.rerender(element),
             onDone: resolvePromise,
           });
