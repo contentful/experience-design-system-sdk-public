@@ -44,7 +44,7 @@ export const PREFERENCE_OPTIONS = [
 
 type PreferenceKey = (typeof PREFERENCE_OPTIONS)[number]['key'];
 
-\const DONE_VALUE = 'menu:done';
+const DONE_VALUE = 'menu:done';
 
 const PREFERENCES_MENU_HELP = 'Every preference already has a working default — open one to change it.';
 
