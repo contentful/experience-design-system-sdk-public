@@ -1491,7 +1491,7 @@ export function GenerateReviewStep({
           return (
             <Box flexDirection="column" borderStyle="single" borderColor={PALETTE.error} paddingX={1}>
               <Text color={PALETTE.error} bold>
-                {`Cyclic manifest — auto-rejected ${stillRejected.length} component${stillRejected.length === 1 ? '' : 's'}:`}
+                {`Cyclic component graph — auto-rejected ${stillRejected.length} component${stillRejected.length === 1 ? '' : 's'}:`}
               </Text>
               {members.length > 0 && <Text color={PALETTE.error}>{`  Cycle members: ${members.join(', ')}`}</Text>}
               {ancestors.length > 0 && <Text color={PALETTE.error}>{`  Ancestors: ${ancestors.join(', ')}`}</Text>}

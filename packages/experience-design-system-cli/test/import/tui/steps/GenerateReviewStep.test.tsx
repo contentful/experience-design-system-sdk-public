@@ -2363,7 +2363,7 @@ describe('GenerateReviewStep — Task #37 mount-time cycle auto-reject', () => {
     );
     await tick();
     const frame = lastFrame() ?? '';
-    expect(frame).toMatch(/Cyclic manifest — auto-rejected/);
+    expect(frame).toMatch(/Cyclic component graph — auto-rejected/);
     expect(frame).toMatch(/Cycle members:.*CycleA/);
     expect(frame).toMatch(/Cycle members:.*CycleB/);
   });
@@ -2388,7 +2388,7 @@ describe('GenerateReviewStep — Task #37 mount-time cycle auto-reject', () => {
     );
     await tick();
     const frame = lastFrame() ?? '';
-    expect(frame).not.toMatch(/Cyclic manifest — auto-rejected/);
+    expect(frame).not.toMatch(/Cyclic component graph — auto-rejected/);
     void dbMod;
   });
 
@@ -2404,7 +2404,7 @@ describe('GenerateReviewStep — Task #37 mount-time cycle auto-reject', () => {
     stdin.write('\x1a'); // Ctrl+Z
     await tick();
     frame = (lastFrame() ?? '').replace(/\s+/g, ' ');
-    expect(frame).not.toMatch(/Cyclic manifest — auto-rejected/);
+    expect(frame).not.toMatch(/Cyclic component graph — auto-rejected/);
   });
 
   it('Ctrl+Z undo restores pre-mount state (empty user decisions)', async () => {
@@ -2413,10 +2413,10 @@ describe('GenerateReviewStep — Task #37 mount-time cycle auto-reject', () => {
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
     );
     await tick();
-    expect(lastFrame() ?? '').toMatch(/Cyclic manifest — auto-rejected/);
+    expect(lastFrame() ?? '').toMatch(/Cyclic component graph — auto-rejected/);
     stdin.write('\x1a'); // Ctrl+Z
     await tick();
-    expect(lastFrame() ?? '').not.toMatch(/Cyclic manifest — auto-rejected/);
+    expect(lastFrame() ?? '').not.toMatch(/Cyclic component graph — auto-rejected/);
   });
 
   it('Ctrl+Z twice is a floor no-op after first press', async () => {
@@ -2431,8 +2431,8 @@ describe('GenerateReviewStep — Task #37 mount-time cycle auto-reject', () => {
     stdin.write('\x1a'); // Ctrl+Z
     await tick();
     const afterSecondUndo = lastFrame() ?? '';
-    expect(afterFirstUndo).not.toMatch(/Cyclic manifest — auto-rejected/);
-    expect(afterSecondUndo).not.toMatch(/Cyclic manifest — auto-rejected/);
+    expect(afterFirstUndo).not.toMatch(/Cyclic component graph — auto-rejected/);
+    expect(afterSecondUndo).not.toMatch(/Cyclic component graph — auto-rejected/);
   });
 
   it('operator [a] on a cycle member cascades to its cycle partner and does not re-trigger auto-reject', async () => {
@@ -2572,17 +2572,17 @@ describe('GenerateReviewStep — auto-reject strict one-shot (T2)', () => {
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
     );
     await tick();
-    expect(lastFrame() ?? '').toMatch(/Cyclic manifest — auto-rejected/);
+    expect(lastFrame() ?? '').toMatch(/Cyclic component graph — auto-rejected/);
     stdin.write('\x1a'); // Ctrl+Z
     await tick();
-    expect(lastFrame() ?? '').not.toMatch(/Cyclic manifest — auto-rejected/);
+    expect(lastFrame() ?? '').not.toMatch(/Cyclic component graph — auto-rejected/);
     stdin.write('C'); // collapse-all
     await tick();
     stdin.write('E'); // expand-all
     await tick();
     stdin.write('j'); // move cursor
     await tick();
-    expect(lastFrame() ?? '').not.toMatch(/Cyclic manifest — auto-rejected/);
+    expect(lastFrame() ?? '').not.toMatch(/Cyclic component graph — auto-rejected/);
   });
 
   it('mount with NO cycle → later edit introduces a cycle → auto-reject never fires', async () => {
@@ -2596,8 +2596,8 @@ describe('GenerateReviewStep — auto-reject strict one-shot (T2)', () => {
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
     );
     await tick();
-    expect(lastFrame() ?? '').not.toMatch(/Cyclic manifest — auto-rejected/);
-    expect(lastFrame() ?? '').not.toMatch(/Cyclic manifest — auto-rejected/);
+    expect(lastFrame() ?? '').not.toMatch(/Cyclic component graph — auto-rejected/);
+    expect(lastFrame() ?? '').not.toMatch(/Cyclic component graph — auto-rejected/);
   });
 });
 
@@ -2665,7 +2665,7 @@ describe('GenerateReviewStep — ADR-0010 scenarios', () => {
       );
       await tick();
       const frame = lastFrame() ?? '';
-      expect(frame).toMatch(/Cyclic manifest — auto-rejected/);
+      expect(frame).toMatch(/Cyclic component graph — auto-rejected/);
       expect(frame).toMatch(/Cycle members:.*C/);
       expect(frame).toMatch(/Cycle members:.*P/);
       expect(frame).not.toMatch(/Ancestors:/);
@@ -2798,7 +2798,7 @@ describe('GenerateReviewStep — ADR-0010 scenarios', () => {
       );
       await tick();
       const frame = lastFrame() ?? '';
-      expect(frame).toMatch(/Cyclic manifest — auto-rejected/);
+      expect(frame).toMatch(/Cyclic component graph — auto-rejected/);
       expect(frame).toMatch(/Cycle members:.*P/);
       expect(frame).toMatch(/Cycle members:.*X/);
       const cycleMembersLine = frame.split('\n').find((l) => l.includes('Cycle members:')) ?? '';
@@ -3282,14 +3282,14 @@ describe('GenerateReviewStep — undo/redo + reload-from-save (T4)', () => {
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
     );
     await tick();
-    expect(lastFrame() ?? '').toMatch(/Cyclic manifest — auto-rejected/);
+    expect(lastFrame() ?? '').toMatch(/Cyclic component graph — auto-rejected/);
     stdin.write(CTRL_Z);
     await tick();
     const after = lastFrame() ?? '';
-    expect(after).not.toMatch(/Cyclic manifest — auto-rejected/);
+    expect(after).not.toMatch(/Cyclic component graph — auto-rejected/);
     stdin.write(CTRL_Z);
     await tick();
-    expect(lastFrame() ?? '').not.toMatch(/Cyclic manifest — auto-rejected/);
+    expect(lastFrame() ?? '').not.toMatch(/Cyclic component graph — auto-rejected/);
   });
 
   it('GA-1 A5: [u] is NO LONGER an alias for undo (Ctrl+Z is the sole undo)', async () => {
@@ -3498,7 +3498,7 @@ describe('GenerateReviewStep — bottom-of-step banners (T2)', () => {
     );
     await tick();
     const frame = lastFrame() ?? '';
-    const autoRejIdx = frame.search(/Cyclic manifest — auto-rejected/);
+    const autoRejIdx = frame.search(/Cyclic component graph — auto-rejected/);
     const editorIdx = frame.indexOf('description:');
     expect(autoRejIdx).toBeGreaterThanOrEqual(0);
     expect(editorIdx).toBeGreaterThanOrEqual(0);
@@ -4430,7 +4430,7 @@ describe('GenerateReviewStep — GA-1 (A3/A5/A6)', () => {
     );
     await tick();
     const out = stripAnsi(lastFrame() ?? '');
-    expect(out).toMatch(/Cyclic manifest — auto-rejected/);
+    expect(out).toMatch(/Cyclic component graph — auto-rejected/);
     expect(out).not.toContain('[u] undo');
     expect(out).toContain('[Ctrl+Z] undo');
   });
