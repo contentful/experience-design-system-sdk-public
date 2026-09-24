@@ -35,7 +35,7 @@ vi.mock('@contentful/experience-design-system-generation', () => ({
   checkAgentAuth: vi.fn().mockResolvedValue('authenticated'),
 }));
 
-vi.mock('../../../src/apply/manifest.js', () => ({
+vi.mock('../../../src/apply/tokens.js', () => ({
   buildManifest: vi.fn().mockReturnValue({ componentsManifest: {}, tokensManifest: {} }),
   readTokensFromPath: vi.fn().mockResolvedValue([]),
   hasBreakingChangesWithImpact: vi.fn().mockReturnValue(false),

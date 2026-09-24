@@ -18,9 +18,9 @@ import { useImmediateInput } from './hooks/useImmediateInput.js';
 import { useSession } from './hooks/useSession.js';
 import { openPipelineDb, storeRawComponents, loadCDFComponents } from '../../../session/db.js';
 import { ImportApiClient } from '../../../apply/api-client.js';
-import { readTokensFromPath } from '../../../apply/manifest.js';
-import { buildManifest } from '@contentful/experience-design-system-types';
-import type { ServerPreviewResponse } from '@contentful/experience-design-system-types';
+import { readTokensFromPath, toCDFTokens } from '../../../apply/tokens.js';
+import { buildCDF } from '@contentful/experience-design-system-types';
+import type { ServerPreviewResponse, CDFComponentEntry, DTCGTokenEntry } from '@contentful/experience-design-system-types';
 
 type AppProps = {
   sessionId: string;
@@ -93,18 +93,16 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
         db.close();
       }
 
-      let tokens: unknown[] = [];
+      let tokens: DTCGTokenEntry[] = [];
       if (tokensPath) tokens = await readTokensFromPath('tokens', tokensPath);
-      const manifest = buildManifest(
-        components as Parameters<typeof buildManifest>[0],
-        tokens as Parameters<typeof buildManifest>[1],
-      );
-      if (!manifest.componentsManifest) manifest.componentsManifest = {};
-      const client = new ImportApiClient({ cmaToken, spaceId, environmentId });
       // This preview is display-only (component-picker annotations); it never
-      // triggers an apply, so always request the full diff to keep the
-      // existing "removed" annotation working.
-      const preview: ServerPreviewResponse = await client.previewImport(manifest);
+      // triggers an apply, so always request the full diff (deleteAll keeps
+      // the existing "removed" annotation working even with zero components).
+      const cdf = buildCDF(components as Array<{ key: string; entry: CDFComponentEntry }>, toCDFTokens(tokens), {
+        deleteAll: true,
+      })!;
+      const client = new ImportApiClient({ cmaToken, spaceId, environmentId });
+      const preview: ServerPreviewResponse = await client.previewImport(cdf);
 
       const annotations: Record<string, PreviewAnnotation> = {};
       for (const item of preview.components.new) {

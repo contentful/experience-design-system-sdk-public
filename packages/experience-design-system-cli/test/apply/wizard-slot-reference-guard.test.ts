@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { buildManifest, validateManifestSlotReferences } from '@contentful/experience-design-system-types';
+import { buildCDF, validateSlotReferences } from '@contentful/experience-design-system-types';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
-import { extractComponentsFromManifest, formatUnresolvedSlotReferences } from '../../src/apply/command.js';
+import { extractComponents, formatUnresolvedSlotReferences } from '../../src/apply/command.js';
 
-describe('wizard push guard — validateManifestSlotReferences ∘ extractComponentsFromManifest', () => {
-  it('surfaces an unresolved reference built into a real ManifestPayload', () => {
+describe('wizard push guard — validateSlotReferences ∘ extractComponents', () => {
+  it('surfaces an unresolved reference built into a real CDF document', () => {
     const components: Array<{ key: string; entry: CDFComponentEntry }> = [
       {
         key: 'IconButton',
@@ -15,9 +15,9 @@ describe('wizard push guard — validateManifestSlotReferences ∘ extractCompon
         },
       },
     ];
-    const manifest = buildManifest(components, []);
-    const extracted = extractComponentsFromManifest(manifest);
-    const errors = validateManifestSlotReferences(extracted);
+    const cdf = buildCDF(components, [])!;
+    const extracted = extractComponents(cdf);
+    const errors = validateSlotReferences(extracted);
 
     expect(extracted.map((c) => c.key)).toEqual(['IconButton']);
     expect(errors).toHaveLength(1);
@@ -28,7 +28,7 @@ describe('wizard push guard — validateManifestSlotReferences ∘ extractCompon
     expect(formatted.join('\n')).toMatch(/Icon/);
   });
 
-  it('returns no errors when every reference resolves within the manifest', () => {
+  it('returns no errors when every reference resolves within the document', () => {
     const components: Array<{ key: string; entry: CDFComponentEntry }> = [
       {
         key: 'IconButton',
@@ -40,8 +40,8 @@ describe('wizard push guard — validateManifestSlotReferences ∘ extractCompon
       },
       { key: 'Icon', entry: { $type: 'component', $properties: {} } },
     ];
-    const manifest = buildManifest(components, []);
-    const errors = validateManifestSlotReferences(extractComponentsFromManifest(manifest));
+    const cdf = buildCDF(components, [])!;
+    const errors = validateSlotReferences(extractComponents(cdf));
     expect(errors).toEqual([]);
   });
 });

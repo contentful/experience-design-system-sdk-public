@@ -34,7 +34,7 @@ import { chooseGateAction } from './push-decision-gate-helpers.js';
 import { ImportApiClient, ApiError, type PreviewValidationError } from '../../apply/api-client.js';
 import {
   detectSlotCycles,
-  extractComponentsFromManifest,
+  extractComponents,
   formatSlotCycleReport,
   formatUnresolvedSlotReferences,
 } from '../../apply/command.js';
@@ -44,10 +44,10 @@ import { formatApiError, formatEdsiError } from '../../lib/error-parser.js';
 import { handlePreview422, applySkipValidationErrors, clearedValidationErrorState } from './wizard-422-helpers.js';
 import { parseGenerateStderrChunk, type GenerateProgressState } from './wizard-generate-progress.js';
 import { spawnGenerateChild } from './spawn-generate.js';
-import { readTokensFromPath, hasBreakingChangesWithImpact } from '../../apply/manifest.js';
+import { readTokensFromPath, hasBreakingChangesWithImpact, toCDFTokens } from '../../apply/tokens.js';
 import { isEmptyPreview } from '../../apply/preview-utils.js';
-import { buildManifest, validateManifestSlotReferences } from '@contentful/experience-design-system-types';
-import type { ServerPreviewResponse, ManifestPayload } from '@contentful/experience-design-system-types';
+import { buildCDF, validateSlotReferences } from '@contentful/experience-design-system-types';
+import type { ServerPreviewResponse, CDFDocument } from '@contentful/experience-design-system-types';
 import {
   openPipelineDb,
   loadCDFComponents,
@@ -151,7 +151,7 @@ type WizardState = {
   host: string;
   credentialsError: string;
   serverPreview: ServerPreviewResponse | null;
-  manifest: ManifestPayload | null;
+  cdf: CDFDocument | null;
   pushProgress: PushProgress;
   pushResult: PushResult;
   errorStep: string;
@@ -410,9 +410,9 @@ export function WizardApp({
   });
 
   // Set at finalize when zero components are accepted (confirmed via the
-  // FinalizeDialog warning). Read by preview/push so buildManifest emits an
-  // empty-but-present components manifest → server deletes all. A ref (not
-  // state) so the async preview/push closures see the confirmed value.
+  // FinalizeDialog warning). Read by preview/push so buildCDF emits an
+  // empty-but-present document → server deletes all. A ref (not state) so
+  // the async preview/push closures see the confirmed value.
   const allowEmptyDeleteAllRef = useRef(false);
 
   const autoFilterChildRef = useRef<import('node:child_process').ChildProcess | null>(null);
@@ -464,7 +464,7 @@ export function WizardApp({
     host: resolveWizardHost(toConfiguredHost(initialHost)),
     credentialsError: '',
     serverPreview: null,
-    manifest: null,
+    cdf: null,
     pushProgress: null,
     pushResult: {
       componentTypes: { created: 0, updated: 0, removed: 0, failed: 0 },
@@ -541,7 +541,7 @@ export function WizardApp({
         hasBreakingWithImpact: hasBreakingChangesWithImpact(p),
       };
     }
-    if (sanitized.manifest) (sanitized as Record<string, unknown>).manifest = '[manifest]';
+    if (sanitized.cdf) (sanitized as Record<string, unknown>).cdf = '[cdf]';
     if ((sanitized as Record<string, unknown>).cmaToken) (sanitized as Record<string, unknown>).cmaToken = '[redacted]';
     logStep({ update: sanitized });
     setState((prev) => ({ ...prev, ...partial }));
@@ -1183,8 +1183,8 @@ export function WizardApp({
       if (tokensPath) {
         tokens = await readTokensFromPath('tokens', tokensPath);
       }
-      let manifest = buildManifest(components, tokens, { deleteAllComponents: allowEmptyDeleteAllRef.current });
-      let preview = await client.previewImport(manifest);
+      let cdf = buildCDF(components, toCDFTokens(tokens), { deleteAll: allowEmptyDeleteAllRef.current })!;
+      let preview = await client.previewImport(cdf);
 
       if (extractSessionId) {
         let needsRepreview = false;
@@ -1212,8 +1212,8 @@ export function WizardApp({
 
           if (needsRepreview) {
             components = loadCDFComponents(db, extractSessionId);
-            manifest = buildManifest(components, tokens, { deleteAllComponents: allowEmptyDeleteAllRef.current });
-            preview = await client.previewImport(manifest);
+            cdf = buildCDF(components, toCDFTokens(tokens), { deleteAll: allowEmptyDeleteAllRef.current })!;
+            preview = await client.previewImport(cdf);
           }
         } finally {
           db.close();
@@ -1240,7 +1240,7 @@ export function WizardApp({
       update({
         step: 'preview-gate',
         serverPreview: preview,
-        manifest,
+        cdf,
         finalizeErrorBanner: null,
         ...clearedValidationErrorState(),
       });
@@ -1308,7 +1308,7 @@ export function WizardApp({
   };
 
   const runPush = async (
-    manifest: ManifestPayload,
+    cdf: CDFDocument,
     spaceId: string,
     environmentId: string,
     cmaToken: string,
@@ -1339,7 +1339,7 @@ export function WizardApp({
       }
     }
 
-    const cycles = detectSlotCycles(extractComponentsFromManifest(manifest));
+    const cycles = detectSlotCycles(extractComponents(cdf));
     if (cycles.length > 0) {
       update({
         step: 'error',
@@ -1350,7 +1350,7 @@ export function WizardApp({
       return;
     }
 
-    const unresolvedSlotReferences = validateManifestSlotReferences(extractComponentsFromManifest(manifest));
+    const unresolvedSlotReferences = validateSlotReferences(extractComponents(cdf));
     if (unresolvedSlotReferences.length > 0) {
       update({
         step: 'error',
@@ -1370,7 +1370,7 @@ export function WizardApp({
         environmentId,
         host: resolvedHost,
       });
-      let operation = await client.applyImport(manifest, { acknowledgeBreakingChanges });
+      let operation = await client.applyImport(cdf, { acknowledgeBreakingChanges });
       try {
         logStep({
           applyResponse: {
@@ -2037,13 +2037,11 @@ export function WizardApp({
         );
 
       case 'preview-gate': {
-        // Only offer "[e] Edit definitions" when the manifest actually has
-        // components to edit. In the delete-all / empty case the manifest is
+        // Only offer "[e] Edit definitions" when the CDF document actually
+        // has components to edit. In the delete-all / empty case it's
         // present-but-empty (only $schema), so editing would dead-end on the
         // "No generated definitions found" screen.
-        const editableComponentCount = Object.keys(state.manifest?.componentsManifest ?? {}).filter(
-          (k) => k !== '$schema',
-        ).length;
+        const editableComponentCount = extractComponents(state.cdf).length;
         return (
           <WizardPreviewStep
             preview={state.serverPreview!}
@@ -2053,7 +2051,7 @@ export function WizardApp({
             totalSteps={totalSteps}
             onConfirm={(acknowledge) => {
               void runPush(
-                state.manifest!,
+                state.cdf!,
                 state.spaceId,
                 state.environmentId,
                 state.cmaToken,
@@ -2189,10 +2187,10 @@ export function WizardApp({
               state.errorAllowCredentialRetry ? () => update({ step: 'credentials', credentialsError: '' }) : undefined
             }
             onAcknowledgeBreakingChanges={
-              state.errorAllowBreakingChangeAcknowledgment && state.manifest
+              state.errorAllowBreakingChangeAcknowledgment && state.cdf
                 ? () =>
                     void runPush(
-                      state.manifest!,
+                      state.cdf!,
                       state.spaceId,
                       state.environmentId,
                       state.cmaToken,

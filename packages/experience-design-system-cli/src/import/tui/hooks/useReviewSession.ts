@@ -1,7 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
-import { readTokensFromPath } from '../../../apply/manifest.js';
+import { readTokensFromPath } from '../../../apply/tokens.js';
 import {
   loadCDFComponents,
   loadComponentRationale,

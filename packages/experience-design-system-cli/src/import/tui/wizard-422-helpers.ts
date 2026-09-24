@@ -59,7 +59,7 @@ export function clearedValidationErrorState(): {
  * assertions. No-op when sessionId is null or errors are empty.
  *
  * The DB update inside `rejectComponentsByName` is what makes the next
- * preview see a manifest with the offenders excluded — see SP-3 retro
+ * preview see a CDF document with the offenders excluded — see SP-3 retro
  * Bug 1: writing to the JSON state file alone is not enough because
  * `loadCDFComponents` reads from the pipeline DB.
  */

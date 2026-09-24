@@ -5,7 +5,7 @@ import type { CDFComponentEntry } from '@contentful/experience-design-system-typ
  * but drop its `$allowedComponents` composition constraint. Applied over the
  * loaded component array regardless of source (`--session` or `--components`),
  * so the atomic bypass cannot leak a live composition link into the pushed
- * manifest. Starving `$allowedComponents` at this single point also makes
+ * CDF document. Starving `$allowedComponents` at this single point also makes
  * slot-cycle detection structurally return zero (see T12).
  *
  * Returns a new array with cloned entries; inputs are not mutated.
