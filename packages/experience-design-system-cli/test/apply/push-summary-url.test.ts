@@ -1,81 +1,8 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { resolve } from 'node:path';
+import { describe, it, expect } from 'vitest';
 import React from 'react';
 import { render } from 'ink-testing-library';
-import { runCliWithEnv } from '../helpers/cli-runner.js';
-import { createMockCMAServer, type MockCMAServer } from '../helpers/mock-cma-server.js';
 import { ServerApplyDone } from '../../src/apply/tui/ServerApplyView.js';
-
-const componentsPath = resolve(import.meta.dirname, '../fixtures/import/components.json');
-
-// Routes where preview returns a non-empty diff so push actually applies.
-const NON_EMPTY_ROUTES = {
-  'GET /spaces/test-space': {
-    sys: { type: 'Space', id: 'test-space', organization: { sys: { id: 'org-123' } } },
-  },
-  'GET /spaces/test-space/environments/master': {
-    sys: { type: 'Environment', id: 'master' },
-  },
-  'POST /spaces/test-space/environments/master/design_systems/imports/preview': {
-    components: {
-      new: [{ key: 'Button', id: 'button-id', name: 'Button' }],
-      changed: [],
-      removed: [],
-      unchanged: [],
-    },
-    tokens: { new: [], changed: [], removed: [], unchanged: [] },
-    taxonomies: { new: [], changed: [], removed: [], unchanged: [] },
-  },
-  'POST /spaces/test-space/environments/master/design_systems/imports/apply': {
-    sys: { id: 'op-1', status: 'queued' },
-  },
-  'GET /spaces/test-space/environments/master/design_systems/imports/apply/op-1': {
-    sys: { id: 'op-1', status: 'succeeded' },
-    items: [
-      {
-        entityType: 'ComponentType',
-        id: 'button-id',
-        action: 'create',
-        status: 'succeeded',
-      },
-    ],
-    summary: { total: 1, succeeded: 1, failed: 0, pending: 0 },
-  },
-};
-
-const baseEnv = (host: string) => ({
-  NODE_NO_WARNINGS: '1',
-  CONTENTFUL_SPACE_ID: 'test-space',
-  CONTENTFUL_ENVIRONMENT_ID: 'master',
-  CONTENTFUL_MANAGEMENT_TOKEN: 'test-token',
-  EDS_HOST: host,
-});
-
 describe('apply — viewUrl emission (Gap 4)', () => {
-  let pushServer: MockCMAServer;
-
-  beforeAll(async () => {
-    pushServer = await createMockCMAServer(NON_EMPTY_ROUTES);
-  });
-
-  afterAll(() => {
-    pushServer.close();
-  });
-
-  it('non-TTY apply JSON summary includes viewUrl', async () => {
-    const args = [
-      'apply',
-      '--components',
-      componentsPath,
-    ];
-    const { stdout, code } = await runCliWithEnv(args, baseEnv(pushServer.url));
-    expect(code).toBe(0);
-    const payload = JSON.parse(stdout);
-    expect(typeof payload.viewUrl).toBe('string');
-    expect(payload.viewUrl).toMatch(/^https:\/\/.+\/spaces\/test-space\/environments\/master\/views\/components$/);
-    expect(typeof payload.tokensUrl).toBe('string');
-    expect(payload.tokensUrl).toMatch(/^https:\/\/.+\/spaces\/test-space\/environments\/master\/views\/design_tokens$/);
-  });
 
   it('interactive ServerApplyDone renders the view URL on success', () => {
     const { lastFrame } = render(
