@@ -92,7 +92,9 @@ export function rebuildDTCGTree(
 }
 
 export function registerPrintCommand(program: Command): void {
-  const print = program.command('print').description('Write pipeline artifacts to JSON files or validate them');
+  const print = program
+    .command('print', { hidden: true })
+    .description('Write pipeline artifacts to JSON files or validate them');
 
   // print components
   print

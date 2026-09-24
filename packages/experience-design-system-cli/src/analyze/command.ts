@@ -249,7 +249,7 @@ async function readCandidateFiles(
 
 export function registerAnalyzeCommand(program: Command): void {
   const analyze = program
-    .command('analyze')
+    .command('analyze', { hidden: true })
     .description('Extract component definitions from a project, or correct analysis output');
 
   const extractCmd = analyze

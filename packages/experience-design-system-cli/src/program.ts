@@ -6,12 +6,10 @@ import { Command } from 'commander';
 import { registerAnalyzeCommand } from './analyze/command.js';
 import { registerInternalGenerateCommand } from './generate/command.js';
 import { registerApplyCommand } from './apply/command.js';
-import { registerSessionCommand } from './session/cli.js';
 import { registerPrintCommand } from './print/command.js';
 import { registerMapTokensCommand } from './map-tokens/command.js';
 import { registerImportCommand } from './import/command.js';
 import { registerSetupCommand } from './setup/command.js';
-import { registerRunsCommand } from './runs/ls-command.js';
 import { beginCommand } from './lib/debug-preamble.js';
 import {
   completeActiveCommand,
@@ -112,11 +110,9 @@ export function createProgram(): Command {
   registerPrintCommand(program);
   registerMapTokensCommand(program);
   registerApplyCommand(program);
-  registerSessionCommand(program);
   registerImportCommand(program);
   registerImportV2Command(program);
   registerSetupCommand(program);
-  registerRunsCommand(program);
   registerBuildCommand(program);
 
   // Expose --debug on every subcommand. The flag is inherited automatically
