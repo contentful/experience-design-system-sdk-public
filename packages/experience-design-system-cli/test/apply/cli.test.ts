@@ -65,7 +65,6 @@ describe('apply — input validation', () => {
       componentsPath,
       '--space-id',
       'space1',
-      '--environment-id',
       'master',
       '--cma-token',
       'tok',
