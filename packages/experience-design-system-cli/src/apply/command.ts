@@ -13,14 +13,13 @@ import {
 import type { CDFComponentEntry, CDFValidationError, DTCGTokenEntry } from '@contentful/experience-design-system-types';
 import { ApiError, ImportApiClient } from './api-client.js';
 import { formatApiError, formatEdsiError } from '../lib/error-parser.js';
-import { openPipelineDb, loadCDFComponents } from '../session/db.js';
 import { findSlotCycles, suggestCycleBreakEdge, formatCyclePath } from '../analyze/cycle-detection.js';
 import type { ServerPreviewResponse, ApplyOperationResponse } from '@contentful/experience-design-system-types';
 import { isEmptyPreview } from './preview-utils.js';
 import { ServerPreviewApp, ServerPreviewConfirm, ServerApplyProgress, ServerApplyDone } from './tui/ServerApplyView.js';
 import { buildPostPushUrl } from '../lib/contentful-urls.js';
 import { resolveCompositionMode, type CompositionMode } from '../lib/composition-mode.js';
-import { addArtifactInputOptions, addCompositionOptions, addContentfulTargetOptions } from '../lib/command-options.js';
+import { addCompositionOptions, addContentfulTargetOptions } from '../lib/command-options.js';
 import { stripAllowedComponents } from '../import/strip-allowed-components.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { getInteractiveTerminalSupport } from '../lib/terminal-capabilities.js';
@@ -144,7 +143,6 @@ export async function readTokensFromPath(flag: string, p: string): Promise<DTCGT
 interface SharedImportOptions {
   components?: string;
   tokens?: string;
-  session?: string;
   spaceId?: string;
   environmentId?: string;
   cmaToken?: string;
@@ -163,7 +161,9 @@ interface ApplyOptions extends SharedImportOptions {
 type SharedInputs = Awaited<ReturnType<typeof resolveSharedInputs>>;
 
 function addSharedApplyOptions(command: Command): void {
-  addArtifactInputOptions(command);
+  command
+    .option('--components <path>', 'Path to components.json (CDF)')
+    .option('--tokens <path>', 'Path to tokens.json (DTCG)');
   addContentfulTargetOptions(command);
   addCompositionOptions(command).option(
     '--atomic',
@@ -322,13 +322,7 @@ async function resolveSharedInputs(opts: SharedImportOptions): Promise<{
   tokens: DTCGTokenEntry[];
   client: ImportApiClient;
 }> {
-  if (!opts.components && !opts.tokens && !opts.session) {
-    return await die('Error: at least one of --components, --tokens, or --session is required');
-  }
-
-  if (opts.session && opts.components) {
-    return await die('Error: --session and --components are mutually exclusive');
-  }
+  if (!opts.components && !opts.tokens) return await die('Error: at least one of --components or --tokens is required');
 
   const spaceId = opts.spaceId ?? process.env.CONTENTFUL_SPACE_ID;
   const environmentId = opts.environmentId ?? process.env.CONTENTFUL_ENVIRONMENT_ID;
@@ -345,17 +339,7 @@ async function resolveSharedInputs(opts: SharedImportOptions): Promise<{
   if (opts.components) await assertFileExists('--components', opts.components);
 
   let components: Array<{ key: string; entry: CDFComponentEntry }> = [];
-  if (opts.session) {
-    const db = openPipelineDb();
-    try {
-      components = loadCDFComponents(db, opts.session);
-    } finally {
-      db.close();
-    }
-    if (components.length === 0) {
-      return await die(`Error: session '${opts.session}' has no generated components. Run generate components first.`);
-    }
-  } else if (opts.components) {
+  if (opts.components) {
     const raw = await readJsonFile('--components', opts.components);
     const result = validateCDF(raw);
     if (!result.valid) {
@@ -572,7 +556,7 @@ export function registerApplyCommand(program: Command): void {
       const { components, tokens, client } = inputs;
       const spaceId = opts.spaceId!;
       const environmentId = opts.environmentId!;
-      await bindAnalyticsSessionId(opts.session, {
+      await bindAnalyticsSessionId(undefined, {
         space_key: spaceId,
         environment_key: environmentId,
       });
