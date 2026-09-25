@@ -1,14 +1,6 @@
 import { access } from 'node:fs/promises';
 import { join } from 'node:path';
 
-export const CONFLICT_MODES = ['overwrite', 'skip', 'fail'] as const;
-
-export type ConflictMode = (typeof CONFLICT_MODES)[number];
-
-export function isConflictMode(value: string): value is ConflictMode {
-  return (CONFLICT_MODES as readonly string[]).includes(value);
-}
-
 /**
  * The set of files the wizard / CLI may overwrite in the save directory.
  * Centralised so conflict detection and conflict reporting stay in lock-step.
@@ -57,62 +49,4 @@ export function buildTimestampedSubdir(base: string, now: Date = new Date()): st
   const mm = pad2(now.getMinutes());
   const ss = pad2(now.getSeconds());
   return join(base, `dsi-${y}${m}${d}-${hh}${mm}${ss}`);
-}
-
-/**
- * Headless conflict-resolution mode for `experiences import --on-conflict`.
- *
- * - `overwrite` — write through; replace any existing files.
- * - `skip`      — write to a timestamped subdir under the requested path.
- * - `fail`      — refuse to write; surface the conflicting filenames.
- */
-export type ResolveSavePathOptions = {
-  /** When provided, applies the chosen mode automatically (no interactive gate). */
-  onConflict?: ConflictMode;
-  /** Injected for deterministic tests; falls back to `new Date()`. */
-  now?: Date;
-};
-
-/**
- * Result of resolving a save path.
- *
- * `no-conflict` / `conflict` preserve the original two-state shape consumed by
- * the wizard's interactive gate. `write` and `fail` are the headless variants
- * produced when `onConflict` is supplied — `write` means "go ahead with this
- * path" and `fail` carries the conflicting filenames for the operator error.
- */
-export type ResolveSavePathResult =
-  | { kind: 'no-conflict'; path: string }
-  | { kind: 'conflict'; path: string }
-  | { kind: 'write'; path: string }
-  | { kind: 'fail'; conflict: { path: string; files: string[] } };
-
-/**
- * Probe the requested save path and report whether the wizard needs to render
- * the conflict gate, or — when `onConflict` is supplied — resolve the conflict
- * headlessly using the chosen mode.
- */
-export async function resolveSavePath(
-  path: string,
-  options: ResolveSavePathOptions = {},
-): Promise<ResolveSavePathResult> {
-  const conflicts = await listConflictingFiles(path);
-  const hasConflict = conflicts.length > 0;
-
-  if (options.onConflict === undefined) {
-    return hasConflict ? { kind: 'conflict', path } : { kind: 'no-conflict', path };
-  }
-
-  if (!hasConflict) {
-    return { kind: 'write', path };
-  }
-
-  switch (options.onConflict) {
-    case 'overwrite':
-      return { kind: 'write', path };
-    case 'skip':
-      return { kind: 'write', path: buildTimestampedSubdir(path, options.now ?? new Date()) };
-    case 'fail':
-      return { kind: 'fail', conflict: { path, files: conflicts } };
-  }
 }

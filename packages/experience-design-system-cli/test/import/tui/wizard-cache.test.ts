@@ -1,9 +1,52 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildGenerateTokensArgs,
   buildGenerateComponentsArgs,
+  buildSavedCDF,
   buildMapTokensArgs,
   shouldRunMapTokens,
 } from '../../../src/import/tui/WizardApp.js';
+
+describe('wizard combined CDF output', () => {
+  it('writes components and tokens into one schema-valid CDF document', () => {
+    const cdf = buildSavedCDF(
+      [
+        {
+          key: 'Button',
+          entry: {
+            $type: 'component',
+            $description: 'A button',
+            $properties: {},
+          },
+        },
+      ],
+      [{ path: 'colors.brand', $type: 'color', $value: '#09f' }],
+    );
+
+    expect(cdf.$schema).toBe('https://contentful.com/schemas/cdf');
+    expect(cdf.Button).toMatchObject({ $type: 'component' });
+    expect(cdf.colors).toMatchObject({ brand: { $type: 'color', $value: '#09f' } });
+  });
+});
+
+describe('wizard generate-tokens cache', () => {
+  it('defaults to cache-on (no --no-cache flag)', () => {
+    const args = buildGenerateTokensArgs({
+      rawTokensPath: '/tmp/raw-tokens.scss',
+      agent: 'claude',
+    });
+    expect(args).not.toContain('--no-cache');
+  });
+
+  it('passes --no-cache when noCache is true', () => {
+    const args = buildGenerateTokensArgs({
+      rawTokensPath: '/tmp/raw-tokens.scss',
+      agent: 'claude',
+      noCache: true,
+    });
+    expect(args).toContain('--no-cache');
+  });
+});
 
 describe('wizard generate-components cache', () => {
   it('defaults to cache-on (no --no-cache flag)', () => {

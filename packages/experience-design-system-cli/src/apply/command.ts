@@ -1,5 +1,5 @@
-import React, { createElement, useState } from 'react';
-import { render, useInput } from 'ink';
+import React, { createElement } from 'react';
+import { render } from 'ink';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Command } from 'commander';
@@ -7,30 +7,25 @@ import {
   validateCDF,
   flattenDTCG,
   validateDTCG,
-  buildManifest,
-  buildFilteredManifest,
+  parseCDFComponents,
+  buildCDF,
+  validateSlotReferences,
 } from '@contentful/experience-design-system-types';
-import type { CDFComponentEntry, DTCGTokenEntry } from '@contentful/experience-design-system-types';
+import type {
+  CDFComponentEntry,
+  CDFTokenEntry,
+  CDFValidationError,
+  DTCGTokenEntry,
+} from '@contentful/experience-design-system-types';
 import { ApiError, ImportApiClient } from './api-client.js';
 import { formatApiError, formatEdsiError } from '../lib/error-parser.js';
-import { openPipelineDb, loadCDFComponents } from '../session/db.js';
 import { findSlotCycles, suggestCycleBreakEdge, formatCyclePath } from '../analyze/cycle-detection.js';
 import type { ServerPreviewResponse, ApplyOperationResponse } from '@contentful/experience-design-system-types';
 import { isEmptyPreview } from './preview-utils.js';
-import { ServerPreviewApp, ServerPreviewConfirm, ServerApplyProgress, ServerApplyDone } from './tui/ServerApplyView.js';
-import { SelectView, makeSelectKey, type SelectableEntity } from './tui/SelectView.js';
+import { ServerPreviewConfirm, ServerApplyProgress, ServerApplyDone } from './tui/ServerApplyView.js';
 import { buildPostPushUrl } from '../lib/contentful-urls.js';
-import { resolveCompositionMode, type CompositionMode } from '../lib/composition-mode.js';
-import {
-  addAllowDeletionsOption,
-  addArtifactInputOptions,
-  addCompositionOptions,
-  addContentfulTargetOptions,
-  addSelectionOptions,
-} from '../lib/command-options.js';
-import { stripAllowedComponents } from '../import/strip-allowed-components.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
-import { getInteractiveTerminalSupport, requireInteractiveTerminal } from '../lib/terminal-capabilities.js';
+import { getInteractiveTerminalSupport } from '../lib/terminal-capabilities.js';
 import {
   bindAnalyticsSessionId,
   exitWithAnalytics,
@@ -39,19 +34,14 @@ import {
   recordContentfulContext,
 } from '../analytics/index.js';
 import type { CommandFailure } from '../analytics/index.js';
-import { pathExists } from '../lib/path-exists.js';
 
 async function die(message: string, fields: CommandFailure = {}): Promise<never> {
   process.stderr.write(`${message}\n`);
   return exitWithAnalytics(1, fields);
 }
 
-function dieWithApiError(error: ApiError, verbose?: boolean): Promise<never> {
-  return die(`Error: ${formatApiError(error, verbose)}`, failureFromApiError(error));
-}
-
-async function assertFileExists(flag: string, p: string): Promise<void> {
-  if (!(await pathExists(p))) return await die(`Error: file not found: ${p} (from ${flag})`);
+function dieWithApiError(error: ApiError): Promise<never> {
+  return die(`Error: ${formatApiError(error)}`, failureFromApiError(error));
 }
 
 async function readJsonFile(flag: string, p: string): Promise<unknown> {
@@ -148,66 +138,19 @@ export async function readTokensFromPath(flag: string, p: string): Promise<DTCGT
   return flattenDTCG(raw as Record<string, unknown>, '');
 }
 
-interface SharedImportOptions {
-  components?: string;
-  tokens?: string;
-  session?: string;
-  spaceId?: string;
-  environmentId?: string;
-  cmaToken?: string;
-  host?: string;
-  composite?: boolean;
-  atomic?: boolean;
-}
-
-interface PreviewOptions extends SharedImportOptions {
-  includeUnchanged?: boolean;
-}
-
-interface ApplyOptions extends SharedImportOptions {
-  yes?: boolean;
-  verbose?: boolean;
-  force?: boolean;
-  dryRun?: boolean;
-  allowDeletions?: boolean;
-}
-
-interface SelectOptions extends SharedImportOptions {
-  selectAll?: boolean;
-  select?: string[];
-  deselect?: string[];
-  force?: boolean;
-  allowDeletions?: boolean;
+/** Adapts flat DTCGTokenEntry[] (path alongside the leaf) into the
+ * {path, entry} pairs buildCDF/buildFilteredCDF expect. */
+export function toCDFTokens(tokens: DTCGTokenEntry[]): Array<{ path: string; entry: CDFTokenEntry }> {
+  return tokens.map(({ path, ...entry }) => ({ path, entry }));
 }
 
 type SharedInputs = Awaited<ReturnType<typeof resolveSharedInputs>>;
 
-function addSharedApplyOptions(command: Command): void {
-  addArtifactInputOptions(command);
-  addContentfulTargetOptions(command);
-  addCompositionOptions(command);
-}
-
-function splitSelectedKeys(selectedKeys: Set<string>): {
-  selectedComponentKeys: Set<string>;
-  selectedTokenPaths: Set<string>;
-} {
-  const selectedComponentKeys = new Set<string>();
-  const selectedTokenPaths = new Set<string>();
-  for (const key of selectedKeys) {
-    const [kind, ...idParts] = key.split(':');
-    const id = idParts.join(':');
-    if (kind === 'component') selectedComponentKeys.add(id);
-    else if (kind === 'token') selectedTokenPaths.add(id);
-  }
-  return { selectedComponentKeys, selectedTokenPaths };
-}
-
-async function resolveSharedInputsOrDie(opts: SharedImportOptions, verbose?: boolean): Promise<SharedInputs> {
+async function resolveSharedInputsOrDie(file: string): Promise<SharedInputs> {
   try {
-    return await resolveSharedInputs(opts);
+    return await resolveSharedInputs(file);
   } catch (e) {
-    if (e instanceof ApiError) return await dieWithApiError(e, verbose);
+    if (e instanceof ApiError) return await dieWithApiError(e);
     throw e;
   }
 }
@@ -233,7 +176,6 @@ function renderApplyProgress(
 
 interface ApplyAndPollOptions {
   acknowledgeBreakingChanges: boolean;
-  allowDeletions: boolean;
   onProgress?: (status: 'applying' | 'polling', operationId?: string) => void;
   onStarted?: (operationId: string) => void;
   onApiError: (error: ApiError) => Promise<void> | void;
@@ -257,16 +199,15 @@ function createApplyProgressHandlers(
 
 async function applyAndPoll(
   client: ImportApiClient,
-  manifest: Parameters<ImportApiClient['applyImport']>[0],
+  cdf: Parameters<ImportApiClient['applyImport']>[0],
   options: ApplyAndPollOptions,
 ): Promise<ApplyOperationResponse | null> {
   options.onProgress?.('applying');
 
   let operation: ApplyOperationResponse;
   try {
-    operation = await client.applyImport(manifest, {
+    operation = await client.applyImport(cdf, {
       acknowledgeBreakingChanges: options.acknowledgeBreakingChanges,
-      allowDeletions: options.allowDeletions,
     });
   } catch (e) {
     if (e instanceof ApiError) {
@@ -292,36 +233,33 @@ async function applyAndPoll(
   return operation;
 }
 
-function buildSelectedApply(
-  fullManifest: Parameters<typeof buildFilteredManifest>[0],
-  entities: SelectableEntity[],
-  selectedKeys: Set<string>,
-): { filteredManifest: ReturnType<typeof buildFilteredManifest>; hasBreaking: boolean } {
-  const { selectedComponentKeys, selectedTokenPaths } = splitSelectedKeys(selectedKeys);
-  const filteredManifest = buildFilteredManifest(fullManifest, selectedComponentKeys, selectedTokenPaths);
-  const hasBreaking = entities.some((e) => e.isBreaking && selectedKeys.has(makeSelectKey(e.kind, e.id)));
-  return { filteredManifest, hasBreaking };
-}
-
-interface NonInteractiveApplyOptions {
+interface InteractiveApplyOptions {
   client: ImportApiClient;
-  manifest: Parameters<ImportApiClient['applyImport']>[0];
+  cdf: Parameters<ImportApiClient['applyImport']>[0];
   spaceId: string;
   environmentId: string;
   host?: string;
   acknowledgeBreakingChanges: boolean;
-  allowDeletions: boolean;
-  verbose?: boolean;
+  rerender: (element: React.ReactElement) => void;
+  onDone: () => void;
+}
+
+interface NonInteractiveApplyOptions {
+  client: ImportApiClient;
+  cdf: Parameters<ImportApiClient['applyImport']>[0];
+  spaceId: string;
+  environmentId: string;
+  host?: string;
+  acknowledgeBreakingChanges: boolean;
 }
 
 async function runNonInteractiveApply(options: NonInteractiveApplyOptions): Promise<void> {
-  const operation = await applyAndPoll(options.client, options.manifest, {
+  const operation = await applyAndPoll(options.client, options.cdf, {
     acknowledgeBreakingChanges: options.acknowledgeBreakingChanges,
-    allowDeletions: options.allowDeletions,
     onStarted: (operationId) => {
       process.stderr.write(`Apply operation started: ${operationId}\n`);
     },
-    onApiError: (error) => dieWithApiError(error, options.verbose),
+    onApiError: (error) => dieWithApiError(error),
   });
   if (!operation) return;
 
@@ -331,25 +269,11 @@ async function runNonInteractiveApply(options: NonInteractiveApplyOptions): Prom
   await exitWithAnalytics(operation.sys.status === 'succeeded' ? 0 : 1);
 }
 
-interface InteractiveApplyOptions {
-  client: ImportApiClient;
-  manifest: Parameters<ImportApiClient['applyImport']>[0];
-  spaceId: string;
-  environmentId: string;
-  host?: string;
-  acknowledgeBreakingChanges: boolean;
-  allowDeletions: boolean;
-  verbose?: boolean;
-  rerender: (element: React.ReactElement) => void;
-  onDone: () => void;
-}
-
 async function runInteractiveApply(options: InteractiveApplyOptions): Promise<void> {
-  const operation = await applyAndPoll(options.client, options.manifest, {
+  const operation = await applyAndPoll(options.client, options.cdf, {
     acknowledgeBreakingChanges: options.acknowledgeBreakingChanges,
-    allowDeletions: options.allowDeletions,
     ...createApplyProgressHandlers(options.rerender, options.spaceId, options.environmentId, (error) =>
-      formatApiError(error, options.verbose),
+      formatApiError(error),
     ),
   });
   if (!operation) return;
@@ -366,83 +290,46 @@ async function runInteractiveApply(options: InteractiveApplyOptions): Promise<vo
   options.onDone();
 }
 
-async function resolveSharedInputs(opts: SharedImportOptions): Promise<{
+async function resolveSharedInputs(file: string): Promise<{
   components: Array<{ key: string; entry: CDFComponentEntry }>;
   tokens: DTCGTokenEntry[];
   client: ImportApiClient;
+  spaceId: string;
+  environmentId: string;
+  host?: string;
 }> {
-  if (!opts.components && !opts.tokens && !opts.session) {
-    return await die('Error: at least one of --components, --tokens, or --session is required');
-  }
+  const credentials = await readExperiencesCredentials();
+  const spaceId = credentials.spaceId;
+  const environmentId = credentials.environmentId;
+  if (!spaceId) return await die('Error: Contentful space ID is missing; configure it with experiences setup');
+  if (!environmentId)
+    return await die('Error: Contentful environment ID is missing; configure it with experiences setup');
 
-  if (opts.session && opts.components) {
-    return await die('Error: --session and --components are mutually exclusive');
-  }
-
-  const spaceId = opts.spaceId ?? process.env.CONTENTFUL_SPACE_ID;
-  const environmentId = opts.environmentId ?? process.env.CONTENTFUL_ENVIRONMENT_ID;
-  if (!spaceId) return await die('Error: --space-id is required (or set CONTENTFUL_SPACE_ID)');
-  if (!environmentId) return await die('Error: --environment-id is required (or set CONTENTFUL_ENVIRONMENT_ID)');
-  opts.spaceId = spaceId;
-  opts.environmentId = environmentId;
-
-  const cmaToken = opts.cmaToken ?? process.env.CONTENTFUL_MANAGEMENT_TOKEN;
+  const cmaToken = credentials.cmaToken;
   if (!cmaToken) {
-    return await die('Error: CMA token is required. Pass --cma-token or set CONTENTFUL_MANAGEMENT_TOKEN');
+    return await die(
+      'Error: CMA token is required. Configure it with experiences setup or CONTENTFUL_MANAGEMENT_TOKEN',
+    );
   }
 
-  if (opts.components) await assertFileExists('--components', opts.components);
-
-  let components: Array<{ key: string; entry: CDFComponentEntry }> = [];
-  if (opts.session) {
-    const db = openPipelineDb();
-    try {
-      components = loadCDFComponents(db, opts.session);
-    } finally {
-      db.close();
-    }
-    if (components.length === 0) {
-      return await die(`Error: session '${opts.session}' has no generated components. Run generate components first.`);
-    }
-  } else if (opts.components) {
-    const raw = await readJsonFile('--components', opts.components);
-    const result = validateCDF(raw);
-    if (!result.valid) {
-      return await die(
-        `Error: --components failed schema validation: ${result.errors.map((e) => e.message).join(', ')}`,
-      );
-    }
-    components = result.components;
+  const raw = await readJsonFile('input file', file);
+  const result = validateCDF(raw);
+  if (!result.valid) {
+    return await die(`Error: input file failed schema validation: ${result.errors.map((e) => e.message).join(', ')}`);
   }
 
-  // Atomic mode (spec T8/T12): strip embedded-component composition at the
-  // single serialization boundary, regardless of load path. Normalizing here
-  // (rather than only in loadCDFComponents) also covers hand-authored
-  // `--components` files. Starving `$allowedComponents` at this one point
-  // means slot-cycle detection downstream structurally returns zero.
-  let configMode: CompositionMode | undefined;
-  try {
-    configMode = (await readExperiencesCredentials()).compositionMode;
-  } catch {
-    // Missing credentials.json → resolver falls through to default (atomic).
-  }
-  if (resolveCompositionMode(opts, configMode) === 'atomic') {
-    components = stripAllowedComponents(components);
-  }
+  const components = result.components;
 
-  let tokens: DTCGTokenEntry[] = [];
-  if (opts.tokens) {
-    tokens = await readTokensFromPath('--tokens', opts.tokens);
-  }
+  const tokens = result.tokens.map(({ path, entry }) => ({ path, ...entry }));
 
   const client = new ImportApiClient({
-    host: opts.host,
+    host: credentials.host,
     cmaToken,
     spaceId,
     environmentId,
   });
 
-  return { components, tokens, client };
+  return { components, tokens, client, spaceId, environmentId, host: credentials.host };
 }
 
 export function detectSlotCycles(
@@ -481,18 +368,40 @@ export async function assertNoSlotCycles(components: Array<{ key: string; entry:
   await exitWithAnalytics(1);
 }
 
-export function extractComponentsFromManifest(
-  manifest: { componentsManifest?: Record<string, unknown> } | null | undefined,
-): Array<{ key: string; entry: CDFComponentEntry }> {
-  const componentsManifest = manifest?.componentsManifest;
-  if (!componentsManifest) return [];
-  const out: Array<{ key: string; entry: CDFComponentEntry }> = [];
-  for (const [key, value] of Object.entries(componentsManifest)) {
-    if (key === '$schema') continue;
-    if (!value || typeof value !== 'object') continue;
-    out.push({ key, entry: value as CDFComponentEntry });
+/**
+ * Client-side pre-flight for `$allowedComponents` references that are absent
+ * from this document, so a typo'd or renamed reference fails fast instead of
+ * waiting on the `previewImport`/`applyImport` round-trip. Only catches
+ * document-internal misses — a name that resolves against an *existing*
+ * target-environment Component still needs the network round-trip to
+ * confirm, so this cannot replace the server-side check.
+ *
+ * `validateSlotReferences` is the detection step (shared with
+ * `WizardApp.tsx` via `formatUnresolvedSlotReferences` below, mirroring how
+ * `detectSlotCycles`/`formatSlotCycleReport` split for the cycle check).
+ */
+export function formatUnresolvedSlotReferences(errors: CDFValidationError[]): string[] {
+  const lines = ['Error: CDF slot $allowedComponents references failed to resolve locally. Push refused.'];
+  for (const error of errors) {
+    lines.push(`  - ${error.message} (${error.path})`);
   }
-  return out;
+  return lines;
+}
+
+export async function assertNoUnresolvedSlotReferences(
+  components: Array<{ key: string; entry: CDFComponentEntry }>,
+): Promise<void> {
+  const errors = validateSlotReferences(components);
+  if (errors.length === 0) return;
+  process.stderr.write(formatUnresolvedSlotReferences(errors).join('\n') + '\n');
+  await exitWithAnalytics(1);
+}
+
+export function extractComponents(
+  cdf: Record<string, unknown> | null | undefined,
+): Array<{ key: string; entry: CDFComponentEntry }> {
+  if (!cdf) return [];
+  return parseCDFComponents(cdf).components;
 }
 
 export function hasBreakingChangesWithImpact(preview: ServerPreviewResponse): boolean {
@@ -542,14 +451,11 @@ function buildApplyOutput(
   const items = operation.items ?? [];
   const componentItems = items.filter((i) => i.entityType === 'ComponentType');
   const tokenItems = items.filter((i) => i.entityType === 'DesignToken');
-
-  function countByAction(subset: typeof items) {
-    return {
-      created: subset.filter((i) => i.action === 'create' && i.status === 'succeeded').length,
-      updated: subset.filter((i) => i.action === 'update' && i.status === 'succeeded').length,
-      failed: subset.filter((i) => i.status === 'failed').length,
-    };
-  }
+  const countByAction = (subset: typeof items) => ({
+    created: subset.filter((i) => i.action === 'create' && i.status === 'succeeded').length,
+    updated: subset.filter((i) => i.action === 'update' && i.status === 'succeeded').length,
+    failed: subset.filter((i) => i.status === 'failed').length,
+  });
 
   return {
     status: operation.sys.status,
@@ -571,352 +477,24 @@ function buildApplyOutput(
   };
 }
 
-function getSelectableEntities(preview: ServerPreviewResponse): SelectableEntity[] {
-  const entities: SelectableEntity[] = [];
-
-  for (const token of preview.tokens.new) {
-    entities.push({
-      id: (token as { path?: string }).path ?? (token as { id?: string }).id ?? '',
-      kind: 'token',
-      status: 'new',
-    });
-  }
-  for (const item of preview.tokens.changed) {
-    entities.push({ id: item.current.id, kind: 'token', status: 'changed' });
-  }
-
-  for (const comp of preview.components.new) {
-    entities.push({
-      id: (comp as { key?: string }).key ?? (comp as { id?: string }).id ?? '',
-      kind: 'component',
-      status: 'new',
-    });
-  }
-  for (const item of preview.components.changed) {
-    entities.push({
-      id: item.current.id,
-      kind: 'component',
-      status: 'changed',
-      isBreaking: item.changeClassification?.classification === 'breaking',
-    });
-  }
-
-  return entities;
-}
-
-function resolveNonInteractiveSelection(entities: SelectableEntity[], opts: SelectOptions): Set<string> {
-  const allKeys = new Set(entities.map((e) => makeSelectKey(e.kind, e.id)));
-
-  if (opts.selectAll) {
-    if ((opts.select ?? []).length > 0 || (opts.deselect ?? []).length > 0) {
-      process.stderr.write('Warning: --select-all overrides --select and --deselect\n');
-    }
-    return allKeys;
-  }
-
-  const hasSelectPatterns = (opts.select ?? []).length > 0;
-  const selected = new Set<string>();
-
-  if (!hasSelectPatterns) {
-    for (const key of allKeys) selected.add(key);
-  } else {
-    for (const pattern of opts.select ?? []) {
-      for (const key of allKeys) {
-        if (key.includes(pattern)) selected.add(key);
-      }
-    }
-  }
-
-  for (const pattern of opts.deselect ?? []) {
-    for (const key of [...selected]) {
-      if (key.includes(pattern)) selected.delete(key);
-    }
-  }
-
-  return selected;
-}
-
-interface SelectAppProps {
-  entities: SelectableEntity[];
-  spaceId: string;
-  environmentId: string;
-  onApply: (selectedKeys: Set<string>) => void;
-}
-
-function SelectApp({ entities, spaceId, environmentId, onApply }: SelectAppProps): React.ReactElement {
-  const allKeys = new Set(entities.map((e) => makeSelectKey(e.kind, e.id)));
-
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const [selected, setSelected] = useState<Set<string>>(() => new Set(allKeys));
-  const [importing, setImporting] = useState(false);
-
-  useInput((input, key) => {
-    if (importing) return;
-
-    if (key.upArrow) {
-      setSelectedIndex((prev) => Math.max(0, prev - 1));
-      return;
-    }
-    if (key.downArrow) {
-      setSelectedIndex((prev) => Math.min(entities.length - 1, prev + 1));
-      return;
-    }
-
-    if (input === ' ') {
-      const entity = entities[selectedIndex];
-      if (!entity) return;
-      const k = makeSelectKey(entity.kind, entity.id);
-      setSelected((prev) => {
-        const next = new Set(prev);
-        if (next.has(k)) next.delete(k);
-        else next.add(k);
-        return next;
-      });
-      return;
-    }
-
-    if (input === 'a' || input === 'A') {
-      setSelected(new Set(allKeys));
-      return;
-    }
-    if (input === 'n' || input === 'N') {
-      setSelected(new Set());
-      return;
-    }
-
-    if ((input === 'i' || input === 'I') && selected.size > 0) {
-      setImporting(true);
-      onApply(selected);
-      return;
-    }
-
-    if (input === 'q' || input === 'Q') {
-      process.exit(0);
-    }
-  });
-
-  return createElement(SelectView, {
-    entities,
-    spaceId,
-    environmentId,
-    selectedIndex,
-    selected,
-    importing,
-  });
-}
-
 export function registerApplyCommand(program: Command): void {
   const applyCmd = program
     .command('apply')
-    .description('Preview, select, or push design system entities to Contentful ExO');
+    .description('Write component types and design tokens to Contentful ExO')
+    .argument('<file>', 'CDF file containing all component and design token definitions');
+  applyCmd.action(async (file: string) => {
+    const isTTY = getInteractiveTerminalSupport().supported;
 
-  const previewCmd = applyCmd.command('preview').description('Show a read-only diff of what apply push would do');
-  addSharedApplyOptions(previewCmd);
-  previewCmd.action(async (opts: PreviewOptions) => {
-    const inputs = await resolveSharedInputsOrDie(opts);
+    const inputs = await resolveSharedInputsOrDie(file);
 
-    const { components, tokens, client } = inputs;
-    const spaceId = opts.spaceId!;
-    const environmentId = opts.environmentId!;
-    await bindAnalyticsSessionId(opts.session, {
+    const { components, tokens, client, spaceId, environmentId, host } = inputs;
+    await bindAnalyticsSessionId(undefined, {
       space_key: spaceId,
       environment_key: environmentId,
     });
-
-    try {
-      await client.validateToken();
-    } catch (e) {
-      if (e instanceof ApiError) return await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
-      const cause = e instanceof Error && e.cause instanceof Error ? e.cause.message : '';
-      return await die(`Error: unable to connect to API host${cause ? `: ${cause}` : ''}`);
-    }
-
-    const manifest = buildManifest(components, tokens);
-
-    let preview: ServerPreviewResponse;
-    try {
-      preview = await client.previewImport(manifest);
-    } catch (e) {
-      if (e instanceof ApiError) return await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
-      throw e;
-    }
-
-    recordContentfulContext(client, spaceId, environmentId);
-
-    if (getInteractiveTerminalSupport().supported) {
-      const { waitUntilExit } = render(
-        createElement(ServerPreviewApp, {
-          preview,
-          spaceId,
-          environmentId,
-          allowDeletions: false,
-        }),
-      );
-      await waitUntilExit();
-    } else {
-      process.stdout.write(JSON.stringify(buildPreviewOutput(preview, spaceId, environmentId), null, 2) + '\n');
-      await exitWithAnalytics(0);
-    }
-  });
-
-  const pushCmd = applyCmd.command('push').description('Write component types and design tokens to Contentful ExO');
-  addSharedApplyOptions(pushCmd);
-  addAllowDeletionsOption(pushCmd);
-  pushCmd
-    .option('--yes', 'Skip interactive confirmation')
-    .option('--verbose', 'Show all entity progress including skipped/unchanged')
-    .option('--force', 'Skip confirmation for breaking changes (for CI)')
-    .option('--dry-run', 'Run preview only without applying')
-    .action(async (opts: ApplyOptions) => {
-      const isTTY = getInteractiveTerminalSupport().supported;
-
-      if (!isTTY && !opts.yes) {
-        process.stderr.write('Error: apply push requires --yes in non-interactive mode\n');
-        await exitWithAnalytics(1);
-      }
-
-      const inputs = await resolveSharedInputsOrDie(opts, opts.verbose);
-
-      const { components, tokens, client } = inputs;
-      const spaceId = opts.spaceId!;
-      const environmentId = opts.environmentId!;
-      await bindAnalyticsSessionId(opts.session, {
-        space_key: spaceId,
-        environment_key: environmentId,
-      });
-
-      await assertNoSlotCycles(components);
-
-      try {
-        await client.validateToken();
-      } catch (e) {
-        if (e instanceof ApiError)
-          return await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
-        throw e;
-      }
-
-      const manifest = buildManifest(components, tokens);
-
-      let preview: ServerPreviewResponse;
-      try {
-        preview = await client.previewImport(manifest, opts.allowDeletions === true);
-      } catch (e) {
-        if (e instanceof ApiError)
-          return await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
-        throw e;
-      }
-
-      recordContentfulContext(client, spaceId, environmentId);
-
-      if (opts.dryRun) {
-        if (isTTY) {
-          const { waitUntilExit } = render(
-            createElement(ServerPreviewApp, {
-              preview,
-              spaceId,
-              environmentId,
-              allowDeletions: opts.allowDeletions === true,
-            }),
-          );
-          await waitUntilExit();
-        } else {
-          process.stdout.write(JSON.stringify(buildPreviewOutput(preview, spaceId, environmentId), null, 2) + '\n');
-        }
-        await exitWithAnalytics(0);
-      }
-
-      if (isEmptyPreview(preview)) {
-        if (isTTY && !opts.yes) {
-          process.stderr.write('Nothing to change — design system is up to date.\n');
-        } else {
-          process.stdout.write(JSON.stringify(buildPreviewOutput(preview, spaceId, environmentId), null, 2) + '\n');
-        }
-        await exitWithAnalytics(0);
-      }
-
-      const breakingWithImpact = hasBreakingChangesWithImpact(preview);
-
-      if (!isTTY || opts.yes) {
-        if (breakingWithImpact && !opts.force) {
-          process.stderr.write(
-            'Error: breaking changes with downstream impact detected. Use --force to acknowledge.\n',
-          );
-          process.stdout.write(JSON.stringify(buildPreviewOutput(preview, spaceId, environmentId), null, 2) + '\n');
-          await exitWithAnalytics(1);
-        }
-
-        const verbose = opts.verbose ?? false;
-        if (verbose) {
-          process.stderr.write(JSON.stringify(buildPreviewOutput(preview, spaceId, environmentId), null, 2) + '\n');
-        }
-
-        await runNonInteractiveApply({
-          client,
-          manifest,
-          spaceId,
-          environmentId,
-          acknowledgeBreakingChanges: breakingWithImpact || opts.force === true,
-          allowDeletions: opts.allowDeletions === true,
-          host: opts.host,
-          verbose: opts.verbose,
-        });
-        return;
-      }
-
-      await new Promise<void>((resolvePromise) => {
-        const runApply = async (acknowledge: boolean, applyDeletions: boolean) => {
-          await runInteractiveApply({
-            client,
-            manifest,
-            spaceId,
-            environmentId,
-            host: opts.host,
-            acknowledgeBreakingChanges: acknowledge,
-            allowDeletions: applyDeletions,
-            verbose: opts.verbose,
-            rerender: (element) => instance.rerender(element),
-            onDone: resolvePromise,
-          });
-        };
-
-        const instance = render(
-          createElement(ServerPreviewConfirm, {
-            preview,
-            spaceId,
-            environmentId,
-            breakingWithImpact,
-            allowDeletions: opts.allowDeletions === true,
-            onConfirm: (acknowledge: boolean, applyDeletions: boolean) => {
-              void runApply(acknowledge, applyDeletions);
-            },
-            onCancel: () => {
-              void exitWithAnalytics(0);
-            },
-          }),
-        );
-
-        void instance.waitUntilExit().then(() => resolvePromise());
-      });
-    });
-
-  const selectCmd = applyCmd.command('select').description('Select a subset of entities and push to Contentful ExO');
-  addSharedApplyOptions(selectCmd);
-  addSelectionOptions(selectCmd);
-  addAllowDeletionsOption(selectCmd);
-  selectCmd.option('--force', 'Skip confirmation for breaking changes').action(async (opts: SelectOptions) => {
-    const nonInteractive = opts.selectAll || (opts.select ?? []).length > 0 || (opts.deselect ?? []).length > 0;
-
-    if (!nonInteractive) {
-      requireInteractiveTerminal({
-        alternative: 'pass `--select-all`, `--select`, or `--deselect`',
-      });
-    }
-
-    const inputs = await resolveSharedInputsOrDie(opts);
-
-    const { components, tokens, client } = inputs;
 
     await assertNoSlotCycles(components);
+    await assertNoUnresolvedSlotReferences(components);
 
     try {
       await client.validateToken();
@@ -925,80 +503,74 @@ export function registerApplyCommand(program: Command): void {
       throw e;
     }
 
-    const fullManifest = buildManifest(components, tokens);
+    const cdf = buildCDF(components, toCDFTokens(tokens));
+    if (!cdf) return await die('Error: nothing to push — no components or tokens resolved');
 
     let preview: ServerPreviewResponse;
     try {
-      preview = await client.previewImport(fullManifest, opts.allowDeletions === true);
+      preview = await client.previewImport(cdf);
     } catch (e) {
       if (e instanceof ApiError) return await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
       throw e;
     }
 
-    const spaceId = opts.spaceId!;
-    const environmentId = opts.environmentId!;
-    await bindAnalyticsSessionId(opts.session, {
-      space_key: spaceId,
-      environment_key: environmentId,
-    });
     recordContentfulContext(client, spaceId, environmentId);
-    const entities = getSelectableEntities(preview);
 
-    if (entities.length === 0) {
-      process.stderr.write('Nothing to change — design system is up to date.\n');
+    if (isEmptyPreview(preview)) {
+      if (isTTY) {
+        process.stderr.write('Nothing to change — design system is up to date.\n');
+      } else {
+        process.stdout.write(JSON.stringify(buildPreviewOutput(preview, spaceId, environmentId), null, 2) + '\n');
+      }
       await exitWithAnalytics(0);
     }
 
-    if (nonInteractive) {
-      const selectedKeys = resolveNonInteractiveSelection(entities, opts);
+    const breakingWithImpact = hasBreakingChangesWithImpact(preview);
 
-      if (selectedKeys.size === 0) {
-        process.stderr.write('No entities matched selection criteria.\n');
-        await exitWithAnalytics(0);
-      }
-
-      const { filteredManifest, hasBreaking } = buildSelectedApply(fullManifest, entities, selectedKeys);
-
-      if (hasBreaking && !opts.force) {
-        process.stderr.write('Error: selection includes breaking changes. Use --force to acknowledge.\n');
+    if (!isTTY) {
+      if (breakingWithImpact) {
+        process.stderr.write(
+          'Error: breaking changes with downstream impact detected; run apply in an interactive terminal to acknowledge them.\n',
+        );
+        process.stdout.write(JSON.stringify(buildPreviewOutput(preview, spaceId, environmentId), null, 2) + '\n');
         await exitWithAnalytics(1);
       }
-
       await runNonInteractiveApply({
         client,
-        manifest: filteredManifest,
+        cdf,
         spaceId,
         environmentId,
-        acknowledgeBreakingChanges: hasBreaking || opts.force === true,
-        allowDeletions: opts.allowDeletions === true,
-        host: opts.host,
+        acknowledgeBreakingChanges: false,
+        host,
       });
       return;
     }
 
     await new Promise<void>((resolvePromise) => {
-      const runSelectApply = async (selectedKeys: Set<string>) => {
-        const { filteredManifest, hasBreaking } = buildSelectedApply(fullManifest, entities, selectedKeys);
+      const runApply = async (acknowledge: boolean) => {
         await runInteractiveApply({
           client,
-          manifest: filteredManifest,
+          cdf,
           spaceId,
           environmentId,
-          host: opts.host,
-          acknowledgeBreakingChanges: hasBreaking,
-          allowDeletions: opts.allowDeletions === true,
+          host,
+          acknowledgeBreakingChanges: acknowledge,
           rerender: (element) => instance.rerender(element),
           onDone: resolvePromise,
         });
       };
 
       const instance = render(
-        createElement(SelectApp, {
-          entities,
+        createElement(ServerPreviewConfirm, {
+          preview,
           spaceId,
           environmentId,
-          onApply: (selectedKeys) => {
-            void runSelectApply(selectedKeys);
+          breakingWithImpact,
+          onConfirm: (acknowledge: boolean) => {
+            void runApply(acknowledge);
+          },
+          onCancel: () => {
+            void exitWithAnalytics(0);
           },
         }),
       );

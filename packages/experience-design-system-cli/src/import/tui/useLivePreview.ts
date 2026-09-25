@@ -13,11 +13,10 @@ export type UseLivePreviewOptions = {
   host: string;
   onResult: (response: ServerPreviewResponse | null) => void;
   debounceMs?: number;
-  /** Preview an empty-but-present manifest (delete-all diff) when nothing is
-   *  accepted, so the final-review UI can show what a push would delete. */
+  /** Preview an empty-but-present CDF document (delete-all diff) when nothing
+   *  is accepted, so the final-review UI can show what a push would delete. */
   deleteAllComponents?: boolean;
   /** Forwarded verbatim to `runLivePreview`/`previewImport`. */
-  allowDeletions?: boolean;
 };
 
 type LivePreviewStatus = 'idle' | 'running';
@@ -114,7 +113,6 @@ export function useLivePreview(opts: UseLivePreviewOptions): UseLivePreviewRetur
         host: current.host,
         generation,
         deleteAllComponents: current.deleteAllComponents === true,
-        allowDeletions: current.allowDeletions === true,
       });
       // Discard stale responses (generation tag).
       if (result.generation !== latestRef.current) return;

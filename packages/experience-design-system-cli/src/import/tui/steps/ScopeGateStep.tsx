@@ -23,7 +23,6 @@ import { computeSidebarBudget, FALLBACK_ROWS } from '../lineage-layout.js';
 import { GotoBanner } from '../../../analyze/select/tui/components/GotoBanner.js';
 import { HelpOverlay, type HelpSection } from '../../../analyze/select/tui/components/HelpOverlay.js';
 import { legendEntry } from '../components/LegendEntry.js';
-import { AutoFilterBanner } from '../components/AutoFilterBanner.js';
 import { CounterStrip } from '../components/CounterStrip.js';
 import { isAiFlagged } from '../ai-flag.js';
 import { resolveGroupRoot } from '../group-collapse.js';
@@ -127,15 +126,7 @@ function toSidebarEntry(c: ScopeComponent): CDFComponentEntry {
   return entry;
 }
 
-export function ScopeGateStep({
-  components,
-  onConfirm,
-  onQuit,
-  aiFilterStatus = 'idle',
-  aiFilterProgress = null,
-  aiFilterError = null,
-  onCancelAutoFilter,
-}: ScopeGateStepProps): React.ReactElement {
+export function ScopeGateStep({ components, onConfirm, onQuit }: ScopeGateStepProps): React.ReactElement {
   const { stdout } = useStdout();
   const totalWidth = stdout?.columns ?? 80;
   const columnPlan = useMemo(() => computeColumnWidths(totalWidth), [totalWidth]);
@@ -536,10 +527,6 @@ export function ScopeGateStep({
     }
 
     if (input === 'q' || key.escape) {
-      if (aiFilterStatus === 'running' && onCancelAutoFilter) {
-        onCancelAutoFilter();
-        return;
-      }
       if (key.escape && jumpFilterTarget) {
         setJumpFilterTarget(null);
         return;
@@ -790,8 +777,6 @@ export function ScopeGateStep({
         Found {totalComponents} component{totalComponents === 1 ? '' : 's'}. Pick which ones to import. Generation runs
         only on the included set.
       </Text>
-
-      <AutoFilterBanner status={aiFilterStatus} progress={aiFilterProgress} error={aiFilterError} />
 
       {hasAnyAi && (
         <Box>

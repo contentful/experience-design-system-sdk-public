@@ -222,30 +222,7 @@ describe('writeExperiencesCredentials', () => {
     expect(written).not.toHaveProperty('host');
   });
 
-  it('round-trips selectPromptPath and generatePromptPath (Feature 8)', async () => {
-    mockMkdir.mockResolvedValue(undefined);
-    mockWriteFile.mockResolvedValue(undefined);
-
-    await writeExperiencesCredentials({
-      spaceId: 'space1',
-      environmentId: 'master',
-      cmaToken: 'token',
-      selectPromptPath: '/custom/select.md',
-      generatePromptPath: '/custom/generate.md',
-    });
-
-    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string) as Record<string, unknown>;
-    expect(written.selectPromptPath).toBe('/custom/select.md');
-    expect(written.generatePromptPath).toBe('/custom/generate.md');
-
-    // Read back
-    mockReadFile.mockResolvedValue(JSON.stringify(written));
-    const creds = await readExperiencesCredentials();
-    expect(creds.selectPromptPath).toBe('/custom/select.md');
-    expect(creds.generatePromptPath).toBe('/custom/generate.md');
-  });
-
-  it('omits selectPromptPath / generatePromptPath when undefined (Feature 8)', async () => {
+  it('omits generatePromptPath when undefined (Feature 8)', async () => {
     mockMkdir.mockResolvedValue(undefined);
     mockWriteFile.mockResolvedValue(undefined);
 
@@ -256,83 +233,7 @@ describe('writeExperiencesCredentials', () => {
     });
 
     const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string) as Record<string, unknown>;
-    expect(written).not.toHaveProperty('selectPromptPath');
     expect(written).not.toHaveProperty('generatePromptPath');
-  });
-});
-
-describe('ExperiencesCredentials.autoFilter round-trip', () => {
-  it('returns autoFilter undefined when the field is absent from the file', async () => {
-    mockReadFile.mockResolvedValue(
-      JSON.stringify({
-        spaceId: 'abc',
-        environmentId: 'master',
-        cmaToken: 'tok',
-      }),
-    );
-
-    const creds = await readExperiencesCredentials();
-
-    expect(creds.autoFilter).toBeUndefined();
-  });
-
-  it('reads autoFilter:false from the file', async () => {
-    mockReadFile.mockResolvedValue(
-      JSON.stringify({
-        spaceId: 'abc',
-        environmentId: 'master',
-        cmaToken: 'tok',
-        autoFilter: false,
-      }),
-    );
-
-    const creds = await readExperiencesCredentials();
-
-    expect(creds.autoFilter).toBe(false);
-  });
-
-  it('reads autoFilter:true from the file', async () => {
-    mockReadFile.mockResolvedValue(
-      JSON.stringify({
-        spaceId: 'abc',
-        environmentId: 'master',
-        cmaToken: 'tok',
-        autoFilter: true,
-      }),
-    );
-
-    const creds = await readExperiencesCredentials();
-
-    expect(creds.autoFilter).toBe(true);
-  });
-
-  it('writes autoFilter:false when set', async () => {
-    mockMkdir.mockResolvedValue(undefined);
-    mockWriteFile.mockResolvedValue(undefined);
-
-    await writeExperiencesCredentials({
-      spaceId: 'space1',
-      environmentId: 'master',
-      cmaToken: 'token',
-      autoFilter: false,
-    });
-
-    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string) as Record<string, unknown>;
-    expect(written.autoFilter).toBe(false);
-  });
-
-  it('omits autoFilter from the written JSON when undefined', async () => {
-    mockMkdir.mockResolvedValue(undefined);
-    mockWriteFile.mockResolvedValue(undefined);
-
-    await writeExperiencesCredentials({
-      spaceId: 'space1',
-      environmentId: 'master',
-      cmaToken: 'token',
-    });
-
-    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string) as Record<string, unknown>;
-    expect(written).not.toHaveProperty('autoFilter');
   });
 });
 
@@ -393,61 +294,5 @@ describe('ExperiencesCredentials.analyticsDisabled round-trip', () => {
 
     const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string) as Record<string, unknown>;
     expect(written).not.toHaveProperty('analyticsDisabled');
-  });
-});
-
-describe('ExperiencesCredentials.compositionMode round-trip', () => {
-  it('keeps only values accepted by the canonical composition mode guard', async () => {
-    mockReadFile.mockResolvedValue(
-      JSON.stringify({
-        spaceId: 'abc',
-        environmentId: 'master',
-        cmaToken: 'tok',
-        compositionMode: 'composite',
-      }),
-    );
-
-    expect((await readExperiencesCredentials()).compositionMode).toBe('composite');
-
-    mockReadFile.mockResolvedValue(
-      JSON.stringify({
-        spaceId: 'abc',
-        environmentId: 'master',
-        cmaToken: 'tok',
-        compositionMode: 'flat',
-      }),
-    );
-
-    expect((await readExperiencesCredentials()).compositionMode).toBeUndefined();
-  });
-
-  it.each(['composite', 'atomic'] as const)('writes accepted mode %s', async (compositionMode) => {
-    mockMkdir.mockResolvedValue(undefined);
-    mockWriteFile.mockResolvedValue(undefined);
-
-    await writeExperiencesCredentials({
-      spaceId: 'space1',
-      environmentId: 'master',
-      cmaToken: 'token',
-      compositionMode,
-    });
-
-    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string) as Record<string, unknown>;
-    expect(written.compositionMode).toBe(compositionMode);
-  });
-
-  it('omits an invalid composition mode when writing credentials', async () => {
-    mockMkdir.mockResolvedValue(undefined);
-    mockWriteFile.mockResolvedValue(undefined);
-
-    await writeExperiencesCredentials({
-      spaceId: 'space1',
-      environmentId: 'master',
-      cmaToken: 'token',
-      compositionMode: 'flat' as never,
-    });
-
-    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string) as Record<string, unknown>;
-    expect(written).not.toHaveProperty('compositionMode');
   });
 });

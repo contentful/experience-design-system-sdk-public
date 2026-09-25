@@ -1,0 +1,554 @@
+import { mkdir, readdir, readFile, stat } from 'node:fs/promises';
+import { isAbsolute, join, relative, resolve } from 'node:path';
+import type { Command } from 'commander';
+import { addAgentModelOptions } from '../lib/agent-model-options.js';
+import {
+  extractComponents,
+  preClassifyComponent,
+  isNonAuthorableComponent,
+  computeExtractionScore,
+  deriveNeedsReview,
+  describeReviewReasons,
+  inspectComponentSource,
+  validateExtractedComponents,
+} from '@contentful/experience-design-system-extraction';
+import {
+  openPipelineDb,
+  getOrCreateSession,
+  createStep,
+  updateStep,
+  storeRawComponents,
+  storeScannedFiles,
+  storeSlotCycles,
+  getCliCacheVersion,
+  lookupCompositionCache,
+  storeCompositionCache,
+} from '../session/db.js';
+import { findSlotCycles, suggestCycleBreakEdge } from './cycle-detection.js';
+import { resolveMapping } from './composition/resolve-mapping.js';
+import { loadUserMap, resolveCompositionSources } from './composition/resolve-mapping-cli.js';
+import { selectCandidateFiles, capCandidatesToPromptBudget } from './composition/candidate-files.js';
+import { buildCompositionInputHash } from './composition/composition-cache-key.js';
+import { collectManifestDocEdges } from './composition/manifest-doc-evidence.js';
+import type { InterchangeMap } from './composition/interchange-schema.js';
+import { parsePromptOverrides, resolvePromptOverride } from '../lib/prompt-overrides.js';
+import {
+  agentSupportsBedrock,
+  DEFAULT_AGENT_NAME,
+  isAgentName,
+  runAgent,
+  type AgentName,
+} from '@contentful/experience-design-system-generation';
+import {
+  bindAnalyticsSessionId,
+  emitSessionStarted,
+  enrichCommandResult,
+  exitWithAnalytics,
+  isPipelineAnalyticsChild,
+} from '../analytics/index.js';
+import { getDebugLogger } from '../lib/debug-logger.js';
+
+interface AnalyzeExtractOptions {
+  project: string;
+  dir?: string;
+  resolveUnreachable?: 'auto' | 'always' | 'never';
+  compositionRefresh?: boolean;
+  compositionMap?: string;
+  prompt?: string[];
+  agent?: string;
+  bedrock?: boolean;
+}
+const SCANNED_FILE_EXTENSIONS = new Set(['.astro', '.js', '.jsx', '.svelte', '.ts', '.tsx', '.vue']);
+/**
+ * `.json`/`.md` are scanned too (Figma `manifest.json`, `AGENTS.md`-style
+ * docs, and other design/composition-adjacent files we don't yet have a name
+ * for) — gated by a denylist rather than an allowlist, so coverage isn't
+ * capped at a couple of exact filenames. Their content is never inlined into
+ * an LLM prompt by virtue of being scanned here; that's a separate gate (see
+ * `selectCandidateFiles` in candidate-files.ts) which still only admits files
+ * matching its own name/content-marker heuristics. Deterministic parsing
+ * (manifest-doc-evidence.ts) reads this full set directly, with no LLM
+ * involved, which is the actual prompt-injection safeguard for that signal.
+ */
+const DENYLIST_GATED_EXTENSIONS = new Set(['.json', '.md']);
+const DENYLISTED_EXACT_FILE_NAMES = new Set([
+  'package.json',
+  'package-lock.json',
+  'npm-shrinkwrap.json',
+  'nx.json',
+  'project.json',
+  'turbo.json',
+  'lerna.json',
+  'jsconfig.json',
+]);
+/** Config-file families that vary by suffix (`tsconfig.build.json`, `.eslintrc.cjs.json`, ...) plus common repo docs. */
+const DENYLISTED_FILE_NAME_PATTERNS = [
+  /^tsconfig(\..+)?\.json$/,
+  /^\.?eslintrc(\..+)?\.json$/,
+  /^\.?prettierrc(\..+)?\.json$/,
+  /^(readme|changelog|contributing|code_of_conduct|license|security)(\..+)?\.md$/i,
+];
+function isDenylistedNoiseFile(name: string): boolean {
+  return DENYLISTED_EXACT_FILE_NAMES.has(name) || DENYLISTED_FILE_NAME_PATTERNS.some((pattern) => pattern.test(name));
+}
+const IGNORED_DIRECTORY_NAMES = new Set([
+  '.changeset',
+  '.git',
+  '.github',
+  '.idea',
+  '.next',
+  '.nuxt',
+  '.vscode',
+  'build',
+  'coverage',
+  'demo',
+  'demos',
+  'dist',
+  'example',
+  'examples',
+  'node_modules',
+  'out',
+  'storybook-static',
+]);
+const IGNORED_FILE_SUFFIXES = new Set([
+  '.stories.ts',
+  '.stories.tsx',
+  '.stories.js',
+  '.stories.jsx',
+  '.story.ts',
+  '.story.tsx',
+  '.story.js',
+  '.story.jsx',
+  '.spec.ts',
+  '.spec.tsx',
+  '.test.ts',
+  '.test.tsx',
+]);
+
+function pluralize(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function resolveFromProjectRoot(projectRoot: string, inputPath: string): string {
+  return isAbsolute(inputPath) ? inputPath : resolve(projectRoot, inputPath);
+}
+
+function wrapperConfidenceToIssueCount(confidence: number): number {
+  if (confidence >= 4) return 2;
+  if (confidence === 3) return 1;
+  return 0;
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  return Boolean(await stat(path).catch(() => null));
+}
+
+export async function collectSourceFiles(
+  directory: string,
+  onProgress?: (scannedCount: number) => void,
+): Promise<string[]> {
+  const files: string[] = [];
+
+  async function visit(currentDirectory: string): Promise<void> {
+    const entries = await readdir(currentDirectory, { withFileTypes: true });
+
+    const subdirs: string[] = [];
+
+    for (const entry of entries) {
+      const fullPath = join(currentDirectory, entry.name);
+
+      if (entry.isDirectory()) {
+        if (!IGNORED_DIRECTORY_NAMES.has(entry.name)) {
+          subdirs.push(fullPath);
+        }
+        continue;
+      }
+
+      if (!entry.isFile()) {
+        continue;
+      }
+
+      const extension = entry.name.slice(entry.name.lastIndexOf('.'));
+      const isCodeFile = SCANNED_FILE_EXTENSIONS.has(extension) && !entry.name.endsWith('.d.ts');
+      const isNoiseGatedFile = DENYLIST_GATED_EXTENSIONS.has(extension) && !isDenylistedNoiseFile(entry.name);
+      if (!isCodeFile && !isNoiseGatedFile) {
+        continue;
+      }
+
+      if ([...IGNORED_FILE_SUFFIXES].some((suffix) => entry.name.endsWith(suffix))) {
+        continue;
+      }
+
+      files.push(fullPath);
+      onProgress?.(files.length);
+    }
+
+    await Promise.all(subdirs.map((subdir) => visit(subdir)));
+  }
+
+  await visit(directory);
+  return files.sort();
+}
+
+/** Read the persisted default composition mode; missing config is fine. */
+/** Resolve which coding-agent runs mapping resolution: `--agent` flag > env > default. */
+function resolveCompositionAgentName(flagValue?: string): AgentName {
+  if (flagValue && isAgentName(flagValue)) return flagValue;
+  const env = process.env['EDS_COMPOSITION_AGENT'];
+  if (env && isAgentName(env)) return env;
+  return DEFAULT_AGENT_NAME;
+}
+
+/**
+ * Read the source files of the extracted components plus nearby mapping/meta
+ * files, so the candidate pre-filter (T3) can pick the relevant ones. Reads
+ * each unique `sourcePath` once; missing files are skipped.
+ */
+async function readCandidateFiles(
+  components: Array<{ sourcePath?: string; source?: string }>,
+  extraFiles: string[] = [],
+): Promise<Array<{ path: string; content: string }>> {
+  const paths = new Set<string>(extraFiles);
+  for (const c of components) {
+    if (c.sourcePath) paths.add(c.sourcePath);
+  }
+  const out: Array<{ path: string; content: string }> = [];
+  await Promise.all(
+    [...paths].map(async (p) => {
+      try {
+        const content = await readFile(p, 'utf8');
+        out.push({ path: p, content });
+      } catch {
+        void 0;
+      }
+    }),
+  );
+  return out;
+}
+
+export function registerInternalExtractCommand(program: Command): void {
+  const extractCmd = program
+    .command('__extract', { hidden: true })
+    .description('Extract component definitions from a project')
+    .requiredOption('--project <path>', 'Path to the project root')
+    .option('--dir <path>', 'Path to the component source directory relative to the project root')
+    .option(
+      '--resolve-unreachable <mode>',
+      "Retry pass for unresolved Svelte Props types: 'auto' (default), 'always', or 'never'",
+      'auto',
+    )
+    .option('--composition-refresh', 'Force the mapping agent to run even where deterministic sources answered')
+    .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map')
+    .option(
+      '--prompt <stage=value>',
+      'Override a stage prompt (repeatable). value is a file path or literal text, e.g. --prompt composition=./p.md',
+      (v: string, acc: string[]) => [...acc, v],
+      [] as string[],
+    );
+  addAgentModelOptions(extractCmd, {
+    includeModel: false,
+    agentDescription: 'Coding agent for composition mapping resolution (claude|codex|opencode|cursor)',
+  }).action(async (opts: AnalyzeExtractOptions) => {
+    const resolveUnreachable: 'auto' | 'always' | 'never' = (() => {
+      const v = opts.resolveUnreachable ?? 'auto';
+      if (v !== 'auto' && v !== 'always' && v !== 'never') {
+        process.stderr.write(`Error: --resolve-unreachable must be one of 'auto', 'always', 'never' (got '${v}')\n`);
+        process.exit(1);
+      }
+      return v;
+    })();
+    if (opts.bedrock) {
+      const bedrockAgent = resolveCompositionAgentName(opts.agent);
+      if (!agentSupportsBedrock(bedrockAgent)) {
+        process.stderr.write(`Error: --bedrock is not supported for --agent ${bedrockAgent}\n`);
+        process.exit(1);
+      }
+    }
+
+    const projectRoot = resolve(opts.project);
+    const outDir = join(projectRoot, '.contentful');
+
+    let sourceDirectory: string;
+    if (opts.dir !== undefined) {
+      sourceDirectory = resolveFromProjectRoot(projectRoot, opts.dir);
+      if (!(await pathExists(sourceDirectory))) {
+        process.stderr.write(`Error: source directory does not exist: ${sourceDirectory}\n`);
+        process.exit(1);
+      }
+    } else {
+      const srcPath = resolveFromProjectRoot(projectRoot, 'src');
+      sourceDirectory = (await pathExists(srcPath)) ? srcPath : projectRoot;
+    }
+
+    const sourceFiles = await collectSourceFiles(sourceDirectory, (count) => {
+      if (!process.stdout.isTTY) {
+        process.stderr.write(`progress=scan:${count}\n`);
+      }
+    });
+
+    const extraction = await extractComponents(
+      sourceFiles,
+      ({ filesProcessed, componentsFound }) => {
+        if (!process.stdout.isTTY) {
+          process.stderr.write(`progress=extract:${filesProcessed}/${sourceFiles.length}:${componentsFound}\n`);
+        }
+      },
+      { resolveUnreachable, projectRoot },
+    );
+
+    await mkdir(outDir, { recursive: true });
+
+    const db = openPipelineDb();
+    const { sessionId } = getOrCreateSession(db, undefined, undefined, {
+      command: 'analyze extract',
+      inputPath: projectRoot,
+      outDir,
+    });
+    await bindAnalyticsSessionId(sessionId);
+    if (!isPipelineAnalyticsChild()) {
+      await emitSessionStarted('analyze_extract');
+    }
+    const stepId = createStep(db, sessionId, 'analyze extract', {
+      project: projectRoot,
+    });
+    const classifiedComponents = extraction.components.map(preClassifyComponent);
+    const inspectedComponents = await Promise.all(
+      classifiedComponents.map(async (component) => ({
+        component,
+        inspection: await inspectComponentSource(component),
+      })),
+    );
+    const filteredComponents: typeof classifiedComponents = [];
+    const filterWarnings: string[] = [];
+    for (const { component, inspection } of inspectedComponents) {
+      const verdict = isNonAuthorableComponent(component);
+      const keepDespiteZeroSurface =
+        verdict.skip && verdict.reason === 'component has no props and no slots' && inspection.keepDespiteZeroSurface;
+      const retainedForReview = verdict.skip && !keepDespiteZeroSurface;
+
+      if (retainedForReview) {
+        filterWarnings.push(`${component.name}: requires operator review (${verdict.reason})`);
+      }
+
+      if (keepDespiteZeroSurface) {
+        filterWarnings.push(
+          `${component.name}: retained despite 0 props/slots because the source renders visible or compositional UI`,
+        );
+      }
+
+      if (inspection.reviewReasons.length > 0) {
+        const reviewNotes = describeReviewReasons(inspection.reviewReasons)
+          .filter((note) => note !== 'high-confidence data-fetch wrapper')
+          .join('; ');
+        if (reviewNotes) {
+          filterWarnings.push(`${component.name}: ${reviewNotes}`);
+        }
+      }
+
+      // Preserve any extractor-level review reasons (e.g. `props-type-unresolved`
+      // from the Svelte parser) by merging them into the post-processing recompute.
+      // Without this, recomputing here clobbers the per-extractor signal.
+      const extractorReasons = component.reviewReasons ?? [];
+      const nonAuthorableReason = retainedForReview ? [`non-authorable:${verdict.reason}`] : [];
+      const { confidence, reasons } = computeExtractionScore(component, {
+        additionalIssueCount:
+          wrapperConfidenceToIssueCount(inspection.wrapperConfidence) +
+          extractorReasons.length +
+          nonAuthorableReason.length,
+        additionalReasons: [...extractorReasons, ...inspection.reviewReasons, ...nonAuthorableReason],
+      });
+      filteredComponents.push({
+        ...component,
+        extractionConfidence: confidence,
+        reviewReasons: reasons,
+        needsReview:
+          deriveNeedsReview(confidence) ||
+          inspection.wrapperConfidence >= 4 ||
+          inspection.keepDespiteZeroSurface ||
+          retainedForReview ||
+          // An extractor-level type-resolution failure is a strong signal regardless
+          // of the otherwise-derived confidence threshold; force review.
+          extractorReasons.includes('props-type-unresolved') ||
+          (component.needsReview ?? false),
+      });
+    }
+    let validatedComponents = validateExtractedComponents(filteredComponents);
+
+    // Composition mapping resolution is always enabled. Every extracted CDF
+    // preserves embedded-component edges.
+    {
+      const sources = resolveCompositionSources(opts);
+
+      let userMap: InterchangeMap | undefined;
+      if (opts.compositionMap) {
+        const loaded = await loadUserMap(opts.compositionMap);
+        if (!loaded.ok) {
+          process.stderr.write(`Error: ${loaded.error}\n`);
+          process.exit(1);
+        }
+        userMap = loaded.map;
+      }
+
+      const { overrides: promptOverrides, errors: promptErrors } = parsePromptOverrides(opts.prompt ?? []);
+      for (const err of promptErrors) {
+        process.stderr.write(`Error: ${err}\n`);
+        process.exit(1);
+      }
+      let compositionPrompt: string | undefined;
+      const compositionOverride = promptOverrides.get('composition');
+      if (compositionOverride) {
+        try {
+          compositionPrompt = await resolvePromptOverride(compositionOverride);
+        } catch (e) {
+          process.stderr.write(`Error: ${e instanceof Error ? e.message : String(e)}\n`);
+          process.exit(1);
+        }
+      }
+
+      {
+        // Composition-resolution runs unconditionally so structural evidence
+        // (typed slots + Signal A/B/C/D) and manifest/doc edges always reach
+        // the selection UI. The agent inside `resolveMapping` is still gated
+        // separately by `--composition-agent` / `--composition-refresh` —
+        // when neither is passed, the deterministic passes still merge and
+        // apply, but no LLM call is made.
+        //
+        // Composition progress mirrors the scan/extract progress convention:
+        // emit `progress=composition:<phase>` on stderr so the wizard can
+        // render a second progress line during the (potentially slow, agent-
+        // backed) resolution instead of appearing frozen.
+        const emitCompositionProgress = (phase: string): void => {
+          if (!process.stdout.isTTY) process.stderr.write(`progress=composition:${phase}\n`);
+        };
+
+        emitCompositionProgress('resolving');
+        const allFiles = await readCandidateFiles(validatedComponents, sourceFiles);
+        // Decouple the two file sets (design: candidate-heuristic fragility):
+        //  - `promptFiles`: a bounded candidate SAMPLE inlined into the agent
+        //    prompt so it sees the convention without ingesting the whole repo.
+        //  - `allFiles`: EVERY scanned file, used for deterministic evidence
+        //    and candidate selection so a candidate-filter miss cannot starve
+        //    resolution of a definition file.
+        const selectedCandidates = selectCandidateFiles(allFiles).map((c) => ({ path: c.path, content: c.content }));
+        // Cap the inlined set so a large design system can't overflow the
+        // agent's context window and fail resolution outright (see the budget
+        // constant).
+        const capped = capCandidatesToPromptBudget(selectedCandidates);
+        const promptFiles = capped.kept;
+        if (capped.dropped.length > 0) {
+          process.stderr.write(
+            `Warning: composition — ${capped.dropped.length} candidate file(s) omitted from the agent prompt to fit the context budget; resolution runs on the ${promptFiles.length} highest-value files.\n`,
+          );
+        }
+        const runtimeFiles = allFiles.map((c) => ({ path: c.path, content: c.content }));
+
+        const resolverAgent = resolveCompositionAgentName(opts.agent);
+        const componentNameSet = new Set(validatedComponents.map((c) => c.name));
+        const cacheVersion = await getCliCacheVersion();
+
+        // Tracks the exit code of the most recent spawnAgent call so the
+        // caching sites can refuse to persist a failed run (a non-zero exit —
+        // e.g. a context-window overflow — otherwise poisons the cache and
+        // replays the error on every subsequent run).
+        let lastAgentExitCode = 0;
+        const spawnAgent = async (prompt: string): Promise<string> => {
+          const res = await runAgent({
+            agent: resolverAgent,
+            prompt,
+            timeoutMs: 120_000,
+            promptViaStdin: true,
+            onDebugEvent: (name, payload) => getDebugLogger().event('agent', name, payload),
+          });
+          lastAgentExitCode = res.exitCode;
+          if (res.exitCode !== 0 && res.stderr.trim()) {
+            process.stderr.write(`Warning: composition — agent exited ${res.exitCode}: ${res.stderr.trim()}\n`);
+          }
+          return res.stdout;
+        };
+
+        // Manifest (Figma `manifest.json`)/doc (`AGENTS.md`) evidence — rank
+        // 4/5, deterministic (no LLM), runs over the FULL file set
+        // regardless of agent settings since it's cheap
+        // and code/design-adjacent rather than agent-derived.
+        const manifestDocEdges = collectManifestDocEdges(runtimeFiles, validatedComponents, componentNameSet);
+        const extraEdges = manifestDocEdges;
+
+        // Edge-emission cache keyed on prompt files and agent identity.
+        const agentCacheKey = buildCompositionInputHash({
+          files: promptFiles,
+          agent: resolverAgent,
+        });
+        const result = await resolveMapping({
+          components: validatedComponents,
+          ...(userMap ? { userMap } : {}),
+          ...(extraEdges.length > 0 ? { extraEdges } : {}),
+          forceAgent: sources.forceAgent,
+          files: promptFiles,
+          ...(compositionPrompt ? { promptOverride: compositionPrompt } : {}),
+          runAgentFn: async ({ prompt }) => {
+            if (!opts.compositionRefresh) {
+              const cached = lookupCompositionCache(db, agentCacheKey, cacheVersion);
+              if (cached !== null) {
+                emitCompositionProgress('cache-hit');
+                return cached;
+              }
+            }
+            emitCompositionProgress(`agent:${resolverAgent}`);
+            const stdout = await spawnAgent(prompt);
+            if (lastAgentExitCode === 0) {
+              storeCompositionCache(db, agentCacheKey, cacheVersion, stdout);
+            }
+            return stdout;
+          },
+        });
+        emitCompositionProgress('done');
+
+        for (const w of result.warnings) process.stderr.write(`Warning: composition — ${w}\n`);
+        for (const c of result.conflicts) {
+          process.stderr.write(
+            `Warning: composition conflict on ${c.parent}→${c.child}: kept ${c.winner}, dropped ${c.loser}\n`,
+          );
+        }
+
+        validatedComponents = result.components as typeof validatedComponents;
+      }
+    }
+
+    storeRawComponents(db, sessionId, validatedComponents);
+
+    const cycleInput = validatedComponents.map((c) => ({
+      name: c.name,
+      slots: c.slots.map((s) => ({ name: s.name, allowedComponents: s.allowedComponents })),
+    }));
+    const cycles = findSlotCycles(cycleInput);
+    const withBreaks = cycles.map((cycle) => ({
+      ...cycle,
+      suggestedBreak: suggestCycleBreakEdge(cycle, cycles),
+    }));
+    storeSlotCycles(db, sessionId, withBreaks);
+
+    storeScannedFiles(
+      db,
+      sessionId,
+      sourceFiles.map((f) => relative(projectRoot, f)),
+    );
+    updateStep(db, stepId, 'complete', { sessionId });
+    enrichCommandResult({ extracted_component_count: validatedComponents.length });
+    db.close();
+
+    const allWarnings = [...extraction.warnings, ...filterWarnings];
+    process.stdout.write(`session=${sessionId}\n`);
+    const summaryLines = [
+      `Scanned ${pluralize(sourceFiles.length, 'source file')} in ${sourceDirectory}`,
+      `Extracted ${pluralize(extraction.components.length, 'component')}`,
+    ];
+    if (allWarnings.length > 0) {
+      summaryLines.push(`Warnings (${allWarnings.length}):`);
+      summaryLines.push(...allWarnings.map((w) => `- ${w}`));
+    } else {
+      summaryLines.push('Warnings: none');
+    }
+    process.stderr.write(summaryLines.join('\n') + '\n');
+    await exitWithAnalytics(0);
+  });
+}

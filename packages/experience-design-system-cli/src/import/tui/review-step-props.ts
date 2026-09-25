@@ -10,5 +10,4 @@ export type ReviewStepProps = {
   host?: string;
   tokensPath?: string;
   initialFinalizeError?: string | null;
-  allowDeletions?: boolean;
 };

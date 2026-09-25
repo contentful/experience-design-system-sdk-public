@@ -132,20 +132,6 @@ describe('appendRun', () => {
     expect(parsed.runs[0].tokensPath).toBe('/work/foo/dist/tokens.json');
     expect(parsed.runs[0].tokenSessionId).toBe('tokens-xyz');
   });
-
-  it('persists compositionMode so modify/replay can resume in the same mode', async () => {
-    mockReadFile.mockRejectedValueOnce(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
-    const rec = await appendRun(makeRecord({ compositionMode: 'composite' }));
-    expect(rec.compositionMode).toBe('composite');
-    const parsed = JSON.parse(String(mockWriteFile.mock.calls[0]![1]));
-    expect(parsed.runs[0].compositionMode).toBe('composite');
-  });
-
-  it('leaves compositionMode undefined when not provided (treated as atomic on resume)', async () => {
-    mockReadFile.mockRejectedValueOnce(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
-    const rec = await appendRun(makeRecord());
-    expect(rec.compositionMode).toBeUndefined();
-  });
 });
 
 describe('runs.json v1 -> v2 migration', () => {
@@ -312,10 +298,9 @@ describe('runs.json v2 -> v3 migration', () => {
     mockReadFile.mockResolvedValueOnce(JSON.stringify({ version: 2, runs: [v2Record] }));
     const got = await getRun('R2');
     expect(got.sourceFingerprint ?? null).toBeNull();
-    expect(got.savedFingerprint ?? null).toBeNull();
   });
 
-  it('writes v3 records with the new fingerprint fields populated', async () => {
+  it('writes v3 records with the source fingerprint populated', async () => {
     mockReadFile.mockRejectedValueOnce(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
     const rec = await appendRun(
       makeRecord({
@@ -325,10 +310,6 @@ describe('runs.json v2 -> v3 migration', () => {
           rawTokensMtime: null,
           rawTokensContentHash: null,
         },
-        savedFingerprint: {
-          componentsJsonHash: 'a'.repeat(64),
-          tokensJsonHash: null,
-        },
       }),
     );
     expect(rec.sourceFingerprint?.files['/p/Button.tsx']?.componentName).toBe('Button');
@@ -336,7 +317,6 @@ describe('runs.json v2 -> v3 migration', () => {
     const parsed = JSON.parse(String(body));
     expect(parsed.version).toBe(3);
     expect(parsed.runs[0].sourceFingerprint.files['/p/Button.tsx'].componentName).toBe('Button');
-    expect(parsed.runs[0].savedFingerprint.componentsJsonHash).toBe('a'.repeat(64));
   });
 
   it('normalizes missing fingerprint fields to null on write', async () => {
@@ -345,7 +325,6 @@ describe('runs.json v2 -> v3 migration', () => {
     const body = mockWriteFile.mock.calls[0]![1];
     const parsed = JSON.parse(String(body));
     expect(parsed.runs[0].sourceFingerprint).toBeNull();
-    expect(parsed.runs[0].savedFingerprint).toBeNull();
   });
 });
 

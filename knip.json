@@ -4,10 +4,5 @@
   "ignoreDependencies": ["@hey-api/client-fetch", "@vue/compiler-sfc", "svelte", "ts-morph"],
   "ignoreIssues": {
     "packages/experience-design-system-cli-v2/**": ["files"]
-  },
-  "workspaces": {
-    "tools/dsi-pty-harness": {
-      "entry": ["src/stub-agent.mjs", "test/**/*.{pty,validation}.test.mjs"]
-    }
   }
 }

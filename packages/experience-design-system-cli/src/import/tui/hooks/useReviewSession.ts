@@ -1,7 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
-import { readTokensFromPath } from '../../../apply/manifest.js';
+import { readTokensFromPath } from '../../../apply/tokens.js';
 import {
   loadCDFComponents,
   loadComponentRationale,
@@ -14,6 +14,7 @@ import {
 import { type TokenReviewToken } from '../../../analyze/select/tui/components/TokenReviewPanel.js';
 import type { ReviewComponentStatus } from '../../../analyze/select/types.js';
 import { createHistoryStack, type HistorySnapshot, type HistoryStack } from '../history.js';
+import { useReviewFinalizePreview } from '../useFinalizePreview.js';
 
 export type CdfReviewEntry = {
   key: string;
@@ -316,4 +317,52 @@ export function finalizeReviewSession(extractSessionId: string, components: CdfR
     rejected: rejectedKeys.length,
     unresolved: unresolvedKeys.length,
   };
+}
+
+export type UseReviewFinalizeOptions = {
+  showFinalize: boolean;
+  extractSessionId: string;
+  tokensPath: string;
+  spaceId: string;
+  environmentId: string;
+  cmaToken: string;
+  host: string;
+  components: CdfReviewEntry[];
+  onFinalize: (accepted: number, rejected: number, unresolved: number) => void;
+};
+
+/**
+ * Shared by both the composite and atomic generate-review steps: the Finalize
+ * dialog's scoped preview (`useReviewFinalizePreview`) plus the confirm
+ * handler that reclassifies rejected/unresolved components and reports the
+ * final counts back to the wizard.
+ */
+export function useReviewFinalize({
+  showFinalize,
+  extractSessionId,
+  tokensPath,
+  spaceId,
+  environmentId,
+  cmaToken,
+  host,
+  components,
+  onFinalize,
+}: UseReviewFinalizeOptions) {
+  const finalizePreview = useReviewFinalizePreview({
+    open: showFinalize,
+    extractSessionId,
+    tokensPath,
+    spaceId,
+    environmentId,
+    cmaToken,
+    host,
+    components,
+  });
+
+  const handleFinalizeConfirm = () => {
+    const counts = finalizeReviewSession(extractSessionId, components);
+    onFinalize(counts.accepted, counts.rejected, counts.unresolved);
+  };
+
+  return { finalizePreview, handleFinalizeConfirm };
 }

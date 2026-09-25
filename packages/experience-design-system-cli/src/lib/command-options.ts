@@ -14,27 +14,3 @@ export function addContentfulTargetOptions(cmd: Command): Command {
     .option('--cma-token <token>', 'CMA personal access token (or set CONTENTFUL_MANAGEMENT_TOKEN)')
     .option('--host <url>', 'Override API base URL');
 }
-
-export function addCompositionOptions(cmd: Command): Command {
-  return cmd
-    .option('--composite', 'Import embedded-component hierarchy (opt in; default is atomic)')
-    .option('--atomic', 'Import flat components with no embedded-component hierarchy (default)');
-}
-
-function collectOptionValue(value: string, previous: string[]): string[] {
-  return [...previous, value];
-}
-
-export function addSelectionOptions(cmd: Command): Command {
-  return cmd
-    .option('--select-all', 'Select all entities without launching TUI')
-    .option('--select <pattern>', 'Select entities by ID pattern (repeatable)', collectOptionValue, [])
-    .option('--deselect <pattern>', 'Deselect entities by ID pattern (repeatable)', collectOptionValue, []);
-}
-
-export function addAllowDeletionsOption(cmd: Command): Command {
-  return cmd.option(
-    '--allow-deletions',
-    'Allow the push to delete remote ComponentTypes/DesignTokens missing from the manifest (default: skip them)',
-  );
-}

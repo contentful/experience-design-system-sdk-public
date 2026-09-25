@@ -3,15 +3,13 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { Command } from 'commander';
-import { registerAnalyzeCommand } from './analyze/command.js';
-import { registerGenerateCommand } from './generate/command.js';
+import { registerInternalGenerateCommand } from './generate/command.js';
 import { registerApplyCommand } from './apply/command.js';
-import { registerSessionCommand } from './session/cli.js';
 import { registerPrintCommand } from './print/command.js';
 import { registerMapTokensCommand } from './map-tokens/command.js';
 import { registerImportCommand } from './import/command.js';
 import { registerSetupCommand } from './setup/command.js';
-import { registerRunsCommand } from './runs/ls-command.js';
+import { registerInternalExtractCommand } from './analyze/extract-command.js';
 import { beginCommand } from './lib/debug-preamble.js';
 import {
   completeActiveCommand,
@@ -107,16 +105,14 @@ export function createProgram(): Command {
     .description('Static analysis, validation, generation, and import of Contentful design system artifacts')
     .version(pkg.version, '--version', 'Print version number');
 
-  registerAnalyzeCommand(program);
-  registerGenerateCommand(program);
+  registerInternalGenerateCommand(program);
+  registerInternalExtractCommand(program);
   registerPrintCommand(program);
   registerMapTokensCommand(program);
   registerApplyCommand(program);
-  registerSessionCommand(program);
   registerImportCommand(program);
   registerImportV2Command(program);
   registerSetupCommand(program);
-  registerRunsCommand(program);
   registerBuildCommand(program);
 
   // Expose --debug on every subcommand. The flag is inherited automatically
@@ -153,7 +149,7 @@ export function createProgram(): Command {
       process.env.EDS_BEDROCK = '1';
     }
 
-    // Build a `command` label out of the actual subcommand chain (e.g. "apply push").
+    // Build a `command` label out of the actual subcommand chain (e.g. "apply").
     const chain: string[] = [];
     for (let c: Command | null = actionCommand; c && c.parent; c = c.parent) chain.unshift(c.name());
     const commandChain = chain.join(' ') || actionCommand.name();

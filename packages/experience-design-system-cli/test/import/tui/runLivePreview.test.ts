@@ -118,7 +118,7 @@ describe('runLivePreview', () => {
     expect(previewImportMock).not.toHaveBeenCalled();
   });
 
-  it('with all creds: builds manifest and calls previewImport', async () => {
+  it('with all creds: builds a CDF document and calls previewImport', async () => {
     await withTempDb(async ({ dbPath }) => {
       const sessionId = seed(dbPath);
       previewImportMock.mockResolvedValueOnce(SAMPLE_PREVIEW);
@@ -133,14 +133,14 @@ describe('runLivePreview', () => {
         generation: 7,
       });
       expect(previewImportMock).toHaveBeenCalledTimes(1);
-      const manifest = previewImportMock.mock.calls[0]?.[0] as Record<string, unknown>;
-      expect(manifest).toHaveProperty('componentsManifest');
+      const cdf = previewImportMock.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(cdf).toHaveProperty('$schema');
       expect(result.generation).toBe(7);
       expect(result.response).toBe(SAMPLE_PREVIEW);
     });
   });
 
-  it('deleteAllComponents with an empty accepted set previews an empty-but-present componentsManifest', async () => {
+  it('deleteAllComponents with an empty accepted set previews an empty-but-present CDF document', async () => {
     await withTempDb(async ({ dbPath }) => {
       // Empty session (no generated components) — the delete-all scenario.
       const db = openPipelineDb(dbPath);
@@ -159,14 +159,14 @@ describe('runLivePreview', () => {
         deleteAllComponents: true,
       });
       expect(previewImportMock).toHaveBeenCalledTimes(1);
-      const manifest = previewImportMock.mock.calls[0]?.[0] as { componentsManifest?: Record<string, unknown> };
+      const cdf = previewImportMock.mock.calls[0]?.[0] as Record<string, unknown>;
       // Present (so the server diffs delete-all) but with zero component entries.
-      expect(manifest.componentsManifest).toBeDefined();
-      expect(Object.keys(manifest.componentsManifest ?? {}).filter((k) => k !== '$schema')).toEqual([]);
+      expect(cdf).toBeDefined();
+      expect(Object.keys(cdf).filter((k) => k !== '$schema')).toEqual([]);
     });
   });
 
-  it('acceptedKeys narrows the previewed manifest to just the accepted components', async () => {
+  it('acceptedKeys narrows the previewed CDF document to just the accepted components', async () => {
     await withTempDb(async ({ dbPath }) => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract', inputPath: '/p' });
@@ -184,8 +184,8 @@ describe('runLivePreview', () => {
         generation: 1,
         acceptedKeys: new Set(['Button']),
       });
-      const manifest = previewImportMock.mock.calls[0]?.[0] as { componentsManifest?: Record<string, unknown> };
-      const keys = Object.keys(manifest.componentsManifest ?? {}).filter((k) => k !== '$schema');
+      const cdf = previewImportMock.mock.calls[0]?.[0] as Record<string, unknown>;
+      const keys = Object.keys(cdf).filter((k) => k !== '$schema');
       expect(keys).toEqual(['Button']);
     });
   });

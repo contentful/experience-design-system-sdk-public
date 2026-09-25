@@ -7,8 +7,11 @@ import {
   APPLY_ERROR_PREFIX,
 } from '../../src/apply/api-client.js';
 import type { ServerPreviewResponse, ApplyOperationResponse } from '@contentful/experience-design-system-types';
+import { CDF_SCHEMA_URL } from '@contentful/experience-design-system-types';
 import { formatApiError } from '../../src/lib/error-parser.js';
 import * as debugLogger from '../../src/lib/debug-logger.js';
+
+const EMPTY_CDF = { $schema: CDF_SCHEMA_URL } as const;
 
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
@@ -256,7 +259,37 @@ describe('ImportApiClient — validateToken', () => {
 });
 
 describe('ImportApiClient — previewImport', () => {
-  it('sends POST with manifest body and returns parsed response', async () => {
+  it('logs component and token counts from the CDF document', async () => {
+    const serverResponse: ServerPreviewResponse = {
+      components: { new: [], changed: [], unchanged: [], removed: [] },
+      tokens: { new: [], changed: [], unchanged: [], removed: [] },
+      taxonomies: { new: [], changed: [], unchanged: [], removed: [] },
+    };
+    const event = vi.fn();
+    vi.spyOn(debugLogger, 'getDebugLogger').mockReturnValue({ enabled: true, path: null, event });
+    mockFetch.mockResolvedValue(jsonResponse(200, serverResponse));
+
+    const client = createClient();
+    await client.previewImport({
+      $schema: CDF_SCHEMA_URL,
+      Button: { $type: 'component', $properties: {} },
+      Card: { $type: 'component', $properties: {} },
+      color: {
+        brand: {
+          primary: { $type: 'color', $value: '#000' },
+          secondary: { $type: 'color', $value: '#fff' },
+        },
+      },
+    });
+
+    expect(event).toHaveBeenCalledWith(
+      'apply',
+      'preview.request',
+      expect.objectContaining({ componentCount: 2, tokenCount: 2 }),
+    );
+  });
+
+  it('sends POST with the CDF document body and returns parsed response', async () => {
     const serverResponse: ServerPreviewResponse = {
       components: { new: [], changed: [], unchanged: [], removed: [] },
       tokens: { new: [], changed: [], unchanged: [], removed: [] },
@@ -265,9 +298,8 @@ describe('ImportApiClient — previewImport', () => {
     mockFetch.mockResolvedValue(jsonResponse(200, serverResponse));
 
     const client = createClient();
-    const result = await client.previewImport({
-      componentsManifest: { Button: {} },
-    });
+    const cdf = { $schema: CDF_SCHEMA_URL, Button: { $type: 'component' as const, $properties: {} } } as const;
+    const result = await client.previewImport(cdf);
 
     expect(result).toEqual(serverResponse);
     expect(mockFetch).toHaveBeenCalledTimes(1);
@@ -275,16 +307,14 @@ describe('ImportApiClient — previewImport', () => {
     expect(request.method).toBe('POST');
     const requestUrl = new URL(request.url);
     expect(requestUrl.pathname).toBe('/spaces/space1/environments/master/design_systems/imports/preview');
-    await expect(request.text()).resolves.toBe(
-      JSON.stringify({ componentsManifest: { Button: {} }, allowDeletions: false }),
-    );
+    await expect(request.text()).resolves.toBe(JSON.stringify(cdf));
   });
 
   it('throws ApiError on non-200 response', async () => {
     mockFetch.mockResolvedValue(textResponse(400, '{"message":"At least one manifest field required"}'));
 
     const client = createClient();
-    await expect(client.previewImport({})).rejects.toThrow(ApiError);
+    await expect(client.previewImport(EMPTY_CDF)).rejects.toThrow(ApiError);
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
@@ -300,7 +330,7 @@ describe('ImportApiClient — previewImport', () => {
       .mockResolvedValueOnce(jsonResponse(200, serverResponse));
 
     const client = createClient({ maxAttempts: 3, initialDelayMs: 10, maxDelayMs: 20, sleep });
-    await expect(client.previewImport({})).resolves.toEqual(serverResponse);
+    await expect(client.previewImport(EMPTY_CDF)).resolves.toEqual(serverResponse);
 
     expect(mockFetch).toHaveBeenCalledTimes(2);
     expect(sleep).toHaveBeenCalledWith(1000);
@@ -318,7 +348,7 @@ describe('ImportApiClient — previewImport', () => {
       .mockResolvedValueOnce(jsonResponse(200, serverResponse));
 
     const client = createClient({ maxAttempts: 2, initialDelayMs: 25, sleep });
-    await expect(client.previewImport({})).resolves.toEqual(serverResponse);
+    await expect(client.previewImport(EMPTY_CDF)).resolves.toEqual(serverResponse);
 
     expect(mockFetch).toHaveBeenCalledTimes(2);
     expect(sleep).toHaveBeenCalledWith(25);
@@ -329,7 +359,7 @@ describe('ImportApiClient — previewImport', () => {
     mockFetch.mockRejectedValue(new TypeError('socket closed'));
 
     const client = createClient({ maxAttempts: 3, initialDelayMs: 1, sleep });
-    const error = await client.previewImport({}).catch((caught: unknown) => caught);
+    const error = await client.previewImport(EMPTY_CDF).catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({ status: 0 });
@@ -345,7 +375,7 @@ describe('ImportApiClient — previewImport', () => {
     mockFetch.mockImplementation(() => textResponse(503, body));
 
     const client = createClient({ maxAttempts: 2, initialDelayMs: 1, sleep: vi.fn(async () => undefined) });
-    const error = await client.previewImport({}).catch((caught: unknown) => caught);
+    const error = await client.previewImport(EMPTY_CDF).catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).body).toBe(body);
@@ -373,7 +403,7 @@ describe('ImportApiClient — previewImport', () => {
       .mockResolvedValueOnce(jsonResponse(200, serverResponse));
 
     const client = createClient({ maxAttempts: 4, initialDelayMs: 10, maxDelayMs: 15, sleep });
-    await client.previewImport({});
+    await client.previewImport(EMPTY_CDF);
 
     expect(sleep.mock.calls).toEqual([[10], [15], [15]]);
   });
@@ -387,7 +417,10 @@ describe('ImportApiClient — previewImport', () => {
     mockFetch.mockResolvedValue(jsonResponse(200, serverResponse));
 
     const client = createClient();
-    await client.previewImport({ tokensManifest: {} });
+    await client.previewImport({
+      $schema: CDF_SCHEMA_URL,
+      color: { brand: { primary: { $type: 'color', $value: '#000' } } },
+    });
 
     const request = mockFetch.mock.calls[0][0] as Request;
     expect(request.headers.get('x-contentful-organization-id')).toBeNull();
@@ -422,7 +455,7 @@ describe('ImportApiClient — previewImport', () => {
     mockFetch.mockResolvedValue(jsonResponse(200, serverResponse));
 
     const client = createClient();
-    const result = await client.previewImport({ componentsManifest: {} });
+    const result = await client.previewImport({ $schema: CDF_SCHEMA_URL });
     const changes = result.components.changed[0].changeClassification?.breakingChanges ?? [];
     expect(changes).toEqual([
       { propertyId: 'variant', reason: 'removed' },
@@ -430,7 +463,7 @@ describe('ImportApiClient — previewImport', () => {
     ]);
   });
 
-  it('sends allowDeletions=true in the preview request body when passed', async () => {
+  it('does not send deletion controls in the preview request body', async () => {
     const serverResponse: ServerPreviewResponse = {
       components: { new: [], changed: [], unchanged: [], removed: [] },
       tokens: { new: [], changed: [], unchanged: [], removed: [] },
@@ -439,13 +472,13 @@ describe('ImportApiClient — previewImport', () => {
     mockFetch.mockResolvedValue(jsonResponse(200, serverResponse));
 
     const client = createClient();
-    await client.previewImport({ componentsManifest: { Button: {} } }, true);
+    await client.previewImport({ $schema: CDF_SCHEMA_URL, Button: { $type: 'component', $properties: {} } });
     const request = mockFetch.mock.calls[0][0] as Request;
     const callBody = JSON.parse(await request.text());
-    expect(callBody.allowDeletions).toBe(true);
+    expect(callBody.allowDeletions).toBeUndefined();
   });
 
-  it('defaults to allowDeletions=false in the preview request body when omitted', async () => {
+  it('omits allowDeletions from the preview request body', async () => {
     const serverResponse: ServerPreviewResponse = {
       components: { new: [], changed: [], unchanged: [], removed: [] },
       tokens: { new: [], changed: [], unchanged: [], removed: [] },
@@ -454,15 +487,15 @@ describe('ImportApiClient — previewImport', () => {
     mockFetch.mockResolvedValue(jsonResponse(200, serverResponse));
 
     const client = createClient();
-    await client.previewImport({ componentsManifest: { Button: {} } });
+    await client.previewImport({ $schema: CDF_SCHEMA_URL, Button: { $type: 'component', $properties: {} } });
     const request = mockFetch.mock.calls[0][0] as Request;
     const callBody = JSON.parse(await request.text());
-    expect(callBody.allowDeletions).toBe(false);
+    expect(callBody.allowDeletions).toBeUndefined();
   });
 });
 
 describe('ImportApiClient — applyImport', () => {
-  it('sends POST with manifest + acknowledgeBreakingChanges + allowDeletions and returns 202 response', async () => {
+  it('sends POST with manifest + acknowledgeBreakingChanges and returns 202 response', async () => {
     const opResponse: ApplyOperationResponse = {
       sys: {
         type: 'ApplyOperation',
@@ -477,18 +510,18 @@ describe('ImportApiClient — applyImport', () => {
 
     const client = createClient();
     const result = await client.applyImport(
-      { componentsManifest: { Button: {} } },
-      { acknowledgeBreakingChanges: true, allowDeletions: true },
+      { $schema: CDF_SCHEMA_URL, Button: { $type: 'component', $properties: {} } },
+      { acknowledgeBreakingChanges: true },
     );
 
     expect(result).toEqual(opResponse);
     const request = mockFetch.mock.calls[0][0] as Request;
     const callBody = JSON.parse(await request.text());
     expect(callBody.acknowledgeBreakingChanges).toBe(true);
-    expect(callBody.allowDeletions).toBe(true);
+    expect(callBody.allowDeletions).toBeUndefined();
   });
 
-  it('defaults allowDeletions to false in the request body when omitted', async () => {
+  it('omits allowDeletions from the request body when omitted', async () => {
     const opResponse: ApplyOperationResponse = {
       sys: {
         type: 'ApplyOperation',
@@ -502,11 +535,14 @@ describe('ImportApiClient — applyImport', () => {
     mockFetch.mockResolvedValue(jsonResponse(202, opResponse));
 
     const client = createClient();
-    await client.applyImport({ componentsManifest: { Button: {} } }, { acknowledgeBreakingChanges: false });
+    await client.applyImport(
+      { $schema: CDF_SCHEMA_URL, Button: { $type: 'component', $properties: {} } },
+      { acknowledgeBreakingChanges: false },
+    );
 
     const request = mockFetch.mock.calls[0][0] as Request;
     const callBody = JSON.parse(await request.text());
-    expect(callBody.allowDeletions).toBe(false);
+    expect(callBody.allowDeletions).toBeUndefined();
   });
 
   it('throws ApiError with gate details on 422', async () => {
@@ -523,7 +559,10 @@ describe('ImportApiClient — applyImport', () => {
 
     const client = createClient();
     await expect(
-      client.applyImport({ componentsManifest: { Button: {} } }, { acknowledgeBreakingChanges: false }),
+      client.applyImport(
+        { $schema: CDF_SCHEMA_URL, Button: { $type: 'component', $properties: {} } },
+        { acknowledgeBreakingChanges: false },
+      ),
     ).rejects.toThrow(ApiError);
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
@@ -534,7 +573,7 @@ describe('ImportApiClient — applyImport', () => {
 
     const client = createClient({ maxAttempts: 3, sleep: vi.fn(async () => undefined) });
     const error = await client
-      .applyImport({}, { acknowledgeBreakingChanges: false })
+      .applyImport(EMPTY_CDF, { acknowledgeBreakingChanges: false })
       .catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(ApiError);
@@ -552,7 +591,7 @@ describe('ImportApiClient — applyImport', () => {
 
     const client = createClient({ maxAttempts: 3, sleep: vi.fn(async () => undefined) });
     const error = await client
-      .applyImport({}, { acknowledgeBreakingChanges: false })
+      .applyImport(EMPTY_CDF, { acknowledgeBreakingChanges: false })
       .catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(ApiError);
@@ -838,7 +877,7 @@ describe('phase-prefix constants — orchestrator contract', () => {
 
     const client = createClient();
     try {
-      await client.previewImport({});
+      await client.previewImport(EMPTY_CDF);
     } catch (e) {
       expect(e).toBeInstanceOf(ApiError);
       expect((e as ApiError).message).toMatch(new RegExp(`^${PREVIEW_ERROR_PREFIX}`));
@@ -858,7 +897,7 @@ describe('phase-prefix constants — orchestrator contract', () => {
 
     const client = createClient();
     try {
-      await client.applyImport({}, { acknowledgeBreakingChanges: false });
+      await client.applyImport(EMPTY_CDF, { acknowledgeBreakingChanges: false });
     } catch (e) {
       expect(e).toBeInstanceOf(ApiError);
       expect((e as ApiError).message).toMatch(new RegExp(`^${APPLY_ERROR_PREFIX}`));

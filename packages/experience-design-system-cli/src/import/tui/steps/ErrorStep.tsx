@@ -8,10 +8,21 @@ type ErrorStepProps = {
   message: string;
   onExit: () => void;
   onRetryCredentials?: () => void;
+  onAcknowledgeBreakingChanges?: () => void;
 };
 
-export function ErrorStep({ stepName, message, onExit, onRetryCredentials }: ErrorStepProps): React.ReactElement {
+export function ErrorStep({
+  stepName,
+  message,
+  onExit,
+  onRetryCredentials,
+  onAcknowledgeBreakingChanges,
+}: ErrorStepProps): React.ReactElement {
   useImmediateInput((input, key) => {
+    if (key.return && onAcknowledgeBreakingChanges) {
+      onAcknowledgeBreakingChanges();
+      return;
+    }
     if (input === 'r' && onRetryCredentials) {
       onRetryCredentials();
       return;
@@ -28,7 +39,14 @@ export function ErrorStep({ stepName, message, onExit, onRetryCredentials }: Err
       </Text>
       <Text color={PALETTE.error}>{message}</Text>
       <Box gap={3} marginTop={1}>
-        <Text dimColor>[Enter / q] Exit</Text>
+        {onAcknowledgeBreakingChanges ? (
+          <>
+            <Text dimColor>[Enter] Acknowledge and apply</Text>
+            <Text dimColor>[Esc / q] Exit</Text>
+          </>
+        ) : (
+          <Text dimColor>[Enter / q] Exit</Text>
+        )}
         {onRetryCredentials && <Text dimColor>[r] Re-enter credentials</Text>}
       </Box>
     </Box>

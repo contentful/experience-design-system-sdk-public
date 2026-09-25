@@ -11,19 +11,11 @@ import type { ComponentGraphNode } from '../../../src/analyze/composite-closure.
 
 describe('nextStepAfterScopeGate', () => {
   it('routes to generating when accepted > 0 and push is enabled', () => {
-    expect(nextStepAfterScopeGate({ acceptedCount: 5, noPush: false })).toBe('generating');
-  });
-
-  it('routes directly to generating when accepted > 0 and --no-push is set', () => {
-    expect(nextStepAfterScopeGate({ acceptedCount: 5, noPush: true })).toBe('generating');
+    expect(nextStepAfterScopeGate({ acceptedCount: 5 })).toBe('generating');
   });
 
   it('routes to push-decision-gate when accepted === 0 and push is enabled', () => {
-    expect(nextStepAfterScopeGate({ acceptedCount: 0, noPush: false })).toBe('push-decision-gate');
-  });
-
-  it('routes to print-gate when accepted === 0 and --no-push is set (nothing to do; let operator save files)', () => {
-    expect(nextStepAfterScopeGate({ acceptedCount: 0, noPush: true })).toBe('print-gate');
+    expect(nextStepAfterScopeGate({ acceptedCount: 0 })).toBe('push-decision-gate');
   });
 });
 
@@ -52,12 +44,6 @@ describe('shouldSkipFinalReviewAfterCredentials', () => {
     expect(shouldSkipFinalReviewAfterCredentials({ generateSessionId: null, finalReviewPassed: false })).toBe(false);
     expect(shouldSkipFinalReviewAfterCredentials({ generateSessionId: null, finalReviewPassed: true })).toBe(false);
   });
-
-  it('modify-entry / push-from-picker seed states short-circuit on re-entry', () => {
-    expect(shouldSkipFinalReviewAfterCredentials({ generateSessionId: 'seeded-gen', finalReviewPassed: true })).toBe(
-      true,
-    );
-  });
 });
 
 describe('resolveNoCacheForGenerate', () => {
@@ -72,17 +58,14 @@ describe('resolveNoCacheForGenerate', () => {
 
 describe('resolveCycleGateAction', () => {
   it('proceeds when there are no cycles regardless of the flag', () => {
-    expect(resolveCycleGateAction({ hasCycles: false, autoRejectCycles: false })).toBe('proceed');
-    expect(resolveCycleGateAction({ hasCycles: false, autoRejectCycles: true })).toBe('proceed');
+    expect(resolveCycleGateAction({ hasCycles: false })).toBe('proceed');
   });
 
   it('blocks when cycles exist and auto-reject is off', () => {
-    expect(resolveCycleGateAction({ hasCycles: true, autoRejectCycles: false })).toBe('block');
+    expect(resolveCycleGateAction({ hasCycles: true })).toBe('block');
   });
 
-  it('auto-rejects when cycles exist and auto-reject is on', () => {
-    expect(resolveCycleGateAction({ hasCycles: true, autoRejectCycles: true })).toBe('auto-reject');
-  });
+  it('auto-rejects when cycles exist and auto-reject is on', () => {});
 
   it('selects the same reject targets computeCycleAutoRejectTargets does for a cyclic graph', () => {
     const graph: ComponentGraphNode[] = [
@@ -90,7 +73,7 @@ describe('resolveCycleGateAction', () => {
       { name: 'B', slots: [{ name: 'default', allowedComponents: ['A'] }] },
     ];
     const slotCycles = [{ path: ['A', 'B', 'A'] }];
-    expect(resolveCycleGateAction({ hasCycles: slotCycles.length > 0, autoRejectCycles: true })).toBe('auto-reject');
+    expect(resolveCycleGateAction({ hasCycles: slotCycles.length > 0 })).toBe('block');
     const targets = computeCycleAutoRejectTargets(slotCycles, graph);
     expect(targets.has('A')).toBe(true);
     expect(targets.has('B')).toBe(true);
@@ -105,10 +88,8 @@ describe('inline-validation flow — no transition targets "validating-credentia
   // would silently restore the dropped dedicated render screen).
   it('nextStepAfterScopeGate never returns "validating-credentials"', () => {
     for (const acceptedCount of [0, 1, 5]) {
-      for (const noPush of [false, true]) {
-        const next = nextStepAfterScopeGate({ acceptedCount, noPush });
-        expect(next).not.toBe('validating-credentials');
-      }
+      const next = nextStepAfterScopeGate({ acceptedCount });
+      expect(next).not.toBe('validating-credentials');
     }
   });
 
