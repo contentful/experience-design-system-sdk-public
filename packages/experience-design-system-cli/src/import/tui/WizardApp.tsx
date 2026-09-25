@@ -197,6 +197,20 @@ export function buildGenerateComponentsArgs(opts: {
   return args;
 }
 
+export function buildGenerateTokensArgs(opts: {
+  rawTokensPath: string;
+  agent: string;
+  model?: string;
+  bedrock?: boolean;
+  noCache?: boolean;
+}): string[] {
+  const args = [findCliPath(), '__generate', 'tokens', '--agent', opts.agent, '--raw-tokens', opts.rawTokensPath];
+  if (opts.model) args.push('--model', opts.model);
+  if (opts.bedrock) args.push('--bedrock');
+  if (opts.noCache) args.push('--no-cache');
+  return args;
+}
+
 export function buildMapTokensArgs(opts: {
   sessionId: string;
   agent: string;
@@ -500,9 +514,13 @@ export function WizardApp({
   };
 
   const runGenerateTokens = async (rawTokensPath: string, outDir: string) => {
-    const tokenArgs = [findCliPath(), '__generate', 'tokens', '--agent', state.agent, '--raw-tokens', rawTokensPath];
-    if (state.agentModel) tokenArgs.push('--model', state.agentModel);
-    if (state.bedrock) tokenArgs.push('--bedrock');
+    const tokenArgs = buildGenerateTokensArgs({
+      rawTokensPath,
+      agent: state.agent,
+      ...(state.agentModel ? { model: state.agentModel } : {}),
+      ...(state.bedrock ? { bedrock: true } : {}),
+      noCache: effectiveNoCache,
+    });
     const result = await runSpawnedCli(tokenArgs);
     if (result.exitCode !== 0) {
       update({
@@ -1467,6 +1485,12 @@ export function WizardApp({
       if (tokenReuseChecked.current) return; // already checked or user chose regenerate
       tokenReuseChecked.current = true;
       const existingTokensPath = join(state.outDir, 'tokens.json');
+      if (effectiveNoCache) {
+        void runAgentAuthCheck('generating-tokens').then((ok) => {
+          if (ok) void runGenerateTokens(state.rawTokensPath, state.outDir);
+        });
+        return;
+      }
       (async () => {
         try {
           await access(existingTokensPath);

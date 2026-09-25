@@ -1,9 +1,29 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildGenerateTokensArgs,
   buildGenerateComponentsArgs,
   buildMapTokensArgs,
   shouldRunMapTokens,
 } from '../../../src/import/tui/WizardApp.js';
+
+describe('wizard generate-tokens cache', () => {
+  it('defaults to cache-on (no --no-cache flag)', () => {
+    const args = buildGenerateTokensArgs({
+      rawTokensPath: '/tmp/raw-tokens.scss',
+      agent: 'claude',
+    });
+    expect(args).not.toContain('--no-cache');
+  });
+
+  it('passes --no-cache when noCache is true', () => {
+    const args = buildGenerateTokensArgs({
+      rawTokensPath: '/tmp/raw-tokens.scss',
+      agent: 'claude',
+      noCache: true,
+    });
+    expect(args).toContain('--no-cache');
+  });
+});
 
 describe('wizard generate-components cache', () => {
   it('defaults to cache-on (no --no-cache flag)', () => {
