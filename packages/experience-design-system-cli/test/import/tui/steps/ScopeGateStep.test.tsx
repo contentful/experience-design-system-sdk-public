@@ -270,7 +270,7 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
     });
   });
 
-  it('shows a "nothing selected" hint at mount (everything defaults to undecided)', () => {
+  it('shows a "no components accepted" hint at mount (everything defaults to undecided)', () => {
     const anySet = [
       { name: 'A', componentId: 'c0' },
       { name: 'B', componentId: 'c1' },
@@ -279,13 +279,13 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       <ScopeGateStep components={anySet} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
     );
     const out = lastFrame() ?? '';
-    expect(out).toContain('nothing selected');
+    expect(out).toContain('no components accepted');
     expect(out).toContain('[Y]');
     expect(out).toContain('[A]');
     expect(out).toContain('[a]');
   });
 
-  it('hides the "nothing selected" hint once at least one component is accepted', () => {
+  it('hides the "no components accepted" hint once at least one component is accepted', () => {
     const anySet = [
       { name: 'A', componentId: 'c0' },
       { name: 'B', componentId: 'c1' },
@@ -295,7 +295,7 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
     );
     stdin.write('a');
     const out = lastFrame() ?? '';
-    expect(out).not.toContain('nothing selected');
+    expect(out).not.toContain('no components accepted');
   });
 
   describe('D2 — per-row cascade selection', () => {
@@ -1172,12 +1172,12 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       },
     ];
 
-    it('mount defaults — nothing accepted, NO auto-reject (ADR-0010 §Part 1)', () => {
+    it('mount defaults — no components accepted, NO auto-reject (ADR-0010 §Part 1)', () => {
       const onConfirm = vi.fn();
       const { lastFrame, stdin } = render(
         <ScopeGateStep components={SCENARIO_A} onConfirm={onConfirm} onQuit={() => {}} />,
       );
-      expect(lastFrame() ?? '').toContain('nothing selected');
+      expect(lastFrame() ?? '').toContain('no components accepted');
       stdin.write('f');
       const arg = onConfirm.mock.calls[0][0];
       expect(arg.accepted).toEqual([]);
@@ -1224,13 +1224,13 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       },
     ];
 
-    it('mount defaults — nothing accepted; cycle detected but NO auto-reject', () => {
+    it('mount defaults — no components accepted; cycle detected but NO auto-reject', () => {
       const onConfirm = vi.fn();
       const { lastFrame, stdin } = render(
         <ScopeGateStep components={SCENARIO_B} onConfirm={onConfirm} onQuit={() => {}} />,
       );
       const frame = lastFrame() ?? '';
-      expect(frame).toContain('nothing selected');
+      expect(frame).toContain('no components accepted');
       expect(frame).toContain('[c]');
       stdin.write('f');
       const arg = onConfirm.mock.calls[0][0];
@@ -1284,7 +1284,7 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       const { lastFrame, stdin } = render(
         <ScopeGateStep components={SCENARIO_C} onConfirm={onConfirm} onQuit={() => {}} />,
       );
-      expect(lastFrame() ?? '').toContain('nothing selected');
+      expect(lastFrame() ?? '').toContain('no components accepted');
       stdin.write('f');
       const arg = onConfirm.mock.calls[0][0];
       expect(arg.accepted).toEqual([]);
@@ -1600,8 +1600,8 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
         );
         const before = stripAnsi(lastFrame() ?? '');
         expect(before).toContain('Hero');
-        expect(before).toContain('Selected Components');
-        expect(before).toContain('Selected Composite Components');
+        expect(before).toContain('Accepted Components');
+        expect(before).toContain('Accepted Composite Components');
 
         stdin.write('x');
         await new Promise((r) => setTimeout(r, 30));
@@ -1610,8 +1610,8 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
         expect(open).toContain('BadgeIcon');
         expect(open).toContain('DivWrapper');
         expect(open).not.toContain('Hero');
-        expect(open).toContain('Selected Components');
-        expect(open).toContain('Selected Composite Components');
+        expect(open).toContain('Accepted Components');
+        expect(open).toContain('Accepted Composite Components');
 
         stdin.write('\x1b');
         await new Promise((r) => setTimeout(r, 30));

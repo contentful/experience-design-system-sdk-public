@@ -71,7 +71,7 @@ const HELP_SECTIONS: HelpSection[] = [
     entries: [
       { keys: '↑ / ↓', label: 'Move cursor' },
       { keys: 'Tab / Shift-Tab', label: 'Switch column' },
-      { keys: 'Enter', label: 'Focus row in main column' },
+      { keys: 'Enter', label: 'Jump to row in main column' },
     ],
   },
   {
@@ -816,7 +816,7 @@ export function ScopeGateStep({
       {nothingIncluded && (
         <Box marginTop={1}>
           <Text color={PALETTE.warning}>
-            nothing selected — press <Text color={PALETTE.info}>[Y]</Text> to accept all non-flagged,{' '}
+            no components accepted — press <Text color={PALETTE.info}>[Y]</Text> to accept all non-flagged,{' '}
             <Text color={PALETTE.info}>[A]</Text> to toggle all, or <Text color={PALETTE.info}>[a]</Text> to accept the
             highlighted row
           </Text>
@@ -989,7 +989,7 @@ export function ScopeGateStep({
         {legendEntry('[?]', 'help')}
         {legendEntry('[q]', 'quit')}
         {columnPlan.layout === 'three-column' && legendEntry('[Tab/Shift-Tab]', 'switch column')}
-        {columnPlan.layout === 'three-column' && legendEntry('[Enter]', 'focus in main')}
+        {columnPlan.layout === 'three-column' && legendEntry('[Enter]', 'jump to row in main')}
         {hasAnyAi && legendEntry('[x]', 'review flags', aiRationalePanel.isOpen)}
         {hasAnyAi && (
           <Text>
@@ -1179,7 +1179,7 @@ function AddedComponentsColumn(props: {
   aiFlaggedByKey?: Map<string, boolean>;
   visibleCount: number;
 }): React.ReactElement {
-  return <AddedColumn title="Selected Components" {...props} />;
+  return <AddedColumn title="Accepted Components" {...props} />;
 }
 
 function AddedGroupsColumn(props: {
@@ -1192,7 +1192,7 @@ function AddedGroupsColumn(props: {
 }): React.ReactElement {
   return (
     <AddedColumn
-      title="Selected Composite Components"
+      title="Accepted Composite Components"
       {...props}
       renderSuffix={(entry, style) => {
         const suffix = ` (${entry.depCount} dep${entry.depCount === 1 ? '' : 's'})`;
