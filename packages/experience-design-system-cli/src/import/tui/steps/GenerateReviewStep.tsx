@@ -34,7 +34,6 @@ import {
 import { formatCyclePathSegments, findSlotCycles, suggestCycleBreakEdge } from '../../../analyze/cycle-detection.js';
 import { followCycleScroll } from '../cycle-panel-scroll.js';
 import type { ReviewComponentStatus } from '../../../analyze/select/types.js';
-import { useReviewFinalizePreview } from '../useFinalizePreview.js';
 import { fuzzyMatches } from '../../../analyze/fuzzy-search.js';
 import {
   computeDirectNeighborhood,
@@ -74,8 +73,8 @@ import {
 import { ReviewLoadError, ReviewLoadingState, ReviewStatusBar } from '../components/ReviewStatus.js';
 import {
   createReviewHistorySnapshot,
-  finalizeReviewSession,
   loadReviewSessionState,
+  useReviewFinalize,
   useReviewHistory,
   useReviewMetadata,
   useReviewSession,
@@ -458,8 +457,8 @@ export function GenerateReviewStep({
     },
   });
 
-  const finalizePreview = useReviewFinalizePreview({
-    open: showFinalize,
+  const { finalizePreview, handleFinalizeConfirm } = useReviewFinalize({
+    showFinalize,
     extractSessionId,
     tokensPath,
     spaceId,
@@ -467,12 +466,8 @@ export function GenerateReviewStep({
     cmaToken,
     host,
     components,
+    onFinalize,
   });
-
-  const handleFinalizeConfirm = () => {
-    const counts = finalizeReviewSession(extractSessionId, components);
-    onFinalize(counts.accepted, counts.rejected, counts.unresolved);
-  };
 
   const recomputeCycles = (currentComponents: CdfReviewEntry[]): void => {
     try {

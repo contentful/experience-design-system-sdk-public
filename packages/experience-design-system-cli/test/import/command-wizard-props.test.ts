@@ -37,14 +37,8 @@ describe('import command wizard prop forwarding', () => {
       spaceId: 'space-1',
       environmentId: 'master',
       cmaToken: 'token',
-      selectPromptPath: '/tmp/select.md',
       generatePromptPath: '/tmp/generate.md',
     });
-  });
-
-  it('forwards selectPromptPath from credentials to WizardApp', async () => {
-    const props = await runImport();
-    expect(props.selectPromptPath).toBe('/tmp/select.md');
   });
 
   it('forwards generatePromptPath from credentials to WizardApp', async () => {

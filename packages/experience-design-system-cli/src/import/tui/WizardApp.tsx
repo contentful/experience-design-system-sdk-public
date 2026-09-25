@@ -60,11 +60,9 @@ import {
   backfillUnclassifiedProps,
 } from '../../session/db.js';
 import { ScopeGateHost, type ScopeComponent } from './scope-gate-host.js';
-import { mergeAiDecisions } from './merge-ai-decisions.js';
 import { FinalReviewHost } from './final-review-host.js';
 import type { CompositionMode } from '../../lib/composition-mode.js';
 import { runScopeGate } from './runScopeGate.js';
-import { buildAutoFilterErrorTail } from './auto-filter-error.js';
 import { checkAgentAuth, type AgentName } from '@contentful/experience-design-system-generation';
 import { normalizePath } from '../path-utils.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../../host-utils.js';
@@ -161,10 +159,6 @@ type WizardState = {
   authCheckStepNumber: number;
   previewValidationErrors: PreviewValidationError[];
   previewValidationMissingNames: string[];
-  aiFilterStatus: 'idle' | 'running' | 'complete' | 'cancelled' | 'failed';
-  aiFilterProgress: { done: number; total: number } | null;
-  aiDecisions: Record<string, { decision: 'accepted' | 'rejected' | 'failed'; reason: string }>;
-  aiFilterError: string | null;
   credentialsValidating: boolean;
   generatePrefetchStatus: 'idle' | 'running' | 'complete' | 'failed';
   generatePrefetchError: string | null;
@@ -181,62 +175,6 @@ type WizardState = {
   finalizeErrorBanner: string | null;
   finalReviewPassed: boolean;
 };
-
-export function buildSelectAgentArgs(opts: {
-  sessionId: string;
-  agent: string;
-  model?: string;
-  bedrock?: boolean;
-  selectPromptPath?: string;
-  promptOverrides?: string[];
-  noCache?: boolean;
-  existingEntitiesPath?: string;
-}): string[] {
-  const args = ['analyze', 'select-agent', '--agent', opts.agent, '--session', opts.sessionId, '--exclude-invalid'];
-  if (opts.model) args.push('--model', opts.model);
-  if (opts.bedrock) args.push('--bedrock');
-  if (opts.selectPromptPath) args.push('--select-prompt-path', opts.selectPromptPath);
-  for (const prompt of opts.promptOverrides ?? []) args.push('--prompt', prompt);
-  if (opts.noCache) args.push('--no-cache');
-  if (opts.existingEntitiesPath) args.push('--existing-entities-path', opts.existingEntitiesPath);
-  return args;
-}
-
-export type AutoFilterProgress = {
-  n: number;
-  total: number;
-  decision: 'accepted' | 'rejected' | 'failed';
-  name: string;
-  reason: string;
-};
-
-export function parseAutoFilterProgressLine(line: string): AutoFilterProgress | null {
-  const prefix = 'progress=select-agent:';
-  if (!line.startsWith(prefix)) return null;
-  const rest = line.slice(prefix.length);
-  const parts = rest.split(':');
-  if (parts.length < 4) return null;
-  const [counter, decision, name, ...reasonParts] = parts;
-  if (!counter) return null;
-  const counterMatch = /^(\d+)\/(\d+)$/.exec(counter);
-  if (!counterMatch) return null;
-  if (decision !== 'accepted' && decision !== 'rejected' && decision !== 'failed') return null;
-  if (!name) return null;
-  const encodedReason = reasonParts.join(':');
-  let reason = '';
-  try {
-    reason = decodeURIComponent(encodedReason);
-  } catch {
-    reason = encodedReason;
-  }
-  return {
-    n: Number(counterMatch[1]),
-    total: Number(counterMatch[2]),
-    decision,
-    name,
-    reason,
-  };
-}
 
 export function buildGenerateComponentsArgs(opts: {
   sessionId: string;
@@ -362,9 +300,7 @@ export type WizardAppProps = {
   compositionMap?: string;
   promptOverrides?: string[];
   noCache?: boolean;
-  autoFilter?: boolean;
   livePreview?: boolean;
-  selectPromptPath?: string;
   generatePromptPath?: string;
   skipMapTokens?: boolean;
   initialRawTokensPath?: string;
@@ -384,9 +320,7 @@ export function WizardApp({
   compositionMap,
   promptOverrides,
   noCache = false,
-  autoFilter = true,
   livePreview = true,
-  selectPromptPath,
   generatePromptPath,
   skipMapTokens = false,
   initialRawTokensPath,
@@ -414,9 +348,6 @@ export function WizardApp({
   // empty-but-present document → server deletes all. A ref (not state) so
   // the async preview/push closures see the confirmed value.
   const allowEmptyDeleteAllRef = useRef(false);
-
-  const autoFilterChildRef = useRef<import('node:child_process').ChildProcess | null>(null);
-  const autoFilterDonePromiseRef = useRef<Promise<void> | null>(null);
 
   const generateChildRef = useRef<import('node:child_process').ChildProcess | null>(null);
   const generatePromiseRef = useRef<Promise<{
@@ -477,10 +408,6 @@ export function WizardApp({
     authCheckStepNumber: 1,
     previewValidationErrors: [],
     previewValidationMissingNames: [],
-    aiFilterStatus: 'idle',
-    aiFilterProgress: null,
-    aiDecisions: {},
-    aiFilterError: null,
     credentialsValidating: false,
     generatePrefetchStatus: 'idle',
     generatePrefetchError: null,
@@ -697,7 +624,7 @@ export function WizardApp({
   const runExtract = async (projectPath: string) => {
     const outDir = join(resolve(projectPath), '.contentful');
     update({ step: 'extracting', outDir, extractProgress: null, compositionPhase: null });
-    const extractArgs = [findCliPath(), 'analyze', 'extract', '--project', projectPath];
+    const extractArgs = [findCliPath(), '__extract', '--project', projectPath];
     if (compositionMode === 'composite') {
       extractArgs.push('--composite');
       if (noCache) extractArgs.push('--composition-refresh');
@@ -769,101 +696,7 @@ export function WizardApp({
     update({
       step: 'scope-gate',
       extractSessionId,
-      aiFilterStatus: autoFilter ? 'running' : 'idle',
-      aiFilterProgress: autoFilter ? { done: 0, total: extractedCount } : null,
-      aiDecisions: {},
-      aiFilterError: null,
     });
-    if (autoFilter && extractSessionId) {
-      autoFilterDonePromiseRef.current = runAutoFilter(extractSessionId);
-    }
-  };
-
-  const runAutoFilter = (sessionId: string): Promise<void> => {
-    return new Promise((res) => {
-      const args = buildSelectAgentArgs({
-        sessionId,
-        agent: state.agent,
-        ...(state.agentModel ? { model: state.agentModel } : {}),
-        ...(state.bedrock ? { bedrock: true } : {}),
-        selectPromptPath,
-        promptOverrides,
-        noCache,
-        ...(state.existingEntitiesPath ? { existingEntitiesPath: state.existingEntitiesPath } : {}),
-      });
-      const child = spawn('node', [findCliPath(), ...args]);
-      autoFilterChildRef.current = child;
-      let stderr = '';
-      child.stderr.on('data', (d: Buffer) => {
-        const chunk = String(d);
-        stderr += chunk;
-        for (const line of chunk.split('\n')) {
-          const trimmed = line.trim();
-          if (!trimmed) continue;
-          const parsed = parseAutoFilterProgressLine(trimmed);
-          if (!parsed) continue;
-          setState((prev) => ({
-            ...prev,
-            aiFilterProgress: { done: parsed.n, total: parsed.total },
-            aiDecisions: {
-              ...prev.aiDecisions,
-              [parsed.name]: { decision: parsed.decision, reason: parsed.reason },
-            },
-          }));
-        }
-      });
-      child.on('close', (code, signal) => {
-        autoFilterChildRef.current = null;
-        if (signal === 'SIGTERM') {
-          setState((prev) => ({ ...prev, aiFilterStatus: 'cancelled' }));
-        } else if ((code ?? 0) !== 0) {
-          const tail = buildAutoFilterErrorTail(stderr);
-          setState((prev) => ({
-            ...prev,
-            aiFilterStatus: 'failed',
-            aiFilterError: tail || `exit ${code}`,
-          }));
-        } else {
-          setState((prev) => ({ ...prev, aiFilterStatus: 'complete' }));
-        }
-        res();
-      });
-      child.on('error', (err) => {
-        autoFilterChildRef.current = null;
-        setState((prev) => ({
-          ...prev,
-          aiFilterStatus: 'failed',
-          aiFilterError: err.message,
-        }));
-        res();
-      });
-    });
-  };
-
-  const cancelAutoFilter = (): void => {
-    const child = autoFilterChildRef.current;
-    if (child && !child.killed) {
-      try {
-        child.kill('SIGTERM');
-      } catch {
-        // best-effort
-      }
-    }
-  };
-
-  const cancelAutoFilterAndWait = async (): Promise<void> => {
-    const child = autoFilterChildRef.current;
-    const donePromise = autoFilterDonePromiseRef.current;
-    if (!child || child.killed) {
-      if (donePromise) await donePromise;
-      return;
-    }
-    try {
-      child.kill('SIGTERM');
-    } catch {
-      // best-effort
-    }
-    if (donePromise) await donePromise;
   };
 
   const cancelGeneratePrefetch = (): void => {
@@ -1822,20 +1655,14 @@ export function WizardApp({
         } finally {
           db.close();
         }
-        components = mergeAiDecisions(components, state.aiDecisions);
         return (
           <ScopeGateHost
             components={components}
             compositionMode={compositionMode}
-            aiFilterStatus={state.aiFilterStatus}
-            aiFilterProgress={state.aiFilterProgress}
-            aiFilterError={state.aiFilterError}
-            onCancelAutoFilter={cancelAutoFilter}
             onConfirm={(decisions) => {
               void runScopeGate({
                 sessionId,
                 decisions,
-                cancelAutoFilter: state.aiFilterStatus === 'running' ? cancelAutoFilterAndWait : undefined,
                 onAdvanceToGenerate: async ({ sessionId: sid, acceptedCount }) => {
                   update({ acceptedCount, autoRejectedCount: 0 });
                   const next = nextStepAfterScopeGate({ acceptedCount });
@@ -2211,7 +2038,7 @@ export function WizardApp({
   return (
     <Box flexDirection="column" width={terminalWidth}>
       <TopBar subcommand="import" hints={hints} />
-      <CustomPromptBanner selectPromptPath={selectPromptPath} generatePromptPath={generatePromptPath} />
+      <CustomPromptBanner generatePromptPath={generatePromptPath} />
       {stepContent}
     </Box>
   );

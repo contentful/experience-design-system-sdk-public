@@ -11,27 +11,13 @@ function help(args: string[]): Promise<string> {
 }
 
 describe('backwards-compat: standalone subcommand flags', () => {
-  it('analyze select flags are stable', async () => {
-    const out = await help(['analyze', 'select']);
-    for (const flag of [
-      '--session',
-      '--project-root',
-      '--select-all',
-      '--select',
-      '--deselect',
-      '--accept-all',
-      '--reject',
-      '--patch',
-      '--exclude-invalid',
-      '--exclude-components',
-    ]) {
-      expect(out).toContain(flag);
-    }
+  it('standalone analyze command is removed', async () => {
+    const out = await help([]);
+    expect(out).not.toMatch(/\n\s+analyze(?:\s|$)/);
   });
 
   it('standalone generate command is removed', async () => {
     const out = await help([]);
     expect(out).not.toMatch(/\n\s+generate(?:\s|$)/);
   });
-
 });

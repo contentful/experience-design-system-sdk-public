@@ -1,5 +1,3 @@
-import { createElement } from 'react';
-import { render } from 'ink';
 import { mkdir, readdir, readFile, stat } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import type { Command } from 'commander';
@@ -15,10 +13,6 @@ import {
   inspectComponentSource,
   validateExtractedComponents,
 } from '@contentful/experience-design-system-extraction';
-import { AnalyzeView } from './tui/AnalyzeView.js';
-import type { AnalyzeViewResult } from './tui/AnalyzeView.js';
-import { registerAnalyzeEditCommand } from './select/command.js';
-import { registerAnalyzeSelectAgentCommand } from './select-agent/command.js';
 import {
   openPipelineDb,
   getOrCreateSession,
@@ -48,8 +42,6 @@ import {
   type AgentName,
 } from '@contentful/experience-design-system-generation';
 import { readExperiencesCredentials } from '../credentials-store.js';
-import { buildAnalyzeViewRows, partitionGlobalWarnings } from './build-analyze-view-rows.js';
-import { getInteractiveTerminalSupport } from '../lib/terminal-capabilities.js';
 import {
   bindAnalyticsSessionId,
   emitSessionStarted,
@@ -70,7 +62,6 @@ interface AnalyzeExtractOptions {
   agent?: string;
   bedrock?: boolean;
 }
-
 const SCANNED_FILE_EXTENSIONS = new Set(['.astro', '.js', '.jsx', '.svelte', '.ts', '.tsx', '.vue']);
 /**
  * `.json`/`.md` are scanned too (Figma `manifest.json`, `AGENTS.md`-style
@@ -247,13 +238,9 @@ async function readCandidateFiles(
   return out;
 }
 
-export function registerAnalyzeCommand(program: Command): void {
-  const analyze = program
-    .command('analyze', { hidden: true })
-    .description('Extract component definitions from a project, or correct analysis output');
-
-  const extractCmd = analyze
-    .command('extract')
+export function registerInternalExtractCommand(program: Command): void {
+  const extractCmd = program
+    .command('__extract', { hidden: true })
     .description('Extract component definitions from a project')
     .requiredOption('--project <path>', 'Path to the project root')
     .option('--dir <path>', 'Path to the component source directory relative to the project root')
@@ -568,69 +555,18 @@ export function registerAnalyzeCommand(program: Command): void {
     db.close();
 
     const allWarnings = [...extraction.warnings, ...filterWarnings];
-
-    const { rows: componentRows, totalErrors } = buildAnalyzeViewRows(
-      filteredComponents,
-      validatedComponents,
-      allWarnings,
-    );
-
-    // Split warnings: per-component (those whose prefix matches a surviving component name)
-    // are rendered under that component in the TUI; global ones (retry summaries,
-    // non-authorable skips, anything else) are rendered at the top of the warnings panel
-    // so they don't disappear into the count. `partitionGlobalWarnings` shares its
-    // matching rule with `buildAnalyzeViewRows` to keep the two halves symmetric.
-    const globalWarnings = partitionGlobalWarnings(
-      allWarnings,
-      componentRows.map((r) => r.name),
-    );
-
-    const analyzeResult: AnalyzeViewResult = {
-      sourceDirectory,
-      sessionId,
-      fileCount: sourceFiles.length,
-      components: componentRows,
-      totalWarnings: allWarnings.length,
-      totalErrors,
-      globalWarnings,
-    };
-
-    if (getInteractiveTerminalSupport().supported) {
-      const { waitUntilExit } = render(
-        createElement(AnalyzeView, {
-          result: analyzeResult,
-          onExit: () => void exitWithAnalytics(0),
-        }),
-      );
-      await waitUntilExit();
+    process.stdout.write(`session=${sessionId}\n`);
+    const summaryLines = [
+      `Scanned ${pluralize(sourceFiles.length, 'source file')} in ${sourceDirectory}`,
+      `Extracted ${pluralize(extraction.components.length, 'component')}`,
+    ];
+    if (allWarnings.length > 0) {
+      summaryLines.push(`Warnings (${allWarnings.length}):`);
+      summaryLines.push(...allWarnings.map((w) => `- ${w}`));
     } else {
-      const sessionLine = `session=${sessionId}\n`;
-      process.stdout.write(sessionLine);
-
-      const summaryLines = [
-        `Scanned ${pluralize(sourceFiles.length, 'source file')} in ${sourceDirectory}`,
-        `Extracted ${pluralize(extraction.components.length, 'component')}`,
-      ];
-      if (totalErrors > 0) {
-        summaryLines.push(`Errors (${totalErrors}):`);
-        for (const c of componentRows) {
-          for (const e of c.errors) {
-            summaryLines.push(`- ${c.name}: ${e}`);
-          }
-        }
-      }
-      if (allWarnings.length > 0) {
-        summaryLines.push(`Warnings (${allWarnings.length}):`);
-        summaryLines.push(...allWarnings.map((w) => `- ${w}`));
-      } else if (totalErrors === 0) {
-        summaryLines.push('Warnings: none');
-      }
-      process.stderr.write(summaryLines.join('\n') + '\n');
-
-      await exitWithAnalytics(0);
+      summaryLines.push('Warnings: none');
     }
+    process.stderr.write(summaryLines.join('\n') + '\n');
+    await exitWithAnalytics(0);
   });
-
-  registerAnalyzeEditCommand(analyze);
-  registerAnalyzeSelectAgentCommand(analyze);
 }

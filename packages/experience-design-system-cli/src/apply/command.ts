@@ -162,7 +162,6 @@ function addSharedApplyOptions(command: Command): void {
   command
     .option('--components <path>', 'Path to components.json (CDF)')
     .option('--tokens <path>', 'Path to tokens.json (DTCG)');
-  command
 }
 
 async function resolveSharedInputsOrDie(opts: SharedImportOptions): Promise<SharedInputs> {
@@ -323,11 +322,14 @@ async function resolveSharedInputs(opts: SharedImportOptions): Promise<{
   const spaceId = credentials.spaceId;
   const environmentId = credentials.environmentId;
   if (!spaceId) return await die('Error: Contentful space ID is missing; configure it with experiences setup');
-  if (!environmentId) return await die('Error: Contentful environment ID is missing; configure it with experiences setup');
+  if (!environmentId)
+    return await die('Error: Contentful environment ID is missing; configure it with experiences setup');
 
   const cmaToken = credentials.cmaToken;
   if (!cmaToken) {
-    return await die('Error: CMA token is required. Configure it with experiences setup or CONTENTFUL_MANAGEMENT_TOKEN');
+    return await die(
+      'Error: CMA token is required. Configure it with experiences setup or CONTENTFUL_MANAGEMENT_TOKEN',
+    );
   }
 
   if (opts.components) await assertFileExists('--components', opts.components);
@@ -520,107 +522,102 @@ function buildApplyOutput(
 }
 
 export function registerApplyCommand(program: Command): void {
-  const applyCmd = program
-    .command('apply')
-    .description('Write component types and design tokens to Contentful ExO');
+  const applyCmd = program.command('apply').description('Write component types and design tokens to Contentful ExO');
   addSharedApplyOptions(applyCmd);
-  applyCmd
-    .action(async (opts: SharedImportOptions) => {
-      const isTTY = getInteractiveTerminalSupport().supported;
+  applyCmd.action(async (opts: SharedImportOptions) => {
+    const isTTY = getInteractiveTerminalSupport().supported;
 
-      const inputs = await resolveSharedInputsOrDie(opts);
+    const inputs = await resolveSharedInputsOrDie(opts);
 
-      const { components, tokens, client, spaceId, environmentId, host } = inputs;
-      await bindAnalyticsSessionId(undefined, {
-        space_key: spaceId,
-        environment_key: environmentId,
+    const { components, tokens, client, spaceId, environmentId, host } = inputs;
+    await bindAnalyticsSessionId(undefined, {
+      space_key: spaceId,
+      environment_key: environmentId,
+    });
+
+    await assertNoSlotCycles(components);
+    await assertNoUnresolvedSlotReferences(components);
+
+    try {
+      await client.validateToken();
+    } catch (e) {
+      if (e instanceof ApiError) return await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
+      throw e;
+    }
+
+    const cdf = buildCDF(components, toCDFTokens(tokens));
+    if (!cdf) return await die('Error: nothing to push — no components or tokens resolved');
+
+    let preview: ServerPreviewResponse;
+    try {
+      preview = await client.previewImport(cdf);
+    } catch (e) {
+      if (e instanceof ApiError) return await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
+      throw e;
+    }
+
+    recordContentfulContext(client, spaceId, environmentId);
+
+    if (isEmptyPreview(preview)) {
+      if (isTTY) {
+        process.stderr.write('Nothing to change — design system is up to date.\n');
+      } else {
+        process.stdout.write(JSON.stringify(buildPreviewOutput(preview, spaceId, environmentId), null, 2) + '\n');
+      }
+      await exitWithAnalytics(0);
+    }
+
+    const breakingWithImpact = hasBreakingChangesWithImpact(preview);
+
+    if (!isTTY) {
+      if (breakingWithImpact) {
+        process.stderr.write(
+          'Error: breaking changes with downstream impact detected; run apply in an interactive terminal to acknowledge them.\n',
+        );
+        process.stdout.write(JSON.stringify(buildPreviewOutput(preview, spaceId, environmentId), null, 2) + '\n');
+        await exitWithAnalytics(1);
+      }
+      await runNonInteractiveApply({
+        client,
+        cdf,
+        spaceId,
+        environmentId,
+        acknowledgeBreakingChanges: false,
+        host,
       });
+      return;
+    }
 
-      await assertNoSlotCycles(components);
-      await assertNoUnresolvedSlotReferences(components);
-
-      try {
-        await client.validateToken();
-      } catch (e) {
-        if (e instanceof ApiError)
-          return await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
-        throw e;
-      }
-
-      const cdf = buildCDF(components, toCDFTokens(tokens));
-      if (!cdf) return await die('Error: nothing to push — no components or tokens resolved');
-
-      let preview: ServerPreviewResponse;
-      try {
-        preview = await client.previewImport(cdf);
-      } catch (e) {
-        if (e instanceof ApiError)
-          return await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
-        throw e;
-      }
-
-      recordContentfulContext(client, spaceId, environmentId);
-
-      if (isEmptyPreview(preview)) {
-        if (isTTY) {
-          process.stderr.write('Nothing to change — design system is up to date.\n');
-        } else {
-          process.stdout.write(JSON.stringify(buildPreviewOutput(preview, spaceId, environmentId), null, 2) + '\n');
-        }
-        await exitWithAnalytics(0);
-      }
-
-      const breakingWithImpact = hasBreakingChangesWithImpact(preview);
-
-      if (!isTTY) {
-        if (breakingWithImpact) {
-          process.stderr.write(
-            'Error: breaking changes with downstream impact detected; run apply in an interactive terminal to acknowledge them.\n',
-          );
-          process.stdout.write(JSON.stringify(buildPreviewOutput(preview, spaceId, environmentId), null, 2) + '\n');
-          await exitWithAnalytics(1);
-        }
-        await runNonInteractiveApply({
+    await new Promise<void>((resolvePromise) => {
+      const runApply = async (acknowledge: boolean) => {
+        await runInteractiveApply({
           client,
           cdf,
           spaceId,
           environmentId,
-          acknowledgeBreakingChanges: false,
           host,
+          acknowledgeBreakingChanges: acknowledge,
+          rerender: (element) => instance.rerender(element),
+          onDone: resolvePromise,
         });
-        return;
-      }
+      };
 
-      await new Promise<void>((resolvePromise) => {
-        const runApply = async (acknowledge: boolean) => {
-          await runInteractiveApply({
-            client,
-            cdf,
-            spaceId,
-            environmentId,
-            host,
-            acknowledgeBreakingChanges: acknowledge,
-            rerender: (element) => instance.rerender(element),
-            onDone: resolvePromise,
-          });
-        };
+      const instance = render(
+        createElement(ServerPreviewConfirm, {
+          preview,
+          spaceId,
+          environmentId,
+          breakingWithImpact,
+          onConfirm: (acknowledge: boolean) => {
+            void runApply(acknowledge);
+          },
+          onCancel: () => {
+            void exitWithAnalytics(0);
+          },
+        }),
+      );
 
-        const instance = render(
-          createElement(ServerPreviewConfirm, {
-            preview,
-            spaceId,
-            environmentId,
-            breakingWithImpact,
-            onConfirm: (acknowledge: boolean) => {
-              void runApply(acknowledge);
-            },
-            onCancel: () => {
-              void exitWithAnalytics(0);
-            },
-          }),
-        );
-
-        void instance.waitUntilExit().then(() => resolvePromise());
-      });
+      void instance.waitUntilExit().then(() => resolvePromise());
     });
+  });
 }

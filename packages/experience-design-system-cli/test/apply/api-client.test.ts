@@ -417,7 +417,10 @@ describe('ImportApiClient — previewImport', () => {
     mockFetch.mockResolvedValue(jsonResponse(200, serverResponse));
 
     const client = createClient();
-    await client.previewImport({ $schema: CDF_SCHEMA_URL, color: { brand: { primary: { $type: 'color', $value: '#000' } } } });
+    await client.previewImport({
+      $schema: CDF_SCHEMA_URL,
+      color: { brand: { primary: { $type: 'color', $value: '#000' } } },
+    });
 
     const request = mockFetch.mock.calls[0][0] as Request;
     expect(request.headers.get('x-contentful-organization-id')).toBeNull();
@@ -532,7 +535,10 @@ describe('ImportApiClient — applyImport', () => {
     mockFetch.mockResolvedValue(jsonResponse(202, opResponse));
 
     const client = createClient();
-    await client.applyImport({ $schema: CDF_SCHEMA_URL, Button: { $type: 'component', $properties: {} } }, { acknowledgeBreakingChanges: false });
+    await client.applyImport(
+      { $schema: CDF_SCHEMA_URL, Button: { $type: 'component', $properties: {} } },
+      { acknowledgeBreakingChanges: false },
+    );
 
     const request = mockFetch.mock.calls[0][0] as Request;
     const callBody = JSON.parse(await request.text());
@@ -553,7 +559,10 @@ describe('ImportApiClient — applyImport', () => {
 
     const client = createClient();
     await expect(
-      client.applyImport({ $schema: CDF_SCHEMA_URL, Button: { $type: 'component', $properties: {} } }, { acknowledgeBreakingChanges: false }),
+      client.applyImport(
+        { $schema: CDF_SCHEMA_URL, Button: { $type: 'component', $properties: {} } },
+        { acknowledgeBreakingChanges: false },
+      ),
     ).rejects.toThrow(ApiError);
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });

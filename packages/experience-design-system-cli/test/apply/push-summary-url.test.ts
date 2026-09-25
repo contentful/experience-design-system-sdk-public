@@ -3,7 +3,6 @@ import React from 'react';
 import { render } from 'ink-testing-library';
 import { ServerApplyDone } from '../../src/apply/tui/ServerApplyView.js';
 describe('apply — viewUrl emission (Gap 4)', () => {
-
   it('interactive ServerApplyDone renders the view URL on success', () => {
     const { lastFrame } = render(
       React.createElement(ServerApplyDone, {
