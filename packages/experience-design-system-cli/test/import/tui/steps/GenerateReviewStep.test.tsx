@@ -2919,7 +2919,7 @@ describe('GenerateReviewStep — lineage panel (T6)', () => {
     expect(lastFrame() ?? '').not.toContain('Lineage:');
   });
 
-  it('legend advertises [l] lineage when sidebar is focused', async () => {
+  it('legend advertises [i] focus lineage when sidebar is focused', async () => {
     const { lastFrame } = await renderLineageFixture();
     expect(lastFrame() ?? '').toContain('[l]');
   });

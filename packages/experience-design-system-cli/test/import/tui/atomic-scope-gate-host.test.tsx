@@ -59,7 +59,7 @@ describe('ScopeGateHost — compositionMode fork', () => {
       />,
     );
 
-    expect(lastFrame()).toContain('Review flags');
+    expect(lastFrame()).toContain('flagged by AI');
     expect(lastFrame()).toContain('source uses createContext');
 
     stdin.write('a');
@@ -107,7 +107,7 @@ describe('ScopeGateHost — compositionMode fork', () => {
     );
     const out = lastFrame() ?? '';
     expect(out).toContain('Button');
-    // composite-only chrome (counter strip carries a Groups column)
-    expect(out).toMatch(/Groups/i);
+    // composite-only chrome (counter strip carries a Composite column)
+    expect(out).toMatch(/Composite/i);
   });
 });

@@ -16,13 +16,10 @@ import { buildFlatDimPredicate, computeFilterKeys, intersectFilterKeys } from '.
 import { createSidebarViewsHelpSection } from '../sidebar-help.js';
 import { handleSidebarSearchInput } from '../sidebar-input.js';
 import { collectExpandedGroupRoots, computeSidebarViewToggle } from '../sidebar-navigation.js';
-import { handleLineageNavigation } from '../lineage-input.js';
 import { useSidebarSearchState } from '../hooks/sidebar-search-state.js';
 import { SearchMatchSummary } from '../components/SearchMatchSummary.js';
-import { useLineage } from '../hooks/useLineage.js';
 import { useOverlayPanel } from '../hooks/useOverlayPanel.js';
 import { computeSidebarBudget, FALLBACK_ROWS } from '../lineage-layout.js';
-import { LineagePanel } from '../../../analyze/select/tui/components/LineagePanel.js';
 import { GotoBanner } from '../../../analyze/select/tui/components/GotoBanner.js';
 import { HelpOverlay, type HelpSection } from '../../../analyze/select/tui/components/HelpOverlay.js';
 import { legendEntry } from '../components/LegendEntry.js';
@@ -72,9 +69,9 @@ const HELP_SECTIONS: HelpSection[] = [
   {
     title: 'Navigation',
     entries: [
-      { keys: 'j / k / ↑ / ↓', label: 'Move cursor' },
+      { keys: '↑ / ↓', label: 'Move cursor' },
       { keys: 'Tab / Shift-Tab', label: 'Switch column' },
-      { keys: 'Enter', label: 'Jump to main' },
+      { keys: 'Enter', label: 'Jump to row in main column' },
     ],
   },
   {
@@ -152,8 +149,6 @@ export function ScopeGateStep({
   const [addedGroupsCursor, setAddedGroupsCursor] = useState(0);
   const cursor = nav.cursor;
   const scrollOffset = nav.scrollOffset;
-  const lineagePanel = useOverlayPanel({ toggleKey: 'l' });
-  const [lineageCursor, setLineageCursor] = useState(0);
   const [cyclesPanelOpen, setCyclesPanelOpen] = useState(false);
   const [cyclesCursor, setCyclesCursor] = useState(0);
   const aiRationalePanel = useOverlayPanel({ toggleKey: 'x' });
@@ -389,12 +384,10 @@ export function ScopeGateStep({
     return { accepted, rejected };
   };
 
-  const { entries: lineageEntries, jumpables: lineageJumpables } = useLineage(focusedComponent?.name ?? null, graph);
-
   const { sidebarVisibleCount: visibleCount, panelMaxRows } = computeSidebarBudget({
     rows: stdout?.rows ?? FALLBACK_ROWS,
-    panelOpen: lineagePanel.isOpen,
-    entryCount: lineageEntries.length,
+    panelOpen: false,
+    entryCount: 0,
   });
 
   useEffect(() => {
@@ -506,11 +499,11 @@ export function ScopeGateStep({
         setCyclesPanelOpen(false);
         return;
       }
-      if (key.upArrow || input === 'k') {
+      if (key.upArrow) {
         setCyclesCursor((c) => Math.max(0, c - 1));
         return;
       }
-      if (key.downArrow || input === 'j') {
+      if (key.downArrow) {
         setCyclesCursor((c) => Math.min(Math.max(0, cyclesJumpables.length - 1), c + 1));
         return;
       }
@@ -523,37 +516,13 @@ export function ScopeGateStep({
       return;
     }
 
-    if (lineagePanel.isOpen) {
-      if (input === 'c' && hasCycles) {
-        lineagePanel.close();
-        setCyclesPanelOpen(true);
-        setCyclesCursor(0);
-        return;
-      }
-      if (lineagePanel.handleInput(input, key)) return;
-      if (
-        handleLineageNavigation({
-          input,
-          key,
-          cursor: lineageCursor,
-          jumpables: lineageJumpables,
-          onCursorChange: setLineageCursor,
-          onJump: jumpCursorTo,
-          onClose: lineagePanel.close,
-          allowTab: false,
-        })
-      )
-        return;
-      return;
-    }
-
     if (aiRationalePanel.isOpen) {
       if (aiRationalePanel.handleInput(input, key)) return;
-      if (key.upArrow || input === 'k') {
+      if (key.upArrow) {
         setAiCursor((c) => Math.max(0, c - 1));
         return;
       }
-      if (key.downArrow || input === 'j') {
+      if (key.downArrow) {
         setAiCursor((c) => Math.min(Math.max(0, aiRows.length - 1), c + 1));
         return;
       }
@@ -591,25 +560,10 @@ export function ScopeGateStep({
       onConfirm(partition());
       return;
     }
-    if (input === 'l') {
-      if (focusedColumn === 'added-components') {
-        const entry = addedComponents[safeAddedComponentsCursor];
-        if (entry) jumpCursorTo(entry.name);
-      } else if (focusedColumn === 'added-groups') {
-        const g = addedGroups[safeAddedGroupsCursor];
-        if (g) jumpCursorTo(g.name);
-      }
-      lineagePanel.open();
-      setLineageCursor(0);
-      setCyclesPanelOpen(false);
-      aiRationalePanel.close();
-      return;
-    }
     if (input === 'c') {
       if (!hasCycles) return;
       setCyclesPanelOpen(true);
       setCyclesCursor(0);
-      lineagePanel.close();
       aiRationalePanel.close();
       return;
     }
@@ -617,7 +571,6 @@ export function ScopeGateStep({
       if (aiRows.length === 0) return;
       aiRationalePanel.open();
       setAiCursor(0);
-      lineagePanel.close();
       setCyclesPanelOpen(false);
       return;
     }
@@ -749,7 +702,7 @@ export function ScopeGateStep({
       }
       return;
     }
-    if (key.upArrow || input === 'k') {
+    if (key.upArrow) {
       if (focusedColumn === 'added-components') {
         if (addedComponents.length === 0) return;
         setAddedComponentsCursor((c) => Math.max(0, c - 1));
@@ -767,7 +720,7 @@ export function ScopeGateStep({
       });
       return;
     }
-    if (key.downArrow || input === 'j') {
+    if (key.downArrow) {
       if (focusedColumn === 'added-components') {
         if (addedComponents.length === 0) return;
         setAddedComponentsCursor((c) => Math.min(addedComponents.length - 1, c + 1));
@@ -843,8 +796,8 @@ export function ScopeGateStep({
       {hasAnyAi && (
         <Box>
           <Text dimColor>
-            {`Review flags (${aiExcludedCount})`}
-            {aiRows.length > 0 && <Text color={PALETTE.info}>{' — [x] review & jump'}</Text>}
+            {`${aiExcludedCount} component${aiExcludedCount === 1 ? '' : 's'} flagged by AI`}
+            {aiRows.length > 0 && <Text color={PALETTE.info}>{' — press [x] to see why'}</Text>}
           </Text>
         </Box>
       )}
@@ -863,7 +816,7 @@ export function ScopeGateStep({
       {nothingIncluded && (
         <Box marginTop={1}>
           <Text color={PALETTE.warning}>
-            nothing selected — press <Text color={PALETTE.info}>[Y]</Text> to accept all non-flagged,{' '}
+            no components accepted — press <Text color={PALETTE.info}>[Y]</Text> to accept all non-flagged,{' '}
             <Text color={PALETTE.info}>[A]</Text> to toggle all, or <Text color={PALETTE.info}>[a]</Text> to accept the
             highlighted row
           </Text>
@@ -879,15 +832,6 @@ export function ScopeGateStep({
             maxRows={panelMaxRows}
             width={sidebarWidth}
             footerHint="[↑/↓] move · [Enter] jump · [x/Esc] close"
-          />
-        ) : lineagePanel.isOpen && focusedComponent ? (
-          <LineagePanel
-            focusedComponentKey={focusedComponent.name}
-            entries={lineageEntries}
-            cursor={lineageCursor}
-            jumpables={lineageJumpables}
-            maxRows={panelMaxRows}
-            width={sidebarWidth}
           />
         ) : (
           <GroupedSidebar
@@ -1029,7 +973,7 @@ export function ScopeGateStep({
         ) : (
           <Text color={PALETTE.warning}>none included</Text>
         )}
-        {legendEntry('[j/k]', 'move')}
+        {legendEntry('[↑/↓]', 'move')}
         {legendEntry('[a]', 'accept')}
         {legendEntry('[r]', 'reject')}
         {hasGroupRoots && legendEntry('[space]', 'expand/collapse group')}
@@ -1037,7 +981,6 @@ export function ScopeGateStep({
         {legendEntry('[A]', 'toggle all')}
         {legendEntry('[Y]', 'accept non-flagged')}
         {legendEntry('[L]', 'flat', columnOneView === 'flat')}
-        {legendEntry('[l]', 'lineage', lineagePanel.isOpen)}
         {legendEntry('[i]', 'focus lineage', jumpFilterTarget !== null)}
         {hasCycles && legendEntry('[o]', 'only cycles', activeFilters.has('cycles'))}
         {hasCycles && legendEntry('[c]', 'cycle list', cyclesPanelOpen)}
@@ -1046,7 +989,7 @@ export function ScopeGateStep({
         {legendEntry('[?]', 'help')}
         {legendEntry('[q]', 'quit')}
         {columnPlan.layout === 'three-column' && legendEntry('[Tab/Shift-Tab]', 'switch column')}
-        {columnPlan.layout === 'three-column' && legendEntry('[Enter]', 'jump to main')}
+        {columnPlan.layout === 'three-column' && legendEntry('[Enter]', 'jump to row in main')}
         {hasAnyAi && legendEntry('[x]', 'review flags', aiRationalePanel.isOpen)}
         {hasAnyAi && (
           <Text>
@@ -1236,7 +1179,7 @@ function AddedComponentsColumn(props: {
   aiFlaggedByKey?: Map<string, boolean>;
   visibleCount: number;
 }): React.ReactElement {
-  return <AddedColumn title="Added components" {...props} />;
+  return <AddedColumn title="Accepted Components" {...props} />;
 }
 
 function AddedGroupsColumn(props: {
@@ -1249,7 +1192,7 @@ function AddedGroupsColumn(props: {
 }): React.ReactElement {
   return (
     <AddedColumn
-      title="Added groups"
+      title="Accepted components with slot dependencies"
       {...props}
       renderSuffix={(entry, style) => {
         const suffix = ` (${entry.depCount} dep${entry.depCount === 1 ? '' : 's'})`;

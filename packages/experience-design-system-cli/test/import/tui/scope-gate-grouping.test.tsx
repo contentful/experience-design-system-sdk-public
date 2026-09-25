@@ -138,8 +138,8 @@ describe('ScopeGateStep — closure-aware selection', () => {
         onQuit={() => {}}
       />,
     );
-    stdin.write('j');
-    stdin.write('j');
+    stdin.write('\x1b[B');
+    stdin.write('\x1b[B');
     stdin.write('a');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
@@ -157,7 +157,7 @@ describe('ScopeGateStep — closure-aware selection', () => {
       />,
     );
     stdin.write('A');
-    stdin.write('j');
+    stdin.write('\x1b[B');
     stdin.write('r');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];

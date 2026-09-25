@@ -240,7 +240,7 @@ describe('e2e: cached select-agent → scope-gate render', () => {
       }),
     );
     const frame = lastFrame() ?? '';
-    expect(frame).toContain('Review flags');
+    expect(frame).toContain('flagged by AI');
     expect(frame).toContain('BadgeIcon');
     expect(frame).toContain('low semantic value');
   }, 60000);
@@ -279,7 +279,7 @@ describe('wizard scope-gate with cache-hit streaming (unit)', () => {
       }),
     );
     const frame = lastFrame() ?? '';
-    expect(frame).toContain('Review flags');
+    expect(frame).toContain('flagged by AI');
     expect(frame).toContain('BadgeIcon');
     expect(frame).toContain('low semantic value');
   });
