@@ -36,7 +36,7 @@ export function WelcomeStep({ onContinue, onQuit }: WelcomeStepProps): React.Rea
 
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
-      <Text bold color={PALETTE.success}>
+      <Text bold color={PALETTE.info}>
         👋 Hey! Let&apos;s import your design system into Contentful.
       </Text>
       <Text dimColor>I&apos;ll walk you through 5 steps to get your components into Contentful ExO.</Text>

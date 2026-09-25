@@ -84,7 +84,7 @@ export function AnalyzeView({ result, onExit }: AnalyzeViewProps): React.ReactEl
         <Text dimColor>{'Session: ' + result.sessionId}</Text>
         <Text> </Text>
         <Text dimColor>{'─'.repeat(70)}</Text>
-        <Text bold>
+        <Text bold color="cyan">
           {'Components' +
             (showScrollUp || showScrollDown
               ? '  (' +
