@@ -9,7 +9,7 @@ describe('CounterStrip', () => {
     const { lastFrame } = render(<CounterStrip counters={counters} totalWidth={120} />);
     const frame = lastFrame() ?? '';
     expect(frame).toContain('Accepted');
-    expect(frame).toContain('Groups');
+    expect(frame).toContain('Composite');
     expect(frame).toContain('Rejected');
     expect(frame).toContain('Undecided');
     expect(frame).toContain('3');
@@ -20,7 +20,7 @@ describe('CounterStrip', () => {
     const { lastFrame } = render(<CounterStrip counters={counters} totalWidth={40} />);
     const frame = lastFrame() ?? '';
     expect(frame).toContain('Acc');
-    expect(frame).toContain('Grp');
+    expect(frame).toContain('Cmp');
     expect(frame).not.toContain('Accepted');
   });
 });

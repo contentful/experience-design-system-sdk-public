@@ -109,11 +109,11 @@ describe('sideColumnLabelStyle', () => {
 });
 
 describe('ScopeGateStep — counter strip', () => {
-  it('always renders the counter strip with Accepted / Groups / Rejected / Undecided labels', () => {
+  it('always renders the counter strip with Accepted / Composite / Rejected / Undecided labels', () => {
     const { lastFrame } = render(<ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />);
     const out = lastFrame() ?? '';
     expect(out).toContain('Accepted');
-    expect(out).toContain('Groups');
+    expect(out).toContain('Composite');
     expect(out).toContain('Rejected');
     expect(out).toContain('Undecided');
   });
@@ -122,7 +122,7 @@ describe('ScopeGateStep — counter strip', () => {
     const { lastFrame } = render(<ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />);
     const out = lastFrame() ?? '';
     expect(out).toMatch(/Accepted[^0-9]*0[^0-9]*4/);
-    expect(out).toMatch(/Groups[^0-9]*0/);
+    expect(out).toMatch(/Composite[^0-9]*0/);
     expect(out).toMatch(/Rejected[^0-9]*0/);
     expect(out).toMatch(/Undecided[^0-9]*4/);
   });
@@ -134,27 +134,27 @@ describe('ScopeGateStep — counter strip', () => {
     stdin.write('A');
     const out = lastFrame() ?? '';
     expect(out).toMatch(/Accepted[^0-9]*4[^0-9]*4/);
-    expect(out).toMatch(/Groups[^0-9]*1/);
+    expect(out).toMatch(/Composite[^0-9]*1/);
     expect(out).toMatch(/Rejected[^0-9]*0/);
     expect(out).toMatch(/Undecided[^0-9]*0/);
   });
 });
 
 describe('ScopeGateStep — three-column layout (wide terminal)', () => {
-  it('renders "Added components" and "Added groups" columns at ≥ 120 cols', () => {
+  it('renders "Selected Components" and "Selected Composite Components" columns at ≥ 120 cols', () => {
     setWide(160);
     const { lastFrame } = render(<ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />);
     const out = lastFrame() ?? '';
-    expect(out).toContain('Added components');
-    expect(out).toContain('Added groups');
+    expect(out).toContain('Selected Components');
+    expect(out).toContain('Selected Composite Components');
     expect(out).toContain('switch column');
   });
 
   it('omits side columns at narrow terminals (< 120 cols)', () => {
     const { lastFrame } = render(<ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />);
     const out = lastFrame() ?? '';
-    expect(out).not.toContain('Added components');
-    expect(out).not.toContain('Added groups');
+    expect(out).not.toContain('Selected Components');
+    expect(out).not.toContain('Selected Composite Components');
     expect(out).not.toContain('switch column');
   });
 
@@ -175,8 +175,8 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     const afterShift3 = lastFrame() ?? '';
     expect(afterShift3).not.toMatch(/❯ +Card \(2 deps\)/);
     expect(afterShift3).not.toMatch(/❯ +Card\b/);
-    expect(afterShift3).toContain('Added components');
-    expect(afterShift3).toContain('Added groups');
+    expect(afterShift3).toContain('Selected Components');
+    expect(afterShift3).toContain('Selected Composite Components');
     void initial;
   });
 
@@ -314,8 +314,8 @@ describe('ScopeGateStep — T10 side-column borders', () => {
     const out = lastFrame() ?? '';
     const corners = (out.match(/┌/g) ?? []).length;
     expect(corners).toBe(3);
-    expect(out).toContain('Added components');
-    expect(out).toContain('Added groups');
+    expect(out).toContain('Selected Components');
+    expect(out).toContain('Selected Composite Components');
   });
 
   it('does NOT add extra borders at narrow terminals (single-column layout)', () => {
@@ -332,13 +332,13 @@ describe('ScopeGateStep — legend advertises Enter-jump', () => {
     const { lastFrame } = render(<ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />);
     const out = lastFrame() ?? '';
     expect(out).toContain('[Enter]');
-    expect(out).toContain('jump to main');
+    expect(out).toContain('focus in main');
   });
 
   it('omits [Enter] jump to main in narrow (single-column) layout', () => {
     const { lastFrame } = render(<ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />);
     const out = lastFrame() ?? '';
-    expect(out).not.toContain('jump to main');
+    expect(out).not.toContain('focus in main');
   });
 });
 
@@ -441,10 +441,10 @@ describe('ScopeGateStep — cycle participants in side columns', () => {
     );
     stdin.write('A');
     stdin.write('a');
-    stdin.write('j');
+    stdin.write('\x1b[B');
     stdin.write('a');
     const out = lastFrame() ?? '';
-    expect(out).toContain('Added components');
+    expect(out).toContain('Selected Components');
     const cycleLine = out.split('\n').find((l) => /⚠ (Inner|Loopy)\b/.test(l));
     expect(cycleLine).toBeDefined();
   });
@@ -456,7 +456,7 @@ describe('ScopeGateStep — cycle participants in side columns', () => {
     );
     stdin.write('A');
     stdin.write('a');
-    stdin.write('j');
+    stdin.write('\x1b[B');
     stdin.write('a');
     const out = lastFrame() ?? '';
     const innerPos = out.indexOf('⚠ Inner');
@@ -488,18 +488,18 @@ describe('ScopeGateStep — AI suggestions (three-column layout)', () => {
       <ScopeGateStep components={AI_FLAGGED_GRAPH} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
     );
     const before = lastFrame() ?? '';
-    expect(before).toContain('Review flags');
+    expect(before).toContain('flagged by AI');
     expect(before).toContain('[x]');
-    expect(before).toContain('Added components');
-    expect(before).toContain('Added groups');
+    expect(before).toContain('Selected Components');
+    expect(before).toContain('Selected Composite Components');
 
     stdin.write('x');
     await new Promise((r) => setTimeout(r, 30));
     const out = lastFrame() ?? '';
     expect(out).toContain('DebugPanel');
     expect(out).toContain('internal-only debugging widget');
-    expect(out).toContain('Added components');
-    expect(out).toContain('Added groups');
+    expect(out).toContain('Selected Components');
+    expect(out).toContain('Selected Composite Components');
   });
 
   it('renders the per-row [×] AI badge in the main sidebar in wide layout', () => {

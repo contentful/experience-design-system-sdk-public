@@ -151,7 +151,7 @@ export function AtomicScopeGateStep({
       }
       return;
     }
-    if (key.upArrow || input === 'k') {
+    if (key.upArrow) {
       const len = flatList.length;
       if (len === 0) return;
       setCursor((c) => {
@@ -161,7 +161,7 @@ export function AtomicScopeGateStep({
       });
       return;
     }
-    if (key.downArrow || input === 'j') {
+    if (key.downArrow) {
       const len = flatList.length;
       if (len === 0) return;
       setCursor((c) => {
@@ -241,7 +241,7 @@ export function AtomicScopeGateStep({
             const showAiHeader = aiList.length > 0 && i === 0;
             const showComponentsHeader = componentsList.length > 0 && i === aiList.length;
             const header = showAiHeader ? (
-              <Text key={`hdr-ai-${i}`} bold>{`Review flags (${aiList.length})`}</Text>
+              <Text key={`hdr-ai-${i}`} bold>{`${aiList.length} flagged by AI`}</Text>
             ) : showComponentsHeader ? (
               <Text key={`hdr-comp-${i}`} bold>{`Components (${componentsList.length})`}</Text>
             ) : null;
@@ -287,7 +287,7 @@ export function AtomicScopeGateStep({
           <Text color={PALETTE.warning}>none included</Text>
         )}
         <Text>
-          <Text color={PALETTE.info}>[j/k]</Text> <Text dimColor>move</Text>
+          <Text color={PALETTE.info}>[↑/↓]</Text> <Text dimColor>move</Text>
         </Text>
         <Text>
           <Text color={PALETTE.info}>[a/space]</Text> <Text dimColor>toggle</Text>

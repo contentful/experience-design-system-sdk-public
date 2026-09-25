@@ -8,7 +8,6 @@ type LineageInputKey = {
 };
 
 export function handleLineageNavigation({
-  input,
   key,
   cursor,
   jumpables,
@@ -17,7 +16,7 @@ export function handleLineageNavigation({
   onClose,
   allowTab,
 }: {
-  input: string;
+  input?: string;
   key: LineageInputKey;
   cursor: number;
   jumpables: LineageJumpable[];
@@ -26,11 +25,11 @@ export function handleLineageNavigation({
   onClose: () => void;
   allowTab: boolean;
 }): boolean {
-  if (key.upArrow || input === 'k') {
+  if (key.upArrow) {
     onCursorChange((current) => Math.max(0, current - 1));
     return true;
   }
-  if (key.downArrow || input === 'j') {
+  if (key.downArrow) {
     onCursorChange((current) => Math.min(Math.max(0, jumpables.length - 1), current + 1));
     return true;
   }

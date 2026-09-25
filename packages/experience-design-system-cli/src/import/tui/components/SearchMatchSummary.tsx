@@ -36,6 +36,7 @@ export function SearchMatchSummary({
           {autocompleteCandidates.length > 1 && (
             <Text dimColor>{`  possibilities: ${autocompleteCandidates.join(' · ').slice(0, 120)}`}</Text>
           )}
+          <Text dimColor>{'  [Esc] leave search  ·  [Enter] jump to first match'}</Text>
         </Box>
       )}
       {!open && query && (
