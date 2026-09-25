@@ -36,7 +36,6 @@ import {
   recordContentfulContext,
 } from '../analytics/index.js';
 import type { CommandFailure } from '../analytics/index.js';
-import { pathExists } from '../lib/path-exists.js';
 
 async function die(message: string, fields: CommandFailure = {}): Promise<never> {
   process.stderr.write(`${message}\n`);
@@ -45,10 +44,6 @@ async function die(message: string, fields: CommandFailure = {}): Promise<never>
 
 function dieWithApiError(error: ApiError): Promise<never> {
   return die(`Error: ${formatApiError(error)}`, failureFromApiError(error));
-}
-
-async function assertFileExists(flag: string, p: string): Promise<void> {
-  if (!(await pathExists(p))) return await die(`Error: file not found: ${p} (from ${flag})`);
 }
 
 async function readJsonFile(flag: string, p: string): Promise<unknown> {
@@ -151,22 +146,11 @@ export function toCDFTokens(tokens: DTCGTokenEntry[]): Array<{ path: string; ent
   return tokens.map(({ path, ...entry }) => ({ path, entry }));
 }
 
-interface SharedImportOptions {
-  components?: string;
-  tokens?: string;
-}
-
 type SharedInputs = Awaited<ReturnType<typeof resolveSharedInputs>>;
 
-function addSharedApplyOptions(command: Command): void {
-  command
-    .option('--components <path>', 'Path to components.json (CDF)')
-    .option('--tokens <path>', 'Path to tokens.json (DTCG)');
-}
-
-async function resolveSharedInputsOrDie(opts: SharedImportOptions): Promise<SharedInputs> {
+async function resolveSharedInputsOrDie(file: string): Promise<SharedInputs> {
   try {
-    return await resolveSharedInputs(opts);
+    return await resolveSharedInputs(file);
   } catch (e) {
     if (e instanceof ApiError) return await dieWithApiError(e);
     throw e;
@@ -308,7 +292,7 @@ async function runInteractiveApply(options: InteractiveApplyOptions): Promise<vo
   options.onDone();
 }
 
-async function resolveSharedInputs(opts: SharedImportOptions): Promise<{
+async function resolveSharedInputs(file: string): Promise<{
   components: Array<{ key: string; entry: CDFComponentEntry }>;
   tokens: DTCGTokenEntry[];
   client: ImportApiClient;
@@ -316,8 +300,6 @@ async function resolveSharedInputs(opts: SharedImportOptions): Promise<{
   environmentId: string;
   host?: string;
 }> {
-  if (!opts.components && !opts.tokens) return await die('Error: at least one of --components or --tokens is required');
-
   const credentials = await readExperiencesCredentials();
   const spaceId = credentials.spaceId;
   const environmentId = credentials.environmentId;
@@ -332,19 +314,13 @@ async function resolveSharedInputs(opts: SharedImportOptions): Promise<{
     );
   }
 
-  if (opts.components) await assertFileExists('--components', opts.components);
-
-  let components: Array<{ key: string; entry: CDFComponentEntry }> = [];
-  if (opts.components) {
-    const raw = await readJsonFile('--components', opts.components);
-    const result = validateCDF(raw);
-    if (!result.valid) {
-      return await die(
-        `Error: --components failed schema validation: ${result.errors.map((e) => e.message).join(', ')}`,
-      );
-    }
-    components = result.components;
+  const raw = await readJsonFile('input file', file);
+  const result = validateCDF(raw);
+  if (!result.valid) {
+    return await die(`Error: input file failed schema validation: ${result.errors.map((e) => e.message).join(', ')}`);
   }
+
+  let components = result.components;
 
   // Atomic mode (spec T8/T12): strip embedded-component composition at the
   // single serialization boundary, regardless of load path. Normalizing here
@@ -361,10 +337,7 @@ async function resolveSharedInputs(opts: SharedImportOptions): Promise<{
     components = stripAllowedComponents(components);
   }
 
-  let tokens: DTCGTokenEntry[] = [];
-  if (opts.tokens) {
-    tokens = await readTokensFromPath('--tokens', opts.tokens);
-  }
+  const tokens = result.tokens.map(({ path, entry }) => ({ path, ...entry }));
 
   const client = new ImportApiClient({
     host: credentials.host,
@@ -522,12 +495,14 @@ function buildApplyOutput(
 }
 
 export function registerApplyCommand(program: Command): void {
-  const applyCmd = program.command('apply').description('Write component types and design tokens to Contentful ExO');
-  addSharedApplyOptions(applyCmd);
-  applyCmd.action(async (opts: SharedImportOptions) => {
+  const applyCmd = program
+    .command('apply')
+    .description('Write component types and design tokens to Contentful ExO')
+    .argument('<file>', 'CDF file containing all component and design token definitions');
+  applyCmd.action(async (file: string) => {
     const isTTY = getInteractiveTerminalSupport().supported;
 
-    const inputs = await resolveSharedInputsOrDie(opts);
+    const inputs = await resolveSharedInputsOrDie(file);
 
     const { components, tokens, client, spaceId, environmentId, host } = inputs;
     await bindAnalyticsSessionId(undefined, {

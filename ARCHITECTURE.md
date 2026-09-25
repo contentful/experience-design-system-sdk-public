@@ -42,7 +42,7 @@ Design system codebase
                 (component types + design tokens)
 ```
 
-Component-analysis data between pipeline steps flows through a local SQLite session database (`~/.contentful/experience-design-system-cli/pipeline.db`). Optional token preparation writes the explicit `tokens.json` sidecar for internal generation or apply. The standalone `map tokens` command enriches its session before `print components` / `print tokens` write artifacts on demand; `experiences import` does not invoke it. `apply` reads those files (or reads directly from the session DB via `--session`) and builds a manifest for the sources API.
+Component-analysis data between pipeline steps flows through a local SQLite session database (`~/.contentful/experience-design-system-cli/pipeline.db`). The standalone `map tokens` command enriches its session before artifacts are written on demand; `experiences import` does not invoke it. `experiences apply <file>` reads one CDF file containing both component and design-token definitions and builds the request for the sources API.
 
 A separate JSON file at `~/.config/experiences/runs.json` records each successful wizard session (id, project path, save path, push target, component count) for list and detail views.
 
@@ -354,10 +354,10 @@ sequenceDiagram
     Dev->>Val: experiences print validate --components components.json
     Val-->>Dev: Exit 0 (valid) or exit 1 + errors
 
-    Dev->>AP: experiences apply --components components.json --space-id ... --yes
+    Dev->>AP: experiences apply definitions.cdf.json
     AP->>AP: Build ManifestPayload with componentsManifest and tokensManifest
     AP->>CMS: POST manifest preview
-    AP-->>Dev: Preview summary and confirmation (skipped with --yes)
+    AP-->>Dev: Preview summary and confirmation
     AP->>CMS: POST manifest apply
     CMS-->>AP: Apply operation
     AP->>CMS: Poll operation

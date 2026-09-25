@@ -87,7 +87,7 @@ Full documentation for every flag and every subcommand lives in [`packages/exper
 | `experiences doctor`               | Health check — verify Node version, credentials, and agent binaries                |
 | `experiences import`               | Run the full interactive wizard (extract → select → internal generation → push) |
 | `experiences runs`                 | List prior wizard runs, or pass `<id-or-path>` for a single-run detail view (supports `--json`, `--pushed`, `--not-pushed`) |
-| `experiences apply`           | Write component types and design tokens to Contentful; emits webapp view URL       |
+| `experiences apply <file>`    | Write component types and design tokens from one CDF file to Contentful             |
 | `experiences print components`     | Export generated components to `components.json`                                   |
 | `experiences print tokens`         | Export generated tokens to `tokens.json`                                           |
 | `experiences print validate`       | Validate CDF or DTCG files against their schemas                                   |

@@ -86,7 +86,7 @@ The CLI invokes the agent non-interactively in a subprocess. If the binary is no
 
 ### Contentful credentials
 
-`apply` and `import` (when pushing) require access to a Contentful space. Set these environment variables or pass the equivalent flags:
+`apply` and `import` (when pushing) require access to a Contentful space. Configure these environment variables or run `experiences setup`:
 
 ```bash
 export CONTENTFUL_MANAGEMENT_TOKEN=<your-cma-token>   # required
@@ -188,15 +188,15 @@ experiences print validate   [--components <path>] [--tokens <path>]
 
 ### `apply`
 
-This command is the non-wizard route to the same diff and push logic. Its flag surface is unchanged.
+This command is the non-wizard route to the same diff and push logic. It accepts one CDF file containing all component and design token definitions.
 
 `apply` emits a Contentful webapp view URL for the imported components in its JSON summary (`viewUrl`) so callers can deep-link into the management UI after a successful push.
 
 ```bash
-experiences apply
+experiences apply <file>
 ```
 
-Shared flags: `--components`, `--tokens`. `apply` is interactive and loads credentials from `experiences setup` or environment variables. Remote ComponentTypes and DesignTokens missing from the pushed manifest are always skipped.
+`apply` is interactive and loads credentials from `experiences setup` or environment variables. Remote ComponentTypes and DesignTokens missing from the pushed manifest are always skipped.
 
 Design tokens are written first (component types may reference token kinds). Each entity write is recorded in the session database atomically — interrupted pushes resume from where they left off.
 
