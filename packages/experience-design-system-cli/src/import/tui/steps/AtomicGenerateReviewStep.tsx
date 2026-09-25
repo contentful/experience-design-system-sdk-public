@@ -5,7 +5,6 @@ import { Sidebar } from '../../../analyze/select/tui/components/Sidebar.js';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
 import type { ReviewComponentStatus, ReviewComponentSummary } from '../../../analyze/select/types.js';
 import type { HistorySnapshot } from '../history.js';
-import { useReviewFinalizePreview } from '../useFinalizePreview.js';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import {
   buildReviewFieldEditor,
@@ -26,8 +25,8 @@ import {
 } from '../hooks/review-input.js';
 import {
   createReviewHistorySnapshot,
-  finalizeReviewSession,
   loadReviewSessionState,
+  useReviewFinalize,
   useReviewHistory,
   useReviewMetadata,
   useReviewSession,
@@ -217,8 +216,8 @@ export function AtomicGenerateReviewStep({
     });
   };
 
-  const finalizePreview = useReviewFinalizePreview({
-    open: showFinalize,
+  const { finalizePreview, handleFinalizeConfirm } = useReviewFinalize({
+    showFinalize,
     extractSessionId,
     tokensPath,
     spaceId,
@@ -226,12 +225,8 @@ export function AtomicGenerateReviewStep({
     cmaToken,
     host,
     components,
+    onFinalize,
   });
-
-  const handleFinalizeConfirm = () => {
-    const counts = finalizeReviewSession(extractSessionId, components);
-    onFinalize(counts.accepted, counts.rejected, counts.unresolved);
-  };
 
   const dialogOpen = showFinalize || showQuit;
 

@@ -1223,13 +1223,13 @@ export function loadRawComponents(
   );
 }
 
-// Mirrors analyze/select-agent/context-builder.ts's MAX_COMPONENT_SOURCE_CHARS
+// Maximum source excerpt size used when building persisted agent context.
 // convention for bounding inlined source in an agent prompt.
 const MAX_COMPONENT_SOURCE_CHARS = 8_000;
-// Mirrors analyze/select-agent/context-builder.ts's MAX_SIBLING_FILES /
+// Maximum sibling-file count used when building persisted agent context.
 // MAX_SIBLING_SNIPPET_CHARS conventions — small, purpose-built duplicate
 // rather than importing that module's SelectionContext machinery, which is
-// built for a different command (analyze select-agent).
+// built for the internal generation context.
 const MAX_SIBLING_FILES = 5;
 const MAX_SIBLING_SNIPPET_CHARS = 1_200;
 // A type-declaring sibling (e.g. `*.types.ts`) needs a bigger budget than a

@@ -2,7 +2,6 @@ import { Box, Text } from 'ink';
 import React, { useMemo, useState } from 'react';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
-import { AutoFilterBanner } from '../components/AutoFilterBanner.js';
 import { CounterStrip } from '../components/CounterStrip.js';
 import { isAiFlagged } from '../ai-flag.js';
 import { useTerminalColumns } from './useTerminalColumns.js';
@@ -11,8 +10,8 @@ import type { ScopeComponent, ScopeGateStepProps } from './ScopeGateStep.js';
 // Atomic-mode scope gate (spec T9). Recovered from the pre-composite `main`
 // implementation: a flat included/excluded list with NO hierarchy affordances
 // (no closures, cycles, cascade, lineage, grouped sidebar, or graph). Styling
-// is ported to PALETTE and the shared AutoFilterBanner/CounterStrip so it reads
-// as the same product as its composite sibling — "fewer panels, identical look."
+// is ported to PALETTE and the shared CounterStrip so it reads as the same
+// product as its composite sibling — "fewer panels, identical look."
 
 const VISIBLE_COUNT = 10;
 const REASON_DISPLAY_MAX = 60;
@@ -25,15 +24,7 @@ function truncateReason(reason: string | null | undefined): string {
   return reason.slice(0, REASON_DISPLAY_MAX - 1).trimEnd() + '…';
 }
 
-export function AtomicScopeGateStep({
-  components,
-  onConfirm,
-  onQuit,
-  aiFilterStatus = 'idle',
-  aiFilterProgress = null,
-  aiFilterError = null,
-  onCancelAutoFilter,
-}: ScopeGateStepProps): React.ReactElement {
+export function AtomicScopeGateStep({ components, onConfirm, onQuit }: ScopeGateStepProps): React.ReactElement {
   const totalWidth = useTerminalColumns();
 
   // Inverted "included" model, kept from `main` (deliberately NOT the
@@ -100,10 +91,6 @@ export function AtomicScopeGateStep({
 
   useImmediateInput((input, key) => {
     if (input === 'q' || key.escape) {
-      if (aiFilterStatus === 'running' && onCancelAutoFilter) {
-        onCancelAutoFilter();
-        return;
-      }
       if (key.escape && reasonPanelOpen) {
         setReasonPanelOpen(false);
         return;
@@ -185,13 +172,6 @@ export function AtomicScopeGateStep({
   const above = scrollOffset;
   const below = Math.max(0, total - visibleEnd);
 
-  const allRejected =
-    aiFilterStatus === 'complete' &&
-    total > 0 &&
-    userExcluded.size === 0 &&
-    userUnExcluded.size === 0 &&
-    flatList.every((c) => !isIncluded(c));
-
   // Atomic has no groups; the counter strip shows binary included/excluded.
   const counters = {
     accepted: includedCount,
@@ -209,8 +189,6 @@ export function AtomicScopeGateStep({
         set.
       </Text>
 
-      <AutoFilterBanner status={aiFilterStatus} progress={aiFilterProgress} error={aiFilterError} />
-
       <CounterStrip counters={counters} totalWidth={totalWidth} />
 
       {reasonPanelOpen && flatList[cursor] !== undefined && isAiFlagged(flatList[cursor]!) && (
@@ -221,61 +199,55 @@ export function AtomicScopeGateStep({
         </Box>
       )}
 
-      {allRejected ? (
-        <Box marginTop={1}>
-          <Text color={PALETTE.warning}>AI excluded all components — press [a] to override or [q] to quit</Text>
-        </Box>
-      ) : (
-        <Box flexDirection="column" marginTop={1}>
-          {above > 0 && <Text dimColor>↑ {above} above</Text>}
-          {visible.map((c, vi) => {
-            const i = vi + scrollOffset;
-            const isCursor = i === cursor;
-            const included = isIncluded(c);
-            const aiFlagged = isAiFlagged(c);
-            const prefix = isCursor ? '›' : ' ';
-            const stateGlyph = included ? '[✓]' : '[✗]';
-            const stateColor = included ? PALETTE.success : PALETTE.error;
-            const aiMarkerNode = aiFlagged ? <Text color={PALETTE.info}>{`${AI_MARKER} `}</Text> : null;
-            const inlineReason = !isCursor && aiFlagged ? ` ${truncateReason(c.aiReason)}` : '';
-            const showAiHeader = aiList.length > 0 && i === 0;
-            const showComponentsHeader = componentsList.length > 0 && i === aiList.length;
-            const header = showAiHeader ? (
-              <Text key={`hdr-ai-${i}`} bold>{`Review flags (${aiList.length})`}</Text>
-            ) : showComponentsHeader ? (
-              <Text key={`hdr-comp-${i}`} bold>{`Components (${componentsList.length})`}</Text>
-            ) : null;
-            if (isCursor) {
-              const wrapReason = aiFlagged && c.aiReason !== null && c.aiReason !== undefined && c.aiReason.length > 0;
-              return (
-                <React.Fragment key={c.componentId}>
-                  {header}
-                  <Text>
-                    <Text color={PALETTE.info}>{`${prefix} `}</Text>
-                    {aiMarkerNode}
-                    <Text color={stateColor}>{stateGlyph}</Text>
-                    <Text color={PALETTE.info}>{` ${c.name}`}</Text>
-                  </Text>
-                  {wrapReason && <Text dimColor>{`${REASON_WRAP_INDENT}${c.aiReason}`}</Text>}
-                </React.Fragment>
-              );
-            }
+      <Box flexDirection="column" marginTop={1}>
+        {above > 0 && <Text dimColor>↑ {above} above</Text>}
+        {visible.map((c, vi) => {
+          const i = vi + scrollOffset;
+          const isCursor = i === cursor;
+          const included = isIncluded(c);
+          const aiFlagged = isAiFlagged(c);
+          const prefix = isCursor ? '›' : ' ';
+          const stateGlyph = included ? '[✓]' : '[✗]';
+          const stateColor = included ? PALETTE.success : PALETTE.error;
+          const aiMarkerNode = aiFlagged ? <Text color={PALETTE.info}>{`${AI_MARKER} `}</Text> : null;
+          const inlineReason = !isCursor && aiFlagged ? ` ${truncateReason(c.aiReason)}` : '';
+          const showAiHeader = aiList.length > 0 && i === 0;
+          const showComponentsHeader = componentsList.length > 0 && i === aiList.length;
+          const header = showAiHeader ? (
+            <Text key={`hdr-ai-${i}`} bold>{`Review flags (${aiList.length})`}</Text>
+          ) : showComponentsHeader ? (
+            <Text key={`hdr-comp-${i}`} bold>{`Components (${componentsList.length})`}</Text>
+          ) : null;
+          if (isCursor) {
+            const wrapReason = aiFlagged && c.aiReason !== null && c.aiReason !== undefined && c.aiReason.length > 0;
             return (
               <React.Fragment key={c.componentId}>
                 {header}
                 <Text>
-                  <Text>{`${prefix} `}</Text>
+                  <Text color={PALETTE.info}>{`${prefix} `}</Text>
                   {aiMarkerNode}
                   <Text color={stateColor}>{stateGlyph}</Text>
-                  <Text color={stateColor}>{` ${c.name}`}</Text>
-                  {inlineReason !== '' && <Text dimColor>{inlineReason}</Text>}
+                  <Text color={PALETTE.info}>{` ${c.name}`}</Text>
                 </Text>
+                {wrapReason && <Text dimColor>{`${REASON_WRAP_INDENT}${c.aiReason}`}</Text>}
               </React.Fragment>
             );
-          })}
-          {below > 0 && <Text dimColor>↓ {below} below</Text>}
-        </Box>
-      )}
+          }
+          return (
+            <React.Fragment key={c.componentId}>
+              {header}
+              <Text>
+                <Text>{`${prefix} `}</Text>
+                {aiMarkerNode}
+                <Text color={stateColor}>{stateGlyph}</Text>
+                <Text color={stateColor}>{` ${c.name}`}</Text>
+                {inlineReason !== '' && <Text dimColor>{inlineReason}</Text>}
+              </Text>
+            </React.Fragment>
+          );
+        })}
+        {below > 0 && <Text dimColor>↓ {below} below</Text>}
+      </Box>
 
       <Box gap={3} marginTop={1}>
         {includedCount > 0 ? (

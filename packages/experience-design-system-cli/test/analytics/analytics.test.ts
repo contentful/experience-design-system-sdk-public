@@ -28,7 +28,6 @@ describe('analytics normalizeCommand', () => {
   it('maps commander chains to tracked command ids', () => {
     expect(normalizeCommand('apply')).toBe('apply_push');
     expect(normalizeCommand('analyze extract')).toBe('analyze_extract');
-    expect(normalizeCommand('analyze select-agent')).toBe('analyze_select');
     expect(normalizeCommand('map tokens')).toBe('map_tokens');
   });
 

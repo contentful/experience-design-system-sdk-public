@@ -145,50 +145,6 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
     expect(out).not.toContain('AI filtering');
   });
 
-  it('renders the running header with progress counter when aiFilterStatus is running', () => {
-    const { lastFrame } = render(
-      <ScopeGateStep
-        components={MIXED}
-        onConfirm={() => {}}
-        onQuit={() => {}}
-        aiFilterStatus="running"
-        aiFilterProgress={{ done: 2, total: 5 }}
-      />,
-    );
-    const out = lastFrame() ?? '';
-    expect(out).toContain('AI filtering');
-    expect(out).toContain('2/5');
-  });
-
-  it('renders a cancellation banner when aiFilterStatus is cancelled', () => {
-    const { lastFrame } = render(
-      <ScopeGateStep
-        components={MIXED}
-        onConfirm={() => {}}
-        onQuit={() => {}}
-        aiFilterStatus="cancelled"
-        aiFilterProgress={{ done: 2, total: 5 }}
-      />,
-    );
-    const out = lastFrame() ?? '';
-    expect(out).toContain('AI auto-filter cancelled');
-  });
-
-  it('renders a failure banner when aiFilterStatus is failed', () => {
-    const { lastFrame } = render(
-      <ScopeGateStep
-        components={MIXED}
-        onConfirm={() => {}}
-        onQuit={() => {}}
-        aiFilterStatus="failed"
-        aiFilterError="agent crashed"
-      />,
-    );
-    const out = lastFrame() ?? '';
-    expect(out).toContain('AI auto-filter failed');
-    expect(out).toContain('agent crashed');
-  });
-
   it('[Y] then [f] partitions AI-flagged (rejected/failed) into rejected, rest into accepted', () => {
     const withFailed = [
       { name: 'Button', componentId: 'c0', aiDecision: 'accepted' as const },
@@ -224,41 +180,6 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
     const arg = onConfirm.mock.calls[0][0];
     expect(arg.accepted).toEqual(expect.arrayContaining(['Button', 'Card', 'Hero']));
     expect(arg.rejected).toEqual(expect.arrayContaining(['BadgeIcon', 'DivWrapper']));
-  });
-
-  it('q during auto-filter running calls onCancelAutoFilter, not onQuit', () => {
-    const onQuit = vi.fn();
-    const onCancelAutoFilter = vi.fn();
-    const { stdin } = render(
-      <ScopeGateStep
-        components={MIXED}
-        onConfirm={() => {}}
-        onQuit={onQuit}
-        aiFilterStatus="running"
-        aiFilterProgress={{ done: 1, total: 5 }}
-        onCancelAutoFilter={onCancelAutoFilter}
-      />,
-    );
-    stdin.write('q');
-    expect(onCancelAutoFilter).toHaveBeenCalledTimes(1);
-    expect(onQuit).not.toHaveBeenCalled();
-  });
-
-  it('q after auto-filter completes calls onQuit (existing behavior)', () => {
-    const onQuit = vi.fn();
-    const onCancelAutoFilter = vi.fn();
-    const { stdin } = render(
-      <ScopeGateStep
-        components={MIXED}
-        onConfirm={() => {}}
-        onQuit={onQuit}
-        aiFilterStatus="complete"
-        onCancelAutoFilter={onCancelAutoFilter}
-      />,
-    );
-    stdin.write('q');
-    expect(onQuit).toHaveBeenCalledTimes(1);
-    expect(onCancelAutoFilter).not.toHaveBeenCalled();
   });
 
   describe('cursor navigation', () => {

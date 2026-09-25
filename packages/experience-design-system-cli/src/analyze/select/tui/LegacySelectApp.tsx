@@ -20,7 +20,11 @@ import { openPipelineDb, storeRawComponents, loadCDFComponents } from '../../../
 import { ImportApiClient } from '../../../apply/api-client.js';
 import { readTokensFromPath, toCDFTokens } from '../../../apply/tokens.js';
 import { buildCDF } from '@contentful/experience-design-system-types';
-import type { ServerPreviewResponse, CDFComponentEntry, DTCGTokenEntry } from '@contentful/experience-design-system-types';
+import type {
+  ServerPreviewResponse,
+  CDFComponentEntry,
+  DTCGTokenEntry,
+} from '@contentful/experience-design-system-types';
 
 type AppProps = {
   sessionId: string;

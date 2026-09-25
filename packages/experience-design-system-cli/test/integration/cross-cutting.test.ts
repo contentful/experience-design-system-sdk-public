@@ -15,9 +15,7 @@ import { runCliWithEnv } from '../helpers/cli-runner.js';
 import {
   createCacheFixture,
   createScriptedAgent,
-  selectAllResponderSource,
   generateComponentsResponderSource,
-  readSelectCache,
   readGenerationCache,
   baseEnv,
   SAMPLE_TWO_COMPONENTS,
@@ -30,14 +28,6 @@ afterEach(async () => {
   while (cleanups.length > 0) await cleanups.pop()!().catch(() => {});
 });
 
-async function selectSetup(): Promise<{ fix: CacheFixture; agent: ScriptedAgent }> {
-  const fix = await createCacheFixture(SAMPLE_TWO_COMPONENTS);
-  cleanups.push(fix.cleanup);
-  const agent = await createScriptedAgent(selectAllResponderSource('accept'));
-  cleanups.push(agent.cleanup);
-  return { fix, agent };
-}
-
 async function generateSetup(): Promise<{ fix: CacheFixture; agent: ScriptedAgent }> {
   const fix = await createCacheFixture(SAMPLE_TWO_COMPONENTS);
   cleanups.push(fix.cleanup);
@@ -45,18 +35,6 @@ async function generateSetup(): Promise<{ fix: CacheFixture; agent: ScriptedAgen
   cleanups.push(agent.cleanup);
   return { fix, agent };
 }
-
-const SELECT_ARGS = (fix: CacheFixture, extra: string[] = []) => [
-  'analyze',
-  'select-agent',
-  '--agent',
-  'claude',
-  '--session',
-  fix.sessionId,
-  '--project-root',
-  fix.projectDir,
-  ...extra,
-];
 
 const GEN_ARGS = (fix: CacheFixture, extra: string[] = []) => [
   '__generate',
@@ -69,38 +47,12 @@ const GEN_ARGS = (fix: CacheFixture, extra: string[] = []) => [
 ];
 
 describe('cache integration: cross-cutting', () => {
-  it('24. --no-cache writes nothing to select_cache or generation_cache', async () => {
-    const { fix, agent: selectAgent } = await selectSetup();
-    await runCliWithEnv(SELECT_ARGS(fix, ['--no-cache']), baseEnv(fix, selectAgent));
-    expect(readSelectCache(fix.dbPath)).toHaveLength(0);
-
+  it('24. --no-cache writes nothing to generation_cache', async () => {
+    const { fix } = await generateSetup();
     const genAgent = await createScriptedAgent(generateComponentsResponderSource());
     cleanups.push(genAgent.cleanup);
     await runCliWithEnv(GEN_ARGS(fix, ['--no-cache']), baseEnv(fix, genAgent));
     expect(readGenerationCache(fix.dbPath)).toHaveLength(0);
-  });
-
-  it('26. EDS_SELECT_BATCH_SIZE does not change select_cache row contents', async () => {
-    // Run once with batch=1, capture rows.
-    const a = await selectSetup();
-    await runCliWithEnv(SELECT_ARGS(a.fix), baseEnv(a.fix, a.agent, { EDS_SELECT_BATCH_SIZE: '1' }));
-    const rowsBatch1 = readSelectCache(a.fix.dbPath).map((r) => ({
-      hash: r.component_hash,
-      prompt: r.prompt_hash,
-      decision: r.decision,
-    }));
-
-    // Fresh fixture, batch=5.
-    const b = await selectSetup();
-    await runCliWithEnv(SELECT_ARGS(b.fix), baseEnv(b.fix, b.agent, { EDS_SELECT_BATCH_SIZE: '5' }));
-    const rowsBatch5 = readSelectCache(b.fix.dbPath).map((r) => ({
-      hash: r.component_hash,
-      prompt: r.prompt_hash,
-      decision: r.decision,
-    }));
-
-    // Rows are content-equal (sorted by hash already in readSelectCache).
-    expect(rowsBatch5).toEqual(rowsBatch1);
   });
 
   it('27. EDS_GENERATE_CONCURRENCY does not change generation_cache row contents', async () => {

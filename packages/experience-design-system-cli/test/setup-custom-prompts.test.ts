@@ -39,20 +39,20 @@ describe('promptCodexModel', () => {
 
 describe('promptCustomSkillPath (Feature 8)', () => {
   it('returns the trimmed path when the operator supplies one', async () => {
-    const ask = async () => '  /tmp/custom-select.md  ';
-    const result = await promptCustomSkillPath('select', undefined, ask);
-    expect(result).toBe('/tmp/custom-select.md');
+    const ask = async () => '  /tmp/custom-generate.md  ';
+    const result = await promptCustomSkillPath(undefined, ask);
+    expect(result).toBe('/tmp/custom-generate.md');
   });
 
   it('returns undefined (keep current) when the operator presses Enter', async () => {
     const ask = async () => '';
-    const result = await promptCustomSkillPath('generate', '/old/path.md', ask);
+    const result = await promptCustomSkillPath('/old/path.md', ask);
     expect(result).toBeUndefined();
   });
 
   it('returns null (clear) when the operator types "-"', async () => {
     const ask = async () => '-';
-    const result = await promptCustomSkillPath('select', '/old/path.md', ask);
+    const result = await promptCustomSkillPath('/old/path.md', ask);
     expect(result).toBeNull();
   });
 
@@ -62,7 +62,7 @@ describe('promptCustomSkillPath (Feature 8)', () => {
       asked = q;
       return '';
     };
-    await promptCustomSkillPath('generate', '/existing/path.md', ask);
+    await promptCustomSkillPath('/existing/path.md', ask);
     expect(asked).toContain('/existing/path.md');
     expect(asked).toContain('generate');
   });
@@ -73,7 +73,7 @@ describe('promptCustomSkillPath (Feature 8)', () => {
       asked = q;
       return '';
     };
-    await promptCustomSkillPath('select', undefined, ask);
+    await promptCustomSkillPath(undefined, ask);
     expect(asked).toContain('[none]');
   });
 });

@@ -8,17 +8,15 @@ import type { CompositionMode } from '../../lib/composition-mode.js';
 
 export type { ScopeComponent };
 
-type AutoFilterStatus = 'idle' | 'running' | 'complete' | 'cancelled' | 'failed';
-
 export type ScopeGateHostProps = {
   components: ReadonlyArray<ScopeComponent>;
   compositionMode?: CompositionMode;
   onConfirm: (decisions: { accepted: string[]; rejected: string[] }) => void;
   onQuit: () => void;
-  aiFilterStatus?: AutoFilterStatus;
+  /** Retained for fixture compatibility; filtering is no longer performed here. */
+  aiFilterStatus?: string;
   aiFilterProgress?: { done: number; total: number } | null;
   aiFilterError?: string | null;
-  onCancelAutoFilter?: () => void;
 };
 
 export function ScopeGateHost({
@@ -26,10 +24,6 @@ export function ScopeGateHost({
   compositionMode = 'atomic',
   onConfirm,
   onQuit,
-  aiFilterStatus = 'idle',
-  aiFilterProgress = null,
-  aiFilterError = null,
-  onCancelAutoFilter,
 }: ScopeGateHostProps): React.ReactElement {
   if (components.length === 0) {
     return (
@@ -44,28 +38,8 @@ export function ScopeGateHost({
   // single point where "atomic bypasses the graph" is guaranteed on the
   // interactive path.
   if (compositionMode === 'atomic') {
-    return (
-      <AtomicScopeGateStep
-        components={[...components]}
-        onConfirm={onConfirm}
-        onQuit={onQuit}
-        aiFilterStatus={aiFilterStatus}
-        aiFilterProgress={aiFilterProgress}
-        aiFilterError={aiFilterError}
-        onCancelAutoFilter={onCancelAutoFilter}
-      />
-    );
+    return <AtomicScopeGateStep components={[...components]} onConfirm={onConfirm} onQuit={onQuit} />;
   }
 
-  return (
-    <ScopeGateStep
-      components={[...components]}
-      onConfirm={onConfirm}
-      onQuit={onQuit}
-      aiFilterStatus={aiFilterStatus}
-      aiFilterProgress={aiFilterProgress}
-      aiFilterError={aiFilterError}
-      onCancelAutoFilter={onCancelAutoFilter}
-    />
-  );
+  return <ScopeGateStep components={[...components]} onConfirm={onConfirm} onQuit={onQuit} />;
 }

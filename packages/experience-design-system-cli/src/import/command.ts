@@ -1,7 +1,6 @@
 import type { Command } from 'commander';
 import { agentSupportsBedrock, isAgentName } from '@contentful/experience-design-system-generation';
 import { normalizePath } from './path-utils.js';
-import { resolveAutoFilter } from './auto-filter-resolve.js';
 import { resolveAgent, resolveModel } from './agent-model-resolve.js';
 import { addAgentModelOptions } from '../lib/agent-model-options.js';
 import { resolveCompositionMode, type CompositionMode } from '../lib/composition-mode.js';
@@ -89,9 +88,7 @@ export function registerImportCommand(program: Command): void {
             promptOverrides?: string[];
             noCache?: boolean;
             skipMapTokens?: boolean;
-            autoFilter?: boolean;
             livePreview?: boolean;
-            selectPromptPath?: string;
             generatePromptPath?: string;
             initialRawTokensPath?: string;
           };
@@ -119,9 +116,7 @@ export function registerImportCommand(program: Command): void {
               ...buildCompositionForwardingOptions(opts),
               noCache: opts.cache === false,
               skipMapTokens: opts.skipMapTokens ?? false,
-              autoFilter: resolveAutoFilter(creds.autoFilter),
               livePreview: true,
-              selectPromptPath: creds.selectPromptPath,
               generatePromptPath: creds.generatePromptPath,
               ...(opts.rawTokens ? { initialRawTokensPath: normalizePath(opts.rawTokens) } : {}),
             }),

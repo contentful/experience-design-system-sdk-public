@@ -57,13 +57,13 @@ vi.mock('node:child_process', async (importOriginal) => {
     spawn: vi.fn((_command, args) => {
       const stdout = {
         on: (event: string, callback: (chunk: Buffer) => void) => {
-          if (event === 'data' && (args as string[]).includes('extract'))
+          if (event === 'data' && (args as string[]).includes('__extract'))
             callback(Buffer.from('session=extract-session\n'));
         },
       };
       const stderr = {
         on: (event: string, callback: (chunk: Buffer) => void) => {
-          if (event === 'data' && (args as string[]).includes('extract'))
+          if (event === 'data' && (args as string[]).includes('__extract'))
             callback(Buffer.from('Extracted 1 component\n'));
         },
       };
