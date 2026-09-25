@@ -3,7 +3,7 @@ import { PALETTE } from '../../analyze/select/tui/theme.js';
 import { Box, Text, useStdout } from 'ink';
 import { join, resolve } from 'node:path';
 import { appendFileSync, writeFileSync } from 'node:fs';
-import { access, stat } from 'node:fs/promises';
+import { access, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { execFile, spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
@@ -46,8 +46,13 @@ import { parseGenerateStderrChunk, type GenerateProgressState } from './wizard-g
 import { spawnGenerateChild } from './spawn-generate.js';
 import { readTokensFromPath, hasBreakingChangesWithImpact, toCDFTokens } from '../../apply/tokens.js';
 import { isEmptyPreview } from '../../apply/preview-utils.js';
-import { buildCDF, validateSlotReferences } from '@contentful/experience-design-system-types';
-import type { ServerPreviewResponse, CDFDocument } from '@contentful/experience-design-system-types';
+import { buildCDF, validateCDF, validateSlotReferences } from '@contentful/experience-design-system-types';
+import type {
+  ServerPreviewResponse,
+  CDFDocument,
+  CDFComponentEntry,
+  DTCGTokenEntry,
+} from '@contentful/experience-design-system-types';
 import {
   openPipelineDb,
   loadCDFComponents,
@@ -229,6 +234,20 @@ export function buildMapTokensArgs(opts: {
 
 export function shouldRunMapTokens(opts: { mappablePropCount: number; rawTokenCount: number }): boolean {
   return opts.mappablePropCount > 0 && opts.rawTokenCount > 0;
+}
+
+export function buildSavedCDF(
+  components: Array<{ key: string; entry: CDFComponentEntry }>,
+  tokens: DTCGTokenEntry[],
+  opts: { deleteAll?: boolean } = {},
+): CDFDocument {
+  const cdf = buildCDF(components, toCDFTokens(tokens), opts);
+  if (!cdf) throw new Error('nothing to save — no components or tokens resolved');
+  const validation = validateCDF(cdf);
+  if (!validation.valid) {
+    throw new Error(`generated CDF failed validation: ${validation.errors.map((error) => error.message).join(', ')}`);
+  }
+  return cdf;
 }
 
 export function formatAcceptanceSummary(opts: { accepted: number; autoRejected: number }): string {
@@ -1371,45 +1390,37 @@ export function WizardApp({
   const runPrintFiles = async (
     extractSessionId: string | null,
     outDir: string,
-    opts: { skipGate?: boolean; tokenSessionId?: string | null; allowEmpty?: boolean } = {},
-  ): Promise<{ ok: boolean; tokensPath?: string; tokenCount?: number }> => {
+    opts: { skipGate?: boolean; tokenSessionId?: string | null; tokensPath?: string; allowEmpty?: boolean } = {},
+  ): Promise<{ ok: boolean }> => {
     update({ step: 'printing' });
     const componentsPath = join(outDir, 'components.json');
-    const printArgs = ['print', 'components', '--out', componentsPath];
-    if (extractSessionId) printArgs.push('--session', extractSessionId);
-    if (opts.allowEmpty) printArgs.push('--allow-empty');
-    const r = await runCli(printArgs);
-    if (r.exitCode !== 0) {
+    try {
+      const db = openPipelineDb();
+      let components: ReturnType<typeof loadCDFComponents> = [];
+      let tokens: DTCGTokenEntry[] = [];
+      try {
+        if (extractSessionId) components = loadCDFComponents(db, extractSessionId);
+        if (opts.tokenSessionId) tokens = loadDTCGTokens(db, opts.tokenSessionId).tokens;
+      } finally {
+        db.close();
+      }
+      if (!opts.tokenSessionId && opts.tokensPath) tokens = await readTokensFromPath('tokens', opts.tokensPath);
+
+      const cdf = buildSavedCDF(components, tokens, { deleteAll: opts.allowEmpty });
+      await writeFile(componentsPath, `${JSON.stringify(cdf, null, 2)}\n`);
+      process.stderr.write(
+        `wrote ${componentsPath} (${components.length} component${components.length === 1 ? '' : 's'}, ${tokens.length} token${tokens.length === 1 ? '' : 's'})\n`,
+      );
+    } catch (error) {
       update({
         step: 'error',
-        errorStep: 'print components',
-        errorMessage: r.stderr.trim() || 'Unknown error',
+        errorStep: 'save CDF',
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
       });
       return { ok: false };
     }
-    let emittedTokensPath: string | undefined;
-    let emittedTokenCount: number | undefined;
-    if (opts.tokenSessionId) {
-      const tokensOut = join(outDir, 'tokens.json');
-      const tokenArgs = ['print', 'tokens', '--out', tokensOut, '--session', opts.tokenSessionId];
-      const tr = await runCli(tokenArgs);
-      if (tr.exitCode !== 0) {
-        update({
-          step: 'error',
-          errorStep: 'print tokens',
-          errorMessage: tr.stderr.trim() || 'Unknown error',
-        });
-        return { ok: false };
-      }
-      emittedTokensPath = tokensOut;
-      emittedTokenCount = parsePrintTokensCount(tr.stdout);
-    }
     update(nextStateAfterPrint({ skipGate: opts.skipGate, componentsPath }));
-    return {
-      ok: true,
-      ...(emittedTokensPath ? { tokensPath: emittedTokensPath } : {}),
-      ...(typeof emittedTokenCount === 'number' ? { tokenCount: emittedTokenCount } : {}),
-    };
+    return { ok: true };
   };
 
   const runSaveAndPush = async (): Promise<void> => {
@@ -1430,11 +1441,12 @@ export function WizardApp({
     const result = await runPrintFiles(extractSessionId, path, {
       ...(skipGate ? { skipGate: true } : {}),
       ...(state.tokenSessionId ? { tokenSessionId: state.tokenSessionId } : {}),
+      ...(tokensPath ? { tokensPath } : {}),
       ...(allowEmptyDeleteAllRef.current ? { allowEmpty: true } : {}),
     });
     if (!result.ok) return;
-    const recordedTokensPath = result.tokensPath ?? (state.tokenSessionId ? tokensPath || null : null);
-    const recordedTokenCount = result.tokenCount ?? state.tokenCount;
+    const recordedTokensPath = state.tokenSessionId ? tokensPath || null : null;
+    const recordedTokenCount = state.tokenCount;
     if (result.ok) {
       try {
         let sourceFingerprint: Awaited<ReturnType<typeof buildSourceFingerprint>> | null = null;
@@ -1792,9 +1804,7 @@ export function WizardApp({
       }
 
       case 'push-decision-gate': {
-        const tokenDesc = hasTokens ? 'tokens.json' : null;
-        const compDesc = hasComponents ? 'components.json' : null;
-        const files = [tokenDesc, compDesc].filter(Boolean).join(' and ');
+        const files = hasComponents || hasTokens ? 'components.json' : null;
         const count = state.generatedAcceptedCount > 0 ? state.generatedAcceptedCount : state.generatedCount;
         const summary = hasComponents
           ? `${count} component definition${count !== 1 ? 's' : ''} ready${hasTokens ? ', design tokens ready' : ''}.`
@@ -1967,8 +1977,7 @@ export function WizardApp({
           <GateStep
             successMessage="Files saved"
             summary={[
-              hasComponents && state.componentsPath ? `components.json → ${state.componentsPath}` : null,
-              hasTokens && state.tokensPath ? `tokens.json → ${state.tokensPath}` : null,
+              (hasComponents || hasTokens) && state.componentsPath ? `components.json → ${state.componentsPath}` : null,
             ]
               .filter(Boolean)
               .join('\n')}

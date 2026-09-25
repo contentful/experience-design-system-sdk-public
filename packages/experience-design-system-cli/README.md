@@ -89,7 +89,7 @@ export CONTENTFUL_ENVIRONMENT_ID=master                # required
 
 Or run `experiences setup` once and they get saved to `credentials.json` and pre-filled in the wizard.
 
-In the wizard's credentials step you can press `[s] Skip` to save-only without pushing — useful when you want a checked-in `components.json` without a live push.
+In the wizard's credentials step you can press `[s] Skip` to save-only without pushing — useful when you want a checked-in combined CDF file without a live push.
 
 ---
 
@@ -134,7 +134,7 @@ The auto-filter (`analyze select-agent` invoked before scope-gate) is on by defa
 
 ### Save-and-push default
 
-The push-decision-gate defaults to **save AND push**: it writes `components.json` and `tokens.json` to disk *and* pushes to Contentful in one step.
+The push-decision-gate defaults to **save AND push**: it writes one combined `components.json` CDF containing components and design tokens, then pushes it to Contentful in one step.
 
 ### Custom skill prompts
 
