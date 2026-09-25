@@ -8,11 +8,11 @@ export type DebugModeSetting = {
   enabled: boolean;
 };
 
-export const DEFAULT_DEBUG_MODE_SETTING: DebugModeSetting = {
+const DEFAULT_DEBUG_MODE_SETTING: DebugModeSetting = {
   enabled: true,
 };
 
-export function debugModeSettingPath(): string {
+function debugModeSettingPath(): string {
   return join(findPackageRoot(import.meta.url, PACKAGE_NAME), '.contentful', 'config', 'debug_mode.json');
 }
 

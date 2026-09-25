@@ -21,7 +21,7 @@ type ExitMethod = 'saved' | 'discarded' | 'crashed';
 
 let pendingRun: PendingRun | undefined;
 
-export function generateRunId(): string {
+function generateRunId(): string {
   const now = new Date();
   const pad = (n: number): string => String(n).padStart(2, '0');
   return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
@@ -64,10 +64,6 @@ function generateSessionId(): string {
 // "once per terminal session."
 const SESSION_ID = generateSessionId();
 
-export function getSessionId(): string {
-  return SESSION_ID;
-}
-
 function sessionDebugDir(): string {
   return join(sessionsRootDir(), SESSION_ID);
 }
@@ -79,7 +75,7 @@ void isDebugModeEnabled().then((enabled) => {
   return mkdir(sessionDebugDir(), { recursive: true });
 });
 
-export async function isDebugModeEnabled(): Promise<boolean> {
+async function isDebugModeEnabled(): Promise<boolean> {
   try {
     return (await readDebugModeSetting()).enabled;
   } catch {
@@ -87,7 +83,7 @@ export async function isDebugModeEnabled(): Promise<boolean> {
   }
 }
 
-export function redact(value: Record<string, unknown>): Record<string, unknown> {
+function redact(value: Record<string, unknown>): Record<string, unknown> {
   const clone = { ...value };
   if ('cma_token' in clone) {
     const raw = clone.cma_token;
