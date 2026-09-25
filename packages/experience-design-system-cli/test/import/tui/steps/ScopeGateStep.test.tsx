@@ -1601,7 +1601,7 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
         const before = stripAnsi(lastFrame() ?? '');
         expect(before).toContain('Hero');
         expect(before).toContain('Accepted Components');
-        expect(before).toContain('Components with slot dependencies');
+        expect(before).toContain('Accepted components with slot dependencies');
 
         stdin.write('x');
         await new Promise((r) => setTimeout(r, 30));
@@ -1611,7 +1611,7 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
         expect(open).toContain('DivWrapper');
         expect(open).not.toContain('Hero');
         expect(open).toContain('Accepted Components');
-        expect(open).toContain('Components with slot dependencies');
+        expect(open).toContain('Accepted components with slot dependencies');
 
         stdin.write('\x1b');
         await new Promise((r) => setTimeout(r, 30));

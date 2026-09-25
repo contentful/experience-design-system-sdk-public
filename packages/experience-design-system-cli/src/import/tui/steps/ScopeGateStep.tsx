@@ -1192,7 +1192,7 @@ function AddedGroupsColumn(props: {
 }): React.ReactElement {
   return (
     <AddedColumn
-      title="Components with slot dependencies"
+      title="Accepted components with slot dependencies"
       {...props}
       renderSuffix={(entry, style) => {
         const suffix = ` (${entry.depCount} dep${entry.depCount === 1 ? '' : 's'})`;

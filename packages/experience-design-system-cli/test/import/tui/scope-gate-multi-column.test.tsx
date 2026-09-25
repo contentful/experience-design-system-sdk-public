@@ -141,12 +141,12 @@ describe('ScopeGateStep — counter strip', () => {
 });
 
 describe('ScopeGateStep — three-column layout (wide terminal)', () => {
-  it('renders "Accepted Components" and "Components with slot dependencies" columns at ≥ 120 cols', () => {
+  it('renders "Accepted Components" and "Accepted components with slot dependencies" columns at ≥ 120 cols', () => {
     setWide(160);
     const { lastFrame } = render(<ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />);
     const out = lastFrame() ?? '';
     expect(out).toContain('Accepted Components');
-    expect(out).toContain('Components with slot dependencies');
+    expect(out).toContain('Accepted components with slot dependencies');
     expect(out).toContain('switch column');
   });
 
@@ -154,7 +154,7 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     const { lastFrame } = render(<ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />);
     const out = lastFrame() ?? '';
     expect(out).not.toContain('Accepted Components');
-    expect(out).not.toContain('Components with slot dependencies');
+    expect(out).not.toContain('Accepted components with slot dependencies');
     expect(out).not.toContain('switch column');
   });
 
@@ -176,7 +176,7 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     expect(afterShift3).not.toMatch(/❯ +Card \(2 deps\)/);
     expect(afterShift3).not.toMatch(/❯ +Card\b/);
     expect(afterShift3).toContain('Accepted Components');
-    expect(afterShift3).toContain('Components with slot dependencies');
+    expect(afterShift3).toContain('Accepted components with slot dependencies');
     void initial;
   });
 
@@ -315,7 +315,7 @@ describe('ScopeGateStep — T10 side-column borders', () => {
     const corners = (out.match(/┌/g) ?? []).length;
     expect(corners).toBe(3);
     expect(out).toContain('Accepted Components');
-    expect(out).toContain('Components with slot dependencies');
+    expect(out).toContain('Accepted components with slot dependencies');
   });
 
   it('does NOT add extra borders at narrow terminals (single-column layout)', () => {
@@ -491,7 +491,7 @@ describe('ScopeGateStep — AI suggestions (three-column layout)', () => {
     expect(before).toContain('flagged by AI');
     expect(before).toContain('[x]');
     expect(before).toContain('Accepted Components');
-    expect(before).toContain('Components with slot dependencies');
+    expect(before).toContain('Accepted components with slot dependencies');
 
     stdin.write('x');
     await new Promise((r) => setTimeout(r, 30));
@@ -499,7 +499,7 @@ describe('ScopeGateStep — AI suggestions (three-column layout)', () => {
     expect(out).toContain('DebugPanel');
     expect(out).toContain('internal-only debugging widget');
     expect(out).toContain('Accepted Components');
-    expect(out).toContain('Components with slot dependencies');
+    expect(out).toContain('Accepted components with slot dependencies');
   });
 
   it('renders the per-row [×] AI badge in the main sidebar in wide layout', () => {
