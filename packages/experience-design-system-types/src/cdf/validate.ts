@@ -1,13 +1,7 @@
 import { Ajv, type ErrorObject } from 'ajv';
 import { cdfJsonSchema, CDF_SCHEMA_URL } from './schema.js';
 import { DESIGN_TOKEN_TYPES } from '../dtcg/token-types.js';
-import type {
-  CDFFile,
-  CDFComponentEntry,
-  CDFTokenEntry,
-  CDFValidationError,
-  CDFValidationResult,
-} from './types.js';
+import type { CDFFile, CDFComponentEntry, CDFTokenEntry, CDFValidationError, CDFValidationResult } from './types.js';
 
 const ajv = new Ajv({ allErrors: true });
 const validate = ajv.compile(cdfJsonSchema);
@@ -15,11 +9,7 @@ const validate = ajv.compile(cdfJsonSchema);
 const TOKEN_TYPE_SET = new Set<string>(DESIGN_TOKEN_TYPES);
 
 function isComponentEntry(value: unknown): value is CDFComponentEntry {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    (value as Record<string, unknown>)['$type'] === 'component'
-  );
+  return typeof value === 'object' && value !== null && (value as Record<string, unknown>)['$type'] === 'component';
 }
 
 function isTokenEntry(value: unknown): value is CDFTokenEntry {
@@ -39,7 +29,10 @@ function isTokenEntry(value: unknown): value is CDFTokenEntry {
 export function parseCDFComponents(
   obj: Record<string, unknown>,
   prefix: string = '',
-): { components: Array<{ key: string; entry: CDFComponentEntry }>; tokens: Array<{ path: string; entry: CDFTokenEntry }> } {
+): {
+  components: Array<{ key: string; entry: CDFComponentEntry }>;
+  tokens: Array<{ path: string; entry: CDFTokenEntry }>;
+} {
   const components: Array<{ key: string; entry: CDFComponentEntry }> = [];
   const tokens: Array<{ path: string; entry: CDFTokenEntry }> = [];
 
