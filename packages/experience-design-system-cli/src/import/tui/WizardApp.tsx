@@ -61,7 +61,6 @@ import {
 } from '../../session/db.js';
 import { ScopeGateHost, type ScopeComponent } from './scope-gate-host.js';
 import { FinalReviewHost } from './final-review-host.js';
-import type { CompositionMode } from '../../lib/composition-mode.js';
 import { runScopeGate } from './runScopeGate.js';
 import { checkAgentAuth, type AgentName } from '@contentful/experience-design-system-generation';
 import { normalizePath } from '../path-utils.js';
@@ -296,7 +295,6 @@ export type WizardAppProps = {
   bedrock?: boolean;
   initialProjectPath?: string;
   host?: string;
-  compositionMode?: CompositionMode;
   compositionMap?: string;
   promptOverrides?: string[];
   noCache?: boolean;
@@ -316,7 +314,6 @@ export function WizardApp({
   bedrock = false,
   initialProjectPath,
   host,
-  compositionMode = 'atomic',
   compositionMap,
   promptOverrides,
   noCache = false,
@@ -625,15 +622,12 @@ export function WizardApp({
     const outDir = join(resolve(projectPath), '.contentful');
     update({ step: 'extracting', outDir, extractProgress: null, compositionPhase: null });
     const extractArgs = [findCliPath(), '__extract', '--project', projectPath];
-    if (compositionMode === 'composite') {
-      extractArgs.push('--composite');
-      if (noCache) extractArgs.push('--composition-refresh');
-      if (compositionMap) extractArgs.push('--composition-map', compositionMap);
-      for (const p of promptOverrides ?? []) extractArgs.push('--prompt', p);
-      // Composition resolution uses the same agent the user picked for the run.
-      if (state.agent) extractArgs.push('--agent', state.agent);
-      if (state.bedrock) extractArgs.push('--bedrock');
-    }
+    if (noCache) extractArgs.push('--composition-refresh');
+    if (compositionMap) extractArgs.push('--composition-map', compositionMap);
+    for (const p of promptOverrides ?? []) extractArgs.push('--prompt', p);
+    // Composition resolution uses the same agent the user picked for the run.
+    if (state.agent) extractArgs.push('--agent', state.agent);
+    if (state.bedrock) extractArgs.push('--bedrock');
     const r = await runSpawnedCli(extractArgs, (chunk) => {
       for (const line of chunk.split('\n')) {
         const scanMatch = /^progress=scan:(\d+)$/.exec(line.trim());
@@ -1456,7 +1450,6 @@ export function WizardApp({
           extractSessionId: state.extractSessionId ?? '',
           generateSessionId: state.generateSessionId,
           sourceFingerprint,
-          compositionMode,
         });
         setState((prev) => ({ ...prev, lastRunId: record.id }));
       } catch (err) {
@@ -1658,7 +1651,6 @@ export function WizardApp({
         return (
           <ScopeGateHost
             components={components}
-            compositionMode={compositionMode}
             onConfirm={(decisions) => {
               void runScopeGate({
                 sessionId,
@@ -1725,7 +1717,6 @@ export function WizardApp({
           <FinalReviewHost
             extractSessionId={state.extractSessionId}
             tokenSessionId={state.tokenSessionId}
-            compositionMode={compositionMode}
             livePreview={livePreview}
             spaceId={state.spaceId}
             environmentId={state.environmentId}

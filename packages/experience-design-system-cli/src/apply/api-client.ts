@@ -386,7 +386,7 @@ export class ImportApiClient {
         // The generated request type still expects the old componentsManifest/
         // tokensManifest envelope, pending the server-side merge; we send the
         // single CDF document ahead of that.
-        body: cdf as unknown as Record<string, unknown>,
+        body: cdf as never,
         parseAs: 'json',
       }),
     );
@@ -422,7 +422,7 @@ export class ImportApiClient {
         headers: this.headers(),
         path: { spaceId: this.spaceId, environmentId: this.environmentId },
         // Same pre-server-migration note as previewImport above.
-        body: { ...cdf, acknowledgeBreakingChanges } as unknown as Record<string, unknown>,
+        body: { ...cdf, acknowledgeBreakingChanges } as never,
         parseAs: 'json',
       });
     } catch (error) {

@@ -20,9 +20,7 @@ It keeps the import command's supported flag surface explicit.
 2. **Run `inventory.test.ts`** — it will FAIL, naming your new flag as
    "registered flags missing from flags.ts inventory". That is the red.
 3. **Add a `FlagSpec` entry to `flags.ts`**: set `kind`, a usable `sampleValue`
-   for value flags (must not error before mode dispatch, e.g.
-   `--composite`), the `modes`
-   it is meaningful in, and any `incompatibleWith` edges (declare them on BOTH
+   for value flags (must not error before dispatch), and any `incompatibleWith` edges (declare them on BOTH
    flags — the symmetry check enforces this).
 4. **Add a behavioral cell:**
    - Interactive → add a focused Ink component test under the CLI package.

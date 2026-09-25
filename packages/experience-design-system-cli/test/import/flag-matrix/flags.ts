@@ -49,17 +49,11 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     incompatibleWith: [],
   },
   {
-    flag: '--composite',
-    kind: 'boolean',
-    incompatibleWith: [],
-    notes: 'Composition opt-in; atomic mode remains the default.',
-  },
-  {
     flag: '--composition-map',
     kind: 'value',
     sampleValue: '/tmp/composition-map.json',
     incompatibleWith: [],
-    notes: 'Consumes a hand-authored map and implies --composite.',
+    notes: 'Consumes a hand-authored map.',
   },
   {
     flag: '--prompt',

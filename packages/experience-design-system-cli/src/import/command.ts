@@ -3,8 +3,6 @@ import { agentSupportsBedrock, isAgentName } from '@contentful/experience-design
 import { normalizePath } from './path-utils.js';
 import { resolveAgent, resolveModel } from './agent-model-resolve.js';
 import { addAgentModelOptions } from '../lib/agent-model-options.js';
-import { resolveCompositionMode, type CompositionMode } from '../lib/composition-mode.js';
-import { addCompositionOptions } from '../lib/command-options.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
 import { buildCompositionForwardingOptions } from './composition-options.js';
@@ -29,9 +27,8 @@ export function registerImportCommand(program: Command): void {
       'Skip agentic token restrictions while still resolving deterministic token-default paths',
     )
     .option('--no-cache', 'Re-run all steps even if output already exists');
-  addCompositionOptions(cmd);
   cmd
-    .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map (implies --composite)')
+    .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map')
     .option(
       '--prompt <stage=value>',
       'Override a stage prompt (repeatable). value is a file path or literal text, e.g. --prompt composition=./p.md',
@@ -47,7 +44,6 @@ export function registerImportCommand(program: Command): void {
         rawTokens?: string;
         skipMapTokens?: boolean;
         cache?: boolean;
-        composite?: boolean;
         compositionMap?: string;
         prompt?: string[];
       }) => {
@@ -83,7 +79,6 @@ export function registerImportCommand(program: Command): void {
             initialModel?: string;
             bedrock?: boolean;
             initialProjectPath?: string;
-            compositionMode?: CompositionMode;
             compositionMap?: string;
             promptOverrides?: string[];
             noCache?: boolean;
@@ -95,8 +90,6 @@ export function registerImportCommand(program: Command): void {
           const creds = await readExperiencesCredentials();
           const resolvedAgent = resolveAgent(opts.agent, creds.agent);
           const resolvedModel = resolveModel(opts.model, creds.agentModel);
-          const resolvedCompositionMode = resolveCompositionMode(opts, creds.compositionMode);
-
           if (opts.bedrock && !(isAgentName(resolvedAgent) && agentSupportsBedrock(resolvedAgent))) {
             process.stderr.write(`Error: --bedrock is not supported for --agent ${resolvedAgent}\n`);
             process.exit(1);
@@ -112,7 +105,6 @@ export function registerImportCommand(program: Command): void {
               ...(resolvedModel ? { initialModel: resolvedModel } : {}),
               ...(opts.bedrock ? { bedrock: true } : {}),
               initialProjectPath: opts.project !== '.' ? normalizePath(opts.project) : undefined,
-              compositionMode: resolvedCompositionMode,
               ...buildCompositionForwardingOptions(opts),
               noCache: opts.cache === false,
               skipMapTokens: opts.skipMapTokens ?? false,

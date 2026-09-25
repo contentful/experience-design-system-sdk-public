@@ -75,6 +75,7 @@ describe('import — help output lists all flags', () => {
     for (const flag of flags) {
       expect(stdout, `expected ${flag} in help output`).toContain(flag);
     }
+    expect(stdout).not.toContain('--composite');
     expect(stdout).not.toContain('--atomic');
     expect(stdout).not.toContain('--composition-refresh');
     expect(stdout).not.toContain('--composition-agent');

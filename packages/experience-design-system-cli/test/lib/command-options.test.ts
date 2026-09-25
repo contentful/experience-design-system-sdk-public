@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Command } from 'commander';
-import {
-  addArtifactInputOptions,
-  addCompositionOptions,
-  addContentfulTargetOptions,
-} from '../../src/lib/command-options.js';
+import { addArtifactInputOptions, addContentfulTargetOptions } from '../../src/lib/command-options.js';
 
 function options(command: Command) {
   return command.options.map((option) => ({
@@ -42,18 +38,6 @@ describe('command option builders', () => {
         defaultValue: undefined,
       },
       { flag: '--host', description: 'Override API base URL', mandatory: false, defaultValue: undefined },
-    ]);
-  });
-
-  it('registers composition flags with their existing help text', () => {
-    const command = addCompositionOptions(new Command());
-    expect(options(command)).toEqual([
-      {
-        flag: '--composite',
-        description: 'Import embedded-component hierarchy (opt in; default is atomic)',
-        mandatory: false,
-        defaultValue: undefined,
-      },
     ]);
   });
 });

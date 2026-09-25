@@ -32,18 +32,11 @@ All intermediate data flows through a local SQLite session database (`~/.content
 
 A **composite component** is one that renders other components inside it — a `Card` that slots a `Button` and an `Icon`, a `Tabs` that slots `Tab` panels. When you import composite components, the CLI can populate each slot's `$allowedComponents` so the parent→child relationships survive into Contentful.
 
-### Atomic vs. composite
-
-Imports are **atomic by default** — flat components, no embedded hierarchy. This is the right choice when you just want each component registered on its own. Opt into hierarchy resolution with `--composite` (or any composition flag, which implies it).
-
-| Mode | Flag | Behavior |
-|---|---|---|
-| Atomic | default | Flat import; composition stripped before push |
-| Composite | `--composite` | Resolve and import the parent→child hierarchy |
+All imports use composite mode: embedded-component relationships are resolved and preserved in the generated CDF.
 
 ### How composition is resolved
 
-Under `--composite`, relationships are resolved from the highest-confidence source available, in this precedence order:
+Relationships are resolved from the highest-confidence source available, in this precedence order:
 
 1. **Typed slots (code)** — slots the source already declares, e.g. React `ReactElement<XProps>` / `children`, Svelte `Snippet<[XProps]>`, or an explicit `@allowedComponents` JSDoc tag. Fully deterministic; picked up automatically.
 2. **Agent** — direct edge emission for codebases that encode composition in *code patterns* rather than typed slots (common in real-world design systems). It is enabled automatically in composite mode and only runs when the deterministic sources above find nothing.
@@ -113,8 +106,8 @@ experiences import [flags]
 ```
 welcome
   ↓
-extracting             — runs analyze extract (atomic by default; resolves composition
-                         under --composite, see below); spawns internal generation in parallel (prefetch)
+extracting             — runs analyze extract with composite relationships enabled;
+                         spawns internal generation in parallel (prefetch)
   ↓
 [auto-filter]          — analyze select-agent runs automatically
   ↓
@@ -154,8 +147,7 @@ Custom `.md` skill prompt paths can be saved via `experiences setup`; the CLI em
 | `--project <path>`                | `.`                                    | Project root to analyze                                                                                      |
 | `--agent <name>`                  | saved by setup / `claude`              | Agent for `analyze select-agent` and internal generation                                                     |
 | `--model <name>`                  | agent default                          | Model name                                                                                                   |
-| `--composite`                     | —                                      | Import the embedded-component hierarchy (any composition flag implies this)                                   |
-| `--composition-map <path>`        | —                                      | Consume a hand-authored parent→children interchange map (implies `--composite`)                              |
+| `--composition-map <path>`        | —                                      | Consume a hand-authored parent→children interchange map                                                       |
 | `--prompt <stage=value>`          | —                                      | Override a stage prompt (repeatable); value is a file path or literal text, e.g. `--prompt composition=./p.md` |
 | `--skip-map-tokens`               | —                                      | Skip the `map tokens` step between internal generation and apply                                             |
 | `--no-cache`                      | cache on                               | Bypass extract/select/internal-generation/map-tokens/composition caches and force re-run                    |

@@ -2,7 +2,6 @@ import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { randomBytes } from 'node:crypto';
-import type { CompositionMode } from '../lib/composition-mode.js';
 
 export const RUNS_FILE_VERSION = 3 as const;
 const RUNS_FILE_CAP = 200;
@@ -47,10 +46,6 @@ export type RunRecord = {
    *  satisfy `RunRecord`; `appendRun` always normalizes a missing value to
    *  null on the way to disk. */
   sourceFingerprint?: SourceFingerprint | null;
-  /** Composition mode the run was produced in, so replay resumes in the
-   *  same mode (`composite` vs `atomic`). Absent on records written before this
-   *  field existed; callers treat a missing value as `atomic` (the default). */
-  compositionMode?: CompositionMode;
   notes?: string;
 };
 

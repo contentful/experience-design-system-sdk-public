@@ -2,7 +2,6 @@ import { mkdir, readdir, readFile, stat } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import type { Command } from 'commander';
 import { addAgentModelOptions } from '../lib/agent-model-options.js';
-import { addCompositionOptions } from '../lib/command-options.js';
 import {
   extractComponents,
   preClassifyComponent,
@@ -26,7 +25,6 @@ import {
   storeCompositionCache,
 } from '../session/db.js';
 import { findSlotCycles, suggestCycleBreakEdge } from './cycle-detection.js';
-import { resolveCompositionMode, type CompositionMode } from '../lib/composition-mode.js';
 import { resolveMapping } from './composition/resolve-mapping.js';
 import { loadUserMap, resolveCompositionSources } from './composition/resolve-mapping-cli.js';
 import { selectCandidateFiles, capCandidatesToPromptBudget } from './composition/candidate-files.js';
@@ -41,7 +39,6 @@ import {
   runAgent,
   type AgentName,
 } from '@contentful/experience-design-system-generation';
-import { readExperiencesCredentials } from '../credentials-store.js';
 import {
   bindAnalyticsSessionId,
   emitSessionStarted,
@@ -55,7 +52,6 @@ interface AnalyzeExtractOptions {
   project: string;
   dir?: string;
   resolveUnreachable?: 'auto' | 'always' | 'never';
-  composite?: boolean;
   compositionRefresh?: boolean;
   compositionMap?: string;
   prompt?: string[];
@@ -195,14 +191,6 @@ export async function collectSourceFiles(
 }
 
 /** Read the persisted default composition mode; missing config is fine. */
-async function safeReadCompositionMode(): Promise<CompositionMode | undefined> {
-  try {
-    return (await readExperiencesCredentials()).compositionMode;
-  } catch {
-    return undefined;
-  }
-}
-
 /** Resolve which coding-agent runs mapping resolution: `--agent` flag > env > default. */
 function resolveCompositionAgentName(flagValue?: string): AgentName {
   if (flagValue && isAgentName(flagValue)) return flagValue;
@@ -249,18 +237,14 @@ export function registerInternalExtractCommand(program: Command): void {
       "Retry pass for unresolved Svelte Props types: 'auto' (default), 'always', or 'never'",
       'auto',
     )
-    .option(
-      '--composition-refresh',
-      'Force the mapping agent to run even where deterministic sources answered (implies --composite)',
-    )
-    .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map (implies --composite)')
+    .option('--composition-refresh', 'Force the mapping agent to run even where deterministic sources answered')
+    .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map')
     .option(
       '--prompt <stage=value>',
       'Override a stage prompt (repeatable). value is a file path or literal text, e.g. --prompt composition=./p.md',
       (v: string, acc: string[]) => [...acc, v],
       [] as string[],
     );
-  addCompositionOptions(extractCmd);
   addAgentModelOptions(extractCmd, {
     includeModel: false,
     agentDescription: 'Coding agent for composition mapping resolution (claude|codex|opencode|cursor)',
@@ -390,11 +374,9 @@ export function registerInternalExtractCommand(program: Command): void {
     }
     let validatedComponents = validateExtractedComponents(filteredComponents);
 
-    // Composition mapping resolution (spec U2). Only in composite mode;
-    // direct edge emission is enabled by default.
-    // Atomic (default) never resolves — it would only be stripped later.
-    const compositionMode = resolveCompositionMode(opts, (await safeReadCompositionMode()) ?? undefined);
-    if (compositionMode === 'composite') {
+    // Composition mapping resolution is always enabled. Every extracted CDF
+    // preserves embedded-component edges.
+    {
       const sources = resolveCompositionSources(opts);
 
       let userMap: InterchangeMap | undefined;
@@ -486,7 +468,7 @@ export function registerInternalExtractCommand(program: Command): void {
 
         // Manifest (Figma `manifest.json`)/doc (`AGENTS.md`) evidence — rank
         // 4/5, deterministic (no LLM), runs over the FULL file set
-        // regardless of composition mode/agent settings since it's cheap
+        // regardless of agent settings since it's cheap
         // and code/design-adjacent rather than agent-derived.
         const manifestDocEdges = collectManifestDocEdges(runtimeFiles, validatedComponents, componentNameSet);
         const extraEdges = manifestDocEdges;

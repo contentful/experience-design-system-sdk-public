@@ -14,7 +14,3 @@ export function addContentfulTargetOptions(cmd: Command): Command {
     .option('--cma-token <token>', 'CMA personal access token (or set CONTENTFUL_MANAGEMENT_TOKEN)')
     .option('--host <url>', 'Override API base URL');
 }
-
-export function addCompositionOptions(cmd: Command): Command {
-  return cmd.option('--composite', 'Import embedded-component hierarchy (opt in; default is atomic)');
-}
