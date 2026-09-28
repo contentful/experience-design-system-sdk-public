@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - canary
+      - development
     paths:
       - "packages/**"
       - "tools/**"
