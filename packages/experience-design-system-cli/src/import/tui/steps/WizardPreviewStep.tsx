@@ -334,14 +334,6 @@ export function WizardPreviewStep({
         <Text dimColor>Nothing to push — everything is already up to date.</Text>
       )}
 
-      <Box gap={1} marginTop={1}>
-        <Text dimColor>Space:</Text>
-        <Text>{spaceId}</Text>
-        <Text dimColor>/</Text>
-        <Text dimColor>Environment:</Text>
-        <Text>{environmentId}</Text>
-      </Box>
-
       {breakingWithImpact && (
         <Box marginTop={1}>
           <Text color={PALETTE.error} bold>
