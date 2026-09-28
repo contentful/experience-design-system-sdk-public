@@ -126,7 +126,23 @@ function toSidebarEntry(c: ScopeComponent): CDFComponentEntry {
   return entry;
 }
 
-export function ScopeGateStep({ components, onConfirm, onQuit }: ScopeGateStepProps): React.ReactElement {
+export function ScopeGateStep(props: ScopeGateStepProps): React.ReactElement {
+  if (props.components.length === 0) {
+    return (
+      <Box paddingX={2} paddingY={1}>
+        <Text color={PALETTE.error}>Error: no components found for this session — please re-run analyze extract.</Text>
+      </Box>
+    );
+  }
+
+  return <ScopeGateStepView {...props} components={[...props.components]} />;
+}
+
+function ScopeGateStepView({
+  components,
+  onConfirm,
+  onQuit,
+}: Omit<ScopeGateStepProps, 'components'> & { components: ScopeComponent[] }): React.ReactElement {
   const { stdout } = useStdout();
   const totalWidth = stdout?.columns ?? 80;
   const columnPlan = useMemo(() => computeColumnWidths(totalWidth), [totalWidth]);

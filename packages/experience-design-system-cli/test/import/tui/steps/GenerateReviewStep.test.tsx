@@ -4857,3 +4857,15 @@ describe('GenerateReviewStep — token review editing', () => {
     expect(lastFrame() ?? '').toContain('bgColor');
   });
 });
+
+describe('GenerateReviewStep — missing session', () => {
+  it('renders an error when extractSessionId is null', () => {
+    const onFinalize = vi.fn();
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId={null} onFinalize={onFinalize} onQuit={() => {}} />,
+    );
+    const out = lastFrame() ?? '';
+    expect(out).toMatch(/no session id/i);
+    expect(onFinalize).not.toHaveBeenCalled();
+  });
+});

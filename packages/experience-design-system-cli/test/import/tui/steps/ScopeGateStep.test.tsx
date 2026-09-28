@@ -1871,3 +1871,11 @@ describe('FB2 — cursor + selection coherence under active category filters', (
     expect(['Zbrk1', 'Zbrk2']).toContain(labelAfterReactivate);
   });
 });
+
+describe('ScopeGateStep — no components', () => {
+  it('renders an error message when components is empty', () => {
+    const { lastFrame } = render(<ScopeGateStep components={[]} onConfirm={() => {}} onQuit={() => {}} />);
+    const out = lastFrame() ?? '';
+    expect(out).toMatch(/no components/i);
+  });
+});

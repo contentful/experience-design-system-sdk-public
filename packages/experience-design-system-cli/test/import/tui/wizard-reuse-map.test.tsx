@@ -16,8 +16,8 @@ vi.mock('../../../src/import/tui/runScopeGate.js', () => ({
   },
 }));
 
-vi.mock('../../../src/import/tui/scope-gate-host.js', () => ({
-  ScopeGateHost: ({ onConfirm }: { onConfirm: (decisions: Record<string, unknown>) => void }) => {
+vi.mock('../../../src/import/tui/steps/ScopeGateStep.js', () => ({
+  ScopeGateStep: ({ onConfirm }: { onConfirm: (decisions: Record<string, unknown>) => void }) => {
     const confirmed = useRef(false);
     useEffect(() => {
       if (!confirmed.current) {
@@ -29,8 +29,8 @@ vi.mock('../../../src/import/tui/scope-gate-host.js', () => ({
   },
 }));
 
-vi.mock('../../../src/import/tui/final-review-host.js', () => ({
-  FinalReviewHost: () => <Text>FINAL_REVIEW</Text>,
+vi.mock('../../../src/import/tui/steps/GenerateReviewStep.js', () => ({
+  GenerateReviewStep: () => <Text>FINAL_REVIEW</Text>,
 }));
 
 vi.mock('../../../src/import/tui/spawn-generate.js', () => ({
