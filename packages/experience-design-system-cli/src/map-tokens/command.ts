@@ -219,8 +219,8 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
       }
     }
 
-    if (opts.printPrompt) {
-      const prompt = await buildPrompt({
+    const buildMapPrompt = (): Promise<string> =>
+      buildPrompt({
         skill: 'map-tokens',
         mode: 'autonomous',
         generatedCdf,
@@ -231,6 +231,9 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
         ...(mapPromptText !== undefined ? { skillContentOverride: mapPromptText } : {}),
         ...(mapPromptText === undefined && mapPromptPath ? { skillPathOverride: mapPromptPath } : {}),
       });
+
+    if (opts.printPrompt) {
+      const prompt = await buildMapPrompt();
       process.stdout.write(prompt + '\n');
       await exitWithAnalytics(0);
       return;
@@ -282,17 +285,7 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
 
     const stepId = createStep(db, sessionId, 'map tokens', { agent, model: model ?? '' });
 
-    const prompt = await buildPrompt({
-      skill: 'map-tokens',
-      mode: 'autonomous',
-      generatedCdf,
-      tokenTree,
-      componentSourceRefs,
-      outDir: process.cwd(),
-      existingTokensInline,
-      ...(mapPromptText !== undefined ? { skillContentOverride: mapPromptText } : {}),
-      ...(mapPromptText === undefined && mapPromptPath ? { skillPathOverride: mapPromptPath } : {}),
-    });
+    const prompt = await buildMapPrompt();
 
     const invoker = createLocalCliAgentInvoker();
     const result = await invoker.invoke({ agent, model, prompt, timeoutMs: DEFAULT_TIMEOUT_MS });
