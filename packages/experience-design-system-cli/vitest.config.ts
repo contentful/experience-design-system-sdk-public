@@ -10,7 +10,7 @@ export default defineConfig({
     globals: false,
     include: ['test/**/*.test.{ts,tsx}'],
     exclude: ['test/review/ui.test.tsx'],
-    globalSetup: ['test/setup/build.ts'],
+    globalSetup: ['test/helpers/build.ts'],
     testTimeout: 30000,
     pool: 'forks',
     retry: 1,

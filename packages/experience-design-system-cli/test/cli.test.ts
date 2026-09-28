@@ -74,3 +74,31 @@ describe('experiences import flag surface', () => {
     expect(stderr).toMatch(/TTY/i);
   });
 });
+
+describe('experiences setup', () => {
+  it('prints help with --help', async () => {
+    const { stdout, code } = await run('setup', '--help');
+    expect(code).toBe(0);
+    expect(stdout).toContain('--skip-build');
+    expect(stdout).toContain('--skip-credentials');
+    expect(stdout).toContain('--skip-optional');
+  });
+
+  it('rejects a non-TTY session', async () => {
+    const { stderr, code } = await run(
+      'setup',
+      '--skip-build',
+      '--skip-agent',
+      '--skip-credentials',
+      '--skip-optional',
+    );
+    expect(code).toBe(1);
+    expect(stderr).toContain('Error: experiences setup requires an interactive terminal.');
+  });
+
+  it('does not prompt for credentials on a non-TTY session', async () => {
+    const { stdout } = await run('setup', '--skip-build', '--skip-agent', '--skip-credentials', '--skip-optional');
+    expect(stdout).not.toContain('CMA token');
+    expect(stdout).not.toContain('Space ID');
+  });
+});

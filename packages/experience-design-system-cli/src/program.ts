@@ -8,6 +8,7 @@ import { registerApplyCommand } from './apply/command.js';
 import { registerPrintCommand } from './print/command.js';
 import { registerMapTokensCommand } from './map-tokens/command.js';
 import { registerImportCommand } from './import/command.js';
+import { registerDoctorCommand } from './doctor/command.js';
 import { registerSetupCommand } from './setup/command.js';
 import { registerInternalExtractCommand } from './analyze/extract-command.js';
 import { beginCommand } from './lib/debug-preamble.js';
@@ -112,6 +113,7 @@ export function createProgram(): Command {
   registerApplyCommand(program);
   registerImportCommand(program);
   registerImportV2Command(program);
+  registerDoctorCommand(program);
   registerSetupCommand(program);
   registerBuildCommand(program);
 
