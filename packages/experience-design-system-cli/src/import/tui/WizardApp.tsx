@@ -65,7 +65,7 @@ import {
   backfillUnclassifiedProps,
 } from '../../session/db.js';
 import { ScopeGateHost, type ScopeComponent } from './scope-gate-host.js';
-import { FinalReviewHost } from './final-review-host.js';
+import { GenerateReviewStep } from './steps/GenerateReviewStep.js';
 import { runScopeGate } from './runScopeGate.js';
 import { checkAgentAuth, type AgentName } from '@contentful/experience-design-system-generation';
 import { normalizePath } from '../path-utils.js';
@@ -1750,7 +1750,7 @@ export function WizardApp({
 
       case 'final-review': {
         return (
-          <FinalReviewHost
+          <GenerateReviewStep
             extractSessionId={state.extractSessionId}
             tokenSessionId={state.tokenSessionId}
             livePreview={livePreview}

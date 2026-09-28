@@ -29,8 +29,8 @@ vi.mock('../../../src/import/tui/scope-gate-host.js', () => ({
   },
 }));
 
-vi.mock('../../../src/import/tui/final-review-host.js', () => ({
-  FinalReviewHost: () => <Text>FINAL_REVIEW</Text>,
+vi.mock('../../../src/import/tui/steps/GenerateReviewStep.js', () => ({
+  GenerateReviewStep: () => <Text>FINAL_REVIEW</Text>,
 }));
 
 vi.mock('../../../src/import/tui/spawn-generate.js', () => ({

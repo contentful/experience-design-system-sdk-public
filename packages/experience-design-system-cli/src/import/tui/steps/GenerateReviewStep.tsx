@@ -61,7 +61,6 @@ import { collectExpandedGroupRoots, computeSidebarViewToggle } from '../sidebar-
 import { handleLineageNavigation } from '../lineage-input.js';
 import { useSidebarSearchState } from '../hooks/sidebar-search-state.js';
 import { SearchMatchSummary } from '../components/SearchMatchSummary.js';
-import type { ReviewStepProps } from '../review-step-props.js';
 import {
   buildReviewFieldEditor,
   getReviewSelectionState,
@@ -93,7 +92,19 @@ import {
 import { useReviewPreview } from '../hooks/useReviewPreview.js';
 import { LivePreviewSummary } from '../components/LivePreviewSummary.js';
 
-type GenerateReviewStepProps = ReviewStepProps;
+type GenerateReviewStepProps = {
+  extractSessionId: string | null;
+  tokenSessionId?: string | null;
+  onFinalize: (accepted: number, rejected: number, unresolved: number) => void;
+  onQuit: () => void;
+  livePreview?: boolean;
+  spaceId?: string;
+  environmentId?: string;
+  cmaToken?: string;
+  host?: string;
+  tokensPath?: string;
+  initialFinalizeError?: string | null;
+};
 
 export function sortComponentsForSidebar<T extends { key: string; entry: CDFComponentEntry }>(
   components: T[],
@@ -197,7 +208,7 @@ const HELP_SECTIONS: HelpSection[] = [
   {
     title: 'Navigation',
     entries: [
-      { keys: 'j / k / ↑ / ↓', label: 'Move cursor' },
+      { keys: '↑ / ↓', label: 'Move cursor' },
       { keys: 'Tab', label: 'Toggle sidebar/panel' },
       { keys: 'Enter', label: 'Drill to source' },
     ],
@@ -310,7 +321,19 @@ export function deriveBreakingChanges(response: ServerPreviewResponse): Breaking
   return out;
 }
 
-export function GenerateReviewStep({
+export function GenerateReviewStep(props: GenerateReviewStepProps): React.ReactElement {
+  if (!props.extractSessionId) {
+    return (
+      <Box paddingX={2} paddingY={1}>
+        <Text color={PALETTE.error}>Error: no session ID — cannot load generated definitions.</Text>
+      </Box>
+    );
+  }
+
+  return <GenerateReviewStepLoaded {...props} extractSessionId={props.extractSessionId} />;
+}
+
+function GenerateReviewStepLoaded({
   extractSessionId,
   tokenSessionId,
   onFinalize,
@@ -322,7 +345,7 @@ export function GenerateReviewStep({
   host = '',
   tokensPath = '',
   initialFinalizeError = null,
-}: GenerateReviewStepProps): React.ReactElement {
+}: Omit<GenerateReviewStepProps, 'extractSessionId'> & { extractSessionId: string }): React.ReactElement {
   const { stdout } = useStdout();
   const terminalWidth = stdout?.columns ?? 80;
 
