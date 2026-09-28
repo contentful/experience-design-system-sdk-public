@@ -1,5 +1,5 @@
 {
-  "$schema": "https://contentful.com/schemas/cdf/v1",
+  "$schema": "https://contentful.com/schemas/cdf",
   "Button": {
     "$type": "component",
     "$properties": {

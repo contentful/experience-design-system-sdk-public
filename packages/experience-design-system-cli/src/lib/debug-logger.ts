@@ -269,10 +269,3 @@ export function printDebugBanner(logger: DebugLogger, phase: 'start' | 'end'): v
 export function debugLogPath(): string | null {
   return singleton?.path ?? process.env[DEBUG_LOG_ENV] ?? null;
 }
-
-/** Ensure spawned children join the same debug log by including EDSI_DEBUG_LOG in their env. */
-export function debugEnvForSubprocess(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  const path = debugLogPath();
-  if (!path) return env;
-  return { ...env, [DEBUG_LOG_ENV]: path };
-}

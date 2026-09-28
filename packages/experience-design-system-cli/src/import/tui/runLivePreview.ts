@@ -1,7 +1,7 @@
 import type { ServerPreviewResponse } from '@contentful/experience-design-system-types';
-import { buildManifest } from '@contentful/experience-design-system-types';
+import { buildCDF } from '@contentful/experience-design-system-types';
 import { ImportApiClient } from '../../apply/api-client.js';
-import { readTokensFromPath } from '../../apply/manifest.js';
+import { readTokensFromPath, toCDFTokens } from '../../apply/tokens.js';
 import { backfillUnclassifiedProps, loadCDFComponents, openPipelineDb } from '../../session/db.js';
 
 export class TimeoutError extends Error {
@@ -36,9 +36,6 @@ export type RunLivePreviewOptions = {
    *  full delete. Lets the Finalize dialog show exactly what the accepted push
    *  would delete, independent of the session's on-disk generated rows. */
   acceptedKeys?: ReadonlySet<string>;
-  /** Forwarded verbatim to `previewImport`. Governs whether the response
-   *  includes removed entities or a suppressed-count summary instead. */
-  allowDeletions?: boolean;
 };
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -93,7 +90,7 @@ export async function runLivePreview(opts: RunLivePreviewOptions): Promise<LiveP
     tokens = await readTokensFromPath('tokens', tokensPath);
   }
 
-  const manifest = buildManifest(components, tokens, { deleteAllComponents: opts.deleteAllComponents === true });
+  const cdf = buildCDF(components, toCDFTokens(tokens), { deleteAll: opts.deleteAllComponents === true })!;
 
   const client = new ImportApiClient({ host, cmaToken, spaceId, environmentId });
   const startedAt = Date.now();
@@ -104,10 +101,7 @@ export async function runLivePreview(opts: RunLivePreviewOptions): Promise<LiveP
   });
 
   try {
-    const response = (await Promise.race([
-      client.previewImport(manifest, opts.allowDeletions === true),
-      timeoutPromise,
-    ])) as ServerPreviewResponse;
+    const response = (await Promise.race([client.previewImport(cdf), timeoutPromise])) as ServerPreviewResponse;
     if (process.env['EDS_VERBOSE']) {
       const durationMs = Date.now() - startedAt;
       try {

@@ -30,7 +30,7 @@ describe('wizard flow — credentials skipped end-to-end', () => {
     // ── Step: scope-gate confirmed with accepted > 0, push enabled.
     //   Credentials are collected before extraction, so generation starts
     //   immediately after scope approval even when they were skipped.
-    const afterScope = nextStepAfterScopeGate({ acceptedCount: 5, noPush: false });
+    const afterScope = nextStepAfterScopeGate({ acceptedCount: 5 });
     expect(afterScope).toBe('generating');
 
     // ── Step: credentials were skipped at the front of the wizard. The

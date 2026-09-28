@@ -3,27 +3,28 @@ import { groupsToEdges, type CompositionEdge, type InterchangeMap } from './inte
 import { mergeEdges, type EdgeConflict } from './merge-edges.js';
 import { parseMapEdges } from './parse-map-edges.js';
 import { applyMapping } from './apply-mapping.js';
-import { loadPrompt } from './load-prompt.js';
+import { loadPrompt } from './prompt-loader.js';
 
 export type ResolveMappingResult = {
   components: RawComponentDefinition[];
+  userMap?: InterchangeMap;
   edges: CompositionEdge[];
   conflicts: EdgeConflict[];
   warnings: string[];
 };
 
 /**
- * Orchestrate composition-map acquisition (spec T2) and enrichment (T7).
+ * Orchestrate composition-edge acquisition and enrichment.
  *
  * Sources by rank: user map (1) > typed-slot / "code slots" (2) > structural
  * usage evidence (3) > manifest (4) > doc (5) > adapter-resolved / extraEdges
- * (6) > agent (7). Manifest/doc edges are computed deterministically outside
+ * (6) > edge-emitting agent (7). Manifest/doc edges are computed deterministically outside
  * this function (see manifest-doc-evidence.ts) and joined via `extraEdges`.
  * ALL sources — including the code slots already on the incoming components —
  * are fed into one ranked merge and unioned; non-conflicting edges from every
  * source survive, and on a conflict (same parent+child, different slot) the
- * higher-rank source wins and the loser is recorded. The agent runs only when
- * `useAgent`/`forceAgent` is set AND there is residue a higher-rank source
+ * higher-rank source wins and the loser is recorded. The edge-emitting agent runs only when
+ * `forceAgent` is set OR there is residue a higher-rank source
  * didn't cover (routing/cost optimization) — `forceAgent` bypasses that
  * suppression but never changes rank.
  *
@@ -33,7 +34,6 @@ export type ResolveMappingResult = {
 export async function resolveMapping(input: {
   components: RawComponentDefinition[];
   userMap?: InterchangeMap;
-  useAgent?: boolean;
   forceAgent?: boolean;
   files: Array<{ path: string; content: string }>;
   runAgentFn: (opts: { prompt: string; files: Array<{ path: string; content: string }> }) => Promise<string>;
@@ -46,10 +46,9 @@ export async function resolveMapping(input: {
    */
   promptOverride?: string;
   /**
-   * Pre-resolved edges from an external source (e.g. the agent-authored parser
+   * Pre-resolved edges from an external source (e.g. manifest or documentation)
    * path). They join the ranked merge at their own provenance rank alongside
-   * code slots and the user map. Callers using this typically set
-   * `useAgent: false` since they've already run their own resolution.
+   * code slots and the user map.
    */
   extraEdges?: CompositionEdge[];
 }): Promise<ResolveMappingResult> {
@@ -82,13 +81,10 @@ export async function resolveMapping(input: {
     }
   }
 
-  // Rank 1 — user-provided map.
-  if (input.userMap) {
-    collected.push(...groupsToEdges(input.userMap, 'user'));
-  }
+  if (input.userMap) collected.push(...groupsToEdges(input.userMap, 'user'));
 
   // Externally pre-resolved edges — manifest (4), doc (5), adapter-authored
-  // parser (6) — each edge carries its own provenance, so this loop is rank-
+  // evidence (6) — each edge carries its own provenance, so this loop is rank-
   // agnostic; the merge below sorts it out.
   if (input.extraEdges) {
     collected.push(...input.extraEdges);
@@ -99,12 +95,12 @@ export async function resolveMapping(input: {
   const residueParents = input.components.map((c) => c.name).filter((n) => !coveredParents.has(n));
 
   // Rank 7 — agent. Runs when enabled AND (forced OR there is residue).
-  const shouldRunAgent = (input.useAgent || input.forceAgent) && (input.forceAgent || residueParents.length > 0);
+  const shouldRunAgent = input.forceAgent || (residueParents.length > 0 && input.files.length > 0);
   if (shouldRunAgent) {
     const prompt = input.buildPrompt
       ? input.buildPrompt(input.files, [...componentNames])
       : defaultPrompt(input.files, [...componentNames], input.promptOverride);
-    const raw = await input.runAgentFn({ prompt, files: input.files });
+    const raw = (await input.runAgentFn({ prompt, files: input.files })) ?? '';
     const parsed = parseMapEdges(raw, { componentNames });
     collected.push(...parsed.edges);
     agentWarnings.push(...parsed.warnings);

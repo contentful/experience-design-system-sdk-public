@@ -30,57 +30,22 @@ describe('import command — help', () => {
   it('prints import help with --help', async () => {
     const { stdout, code } = await run(['import', '--help']);
     expect(code).toBe(0);
-    expect(stdout).toContain('--space-id');
-    expect(stdout).toContain('--environment-id');
-    expect(stdout).toContain('--cma-token');
     expect(stdout).toContain('--project');
-    expect(stdout).toContain('--out');
     expect(stdout).toContain('--agent');
-    expect(stdout).toContain('--tokens');
-    expect(stdout).toContain('--skip-analyze');
-    expect(stdout).toContain('--skip-generate');
-    expect(stdout).toContain('--print');
-    expect(stdout).toContain('--skip-apply');
-    expect(stdout).toContain('--yes');
-    expect(stdout).toContain('--verbose');
+    expect(stdout).not.toContain('--skip-analyze');
+    expect(stdout).not.toContain('--skip-generate');
+    expect(stdout).not.toContain('--skip-apply');
+    expect(stdout).not.toContain('--yes');
   });
 
-  it('does not expose --skip-print (replaced by --print)', async () => {
+  it('does not expose removed output flags', async () => {
     const { stdout, code } = await run(['import', '--help']);
     expect(code).toBe(0);
+    expect(stdout).not.toMatch(/--print(?:\s|$)/);
+    expect(stdout).not.toContain('--select-all');
+    expect(stdout).not.toContain('--select <pattern>');
+    expect(stdout).not.toContain('--deselect <pattern>');
+    expect(stdout).not.toContain('--auto-accept-scope');
     expect(stdout).not.toContain('--skip-print');
-  });
-
-  it('fails when --space-id is missing', async () => {
-    const { stderr, code } = await run(['import', '--environment-id', 'master', '--cma-token', 'token']);
-    expect(code).not.toBe(0);
-    expect(stderr).toContain('space-id');
-  });
-
-  it('fails when --environment-id is missing', async () => {
-    const { stderr, code } = await run(['import', '--space-id', 'abc123', '--cma-token', 'token']);
-    expect(code).not.toBe(0);
-    expect(stderr).toContain('environment-id');
-  });
-
-  it('fails when --cma-token is missing and env var is not set', async () => {
-    const { code } = await run(['import', '--space-id', 'abc123', '--environment-id', 'master']);
-    expect(code).not.toBe(0);
-  });
-
-  it('accepts --skip-apply without credentials', async () => {
-    // With --skip-apply, the credential check is skipped; the pipeline will fail at analyze
-    // (no project), but the credential check itself should not fire.
-    const { stderr } = await run([
-      'import',
-      '--skip-apply',
-      '--skip-generate',
-      '--skip-analyze',
-      '--project',
-      '/nonexistent',
-    ]);
-    expect(stderr).not.toContain('--space-id');
-    expect(stderr).not.toContain('--environment-id');
-    expect(stderr).not.toContain('--cma-token');
   });
 });

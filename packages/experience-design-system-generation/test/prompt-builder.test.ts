@@ -252,6 +252,18 @@ describe('buildPrompt', () => {
       });
       expect(prompt).toContain('Utility wrapper — no authorable content surface');
     });
+
+    it('uses inline skill content when provided', async () => {
+      const prompt = await buildPrompt({
+        skill: 'select',
+        mode: 'autonomous',
+        rawComponentsInline: INLINE_COMPONENTS,
+        outDir: '/fake/out',
+        skillContentOverride: 'INLINE_SKILL_MARKER',
+      });
+      expect(prompt).toContain('INLINE_SKILL_MARKER');
+      expect(prompt).not.toContain('Utility wrapper — no authorable content surface');
+    });
   });
 
   describe('map-tokens skill', () => {

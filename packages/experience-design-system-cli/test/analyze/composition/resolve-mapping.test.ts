@@ -37,7 +37,6 @@ describe('resolveMapping (T2 acquisition + routing orchestration)', () => {
     );
     const res = await resolveMapping({
       components: COMPONENTS,
-      useAgent: true,
       files: [{ path: 'm.ts', content: 'withParentType' }],
       runAgentFn,
     });
@@ -56,7 +55,7 @@ describe('resolveMapping (T2 acquisition + routing orchestration)', () => {
       files: [{ path: 'm.ts', content: 'withParentType' }],
       runAgentFn,
     });
-    expect(runAgentFn).not.toHaveBeenCalled();
+    expect(runAgentFn).toHaveBeenCalled();
     expect(res.edges.length).toBeGreaterThanOrEqual(2);
   });
 
@@ -79,7 +78,6 @@ describe('resolveMapping (T2 acquisition + routing orchestration)', () => {
     const runAgentFn = vi.fn(async () => '{"tool":"map_edge","parent":"SectionTab","child":"Ghost"}');
     const res = await resolveMapping({
       components: COMPONENTS,
-      useAgent: true,
       files: [{ path: 'm.ts', content: 'x' }],
       runAgentFn,
     });
@@ -106,7 +104,7 @@ describe('resolveMapping (T2 acquisition + routing orchestration)', () => {
         files: [{ path: 'm.ts', content: 'withParentType' }],
         runAgentFn,
       });
-      expect(runAgentFn).not.toHaveBeenCalled();
+      expect(runAgentFn).toHaveBeenCalled();
       expect(res.edges).toEqual([
         expect.objectContaining({ parent: 'Accordion', child: 'AccordionItem', provenance: 'structural' }),
       ]);
@@ -205,7 +203,7 @@ describe('resolveMapping (T2 acquisition + routing orchestration)', () => {
         extraEdges: [{ parent: 'Accordion', child: 'AccordionItem', provenance: 'doc' }],
         runAgentFn,
       });
-      expect(runAgentFn).not.toHaveBeenCalled();
+      expect(runAgentFn).toHaveBeenCalled();
       expect(res.edges).toEqual([
         expect.objectContaining({ parent: 'Accordion', child: 'AccordionItem', provenance: 'doc' }),
       ]);
@@ -221,7 +219,6 @@ describe('resolveMapping (T2 acquisition + routing orchestration)', () => {
       });
       await resolveMapping({
         components: COMPONENTS,
-        useAgent: true,
         promptOverride: 'FOLLOW THESE CUSTOM RULES.',
         files: [{ path: 'm.ts', content: 'withParentType' }],
         runAgentFn,
@@ -241,7 +238,6 @@ describe('resolveMapping (T2 acquisition + routing orchestration)', () => {
       });
       await resolveMapping({
         components: COMPONENTS,
-        useAgent: true,
         files: [{ path: 'm.ts', content: 'withParentType' }],
         runAgentFn,
       });

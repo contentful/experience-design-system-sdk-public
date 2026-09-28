@@ -217,8 +217,17 @@ export function buildVisibleRows(props: {
     });
     if (!expanded) continue;
     const subtree = computeCycleMemberSubtree(key);
+    const isLastAtDepthSubtree = (idx: number): boolean => {
+      const own = subtree[idx].depth;
+      for (let j = idx + 1; j < subtree.length; j++) {
+        const d = subtree[j].depth;
+        if (d < own) return true;
+        if (d === own) return false;
+      }
+      return true;
+    };
     subtree.forEach((child, i) => {
-      const isLast = i === subtree.length - 1;
+      const isLast = isLastAtDepthSubtree(i);
       const glyph = isLast ? GLYPH_TREE_LAST : GLYPH_TREE_MID;
       let sharedSuffix = false;
       if (seenCycleTierChildOccurrence.has(child.name)) sharedSuffix = true;
@@ -343,8 +352,22 @@ export function buildVisibleRows(props: {
       emitCycleChildrenOf(c.name, c.depth);
     }
 
+    // A child is "last at its depth" when no later child in the flat list
+    // sits at a >= depth without an intermediate row that climbs back to a
+    // shallower depth. Equivalently: scan forward until we see any row with
+    // depth < child.depth (climbed up) — if between here and there we never
+    // hit another sibling at the same depth, this row is the last sibling.
+    const isLastAtDepth = (idx: number): boolean => {
+      const own = injectedChildren[idx].depth;
+      for (let j = idx + 1; j < injectedChildren.length; j++) {
+        const d = injectedChildren[j].depth;
+        if (d < own) return true;
+        if (d === own) return false;
+      }
+      return true;
+    };
     injectedChildren.forEach((child, i) => {
-      const isLast = i === injectedChildren.length - 1;
+      const isLast = isLastAtDepth(i);
       const glyph = isLast ? GLYPH_TREE_LAST : GLYPH_TREE_MID;
       let sharedSuffix = false;
       if (child.isCycleChild) {

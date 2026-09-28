@@ -17,7 +17,7 @@ function parseScope(value: string | undefined): Scope {
 const COMMON_IGNORES = ['**/node_modules/**', '**/dist/**', '**/coverage/**', '**/.nx/**'];
 
 function scanArgs(scope: Scope): string[] {
-  const paths = scope === 'v1' ? ['packages', 'tools'] : ['packages/experience-design-system-cli-v2'];
+  const paths = scope === 'v1' ? ['packages'] : ['packages/experience-design-system-cli-v2'];
   const ignores =
     scope === 'v1'
       ? [...COMMON_IGNORES, '**/experience-design-system-cli-v2/**']

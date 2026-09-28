@@ -57,13 +57,13 @@ vi.mock('node:child_process', async (importOriginal) => {
     spawn: vi.fn((_command, args) => {
       const stdout = {
         on: (event: string, callback: (chunk: Buffer) => void) => {
-          if (event === 'data' && (args as string[]).includes('extract'))
+          if (event === 'data' && (args as string[]).includes('__extract'))
             callback(Buffer.from('session=extract-session\n'));
         },
       };
       const stderr = {
         on: (event: string, callback: (chunk: Buffer) => void) => {
-          if (event === 'data' && (args as string[]).includes('extract'))
+          if (event === 'data' && (args as string[]).includes('__extract'))
             callback(Buffer.from('Extracted 1 component\n'));
         },
       };
@@ -153,7 +153,7 @@ describe('WizardApp reused token catalog', () => {
 
     const { WizardApp } = await import('../../../src/import/tui/WizardApp.js');
     const app = render(
-      <WizardApp initialProjectPath={projectPath} initialRawTokensPath={join(dir, 'raw-tokens.json')} noPush />,
+      <WizardApp initialProjectPath={projectPath} initialRawTokensPath={join(dir, 'raw-tokens.json')} />,
     );
     await new Promise((resolve) => setTimeout(resolve, 100));
     // Frame 1: token-reuse-gate — press Enter to reuse the pre-generated tokens.

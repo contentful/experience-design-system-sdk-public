@@ -13,7 +13,7 @@ export function CounterStrip(props: { counters: CounterStripCounters; totalWidth
   const { counters, totalWidth } = props;
   const condensed = totalWidth < 60;
   const labelAcc = condensed ? 'Acc' : 'Accepted';
-  const labelGrp = condensed ? 'Grp' : 'Groups';
+  const labelGrp = condensed ? 'Cmp' : 'Composite';
   const labelRej = condensed ? 'Rej' : 'Rejected';
   const labelUnd = condensed ? 'Und' : 'Undecided';
   const sep = condensed ? ' | ' : '    ';

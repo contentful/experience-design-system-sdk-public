@@ -3,7 +3,6 @@ import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { ExperiencesCredentials } from '../../../../src/credentials-store.js';
 import { AnalyticsScreen } from '../../../../src/setup/steps/preferences/AnalyticsScreen.js';
-import { AutoFilterScreen } from '../../../../src/setup/steps/preferences/AutoFilterScreen.js';
 import { ColorPreferenceScreen } from '../../../../src/setup/steps/preferences/ColorPreferenceScreen.js';
 import { DebugLogsScreen } from '../../../../src/setup/steps/preferences/DebugLogsScreen.js';
 import type { StepDone } from '../../../../src/setup/steps/StepLayout.js';
@@ -26,56 +25,6 @@ function setup(Screen: React.ComponentType<{ onDone: StepDone }>, stored: Experi
   const onDone = vi.fn();
   return { ...render(<Screen onDone={onDone} />), onDone, write: store.write };
 }
-
-describe('AutoFilterScreen', () => {
-  it('defaults to on, so confirming changes nothing', async () => {
-    const { lastFrame, stdin, onDone, write } = setup(AutoFilterScreen);
-    await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('AI auto-filter'),
-    );
-    await acceptDefault(stdin);
-
-    expect(write).not.toHaveBeenCalled();
-    expect(onDone).toHaveBeenCalledWith('skipped');
-  });
-
-  it('persists the opt-out when the operator picks the other option', async () => {
-    const { lastFrame, stdin, onDone, write } = setup(AutoFilterScreen);
-    await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('AI auto-filter'),
-    );
-    await choose(stdin, lastFrame, 'Keep every component');
-
-    expect(write).toHaveBeenCalledWith(expect.objectContaining({ autoFilter: false }));
-    expect(onDone).toHaveBeenCalledWith('completed');
-  });
-
-  it('says what the filter is for, below the prompt', async () => {
-    const { lastFrame } = setup(AutoFilterScreen);
-    const frame = await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('Filters out components'),
-    );
-
-    const lines = frame.split('\n');
-    const prompt = lines.findIndex((line) => line.includes('AI auto-filter'));
-    const help = lines.findIndex((line) => line.includes('Filters out components'));
-    expect(help).toBeGreaterThan(prompt);
-  });
-
-  it('offers to turn the filter back on when it is stored off', async () => {
-    const { lastFrame, stdin, write } = setup(AutoFilterScreen, { ...EMPTY, autoFilter: false });
-    await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('AI auto-filter'),
-    );
-    await choose(stdin, lastFrame, 'Use AI to filter out irrelevant components');
-
-    expect(write).toHaveBeenCalledWith(expect.objectContaining({ autoFilter: true }));
-  });
-});
 
 describe('DebugLogsScreen', () => {
   it('defaults to off, so declining changes nothing', async () => {

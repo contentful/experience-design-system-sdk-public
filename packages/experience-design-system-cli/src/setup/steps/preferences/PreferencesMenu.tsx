@@ -3,7 +3,6 @@ import { Box, Text } from 'ink';
 import { Select } from '@inkjs/ui';
 import { StepLayout, type StepDone } from '../StepLayout.js';
 import { AnalyticsScreen } from './AnalyticsScreen.js';
-import { AutoFilterScreen } from './AutoFilterScreen.js';
 import { ColorPreferenceScreen } from './ColorPreferenceScreen.js';
 import { CustomPromptsScreen } from './CustomPromptScreen.js';
 import { DebugLogsScreen } from './DebugLogsScreen.js';
@@ -13,11 +12,6 @@ type PreferenceScreenProps = {
 };
 
 export const PREFERENCE_OPTIONS = [
-  {
-    key: 'autoFilter',
-    label: 'AI auto-filter',
-    Screen: ({ onDone }: PreferenceScreenProps) => <AutoFilterScreen onDone={onDone} />,
-  },
   {
     key: 'customPrompts',
     label: 'Custom prompts',

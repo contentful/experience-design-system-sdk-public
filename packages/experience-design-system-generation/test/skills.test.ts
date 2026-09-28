@@ -79,7 +79,7 @@ describe('generate-components.md', () => {
 
   it('explains CDF root structure', async () => {
     const content = await readSkill('generate-components.md');
-    expect(content).toContain('https://contentful.com/schemas/cdf/v1');
+    expect(content).toContain('https://contentful.com/schemas/cdf');
     expect(content).toMatch(/\$type.*component/);
   });
 

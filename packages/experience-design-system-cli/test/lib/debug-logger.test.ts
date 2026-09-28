@@ -7,8 +7,6 @@ import {
   getDebugLogger,
   resolveDebugMode,
   redactForDebug,
-  debugEnvForSubprocess,
-  debugLogPath,
   __resetDebugLoggerForTest,
 } from '../../src/lib/debug-logger.js';
 
@@ -142,22 +140,6 @@ describe('initDebugLogger', () => {
     const a = initDebugLogger({ enabled: true, command: 'a', root });
     const b = initDebugLogger({ enabled: true, command: 'b', root });
     expect(a).toBe(b);
-  });
-});
-
-describe('debugEnvForSubprocess', () => {
-  it('injects EDSI_DEBUG_LOG when the logger is active', () => {
-    process.env['EDSI_DEBUG_TS'] = '20260706T120004Z';
-    initDebugLogger({ enabled: true, command: 'parent', root });
-    const env = debugEnvForSubprocess({ FOO: 'bar' });
-    expect(env['EDSI_DEBUG_LOG']).toBe(debugLogPath());
-    expect(env['FOO']).toBe('bar');
-  });
-
-  it('leaves the env untouched when the logger is disabled', () => {
-    initDebugLogger({ enabled: false });
-    const env = debugEnvForSubprocess({ FOO: 'bar' });
-    expect(env['EDSI_DEBUG_LOG']).toBeUndefined();
   });
 });
 

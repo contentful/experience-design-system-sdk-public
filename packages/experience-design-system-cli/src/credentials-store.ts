@@ -2,7 +2,6 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { toConfiguredHost } from './host-utils.js';
-import { isCompositionMode, type CompositionMode } from './lib/composition-mode.js';
 
 export type ExperiencesCredentials = {
   spaceId: string;
@@ -11,14 +10,13 @@ export type ExperiencesCredentials = {
   host?: string;
   agent?: string;
   agentModel?: string;
-  selectPromptPath?: string;
+  /** Feature 8: persisted custom prompt path for `generate components`. */
   generatePromptPath?: string;
-  autoFilter?: boolean;
+  /** Feature: default debug-mode (writes JSONL trace of every decision) for all commands. */
   debug?: boolean;
   /** Print plain text with no color; an exported NO_COLOR still wins. */
   noColor?: boolean;
   analyticsDisabled?: boolean;
-  compositionMode?: CompositionMode;
 };
 
 const CREDENTIALS_DIR = join(homedir(), '.config', 'experiences');
@@ -37,15 +35,10 @@ export async function readExperiencesCredentials(): Promise<ExperiencesCredentia
       ...(host ? { host } : {}),
       ...(parsed.agent ? { agent: parsed.agent } : {}),
       ...(parsed.agentModel ? { agentModel: parsed.agentModel } : {}),
-      ...(parsed.selectPromptPath ? { selectPromptPath: parsed.selectPromptPath } : {}),
       ...(parsed.generatePromptPath ? { generatePromptPath: parsed.generatePromptPath } : {}),
-      ...(typeof parsed.autoFilter === 'boolean' ? { autoFilter: parsed.autoFilter } : {}),
       ...(typeof parsed.debug === 'boolean' ? { debug: parsed.debug } : {}),
       ...(typeof parsed.noColor === 'boolean' ? { noColor: parsed.noColor } : {}),
       ...(typeof parsed.analyticsDisabled === 'boolean' ? { analyticsDisabled: parsed.analyticsDisabled } : {}),
-      ...(typeof parsed.compositionMode === 'string' && isCompositionMode(parsed.compositionMode)
-        ? { compositionMode: parsed.compositionMode }
-        : {}),
     };
   } catch {
     const host = toConfiguredHost(process.env['EDS_HOST']);
@@ -59,19 +52,7 @@ export async function readExperiencesCredentials(): Promise<ExperiencesCredentia
 }
 
 export async function writeExperiencesCredentials(creds: ExperiencesCredentials): Promise<void> {
-  const {
-    host: _host,
-    agent,
-    agentModel,
-    selectPromptPath,
-    generatePromptPath,
-    autoFilter,
-    debug,
-    noColor,
-    analyticsDisabled,
-    compositionMode,
-    ...rest
-  } = creds;
+  const { host: _host, agent, agentModel, generatePromptPath, debug, noColor, analyticsDisabled, ...rest } = creds;
   const host = toConfiguredHost(creds.host);
   await mkdir(CREDENTIALS_DIR, { recursive: true });
   await writeFile(
@@ -82,13 +63,10 @@ export async function writeExperiencesCredentials(creds: ExperiencesCredentials)
         ...(host ? { host } : {}),
         ...(agent ? { agent } : {}),
         ...(agentModel ? { agentModel } : {}),
-        ...(selectPromptPath ? { selectPromptPath } : {}),
         ...(generatePromptPath ? { generatePromptPath } : {}),
-        ...(typeof autoFilter === 'boolean' ? { autoFilter } : {}),
         ...(typeof debug === 'boolean' ? { debug } : {}),
         ...(typeof noColor === 'boolean' ? { noColor } : {}),
         ...(typeof analyticsDisabled === 'boolean' ? { analyticsDisabled } : {}),
-        ...(compositionMode && isCompositionMode(compositionMode) ? { compositionMode } : {}),
       },
       null,
       2,

@@ -24,23 +24,17 @@ import { getOrCreateSessionForCommand, type SessionResolution } from './services
 import { getRawTokenNamePaths, type RawTokenNamePathSource } from './repositories/tokens/read.js';
 import { type RawPropTokenPathSource } from './repositories/tokens/write.js';
 
-export { deriveComponentId } from './core/components/derive-component-id.js';
 export { hashComponentShape as computeComponentInputHash } from './core/components/hash-component-shape.js';
 export { hashTokenContent as computeTokenInputHash } from './core/tokens/hash-token-content.js';
-export { mapContentfulTypeToCdfType, resolveCdfCategory } from './core/cdf/cdf-mappers.js';
 
 // Tokens — repositories/tokens/{read,write}.ts and services/tokens/*
 export {
   getDtcgTokensForSession as loadDTCGTokens,
   getRawTokenNamePaths as loadRawTokenNamePaths,
   getRawTokenNamePathRows as loadRawTokenNamePathRows,
-  type RawTokenNamePaths,
-  type RawTokenNamePathSource,
-  type RawTokenNamePath,
 } from './repositories/tokens/read.js';
-export { type RawPropTokenPathSource } from './repositories/tokens/write.js';
 export { storeDtcgTokens as storeDTCGTokens } from './services/tokens/store-dtcg-tokens.js';
-export { applyTokenToolCalls, type ApplyTokenToolCallsResult } from './services/tokens/apply-tool-calls.js';
+export { applyTokenToolCalls } from './services/tokens/apply-tool-calls.js';
 export { replaceRawTokenNamePaths } from './services/tokens/replace-raw-token-name-paths.js';
 export { replaceRawPropTokenPaths } from './services/tokens/replace-raw-prop-token-paths.js';
 
@@ -49,10 +43,7 @@ export type CommandName =
   | 'analyze select'
   | 'generate components'
   | 'generate tokens'
-  | 'generate edit'
-  | 'apply preview'
-  | 'apply select'
-  | 'apply push'
+  | 'apply'
   | 'print components'
   | 'print tokens'
   | 'map tokens'
@@ -1232,13 +1223,13 @@ export function loadRawComponents(
   );
 }
 
-// Mirrors analyze/select-agent/context-builder.ts's MAX_COMPONENT_SOURCE_CHARS
+// Maximum source excerpt size used when building persisted agent context.
 // convention for bounding inlined source in an agent prompt.
 const MAX_COMPONENT_SOURCE_CHARS = 8_000;
-// Mirrors analyze/select-agent/context-builder.ts's MAX_SIBLING_FILES /
+// Maximum sibling-file count used when building persisted agent context.
 // MAX_SIBLING_SNIPPET_CHARS conventions — small, purpose-built duplicate
 // rather than importing that module's SelectionContext machinery, which is
-// built for a different command (analyze select-agent).
+// built for the internal generation context.
 const MAX_SIBLING_FILES = 5;
 const MAX_SIBLING_SNIPPET_CHARS = 1_200;
 // A type-declaring sibling (e.g. `*.types.ts`) needs a bigger budget than a

@@ -2,7 +2,6 @@ import React from 'react';
 import type { StepDone } from '../StepLayout.js';
 import { BooleanInput } from './BooleanInput.js';
 
-
 export function ColorPreferenceScreen({ onDone }: { onDone: StepDone }): React.ReactElement {
   return (
     <BooleanInput

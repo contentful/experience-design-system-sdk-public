@@ -24,7 +24,7 @@ describe('ScopeGateStep — rendering', () => {
       <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
     );
     const out = lastFrame() ?? '';
-    expect(out).toContain('Review flags');
+    expect(out).toContain('flagged by AI');
     expect(out).toContain('1');
   });
 
@@ -40,7 +40,7 @@ describe('ScopeGateStep — rendering', () => {
       />,
     );
     const out = lastFrame() ?? '';
-    expect(out).not.toContain('Review flags');
+    expect(out).not.toContain('flagged by AI');
     expect(out).not.toContain('[AI]');
   });
 });
@@ -142,7 +142,7 @@ describe('ScopeGateStep — AI reason surfacing on focused row', () => {
         aiFilterStatus="complete"
       />,
     );
-    stdin.write('j');
+    stdin.write('\x1b[B');
     const out = lastFrame() ?? '';
     expect(out).toContain('DebugPanel');
     expect(out).toContain('internal-only widget');
@@ -161,7 +161,7 @@ describe('ScopeGateStep — AI reason surfacing on focused row', () => {
         aiFilterStatus="complete"
       />,
     );
-    stdin.write('j');
+    stdin.write('\x1b[B');
     const out = lastFrame() ?? '';
     expect(out).toContain('…');
     expect(out).not.toContain('TAILMARKER');

@@ -44,36 +44,35 @@ describe('parseCustomSkillPath', () => {
   });
 
   it('returns a trimmed path for anything else', () => {
-    expect(parseCustomSkillPath('  /tmp/custom-select.md  ')).toBe('/tmp/custom-select.md');
+    expect(parseCustomSkillPath('  /tmp/custom-generate.md  ')).toBe('/tmp/custom-generate.md');
   });
 });
 
 describe('customSkillPathQuestion', () => {
   it('shows the current value when one is stored', () => {
-    const question = customSkillPathQuestion('generate', '/existing/path.md');
+    const question = customSkillPathQuestion('/existing/path.md');
     expect(question).toContain('/existing/path.md');
     expect(question).toContain('generate');
   });
 
   it('shows [none] when nothing is stored', () => {
-    expect(customSkillPathQuestion('select', undefined)).toContain('[none]');
+    expect(customSkillPathQuestion(undefined)).toContain('[none]');
   });
 });
 
 describe('applyCustomSkillPath', () => {
-  it('sets the field for the matching kind', () => {
-    expect(applyCustomSkillPath(EMPTY, 'select', '/a.md')).toMatchObject({ selectPromptPath: '/a.md' });
-    expect(applyCustomSkillPath(EMPTY, 'generate', '/b.md')).toMatchObject({ generatePromptPath: '/b.md' });
+  it('sets the generate prompt path', () => {
+    expect(applyCustomSkillPath(EMPTY, '/b.md')).toMatchObject({ generatePromptPath: '/b.md' });
   });
 
   it('deletes the field when the answer clears it', () => {
-    const stored = { ...EMPTY, selectPromptPath: '/old.md' };
-    expect(applyCustomSkillPath(stored, 'select', null)).not.toHaveProperty('selectPromptPath');
+    const stored = { ...EMPTY, generatePromptPath: '/old.md' };
+    expect(applyCustomSkillPath(stored, null)).not.toHaveProperty('generatePromptPath');
   });
 
   it('leaves the field untouched when the answer keeps it', () => {
-    const stored = { ...EMPTY, selectPromptPath: '/old.md' };
-    expect(applyCustomSkillPath(stored, 'select', undefined)).toMatchObject({ selectPromptPath: '/old.md' });
+    const stored = { ...EMPTY, generatePromptPath: '/old.md' };
+    expect(applyCustomSkillPath(stored, undefined)).toMatchObject({ generatePromptPath: '/old.md' });
   });
 });
 
@@ -82,7 +81,7 @@ describe('CustomPromptsScreen', () => {
     const { lastFrame, stdin, onDone, write } = setup();
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Use your own prompt files'),
+      (f) => f.includes('Use your own prompt file'),
     );
     stdin.write('n');
     await new Promise((r) => setTimeout(r, 80));
@@ -91,43 +90,51 @@ describe('CustomPromptsScreen', () => {
     expect(onDone).toHaveBeenCalledWith('skipped');
   });
 
-  it('keeps both prompt paths on the page that offered them', async () => {
+  it('asks only for the generate prompt path', async () => {
     const { lastFrame, stdin } = setup();
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Use your own prompt files'),
+      (f) => f.includes('Use your own prompt file'),
     );
     stdin.write('y');
     await new Promise((r) => setTimeout(r, 80));
 
-    const selectFrame = await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('Custom select'),
-    );
-    expect(selectFrame).toContain('Replaces the built-in instructions');
-
-    await answer(stdin, '/tmp/select.md');
-    const generateFrame = await waitForFrame(
+    const frame = await waitForFrame(
       () => lastFrame(),
       (f) => f.includes('Custom generate'),
     );
-    expect(generateFrame).toContain('Replaces the built-in instructions');
+    expect(frame).toContain('Replaces the built-in instructions');
+    expect(frame).not.toContain('Custom select');
   });
 
-  it('saves a supplied select path and clears a stored generate path on "-"', async () => {
-    const { lastFrame, stdin, write } = setup({ ...EMPTY, generatePromptPath: '/old/generate.md' });
+  it('saves a supplied generate path', async () => {
+    const { lastFrame, stdin, write, onDone } = setup();
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Use your own prompt files'),
+      (f) => f.includes('Use your own prompt file'),
     );
     stdin.write('y');
     await new Promise((r) => setTimeout(r, 80));
 
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Custom select'),
+      (f) => f.includes('Custom generate'),
     );
-    await answer(stdin, '/tmp/select.md');
+    await answer(stdin, '/tmp/generate.md');
+
+    const saved = write.mock.calls[0]![0] as Record<string, unknown>;
+    expect(saved['generatePromptPath']).toBe('/tmp/generate.md');
+    expect(onDone).toHaveBeenCalledWith('completed');
+  });
+
+  it('clears a stored generate path on "-"', async () => {
+    const { lastFrame, stdin, write } = setup({ ...EMPTY, generatePromptPath: '/old/generate.md' });
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('Use your own prompt file'),
+    );
+    stdin.write('y');
+    await new Promise((r) => setTimeout(r, 80));
 
     await waitForFrame(
       () => lastFrame(),
@@ -136,7 +143,6 @@ describe('CustomPromptsScreen', () => {
     await answer(stdin, '-');
 
     const saved = write.mock.calls[0]![0] as Record<string, unknown>;
-    expect(saved['selectPromptPath']).toBe('/tmp/select.md');
     expect(saved).not.toHaveProperty('generatePromptPath');
   });
 });

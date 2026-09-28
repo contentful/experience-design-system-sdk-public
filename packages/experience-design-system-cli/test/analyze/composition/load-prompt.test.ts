@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolvePromptPath, loadPrompt } from '../../../src/analyze/composition/load-prompt.js';
+import { resolvePromptPath, loadPrompt } from '../../../src/analyze/composition/prompt-loader.js';
 
 describe('load-prompt', () => {
   it('resolves a bundled prompt from the package prompts/ dir', () => {

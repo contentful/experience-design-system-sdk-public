@@ -208,10 +208,10 @@ describe('SetupScreen', () => {
 
     // Every preference is listed with its current value, and none of their
     // prompts has been asked yet.
-    expect(frame).toContain('AI auto-filter');
+    expect(frame).toContain('Custom prompts');
     expect(frame).toContain('Debug logging');
     expect(frame).toContain('Done');
-    expect(frame).not.toContain('Filters out components irrelevant to experience orchestration');
+    expect(frame).not.toContain('Writes a verbose trace');
   });
 
   it('returns to the menu after a preference is changed', async () => {
@@ -221,11 +221,10 @@ describe('SetupScreen', () => {
       () => lastFrame(),
       (f) => f.includes('Every preference already has a working default'),
     );
-    // The first row leads the menu, so accepting opens AI auto-filter.
-    await acceptDefault(stdin);
+    await choose(stdin, lastFrame, 'Debug logging', 8);
     const opened = await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Filters out components irrelevant'),
+      (f) => f.includes('Writes a verbose trace'),
     );
     expect(opened).not.toContain('Every preference already has a working default');
 
@@ -234,7 +233,7 @@ describe('SetupScreen', () => {
       () => lastFrame(),
       (f) => f.includes('Every preference already has a working default'),
     );
-    expect(back).toContain('AI auto-filter');
+    expect(back).toContain('Debug logging');
   });
 
   it('leaves preferences skipped when the operator chooses Done without changing anything', async () => {

@@ -1,5 +1,5 @@
 // Color support — checked once at module load.
-// Honors NO_COLOR (https://no-color.org) and FORCE_COLOR (set by orchestrator for non-TTY subprocesses).
+// Honors NO_COLOR (https://no-color.org) and FORCE_COLOR for subprocesses.
 function detectColors(): boolean {
   if (process.env['NO_COLOR'] !== undefined) return false;
   if (process.env['FORCE_COLOR'] !== undefined) return true;

@@ -34,7 +34,6 @@ import {
 import { formatCyclePathSegments, findSlotCycles, suggestCycleBreakEdge } from '../../../analyze/cycle-detection.js';
 import { followCycleScroll } from '../cycle-panel-scroll.js';
 import type { ReviewComponentStatus } from '../../../analyze/select/types.js';
-import { useReviewFinalizePreview } from '../useFinalizePreview.js';
 import { fuzzyMatches } from '../../../analyze/fuzzy-search.js';
 import {
   computeDirectNeighborhood,
@@ -74,8 +73,8 @@ import {
 import { ReviewLoadError, ReviewLoadingState, ReviewStatusBar } from '../components/ReviewStatus.js';
 import {
   createReviewHistorySnapshot,
-  finalizeReviewSession,
   loadReviewSessionState,
+  useReviewFinalize,
   useReviewHistory,
   useReviewMetadata,
   useReviewSession,
@@ -323,7 +322,6 @@ export function GenerateReviewStep({
   host = '',
   tokensPath = '',
   initialFinalizeError = null,
-  allowDeletions = false,
 }: GenerateReviewStepProps): React.ReactElement {
   const { stdout } = useStdout();
   const terminalWidth = stdout?.columns ?? 80;
@@ -449,7 +447,6 @@ export function GenerateReviewStep({
     cmaToken,
     host,
     deleteAllComponents: acceptedCountForPreview === 0,
-    allowDeletions,
     onResult: (response) => {
       const nextRemoved = response.components.removed ?? [];
       if (!removedBannerDefaultedRef.current && nextRemoved.length > 0) {
@@ -460,8 +457,8 @@ export function GenerateReviewStep({
     },
   });
 
-  const finalizePreview = useReviewFinalizePreview({
-    open: showFinalize,
+  const { finalizePreview, handleFinalizeConfirm } = useReviewFinalize({
+    showFinalize,
     extractSessionId,
     tokensPath,
     spaceId,
@@ -469,13 +466,8 @@ export function GenerateReviewStep({
     cmaToken,
     host,
     components,
-    allowDeletions,
+    onFinalize,
   });
-
-  const handleFinalizeConfirm = () => {
-    const counts = finalizeReviewSession(extractSessionId, components);
-    onFinalize(counts.accepted, counts.rejected, counts.unresolved);
-  };
 
   const recomputeCycles = (currentComponents: CdfReviewEntry[]): void => {
     try {
@@ -1494,7 +1486,7 @@ export function GenerateReviewStep({
           return (
             <Box flexDirection="column" borderStyle="single" borderColor={PALETTE.error} paddingX={1}>
               <Text color={PALETTE.error} bold>
-                {`Cyclic manifest — auto-rejected ${stillRejected.length} component${stillRejected.length === 1 ? '' : 's'}:`}
+                {`Cyclic component graph — auto-rejected ${stillRejected.length} component${stillRejected.length === 1 ? '' : 's'}:`}
               </Text>
               {members.length > 0 && <Text color={PALETTE.error}>{`  Cycle members: ${members.join(', ')}`}</Text>}
               {ancestors.length > 0 && <Text color={PALETTE.error}>{`  Ancestors: ${ancestors.join(', ')}`}</Text>}

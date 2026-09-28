@@ -26,9 +26,8 @@ import {
 
 describe('analytics normalizeCommand', () => {
   it('maps commander chains to tracked command ids', () => {
-    expect(normalizeCommand('apply push')).toBe('apply_push');
+    expect(normalizeCommand('apply')).toBe('apply_push');
     expect(normalizeCommand('analyze extract')).toBe('analyze_extract');
-    expect(normalizeCommand('analyze select-agent')).toBe('analyze_select');
     expect(normalizeCommand('map tokens')).toBe('map_tokens');
   });
 
@@ -80,7 +79,7 @@ describe('analytics tracker', () => {
   });
 
   it('emits invoked then completed for a bound session', async () => {
-    noteCommandStart('apply push');
+    noteCommandStart('apply');
     await bindAnalyticsSession('bold-cliff-a3f2', { space_key: 'space-1' });
     await completeActiveCommand();
 
@@ -123,7 +122,7 @@ describe('analytics tracker', () => {
   });
 
   it('emits failed with structured fields', async () => {
-    noteCommandStart('apply push');
+    noteCommandStart('apply');
     await bindAnalyticsSession('bold-cliff-a3f2');
     await failActiveCommand({ exit_code: 1, http_status_code: 422, error_name: 'ApiError' });
 
@@ -140,7 +139,7 @@ describe('analytics tracker', () => {
   });
 
   it('does not emit terminal events before invoked', async () => {
-    noteCommandStart('apply push');
+    noteCommandStart('apply');
     await completeActiveCommand();
     expect(trackEventMock).not.toHaveBeenCalled();
   });

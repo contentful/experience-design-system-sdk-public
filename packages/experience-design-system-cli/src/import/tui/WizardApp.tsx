@@ -3,24 +3,17 @@ import { PALETTE } from '../../analyze/select/tui/theme.js';
 import { Box, Text, useStdout } from 'ink';
 import { join, resolve } from 'node:path';
 import { appendFileSync, writeFileSync } from 'node:fs';
-import { access, readFile, stat } from 'node:fs/promises';
+import { access, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { execFile, spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import { buildRunTeaserLine } from './run-teaser.js';
 import { getDebugLogger } from '../../lib/debug-logger.js';
 import { PathPrompt } from '../../runs/path-prompt.js';
-import { RunPicker, type RunPickerSelection } from '../../runs/run-picker.js';
-import type { RunRecord } from '../../runs/store.js';
 import { SaveConflictGate } from '../../runs/save-conflict.js';
-import {
-  detectSaveConflict,
-  buildTimestampedSubdir,
-  resolveSavePath,
-  type ConflictMode,
-} from '../../runs/save-path-resolver.js';
+import { detectSaveConflict, buildTimestampedSubdir } from '../../runs/save-path-resolver.js';
 import { appendRun, updateRun } from '../../runs/store.js';
-import { buildSourceFingerprint, buildSavedFingerprint } from '../../runs/fingerprint.js';
+import { buildSourceFingerprint } from '../../runs/fingerprint.js';
 import { TopBar } from '../../analyze/select/tui/components/TopBar.js';
 import { CustomPromptBanner } from './CustomPromptBanner.js';
 import { WelcomeStep } from './steps/WelcomeStep.js';
@@ -39,17 +32,27 @@ import { nextStateAfterPrint } from './run-print-files-helpers.js';
 import { PushDecisionGateStep } from './steps/PushDecisionGateStep.js';
 import { chooseGateAction } from './push-decision-gate-helpers.js';
 import { ImportApiClient, ApiError, type PreviewValidationError } from '../../apply/api-client.js';
-import { detectSlotCycles, extractComponentsFromManifest, formatSlotCycleReport } from '../../apply/command.js';
+import {
+  detectSlotCycles,
+  extractComponents,
+  formatSlotCycleReport,
+  formatUnresolvedSlotReferences,
+} from '../../apply/command.js';
 import { findSlotCycles } from '../../analyze/cycle-detection.js';
 import { buildComponentGraph } from '../../analyze/slot-graph.js';
 import { formatApiError, formatEdsiError } from '../../lib/error-parser.js';
 import { handlePreview422, applySkipValidationErrors, clearedValidationErrorState } from './wizard-422-helpers.js';
 import { parseGenerateStderrChunk, type GenerateProgressState } from './wizard-generate-progress.js';
 import { spawnGenerateChild } from './spawn-generate.js';
-import { readTokensFromPath, hasBreakingChangesWithImpact } from '../../apply/manifest.js';
+import { readTokensFromPath, hasBreakingChangesWithImpact, toCDFTokens } from '../../apply/tokens.js';
 import { isEmptyPreview } from '../../apply/preview-utils.js';
-import { buildManifest } from '@contentful/experience-design-system-types';
-import type { ServerPreviewResponse, ManifestPayload } from '@contentful/experience-design-system-types';
+import { buildCDF, validateCDF, validateSlotReferences } from '@contentful/experience-design-system-types';
+import type {
+  ServerPreviewResponse,
+  CDFDocument,
+  CDFComponentEntry,
+  DTCGTokenEntry,
+} from '@contentful/experience-design-system-types';
 import {
   openPipelineDb,
   loadCDFComponents,
@@ -62,11 +65,8 @@ import {
   backfillUnclassifiedProps,
 } from '../../session/db.js';
 import { ScopeGateHost, type ScopeComponent } from './scope-gate-host.js';
-import { mergeAiDecisions } from './merge-ai-decisions.js';
 import { FinalReviewHost } from './final-review-host.js';
-import type { CompositionMode } from '../../lib/composition-mode.js';
 import { runScopeGate } from './runScopeGate.js';
-import { buildAutoFilterErrorTail } from './auto-filter-error.js';
 import { checkAgentAuth, type AgentName } from '@contentful/experience-design-system-generation';
 import { normalizePath } from '../path-utils.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../../host-utils.js';
@@ -83,11 +83,9 @@ import {
   resolveNoCacheForGenerate,
   resolveCycleGateAction,
 } from './wizard-state-transitions.js';
-import { computeCycleAutoRejectTargets } from '../cycle-auto-reject.js';
 import { findCliPath } from '../../lib/cli-path.js';
 
 type WizardStep =
-  | 'run-picker'
   | 'welcome'
   | 'token-input'
   | 'token-reuse-gate'
@@ -103,7 +101,6 @@ type WizardStep =
   | 'final-review'
   | 'push-decision-gate'
   | 'credentials'
-  | 'push-from-picker'
   | 'previewing'
   | 'preview-gate'
   | 'pushing'
@@ -137,12 +134,10 @@ type WizardState = {
   tokenCount: number;
   extractSessionId: string | null;
   generateSessionId: string | null;
-  extractedCount: number;
   acceptedCount: number;
   autoRejectedCount: number;
   generatedCount: number;
   generatedAcceptedCount: number;
-  renamedSlotsCount: number;
   generateProgress: { done: number; total: number; current: string } | null;
   extractProgress: {
     scanned: number;
@@ -158,19 +153,16 @@ type WizardState = {
   host: string;
   credentialsError: string;
   serverPreview: ServerPreviewResponse | null;
-  manifest: ManifestPayload | null;
+  cdf: CDFDocument | null;
   pushProgress: PushProgress;
   pushResult: PushResult;
   errorStep: string;
   errorMessage: string;
   errorAllowCredentialRetry: boolean;
+  errorAllowBreakingChangeAcknowledgment: boolean;
   authCheckStepNumber: number;
   previewValidationErrors: PreviewValidationError[];
   previewValidationMissingNames: string[];
-  aiFilterStatus: 'idle' | 'running' | 'complete' | 'cancelled' | 'failed';
-  aiFilterProgress: { done: number; total: number } | null;
-  aiDecisions: Record<string, { decision: 'accepted' | 'rejected' | 'failed'; reason: string }>;
-  aiFilterError: string | null;
   credentialsValidating: boolean;
   generatePrefetchStatus: 'idle' | 'running' | 'complete' | 'failed';
   generatePrefetchError: string | null;
@@ -186,65 +178,7 @@ type WizardState = {
   lastRunId: string | null;
   finalizeErrorBanner: string | null;
   finalReviewPassed: boolean;
-  /** True when the user finalized with zero accepted components (confirmed via
-   *  the FinalizeDialog warning). Save/push then emit an empty-but-present
-   *  components manifest so the target space's components are all deleted. */
-  allowEmptyDeleteAll: boolean;
 };
-
-export function buildSelectAgentArgs(opts: {
-  sessionId: string;
-  agent: string;
-  model?: string;
-  bedrock?: boolean;
-  selectPromptPath?: string;
-  noCache?: boolean;
-  existingEntitiesPath?: string;
-}): string[] {
-  const args = ['analyze', 'select-agent', '--agent', opts.agent, '--session', opts.sessionId, '--exclude-invalid'];
-  if (opts.model) args.push('--model', opts.model);
-  if (opts.bedrock) args.push('--bedrock');
-  if (opts.selectPromptPath) args.push('--select-prompt-path', opts.selectPromptPath);
-  if (opts.noCache) args.push('--no-cache');
-  if (opts.existingEntitiesPath) args.push('--existing-entities-path', opts.existingEntitiesPath);
-  return args;
-}
-
-export type AutoFilterProgress = {
-  n: number;
-  total: number;
-  decision: 'accepted' | 'rejected' | 'failed';
-  name: string;
-  reason: string;
-};
-
-export function parseAutoFilterProgressLine(line: string): AutoFilterProgress | null {
-  const prefix = 'progress=select-agent:';
-  if (!line.startsWith(prefix)) return null;
-  const rest = line.slice(prefix.length);
-  const parts = rest.split(':');
-  if (parts.length < 4) return null;
-  const [counter, decision, name, ...reasonParts] = parts;
-  if (!counter) return null;
-  const counterMatch = /^(\d+)\/(\d+)$/.exec(counter);
-  if (!counterMatch) return null;
-  if (decision !== 'accepted' && decision !== 'rejected' && decision !== 'failed') return null;
-  if (!name) return null;
-  const encodedReason = reasonParts.join(':');
-  let reason = '';
-  try {
-    reason = decodeURIComponent(encodedReason);
-  } catch {
-    reason = encodedReason;
-  }
-  return {
-    n: Number(counterMatch[1]),
-    total: Number(counterMatch[2]),
-    decision,
-    name,
-    reason,
-  };
-}
 
 export function buildGenerateComponentsArgs(opts: {
   sessionId: string;
@@ -254,15 +188,31 @@ export function buildGenerateComponentsArgs(opts: {
   bedrock?: boolean;
   noCache?: boolean;
   generatePromptPath?: string;
+  promptOverrides?: string[];
   existingEntitiesPath?: string;
 }): string[] {
-  const args = ['generate', 'components', '--agent', opts.agent, '--session', opts.sessionId];
+  const args = ['__generate', 'components', '--agent', opts.agent, '--session', opts.sessionId];
   if (opts.tokensPath) args.push('--tokens', opts.tokensPath);
   if (opts.model) args.push('--model', opts.model);
   if (opts.bedrock) args.push('--bedrock');
   if (opts.noCache) args.push('--no-cache');
   if (opts.generatePromptPath) args.push('--generate-prompt-path', opts.generatePromptPath);
+  for (const prompt of opts.promptOverrides ?? []) args.push('--prompt', prompt);
   if (opts.existingEntitiesPath) args.push('--existing-entities-path', opts.existingEntitiesPath);
+  return args;
+}
+
+export function buildGenerateTokensArgs(opts: {
+  rawTokensPath: string;
+  agent: string;
+  model?: string;
+  bedrock?: boolean;
+  noCache?: boolean;
+}): string[] {
+  const args = [findCliPath(), '__generate', 'tokens', '--agent', opts.agent, '--raw-tokens', opts.rawTokensPath];
+  if (opts.model) args.push('--model', opts.model);
+  if (opts.bedrock) args.push('--bedrock');
+  if (opts.noCache) args.push('--no-cache');
   return args;
 }
 
@@ -284,6 +234,20 @@ export function buildMapTokensArgs(opts: {
 
 export function shouldRunMapTokens(opts: { mappablePropCount: number; rawTokenCount: number }): boolean {
   return opts.mappablePropCount > 0 && opts.rawTokenCount > 0;
+}
+
+export function buildSavedCDF(
+  components: Array<{ key: string; entry: CDFComponentEntry }>,
+  tokens: DTCGTokenEntry[],
+  opts: { deleteAll?: boolean } = {},
+): CDFDocument {
+  const cdf = buildCDF(components, toCDFTokens(tokens), opts);
+  if (!cdf) throw new Error('nothing to save — no components or tokens resolved');
+  const validation = validateCDF(cdf);
+  if (!validation.valid) {
+    throw new Error(`generated CDF failed validation: ${validation.errors.map((error) => error.message).join(', ')}`);
+  }
+  return cdf;
 }
 
 export function formatAcceptanceSummary(opts: { accepted: number; autoRejected: number }): string {
@@ -364,33 +328,13 @@ export type WizardAppProps = {
   bedrock?: boolean;
   initialProjectPath?: string;
   host?: string;
-  autoAcceptScope?: boolean;
-  autoRejectCycles?: boolean;
-  compositionMode?: CompositionMode;
   compositionMap?: string;
-  compositionAgent?: boolean;
-  compositionRefresh?: boolean;
-  generateMap?: string;
   promptOverrides?: string[];
   noCache?: boolean;
-  autoFilter?: boolean;
   livePreview?: boolean;
-  noPush?: boolean;
-  noSave?: boolean;
-  outDirOverride?: string;
-  onConflictMode?: ConflictMode;
-  selectPromptPath?: string;
   generatePromptPath?: string;
   skipMapTokens?: boolean;
-  seedExtractSessionId?: string;
-  seedGenerateSessionId?: string;
-  seedTokenSessionId?: string;
-  seedTokensPath?: string;
-  initialStep?: 'scope-gate' | 'final-review' | 'push-from-picker';
   initialRawTokensPath?: string;
-  initialRuns?: RunRecord[];
-  onRunPicked?: (selection: RunPickerSelection) => void;
-  allowDeletions?: boolean;
 };
 
 export function WizardApp({
@@ -403,38 +347,18 @@ export function WizardApp({
   bedrock = false,
   initialProjectPath,
   host,
-  autoAcceptScope = false,
-  autoRejectCycles = false,
-  compositionMode = 'atomic',
   compositionMap,
-  compositionAgent = false,
-  compositionRefresh = false,
-  generateMap,
   promptOverrides,
   noCache = false,
-  autoFilter = true,
   livePreview = true,
-  noPush = false,
-  noSave = false,
-  outDirOverride,
-  onConflictMode,
-  selectPromptPath,
   generatePromptPath,
   skipMapTokens = false,
-  seedExtractSessionId,
-  seedGenerateSessionId,
-  seedTokenSessionId,
-  seedTokensPath,
-  initialStep,
   initialRawTokensPath,
-  initialRuns,
-  onRunPicked,
-  allowDeletions = false,
 }: WizardAppProps = {}): React.ReactElement {
   const defaultConfiguredHost = toConfiguredHost(host || process.env['EDS_HOST']) ?? DEFAULT_CONFIGURED_HOST;
   const resolveWizardHost = (hostValue?: string): string => hostValue || defaultConfiguredHost;
   const { stdout } = useStdout();
-  const terminalWidth = stdout?.columns ?? 80;
+  const terminalWidth = stdout.columns;
   const logInit = useRef(false);
   if (!logInit.current) {
     writeFileSync(WIZARD_LOG, `--- experiences import session ${new Date().toISOString()} ---\n`);
@@ -450,13 +374,10 @@ export function WizardApp({
   });
 
   // Set at finalize when zero components are accepted (confirmed via the
-  // FinalizeDialog warning). Read by preview/push so buildManifest emits an
-  // empty-but-present components manifest → server deletes all. A ref (not
-  // state) so the async preview/push closures see the confirmed value.
+  // FinalizeDialog warning). Read by preview/push so buildCDF emits an
+  // empty-but-present document → server deletes all. A ref (not state) so
+  // the async preview/push closures see the confirmed value.
   const allowEmptyDeleteAllRef = useRef(false);
-
-  const autoFilterChildRef = useRef<import('node:child_process').ChildProcess | null>(null);
-  const autoFilterDonePromiseRef = useRef<Promise<void> | null>(null);
 
   const generateChildRef = useRef<import('node:child_process').ChildProcess | null>(null);
   const generatePromiseRef = useRef<Promise<{
@@ -466,54 +387,34 @@ export function WizardApp({
     stderr: string;
   }> | null>(null);
 
-  const modifyEntryReady = !!seedExtractSessionId && initialStep === 'final-review';
-  const pushFromPickerReady = !!seedExtractSessionId && initialStep === 'push-from-picker';
-  const rawTokensEntryReady = !modifyEntryReady && !pushFromPickerReady && !!initialRawTokensPath;
+  const rawTokensEntryReady = !!initialRawTokensPath;
   const effectiveNoCache = resolveNoCacheForGenerate({ cliNoCache: noCache });
-  const initialStepResolved: WizardStep = modifyEntryReady
-    ? 'final-review'
-    : pushFromPickerReady
-      ? 'push-from-picker'
-      : rawTokensEntryReady
-        ? 'generating-tokens'
-        : initialProjectPath
-          ? 'token-input'
-          : 'welcome';
+  const initialStepResolved: WizardStep = rawTokensEntryReady
+    ? 'generating-tokens'
+    : initialProjectPath
+      ? 'token-input'
+      : 'welcome';
   const initialOutDir = initialProjectPath ? join(resolve(initialProjectPath), '.contentful') : '';
-  // Only point at tokens.json when the run actually had a tokens session. A run
-  // saved without tokens has no tokens.json on disk, so assuming one exists made
-  // modify/push-from-picker fail with "file not found: .../tokens.json".
-  const initialTokensPath =
-    (modifyEntryReady || pushFromPickerReady) && initialOutDir && seedTokenSessionId
-      ? join(initialOutDir, 'tokens.json')
-      : '';
 
   const [state, setState] = useState<WizardState>({
-    step:
-      modifyEntryReady || rawTokensEntryReady || pushFromPickerReady
-        ? initialStepResolved
-        : initialRuns && initialRuns.length > 0
-          ? 'run-picker'
-          : initialStepResolved,
+    step: initialStepResolved,
     agent: initialAgent ?? 'claude',
     ...(initialModel ? { agentModel: initialModel } : {}),
     ...(bedrock ? { bedrock: true } : {}),
     projectPath: initialProjectPath ?? '',
     outDir: initialOutDir,
     rawTokensPath: rawTokensEntryReady ? initialRawTokensPath! : '',
-    tokensPath: seedTokensPath ?? initialTokensPath,
+    tokensPath: '',
     tokenSourceChanged: null,
     skipComponents: false,
-    tokenSessionId: seedTokenSessionId ?? null,
+    tokenSessionId: null,
     tokenCount: 0,
-    extractSessionId: seedExtractSessionId ?? null,
-    generateSessionId: seedGenerateSessionId ?? null,
-    extractedCount: 0,
+    extractSessionId: null,
+    generateSessionId: null,
     acceptedCount: 0,
     autoRejectedCount: 0,
     generatedCount: 0,
     generatedAcceptedCount: 0,
-    renamedSlotsCount: 0,
     generateProgress: null,
     extractProgress: null,
     compositionPhase: null,
@@ -524,7 +425,7 @@ export function WizardApp({
     host: resolveWizardHost(toConfiguredHost(initialHost)),
     credentialsError: '',
     serverPreview: null,
-    manifest: null,
+    cdf: null,
     pushProgress: null,
     pushResult: {
       componentTypes: { created: 0, updated: 0, removed: 0, failed: 0 },
@@ -533,13 +434,10 @@ export function WizardApp({
     errorStep: '',
     errorMessage: '',
     errorAllowCredentialRetry: false,
+    errorAllowBreakingChangeAcknowledgment: false,
     authCheckStepNumber: 1,
     previewValidationErrors: [],
     previewValidationMissingNames: [],
-    aiFilterStatus: 'idle',
-    aiFilterProgress: null,
-    aiDecisions: {},
-    aiFilterError: null,
     credentialsValidating: false,
     generatePrefetchStatus: 'idle',
     generatePrefetchError: null,
@@ -548,8 +446,7 @@ export function WizardApp({
     existingEntitiesPath: null,
     lastRunId: null,
     finalizeErrorBanner: null,
-    finalReviewPassed: modifyEntryReady || pushFromPickerReady,
-    allowEmptyDeleteAll: false,
+    finalReviewPassed: false,
   });
 
   useEffect(() => {
@@ -601,7 +498,7 @@ export function WizardApp({
         hasBreakingWithImpact: hasBreakingChangesWithImpact(p),
       };
     }
-    if (sanitized.manifest) (sanitized as Record<string, unknown>).manifest = '[manifest]';
+    if (sanitized.cdf) (sanitized as Record<string, unknown>).cdf = '[cdf]';
     if ((sanitized as Record<string, unknown>).cmaToken) (sanitized as Record<string, unknown>).cmaToken = '[redacted]';
     logStep({ update: sanitized });
     setState((prev) => ({ ...prev, ...partial }));
@@ -636,9 +533,13 @@ export function WizardApp({
   };
 
   const runGenerateTokens = async (rawTokensPath: string, outDir: string) => {
-    const tokenArgs = [findCliPath(), 'generate', 'tokens', '--agent', state.agent, '--raw-tokens', rawTokensPath];
-    if (state.agentModel) tokenArgs.push('--model', state.agentModel);
-    if (state.bedrock) tokenArgs.push('--bedrock');
+    const tokenArgs = buildGenerateTokensArgs({
+      rawTokensPath,
+      agent: state.agent,
+      ...(state.agentModel ? { model: state.agentModel } : {}),
+      ...(state.bedrock ? { bedrock: true } : {}),
+      noCache: effectiveNoCache,
+    });
     const result = await runSpawnedCli(tokenArgs);
     if (result.exitCode !== 0) {
       update({
@@ -676,11 +577,7 @@ export function WizardApp({
         acceptedCount: 0,
         outDir: state.outDir || join(process.cwd(), '.contentful'),
       });
-      if (noPush) {
-        void startSaveFlow();
-      } else {
-        update({ step: 'credentials' });
-      }
+      update({ step: 'credentials' });
       return;
     }
     update({ step: 'path-validation', tokensPath, tokenSessionId, tokenCount });
@@ -696,7 +593,7 @@ export function WizardApp({
         // normal wizard run can have a separate token session. The map-tokens
         // command operates on one session; copy that token universe into the
         // generated-component session while leaving the recorded token session
-        // intact for save/push and --modify replay.
+        // intact for save/push.
         if (state.tokenSessionId && state.tokenSessionId !== sessionId) {
           copyTokensFromCache(db, state.tokenSessionId, sessionId);
         } else if (!state.tokenSessionId && state.tokensPath) {
@@ -710,9 +607,8 @@ export function WizardApp({
         mappablePropCount = cdfEntries.reduce(
           (count, { entry }) =>
             count +
-            Object.values(entry.$properties ?? {}).filter(
-              (prop) => prop.$type === 'token' && prop.$category === 'design',
-            ).length,
+            Object.values(entry.$properties).filter((prop) => prop.$type === 'token' && prop.$category === 'design')
+              .length,
           0,
         );
         rawTokenCount = loadDTCGTokens(db, sessionId).tokens.length;
@@ -762,18 +658,13 @@ export function WizardApp({
   const runExtract = async (projectPath: string) => {
     const outDir = join(resolve(projectPath), '.contentful');
     update({ step: 'extracting', outDir, extractProgress: null, compositionPhase: null });
-    const extractArgs = [findCliPath(), 'analyze', 'extract', '--project', projectPath];
-    if (compositionMode === 'composite') {
-      extractArgs.push('--composite');
-      if (compositionMap) extractArgs.push('--composition-map', compositionMap);
-      if (compositionAgent) extractArgs.push('--composition-agent');
-      if (compositionRefresh) extractArgs.push('--composition-refresh');
-      if (generateMap) extractArgs.push('--generate-map', generateMap);
-      for (const p of promptOverrides ?? []) extractArgs.push('--prompt', p);
-      // Composition resolution uses the same agent the user picked for the run.
-      if (state.agent) extractArgs.push('--agent', state.agent);
-      if (state.bedrock) extractArgs.push('--bedrock');
-    }
+    const extractArgs = [findCliPath(), '__extract', '--project', projectPath];
+    if (noCache) extractArgs.push('--composition-refresh');
+    if (compositionMap) extractArgs.push('--composition-map', compositionMap);
+    for (const p of promptOverrides ?? []) extractArgs.push('--prompt', p);
+    // Composition resolution uses the same agent the user picked for the run.
+    if (state.agent) extractArgs.push('--agent', state.agent);
+    if (state.bedrock) extractArgs.push('--bedrock');
     const r = await runSpawnedCli(extractArgs, (chunk) => {
       for (const line of chunk.split('\n')) {
         const scanMatch = /^progress=scan:(\d+)$/.exec(line.trim());
@@ -836,101 +727,7 @@ export function WizardApp({
     update({
       step: 'scope-gate',
       extractSessionId,
-      extractedCount,
-      aiFilterStatus: autoFilter ? 'running' : 'idle',
-      aiFilterProgress: autoFilter ? { done: 0, total: extractedCount } : null,
-      aiDecisions: {},
-      aiFilterError: null,
     });
-    if (autoFilter && extractSessionId) {
-      autoFilterDonePromiseRef.current = runAutoFilter(extractSessionId);
-    }
-  };
-
-  const runAutoFilter = (sessionId: string): Promise<void> => {
-    return new Promise((res) => {
-      const args = buildSelectAgentArgs({
-        sessionId,
-        agent: state.agent,
-        ...(state.agentModel ? { model: state.agentModel } : {}),
-        ...(state.bedrock ? { bedrock: true } : {}),
-        selectPromptPath,
-        noCache,
-        ...(state.existingEntitiesPath ? { existingEntitiesPath: state.existingEntitiesPath } : {}),
-      });
-      const child = spawn('node', [findCliPath(), ...args]);
-      autoFilterChildRef.current = child;
-      let stderr = '';
-      child.stderr.on('data', (d: Buffer) => {
-        const chunk = String(d);
-        stderr += chunk;
-        for (const line of chunk.split('\n')) {
-          const trimmed = line.trim();
-          if (!trimmed) continue;
-          const parsed = parseAutoFilterProgressLine(trimmed);
-          if (!parsed) continue;
-          setState((prev) => ({
-            ...prev,
-            aiFilterProgress: { done: parsed.n, total: parsed.total },
-            aiDecisions: {
-              ...prev.aiDecisions,
-              [parsed.name]: { decision: parsed.decision, reason: parsed.reason },
-            },
-          }));
-        }
-      });
-      child.on('close', (code, signal) => {
-        autoFilterChildRef.current = null;
-        if (signal === 'SIGTERM') {
-          setState((prev) => ({ ...prev, aiFilterStatus: 'cancelled' }));
-        } else if ((code ?? 0) !== 0) {
-          const tail = buildAutoFilterErrorTail(stderr);
-          setState((prev) => ({
-            ...prev,
-            aiFilterStatus: 'failed',
-            aiFilterError: tail || `exit ${code}`,
-          }));
-        } else {
-          setState((prev) => ({ ...prev, aiFilterStatus: 'complete' }));
-        }
-        res();
-      });
-      child.on('error', (err) => {
-        autoFilterChildRef.current = null;
-        setState((prev) => ({
-          ...prev,
-          aiFilterStatus: 'failed',
-          aiFilterError: err.message,
-        }));
-        res();
-      });
-    });
-  };
-
-  const cancelAutoFilter = (): void => {
-    const child = autoFilterChildRef.current;
-    if (child && !child.killed) {
-      try {
-        child.kill('SIGTERM');
-      } catch {
-        // best-effort
-      }
-    }
-  };
-
-  const cancelAutoFilterAndWait = async (): Promise<void> => {
-    const child = autoFilterChildRef.current;
-    const donePromise = autoFilterDonePromiseRef.current;
-    if (!child || child.killed) {
-      if (donePromise) await donePromise;
-      return;
-    }
-    try {
-      child.kill('SIGTERM');
-    } catch {
-      // best-effort
-    }
-    if (donePromise) await donePromise;
   };
 
   const cancelGeneratePrefetch = (): void => {
@@ -962,6 +759,7 @@ export function WizardApp({
       noCache: effectiveNoCache,
       ...(state.existingEntitiesPath ? { existingEntitiesPath: state.existingEntitiesPath } : {}),
       ...(generatePromptPath ? { generatePromptPath } : {}),
+      promptOverrides,
     });
 
   const startGeneratePrefetch = (
@@ -1009,12 +807,11 @@ export function WizardApp({
           }));
           return;
         }
-        const { generateSessionId, generatedCount, renamedSlotsCount } = parseGenerateResult(result, 0);
+        const { generateSessionId, generatedCount } = parseGenerateResult(result, 0);
         setState((prev) => ({
           ...prev,
           generateSessionId,
           generatedCount,
-          renamedSlotsCount,
           generateProgress: null,
           generatePrefetchStatus: 'complete',
         }));
@@ -1054,12 +851,11 @@ export function WizardApp({
       });
       return;
     }
-    const { generateSessionId, generatedCount, renamedSlotsCount } = parseGenerateResult(result, acceptedCount);
+    const { generateSessionId, generatedCount } = parseGenerateResult(result, acceptedCount);
     const mappedSessionId = generateSessionId ?? extractSessionId;
     update({
       generateSessionId: mappedSessionId,
       generatedCount,
-      renamedSlotsCount,
       generateProgress: null,
     });
     if (await runMapTokens(mappedSessionId)) update({ step: 'final-review' });
@@ -1171,7 +967,12 @@ export function WizardApp({
       void runExtract(state.projectPath);
       return;
     }
-    if (shouldSkipFinalReviewAfterCredentials(state)) {
+    if (
+      shouldSkipFinalReviewAfterCredentials({
+        generateSessionId: state.generateSessionId,
+        finalReviewPassed: state.finalReviewPassed,
+      })
+    ) {
       update({ step: 'push-decision-gate' });
       return;
     }
@@ -1246,8 +1047,8 @@ export function WizardApp({
       if (tokensPath) {
         tokens = await readTokensFromPath('tokens', tokensPath);
       }
-      let manifest = buildManifest(components, tokens, { deleteAllComponents: allowEmptyDeleteAllRef.current });
-      let preview = await client.previewImport(manifest, allowDeletions);
+      let cdf = buildCDF(components, toCDFTokens(tokens), { deleteAll: allowEmptyDeleteAllRef.current })!;
+      let preview = await client.previewImport(cdf);
 
       if (extractSessionId) {
         let needsRepreview = false;
@@ -1275,8 +1076,8 @@ export function WizardApp({
 
           if (needsRepreview) {
             components = loadCDFComponents(db, extractSessionId);
-            manifest = buildManifest(components, tokens, { deleteAllComponents: allowEmptyDeleteAllRef.current });
-            preview = await client.previewImport(manifest, allowDeletions);
+            cdf = buildCDF(components, toCDFTokens(tokens), { deleteAll: allowEmptyDeleteAllRef.current })!;
+            preview = await client.previewImport(cdf);
           }
         } finally {
           db.close();
@@ -1303,7 +1104,7 @@ export function WizardApp({
       update({
         step: 'preview-gate',
         serverPreview: preview,
-        manifest,
+        cdf,
         finalizeErrorBanner: null,
         ...clearedValidationErrorState(),
       });
@@ -1338,7 +1139,7 @@ export function WizardApp({
               `  Space:       ${spaceId}\n` +
               `  Environment: ${environmentId}\n` +
               (resolvedHost ? `  Host:        ${resolvedHost}\n` : '') +
-              `\nIf using a custom --host, make sure the space exists on that host.`,
+              `\nIf using a custom host configuration, make sure the space exists on that host.`,
           });
           return;
         }
@@ -1371,13 +1172,12 @@ export function WizardApp({
   };
 
   const runPush = async (
-    manifest: ManifestPayload,
+    cdf: CDFDocument,
     spaceId: string,
     environmentId: string,
     cmaToken: string,
     host: string,
     acknowledgeBreakingChanges: boolean,
-    allowDeletions: boolean,
     preview?: ServerPreviewResponse | null,
   ) => {
     if (shouldRefusePush(state)) {
@@ -1403,18 +1203,29 @@ export function WizardApp({
       }
     }
 
-    const cycles = detectSlotCycles(extractComponentsFromManifest(manifest));
+    const cycles = detectSlotCycles(extractComponents(cdf));
     if (cycles.length > 0) {
       update({
         step: 'error',
-        errorStep: 'apply push',
+        errorStep: 'apply',
         errorMessage: formatSlotCycleReport(cycles).join('\n'),
         errorAllowCredentialRetry: false,
       });
       return;
     }
 
-    update({ step: 'pushing', pushProgress: null });
+    const unresolvedSlotReferences = validateSlotReferences(extractComponents(cdf));
+    if (unresolvedSlotReferences.length > 0) {
+      update({
+        step: 'error',
+        errorStep: 'apply',
+        errorMessage: formatUnresolvedSlotReferences(unresolvedSlotReferences).join('\n'),
+        errorAllowCredentialRetry: false,
+      });
+      return;
+    }
+
+    update({ step: 'pushing', pushProgress: null, errorAllowBreakingChangeAcknowledgment: false });
     try {
       const resolvedHost = resolveWizardHost(host);
       const client = new ImportApiClient({
@@ -1423,13 +1234,13 @@ export function WizardApp({
         environmentId,
         host: resolvedHost,
       });
-      let operation = await client.applyImport(manifest, { acknowledgeBreakingChanges, allowDeletions });
+      let operation = await client.applyImport(cdf, { acknowledgeBreakingChanges });
       try {
         logStep({
           applyResponse: {
-            status: operation?.sys?.status,
-            id: operation?.sys?.id,
-            keys: Object.keys(operation ?? {}),
+            status: operation.sys.status,
+            id: operation.sys.id,
+            keys: Object.keys(operation),
           },
         });
       } catch (err) {
@@ -1469,8 +1280,8 @@ export function WizardApp({
       try {
         logStep({
           pollResult: {
-            status: operation?.sys?.status,
-            keys: Object.keys(operation ?? {}),
+            status: operation.sys.status,
+            keys: Object.keys(operation),
             itemCount: operation.items?.length,
             summary: operation.summary,
             sampleItems: operation.items?.slice(0, 3),
@@ -1517,7 +1328,7 @@ export function WizardApp({
             })),
         };
       } else {
-        const summary = operation.summary ?? { total: 0, pending: 0, succeeded: 0, failed: 0 };
+        const summary = operation.summary;
         const anyFailure =
           summary.failed > 0 || operation.sys.status === 'failed' || operation.sys.status === 'partial';
         pushResult = {
@@ -1563,9 +1374,15 @@ export function WizardApp({
       }
       update({
         step: 'error',
-        errorStep: 'apply push',
+        errorStep: 'apply',
         errorMessage: msg,
-        errorAllowCredentialRetry: true,
+        errorAllowCredentialRetry: !(
+          e instanceof ApiError &&
+          e.status === 422 &&
+          /acknowledgeBreakingChanges/i.test(e.body || e.message)
+        ),
+        errorAllowBreakingChangeAcknowledgment:
+          e instanceof ApiError && e.status === 422 && /acknowledgeBreakingChanges/i.test(e.body || e.message),
       });
     }
   };
@@ -1573,45 +1390,37 @@ export function WizardApp({
   const runPrintFiles = async (
     extractSessionId: string | null,
     outDir: string,
-    opts: { skipGate?: boolean; tokenSessionId?: string | null; allowEmpty?: boolean } = {},
-  ): Promise<{ ok: boolean; tokensPath?: string; tokenCount?: number }> => {
+    opts: { skipGate?: boolean; tokenSessionId?: string | null; tokensPath?: string; allowEmpty?: boolean } = {},
+  ): Promise<{ ok: boolean }> => {
     update({ step: 'printing' });
     const componentsPath = join(outDir, 'components.json');
-    const printArgs = ['print', 'components', '--out', componentsPath];
-    if (extractSessionId) printArgs.push('--session', extractSessionId);
-    if (opts.allowEmpty) printArgs.push('--allow-empty');
-    const r = await runCli(printArgs);
-    if (r.exitCode !== 0) {
+    try {
+      const db = openPipelineDb();
+      let components: ReturnType<typeof loadCDFComponents> = [];
+      let tokens: DTCGTokenEntry[] = [];
+      try {
+        if (extractSessionId) components = loadCDFComponents(db, extractSessionId);
+        if (opts.tokenSessionId) tokens = loadDTCGTokens(db, opts.tokenSessionId).tokens;
+      } finally {
+        db.close();
+      }
+      if (!opts.tokenSessionId && opts.tokensPath) tokens = await readTokensFromPath('tokens', opts.tokensPath);
+
+      const cdf = buildSavedCDF(components, tokens, { deleteAll: opts.allowEmpty });
+      await writeFile(componentsPath, `${JSON.stringify(cdf, null, 2)}\n`);
+      process.stderr.write(
+        `wrote ${componentsPath} (${components.length} component${components.length === 1 ? '' : 's'}, ${tokens.length} token${tokens.length === 1 ? '' : 's'})\n`,
+      );
+    } catch (error) {
       update({
         step: 'error',
-        errorStep: 'print components',
-        errorMessage: r.stderr.trim() || 'Unknown error',
+        errorStep: 'save CDF',
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
       });
       return { ok: false };
     }
-    let emittedTokensPath: string | undefined;
-    let emittedTokenCount: number | undefined;
-    if (opts.tokenSessionId) {
-      const tokensOut = join(outDir, 'tokens.json');
-      const tokenArgs = ['print', 'tokens', '--out', tokensOut, '--session', opts.tokenSessionId];
-      const tr = await runCli(tokenArgs);
-      if (tr.exitCode !== 0) {
-        update({
-          step: 'error',
-          errorStep: 'print tokens',
-          errorMessage: tr.stderr.trim() || 'Unknown error',
-        });
-        return { ok: false };
-      }
-      emittedTokensPath = tokensOut;
-      emittedTokenCount = parsePrintTokensCount(tr.stdout);
-    }
     update(nextStateAfterPrint({ skipGate: opts.skipGate, componentsPath }));
-    return {
-      ok: true,
-      ...(emittedTokensPath ? { tokensPath: emittedTokensPath } : {}),
-      ...(typeof emittedTokenCount === 'number' ? { tokenCount: emittedTokenCount } : {}),
-    };
+    return { ok: true };
   };
 
   const runSaveAndPush = async (): Promise<void> => {
@@ -1622,27 +1431,6 @@ export function WizardApp({
 
   const startSaveFlow = async (opts: { skipGate?: boolean; andPush?: boolean } = {}): Promise<void> => {
     pendingSaveOptionsRef.current = opts;
-    if (outDirOverride) {
-      await mkdir(outDirOverride, { recursive: true });
-      if (onConflictMode) {
-        const resolved = await resolveSavePath(outDirOverride, { onConflict: onConflictMode });
-        if (resolved.kind === 'fail') {
-          const files = resolved.conflict.files.join(', ');
-          process.stderr.write(
-            `Error: --on-conflict fail — refusing to overwrite ${files} at ${resolved.conflict.path}.\n`,
-          );
-          process.exit(1);
-          return;
-        }
-        if (resolved.kind === 'write') {
-          await mkdir(resolved.path, { recursive: true });
-          await proceedToWrite(resolved.path);
-          return;
-        }
-      }
-      await proceedToWrite(outDirOverride);
-      return;
-    }
     setState((prev) => ({ ...prev, step: 'path-prompt' }));
   };
 
@@ -1653,15 +1441,15 @@ export function WizardApp({
     const result = await runPrintFiles(extractSessionId, path, {
       ...(skipGate ? { skipGate: true } : {}),
       ...(state.tokenSessionId ? { tokenSessionId: state.tokenSessionId } : {}),
+      ...(tokensPath ? { tokensPath } : {}),
       ...(allowEmptyDeleteAllRef.current ? { allowEmpty: true } : {}),
     });
     if (!result.ok) return;
-    const recordedTokensPath = result.tokensPath ?? (state.tokenSessionId ? tokensPath || null : null);
-    const recordedTokenCount = result.tokenCount ?? state.tokenCount;
+    const recordedTokensPath = state.tokenSessionId ? tokensPath || null : null;
+    const recordedTokenCount = state.tokenCount;
     if (result.ok) {
       try {
         let sourceFingerprint: Awaited<ReturnType<typeof buildSourceFingerprint>> | null = null;
-        let savedFingerprint: ReturnType<typeof buildSavedFingerprint> | null = null;
         try {
           if (state.extractSessionId) {
             const db = openPipelineDb();
@@ -1680,18 +1468,6 @@ export function WizardApp({
             `Warning: failed to compute source fingerprint: ${err instanceof Error ? err.message : String(err)}\n`,
           );
         }
-        try {
-          const componentsBuf = await readFile(join(path, 'components.json')).catch(() => null);
-          const tokensBuf = recordedTokensPath ? await readFile(recordedTokensPath).catch(() => null) : null;
-          savedFingerprint = buildSavedFingerprint({
-            componentsJson: componentsBuf,
-            tokensJson: tokensBuf,
-          });
-        } catch (err) {
-          process.stderr.write(
-            `Warning: failed to compute saved fingerprint: ${err instanceof Error ? err.message : String(err)}\n`,
-          );
-        }
         const record = await appendRun({
           projectPath: state.projectPath,
           savePath: path,
@@ -1704,8 +1480,6 @@ export function WizardApp({
           extractSessionId: state.extractSessionId ?? '',
           generateSessionId: state.generateSessionId,
           sourceFingerprint,
-          savedFingerprint,
-          compositionMode,
         });
         setState((prev) => ({ ...prev, lastRunId: record.id }));
       } catch (err) {
@@ -1723,6 +1497,12 @@ export function WizardApp({
       if (tokenReuseChecked.current) return; // already checked or user chose regenerate
       tokenReuseChecked.current = true;
       const existingTokensPath = join(state.outDir, 'tokens.json');
+      if (effectiveNoCache) {
+        void runAgentAuthCheck('generating-tokens').then((ok) => {
+          if (ok) void runGenerateTokens(state.rawTokensPath, state.outDir);
+        });
+        return;
+      }
       (async () => {
         try {
           await access(existingTokensPath);
@@ -1745,23 +1525,7 @@ export function WizardApp({
     }
   }, [state.step]);
 
-  const pushFromPickerDispatched = useRef(false);
-  useEffect(() => {
-    if (state.step !== 'push-from-picker') return;
-    if (pushFromPickerDispatched.current) return;
-    pushFromPickerDispatched.current = true;
-    void runPreview(
-      state.extractSessionId,
-      state.tokensPath,
-      state.spaceId,
-      state.environmentId,
-      state.cmaToken,
-      state.host,
-    );
-  }, [state.step]);
-
   const noQuitSteps: WizardStep[] = [
-    'run-picker',
     'checking-claude-auth',
     'validating-credentials',
     'generating-tokens',
@@ -1770,7 +1534,6 @@ export function WizardApp({
     'mapping-tokens',
     'printing',
     'previewing',
-    'push-from-picker',
     'pushing',
   ];
   const hints = noQuitSteps.includes(state.step) ? [] : [{ key: 'q', label: 'quit' }];
@@ -1781,21 +1544,6 @@ export function WizardApp({
 
   const stepContent = (() => {
     switch (state.step) {
-      case 'run-picker':
-        return (
-          <RunPicker
-            runs={initialRuns ?? []}
-            onSelect={(selection) => {
-              if (selection.action === 'new') {
-                update({ step: 'welcome' });
-                return;
-              }
-              onRunPicked?.(selection);
-            }}
-            onCancel={() => process.exit(0)}
-          />
-        );
-
       case 'welcome':
         return (
           <WelcomeStep
@@ -1880,11 +1628,6 @@ export function WizardApp({
               update({ projectPath: path, step: 'credentials' });
             }}
             onSkipComponents={() => {
-              if (noPush) {
-                update({ skipComponents: true, acceptedCount: 0 });
-                void startSaveFlow();
-                return;
-              }
               update({ step: 'credentials', skipComponents: true, acceptedCount: 0 });
             }}
             onChangePath={() => update({ step: 'welcome' })}
@@ -1907,6 +1650,8 @@ export function WizardApp({
           if (!phase) return undefined;
           if (phase === 'resolving') return 'Resolving composition mapping...';
           if (phase === 'cache-hit') return 'Composition mapping (cached)...';
+          if (phase === 'authoring') return 'Writing a composition parser...';
+          if (phase === 'parsing') return 'Running the composition parser...';
           if (phase.startsWith('agent:')) return `Resolving composition via ${phase.slice('agent:'.length)} agent...`;
           if (phase === 'done') return 'Composition mapping resolved ✓';
           return `Composition: ${phase}`;
@@ -1939,24 +1684,16 @@ export function WizardApp({
         } finally {
           db.close();
         }
-        components = mergeAiDecisions(components, state.aiDecisions);
         return (
           <ScopeGateHost
             components={components}
-            autoAccept={autoAcceptScope}
-            compositionMode={compositionMode}
-            aiFilterStatus={state.aiFilterStatus}
-            aiFilterProgress={state.aiFilterProgress}
-            aiFilterError={state.aiFilterError}
-            onCancelAutoFilter={cancelAutoFilter}
             onConfirm={(decisions) => {
               void runScopeGate({
                 sessionId,
                 decisions,
-                cancelAutoFilter: state.aiFilterStatus === 'running' ? cancelAutoFilterAndWait : undefined,
                 onAdvanceToGenerate: async ({ sessionId: sid, acceptedCount }) => {
                   update({ acceptedCount, autoRejectedCount: 0 });
-                  const next = nextStepAfterScopeGate({ acceptedCount, noPush });
+                  const next = nextStepAfterScopeGate({ acceptedCount });
                   if (next === 'generating') {
                     if (await runAgentAuthCheck('generating')) {
                       void runGenerate(sid, state.tokensPath, acceptedCount);
@@ -1972,11 +1709,6 @@ export function WizardApp({
                 },
                 onAdvanceToPushFlow: (count) => {
                   update({ acceptedCount: count, autoRejectedCount: 0 });
-                  const next = nextStepAfterScopeGate({ acceptedCount: count, noPush });
-                  if (next === 'print-gate') {
-                    void startSaveFlow();
-                    return;
-                  }
                   advanceToPushFlow(count);
                 },
               });
@@ -2021,9 +1753,6 @@ export function WizardApp({
           <FinalReviewHost
             extractSessionId={state.extractSessionId}
             tokenSessionId={state.tokenSessionId}
-            generatedCount={state.generatedCount}
-            autoAccept={autoAcceptScope}
-            compositionMode={compositionMode}
             livePreview={livePreview}
             spaceId={state.spaceId}
             environmentId={state.environmentId}
@@ -2031,10 +1760,9 @@ export function WizardApp({
             host={state.host}
             tokensPath={state.tokensPath}
             initialFinalizeError={state.finalizeErrorBanner}
-            allowDeletions={allowDeletions}
             onFinalize={(accepted, rejected, unresolved) => {
               process.stderr.write(`Accepted: ${accepted}  Rejected: ${rejected}  Unresolved: ${unresolved}\n`);
-              let acceptedCount = accepted;
+              const acceptedCount = accepted;
               const detectAcceptedCycles = (): ReturnType<typeof findSlotCycles> => {
                 if (!state.extractSessionId) return [];
                 try {
@@ -2049,10 +1777,9 @@ export function WizardApp({
                   return [];
                 }
               };
-              let acceptedCycles = detectAcceptedCycles();
+              const acceptedCycles = detectAcceptedCycles();
               const gateAction = resolveCycleGateAction({
                 hasCycles: acceptedCycles.length > 0,
-                autoRejectCycles,
               });
               const routeToCycleError = (): void => {
                 update({
@@ -2066,90 +1793,9 @@ export function WizardApp({
                 routeToCycleError();
                 return;
               }
-              if (gateAction === 'auto-reject' && state.extractSessionId) {
-                const sessionId = state.extractSessionId;
-                let excluded: string[] = [];
-                try {
-                  const db = openPipelineDb();
-                  try {
-                    const acceptedComponents = loadCDFComponents(db, sessionId);
-                    const targets = computeCycleAutoRejectTargets(
-                      acceptedCycles,
-                      buildComponentGraph(acceptedComponents),
-                    );
-                    excluded = [...targets];
-                    if (excluded.length > 0) {
-                      const stmt = db.prepare(
-                        `UPDATE raw_components SET status = 'generate-rejected' WHERE session_id = ? AND name = ?`,
-                      );
-                      db.exec('BEGIN');
-                      try {
-                        for (const name of excluded) {
-                          stmt.run(sessionId, name);
-                        }
-                        db.exec('COMMIT');
-                      } catch (e) {
-                        db.exec('ROLLBACK');
-                        throw e;
-                      }
-                    }
-                  } finally {
-                    db.close();
-                  }
-                } catch {
-                  routeToCycleError();
-                  return;
-                }
-                if (excluded.length > 0) {
-                  process.stderr.write(`Auto-rejected cycle participants: ${excluded.join(', ')}\n`);
-                  logStep({ event: 'cycle-auto-reject', excluded });
-                }
-                acceptedCycles = detectAcceptedCycles();
-                if (acceptedCycles.length > 0) {
-                  routeToCycleError();
-                  return;
-                }
-                const remaining = (() => {
-                  if (!state.extractSessionId) return acceptedCount;
-                  try {
-                    const db = openPipelineDb();
-                    try {
-                      return loadCDFComponents(db, sessionId).length;
-                    } finally {
-                      db.close();
-                    }
-                  } catch {
-                    return acceptedCount;
-                  }
-                })();
-                acceptedCount = remaining;
-              }
               const allowEmptyDeleteAll = acceptedCount === 0;
               allowEmptyDeleteAllRef.current = allowEmptyDeleteAll;
-              update({ finalReviewPassed: true, allowEmptyDeleteAll });
-              if (noPush) {
-                update({ generatedAcceptedCount: acceptedCount });
-                void startSaveFlow();
-                return;
-              }
-              if (noSave) {
-                update({ generatedAcceptedCount: acceptedCount });
-                const { extractSessionId, tokensPath } = sessionRef.current;
-                void runPreview(
-                  extractSessionId,
-                  tokensPath,
-                  state.spaceId,
-                  state.environmentId,
-                  state.cmaToken,
-                  state.host,
-                );
-                return;
-              }
-              if (autoAcceptScope) {
-                update({ generatedAcceptedCount: acceptedCount });
-                void runSaveAndPush();
-                return;
-              }
+              update({ finalReviewPassed: true });
               update({ generatedAcceptedCount: acceptedCount, step: 'push-decision-gate' });
             }}
             onQuit={() => process.exit(0)}
@@ -2158,9 +1804,7 @@ export function WizardApp({
       }
 
       case 'push-decision-gate': {
-        const tokenDesc = hasTokens ? 'tokens.json' : null;
-        const compDesc = hasComponents ? 'components.json' : null;
-        const files = [tokenDesc, compDesc].filter(Boolean).join(' and ');
+        const files = hasComponents || hasTokens ? 'components.json' : null;
         const count = state.generatedAcceptedCount > 0 ? state.generatedAcceptedCount : state.generatedCount;
         const summary = hasComponents
           ? `${count} component definition${count !== 1 ? 's' : ''} ready${hasTokens ? ', design tokens ready' : ''}.`
@@ -2234,7 +1878,6 @@ export function WizardApp({
           />
         );
 
-      case 'push-from-picker':
       case 'previewing':
         return (
           <RunningStep
@@ -2246,13 +1889,11 @@ export function WizardApp({
         );
 
       case 'preview-gate': {
-        // Only offer "[e] Edit definitions" when the manifest actually has
-        // components to edit. In the delete-all / empty case the manifest is
+        // Only offer "[e] Edit definitions" when the CDF document actually
+        // has components to edit. In the delete-all / empty case it's
         // present-but-empty (only $schema), so editing would dead-end on the
         // "No generated definitions found" screen.
-        const editableComponentCount = Object.keys(state.manifest?.componentsManifest ?? {}).filter(
-          (k) => k !== '$schema',
-        ).length;
+        const editableComponentCount = extractComponents(state.cdf).length;
         return (
           <WizardPreviewStep
             preview={state.serverPreview!}
@@ -2260,16 +1901,14 @@ export function WizardApp({
             environmentId={state.environmentId}
             stepNumber={totalSteps}
             totalSteps={totalSteps}
-            allowDeletions={allowDeletions}
-            onConfirm={(acknowledge, deleteMissing) => {
+            onConfirm={(acknowledge) => {
               void runPush(
-                state.manifest!,
+                state.cdf!,
                 state.spaceId,
                 state.environmentId,
                 state.cmaToken,
                 state.host,
                 acknowledge,
-                deleteMissing,
                 state.serverPreview,
               );
             }}
@@ -2338,8 +1977,7 @@ export function WizardApp({
           <GateStep
             successMessage="Files saved"
             summary={[
-              hasComponents && state.componentsPath ? `components.json → ${state.componentsPath}` : null,
-              hasTokens && state.tokensPath ? `tokens.json → ${state.tokensPath}` : null,
+              (hasComponents || hasTokens) && state.componentsPath ? `components.json → ${state.componentsPath}` : null,
             ]
               .filter(Boolean)
               .join('\n')}
@@ -2399,6 +2037,20 @@ export function WizardApp({
             onRetryCredentials={
               state.errorAllowCredentialRetry ? () => update({ step: 'credentials', credentialsError: '' }) : undefined
             }
+            onAcknowledgeBreakingChanges={
+              state.errorAllowBreakingChangeAcknowledgment && state.cdf
+                ? () =>
+                    void runPush(
+                      state.cdf!,
+                      state.spaceId,
+                      state.environmentId,
+                      state.cmaToken,
+                      state.host,
+                      true,
+                      state.serverPreview,
+                    )
+                : undefined
+            }
           />
         );
 
@@ -2410,7 +2062,7 @@ export function WizardApp({
   return (
     <Box flexDirection="column" width={terminalWidth}>
       <TopBar subcommand="import" hints={hints} />
-      <CustomPromptBanner selectPromptPath={selectPromptPath} generatePromptPath={generatePromptPath} />
+      <CustomPromptBanner generatePromptPath={generatePromptPath} />
       {stepContent}
     </Box>
   );

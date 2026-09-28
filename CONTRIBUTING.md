@@ -31,7 +31,7 @@ pnpm typecheck
 packages/
   experience-design-system-cli/         # CLI + TUI
   experience-design-system-extraction/  # Component extraction engine (ts-morph, per-framework parsers)
-  experience-design-system-generation/  # Agent-invocation and skill-prompt engine (used by `generate`)
+  experience-design-system-generation/  # Agent-invocation and skill-prompt engine (used internally by the import wizard)
   experience-design-system-client/      # Generated API client (from openapi.json), used by `apply`
   experience-design-system-types/       # Shared types and schemas
 .github/workflows/                      # CI/CD pipelines
@@ -83,7 +83,7 @@ experience-design-system-cli analyze extract \
   --dir src
 ```
 
-Extracted components are stored in the session database. Run `analyze select` (alias `analyze edit`) to review and accept proposals via the standalone JsonEditor TUI, or pass `--auto-accept-scope --yes` along with credentials when calling `experiences import` for a fully non-interactive run.
+Extracted components are stored in the session database. Run `analyze select` (alias `analyze edit`) to review and accept proposals via the standalone JsonEditor TUI, or provide credentials when calling `experiences import` for a fully non-interactive run.
 
 ## Commit Convention
 

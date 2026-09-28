@@ -262,7 +262,7 @@ export function formatParsedEdsiError(parsed: ParsedEdsiError, opts: { verbose?:
     lines.push(`- ${diagnostic.message}${context.length > 0 ? ` (${context.join('; ')})` : ''}`);
     if (diagnostic.path === null) {
       lines.push(
-        '  Location: not provided by the server. Review the submitted manifest; no component or field was identified.',
+        '  Location: not provided by the server. Review the submitted CDF file; no component or field was identified.',
       );
     }
     if (opts.verbose && diagnostic.messageSource) {

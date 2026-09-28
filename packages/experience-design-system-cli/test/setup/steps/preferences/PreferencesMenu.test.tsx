@@ -41,7 +41,7 @@ describe('PreferencesMenu', () => {
       (f) => f.includes('Every preference already has a working default'),
     );
 
-    for (const label of ['AI auto-filter', 'Custom prompts', 'Debug logging', 'Usage analytics', 'Terminal colors']) {
+    for (const label of ['Custom prompts', 'Debug logging', 'Usage analytics', 'Terminal colors']) {
       expect(frame).toContain(label);
     }
     expect(frame).toContain('Done');
@@ -97,26 +97,25 @@ describe('PreferencesMenu', () => {
       () => lastFrame(),
       (f) => f.includes('Every preference already has a working default'),
     );
-    // AI auto-filter leads the menu; opening it and taking the non-default row
-    // turns filtering off.
-    await acceptDefault(stdin);
+    // Opening debug logging and taking the non-default row turns traces on.
+    await choose(stdin, lastFrame, 'Debug logging', 8);
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Filters out components irrelevant'),
+      (f) => f.includes('Writes a verbose trace'),
     );
-    await choose(stdin, lastFrame, 'Keep every component');
+    await choose(stdin, lastFrame, 'Write verbose traces');
 
     await waitForFrame(
       () => lastFrame(),
       (f) => f.includes('Every preference already has a working default'),
     );
-    await acceptDefault(stdin);
+    await choose(stdin, lastFrame, 'Debug logging', 8);
 
     const reopened = await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Filters out components irrelevant'),
+      (f) => f.includes('Writes a verbose trace'),
     );
-    expect(reopened).toMatch(/Keep every component ✓/);
+    expect(reopened).toMatch(/Write verbose traces ✓/);
   });
 
   it('reports completed when a preference changed', async () => {
@@ -129,12 +128,12 @@ describe('PreferencesMenu', () => {
       () => lastFrame(),
       (f) => f.includes('Every preference already has a working default'),
     );
-    await acceptDefault(stdin);
+    await choose(stdin, lastFrame, 'Debug logging', 8);
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Filters out components irrelevant'),
+      (f) => f.includes('Writes a verbose trace'),
     );
-    await choose(stdin, lastFrame, 'Keep every component');
+    await choose(stdin, lastFrame, 'Write verbose traces');
     await waitForFrame(
       () => lastFrame(),
       (f) => f.includes('Every preference already has a working default'),
@@ -151,10 +150,10 @@ describe('PreferencesMenu', () => {
       () => lastFrame(),
       (f) => f.includes('Every preference already has a working default'),
     );
-    await acceptDefault(stdin);
+    await choose(stdin, lastFrame, 'Debug logging', 8);
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Filters out components irrelevant'),
+      (f) => f.includes('Writes a verbose trace'),
     );
     await acceptDefault(stdin);
     await waitForFrame(

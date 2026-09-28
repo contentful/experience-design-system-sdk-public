@@ -37,7 +37,7 @@ vi.mock('@contentful/experience-design-system-generation', () => ({
   checkAgentAuth: vi.fn().mockResolvedValue('authenticated'),
 }));
 
-vi.mock('../../../src/apply/manifest.js', () => ({
+vi.mock('../../../src/apply/tokens.js', () => ({
   buildManifest: vi.fn().mockReturnValue({ componentsManifest: {}, tokensManifest: {} }),
   readTokensFromPath: vi.fn().mockResolvedValue([]),
   hasBreakingChangesWithImpact: vi.fn().mockReturnValue(false),
@@ -247,7 +247,7 @@ describe('WizardApp TUI — EU host support', () => {
   });
 
   it('renders without crash when host prop is provided as runtime fallback', async () => {
-    // host prop (from --host CLI flag or EDS_HOST) is used when state.host is empty.
+    // The configured host prop (or EDS_HOST fallback) is used when state.host is empty.
     // This test confirms the prop is accepted and the wizard mounts without error.
     const { lastFrame } = render(
       <WizardApp
