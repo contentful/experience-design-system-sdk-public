@@ -45,6 +45,10 @@ vi.mock('../../../src/import/tui/spawn-generate.js', () => ({
   }),
 }));
 
+vi.mock('../../../src/import/tui/run-selection-agent.js', () => ({
+  runSelectionAgent: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>();
   return {
