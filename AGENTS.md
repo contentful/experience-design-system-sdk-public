@@ -167,7 +167,7 @@ Keep the orchestrator thin. Logic belongs in the individual command implementati
 
 ## The Wizard (interactive)
 
-`src/import/tui/WizardApp.tsx` is the TTY counterpart to the headless orchestrator. State transitions live in `wizard-state-transitions.ts`; the step components are in `src/import/tui/steps/`. `scope-gate-host.tsx` bridges the scope-gate step UI to underlying pipeline DB reads/writes; `GenerateReviewStep` guards its own missing-session case and is rendered directly by `WizardApp`. `spawn-generate.ts` runs internal component generation in parallel with the credentials step so the operator does not wait on the agent. `runLivePreview.ts` re-runs the diff after each FieldEditor save.
+`src/import/tui/WizardApp.tsx` is the TTY counterpart to the headless orchestrator. State transitions live in `wizard-state-transitions.ts`; the step components are in `src/import/tui/steps/`. `WizardApp` reads pipeline-DB state itself and passes it directly to the step components; `ScopeGateStep` and `GenerateReviewStep` each guard their own missing-session/empty-components case rather than through a separate host wrapper. `spawn-generate.ts` runs internal component generation in parallel with the credentials step so the operator does not wait on the agent. `runLivePreview.ts` re-runs the diff after each FieldEditor save.
 
 Auto-filter resolution lives in `src/import/auto-filter-resolve.ts`: the persisted `autoFilter` value controls whether the agentic pre-filter runs. The wizard writes the operator's last choice back to `credentials.json` so subsequent runs default to it.
 
@@ -179,7 +179,7 @@ All TUI components are standard React functional components rendered by Ink. The
 - `src/analyze/select/tui/` — full standalone JsonEditor (`App`, hooks, 10+ components); shared by `validate` and other commands that need `TopBar`/`useImmediateInput`. **Untouched by the wizard rebuild** — pinned by `test/analyze/select-flags.test.ts` snapshot for backwards-compat.
 - `src/print/tui/` — `ValidateView` for `print validate`
 - `src/apply/tui/` — `SummaryView`, `EntityDiffView`, `ServerApplyView`
-- `src/import/tui/` — the wizard: `WizardApp`, the `scope-gate-host` bridge, and step components in `steps/` (`WelcomeStep`, `CredentialsStep`, `ScopeGateStep`, `GenerateReviewStep`, `WizardPreviewStep`, `PreviewValidationErrorStep`, `PushDecisionGateStep`, `PushingStep`, `DoneStep`, `ErrorStep`, etc.)
+- `src/import/tui/` — the wizard: `WizardApp` and step components in `steps/` (`WelcomeStep`, `CredentialsStep`, `ScopeGateStep`, `GenerateReviewStep`, `WizardPreviewStep`, `PreviewValidationErrorStep`, `PushDecisionGateStep`, `PushingStep`, `DoneStep`, `ErrorStep`, etc.)
 
 When writing TUI tests, use `ink-testing-library`. Set `NO_COLOR=1` in the environment before running tests to suppress ANSI escape codes. Strip ANSI before snapshot assertions if the test renders raw strings.
 

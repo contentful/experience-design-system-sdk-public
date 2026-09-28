@@ -64,7 +64,7 @@ import {
   seedDefaultsFromChangedItems,
   backfillUnclassifiedProps,
 } from '../../session/db.js';
-import { ScopeGateHost, type ScopeComponent } from './scope-gate-host.js';
+import { ScopeGateStep, type ScopeComponent } from './steps/ScopeGateStep.js';
 import { GenerateReviewStep } from './steps/GenerateReviewStep.js';
 import { runScopeGate } from './runScopeGate.js';
 import { checkAgentAuth, type AgentName } from '@contentful/experience-design-system-generation';
@@ -1685,7 +1685,7 @@ export function WizardApp({
           db.close();
         }
         return (
-          <ScopeGateHost
+          <ScopeGateStep
             components={components}
             onConfirm={(decisions) => {
               void runScopeGate({

@@ -493,7 +493,7 @@ All commands have two output modes:
 | `import` internal generation | `GenerateView` |
 | `print validate` | `ValidateView` |
 | `apply` | `ServerPreviewView`, `ServerApplyView` |
-| `import` (wizard) | `WizardApp` + step components in `src/import/tui/steps/` (`WelcomeStep`, `CredentialsStep`, `ScopeGateStep`, `GenerateReviewStep`, `WizardPreviewStep`, `PushDecisionGateStep`, `PushingStep`, `DoneStep`, `ErrorStep`, `PreviewValidationErrorStep`), plus the `scope-gate-host` bridge |
+| `import` (wizard) | `WizardApp` + step components in `src/import/tui/steps/` (`WelcomeStep`, `CredentialsStep`, `ScopeGateStep`, `GenerateReviewStep`, `WizardPreviewStep`, `PushDecisionGateStep`, `PushingStep`, `DoneStep`, `ErrorStep`, `PreviewValidationErrorStep`) |
 
 The TUI uses React hooks for state (`useState`, `useReducer`), Ink's `useInput` for keyboard, and a custom `useUndo` hook for the JSON editor.
 

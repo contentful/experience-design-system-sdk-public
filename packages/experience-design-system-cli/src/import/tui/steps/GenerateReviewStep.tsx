@@ -330,10 +330,10 @@ export function GenerateReviewStep(props: GenerateReviewStepProps): React.ReactE
     );
   }
 
-  return <GenerateReviewStepLoaded {...props} extractSessionId={props.extractSessionId} />;
+  return <GenerateReviewStepView {...props} extractSessionId={props.extractSessionId} />;
 }
 
-function GenerateReviewStepLoaded({
+function GenerateReviewStepView({
   extractSessionId,
   tokenSessionId,
   onFinalize,
