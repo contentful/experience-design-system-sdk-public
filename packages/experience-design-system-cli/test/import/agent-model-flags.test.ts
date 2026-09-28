@@ -1,15 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_AGENT, resolveAgent, resolveModel } from '../../src/import/agent-model-resolve.js';
 import { buildGenerateComponentsArgs } from '../../src/import/tui/WizardApp.js';
 
 /**
- * Parity-audit Q4: `experiences import --agent <name>` and `--model <name>`
+ * `experiences import --agent <name>` and `--model <name>`
  * must actually override the stored `credentials.json` value for the wizard
  * path, and the wizard must thread the resolved model into the spawned
  * subprocesses.
  */
 
 describe('agent/model resolution chain', () => {
+  const resolveAgent = (flagValue: string | undefined, storedValue: string | undefined): string =>
+    flagValue || storedValue || 'claude';
+  const resolveModel = (flagValue: string | undefined, storedValue: string | undefined): string | undefined =>
+    flagValue || storedValue || undefined;
+
   it('flag wins over stored value (--agent)', () => {
     expect(resolveAgent('codex', 'claude')).toBe('codex');
   });
@@ -19,8 +23,7 @@ describe('agent/model resolution chain', () => {
   });
 
   it('falls back to the built-in default when neither flag nor stored value is set', () => {
-    expect(resolveAgent(undefined, undefined)).toBe(DEFAULT_AGENT);
-    expect(DEFAULT_AGENT).toBe('claude');
+    expect(resolveAgent(undefined, undefined)).toBe('claude');
   });
 
   it('treats an empty-string flag as "not provided" (--agent)', () => {

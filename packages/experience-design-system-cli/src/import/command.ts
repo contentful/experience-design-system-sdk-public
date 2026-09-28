@@ -1,7 +1,6 @@
 import type { Command } from 'commander';
 import { agentSupportsBedrock, isAgentName } from '@contentful/experience-design-system-generation';
 import { normalizePath } from './path-utils.js';
-import { resolveAgent, resolveModel } from './agent-model-resolve.js';
 import { addAgentModelOptions } from '../lib/agent-model-options.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
@@ -88,8 +87,8 @@ export function registerImportCommand(program: Command): void {
             initialRawTokensPath?: string;
           };
           const creds = await readExperiencesCredentials();
-          const resolvedAgent = resolveAgent(opts.agent, creds.agent);
-          const resolvedModel = resolveModel(opts.model, creds.agentModel);
+          const resolvedAgent = opts.agent || creds.agent || 'claude';
+          const resolvedModel = opts.model || creds.agentModel || undefined;
           if (opts.bedrock && !(isAgentName(resolvedAgent) && agentSupportsBedrock(resolvedAgent))) {
             process.stderr.write(`Error: --bedrock is not supported for --agent ${resolvedAgent}\n`);
             process.exit(1);
