@@ -10,10 +10,6 @@ import { openPipelineDb, loadRawComponents } from '../../session/db.js';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 5 * 60 * 1000);
 
-const invoker = createLocalCliAgentInvoker({
-  onDebugEvent: (name, payload) => getDebugLogger().event('agent', name, payload),
-});
-
 export async function runSelectionAgent(options: {
   sessionId: string;
   agent: AgentName;
@@ -30,6 +26,10 @@ export async function runSelectionAgent(options: {
   }
 
   if (components.length === 0) return;
+
+  const invoker = createLocalCliAgentInvoker({
+    onDebugEvent: (name, payload) => getDebugLogger().event('agent', name, payload),
+  });
 
   const prompt = await buildPrompt({
     skill: 'select',
