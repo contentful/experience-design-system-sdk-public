@@ -84,6 +84,8 @@ import {
   resolveCycleGateAction,
 } from './wizard-state-transitions.js';
 import { findCliPath } from '../../lib/cli-path.js';
+import { parsePromptOverrides, resolvePromptOverride } from '../../lib/prompt-overrides.js';
+import { runSelectionAgent } from './run-selection-agent.js';
 
 type WizardStep =
   | 'welcome'
@@ -208,11 +210,13 @@ export function buildGenerateTokensArgs(opts: {
   model?: string;
   bedrock?: boolean;
   noCache?: boolean;
+  promptOverrides?: string[];
 }): string[] {
   const args = [findCliPath(), '__generate', 'tokens', '--agent', opts.agent, '--raw-tokens', opts.rawTokensPath];
   if (opts.model) args.push('--model', opts.model);
   if (opts.bedrock) args.push('--bedrock');
   if (opts.noCache) args.push('--no-cache');
+  for (const prompt of opts.promptOverrides ?? []) args.push('--prompt', prompt);
   return args;
 }
 
@@ -222,12 +226,14 @@ export function buildMapTokensArgs(opts: {
   model?: string;
   noCache?: boolean;
   skipAgent?: boolean;
+  promptOverrides?: string[];
   existingEntitiesPath?: string;
 }): string[] {
   const args = ['map', 'tokens', '--session', opts.sessionId, '--agent', opts.agent];
   if (opts.model) args.push('--model', opts.model);
   if (opts.noCache) args.push('--no-cache');
   if (opts.skipAgent) args.push('--skip-agent');
+  for (const prompt of opts.promptOverrides ?? []) args.push('--prompt', prompt);
   if (opts.existingEntitiesPath) args.push('--existing-entities-path', opts.existingEntitiesPath);
   return args;
 }
@@ -328,7 +334,6 @@ export type WizardAppProps = {
   bedrock?: boolean;
   initialProjectPath?: string;
   host?: string;
-  compositionMap?: string;
   promptOverrides?: string[];
   noCache?: boolean;
   livePreview?: boolean;
@@ -347,7 +352,6 @@ export function WizardApp({
   bedrock = false,
   initialProjectPath,
   host,
-  compositionMap,
   promptOverrides,
   noCache = false,
   livePreview = true,
@@ -539,6 +543,7 @@ export function WizardApp({
       ...(state.agentModel ? { model: state.agentModel } : {}),
       ...(state.bedrock ? { bedrock: true } : {}),
       noCache: effectiveNoCache,
+      promptOverrides,
     });
     const result = await runSpawnedCli(tokenArgs);
     if (result.exitCode !== 0) {
@@ -636,6 +641,7 @@ export function WizardApp({
       ...(state.agentModel ? { model: state.agentModel } : {}),
       noCache: effectiveNoCache,
       skipAgent: skipMapTokens,
+      promptOverrides,
       ...(state.existingEntitiesPath ? { existingEntitiesPath: state.existingEntitiesPath } : {}),
     });
 
@@ -660,7 +666,6 @@ export function WizardApp({
     update({ step: 'extracting', outDir, extractProgress: null, compositionPhase: null });
     const extractArgs = [findCliPath(), '__extract', '--project', projectPath];
     if (noCache) extractArgs.push('--composition-refresh');
-    if (compositionMap) extractArgs.push('--composition-map', compositionMap);
     for (const p of promptOverrides ?? []) extractArgs.push('--prompt', p);
     // Composition resolution uses the same agent the user picked for the run.
     if (state.agent) extractArgs.push('--agent', state.agent);
@@ -721,6 +726,34 @@ export function WizardApp({
         step: 'error',
         errorStep: 'analyze extract',
         errorMessage: `No components found in ${projectPath}.\n\nMake sure this path contains TypeScript/React/Vue component files (.tsx, .ts, .vue, etc.).`,
+      });
+      return;
+    }
+    try {
+      const { overrides, errors } = parsePromptOverrides(promptOverrides ?? []);
+      if (errors.length > 0) throw new Error(errors.join('; '));
+      const selectOverride = overrides.get('select');
+      let promptText: string | undefined;
+      let promptPath: string | undefined;
+      if (selectOverride?.kind === 'text') promptText = selectOverride.value;
+      if (selectOverride?.kind === 'path') {
+        promptPath = resolve(selectOverride.value);
+        await resolvePromptOverride(selectOverride);
+      }
+      if (state.agent) {
+        await runSelectionAgent({
+          sessionId: extractSessionId ?? '',
+          agent: state.agent as AgentName,
+          ...(state.agentModel ? { model: state.agentModel } : {}),
+          ...(promptText !== undefined ? { promptText } : {}),
+          ...(promptPath ? { promptPath } : {}),
+        });
+      }
+    } catch (error) {
+      update({
+        step: 'error',
+        errorStep: 'selection agent',
+        errorMessage: error instanceof Error ? error.message : String(error),
       });
       return;
     }

@@ -24,6 +24,15 @@ describe('CLI entry point', () => {
     expect(stdout).not.toMatch(/^  runs\b/m);
   });
 
+  it('lists visible commands in the supported order', async () => {
+    const { stdout, code } = await run('--help');
+    expect(code).toBe(0);
+    const commands = ['build', 'help', 'import', 'apply', 'importv2', 'setup', 'doctor'];
+    const positions = commands.map((command) => stdout.indexOf(`  ${command}`));
+    expect(positions.every((position) => position >= 0)).toBe(true);
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+  });
+
   it('exits with error for unknown commands', async () => {
     const { stderr, code } = await run('nonexistent');
     expect(code).not.toBe(0);
@@ -68,6 +77,15 @@ describe('experiences import flag surface', () => {
     expect(stdout).not.toContain('--no-live-preview');
   });
 
+  it('rejects removed debug flags', async () => {
+    const debug = await run('import', '--debug', '--project', '/tmp');
+    const noDebug = await run('import', '--no-debug', '--project', '/tmp');
+    expect(debug.code).not.toBe(0);
+    expect(debug.stderr).toContain("unknown option '--debug'");
+    expect(noDebug.code).not.toBe(0);
+    expect(noDebug.stderr).toContain("unknown option '--no-debug'");
+  });
+
   it('fails loud when import runs without a TTY', async () => {
     const { code, stderr } = await run('import', '--project', '/tmp');
     expect(code).not.toBe(0);
@@ -76,29 +94,31 @@ describe('experiences import flag surface', () => {
 });
 
 describe('experiences setup', () => {
-  it('prints help with --help', async () => {
-    const { stdout, code } = await run('setup', '--help');
-    expect(code).toBe(0);
-    expect(stdout).toContain('--skip-build');
-    expect(stdout).toContain('--skip-credentials');
-    expect(stdout).toContain('--skip-optional');
+  it('rejects command flags', async () => {
+    const { stderr, code } = await run('setup', '--help');
+    expect(code).not.toBe(0);
+    expect(stderr).toContain("unknown option '--help'");
   });
 
   it('rejects a non-TTY session', async () => {
-    const { stderr, code } = await run(
-      'setup',
-      '--skip-build',
-      '--skip-agent',
-      '--skip-credentials',
-      '--skip-optional',
-    );
+    const { stderr, code } = await run('setup');
     expect(code).toBe(1);
     expect(stderr).toContain('Error: experiences setup requires an interactive terminal.');
   });
 
   it('does not prompt for credentials on a non-TTY session', async () => {
-    const { stdout } = await run('setup', '--skip-build', '--skip-agent', '--skip-credentials', '--skip-optional');
+    const { stdout } = await run('setup');
     expect(stdout).not.toContain('CMA token');
     expect(stdout).not.toContain('Space ID');
+  });
+});
+
+describe('experiences doctor', () => {
+  it('rejects all command flags', async () => {
+    const { stdout, stderr, code } = await run('doctor', '--help');
+    expect(code).not.toBe(0);
+    expect(stderr).toContain("unknown option '--help'");
+    expect(stdout).not.toContain('--skip-build');
+    expect(stdout).not.toContain('--skip-agent');
   });
 });

@@ -16,44 +16,19 @@ export const IMPORT_FLAGS: FlagSpec[] = [
   {
     flag: '--agent',
     kind: 'value',
-    sampleValue: 'claude',
+    sampleValue: 'claude:haiku',
     incompatibleWith: [],
   },
   {
-    flag: '--model',
+    flag: '--tokens',
     kind: 'value',
-    sampleValue: 'haiku',
-    incompatibleWith: [],
-  },
-  {
-    flag: '--bedrock',
-    kind: 'boolean',
-    incompatibleWith: [],
-    notes:
-      'Only valid with an agent that supports Bedrock routing (currently: claude [default], codex, opencode); rejected otherwise.',
-  },
-  {
-    flag: '--raw-tokens',
-    kind: 'value',
-    sampleValue: '/tmp/raw-tokens.scss',
-    incompatibleWith: [],
-  },
-  {
-    flag: '--skip-map-tokens',
-    kind: 'boolean',
+    sampleValue: '/tmp/tokens.scss',
     incompatibleWith: [],
   },
   {
     flag: '--no-cache',
     kind: 'boolean',
     incompatibleWith: [],
-  },
-  {
-    flag: '--composition-map',
-    kind: 'value',
-    sampleValue: '/tmp/composition-map.json',
-    incompatibleWith: [],
-    notes: 'Consumes a hand-authored map.',
   },
   {
     flag: '--prompt',

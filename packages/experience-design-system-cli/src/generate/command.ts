@@ -439,7 +439,8 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
   const { overrides: promptOverrides, errors: promptErrors } = parsePromptOverrides(opts.prompt ?? []);
   if (promptErrors.length > 0) die(`Error: ${promptErrors.join('; ')}`);
   let generatePrompt: string | undefined;
-  const generateOverride = promptOverrides.get('generate');
+  const promptStage = skill === 'tokens' ? 'tokens' : 'generate';
+  const generateOverride = promptOverrides.get(promptStage);
   if (generateOverride) {
     try {
       generatePrompt = await resolvePromptOverride(generateOverride);
@@ -846,7 +847,13 @@ export function registerInternalGenerateCommand(program: Command): void {
   const tokensCmd = generate
     .command('tokens')
     .description('Invoke a coding agent to produce tokens.json from raw token data')
-    .option('--raw-tokens <path>', 'Path to raw token input file');
+    .option('--raw-tokens <path>', 'Path to raw token input file')
+    .option(
+      '--prompt <stage=value>',
+      'Override a stage prompt (repeatable). Used here for the tokens stage.',
+      (v: string, acc: string[]) => [...acc, v],
+      [] as string[],
+    );
   addAgentFlags(tokensCmd).action(async (opts: GenerateSubcommandOptions) => {
     await runGenerateSkill('tokens', opts, opts.verbose ?? false);
   });

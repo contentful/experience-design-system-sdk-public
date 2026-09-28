@@ -13,22 +13,27 @@ const BEDROCK_DESCRIPTION = `Route the selected agent through AWS Bedrock instea
 export interface AgentModelOptionsConfig {
   agentDescription?: string;
   includeModel?: boolean;
+  includeBedrock?: boolean;
   modelDescription?: string;
 }
 
 /**
- * Register --agent, --bedrock, and optional --model flags with a Commander
- * command. Pass includeModel: false to omit --model only — --bedrock is
- * independent of model selection (it's a routing switch, not a model choice)
- * and is always registered alongside --agent.
+ * Register --agent plus optional --model and --bedrock flags with a Commander
+ * command. The optional flags can be omitted for commands with a narrower
+ * public surface.
  */
 export function addAgentModelOptions(cmd: Command, config: AgentModelOptionsConfig = {}): Command {
-  const { agentDescription = AGENT_DESCRIPTION, includeModel = true, modelDescription = MODEL_DESCRIPTION } = config;
+  const {
+    agentDescription = AGENT_DESCRIPTION,
+    includeModel = true,
+    includeBedrock = true,
+    modelDescription = MODEL_DESCRIPTION,
+  } = config;
 
   cmd.option('--agent <name>', agentDescription);
   if (includeModel) {
     cmd.option('--model <name>', modelDescription);
   }
-  cmd.option('--bedrock', BEDROCK_DESCRIPTION);
+  if (includeBedrock) cmd.option('--bedrock', BEDROCK_DESCRIPTION);
   return cmd;
 }

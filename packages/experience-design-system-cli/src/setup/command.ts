@@ -59,9 +59,6 @@ export function registerSetupCommand(program: Command): void {
   program
     .command('setup')
     .description('Interactive setup: installs prerequisites and configures credentials for experiences import')
-    .option('--skip-build', 'Skip the pnpm install + build step')
-    .option('--skip-agent', 'Skip the coding agent check')
-    .option('--skip-credentials', 'Skip the Contentful credentials step')
-    .option('--skip-optional', 'Skip optional quality-of-life extras')
-    .action((opts: SetupSkipFlags) => runSetup(opts));
+    .helpOption(false)
+    .action(() => runSetup({}));
 }

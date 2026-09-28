@@ -40,6 +40,7 @@ import { MapTokensView } from './tui/MapTokensView.js';
 import type { MapTokensViewResult } from './tui/MapTokensView.js';
 import { resolveTokenDefaults } from './resolve-defaults.js';
 import { die, assertBinaryInPath } from '../lib/cli-errors.js';
+import { parsePromptOverrides, resolvePromptOverride } from '../lib/prompt-overrides.js';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 5 * 60 * 1000);
 
@@ -52,6 +53,7 @@ interface MapTokensOptions {
   skipAgent?: boolean;
   tokenMap?: string;
   existingEntitiesPath?: string;
+  prompt?: string[];
 }
 
 async function renderResult(result: MapTokensViewResult): Promise<void> {
@@ -76,6 +78,21 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
     );
   }
   const resultAgent = configuredAgent ?? 'skipped';
+
+  const { overrides: promptOverrides, errors: promptErrors } = parsePromptOverrides(opts.prompt ?? []);
+  if (promptErrors.length > 0) die(`Error: ${promptErrors.join('; ')}`);
+  const mapPromptOverride = promptOverrides.get('map-tokens');
+  let mapPromptText: string | undefined;
+  let mapPromptPath: string | undefined;
+  if (mapPromptOverride?.kind === 'text') mapPromptText = mapPromptOverride.value;
+  if (mapPromptOverride?.kind === 'path') {
+    mapPromptPath = resolve(mapPromptOverride.value);
+    try {
+      await resolvePromptOverride(mapPromptOverride);
+    } catch (error) {
+      die(`Error: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
 
   const db = openPipelineDb();
   try {
@@ -211,6 +228,8 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
         componentSourceRefs,
         outDir: process.cwd(),
         existingTokensInline,
+        ...(mapPromptText !== undefined ? { skillContentOverride: mapPromptText } : {}),
+        ...(mapPromptText === undefined && mapPromptPath ? { skillPathOverride: mapPromptPath } : {}),
       });
       process.stdout.write(prompt + '\n');
       await exitWithAnalytics(0);
@@ -237,6 +256,7 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
       model,
       undefined,
       existingTokensInline ? [hashContent(existingTokensInline)] : [],
+      mapPromptText,
     );
     const inputHash = computeMapTokensInputHash(db, sessionId, componentSourceRefs);
 
@@ -270,6 +290,8 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
       componentSourceRefs,
       outDir: process.cwd(),
       existingTokensInline,
+      ...(mapPromptText !== undefined ? { skillContentOverride: mapPromptText } : {}),
+      ...(mapPromptText === undefined && mapPromptPath ? { skillPathOverride: mapPromptPath } : {}),
     });
 
     const invoker = createLocalCliAgentInvoker();
@@ -314,6 +336,12 @@ export function registerMapTokensCommand(program: Command): void {
     .option('--print-prompt', 'Print the prompt without invoking the agent')
     .option('--skip-agent', 'Resolve token defaults without agentic $token.allowed inference')
     .option('--no-cache', 'Bypass the map-tokens cache and force a re-run')
+    .option(
+      '--prompt <stage=value>',
+      'Override a stage prompt (repeatable). Used here for the map-tokens stage.',
+      (v: string, acc: string[]) => [...acc, v],
+      [] as string[],
+    )
     .option('--token-map <path>', 'Path to token-name-map.json sidecar')
     .option(
       '--existing-entities-path <path>',

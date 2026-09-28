@@ -26,22 +26,18 @@ describe('experiences setup mounting', () => {
     expect(SETUP_REQUIRES_TTY_MESSAGE).toBe('Error: experiences setup requires an interactive terminal.');
   });
 
-  it('keeps the skip flags documented on the setup command', async () => {
-    const { stdout, code } = await run('setup', '--help');
+  it('rejects command flags', async () => {
+    const { stderr, code } = await run('setup', '--help');
 
-    expect(code).toBe(0);
-    expect(stdout).toContain('--skip-build');
-    expect(stdout).toContain('--skip-agent');
-    expect(stdout).toContain('--skip-credentials');
-    expect(stdout).toContain('--skip-optional');
+    expect(code).not.toBe(0);
+    expect(stderr).toContain("unknown option '--help'");
   });
 
-  it('leaves experiences doctor available with its own flags', async () => {
-    const { stdout, code } = await run('doctor', '--help');
+  it('leaves experiences doctor available without command flags', async () => {
+    const { stderr, code } = await run('doctor', '--help');
 
-    expect(code).toBe(0);
-    expect(stdout).toContain('--skip-build');
-    expect(stdout).toContain('--skip-agent');
+    expect(code).not.toBe(0);
+    expect(stderr).toContain("unknown option '--help'");
   });
 
   // Previously asserted on command.ts's source text, which only survived a
