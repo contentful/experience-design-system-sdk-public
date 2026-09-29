@@ -168,7 +168,7 @@ export function ImportScreen({ onDone }: { onDone: () => void }): React.ReactEle
     <Box flexDirection="column" paddingX={2} paddingY={1}>
       <Text bold>Import</Text>
       <Text> </Text>
-      <Text>Enter the Contentful space to import into (composite mode, generate only — no push).</Text>
+      <Text>Enter the Contentful space to import</Text>
       <Text> </Text>
       <Box flexDirection="column">
         {FIELD_ORDER.map((field) => {

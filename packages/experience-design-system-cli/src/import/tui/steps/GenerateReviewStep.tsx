@@ -549,7 +549,7 @@ function GenerateReviewStepView({
       autoRejectFired: autoRejectFiredRef.current,
       hasCycle: cycleView.structural.size > 0,
     });
-    if (decision === 'skip') return;
+    if (loading || autoRejectFiredRef.current || cycleView.structural.size === 0;) return 
     autoRejectFiredRef.current = true;
     const targets = computeCycleAutoRejectTargets(slotCycles, componentGraph);
     if (targets.size === 0) return;
