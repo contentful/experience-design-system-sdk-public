@@ -1,6 +1,7 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { PALETTE } from '../home/home.theme.js';
+import { readDsiConfiguration } from '../settings/contentful-configuration/config-store.js';
 import { runCompositeImport, type PipelineResult } from './run-composite-import.js';
 
 type Field = 'spaceId' | 'environmentId' | 'cmaToken';
@@ -25,6 +26,21 @@ export function ImportScreen({ onDone }: { onDone: () => void }): React.ReactEle
   const [result, setResult] = useState<PipelineResult>();
   const [runError, setRunError] = useState<string | null>(null);
   const cancelledRef = useRef(false);
+
+  // Pre-fill from the values saved in Settings > Configuration. Only fills fields the
+  // operator hasn't already typed into, so a slow read can't clobber their input.
+  useEffect(() => {
+    let active = true;
+    readDsiConfiguration().then((saved) => {
+      if (!active) return;
+      if (saved.space_id) setSpaceId((current) => current || saved.space_id);
+      if (saved.env_id) setEnvironmentId((current) => (current && current !== 'master' ? current : saved.env_id));
+      if (saved.cma_token) setCmaToken((current) => current || saved.cma_token);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   function fieldValue(field: Field): string {
     if (field === 'spaceId') return spaceId;
@@ -51,7 +67,11 @@ export function ImportScreen({ onDone }: { onDone: () => void }): React.ReactEle
     setStage('running');
 
     runCompositeImport({
-      credentials: { spaceId: spaceId.trim(), environmentId: environmentId.trim(), cmaToken: cmaToken.trim() },
+      credentials: {
+        spaceId: spaceId.trim(),
+        environmentId: environmentId.trim(),
+        cmaToken: cmaToken.trim(),
+      },
       onProgress: (line) => {
         if (cancelledRef.current) return;
         setProgressLines((lines) => [...lines, line]);
