@@ -22,12 +22,15 @@ type CredentialsStepProps = {
    * (Change 1 of the wizard prefetch refactor).
    */
   validating?: boolean;
+  /** Background validation of unchanged prefilled credentials; input remains editable. */
+  backgroundValidating?: boolean;
   /** Inline status describing in-flight background generation prefetch. */
   generatePrefetchStatus?: 'idle' | 'running' | 'complete' | 'failed';
   /** Error message from a failed generation prefetch (rendered as a banner). */
   generatePrefetchError?: string | null;
   /** Called when the user submits with any field changed from its initial value */
   onConfirm: (spaceId: string, environmentId: string, cmaToken: string, host: string) => void;
+  onValuesChange?: (spaceId: string, environmentId: string, cmaToken: string, host: string) => void;
   /** Called when the user submits without changing any field (use existing creds as-is) */
   onContinue?: (spaceId: string, environmentId: string, cmaToken: string, host: string) => void;
   onQuit: () => void;
@@ -53,9 +56,11 @@ export function CredentialsStep({
   initialCmaToken = '',
   initialHost,
   validating = false,
+  backgroundValidating = false,
   generatePrefetchStatus = 'idle',
   generatePrefetchError = null,
   onConfirm,
+  onValuesChange,
   onContinue,
   onQuit,
   onRetryPrefetch,
@@ -72,7 +77,7 @@ export function CredentialsStep({
   const hasTypedRef = useRef(false);
 
   useImmediateInput((input, key) => {
-    if (validating) {
+    if (validating && !backgroundValidating) {
       return;
     }
     if ((input === 'r' || input === 'R') && generatePrefetchStatus === 'failed' && onRetryPrefetch) {
@@ -125,18 +130,45 @@ export function CredentialsStep({
       return;
     }
     if (key.backspace || key.delete) {
-      if (activeField === 'spaceId') setSpaceId((v) => v.slice(0, -1));
-      else if (activeField === 'environmentId') setEnvironmentId((v) => v.slice(0, -1));
-      else if (activeField === 'cmaToken') setCmaToken((v) => v.slice(0, -1));
-      else setHost((v) => v.slice(0, -1));
+      const nextValue = (value: string): string => value.slice(0, -1);
+      if (activeField === 'spaceId') {
+        const next = nextValue(spaceId);
+        setSpaceId(next);
+        onValuesChange?.(next, environmentId, cmaToken, host);
+      } else if (activeField === 'environmentId') {
+        const next = nextValue(environmentId);
+        setEnvironmentId(next);
+        onValuesChange?.(spaceId, next, cmaToken, host);
+      } else if (activeField === 'cmaToken') {
+        const next = nextValue(cmaToken);
+        setCmaToken(next);
+        onValuesChange?.(spaceId, environmentId, next, host);
+      } else {
+        const next = nextValue(host);
+        setHost(next);
+        onValuesChange?.(spaceId, environmentId, cmaToken, next);
+      }
       return;
     }
     if (input && !key.ctrl && !key.meta) {
       hasTypedRef.current = true;
-      if (activeField === 'spaceId') setSpaceId((v) => v + input);
-      else if (activeField === 'environmentId') setEnvironmentId((v) => v + input);
-      else if (activeField === 'cmaToken') setCmaToken((v) => v + input);
-      else setHost((v) => v + input);
+      if (activeField === 'spaceId') {
+        const next = spaceId + input;
+        setSpaceId(next);
+        onValuesChange?.(next, environmentId, cmaToken, host);
+      } else if (activeField === 'environmentId') {
+        const next = environmentId + input;
+        setEnvironmentId(next);
+        onValuesChange?.(spaceId, next, cmaToken, host);
+      } else if (activeField === 'cmaToken') {
+        const next = cmaToken + input;
+        setCmaToken(next);
+        onValuesChange?.(spaceId, environmentId, next, host);
+      } else {
+        const next = host + input;
+        setHost(next);
+        onValuesChange?.(spaceId, environmentId, cmaToken, next);
+      }
     }
   });
 
@@ -191,7 +223,7 @@ export function CredentialsStep({
 
       {displayError && <Text color={PALETTE.error}>✗ {displayError}</Text>}
 
-      {validating && (
+      {validating && !backgroundValidating && (
         <Text color={PALETTE.info}>
           {generatePrefetchStatus === 'running'
             ? 'Validating credentials & finishing component generation...'

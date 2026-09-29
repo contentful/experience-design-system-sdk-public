@@ -282,6 +282,9 @@ export function registerInternalExtractCommand(program: Command): void {
         process.stderr.write(`progress=scan:${count}\n`);
       }
     });
+    if (!process.stdout.isTTY) {
+      process.stderr.write(`progress=scan-done:${sourceFiles.length}\n`);
+    }
 
     const extraction = await extractComponents(
       sourceFiles,
@@ -370,6 +373,13 @@ export function registerInternalExtractCommand(program: Command): void {
       });
     }
     let validatedComponents = validateExtractedComponents(filteredComponents);
+
+    // Persist the extraction result before composition mapping so downstream
+    // stages can start working while the (potentially agent-backed) mapper
+    // continues. The final write below replaces these definitions with the
+    // composition-enriched version while preserving selection decisions.
+    storeRawComponents(db, sessionId, validatedComponents);
+    process.stdout.write(`session=${sessionId}\n`);
 
     // Composition mapping resolution is always enabled. Every extracted CDF
     // preserves embedded-component edges.
@@ -500,7 +510,7 @@ export function registerInternalExtractCommand(program: Command): void {
       }
     }
 
-    storeRawComponents(db, sessionId, validatedComponents);
+    storeRawComponents(db, sessionId, validatedComponents, { preserveStatus: true });
 
     const cycleInput = validatedComponents.map((c) => ({
       name: c.name,
@@ -523,7 +533,6 @@ export function registerInternalExtractCommand(program: Command): void {
     db.close();
 
     const allWarnings = [...extraction.warnings, ...filterWarnings];
-    process.stdout.write(`session=${sessionId}\n`);
     const summaryLines = [
       `Scanned ${pluralize(sourceFiles.length, 'source file')} in ${sourceDirectory}`,
       `Extracted ${pluralize(extraction.components.length, 'component')}`,
