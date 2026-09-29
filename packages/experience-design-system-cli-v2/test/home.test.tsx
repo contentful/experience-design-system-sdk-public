@@ -8,7 +8,7 @@ const ARROW_UP = `${ESC}[A`;
 const ARROW_DOWN = `${ESC}[B`;
 const ENTER = '\r';
 
-const LABELS = ['Import', 'Saved Runs', 'Upgrade Version', 'Settings', 'Help'];
+const LABELS = ['Import', 'Upgrade Version', 'Settings', 'Help'];
 
 const exit = vi.hoisted(() => vi.fn());
 const terminalWidth = vi.hoisted(() => ({ current: 0 }));
@@ -83,7 +83,7 @@ describe('HomeScreen', () => {
 
     stdin.write(ARROW_DOWN);
     await flush();
-    expect(focusedLabel(lastFrame()!)).toBe('Saved Runs');
+    expect(focusedLabel(lastFrame()!)).toBe('Upgrade Version');
 
     stdin.write(ARROW_UP);
     await flush();
@@ -105,7 +105,7 @@ describe('HomeScreen', () => {
     stdin.write(ENTER);
     await flush();
 
-    expect(onNavigate).toHaveBeenCalledWith('saved-runs');
+    expect(onNavigate).toHaveBeenCalledWith('upgrade');
   });
 
   it('exits on q', async () => {
@@ -132,7 +132,6 @@ describe('HomeScreen', () => {
       expect(frame).toContain('Press q to quit');
       expect(frame).toContain('full screen');
       expect(frame).toContain('experiences import');
-      expect(frame).not.toContain('Saved Runs');
     });
 
     it('renders the menu at exactly the minimum width', async () => {
@@ -140,7 +139,7 @@ describe('HomeScreen', () => {
       const { lastFrame } = renderHome();
       await flush();
 
-      expect(plain(lastFrame()!)).toContain('Saved Runs');
+      expect(plain(lastFrame()!)).toContain('Import');
     });
 
     it('quits on q but ignores Enter', async () => {
