@@ -15,6 +15,7 @@ import type {
   RawPropDefinition,
   RawSlotDefinition,
   ComponentExtractionResult,
+  ExtractionExclusion,
 } from '../types.js';
 import {
   extractAllowedValues,
@@ -2063,6 +2064,7 @@ export async function extractReactComponents(filePaths: string[]): Promise<Compo
   const { componentFiles, project } = extractionContext;
 
   const warnings: string[] = [];
+  const exclusions: ExtractionExclusion[] = [];
   const components: RawComponentDefinitionInternal[] = [];
 
   for (const filePath of componentFiles) {
@@ -2072,7 +2074,7 @@ export async function extractReactComponents(filePaths: string[]): Promise<Compo
       if (isStencilFile(sourceFile)) continue;
       const fileExports = [...sourceFile.getExportedDeclarations().keys()];
       const isNext = isNextJsComponent(sourceFile.getFilePath(), fileExports);
-      const extracted = extractFromSourceFile(sourceFile, isNext);
+      const extracted = extractFromSourceFile(sourceFile, isNext, exclusions);
       components.push(...extracted);
     } catch (e) {
       warnings.push(`Failed to extract from ${filePath}: ${e instanceof Error ? e.message : String(e)}`);
@@ -2200,10 +2202,15 @@ export async function extractReactComponents(filePaths: string[]): Promise<Compo
   return {
     components: components.sort((a, b) => a.name.localeCompare(b.name)),
     warnings,
+    exclusions,
   };
 }
 
-function extractFromSourceFile(sourceFile: SourceFile, isNext: boolean): RawComponentDefinitionInternal[] {
+function extractFromSourceFile(
+  sourceFile: SourceFile,
+  isNext: boolean,
+  exclusions: ExtractionExclusion[],
+): RawComponentDefinitionInternal[] {
   const components: RawComponentDefinitionInternal[] = [];
   const exported = sourceFile.getExportedDeclarations();
   const usesCreateContext = sourceFileUsesCreateContext(sourceFile);
@@ -2218,7 +2225,16 @@ function extractFromSourceFile(sourceFile: SourceFile, isNext: boolean): RawComp
     }
 
     if (!/^[A-Z]/.test(name)) continue;
-    if (name.startsWith('use')) continue;
+    if (name.startsWith('use')) {
+      exclusions.push({
+        itemType: 'component',
+        name,
+        source: sourceFile.getFilePath(),
+        reason: 'React hook names are not renderable components',
+        stage: 'component-filter',
+      });
+      continue;
+    }
 
     const funcNode = resolveBestFunctionNode(declarations);
     if (!funcNode) continue;

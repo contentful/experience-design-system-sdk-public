@@ -4,6 +4,7 @@ export type {
   RawPropDefinition,
   RawSlotDefinition,
   ComponentExtractionResult,
+  ExtractionExclusion,
   ExtractorProgress,
   ExtractorOptions,
   ComponentExtractor,
