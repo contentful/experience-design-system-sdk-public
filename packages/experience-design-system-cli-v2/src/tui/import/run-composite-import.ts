@@ -40,7 +40,7 @@ function buildArgs(options: RunCompositeImportOptions): string[] {
   // Generate only, never push in this ticket — credentials (when supplied) only
   // unlock the fetch-existing-entities step, which orchestrator.ts gates on
   // spaceId/environmentId/cmaToken independently of --no-push.
-  const args = ['import', '--composite', '--yes', '--no-push'];
+  const args = ['import'];
 
   if (options.credentials) {
     args.push('--space-id', options.credentials.spaceId);
