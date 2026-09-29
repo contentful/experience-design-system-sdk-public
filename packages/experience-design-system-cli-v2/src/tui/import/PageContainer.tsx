@@ -1,112 +1,66 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { PALETTE } from '../home/home.theme.js';
 import { runCompositeImport, type PipelineResult } from './run-composite-import.js';
 
-type Stage = 'prompt' | 'running' | 'done' | 'error';
+type Stage = 'running' | 'result';
 
 export function ImportScreen({ onDone }: { onDone: () => void }): React.ReactElement {
-  const [stage, setStage] = useState<Stage>('prompt');
+  const [stage, setStage] = useState<Stage>('running');
   const [result, setResult] = useState<PipelineResult>();
   const [runError, setRunError] = useState<string | null>(null);
-  const cancelledRef = useRef(false);
 
-  function startImport(): void {
-    cancelledRef.current = false;
-    setResult(undefined);
-    setRunError(null);
-    setStage('running');
-
+  useEffect(() => {
     runCompositeImport({})
       .then(({ exitCode, result: pipelineResult }) => {
-        if (cancelledRef.current) return;
         if (pipelineResult) {
           setResult(pipelineResult);
-          setStage(exitCode === 0 && !pipelineResult.steps.some((s: { status: string }) => s.status === 'failed') ? 'done' : 'error');
+          setStage('result');
         } else {
           setRunError(`Import process exited with code ${exitCode}`);
-          setStage('error');
+          setStage('result');
         }
       })
       .catch((err: unknown) => {
-        if (cancelledRef.current) return;
         setRunError(err instanceof Error ? err.message : String(err));
-        setStage('error');
+        setStage('result');
       });
-  }
+  }, []);
 
-  useInput((input, key) => {
-    if (stage === 'prompt') {
-      if (key.return) {
-        startImport();
-        return;
-      }
-      if (key.escape || input === 'q') {
+  useInput(
+    (input, key) => {
+      if (key.return || key.escape || input === 'q') {
         onDone();
-        return;
       }
-      return;
-    }
+    },
+    { isActive: stage === 'result' },
+  );
 
-    if (stage === 'running') {
-      if (key.escape) {
-        cancelledRef.current = true;
-        setStage('prompt');
-      }
-      return;
-    }
-
-    // done / error
-    if (key.return || key.escape || input === 'q') {
-      onDone();
-    }
-  });
-
-  if (stage === 'running') {
+  if (stage === 'result') {
+    const isSuccess = result && result.steps.every((s: { status: string }) => s.status !== 'failed');
     return (
       <Box flexDirection="column" paddingX={2} paddingY={1}>
         <Text bold>Import</Text>
         <Text> </Text>
-        <Text color={PALETTE.accent}>Running import pipeline…</Text>
-        <Text> </Text>
-        <Text dimColor>[Esc] Cancel</Text>
-      </Box>
-    );
-  }
-
-  if (stage === 'done' || stage === 'error') {
-    return (
-      <Box flexDirection="column" paddingX={2} paddingY={1}>
-        <Text bold>Import</Text>
-        <Text> </Text>
-        {stage === 'done' ? (
-          <Text color={PALETTE.success}>Import complete.</Text>
+        {isSuccess ? (
+          <Text color={PALETTE.success}>✓ Import complete</Text>
         ) : (
-          <Text color={PALETTE.error}>Import failed{runError ? `: ${runError}` : '.'}</Text>
+          <Text color={PALETTE.error}>✗ Import failed{runError ? `: ${runError}` : ''}</Text>
         )}
         {result && (
           <Box flexDirection="column" marginTop={1}>
             {result.steps.map((step) => (
-              <Text key={step.step} color={step.status === 'failed' ? PALETTE.error : undefined}>
+              <Text key={step.step} color={step.status === 'failed' ? PALETTE.error : undefined} dimColor={step.status === 'skipped'}>
                 {step.status === 'complete' ? '✓' : step.status === 'skipped' ? '·' : '✗'} {step.step}
-                {step.error ? ` — ${step.error}` : ''}
               </Text>
             ))}
           </Box>
         )}
         <Text> </Text>
-        <Text dimColor>[Enter/Esc/q] Back to Start</Text>
+        <Text dimColor>[Enter] Back to Start</Text>
       </Box>
     );
   }
 
-  return (
-    <Box flexDirection="column" paddingX={2} paddingY={1}>
-      <Text bold>Import</Text>
-      <Text> </Text>
-      <Text>Launch the experience import pipeline.</Text>
-      <Text> </Text>
-      <Text dimColor>[Enter] Start import [Esc/q] Exit</Text>
-    </Box>
-  );
+  return <Box />;
 }
