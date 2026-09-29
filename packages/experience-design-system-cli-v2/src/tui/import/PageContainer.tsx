@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { PALETTE } from '../home/home.theme.js';
-import { runCompositeImport, type PipelineResult } from './run-composite-import.js';
+import { spawnV1Import, type PipelineResult } from './spawn-v1-import.js';
 
 type Stage = 'running' | 'result';
 
@@ -11,7 +11,7 @@ export function ImportScreen({ onDone }: { onDone: () => void }): React.ReactEle
   const [runError, setRunError] = useState<string | null>(null);
 
   useEffect(() => {
-    runCompositeImport({})
+    spawnV1Import({})
       .then(({ exitCode, result: pipelineResult }) => {
         if (pipelineResult) {
           setResult(pipelineResult);

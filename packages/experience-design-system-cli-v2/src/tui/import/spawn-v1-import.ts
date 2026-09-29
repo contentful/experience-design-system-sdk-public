@@ -17,22 +17,19 @@ export interface PipelineResult {
   cycleError?: { report: string[] };
 }
 
-export interface RunCompositeImportOptions {
+export interface SpawnV1ImportOptions {
   project?: string;
   onProgress?: (line: string) => void;
 }
 
-export interface RunCompositeImportResult {
+export interface SpawnV1ImportResult {
   exitCode: number;
   result?: PipelineResult;
   stdout: string;
   stderr: string;
 }
 
-function buildArgs(options: RunCompositeImportOptions): string[] {
-  // Generate only, never push in this ticket — credentials (when supplied) only
-  // unlock the fetch-existing-entities step, which orchestrator.ts gates on
-  // spaceId/environmentId/cmaToken independently of --no-push.
+function buildArgs(options: SpawnV1ImportOptions): string[] {
   const args = ['import'];
 
   if (options.project) {
@@ -42,7 +39,7 @@ function buildArgs(options: RunCompositeImportOptions): string[] {
   return args;
 }
 
-export async function runCompositeImport(options: RunCompositeImportOptions = {}): Promise<RunCompositeImportResult> {
+export async function spawnV1Import(options: SpawnV1ImportOptions = {}): Promise<SpawnV1ImportResult> {
   const cliPath = findLegacyCliPath();
   const args = buildArgs(options);
 
