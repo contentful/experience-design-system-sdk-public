@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { HomeScreen } from './src/tui/home/home.js';
 import { ImportScreen } from './src/tui/import/PageContainer.js';
-import { SavedRunsScreen } from './src/tui/saved-runs/PageContainer.js';
 import { HelpScreen } from './src/tui/help/PageContainer.js';
 import { SettingsScreen } from './src/tui/settings/PageContainer.js';
 import { OptInAnalyticsScreen } from './src/tui/settings/opt-in-analytics/screen.js';
@@ -11,7 +10,6 @@ import { DebugModeScreen } from './src/tui/settings/debug-mode/screen.js';
 export type Screen =
   | 'start'
   | 'import'
-  | 'saved-runs'
   | 'help'
   | 'settings'
   | 'settings-opt-in-analytics'
@@ -23,9 +21,6 @@ export function App(): React.ReactElement {
 
   if (screen === 'import') {
     return <ImportScreen onDone={() => setScreen('start')} />;
-  }
-  if (screen === 'saved-runs') {
-    return <SavedRunsScreen onDone={() => setScreen('start')} />;
   }
   if (screen === 'help') {
     return <HelpScreen onDone={() => setScreen('start')} />;
