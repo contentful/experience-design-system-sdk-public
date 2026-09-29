@@ -17,15 +17,8 @@ export interface PipelineResult {
   cycleError?: { report: string[] };
 }
 
-interface CompositeImportCredentials {
-  spaceId: string;
-  environmentId: string;
-  cmaToken: string;
-}
-
 export interface RunCompositeImportOptions {
   project?: string;
-  credentials?: CompositeImportCredentials;
   onProgress?: (line: string) => void;
 }
 
@@ -42,12 +35,6 @@ function buildArgs(options: RunCompositeImportOptions): string[] {
   // spaceId/environmentId/cmaToken independently of --no-push.
   const args = ['import'];
 
-  if (options.credentials) {
-    args.push('--space-id', options.credentials.spaceId);
-    args.push('--environment-id', options.credentials.environmentId);
-    args.push('--cma-token', options.credentials.cmaToken);
-  }
-
   if (options.project) {
     args.push('--project', options.project);
   }
@@ -61,40 +48,15 @@ export async function runCompositeImport(options: RunCompositeImportOptions = {}
 
   return new Promise((resolvePromise) => {
     const child = spawn('node', [cliPath, ...args], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-
-    let stdout = '';
-    let stderr = '';
-    let stderrBuffer = '';
-
-    child.stdout.on('data', (chunk: Buffer) => {
-      stdout += chunk.toString();
-    });
-
-    child.stderr.on('data', (chunk: Buffer) => {
-      const text = chunk.toString();
-      stderr += text;
-      if (!options.onProgress) return;
-      stderrBuffer += text;
-      const lines = stderrBuffer.split('\n');
-      stderrBuffer = lines.pop() ?? '';
-      for (const line of lines) {
-        if (line.length > 0) options.onProgress(line);
-      }
+      stdio: 'inherit',
     });
 
     child.on('close', (code) => {
-      if (stderrBuffer.length > 0) options.onProgress?.(stderrBuffer);
+      resolvePromise({ exitCode: code ?? 1, result: undefined, stdout: '', stderr: '' });
+    });
 
-      let result: PipelineResult | undefined;
-      try {
-        result = JSON.parse(stdout) as PipelineResult;
-      } catch {
-        result = undefined;
-      }
-
-      resolvePromise({ exitCode: code ?? 1, result, stdout, stderr });
+    child.on('error', (err) => {
+      resolvePromise({ exitCode: 1, result: undefined, stdout: '', stderr: err.message });
     });
   });
 }

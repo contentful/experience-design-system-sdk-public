@@ -10,8 +10,8 @@ export function SettingsScreen({
   onBack: () => void;
 }): React.ReactElement {
   const [focusIdx, setFocusIdx] = useState(0);
-  const items: { label: string; screen: Screen }[] = [
-    { label: 'Configuration', screen: 'settings-configuration' },
+  const items: { label: string; screen?: Screen }[] = [
+    { label: 'Configuration', screen: undefined },
     { label: 'Opt-in Analytics', screen: 'settings-opt-in-analytics' },
     { label: 'Debug Mode', screen: 'settings-debug-mode' },
   ];
@@ -26,7 +26,10 @@ export function SettingsScreen({
       return;
     }
     if (key.return) {
-      onNavigate(items[focusIdx]!.screen);
+      const screen = items[focusIdx]!.screen;
+      if (screen) {
+        onNavigate(screen);
+      }
       return;
     }
     if (key.escape || input === 'q') {
