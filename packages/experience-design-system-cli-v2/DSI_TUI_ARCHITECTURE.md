@@ -36,6 +36,28 @@ Each preference screen:
 
 See `src/tui/settings/README.md` for implementation details.
 
+### Multi-step flows
+
+The duplication rule above is about separate flows (menu items) staying independent of each other. Inside one flow, share code freely, but keep each screen small and its parts separate. The import flow is the reference:
+
+```
+src/tui/import/
+  PageContainer.tsx      # parent container: what all import screens share (layout, controls, theme)
+  steps/
+    index.ts             # public entry: one export line per screen
+    01-welcome/          # steps are numbered in the order they appear in the flow
+      screen.tsx         # UI only: renders props and state, wires input to callbacks
+      logic.ts           # everything else: validation, derived values, loaders, result building
+      types.ts           # props and result types
+  input/                 # small helpers shared by several screens, such as single-line editing
+test/import/             # mirrors src/tui/import, one test file per source file
+```
+
+Rules for a screen:
+- Props in, a typed result out through callbacks. A screen does not know which screen comes next.
+- No `process.exit`, no database, network or subprocess calls, and no filesystem work while rendering. `logic.ts` never imports Ink or React components, so it can be tested without rendering.
+- Numbered folders are steps of the happy path. Pieces used by several steps are not steps and stay unnumbered.
+
 ## Supported Frameworks
 1. React
 2. Astro

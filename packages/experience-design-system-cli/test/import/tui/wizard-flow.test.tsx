@@ -170,6 +170,9 @@ describe('WizardApp TUI flow', () => {
       3000,
     );
 
+    // Ink's useInput subscribes to stdin in a passive effect, which runs after the first frame is visible
+    await new Promise((r) => setTimeout(r, 50));
+
     // Press 'q' to quit
     stdin.write('q');
 

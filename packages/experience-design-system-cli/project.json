@@ -45,6 +45,7 @@
           "@segment/analytics-node",
           "@contentful/experience-design-system-cli-v2",
           "@contentful/experience-design-system-cli-v2/app",
+          "@contentful/experience-design-system-cli-v2/import-steps",
           "@contentful/experience-design-system-types",
           "@hey-api/client-fetch",
           "@vue/compiler-sfc",
