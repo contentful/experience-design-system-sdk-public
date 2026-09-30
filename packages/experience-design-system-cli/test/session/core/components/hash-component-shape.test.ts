@@ -28,14 +28,14 @@ describe('hashComponentShape', () => {
     );
   });
 
-  it('sorts allowedComponents within a slot so their order does not affect the hash', () => {
+  it('ignores generated allowedComponents metadata when hashing input shape', () => {
     const a = makeComponent({
       slots: [{ name: 'children', isDefault: true, allowedComponents: ['A', 'B'] }],
     });
     const b = makeComponent({
       slots: [{ name: 'children', isDefault: true, allowedComponents: ['B', 'A'] }],
     });
-    expect(hashComponentShape(a)).toBe(hashComponentShape(b));
+    expect(hashComponentShape(a)).toBe(hashComponentShape(makeComponent({ slots: [{ name: 'children', isDefault: true }] })));
   });
 
   it('is sensitive to slot order (slots array is not sorted)', () => {

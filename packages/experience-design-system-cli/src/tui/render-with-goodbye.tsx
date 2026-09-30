@@ -1,7 +1,13 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { render, Text, useInput, type Instance, type RenderOptions } from 'ink';
 
 const GOODBYE_RENDER_DELAY_MS = 50;
+
+const ScreenTransitionClearContext = createContext<() => void>(() => undefined);
+
+export function useScreenTransitionClear(): () => void {
+  return useContext(ScreenTransitionClearContext);
+}
 
 export function GoodbyeBoundary({ children }: { children: React.ReactNode }): React.ReactElement {
   const [isExiting, setIsExiting] = useState(false);
@@ -30,8 +36,18 @@ export function GoodbyeBoundary({ children }: { children: React.ReactNode }): Re
 }
 
 export function renderWithGoodbye(element: React.ReactElement, options?: RenderOptions): Instance {
-  return render(<GoodbyeBoundary>{element}</GoodbyeBoundary>, {
-    ...options,
-    exitOnCtrlC: false,
-  });
+  let instance: Instance | undefined;
+  const clearScreen = (): void => {
+    instance?.clear();
+  };
+  instance = render(
+    <ScreenTransitionClearContext.Provider value={clearScreen}>
+      <GoodbyeBoundary>{element}</GoodbyeBoundary>
+    </ScreenTransitionClearContext.Provider>,
+    {
+      ...options,
+      exitOnCtrlC: false,
+    },
+  );
+  return instance;
 }

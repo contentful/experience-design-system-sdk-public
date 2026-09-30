@@ -110,6 +110,15 @@ const CATEGORIZED_ENTRY: CDFComponentEntry = {
 };
 
 describe('GenerateReviewStep — form by default (Fix 1)', () => {
+  it('leaves two rows of terminal headroom for Ink incremental rendering', async () => {
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    const terminalRows = process.stdout.rows ?? 40;
+    expect((lastFrame() ?? '').split('\n').length).toBeLessThanOrEqual(terminalRows - 2);
+  });
+
   it('does not highlight the description until the panel receives focus', async () => {
     const { lastFrame, stdin } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
@@ -916,6 +925,18 @@ describe('GenerateReviewStep — strict opt-in finalize semantics', () => {
 });
 
 describe('GenerateReviewStep - component rationale panels (lifted)', () => {
+  it('hides inline rationales in the default pane while keeping them available from p/P', async () => {
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    expect(lastFrame() ?? '').not.toContain('~ enum visual variant');
+
+    stdin.write('p');
+    await tick();
+    expect(lastFrame() ?? '').toContain('enum visual variant');
+  });
+
   it('pressing P from sidebar focus opens the component rationale panel and replaces the right pane (L11 I→P rebind)', async () => {
     const { lastFrame, stdin } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,

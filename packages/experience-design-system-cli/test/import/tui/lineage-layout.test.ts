@@ -12,9 +12,9 @@ import {
 } from '../../../src/import/tui/lineage-layout.js';
 
 describe('computeLineageLayout (L2d — panel in the sidebar slot)', () => {
-  it('panel closed → full sidebar and default panel window', () => {
+  it('panel closed → terminal-sized sidebar and default panel window', () => {
     const layout = computeLineageLayout({ rows: 24, panelOpen: false });
-    expect(layout.sidebarVisible).toBe(VISIBLE_COUNT);
+    expect(layout.sidebarVisible).toBe(24 - BASE_CHROME_OVERHEAD);
     expect(layout.panelMaxRows).toBe(MAX_PANEL_ROWS);
   });
 
@@ -22,7 +22,7 @@ describe('computeLineageLayout (L2d — panel in the sidebar slot)', () => {
     const closed = computeLineageLayout({ rows: 40, panelOpen: false });
     const open = computeLineageLayout({ rows: 40, panelOpen: true });
     expect(open.sidebarVisible).toBe(closed.sidebarVisible);
-    expect(open.sidebarVisible).toBe(VISIBLE_COUNT);
+    expect(open.sidebarVisible).toBe(40 - BASE_CHROME_OVERHEAD);
   });
 
   it('panel open on a small terminal (rows=24): panel box fits the terminal', () => {
@@ -39,9 +39,9 @@ describe('computeLineageLayout (L2d — panel in the sidebar slot)', () => {
     expect(large.panelMaxRows).toBeLessThanOrEqual(MAX_PANEL_ROWS);
   });
 
-  it('never exceeds MAX_PANEL_ROWS on a huge terminal; sidebar stays at VISIBLE_COUNT', () => {
+  it('keeps the sidebar within the terminal budget on a huge terminal', () => {
     const { sidebarVisible, panelMaxRows } = computeLineageLayout({ rows: 200, panelOpen: true });
-    expect(sidebarVisible).toBe(VISIBLE_COUNT);
+    expect(sidebarVisible).toBe(200 - BASE_CHROME_OVERHEAD);
     expect(panelMaxRows).toBeLessThanOrEqual(MAX_PANEL_ROWS);
   });
 
@@ -88,9 +88,9 @@ describe('computeSidebarBudget (L2e — autoscale the BASE frame to terminal hei
     expect(large.sidebarVisibleCount).toBeGreaterThanOrEqual(small.sidebarVisibleCount);
   });
 
-  it('huge terminal caps the sidebar at VISIBLE_COUNT', () => {
+  it('huge terminal still reserves the safety chrome', () => {
     const { sidebarVisibleCount } = computeSidebarBudget({ rows: 200, panelOpen: false });
-    expect(sidebarVisibleCount).toBe(VISIBLE_COUNT);
+    expect(sidebarVisibleCount).toBe(200 - BASE_CHROME_OVERHEAD);
   });
 
   it('never drops below SIDEBAR_MIN on a tiny terminal', () => {

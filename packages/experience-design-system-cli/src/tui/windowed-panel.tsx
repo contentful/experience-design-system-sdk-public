@@ -4,6 +4,13 @@ import { PALETTE } from '../analyze/select/tui/theme.js';
 
 export type WindowDirection = 'up' | 'down';
 
+const MIN_TERMINAL_PANEL_HEIGHT = 5;
+
+/** Size a standalone panel to the terminal while reserving a small safety margin. */
+export function terminalPanelHeight(rows: number, reservedRows = 4): number {
+  return Math.max(MIN_TERMINAL_PANEL_HEIGHT, rows - reservedRows);
+}
+
 export interface WindowedPanelProps {
   width: number;
   height?: number;

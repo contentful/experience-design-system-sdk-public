@@ -102,6 +102,7 @@ export function ReviewDetailsEditor({
           active={!sidebarFocused}
           initialFocusTarget={sidebarFocused ? undefined : fieldEditor.initialFocusTarget}
           metadata={toFieldEditorMetadata(reviewMetadata)}
+          showInlineRationales={false}
         />
       }
     />

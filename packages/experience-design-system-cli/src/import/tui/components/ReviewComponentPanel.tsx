@@ -165,40 +165,51 @@ export function ReviewComponentPanel({
   const propCount = Object.keys(selectedEntry.$properties).length;
   const slotCount = selectedEntry.$slots ? Object.keys(selectedEntry.$slots).length : 0;
   const contentHeight = Math.max(1, height - 3);
+  const contentWidth = Math.max(1, width - 1);
   return (
     <FixedPanel width={width} height={height} borderStyle={undefined} paddingLeft={1}>
-      <Box>
-        <Text bold>{selectedKey}</Text>
-        <Box flexGrow={1} />
-        <Text dimColor>
-          {propCount} prop{propCount !== 1 ? 's' : ''}
-          {slotCount > 0 ? ` · ${slotCount} slot${slotCount !== 1 ? 's' : ''}` : ''}
-          {'  '}
-          {sidebarFocused ? '[Tab] focus panel' : '[Tab] focus list'}
-        </Text>
+      <Box flexDirection="column" width={contentWidth} height={height} flexShrink={0} overflowY="hidden">
+        <Box width={contentWidth} height={1} flexShrink={0}>
+          <Text bold wrap="truncate-end">{selectedKey}</Text>
+          <Box flexGrow={1} />
+          <Text dimColor wrap="truncate-end">
+            {propCount} prop{propCount !== 1 ? 's' : ''}
+            {slotCount > 0 ? ` · ${slotCount} slot${slotCount !== 1 ? 's' : ''}` : ''}
+            {'  '}
+            {sidebarFocused ? '[Tab] focus panel' : '[Tab] focus list'}
+          </Text>
+        </Box>
+        <Box width={contentWidth} height={contentHeight} flexShrink={0} overflowY="hidden">
+          <ReviewDetailsEditor
+            selectedKey={selectedKey}
+            componentRationale={componentRationale}
+            reviewMetadata={reviewMetadata}
+            reviewEditor={reviewEditor}
+            width={contentWidth}
+            height={contentHeight}
+            sourceBorderColor={sourceBorderColor}
+            jsonValue={jsonValue}
+            sidebarFocused={sidebarFocused}
+            fieldEditor={fieldEditor}
+          />
+        </Box>
+        <Box width={contentWidth} height={1} flexShrink={0}>
+          <Text color={saveError ? PALETTE.error : undefined} wrap="truncate-end">
+            {saveError ? '✗ ' + saveError : ' '}
+          </Text>
+        </Box>
+        <Box width={contentWidth} height={1} flexShrink={0}>
+          <Text dimColor wrap="truncate-end">
+            <ReviewPanelFooter
+              reviewEditor={reviewEditor}
+              sidebarFocused={sidebarFocused}
+              sidebarFooter={sidebarFooter}
+              livePreview={livePreview}
+              livePreviewSpinner={livePreviewSpinner}
+            />
+          </Text>
+        </Box>
       </Box>
-      <ReviewDetailsEditor
-        selectedKey={selectedKey}
-        componentRationale={componentRationale}
-        reviewMetadata={reviewMetadata}
-        reviewEditor={reviewEditor}
-        width={width}
-        height={contentHeight}
-        sourceBorderColor={sourceBorderColor}
-        jsonValue={jsonValue}
-        sidebarFocused={sidebarFocused}
-        fieldEditor={fieldEditor}
-      />
-      {saveError ? <Text color={PALETTE.error}>{'✗ ' + saveError}</Text> : <Text> </Text>}
-      <Text dimColor>
-        <ReviewPanelFooter
-          reviewEditor={reviewEditor}
-          sidebarFocused={sidebarFocused}
-          sidebarFooter={sidebarFooter}
-          livePreview={livePreview}
-          livePreviewSpinner={livePreviewSpinner}
-        />
-      </Text>
     </FixedPanel>
   );
 }

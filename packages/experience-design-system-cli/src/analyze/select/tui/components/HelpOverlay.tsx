@@ -2,6 +2,7 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import { useImmediateInput } from '../hooks/useImmediateInput.js';
 import { useTerminalSize } from '../../../../tui/use-terminal-size.js';
+import { terminalPanelHeight } from '../../../../tui/windowed-panel.js';
 
 export type HelpSection = {
   title: string;
@@ -16,7 +17,7 @@ export function HelpOverlay(props: HelpOverlayProps): React.ReactElement {
   const { onClose } = props;
   const { columns: terminalColumns, rows: terminalRows } = useTerminalSize();
   const panelWidth = Math.max(10, Math.min(64, terminalColumns - 2));
-  const panelHeight = Math.max(5, terminalRows - 3);
+  const panelHeight = terminalPanelHeight(terminalRows, 2);
   const titleRule = Math.max(0, Math.floor((panelWidth - 10) / 2));
   useImmediateInput(
     (input, key) => {

@@ -56,10 +56,16 @@ interface AnalyzeExtractOptions {
   dir?: string;
   resolveUnreachable?: 'auto' | 'always' | 'never';
   compositionRefresh?: boolean;
+  /** Commander stores a negated --no-cache option as cache=false. */
+  cache?: boolean;
   noCache?: boolean;
   prompt?: string[];
   agent?: string;
   bedrock?: boolean;
+}
+
+export function resolveExtractNoCache(opts: { cache?: boolean; noCache?: boolean }): boolean {
+  return opts.noCache === true || opts.cache === false;
 }
 const SCANNED_FILE_EXTENSIONS = new Set(['.astro', '.js', '.jsx', '.svelte', '.ts', '.tsx', '.vue']);
 /**
@@ -264,6 +270,7 @@ export function registerInternalExtractCommand(program: Command): void {
     includeModel: false,
     agentDescription: 'Coding agent for composition mapping resolution (claude|codex|opencode|cursor)',
   }).action(async (opts: AnalyzeExtractOptions) => {
+    const noCache = resolveExtractNoCache(opts);
     const resolveUnreachable: 'auto' | 'always' | 'never' = (() => {
       const v = opts.resolveUnreachable ?? 'auto';
       if (v !== 'auto' && v !== 'always' && v !== 'never') {
@@ -310,7 +317,7 @@ export function registerInternalExtractCommand(program: Command): void {
     try {
       const cacheVersion = await getCliCacheVersion();
       const cachedByPath = new Map<string, Awaited<ReturnType<typeof lookupExtractCache>>>();
-      if (!opts.noCache && sourceFiles.length > 0) {
+      if (!noCache && sourceFiles.length > 0) {
         const hashes = await Promise.all(
           sourceFiles.map(async (filePath) => [filePath, await hashFile(filePath)] as const),
         );
@@ -320,7 +327,7 @@ export function registerInternalExtractCommand(program: Command): void {
       }
 
       const allFilesCached =
-        !opts.noCache &&
+        !noCache &&
         sourceFiles.length > 0 &&
         sourceFiles.every((filePath) => cachedByPath.get(filePath) !== null);
       if (allFilesCached) {
@@ -364,7 +371,7 @@ export function registerInternalExtractCommand(program: Command): void {
     const stepId = createStep(db, sessionId, 'analyze extract', {
       project: projectRoot,
     });
-    if (extractionCacheHits === 0 && !opts.noCache) {
+    if (extractionCacheHits === 0 && !noCache) {
       const cacheVersion = await getCliCacheVersion();
       const componentsBySourcePath = new Map<string, typeof extraction.components>();
       for (const component of extraction.components) {
@@ -475,7 +482,7 @@ export function registerInternalExtractCommand(program: Command): void {
     {
       const sources = resolveCompositionSources({
         ...opts,
-        noCache: opts.noCache === true,
+        noCache,
       });
 
       const { overrides: promptOverrides, errors: promptErrors } = parsePromptOverrides(opts.prompt ?? []);
@@ -574,7 +581,7 @@ export function registerInternalExtractCommand(program: Command): void {
           files: promptFiles,
           ...(compositionPrompt ? { promptOverride: compositionPrompt } : {}),
           runAgentFn: async ({ prompt }) => {
-            if (!opts.noCache && !opts.compositionRefresh) {
+            if (!noCache && !opts.compositionRefresh) {
               const cached = lookupCompositionCache(db, agentCacheKey, cacheVersion);
               if (cached !== null) {
                 emitCompositionProgress('cache-hit');

@@ -1650,6 +1650,141 @@ describe('FieldEditor — Feature 5: parseToState round-trip ($default, $allowed
   });
 });
 
+describe('FieldEditor — description boxes constrain long text', () => {
+  it('keeps component, prop, and slot descriptions inside the editor width', async () => {
+    const value = JSON.stringify(
+      {
+        Label: {
+          $type: 'component',
+          $description: [
+            'Text label rendered with configurable sizing, semantic HTML element, and nested content.',
+            'ThisDescriptionContainsAnExtremelyLongUnbrokenWordThatMustStillStayInsideTheDescriptionBox.',
+          ].join(' '),
+          $properties: {
+            size: {
+              $type: 'enum',
+              $category: 'design',
+              $description: 'Text label rendered with configurable sizing, semantic HTML element, and nested content.',
+              $values: ['small', 'medium', 'large'],
+            },
+          },
+          $slots: {
+            content: {
+              $description: 'Content placed inside the label and rendered after the label text.',
+            },
+          },
+        },
+      },
+      null,
+      2,
+    );
+
+    const { stdin, lastFrame } = render(
+      <FieldEditor value={value} width={60} height={30} onChange={vi.fn()} onSave={vi.fn()} onDiscard={vi.fn()} />,
+    );
+
+    stdin.write('\r');
+    await tick();
+    stdin.write('\r');
+    await tick();
+    const lines = (lastFrame() ?? '').split('\n');
+    const firstDescriptionBox = lines.findIndex((line) => line.includes('╭'));
+    const closingDescriptionBox = lines.findIndex((line, index) => index > firstDescriptionBox && line.includes('╯'));
+    expect(firstDescriptionBox).toBeGreaterThanOrEqual(0);
+    expect(closingDescriptionBox).toBeGreaterThan(firstDescriptionBox);
+    expect(lines[closingDescriptionBox]).not.toContain('element');
+    for (const line of lines) {
+      expect(line.length).toBeLessThanOrEqual(60);
+    }
+    for (const line of lines.slice(firstDescriptionBox, closingDescriptionBox + 1)) {
+      expect(line.startsWith('│') || line.startsWith('╭') || line.startsWith('╰')).toBe(true);
+      expect(line.endsWith('│') || line.endsWith('╮') || line.endsWith('╯')).toBe(true);
+    }
+  });
+
+  it('keeps wrapped description text above the field editor footer while editing', async () => {
+    const value = JSON.stringify({
+      Card: {
+        $type: 'component',
+        $description: 'A component description that is long enough to require multiple wrapped lines.',
+        $properties: { title: { $type: 'string', $category: 'content' } },
+      },
+    });
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={value}
+        width={40}
+        height={15}
+        initialFocusTarget={{ kind: 'description' }}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    stdin.write('\r');
+    await tick();
+    stdin.write('\r');
+    await tick();
+
+    const lines = (lastFrame() ?? '').split('\n');
+    const closingDescriptionBox = lines.findIndex((line, index) => index > 0 && line.includes('╰'));
+    const footer = lines.findIndex((line) => line.includes('Type to edit'));
+    expect(closingDescriptionBox).toBeGreaterThan(0);
+    expect(footer).toBeGreaterThan(closingDescriptionBox);
+    expect(lines.slice(closingDescriptionBox + 1, footer)).not.toContain(expect.stringContaining('description'));
+  });
+
+  it('keeps narrow enum metadata and descriptions in their own flow rows', () => {
+    const value = JSON.stringify({
+      Tag: {
+        $type: 'component',
+        $description: 'Compact label badge with configurable color, visual treatment.',
+        $properties: {
+          label: { $type: 'string', $category: 'content', $description: 'Text displayed inside the tag.' },
+          color: {
+            $type: 'enum',
+            $category: 'design',
+            $values: ['black', 'blue', 'green', 'grey', 'magenta', 'purple', 'red', 'teal', 'white', 'yellow'],
+            $default: 'grey',
+            $description: 'Color family for the tag.',
+          },
+          size: {
+            $type: 'enum',
+            $category: 'design',
+            $values: ['large', 'medium', 'small'],
+            $default: 'medium',
+            $description: 'Overall size of the tag.',
+          },
+          variant: {
+            $type: 'enum',
+            $category: 'design',
+            $values: ['blurred', 'filled', 'outlined'],
+            $default: 'filled',
+          },
+        },
+      },
+    });
+    const { lastFrame } = render(
+      <FieldEditor
+        value={value}
+        width={44}
+        height={40}
+        initialFocusTarget={{ kind: 'prop', name: 'color' }}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+
+    const lines = (lastFrame() ?? '').split('\n');
+    expect(lastFrame() ?? '').not.toMatch(/values:\s+design/);
+    expect(lastFrame() ?? '').toContain('Color family for the tag.');
+    expect(lines.some((line) => line.includes('CONTENT PROPERTIES') && line.includes('╯'))).toBe(false);
+    expect(lines.some((line) => line.includes('DESIGN PROPERTIES') && line.includes('╯'))).toBe(false);
+    for (const line of lines) expect(line.length).toBeLessThanOrEqual(44);
+  });
+});
+
 describe('FieldEditor — empty-properties warning (Bug 2, INTEG-4257)', () => {
   const EMPTY_PROPS_COMPONENT = JSON.stringify(
     {
