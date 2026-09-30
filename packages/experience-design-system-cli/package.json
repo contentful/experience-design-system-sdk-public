@@ -41,7 +41,7 @@
     "@contentful/experience-design-system-cli-v2": "workspace:*",
     "@contentful/experience-design-system-types": "workspace:*",
     "@segment/analytics-node": "^3.0.0",
-    "@vue/compiler-sfc": "^3.5.31",
+    "@vue/compiler-sfc": "^3.5.43",
     "commander": "^13.1.0",
     "contentful-management": "^12.17.0",
     "ink": "^5.2.1",
