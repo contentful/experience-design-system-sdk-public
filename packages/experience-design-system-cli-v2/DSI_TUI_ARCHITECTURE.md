@@ -52,7 +52,6 @@ src/tui/import/
       overview.ts        # static copy the screen displays, as data (only when the screen has some)
       types.ts           # props and result types
   input/                 # small helpers shared by several screens, such as single-line editing
-test/import/             # mirrors src/tui/import, one test file per source file
 ```
 
 Rules for a screen:
