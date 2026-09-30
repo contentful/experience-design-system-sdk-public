@@ -8,13 +8,6 @@ export type V1Credentials = {
   [key: string]: string | undefined;
 };
 
-export const EMPTY_CREDENTIALS: V1Credentials = {
-  spaceId: '',
-  environmentId: '',
-  cmaToken: '',
-  host: '',
-};
-
 export async function readCredentials(): Promise<V1Credentials> {
   const store = await readV1Store();
   return {
