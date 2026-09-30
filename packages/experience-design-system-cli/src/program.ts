@@ -77,7 +77,15 @@ function registerImportV2Command(program: Command): void {
     .command('importv2')
     .description('Launch the v2 import')
     .action(async () => {
-      const v2Path = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'experience-design-system-cli-v2', 'bin', 'cli-v2.js');
+      const v2Path = join(
+        dirname(fileURLToPath(import.meta.url)),
+        '..',
+        '..',
+        '..',
+        'experience-design-system-cli-v2',
+        'bin',
+        'cli-v2.js',
+      );
       const child = spawn('node', [v2Path], { stdio: 'inherit' });
       await new Promise<void>((resolve) => {
         child.on('exit', () => resolve());

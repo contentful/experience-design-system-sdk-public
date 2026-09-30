@@ -50,7 +50,11 @@ export function ImportScreen({ onDone }: { onDone: () => void }): React.ReactEle
         {result && (
           <Box flexDirection="column" marginTop={1}>
             {result.steps.map((step) => (
-              <Text key={step.step} color={step.status === 'failed' ? PALETTE.error : undefined} dimColor={step.status === 'skipped'}>
+              <Text
+                key={step.step}
+                color={step.status === 'failed' ? PALETTE.error : undefined}
+                dimColor={step.status === 'skipped'}
+              >
                 {step.status === 'complete' ? '✓' : step.status === 'skipped' ? '·' : '✗'} {step.step}
               </Text>
             ))}

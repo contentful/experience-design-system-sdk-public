@@ -1,27 +1,27 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { PALETTE } from '../../home/home.theme.js';
-import { readDsiConfiguration, writeDsiConfiguration, type DsiConfiguration } from './config-store.js';
+import { readCredentials, writeCredentials, type V1Credentials } from './config-store.js';
 
-type Field = 'space_id' | 'env_id' | 'cma_token' | 'host';
+type Field = 'spaceId' | 'environmentId' | 'cmaToken' | 'host';
 type Stage = 'loading' | 'form' | 'saving' | 'saved';
 
-const FIELD_ORDER: Field[] = ['space_id', 'env_id', 'cma_token', 'host'];
+const FIELD_ORDER: Field[] = ['spaceId', 'environmentId', 'cmaToken', 'host'];
 const FIELD_LABELS: Record<Field, string> = {
-  space_id: 'Space ID',
-  env_id: 'Environment ID',
-  cma_token: 'CMA Token',
+  spaceId: 'Space ID',
+  environmentId: 'Environment ID',
+  cmaToken: 'CMA Token',
   host: 'API Host (optional)',
 };
 
 export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.ReactElement {
   const [stage, setStage] = useState<Stage>('loading');
-  const [config, setConfig] = useState<DsiConfiguration | null>(null);
-  const [activeField, setActiveField] = useState<Field>('space_id');
+  const [config, setConfig] = useState<V1Credentials | null>(null);
+  const [activeField, setActiveField] = useState<Field>('spaceId');
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    readDsiConfiguration().then((cfg) => {
+    readCredentials().then((cfg) => {
       setConfig(cfg);
       setStage('form');
     });
@@ -29,7 +29,7 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
 
   function fieldValue(field: Field): string {
     if (!config) return '';
-    return config[field];
+    return config[field] || '';
   }
 
   function setFieldValue(field: Field, value: string): void {
@@ -41,7 +41,7 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
     if (!config) return;
     setStage('saving');
     setMessage(null);
-    writeDsiConfiguration(config)
+    writeCredentials(config)
       .then(() => {
         setStage('saved');
         setMessage('Configuration saved');
@@ -126,7 +126,7 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
         {FIELD_ORDER.map((field) => {
           const isActive = activeField === field;
           const value = fieldValue(field);
-          const display = field === 'cma_token' ? '•'.repeat(value.length) : value;
+          const display = field === 'cmaToken' ? '•'.repeat(value.length) : value;
           return (
             <Box key={field} gap={1}>
               <Text color={isActive ? PALETTE.accent : undefined}>{isActive ? '❯' : ' '}</Text>

@@ -8,68 +8,60 @@ import { homedir } from 'node:os';
  * that are shared with v1's import and setup flows.
  */
 
-export type DsiConfiguration = {
-  space_id: string;
-  env_id: string;
-  cma_token: string;
-  host: string;
+export type V1Credentials = {
+  spaceId?: string;
+  environmentId?: string;
+  cmaToken?: string;
+  host?: string;
+  [key: string]: string | undefined;
 };
 
-export const EMPTY_CONFIGURATION: DsiConfiguration = {
-  space_id: '',
-  env_id: '',
-  cma_token: '',
+export const EMPTY_CREDENTIALS: V1Credentials = {
+  spaceId: '',
+  environmentId: '',
+  cmaToken: '',
   host: '',
 };
 
 const CREDENTIALS_DIR = join(homedir(), '.config', 'experiences');
 const CREDENTIALS_PATH = join(CREDENTIALS_DIR, 'credentials.json');
 
-export async function readDsiConfiguration(): Promise<DsiConfiguration> {
+export async function readCredentials(): Promise<V1Credentials> {
   try {
     const raw = await readFile(CREDENTIALS_PATH, 'utf8');
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const parsed = JSON.parse(raw) as V1Credentials;
     return {
-      space_id: (parsed.spaceId as string) || '',
-      env_id: (parsed.environmentId as string) || '',
-      cma_token: (parsed.cmaToken as string) || '',
-      host: (parsed.host as string) || '',
+      spaceId: parsed.spaceId || '',
+      environmentId: parsed.environmentId || '',
+      cmaToken: parsed.cmaToken || '',
+      host: parsed.host || '',
     };
   } catch {
-    return { ...EMPTY_CONFIGURATION };
+    return { ...EMPTY_CREDENTIALS };
   }
 }
 
-export async function writeDsiConfiguration(config: DsiConfiguration): Promise<void> {
+export async function writeCredentials(config: V1Credentials): Promise<void> {
   await mkdir(CREDENTIALS_DIR, { recursive: true });
 
-  // Read any existing v1 config to preserve non-credential fields
-  let v1Config: Record<string, any> = {};
+  // Read any existing config to preserve non-credential fields
+  let existing: V1Credentials = {};
   try {
     const raw = await readFile(CREDENTIALS_PATH, 'utf8');
-    v1Config = JSON.parse(raw) as Record<string, any>;
+    existing = JSON.parse(raw) as V1Credentials;
   } catch {
     // File doesn't exist yet, start fresh
   }
 
-  // Write credentials in v1's camelCase format, preserve other fields
-  const merged: Record<string, any> = {
-    ...v1Config,
+  // Merge and remove empty values
+  const merged: V1Credentials = {
+    ...existing,
+    ...config,
   };
 
-  if (config.space_id) merged.spaceId = config.space_id;
-  if (config.env_id) merged.environmentId = config.env_id;
-  if (config.cma_token) merged.cmaToken = config.cma_token;
-  if (config.host) merged.host = config.host;
-
-  // Remove empty values
   Object.keys(merged).forEach((k) => {
     if (!merged[k]) delete merged[k];
   });
 
-  await writeFile(
-    CREDENTIALS_PATH,
-    `${JSON.stringify(merged, null, 2)}\n`,
-    { mode: 0o600 },
-  );
+  await writeFile(CREDENTIALS_PATH, `${JSON.stringify(merged, null, 2)}\n`, { mode: 0o600 });
 }
