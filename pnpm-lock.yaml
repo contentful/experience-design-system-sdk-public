@@ -172,8 +172,8 @@ importers:
   packages/experience-design-system-client:
     dependencies:
       '@hey-api/client-fetch':
-        specifier: ^0.9.0
-        version: 0.9.0(@hey-api/openapi-ts@0.80.18(typescript@5.9.3))
+        specifier: ^0.13.1
+        version: 0.13.1(@hey-api/openapi-ts@0.80.18(typescript@5.9.3))
     devDependencies:
       '@hey-api/openapi-ts':
         specifier: ^0.80.1
@@ -1208,8 +1208,8 @@ packages:
     resolution: {integrity: sha512-43/qtrDUokr7LJqoF2c3+RInu/t4zfrpYdoSDfYyhg52rwLV6TnOvdG4fXm7IkSB3wErkcmJS9iEhjVtOSEjjA==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 
-  '@hey-api/client-fetch@0.9.0':
-    resolution: {integrity: sha512-64oAhGJZHSEEReOZjB12HgU27QsSRR+zcFGsGDE2+zZGgYh67L3lSZ6jEN37KKo6jNytdZ3oB5z5+It2NxZWEA==}
+  '@hey-api/client-fetch@0.13.1':
+    resolution: {integrity: sha512-29jBRYNdxVGlx5oewFgOrkulZckpIpBIRHth3uHFn1PrL2ucMy52FvWOY3U3dVx2go1Z3kUmMi6lr07iOpUqqA==}
     deprecated: Starting with v0.73.0, this package is bundled directly inside @hey-api/openapi-ts.
     peerDependencies:
       '@hey-api/openapi-ts': < 2
@@ -5175,7 +5175,7 @@ snapshots:
       '@eslint/core': 0.17.0
       levn: 0.4.1
 
-  '@hey-api/client-fetch@0.9.0(@hey-api/openapi-ts@0.80.18(typescript@5.9.3))':
+  '@hey-api/client-fetch@0.13.1(@hey-api/openapi-ts@0.80.18(typescript@5.9.3))':
     dependencies:
       '@hey-api/openapi-ts': 0.80.18(typescript@5.9.3)
 
