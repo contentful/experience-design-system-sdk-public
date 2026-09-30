@@ -48,7 +48,8 @@ src/tui/import/
     01-welcome/          # steps are numbered in the order they appear in the flow
       screen.tsx         # UI only: renders props and state
       controls.ts        # this screen's keyboard handling and key hints; applies what logic.ts decides
-      logic.ts           # everything else: validation, derived values, loaders, result building
+      logic.ts           # decisions: validation, derived values, loaders, result building
+      overview.ts        # static copy the screen displays, as data (only when the screen has some)
       types.ts           # props and result types
   input/                 # small helpers shared by several screens, such as single-line editing
 test/import/             # mirrors src/tui/import, one test file per source file
