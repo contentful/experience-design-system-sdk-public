@@ -1244,6 +1244,32 @@ describe('GenerateReviewStep — slot-cycle warning surface (INTEG-4401)', () =>
     expect(frame).toMatch(/CycleA.*header.*CycleB/);
   });
 
+  it('does not open the cycle panel for Ctrl+C', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'CycleA', entry: CYCLE_A },
+      { key: 'CycleB', entry: CYCLE_B },
+    ]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([
+      {
+        path: ['CycleA', 'CycleB', 'CycleA'],
+        edges: [
+          { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
+          { fromComponent: 'CycleB', slotName: 'footer', toComponent: 'CycleA' },
+        ],
+        suggestedBreak: { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
+      },
+    ]);
+
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('\x03');
+    await tick();
+    expect(lastFrame()).not.toMatch(/SLOT DEPENDENCY CYCLES/);
+  });
+
   it('does not render the banner or [c] affordance when there are no cycles', async () => {
     const { lastFrame } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
