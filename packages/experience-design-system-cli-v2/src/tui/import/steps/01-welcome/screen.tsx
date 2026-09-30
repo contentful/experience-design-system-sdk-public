@@ -4,7 +4,7 @@ import { PALETTE } from '../../../home/home.theme.js';
 import { useBlinkingCursor } from '../../../use-blinking-cursor.js';
 import { withCursor } from '../../input/line-editing.js';
 import { WELCOME_CONTROLS, useWelcomeControls } from './controls.js';
-import { WELCOME_STEPS } from './logic.js';
+import { WELCOME_OVERVIEW } from './overview.js';
 import type { WelcomeScreenProps } from './types.js';
 
 const RULE = '────────────────────────────────────────';
@@ -28,10 +28,10 @@ export function WelcomeScreen({ onContinue, onQuit }: WelcomeScreenProps): React
 
       <Box flexDirection="column" marginTop={1}>
         <Text dimColor>{RULE}</Text>
-        {WELCOME_STEPS.map((step) => (
-          <Box key={step.label} gap={1}>
-            <Text bold>{step.label}</Text>
-            <Text dimColor>{step.description}</Text>
+        {WELCOME_OVERVIEW.map((item) => (
+          <Box key={item.label} gap={1}>
+            <Text bold>{item.label}</Text>
+            <Text dimColor>{item.description}</Text>
           </Box>
         ))}
         <Text dimColor>{RULE}</Text>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LineKey } from '../../../../src/tui/import/input/line-editing.js';
-import { WELCOME_STEPS, reducePathInput } from '../../../../src/tui/import/steps/01-welcome/logic.js';
+import { reducePathInput } from '../../../../src/tui/import/steps/01-welcome/logic.js';
 
 const NO_KEY: LineKey = { return: false, escape: false, backspace: false, delete: false, ctrl: false, meta: false };
 
@@ -44,11 +44,5 @@ describe('reducePathInput', () => {
 
   it('trims the last character on backspace', () => {
     expect(reducePathInput('./src', '', key({ backspace: true }))).toEqual({ type: 'edit', value: './sr' });
-  });
-});
-
-describe('WELCOME_STEPS', () => {
-  it('lists the five steps in order', () => {
-    expect(WELCOME_STEPS.map((step) => step.label)).toEqual(['Step 1', 'Step 2', 'Step 3', 'Step 4', 'Step 5']);
   });
 });
