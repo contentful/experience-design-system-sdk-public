@@ -16,6 +16,9 @@ export function ImportScreen({ onDone }: { onDone: () => void }): React.ReactEle
         if (pipelineResult) {
           setResult(pipelineResult);
           setStage('result');
+        } else if (exitCode === 0) {
+          // The v1 wizard exits cleanly when the user quits it (or finishes) and never prints a pipeline result.
+          onDone();
         } else {
           setRunError(`Import process exited with code ${exitCode}`);
           setStage('result');
