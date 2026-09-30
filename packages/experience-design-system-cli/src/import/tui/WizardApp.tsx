@@ -16,7 +16,7 @@ import { appendRun, updateRun } from '../../runs/store.js';
 import { buildSourceFingerprint } from '../../runs/fingerprint.js';
 import { TopBar } from '../../analyze/select/tui/components/TopBar.js';
 import { CustomPromptBanner } from './CustomPromptBanner.js';
-import { WelcomeScreen } from '@contentful/experience-design-system-cli-v2/import-steps';
+import { TokenInputScreen, WelcomeScreen } from '@contentful/experience-design-system-cli-v2/import-steps';
 import { PathValidationStep } from './steps/PathValidationStep.js';
 import { RunningStep } from './steps/RunningStep.js';
 import { GateStep } from './steps/GateStep.js';
@@ -24,7 +24,6 @@ import { CredentialsStep } from './steps/CredentialsStep.js';
 import { WizardPreviewStep } from './steps/WizardPreviewStep.js';
 import { DoneStep } from './steps/DoneStep.js';
 import { ErrorStep } from './steps/ErrorStep.js';
-import { TokenInputStep } from './steps/TokenInputStep.js';
 import { PreviewValidationErrorStep } from './steps/PreviewValidationErrorStep.js';
 import { PushingStep } from './steps/PushingStep.js';
 import { type PushProgress } from './push-progress.js';
@@ -1558,7 +1557,7 @@ export function WizardApp({
 
       case 'token-input':
         return (
-          <TokenInputStep
+          <TokenInputScreen
             onConfirm={(rawTokensPath) => {
               update({ rawTokensPath, step: 'generating-tokens' });
             }}

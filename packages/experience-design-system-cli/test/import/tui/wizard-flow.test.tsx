@@ -132,7 +132,7 @@ describe('WizardApp TUI flow', () => {
       3000,
     );
 
-    // TokenInputStep renders "Design tokens" heading and token path prompt
+    // The token-input screen renders "Design tokens" heading and token path prompt
     expect(frame).toContain('Design tokens');
     expect(frame).toContain('Token path');
   });
@@ -146,6 +146,9 @@ describe('WizardApp TUI flow', () => {
       (f) => f.includes('Token path'),
       3000,
     );
+
+    // Ink's useInput subscribes to stdin in a passive effect, which runs after the first frame is visible
+    await new Promise((r) => setTimeout(r, 50));
 
     // Press 's' to skip tokens — should advance to path-validation step
     stdin.write('s');
@@ -191,6 +194,9 @@ describe('WizardApp TUI flow', () => {
       (f) => f.includes('Token path'),
       3000,
     );
+
+    // Ink's useInput subscribes to stdin in a passive effect, which runs after the first frame is visible
+    await new Promise((r) => setTimeout(r, 50));
 
     // Press 'q' to quit
     stdin.write('q');
