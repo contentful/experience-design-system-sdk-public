@@ -13,7 +13,6 @@ export const MIN_TERMINAL_WIDTH = 164;
 
 const START_ITEMS: { label: string; screen: Screen }[] = [
   { label: 'Import', screen: 'import' },
-  { label: 'Saved Runs', screen: 'saved-runs' },
   { label: 'Upgrade Version', screen: 'upgrade' },
   { label: 'Settings', screen: 'settings' },
   { label: 'Help', screen: 'help' },

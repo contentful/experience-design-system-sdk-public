@@ -1,39 +1,67 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { findPackageRoot } from '../../package-root.js';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
 
-const PACKAGE_NAME = '@contentful/experience-design-system-cli-v2';
+/**
+ * Adapter to read/write v1's shared credentials store.
+ * V2's configuration screen uses this to manage Contentful credentials
+ * that are shared with v1's import and setup flows.
+ */
 
-export type DsiConfiguration = {
-  space_id: string;
-  env_id: string;
-  cma_token: string;
-  host: string;
+export type V1Credentials = {
+  spaceId?: string;
+  environmentId?: string;
+  cmaToken?: string;
+  host?: string;
+  [key: string]: string | undefined;
 };
 
-export const EMPTY_CONFIGURATION: DsiConfiguration = {
-  space_id: '',
-  env_id: '',
-  cma_token: '',
+export const EMPTY_CREDENTIALS: V1Credentials = {
+  spaceId: '',
+  environmentId: '',
+  cmaToken: '',
   host: '',
 };
 
-export function dsiConfigurationPath(): string {
-  return join(findPackageRoot(import.meta.url, PACKAGE_NAME), '.contentful', 'config', 'dsi_configuration.json');
-}
+const CREDENTIALS_DIR = join(homedir(), '.config', 'experiences');
+const CREDENTIALS_PATH = join(CREDENTIALS_DIR, 'credentials.json');
 
-export async function readDsiConfiguration(): Promise<DsiConfiguration> {
+export async function readCredentials(): Promise<V1Credentials> {
   try {
-    const raw = await readFile(dsiConfigurationPath(), 'utf8');
-    const parsed = JSON.parse(raw) as Partial<DsiConfiguration>;
-    return { ...EMPTY_CONFIGURATION, ...parsed };
+    const raw = await readFile(CREDENTIALS_PATH, 'utf8');
+    const parsed = JSON.parse(raw) as V1Credentials;
+    return {
+      spaceId: parsed.spaceId || '',
+      environmentId: parsed.environmentId || '',
+      cmaToken: parsed.cmaToken || '',
+      host: parsed.host || '',
+    };
   } catch {
-    return { ...EMPTY_CONFIGURATION };
+    return { ...EMPTY_CREDENTIALS };
   }
 }
 
-export async function writeDsiConfiguration(config: DsiConfiguration): Promise<void> {
-  const path = dsiConfigurationPath();
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+export async function writeCredentials(config: V1Credentials): Promise<void> {
+  await mkdir(CREDENTIALS_DIR, { recursive: true });
+
+  // Read any existing config to preserve non-credential fields
+  let existing: V1Credentials = {};
+  try {
+    const raw = await readFile(CREDENTIALS_PATH, 'utf8');
+    existing = JSON.parse(raw) as V1Credentials;
+  } catch {
+    // File doesn't exist yet, start fresh
+  }
+
+  // Merge and remove empty values
+  const merged: V1Credentials = {
+    ...existing,
+    ...config,
+  };
+
+  Object.keys(merged).forEach((k) => {
+    if (!merged[k]) delete merged[k];
+  });
+
+  await writeFile(CREDENTIALS_PATH, `${JSON.stringify(merged, null, 2)}\n`, { mode: 0o600 });
 }

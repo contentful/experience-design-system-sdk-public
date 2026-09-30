@@ -75,13 +75,22 @@ export function resolveBedrockFromAncestors(actionCommand: Command): boolean {
 function registerImportV2Command(program: Command): void {
   program
     .command('importv2')
-    .description('Launch the v2 import TUI (experience-design-system-cli-v2)')
+    .description('Launch the v2 import')
     .action(async () => {
-      const { render } = await import('ink');
-      const { createElement } = await import('react');
-      const { App } = await import('@contentful/experience-design-system-cli-v2/app');
-      const { waitUntilExit } = render(createElement(App));
-      await waitUntilExit();
+      const v2Path = join(
+        dirname(fileURLToPath(import.meta.url)),
+        '..',
+        '..',
+        '..',
+        'experience-design-system-cli-v2',
+        'bin',
+        'cli-v2.js',
+      );
+      const child = spawn('node', [v2Path], { stdio: 'inherit' });
+      await new Promise<void>((resolve) => {
+        child.on('exit', () => resolve());
+        child.on('error', () => resolve());
+      });
     });
 }
 

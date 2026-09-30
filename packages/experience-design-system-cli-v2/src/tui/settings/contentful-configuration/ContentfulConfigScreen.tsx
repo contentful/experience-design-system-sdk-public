@@ -1,139 +1,149 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Text } from 'ink';
-import { PasswordInput } from '@inkjs/ui';
-import { FOCUS_MARKER, PALETTE } from '../../home/home.theme.js';
-import {
-  dsiConfigurationPath,
-  readDsiConfiguration,
-  writeDsiConfiguration,
-  EMPTY_CONFIGURATION,
-  type DsiConfiguration,
-} from './config-store.js';
-import { useConfigurationControls, type Field } from './controls.js';
-import { startDebugRun } from '../../debug-store.js';
+import { Box, Text, useInput } from 'ink';
+import { PALETTE } from '../../home/home.theme.js';
+import { readCredentials, writeCredentials, type V1Credentials } from './config-store.js';
 
-const FIELDS: Field[] = [
-  { key: 'space_id', label: 'Space ID' },
-  { key: 'env_id', label: 'Environment ID' },
-  { key: 'cma_token', label: 'CMA Token', maskable: true },
-  { key: 'host', label: 'Host' },
-];
+type Field = 'spaceId' | 'environmentId' | 'cmaToken' | 'host';
+type Stage = 'loading' | 'form' | 'saving' | 'saved';
 
-function mask(value: string): string {
-  return '•'.repeat(value.length);
-}
+const FIELD_ORDER: Field[] = ['spaceId', 'environmentId', 'cmaToken', 'host'];
+const FIELD_LABELS: Record<Field, string> = {
+  spaceId: 'Space ID',
+  environmentId: 'Environment ID',
+  cmaToken: 'CMA Token',
+  host: 'API Host (optional)',
+};
 
 export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.ReactElement {
-  const [loading, setLoading] = useState(true);
-  const [config, setConfig] = useState<DsiConfiguration>(EMPTY_CONFIGURATION);
-  const [focusIdx, setFocusIdx] = useState(0);
-  const [mode, setMode] = useState<'navigate' | 'edit'>('navigate');
-  const [editBuffer, setEditBuffer] = useState('');
-  const [revealToken, setRevealToken] = useState(false);
-  const [status, setStatus] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
-  const [configPath, setConfigPath] = useState('');
+  const [stage, setStage] = useState<Stage>('loading');
+  const [config, setConfig] = useState<V1Credentials | null>(null);
+  const [activeField, setActiveField] = useState<Field>('spaceId');
+  const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    setConfigPath(dsiConfigurationPath());
-    readDsiConfiguration().then((loaded) => {
-      setConfig(loaded);
-      setLoading(false);
-      startDebugRun({
-        flow: 'settings/contentful-configuration',
-        step: '01-configuration',
-        menuOption: 'Configuration',
-        inputs: loaded,
-      });
+    readCredentials().then((cfg) => {
+      setConfig(cfg);
+      setStage('form');
     });
   }, []);
 
-  const save = async (currentConfig: DsiConfiguration): Promise<boolean> => {
-    try {
-      await writeDsiConfiguration(currentConfig);
-      return true;
-    } catch (err) {
-      setStatus({ kind: 'error', message: `Save failed: ${err instanceof Error ? err.message : String(err)}` });
-      return false;
-    }
-  };
+  function fieldValue(field: Field): string {
+    if (!config) return '';
+    return config[field] || '';
+  }
 
-  useConfigurationControls({
-    loading,
-    mode,
-    setMode,
-    focusIdx,
-    setFocusIdx,
-    editBuffer,
-    setEditBuffer,
-    config,
-    setConfig,
-    setStatus,
-    setRevealToken,
-    fields: FIELDS,
-    save,
-    onDone,
+  function setFieldValue(field: Field, value: string): void {
+    if (!config) return;
+    setConfig({ ...config, [field]: value });
+  }
+
+  function handleSave(): void {
+    if (!config) return;
+    setStage('saving');
+    setMessage(null);
+    writeCredentials(config)
+      .then(() => {
+        setStage('saved');
+        setMessage('Configuration saved');
+      })
+      .catch((err: unknown) => {
+        setMessage(err instanceof Error ? err.message : 'Failed to save');
+        setStage('form');
+      });
+  }
+
+  useInput((input, key) => {
+    if (stage === 'loading' || stage === 'saving') return;
+
+    if (stage === 'saved') {
+      if (key.return || key.escape || input === 'q') {
+        onDone();
+      }
+      return;
+    }
+
+    if (key.escape || input === 'q') {
+      onDone();
+      return;
+    }
+
+    if (key.tab) {
+      const idx = FIELD_ORDER.indexOf(activeField);
+      setActiveField(FIELD_ORDER[(idx + 1) % FIELD_ORDER.length]!);
+      return;
+    }
+
+    if (key.return) {
+      const idx = FIELD_ORDER.indexOf(activeField);
+      if (idx < FIELD_ORDER.length - 1) {
+        setActiveField(FIELD_ORDER[idx + 1]!);
+      } else {
+        handleSave();
+      }
+      return;
+    }
+
+    if (key.backspace || key.delete) {
+      const current = fieldValue(activeField);
+      setFieldValue(activeField, current.slice(0, -1));
+      return;
+    }
+
+    if (input && !key.ctrl && !key.meta) {
+      setFieldValue(activeField, fieldValue(activeField) + input);
+    }
   });
+
+  if (stage === 'loading') {
+    return (
+      <Box flexDirection="column" paddingX={2} paddingY={1}>
+        <Text bold>Configuration</Text>
+        <Text> </Text>
+        <Text color={PALETTE.accent}>Loading...</Text>
+      </Box>
+    );
+  }
+
+  if (stage === 'saved') {
+    return (
+      <Box flexDirection="column" paddingX={2} paddingY={1}>
+        <Text bold>Configuration</Text>
+        <Text> </Text>
+        <Text color={PALETTE.success}>✓ {message}</Text>
+        <Text> </Text>
+        <Text dimColor>[Enter] Back to Settings</Text>
+      </Box>
+    );
+  }
 
   return (
     <Box flexDirection="column" paddingX={2} paddingY={1}>
-      <Text bold>Settings › Configuration</Text>
+      <Text bold>Configuration</Text>
       <Text> </Text>
-      {loading ? (
-        <Text color={PALETTE.muted}>Loading configuration…</Text>
-      ) : (
+      <Text>Contentful API Credentials</Text>
+      <Text> </Text>
+      <Box flexDirection="column">
+        {FIELD_ORDER.map((field) => {
+          const isActive = activeField === field;
+          const value = fieldValue(field);
+          const display = field === 'cmaToken' ? '•'.repeat(value.length) : value;
+          return (
+            <Box key={field} gap={1}>
+              <Text color={isActive ? PALETTE.accent : undefined}>{isActive ? '❯' : ' '}</Text>
+              <Text bold={isActive}>{FIELD_LABELS[field]}:</Text>
+              <Text>{display || <Text dimColor>(empty)</Text>}</Text>
+            </Box>
+          );
+        })}
+      </Box>
+      {message && (
         <>
-          {FIELDS.map((field, i) => {
-            const focused = i === focusIdx;
-            const editing = focused && mode === 'edit';
-            const rawValue = editing ? editBuffer : config[field.key];
-            const displayValue = field.maskable && !revealToken ? mask(rawValue) : rawValue;
-
-            if (editing && field.key === 'cma_token') {
-              return (
-                <Box key={field.key}>
-                  <Text>
-                    {`${FOCUS_MARKER} `}
-                    <Text bold color={PALETTE.accent}>
-                      {field.label}:
-                    </Text>{' '}
-                  </Text>
-                  <PasswordInput
-                    onSubmit={(value) => {
-                      setConfig((c) => ({ ...c, cma_token: value }));
-                      setMode('navigate');
-                      setFocusIdx((idx) => (idx + 1) % FIELDS.length);
-                    }}
-                  />
-                </Box>
-              );
-            }
-
-            return (
-              <Text key={field.key}>
-                {focused ? `${FOCUS_MARKER} ` : '  '}
-                <Text bold={focused} color={focused ? PALETTE.accent : PALETTE.muted}>
-                  {field.label}:
-                </Text>{' '}
-                <Text bold={editing} color={editing ? PALETTE.heading : undefined}>
-                  {displayValue}
-                  {editing ? '▌' : ''}
-                </Text>
-              </Text>
-            );
-          })}
           <Text> </Text>
-          <Text dimColor>Config file: {configPath}</Text>
-          {status && <Text color={status.kind === 'success' ? PALETTE.success : PALETTE.error}>{status.message}</Text>}
-          <Text> </Text>
-          <Text color={PALETTE.muted}>
-            {mode === 'edit'
-              ? '⏎/Esc commit edit'
-              : `↑/↓ move · ⏎ edit · ${
-                  FIELDS[focusIdx]!.maskable ? 'v reveal · ' : ''
-                }s save · S save & quit · C copy JSON · q quit (discard)`}
-          </Text>
+          <Text color={PALETTE.error}>✗ {message}</Text>
         </>
       )}
+      <Text> </Text>
+      <Text dimColor>[Tab] Switch · [Enter] Save/Next · [Esc/q] Back</Text>
     </Box>
   );
 }
