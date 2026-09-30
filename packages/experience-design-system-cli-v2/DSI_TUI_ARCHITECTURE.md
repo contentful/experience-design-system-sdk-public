@@ -51,7 +51,7 @@ src/tui/import/
       logic.ts           # decisions: validation, derived values, loaders, result building
       overview.ts        # static copy the screen displays, as data (only when the screen has some)
       types.ts           # props and result types
-  input/                 # small helpers shared by several screens, such as single-line editing
+  input/                 # small helpers shared by several screens: single-line editing, path normalising
 test/import/             # mirrors src/tui/import, one test file per source file
 ```
 
@@ -59,7 +59,9 @@ Rules for a screen:
 - Controls belong to the screen: its key handling and the hints shown for it live in that step's `controls.ts`, not in a shared file. Controls that really are common to every import screen belong in `PageContainer.tsx`.
 - Props in, a typed result out through callbacks. A screen does not know which screen comes next.
 - No `process.exit`, no database, network or subprocess calls, and no filesystem work while rendering. `logic.ts` never imports Ink or React components, so it can be tested without rendering.
+- Steps run strictly one after another. A screen reports its result only once its own work is finished (a path is validated before `onConfirm` fires, not after), and nothing it started keeps running in the background once the next step begins.
 - Numbered folders are steps of the happy path. Pieces used by several steps are not steps and stay unnumbered.
+- Quitting is the same everywhere: Esc always goes back to the menu, and single-letter shortcuts such as `q` or `s` only apply while a text field is empty, so they can still be typed into a path.
 
 ## Supported Frameworks
 1. React
