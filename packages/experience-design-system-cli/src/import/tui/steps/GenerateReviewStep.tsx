@@ -1112,7 +1112,7 @@ function GenerateReviewStepView({
       }
       return;
     }
-    if (input === 'c' && cycleRows.length > 0) {
+    if (input === 'c' && !key.ctrl && !key.meta && cycleRows.length > 0) {
       cyclePanel.open();
       setCyclePanelScroll(0);
       setCyclesCursor(0);
