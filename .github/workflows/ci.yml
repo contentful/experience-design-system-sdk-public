@@ -123,8 +123,6 @@ jobs:
             command: quality:knip:cli-v2
           - name: jscpd v1
             command: quality:jscpd:v1
-          - name: jscpd cli-v2
-            command: quality:jscpd:cli-v2
     permissions:
       contents: read
       actions: read

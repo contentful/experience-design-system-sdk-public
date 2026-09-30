@@ -33,8 +33,6 @@
     "lint:fix": "nx lint:fix experience-design-system-cli-v2"
   },
   "dependencies": {
-    "@inkjs/ui": "^2.0.0",
-    "clipboardy": "^5.3.2",
     "commander": "^13.1.0",
     "ink": "^5.2.1",
     "react": "^18.3.1",
@@ -48,7 +46,6 @@
     "eslint": "^9.39.5",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.6",
-    "ink-testing-library": "^4.0.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.67.0",
     "vitest": "^4.0.16"
