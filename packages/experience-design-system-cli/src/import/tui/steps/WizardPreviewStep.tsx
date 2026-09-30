@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
-import { Box, Text, useStdout } from 'ink';
+import { Box, Text } from 'ink';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
+import { useTerminalSize } from '../../../tui/use-terminal-size.js';
 import type {
   ChangeClassification,
   ServerPreviewResponse,
@@ -124,7 +125,6 @@ type WizardPreviewStepProps = {
   totalSteps: number;
   onConfirm: (acknowledge: boolean) => void;
   onEdit?: () => void;
-  onSaveFiles?: () => void;
   onQuit: () => void;
 };
 
@@ -136,15 +136,15 @@ export function WizardPreviewStep({
   totalSteps,
   onConfirm,
   onEdit,
-  onSaveFiles,
   onQuit,
 }: WizardPreviewStepProps): React.ReactElement {
   const breakingWithImpact = hasBreakingChangesWithImpact(preview);
   const [diffExpanded, setDiffExpanded] = useState(false);
   const [scrollOffset, setScrollOffset] = useState(0);
-  const { stdout } = useStdout();
-  const terminalRows = stdout?.rows ?? 40;
-  const viewportHeight = Math.max(terminalRows - 14, 10);
+  const { rows: terminalRows } = useTerminalSize();
+  // Reserve enough room for the summary, environment, controls, padding, and
+  // Ink's vertical gaps so scrolling never changes the overall view height.
+  const viewportHeight = Math.max(terminalRows - 18, 6);
 
   const allDiffLines = useMemo(() => {
     if (!diffExpanded) return [];
@@ -171,11 +171,11 @@ export function WizardPreviewStep({
       return;
     }
     if (diffExpanded) {
-      if (input === 'j' || key.downArrow) {
+      if (key.downArrow) {
         setScrollOffset((prev) => Math.min(prev + 1, maxScroll));
         return;
       }
-      if (input === 'k' || key.upArrow) {
+      if (key.upArrow) {
         setScrollOffset((prev) => Math.max(prev - 1, 0));
         return;
       }
@@ -190,10 +190,6 @@ export function WizardPreviewStep({
     }
     if ((input === 'e' || input === 'E') && onEdit) {
       onEdit();
-      return;
-    }
-    if (input === 's' && onSaveFiles) {
-      onSaveFiles();
       return;
     }
     if (input === 'q' || key.escape) {
@@ -326,7 +322,7 @@ export function WizardPreviewStep({
                   <Box key={line.key}>{line.element}</Box>
                 ))}
               </Box>
-              {maxScroll > 0 && <Text dimColor> ↕ j/k to scroll, f/b to page</Text>}
+              {maxScroll > 0 && <Text dimColor> ↕ ↑↓ to scroll, f/b to page</Text>}
             </Box>
           )}
         </>
@@ -347,9 +343,8 @@ export function WizardPreviewStep({
       <Box gap={3} marginTop={1}>
         <Text dimColor>[Enter] Push to Contentful</Text>
         <Text dimColor>[d] {diffExpanded ? 'Hide' : 'Show'} diff</Text>
-        {diffExpanded && <Text dimColor>[j/k] Scroll [f/b] Page</Text>}
+        {diffExpanded && <Text dimColor>[↑↓] Scroll [f/b] Page</Text>}
         {onEdit && <Text dimColor>[e] Edit definitions</Text>}
-        {onSaveFiles && <Text dimColor>[s] Save files instead</Text>}
         <Text dimColor>[q] Cancel</Text>
       </Box>
     </Box>

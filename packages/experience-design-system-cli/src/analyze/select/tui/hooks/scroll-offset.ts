@@ -43,10 +43,10 @@ export function computeNextScrollOffset(
   if (key.ctrl && input === 'u') {
     return Math.max(0, current - halfPage);
   }
-  if (key.downArrow || input === 'j') {
+  if (key.downArrow) {
     return Math.min(maxOffset, current + 1);
   }
-  if (key.upArrow || input === 'k') {
+  if (key.upArrow) {
     return Math.max(0, current - 1);
   }
   if (key.pageDown) {

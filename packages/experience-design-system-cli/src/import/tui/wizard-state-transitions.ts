@@ -1,14 +1,9 @@
-export type WizardStepAfterScope = 'generating' | 'push-decision-gate';
-
-export type WizardStepAfterCredentials = 'generating' | 'push-decision-gate';
-
-export function nextStepAfterScopeGate(opts: { acceptedCount: number }): WizardStepAfterScope {
-  if (opts.acceptedCount > 0) return 'generating';
-  return 'push-decision-gate';
+export function shouldGenerateAfterScopeGate(opts: { acceptedCount: number }): boolean {
+  return opts.acceptedCount > 0;
 }
 
-export function nextStepAfterCredentialsValidated(opts: { acceptedCount: number }): WizardStepAfterCredentials {
-  return opts.acceptedCount > 0 ? 'generating' : 'push-decision-gate';
+export function shouldGenerateAfterCredentialsValidated(opts: { acceptedCount: number }): boolean {
+  return opts.acceptedCount > 0;
 }
 
 export function shouldSkipFinalReviewAfterCredentials(state: {
@@ -26,8 +21,8 @@ export function shouldBypassPreview(state: { credentialsSkipped: boolean }): boo
   return state.credentialsSkipped === true;
 }
 
-export function buildSkippedPreviewTransition(): { step: 'push-decision-gate'; serverPreview: null } {
-  return { step: 'push-decision-gate', serverPreview: null };
+export function buildSkippedPreviewTransition(): { step: 'done'; serverPreview: null } {
+  return { step: 'done', serverPreview: null };
 }
 
 export type CycleGateAction = 'block' | 'proceed';

@@ -7,6 +7,7 @@ import type { UseReviewEditorResult } from '../hooks/useReviewEditor.js';
 import type { UseLivePreviewReturn } from '../useLivePreview.js';
 import { getReviewJsonPanelValue } from '../steps/review-json-panel.js';
 import { ReviewDetailsEditor, type ReviewDetailsEditorProps } from './ReviewDetailsEditor.js';
+import { FixedPanel } from '../../../tui/windowed-panel.js';
 
 type ReviewDetailsEditorConfig = Pick<
   ReviewDetailsEditorProps,
@@ -135,7 +136,7 @@ function ReviewPanelFooter({
         : sidebarFocused
           ? sidebarFooter
           : reviewEditor.showJson
-            ? '  [j/k] scroll  [Ctrl+u/d] half-page  [gg/G] top/bottom  [Tab] focus list'
+            ? '  [↑↓] scroll  [Ctrl+u/d] half-page  [gg/G] top/bottom  [Tab] focus list'
             : '  [Tab] focus list  (edit fields)' +
               (reviewEditor.currentTokenSuggestions().length > 0 ? '  [t] token review' : '')}
       {livePreview.status === 'running' && <Text>{`  ${livePreviewSpinner} live preview`}</Text>}
@@ -163,8 +164,9 @@ export function ReviewComponentPanel({
 }: ReviewComponentPanelProps): React.ReactElement {
   const propCount = Object.keys(selectedEntry.$properties).length;
   const slotCount = selectedEntry.$slots ? Object.keys(selectedEntry.$slots).length : 0;
+  const contentHeight = Math.max(1, height - 3);
   return (
-    <Box flexGrow={1} paddingLeft={1} flexDirection="column">
+    <FixedPanel width={width} height={height} borderStyle={undefined} paddingLeft={1}>
       <Box>
         <Text bold>{selectedKey}</Text>
         <Box flexGrow={1} />
@@ -181,13 +183,13 @@ export function ReviewComponentPanel({
         reviewMetadata={reviewMetadata}
         reviewEditor={reviewEditor}
         width={width}
-        height={height}
+        height={contentHeight}
         sourceBorderColor={sourceBorderColor}
         jsonValue={jsonValue}
         sidebarFocused={sidebarFocused}
         fieldEditor={fieldEditor}
       />
-      {saveError && <Text color={PALETTE.error}>{'✗ ' + saveError}</Text>}
+      {saveError ? <Text color={PALETTE.error}>{'✗ ' + saveError}</Text> : <Text> </Text>}
       <Text dimColor>
         <ReviewPanelFooter
           reviewEditor={reviewEditor}
@@ -197,6 +199,6 @@ export function ReviewComponentPanel({
           livePreviewSpinner={livePreviewSpinner}
         />
       </Text>
-    </Box>
+    </FixedPanel>
   );
 }

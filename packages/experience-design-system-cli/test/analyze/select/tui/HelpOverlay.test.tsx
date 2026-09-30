@@ -39,7 +39,7 @@ describe('HelpOverlay', () => {
   it('calls onClose when ? is pressed', async () => {
     const onClose = vi.fn();
     const { stdin } = render(<HelpOverlay mode="review" onClose={onClose} />);
-    stdin.write('?');
+    stdin.write('h');
     await new Promise((r) => setTimeout(r, 30));
     expect(onClose).toHaveBeenCalled();
   });

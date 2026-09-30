@@ -2418,18 +2418,40 @@ export function copyComponentFromCache(
   db.exec('BEGIN');
   try {
     const srcComp = db
-      .prepare(`SELECT description, status FROM raw_components WHERE session_id = ? AND component_id = ?`)
-      .get(sourceSessionId, componentId) as { description: string | null; status: string } | undefined;
+      .prepare(
+        `SELECT description, status, component_description_rationale, props_rationale, slots_rationale
+         FROM raw_components WHERE session_id = ? AND component_id = ?`,
+      )
+      .get(sourceSessionId, componentId) as
+      | {
+          description: string | null;
+          status: string;
+          component_description_rationale: string | null;
+          props_rationale: string | null;
+          slots_rationale: string | null;
+        }
+      | undefined;
 
     if (srcComp) {
       db.prepare(
-        `UPDATE raw_components SET description = ?, status = ?, extracted_at = ? WHERE session_id = ? AND component_id = ?`,
-      ).run(srcComp.description, srcComp.status, now, targetSessionId, componentId);
+        `UPDATE raw_components
+         SET description = ?, status = ?, component_description_rationale = ?, props_rationale = ?, slots_rationale = ?, extracted_at = ?
+         WHERE session_id = ? AND component_id = ?`,
+      ).run(
+        srcComp.description,
+        srcComp.status,
+        srcComp.component_description_rationale,
+        srcComp.props_rationale,
+        srcComp.slots_rationale,
+        now,
+        targetSessionId,
+        componentId,
+      );
     }
 
     const srcProps = db
       .prepare(
-        `SELECT name, cdf_type, cdf_category, cdf_token_kind, required, description, default_value
+        `SELECT name, cdf_type, cdf_category, cdf_token_kind, required, description, default_value, rationale
          FROM raw_props WHERE session_id = ? AND component_id = ?`,
       )
       .all(sourceSessionId, componentId) as Array<{
@@ -2440,11 +2462,12 @@ export function copyComponentFromCache(
       required: number;
       description: string | null;
       default_value: string | null;
+      rationale: string | null;
     }>;
 
     for (const p of srcProps) {
       db.prepare(
-        `UPDATE raw_props SET cdf_type = ?, cdf_category = ?, cdf_token_kind = ?, required = ?, description = ?, default_value = ?
+        `UPDATE raw_props SET cdf_type = ?, cdf_category = ?, cdf_token_kind = ?, required = ?, description = ?, default_value = ?, rationale = ?
          WHERE session_id = ? AND component_id = ? AND name = ?`,
       ).run(
         p.cdf_type,
@@ -2453,6 +2476,7 @@ export function copyComponentFromCache(
         p.required,
         p.description,
         p.default_value,
+        p.rationale,
         targetSessionId,
         componentId,
         p.name,
@@ -2480,16 +2504,17 @@ export function copyComponentFromCache(
     }
 
     const srcSlots = db
-      .prepare(`SELECT name, required, description FROM raw_slots WHERE session_id = ? AND component_id = ?`)
+      .prepare(`SELECT name, required, description, rationale FROM raw_slots WHERE session_id = ? AND component_id = ?`)
       .all(sourceSessionId, componentId) as Array<{
       name: string;
       required: number;
       description: string | null;
+      rationale: string | null;
     }>;
     for (const s of srcSlots) {
       db.prepare(
-        `UPDATE raw_slots SET required = ?, description = ? WHERE session_id = ? AND component_id = ? AND name = ?`,
-      ).run(s.required, s.description, targetSessionId, componentId, s.name);
+        `UPDATE raw_slots SET required = ?, description = ?, rationale = ? WHERE session_id = ? AND component_id = ? AND name = ?`,
+      ).run(s.required, s.description, s.rationale, targetSessionId, componentId, s.name);
     }
 
     db.prepare(`DELETE FROM raw_slot_allowed_components WHERE session_id = ? AND component_id = ?`).run(

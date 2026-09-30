@@ -19,7 +19,7 @@ async function runSetup(opts: SetupSkipFlags): Promise<void> {
     process.exit(1);
   }
 
-  const { render } = await import('ink');
+  const { renderWithGoodbye } = await import('../tui/render-with-goodbye.js');
   const { createElement } = await import('react');
   const { SetupScreen } = await import('./SetupScreen.js');
 
@@ -28,7 +28,7 @@ async function runSetup(opts: SetupSkipFlags): Promise<void> {
   const completion: { outcome: SetupOutcome | null } = { outcome: null };
   let unmountInk: (() => void) | null = null;
 
-  const { waitUntilExit, unmount } = render(
+  const { waitUntilExit, unmount } = renderWithGoodbye(
     createElement(SetupScreen, {
       version: getCliVersion(),
       repoRoot,

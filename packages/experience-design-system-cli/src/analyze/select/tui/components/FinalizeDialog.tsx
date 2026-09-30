@@ -5,7 +5,7 @@ import { Box, Text } from 'ink';
 import { useImmediateInput } from '../hooks/useImmediateInput.js';
 import { removedComponentsHeader, removedComponentLine } from './removed-components-text.js';
 
-/** Max removed-component lines shown at once; the rest scroll with j/k.
+/** Max removed-component lines shown at once; the rest scroll with arrow keys.
  *  Exported so the parent's scroll-offset clamping stays in sync. */
 export const FINALIZE_REMOVED_WINDOW = 6;
 
@@ -21,7 +21,7 @@ type FinalizeDialogProps = {
   /** Status of the accepted-set preview fired when the dialog opened. While
    *  'running', the deletion section shows a spinner instead of a (stale) list. */
   previewStatus?: 'idle' | 'running' | 'done' | 'error';
-  /** Scroll offset into the removed list (owned by the parent; j/k adjust it). */
+  /** Scroll offset into the removed list (owned by the parent; arrow keys adjust it). */
   removedScrollOffset?: number;
 };
 
@@ -38,8 +38,8 @@ export function FinalizeDialog({
   removedScrollOffset = 0,
 }: FinalizeDialogProps): React.ReactElement {
   useImmediateInput((input, key) => {
-    // j/k scroll the removed list; the parent owns the offset (handled there).
-    if (input === 'j' || input === 'k' || key.upArrow || key.downArrow) return;
+    // Arrow keys scroll the removed list; the parent owns the offset (handled there).
+    if (key.upArrow || key.downArrow) return;
     if (input === 'y' || key.return) {
       onConfirm();
     } else if (input === 'n' || key.escape) {
@@ -110,7 +110,7 @@ export function FinalizeDialog({
             </Text>
           ))}
           {hasMoreBelow && <Text dimColor>{'  ↓ more below'}</Text>}
-          {removed.length > FINALIZE_REMOVED_WINDOW && <Text dimColor>{'  [j/k] scroll deletions'}</Text>}
+          {removed.length > FINALIZE_REMOVED_WINDOW && <Text dimColor>{'  [↑↓] scroll deletions'}</Text>}
           <Text> </Text>
         </>
       )}

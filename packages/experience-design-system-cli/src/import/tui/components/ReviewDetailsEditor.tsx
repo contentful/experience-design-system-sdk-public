@@ -95,10 +95,12 @@ export function ReviewDetailsEditor({
       editor={
         <FieldEditor
           {...fieldEditor}
-          key={fieldEditor.key ?? selectedKey}
+          key={`${fieldEditor.key ?? selectedKey}:${sidebarFocused ? 'list' : 'panel'}`}
           width={width}
           height={height}
+          fixedHeight
           active={!sidebarFocused}
+          initialFocusTarget={sidebarFocused ? undefined : fieldEditor.initialFocusTarget}
           metadata={toFieldEditorMetadata(reviewMetadata)}
         />
       }
