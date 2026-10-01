@@ -80,7 +80,8 @@ export function resolveComponentExportName(
   exported: { has(name: string): boolean },
   allowVariableDeclaration = false,
 ): string | undefined {
-  const name = exportKey === 'default' ? resolveDefaultExportName(declarations, exported, allowVariableDeclaration) : exportKey;
+  const name =
+    exportKey === 'default' ? resolveDefaultExportName(declarations, exported, allowVariableDeclaration) : exportKey;
   return name && /^[A-Z]/.test(name) ? name : undefined;
 }
 
