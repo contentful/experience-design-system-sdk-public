@@ -119,6 +119,13 @@ defineProps<{ title: string }>();
     const result = await extractComponents([page, layout, error, component]);
     const names = result.components.map((c) => c.name);
     expect(names).toEqual(['Button']);
+    expect(result.exclusions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ itemType: 'file', name: '+page.svelte', stage: 'file-filter' }),
+        expect.objectContaining({ itemType: 'file', name: '+layout.svelte', stage: 'file-filter' }),
+        expect.objectContaining({ itemType: 'file', name: '+error.svelte', stage: 'file-filter' }),
+      ]),
+    );
   });
 
   it('dedupes same-named components across Svelte and React in the same package by path preference', async () => {
@@ -503,6 +510,15 @@ defineProps<{ label: string }>();
 
     expect(result.components.find((c) => c.name === 'useFilter')).toBeUndefined();
     expect(result.warnings.some((w) => w.includes('Skipped hook: useFilter'))).toBe(true);
+    expect(result.exclusions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          itemType: 'component',
+          name: 'useFilter',
+          stage: 'component-filter',
+        }),
+      ]),
+    );
   });
 
   it('does not filter exports that start with uppercase Use', async () => {

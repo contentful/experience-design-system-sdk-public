@@ -1,4 +1,4 @@
-import type { ComponentExtractionResult, ComponentExtractor, ExtractorOptions } from '../types.js';
+import type { ComponentExtractionResult, ComponentExtractor, ExtractionExclusion, ExtractorOptions } from '../types.js';
 import { extractStencilComponents } from './stencil.js';
 import { extractReactComponents } from './react.js';
 import { extractVueTsxComponents } from './vue-tsx.js';
@@ -289,6 +289,7 @@ export async function extractComponents(
   opts?: ExtractorOptions,
 ): Promise<ComponentExtractionResult> {
   const filesByExtractor = new Map<ComponentExtractor, string[]>();
+  const exclusions: ExtractionExclusion[] = [];
 
   for (const extractor of extractors) {
     filesByExtractor.set(extractor, []);
@@ -298,6 +299,17 @@ export async function extractComponents(
     for (const extractor of extractors) {
       if (extractor.fileFilter(filePath)) {
         filesByExtractor.get(extractor)!.push(filePath);
+      } else if (extractor.name === 'svelte' && filePath.endsWith('.svelte')) {
+        const filename = filePath.replace(/\\/g, '/').split('/').pop() ?? '';
+        if (/^\+(page|layout|error)\.svelte$/.test(filename)) {
+          exclusions.push({
+            itemType: 'file',
+            name: filename,
+            source: filePath,
+            reason: 'SvelteKit route entrypoints are framework-managed, not authorable components',
+            stage: 'file-filter',
+          });
+        }
       }
     }
   }
@@ -351,6 +363,7 @@ export async function extractComponents(
 
   for (const result of results) {
     allWarnings.push(...result.warnings);
+    exclusions.push(...(result.exclusions ?? []));
     for (const component of result.components) {
       const scopeKey = getFamilyScopeKey(component.source, component.name, topLevelFamiliesByRoot);
       const identityKey = `${component.name}::${scopeKey}`;
@@ -360,6 +373,13 @@ export async function extractComponents(
         allWarnings.push(
           `Duplicate component "${component.name}" found in ${component.source} (already seen in ${existing.source}); ${selected.reason}`,
         );
+        exclusions.push({
+          itemType: 'component',
+          name: selected.loser.name,
+          source: selected.loser.source,
+          reason: `duplicate identity; ${selected.reason}`,
+          stage: 'duplicate-filter',
+        });
         componentsByKey.set(identityKey, selected.winner);
         continue;
       }
@@ -386,6 +406,13 @@ export async function extractComponents(
   for (const component of allComponents) {
     if (/^use[A-Z]/.test(component.name)) {
       allWarnings.push(`Skipped hook: ${component.name} (hooks are not renderable components)`);
+      exclusions.push({
+        itemType: 'component',
+        name: component.name,
+        source: component.source,
+        reason: 'Hook names are not renderable components',
+        stage: 'component-filter',
+      });
       continue;
     }
     filteredComponents.push(component);
@@ -394,5 +421,6 @@ export async function extractComponents(
   return {
     components: filteredComponents.sort((a, b) => a.name.localeCompare(b.name)),
     warnings: allWarnings,
+    exclusions,
   };
 }

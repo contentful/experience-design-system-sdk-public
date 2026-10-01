@@ -4,6 +4,7 @@ import type {
   RawPropDefinition,
   RawSlotDefinition,
   ComponentExtractionResult,
+  ExtractionExclusion,
 } from '../types.js';
 import {
   extractAllowedValues,
@@ -23,13 +24,14 @@ export async function extractVueTsxComponents(filePaths: string[]): Promise<Comp
   const { componentFiles, project } = extractionContext;
 
   const warnings: string[] = [];
+  const exclusions: ExtractionExclusion[] = [];
   const components: RawComponentDefinition[] = [];
 
   for (const filePath of componentFiles) {
     try {
       const sourceFile = project.getSourceFile(filePath);
       if (!sourceFile) continue;
-      components.push(...extractFromSourceFile(sourceFile));
+      components.push(...extractFromSourceFile(sourceFile, exclusions));
     } catch (e) {
       warnings.push(`Failed to extract from ${filePath}: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -38,10 +40,11 @@ export async function extractVueTsxComponents(filePaths: string[]): Promise<Comp
   return {
     components: components.sort((a, b) => a.name.localeCompare(b.name)),
     warnings,
+    exclusions,
   };
 }
 
-function extractFromSourceFile(sourceFile: SourceFile): RawComponentDefinition[] {
+function extractFromSourceFile(sourceFile: SourceFile, exclusions: ExtractionExclusion[]): RawComponentDefinition[] {
   const components: RawComponentDefinition[] = [];
   const exported = sourceFile.getExportedDeclarations();
 
@@ -55,7 +58,16 @@ function extractFromSourceFile(sourceFile: SourceFile): RawComponentDefinition[]
     }
 
     if (!/^[A-Z]/.test(name)) continue;
-    if (name.startsWith('use')) continue;
+    if (name.startsWith('use')) {
+      exclusions.push({
+        itemType: 'component',
+        name,
+        source: sourceFile.getFilePath(),
+        reason: 'Vue composition hook names are not renderable components',
+        stage: 'component-filter',
+      });
+      continue;
+    }
 
     const component = extractVueTsxComponent(declarations, name, sourceFile);
     if (component) {
