@@ -50,6 +50,44 @@ export function getTsxExtractionContext(
   };
 }
 
+export function extractTsxComponents<T>(
+  filePaths: string[],
+  componentFilePattern: RegExp,
+  extractSourceFile: (sourceFile: SourceFile) => T[],
+): { componentFiles: string[]; project: Project; components: T[]; warnings: string[] } | undefined {
+  const extractionContext = getTsxExtractionContext(filePaths, componentFilePattern);
+  if (!extractionContext) return undefined;
+
+  const warnings: string[] = [];
+  const components: T[] = [];
+
+  for (const filePath of extractionContext.componentFiles) {
+    try {
+      const sourceFile = extractionContext.project.getSourceFile(filePath);
+      if (!sourceFile) continue;
+      components.push(...extractSourceFile(sourceFile));
+    } catch (e) {
+      warnings.push(`Failed to extract from ${filePath}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  return { ...extractionContext, components, warnings };
+}
+
+export function resolveComponentExportName(
+  exportKey: string,
+  declarations: Node[],
+  exported: { has(name: string): boolean },
+  allowVariableDeclaration = false,
+): string | undefined {
+  const name = exportKey === 'default' ? resolveDefaultExportName(declarations, exported, allowVariableDeclaration) : exportKey;
+  return name && /^[A-Z]/.test(name) ? name : undefined;
+}
+
+export function isCompositionHookName(name: string): boolean {
+  return name.startsWith('use');
+}
+
 export function resolveDefaultExportName(
   declarations: Node[],
   exported: { has(name: string): boolean },
