@@ -785,6 +785,7 @@ export function WizardApp({
           ...(state.agentModel ? { model: state.agentModel } : {}),
           ...(selectionPromptText !== undefined ? { promptText: selectionPromptText } : {}),
           ...(selectionPromptPath ? { promptPath: selectionPromptPath } : {}),
+          noCache: effectiveNoCache,
         });
       })()
         .catch((error: unknown) => {
@@ -1957,15 +1958,14 @@ export function WizardApp({
       case 'generating': {
         const p = state.generateProgress;
         const stepNum = hasTokenStage ? 4 : 3;
-        const progressDetail = p
-          ? `[${p.done}/${p.total}] ${p.current} — this can take 10–30 minutes for large libraries`
-          : `Starting up ${state.agent}... (this can take 10–30 minutes for large libraries — grab a coffee)`;
+        const displayAgent = state.agent.charAt(0).toUpperCase() + state.agent.slice(1);
+        const progressDetail = p ? `[${p.done}/${p.total}] ${p.current}` : `Starting up ${displayAgent}...`;
         return (
           <RunningStep
             stepNumber={stepNum}
             totalSteps={totalSteps}
             title="Generating definitions"
-            description={`${formatAcceptanceSummary({ accepted: state.acceptedCount, autoRejected: state.autoRejectedCount })} ${state.agent} is mapping your TypeScript types to Contentful's CDF format.${hasTokens ? ' Using your design tokens for prop resolution.' : ''}`}
+            description={`${formatAcceptanceSummary({ accepted: state.acceptedCount, autoRejected: state.autoRejectedCount })} ${displayAgent} is mapping your selected components to CDF format.${hasTokens ? ' Using your design tokens for prop resolution.' : ''}`}
             detail={progressDetail}
           />
         );
