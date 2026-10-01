@@ -1,7 +1,8 @@
 import { Text } from 'ink';
 import { render } from 'ink-testing-library';
+import { useEffect, type ReactElement } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { GoodbyeBoundary } from '../../src/tui/render-with-goodbye.js';
+import { GoodbyeBoundary, renderWithGoodbye, useScreenTransitionClear } from '../../src/tui/render-with-goodbye.js';
 
 describe('renderWithGoodbye', () => {
   afterEach(() => {
@@ -44,6 +45,25 @@ describe('renderWithGoodbye', () => {
     expect(instance.lastFrame()).toContain('Goodbye!');
     await new Promise((resolve) => setTimeout(resolve, 60));
     expect(exit).toHaveBeenCalledWith(0);
+    instance.unmount();
+  });
+
+  it('exposes the mounted Ink instance clear operation through the transition hook', async () => {
+    function ClearOnMount(): ReactElement {
+      const clearScreen = useScreenTransitionClear();
+      useEffect(() => {
+        const timer = setTimeout(clearScreen, 0);
+        return () => clearTimeout(timer);
+      }, [clearScreen]);
+      return <Text>Active view</Text>;
+    }
+
+    const instance = renderWithGoodbye(<ClearOnMount />, { patchConsole: false });
+    const clear = vi.spyOn(instance, 'clear');
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(clear).toHaveBeenCalledTimes(1);
     instance.unmount();
   });
 });
