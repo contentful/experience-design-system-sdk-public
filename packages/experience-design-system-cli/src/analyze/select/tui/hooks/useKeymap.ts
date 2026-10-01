@@ -34,7 +34,7 @@ export function useKeymap(context: KeymapContext, handlers: KeymapHandlers): voi
       handlers.onQuit();
       return;
     }
-    if (input === '?') {
+    if (input === 'h') {
       handlers.onToggleHelp();
       return;
     }
@@ -70,17 +70,17 @@ export function useKeymap(context: KeymapContext, handlers: KeymapHandlers): voi
     }
 
     if (context.sidebarFocused) {
-      if (key.upArrow || input === 'k') {
+      if (key.upArrow) {
         handlers.onSidebarUp();
-      } else if (key.downArrow || input === 'j') {
+      } else if (key.downArrow) {
         handlers.onSidebarDown();
       } else if (key.return) {
         handlers.onSidebarSelect();
       }
     } else {
-      if (key.upArrow || input === 'k') {
+      if (key.upArrow) {
         handlers.onScrollUp();
-      } else if (key.downArrow || input === 'j') {
+      } else if (key.downArrow) {
         handlers.onScrollDown();
       }
     }

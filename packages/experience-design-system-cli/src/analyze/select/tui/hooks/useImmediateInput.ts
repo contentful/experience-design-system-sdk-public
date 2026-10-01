@@ -73,24 +73,56 @@ function parseInput(data: string): { input: string; key: ImmediateInputKey } {
   return { input, key };
 }
 
-export function useImmediateInput(handler: ImmediateInputHandler): void {
+type RegisteredHandler = (input: string, key: ImmediateInputKey) => void;
+
+type InputRegistry = {
+  handlers: Set<RegisteredHandler>;
+  onData: (data: Buffer | string) => void;
+  setRawMode: (enabled: boolean) => void;
+};
+
+const inputRegistries = new WeakMap<object, InputRegistry>();
+
+function registerInputHandler(
+  stdin: NodeJS.ReadStream,
+  setRawMode: (enabled: boolean) => void,
+  handler: RegisteredHandler,
+): () => void {
+  let registry = inputRegistries.get(stdin);
+  if (!registry) {
+    const handlers = new Set<RegisteredHandler>();
+    const onData = (data: Buffer | string): void => {
+      const str = Buffer.isBuffer(data) ? data.toString('utf8') : data;
+      const { input, key } = parseInput(str);
+      for (const registered of [...handlers]) registered(input, key);
+    };
+    registry = { handlers, onData, setRawMode };
+    inputRegistries.set(stdin, registry);
+    setRawMode(true);
+    stdin.on('data', onData);
+  }
+
+  registry.handlers.add(handler);
+  return () => {
+    const current = inputRegistries.get(stdin);
+    if (!current) return;
+    current.handlers.delete(handler);
+    if (current.handlers.size === 0) {
+      stdin.off('data', current.onData);
+      current.setRawMode(false);
+      inputRegistries.delete(stdin);
+    }
+  };
+}
+
+export function useImmediateInput(handler: ImmediateInputHandler, enabled = true): void {
   const { stdin, setRawMode } = useStdin();
   const handlerRef = useRef(handler);
   handlerRef.current = handler;
 
   useLayoutEffect(() => {
-    setRawMode(true);
-
-    const handleData = (data: Buffer | string) => {
-      const str = Buffer.isBuffer(data) ? data.toString('utf8') : data;
-      const { input, key } = parseInput(str);
-      handlerRef.current(input, key);
-    };
-
-    stdin.on('data', handleData);
-    return () => {
-      stdin.off('data', handleData);
-      setRawMode(false);
-    };
-  }, [stdin, setRawMode]);
+    if (!enabled) return;
+    const unregister = registerInputHandler(stdin, setRawMode, (input, key) => handlerRef.current(input, key));
+    return unregister;
+  }, [enabled, stdin, setRawMode]);
 }

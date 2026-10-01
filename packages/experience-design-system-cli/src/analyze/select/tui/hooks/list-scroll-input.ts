@@ -20,11 +20,11 @@ export function handleListScrollInput(
     onExit();
     return true;
   }
-  if (key.upArrow || input === 'k') {
+  if (key.upArrow) {
     onScroll((offset) => Math.max(0, offset - 1));
     return true;
   }
-  if (key.downArrow || input === 'j') {
+  if (key.downArrow) {
     onScroll((offset) => (maxOffset === undefined ? offset + 1 : Math.min(maxOffset, offset + 1)));
     return true;
   }
