@@ -1,4 +1,4 @@
-import { Box, Text } from 'ink';
+import { Box, Text, type BoxProps } from 'ink';
 import type { ReactElement, ReactNode } from 'react';
 import { PALETTE } from '../analyze/select/tui/theme.js';
 
@@ -12,20 +12,60 @@ export interface WindowedPanelProps {
   children: ReactNode;
 }
 
-/** Shared frame for panels whose viewport must not change with their contents. */
-export function WindowedPanel({ width, height, title, focused, children }: WindowedPanelProps): ReactElement {
+export interface FixedPanelProps {
+  width: number;
+  height?: number;
+  minHeight?: BoxProps['minHeight'];
+  focused?: boolean;
+  borderStyle?: BoxProps['borderStyle'];
+  borderColor?: BoxProps['borderColor'];
+  paddingLeft?: BoxProps['paddingLeft'];
+  clipOverflow?: boolean;
+  children: ReactNode;
+}
+
+/** Shared panel frame that clips content instead of resizing its layout slot. */
+export function FixedPanel({
+  width,
+  height,
+  minHeight,
+  focused = false,
+  borderStyle,
+  borderColor,
+  paddingLeft,
+  clipOverflow = true,
+  children,
+}: FixedPanelProps): ReactElement {
   return (
     <Box
       flexDirection="column"
       width={width}
-      {...(height === undefined ? {} : { height, overflowY: 'hidden' as const })}
+      {...(height === undefined ? {} : { height })}
+      {...(minHeight === undefined ? {} : { minHeight })}
+      {...(height === undefined || !clipOverflow ? {} : { overflowY: 'hidden' as const })}
       flexShrink={0}
+      borderStyle={borderStyle}
+      borderColor={focused ? (borderColor ?? 'white') : borderColor}
+      paddingLeft={paddingLeft}
+    >
+      {children}
+    </Box>
+  );
+}
+
+/** Shared frame for panels whose viewport must not change with their contents. */
+export function WindowedPanel({ width, height, title, focused, children }: WindowedPanelProps): ReactElement {
+  return (
+    <FixedPanel
+      width={width}
       borderStyle="single"
       borderColor={focused ? 'white' : undefined}
+      {...(height === undefined ? {} : { height })}
+      focused={focused}
     >
       {title && <WindowedPanelHeader title={title} width={width} focused={focused} />}
       {children}
-    </Box>
+    </FixedPanel>
   );
 }
 
