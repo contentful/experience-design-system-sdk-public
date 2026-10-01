@@ -438,6 +438,7 @@ export function WizardApp({
   const credentialsReadyRef = useRef(false);
   const agentAuthVerifiedRef = useRef(false);
   const scopeGateCompletedRef = useRef(false);
+  const scopeComponentsRef = useRef<{ sessionId: string; components: ScopeComponent[] } | null>(null);
   const existingEntitiesPromiseRef = useRef<Promise<boolean> | null>(null);
   const generatePromiseRef = useRef<Promise<{
     exitCode: number;
@@ -2331,12 +2332,29 @@ export function WizardApp({
         }
         const sessionId = state.extractSessionId;
         const db = openPipelineDb();
-        let components: ScopeComponent[];
+        let loadedComponents: ScopeComponent[];
         try {
-          components = loadScopeComponents(db, sessionId);
+          loadedComponents = loadScopeComponents(db, sessionId);
         } finally {
           db.close();
         }
+        const remembered = scopeComponentsRef.current;
+        if (loadedComponents.length > 0 && remembered?.sessionId !== sessionId) {
+          scopeComponentsRef.current = { sessionId, components: loadedComponents };
+        }
+        // Confirming the scope changes accepted rows to `generated` before the
+        // async cache/auth transition completes. A resize can render this case
+        // again while those rows are no longer returned by loadScopeComponents;
+        // keep the last valid list for this session instead of showing the
+        // unrecoverable empty-session error.
+        const rememberedForSession =
+          scopeComponentsRef.current?.sessionId === sessionId ? scopeComponentsRef.current.components : null;
+        const components =
+          scopeGateCompletedRef.current && rememberedForSession
+            ? rememberedForSession
+            : loadedComponents.length > 0
+              ? loadedComponents
+              : rememberedForSession ?? [];
         return (
           <ScopeGateStep
             components={components}

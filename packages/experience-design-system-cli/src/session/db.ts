@@ -530,10 +530,22 @@ export interface ApplyToolCallsResult {
   warnings: string[];
 }
 
+export interface ApplyToolCallsOptions {
+  /** Component names that may appear in generated slot allowed-components lists. */
+  allowedComponentNames?: ReadonlySet<string>;
+}
+
 export interface ComponentReviewMetadata {
   sourcePath: string | null;
   componentSource: string | null;
-  props: Record<string, { rationale: string | null; sourceStartLine: number | null; sourceEndLine: number | null }>;
+  props: Record<
+    string,
+    {
+      rationale: string | null;
+      sourceStartLine: number | null;
+      sourceEndLine: number | null;
+    }
+  >;
 }
 
 export function loadComponentReviewMetadata(
@@ -592,8 +604,17 @@ export interface ComponentRationale {
   descriptionRationale: string | null;
   propsRationale: string | null;
   slotsRationale: string | null;
-  props: Array<{ name: string; category: string | null; description: string | null; rationale: string | null }>;
-  slots: Array<{ name: string; description: string | null; rationale: string | null }>;
+  props: Array<{
+    name: string;
+    category: string | null;
+    description: string | null;
+    rationale: string | null;
+  }>;
+  slots: Array<{
+    name: string;
+    description: string | null;
+    rationale: string | null;
+  }>;
 }
 
 export function loadComponentRationale(
@@ -669,6 +690,7 @@ export function applyToolCalls(
   componentName: string,
   calls: ToolCall[],
   incomingWarnings: string[],
+  options: ApplyToolCallsOptions = {},
 ): ApplyToolCallsResult {
   const now = new Date().toISOString();
   const warnings = [...incomingWarnings];
@@ -811,9 +833,20 @@ export function applyToolCalls(
         }
         if (call.allowed_components !== undefined) {
           deleteAllowedComponents.run(sessionId, componentId, call.slot);
-          call.allowed_components.forEach((ac, i) =>
-            insertAllowedComponent.run(sessionId, componentId, call.slot, ac, i),
-          );
+          const allowedComponents = options.allowedComponentNames
+            ? call.allowed_components.filter((allowedComponent) => options.allowedComponentNames!.has(allowedComponent))
+            : call.allowed_components;
+          if (options.allowedComponentNames) {
+            const dropped = [
+              ...new Set(call.allowed_components.filter((ac) => !options.allowedComponentNames!.has(ac))),
+            ];
+            for (const allowedComponent of dropped) {
+              warnings.push(
+                `${componentName}: classify_slot '${call.slot}' — dropped unknown allowed component '${allowedComponent}'`,
+              );
+            }
+          }
+          allowedComponents.forEach((ac, i) => insertAllowedComponent.run(sessionId, componentId, call.slot, ac, i));
         }
         slots++;
       }
@@ -891,7 +924,11 @@ export function storeRawComponents(
   db: DatabaseSync,
   sessionId: string,
   components: RawComponentDefinition[],
-  options?: { status?: string; preserveCDF?: boolean; preserveStatus?: boolean },
+  options?: {
+    status?: string;
+    preserveCDF?: boolean;
+    preserveStatus?: boolean;
+  },
 ): void {
   const now = new Date().toISOString();
 
@@ -928,8 +965,17 @@ export function storeRawComponents(
       cdf_token_kind: string | null;
     };
     type DescSnapshot = { component_id: string; description: string };
-    type AVSnapshot = { component_id: string; prop_name: string; position: number; value: string };
-    type StatusSnapshot = { component_id: string; status: string; reject_reason: string | null };
+    type AVSnapshot = {
+      component_id: string;
+      prop_name: string;
+      position: number;
+      value: string;
+    };
+    type StatusSnapshot = {
+      component_id: string;
+      status: string;
+      reject_reason: string | null;
+    };
 
     let cdfSnapshot: CDFSnapshot[] = [];
     let descSnapshot: DescSnapshot[] = [];
@@ -1494,14 +1540,22 @@ export async function loadComponentSourceRefs(db: DatabaseSync, sessionId: strin
     .prepare(
       `SELECT component_id, name, source, source_path FROM raw_components WHERE session_id = ? AND status = 'generated' ORDER BY rowid`,
     )
-    .all(sessionId) as Array<{ component_id: string; name: string; source: string; source_path: string | null }>;
+    .all(sessionId) as Array<{
+    component_id: string;
+    name: string;
+    source: string;
+    source_path: string | null;
+  }>;
   const propsFor = db.prepare(
     `SELECT name, type FROM raw_props WHERE session_id = ? AND component_id = ? ORDER BY position`,
   );
 
   return Promise.all(
     rows.map((r) => {
-      const props = propsFor.all(sessionId, r.component_id) as Array<{ name: string; type: string }>;
+      const props = propsFor.all(sessionId, r.component_id) as Array<{
+        name: string;
+        type: string;
+      }>;
       return loadComponentSourceRef(
         r.name,
         r.source_path ?? r.source,
@@ -1518,7 +1572,10 @@ export function renameEmptySlots(
   componentId: string,
   componentName: string,
   slotCount: number,
-): { renames: Array<{ oldName: string; newName: string }>; warnings: string[] } {
+): {
+  renames: Array<{ oldName: string; newName: string }>;
+  warnings: string[];
+} {
   const emptySlots = db
     .prepare(
       `SELECT name, position FROM raw_slots
@@ -1646,9 +1703,12 @@ export function storeCDFComponents(
         }
 
         const existingDefaults = new Map<string, number>(
-          (readExistingSlotDefaults.all(sessionId, componentId) as Array<{ name: string; is_default: number }>).map(
-            (r) => [r.name, r.is_default],
-          ),
+          (
+            readExistingSlotDefaults.all(sessionId, componentId) as Array<{
+              name: string;
+              is_default: number;
+            }>
+          ).map((r) => [r.name, r.is_default]),
         );
         deleteSlotAllowedComponents.run(sessionId, componentId);
         deleteSlots.run(sessionId, componentId);
@@ -1921,7 +1981,11 @@ export function loadScopeComponents(db: DatabaseSync, sessionId: string): ScopeC
       `SELECT component_id, name, position
        FROM raw_slots WHERE session_id = ? ORDER BY component_id, position`,
     )
-    .all(sessionId) as Array<{ component_id: string; name: string; position: number }>;
+    .all(sessionId) as Array<{
+    component_id: string;
+    name: string;
+    position: number;
+  }>;
   const allowedRows = db
     .prepare(
       `SELECT component_id, slot_name, position, allowed_component
@@ -2201,7 +2265,11 @@ export function computeMapTokensInputHash(
 
   const defaultMappings = db
     .prepare('SELECT raw_name, path, source FROM raw_token_name_paths WHERE session_id = ? ORDER BY raw_name')
-    .all(sessionId) as Array<{ raw_name: string; path: string; source: RawTokenNamePathSource }>;
+    .all(sessionId) as Array<{
+    raw_name: string;
+    path: string;
+    source: RawTokenNamePathSource;
+  }>;
 
   const payload = {
     props: props.map((p) => ({
@@ -2314,7 +2382,14 @@ export function storeCache(
   promptHash: string = '',
 ): void {
   storeCaches(db, [
-    { inputHash, entityType, entityId, sourceSessionId, humanEdited, promptHash },
+    {
+      inputHash,
+      entityType,
+      entityId,
+      sourceSessionId,
+      humanEdited,
+      promptHash,
+    },
   ]);
 }
 
@@ -2444,12 +2519,81 @@ export function markCacheHumanEdited(db: DatabaseSync, entityType: 'component' |
   ).run(now, entityType, entityId);
 }
 
+export interface UnknownSlotAllowedComponent {
+  componentId: string;
+  componentName: string;
+  slotName: string;
+  allowedComponent: string;
+}
+
+export function findUnknownSlotAllowedComponents(
+  db: DatabaseSync,
+  sessionId: string,
+  allowedComponentNames: ReadonlySet<string>,
+  componentId?: string,
+): UnknownSlotAllowedComponent[] {
+  const rows = db
+    .prepare(
+      `SELECT a.component_id, c.name AS component_name, a.slot_name, a.allowed_component
+       FROM raw_slot_allowed_components a
+       JOIN raw_components c ON c.session_id = a.session_id AND c.component_id = a.component_id
+       WHERE a.session_id = ? AND (? IS NULL OR a.component_id = ?)
+       ORDER BY a.component_id, a.slot_name, a.position`,
+    )
+    .all(sessionId, componentId ?? null, componentId ?? null) as Array<{
+    component_id: string;
+    component_name: string;
+    slot_name: string;
+    allowed_component: string;
+  }>;
+
+  return rows
+    .filter((row) => !allowedComponentNames.has(row.allowed_component))
+    .map((row) => ({
+      componentId: row.component_id,
+      componentName: row.component_name,
+      slotName: row.slot_name,
+      allowedComponent: row.allowed_component,
+    }));
+}
+
+/** Remove slot references that cannot resolve in the current manifest or target space. */
+export function filterUnknownSlotAllowedComponents(
+  db: DatabaseSync,
+  sessionId: string,
+  allowedComponentNames: ReadonlySet<string>,
+): UnknownSlotAllowedComponent[] {
+  const unknown = findUnknownSlotAllowedComponents(db, sessionId, allowedComponentNames);
+  if (unknown.length === 0) return unknown;
+
+  db.exec('BEGIN');
+  try {
+    const remove = db.prepare(
+      `DELETE FROM raw_slot_allowed_components
+       WHERE session_id = ? AND component_id = ? AND slot_name = ? AND allowed_component = ?`,
+    );
+    for (const row of unknown) {
+      remove.run(sessionId, row.componentId, row.slotName, row.allowedComponent);
+    }
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+  return unknown;
+}
+
+export interface CopyComponentFromCacheOptions {
+  allowedComponentNames?: ReadonlySet<string>;
+}
+
 export function copyComponentFromCache(
   db: DatabaseSync,
   sourceSessionId: string,
   targetSessionId: string,
   componentId: string,
   manageTransaction = true,
+  options: CopyComponentFromCacheOptions = {},
 ): void {
   const now = new Date().toISOString();
   if (manageTransaction) db.exec('BEGIN');
@@ -2570,7 +2714,10 @@ export function copyComponentFromCache(
     const insertSAC = db.prepare(
       `INSERT INTO raw_slot_allowed_components (session_id, component_id, slot_name, allowed_component, position) VALUES (?, ?, ?, ?, ?)`,
     );
-    for (const sac of srcSAC) {
+    const allowedSAC = options.allowedComponentNames
+      ? srcSAC.filter((sac) => options.allowedComponentNames!.has(sac.allowed_component))
+      : srcSAC;
+    for (const sac of allowedSAC) {
       insertSAC.run(targetSessionId, componentId, sac.slot_name, sac.allowed_component, sac.position);
     }
 
@@ -2584,13 +2731,18 @@ export function copyComponentFromCache(
 
 export function copyComponentsFromCache(
   db: DatabaseSync,
-  entries: Array<{ sourceSessionId: string; targetSessionId: string; componentId: string }>,
+  entries: Array<{
+    sourceSessionId: string;
+    targetSessionId: string;
+    componentId: string;
+  }>,
+  options: CopyComponentFromCacheOptions = {},
 ): void {
   if (entries.length === 0) return;
   db.exec('BEGIN');
   try {
     for (const entry of entries) {
-      copyComponentFromCache(db, entry.sourceSessionId, entry.targetSessionId, entry.componentId, false);
+      copyComponentFromCache(db, entry.sourceSessionId, entry.targetSessionId, entry.componentId, false, options);
     }
     db.exec('COMMIT');
   } catch (e) {
