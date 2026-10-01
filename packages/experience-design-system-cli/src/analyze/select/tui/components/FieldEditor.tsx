@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import figures from 'figures';
 import { PALETTE } from '../theme.js';
 import { Box, Text } from 'ink';
@@ -15,6 +15,7 @@ import type {
 import { useImmediateInput } from '../hooks/useImmediateInput.js';
 import { computeNextScrollOffset } from '../hooks/scroll-offset.js';
 import { findSlotCycles, type ComponentSlotInfo } from '../../../cycle-detection.js';
+import { FixedPanel } from '../../../../tui/windowed-panel.js';
 
 type PropMetadata = {
   rationale?: string | null;
@@ -35,6 +36,7 @@ export type FieldEditorProps = {
   value: string;
   width: number;
   height: number;
+  fixedHeight?: boolean;
   active?: boolean;
   onChange: (value: string) => void;
   onSave: () => void;
@@ -241,6 +243,10 @@ function Picker({ value, active }: { value: string; active: boolean }): React.Re
   );
 }
 
+function categorySwitchTarget(category: PropState['category']): 'content' | 'design' {
+  return category === 'content' ? 'design' : 'content';
+}
+
 function Toggle({ value, active }: { value: boolean; active: boolean }): React.ReactElement {
   return (
     <Box>
@@ -249,10 +255,40 @@ function Toggle({ value, active }: { value: boolean; active: boolean }): React.R
   );
 }
 
-function DefaultValueRow({ display, active }: { display: string; active: boolean }): React.ReactElement {
+function InlinePropField({
+  label,
+  selected,
+  focused = false,
+  children,
+  flexible = false,
+}: {
+  label: string;
+  selected: boolean;
+  focused?: boolean;
+  children: React.ReactNode;
+  flexible?: boolean;
+}): React.ReactElement {
+  return (
+    <Box
+      gap={1}
+      flexShrink={flexible ? 1 : 0}
+      flexGrow={flexible ? 1 : 0}
+    >
+      <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!selected && !focused}>
+        {focused ? '› ' : '  '}
+        {label}
+      </Text>
+      {children}
+    </Box>
+  );
+}
+
+function DefaultValueRow({ display, active, focused }: { display: string; active: boolean; focused: boolean }): React.ReactElement {
   return (
     <Box paddingLeft={2} gap={1}>
-      <Text dimColor>default:</Text>
+      <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused}>
+        {focused ? '› ' : '  '}default:
+      </Text>
       {active ? <Picker value={display} active={true} /> : <Text color={PALETTE.inverse}>{display}</Text>}
     </Box>
   );
@@ -371,11 +407,13 @@ function EditableValueList({
 function DefaultSubRow({
   prop,
   active,
+  focused,
   textCursor,
   cursorVisible,
 }: {
   prop: PropState;
   active: boolean;
+  focused: boolean;
   textCursor: number;
   cursorVisible: boolean;
 }): React.ReactElement {
@@ -383,7 +421,9 @@ function DefaultSubRow({
   if (prop.type === 'richtext' || prop.type === 'media' || prop.type === 'link') {
     return (
       <Box paddingLeft={2} gap={1}>
-        <Text dimColor>default:</Text>
+        <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused}>
+          {focused ? '› ' : '  '}default:
+        </Text>
         <Text dimColor>(not applicable)</Text>
       </Box>
     );
@@ -391,27 +431,31 @@ function DefaultSubRow({
 
   if (prop.type === 'boolean') {
     const display = prop.default === true ? 'true' : prop.default === false ? 'false' : '(unset)';
-    return <DefaultValueRow display={display} active={active} />;
+    return <DefaultValueRow display={display} active={active} focused={focused} />;
   }
 
   if (prop.type === 'enum') {
     if (prop.values.length === 0) {
       return (
         <Box paddingLeft={2} gap={1}>
-          <Text dimColor>default:</Text>
+          <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused}>
+            {focused ? '› ' : '  '}default:
+          </Text>
           <Text dimColor>(no values defined)</Text>
         </Box>
       );
     }
     const display = typeof prop.default === 'string' && prop.default !== '' ? prop.default : '(unset)';
-    return <DefaultValueRow display={display} active={active} />;
+      return <DefaultValueRow display={display} active={active} focused={focused} />;
   }
 
   const value = typeof prop.default === 'string' ? prop.default : '';
   if (active) {
     return (
       <Box paddingLeft={2} flexDirection="row">
-        <Text dimColor>default:</Text>
+        <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused}>
+          {focused ? '› ' : '  '}default:
+        </Text>
         <Box flexGrow={1} borderStyle="round" borderColor={PALETTE.info} paddingX={1}>
           <Text>{value.slice(0, textCursor)}</Text>
           <Text inverse={cursorVisible}>{value[textCursor] ?? cursor}</Text>
@@ -422,10 +466,71 @@ function DefaultSubRow({
   }
   return (
     <Box paddingLeft={2} gap={1}>
-      <Text dimColor>default:</Text>
+      <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused}>
+        {focused ? '› ' : '  '}default:
+      </Text>
       <Text color={value ? PALETTE.inverse : undefined} dimColor={!value}>
         {value || '(none)'}
       </Text>
+    </Box>
+  );
+}
+
+function DescriptionField({
+  value,
+  focused,
+  editing,
+  textCursor,
+  cursorVisible,
+  width,
+  label = 'desc:',
+  compact = false,
+}: {
+  value: string;
+  focused: boolean;
+  editing: boolean;
+  textCursor: number;
+  cursorVisible: boolean;
+  width?: number;
+  label?: string;
+  compact?: boolean;
+}): React.ReactElement {
+  const cursor = cursorVisible ? '█' : ' ';
+  const outerWidth = width === undefined ? undefined : Math.max(1, width - 2);
+  const contentWidth = outerWidth === undefined ? undefined : Math.max(1, outerWidth - 2);
+  if (compact) {
+    return (
+      <Box paddingLeft={2} width={outerWidth}>
+        <Text dimColor>{`  ${label}`}</Text>
+        <Text wrap="truncate-end" color={value ? PALETTE.success : undefined} dimColor={!value}>
+          {` ${value || '—'}`}
+        </Text>
+      </Box>
+    );
+  }
+  return (
+    <Box paddingLeft={2} flexDirection="column" width={outerWidth}>
+      <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused}>
+        {focused ? '› ' : '  '}{label}
+      </Text>
+      <Box
+        width={contentWidth}
+        borderStyle="round"
+        borderColor={focused ? PALETTE.info : PALETTE.border}
+        paddingX={1}
+      >
+        {editing ? (
+          <>
+            <Text>{value.slice(0, textCursor)}</Text>
+            <Text inverse={cursorVisible}>{value[textCursor] ?? cursor}</Text>
+            <Text>{value.slice(textCursor + 1)}</Text>
+          </>
+        ) : (
+          <Text color={PALETTE.success} wrap="wrap">
+            {value || '—'}
+          </Text>
+        )}
+      </Box>
     </Box>
   );
 }
@@ -434,6 +539,7 @@ function PropRow({
   prop,
   selected,
   activeField,
+  editingField,
   textCursor,
   valueCursor,
   cursorVisible,
@@ -446,6 +552,7 @@ function PropRow({
   prop: PropState;
   selected: boolean;
   activeField: PropField | null;
+  editingField: boolean;
   textCursor: number;
   valueCursor: number;
   cursorVisible: boolean;
@@ -455,79 +562,89 @@ function PropRow({
   rationale?: string | null;
   rowKey?: string;
 }): React.ReactElement {
-  const cursor = cursorVisible ? '█' : ' ';
-  const descActive = activeField === 'description';
+  const descFocused = activeField === 'description';
+  const descActive = editingField && descFocused;
 
   return (
     <Box flexDirection="column" width={width}>
-      <Box gap={1}>
+      <Box gap={1} flexWrap="wrap">
         <RowLabel name={prop.name} selected={selected} />
 
-        <Text dimColor={!selected}>type:</Text>
-        {activeField === 'type' ? (
-          <Picker value={prop.type} active={true} />
-        ) : (
-          <Text color={selected ? PALETTE.warning : PALETTE.inverse}>{prop.type}</Text>
-        )}
+        <InlinePropField label="type:" selected={selected} focused={activeField === 'type'}>
+          {editingField && activeField === 'type' ? (
+            <Picker value={prop.type} active={true} />
+          ) : (
+            <Text color={selected ? PALETTE.warning : PALETTE.inverse}>{prop.type}</Text>
+          )}
+        </InlinePropField>
 
-        {activeField === 'category' && <Picker value={prop.category} active={true} />}
+        <InlinePropField
+          label="category:"
+          selected={selected}
+          focused={activeField === 'category'}
+          flexible={editingField && activeField === 'category'}
+        >
+          {editingField && activeField === 'category' ? (
+            <Text color={selected ? PALETTE.warning : PALETTE.inverse} bold wrap="wrap">
+              {`[Enter] switch to ${categorySwitchTarget(prop.category)} property`}
+            </Text>
+          ) : (
+            <Text color={selected ? PALETTE.warning : PALETTE.inverse}>{prop.category}</Text>
+          )}
+        </InlinePropField>
 
-        <Text dimColor={!selected}>req:</Text>
-        {activeField === 'required' ? (
-          <Toggle value={prop.required} active={true} />
-        ) : (
-          <Toggle value={prop.required} active={false} />
-        )}
-
-        {prop.type === 'enum' && (
-          <>
-            <Text dimColor={!selected}>values:</Text>
-            <Text color={selected ? PALETTE.warning : PALETTE.inverse}>[{prop.values.join(', ')}]</Text>
-          </>
-        )}
+        <InlinePropField label="req:" selected={selected} focused={activeField === 'required'}>
+          <Toggle value={prop.required} active={editingField && activeField === 'required'} />
+        </InlinePropField>
 
         {prop.type === 'token' && (
-          <>
-            <Text dimColor={!selected}>kind:</Text>
-            {activeField === 'tokenKind' ? (
+          <InlinePropField label="kind:" selected={selected} focused={activeField === 'tokenKind'}>
+            {editingField && activeField === 'tokenKind' ? (
               <Picker value={prop.tokenKind || DESIGN_TOKEN_TYPES[0]} active={true} />
             ) : (
               <Text color={selected ? PALETTE.success : PALETTE.inverse}>{prop.tokenKind || '—'}</Text>
             )}
-          </>
+          </InlinePropField>
         )}
       </Box>
 
-      {selected && (
-        <DefaultSubRow
-          prop={prop}
-          active={activeField === 'default'}
-          textCursor={textCursor}
-          cursorVisible={cursorVisible}
-        />
-      )}
-
-      {selected && descActive && (
-        <Box paddingLeft={2} flexDirection="row">
-          <Text dimColor>desc:</Text>
-          <Box flexGrow={1} borderStyle="round" borderColor={PALETTE.info} paddingX={1}>
-            <Text>{prop.description.slice(0, textCursor)}</Text>
-            <Text inverse={cursorVisible}>{prop.description[textCursor] ?? cursor}</Text>
-            <Text>{prop.description.slice(textCursor + 1)}</Text>
+      {prop.type === 'enum' && (
+        <Box paddingLeft={2} gap={1} flexWrap="wrap">
+          <Text color={activeField === 'values' ? PALETTE.warning : undefined} bold={activeField === 'values'} dimColor={!selected}>
+            {activeField === 'values' ? '› ' : '  '}values:
+          </Text>
+          <Box flexGrow={1}>
+            <Text color={selected ? PALETTE.warning : PALETTE.inverse} wrap="wrap">
+              [{prop.values.join(', ')}]
+            </Text>
           </Box>
         </Box>
       )}
-      {selected && !descActive && (
-        <Box paddingLeft={2} gap={1}>
-          <Text dimColor>desc:</Text>
-          <Text color={PALETTE.success}>{prop.description || '—'}</Text>
-        </Box>
-      )}
+
+      <DefaultSubRow
+        prop={prop}
+        active={selected && editingField && activeField === 'default'}
+        focused={selected && activeField === 'default'}
+        textCursor={textCursor}
+        cursorVisible={cursorVisible}
+      />
+
+      <DescriptionField
+        value={prop.description}
+        focused={selected && descFocused}
+        editing={selected && descActive}
+        textCursor={textCursor}
+        cursorVisible={cursorVisible}
+        width={width}
+        compact={!selected}
+      />
 
       {selected && prop.type === 'token' && prop.category === 'design' && (
         <Box paddingLeft={2} flexDirection="row" gap={1}>
-          <Text dimColor>allowed:</Text>
-          {activeField === 'allowed' ? (
+          <Text color={activeField === 'allowed' ? PALETTE.warning : undefined} bold={activeField === 'allowed'} dimColor={!selected}>
+            {activeField === 'allowed' ? '› ' : '  '}allowed:
+          </Text>
+          {editingField && activeField === 'allowed' ? (
             <Box flexGrow={1} borderStyle="round" borderColor={PALETTE.info} paddingX={1}>
               <Text dimColor>press [t] to edit allowed tokens</Text>
             </Box>
@@ -579,6 +696,7 @@ function SlotRow({
   slot,
   selected,
   activeField,
+  editingField,
   textCursor,
   valueCursor,
   cursorVisible,
@@ -591,6 +709,7 @@ function SlotRow({
   slot: SlotState;
   selected: boolean;
   activeField: SlotField | null;
+  editingField: boolean;
   textCursor: number;
   valueCursor: number;
   cursorVisible: boolean;
@@ -600,35 +719,49 @@ function SlotRow({
   pickerCandidates: string[] | null;
   pickerCursor: number;
 }): React.ReactElement {
-  const cursor = cursorVisible ? '█' : ' ';
-
   return (
     <Box flexDirection="column" width={width}>
-      <Box gap={1}>
+      <Box gap={1} flexWrap="wrap">
         <RowLabel name={slot.name} selected={selected} />
-        <Text dimColor={!selected}>req:</Text>
-        {activeField === 'required' ? (
-          <Toggle value={slot.required} active={true} />
-        ) : (
-          <Toggle value={slot.required} active={false} />
-        )}
+        <InlinePropField label="req:" selected={selected} focused={activeField === 'required'}>
+          <Toggle value={slot.required} active={editingField && activeField === 'required'} />
+        </InlinePropField>
       </Box>
 
       {!selected && (
-        <Box paddingLeft={2} gap={1}>
-          <Text dimColor>allowed:</Text>
-          {slot.allowedComponents.length === 0 ? (
-            <Text dimColor>(any)</Text>
-          ) : (
-            <Text color={PALETTE.info}>{slot.allowedComponents.join(', ')}</Text>
-          )}
+        <Box paddingLeft={2} gap={1} flexWrap="wrap">
+          <Text
+            color={activeField === 'allowedComponents' ? PALETTE.warning : undefined}
+            bold={activeField === 'allowedComponents'}
+            dimColor={!selected}
+          >
+            {activeField === 'allowedComponents' ? '› ' : '  '}allowed:
+          </Text>
+          <Box flexGrow={1}>
+            {slot.allowedComponents.length === 0 ? (
+              <Text dimColor>(any)</Text>
+            ) : (
+              <Text color={PALETTE.info} wrap="wrap">
+                {slot.allowedComponents.join(', ')}
+              </Text>
+            )}
+          </Box>
         </Box>
       )}
       {selected && (
-        <Box paddingLeft={2} flexDirection="column">
+        <Box
+          paddingLeft={2}
+          flexDirection="column"
+        >
           <Box>
-            <Text dimColor>allowed:</Text>
-            {activeField === 'allowedComponents' && (
+            <Text
+              color={activeField === 'allowedComponents' ? PALETTE.warning : undefined}
+              bold={activeField === 'allowedComponents'}
+              dimColor={!selected}
+            >
+              {activeField === 'allowedComponents' ? '› ' : '  '}allowed:
+            </Text>
+            {editingField && activeField === 'allowedComponents' && (
               <Text dimColor>
                 {slot.allowedComponents.length > 0
                   ? '  [a]dd  [e]dit  [r]emove  [←→] cycle  [↑↓] navigate  [K/J] reorder'
@@ -639,68 +772,64 @@ function SlotRow({
           <EditableValueList
             values={slot.allowedComponents}
             valueCursor={valueCursor}
-            cursorActive={activeField === 'allowedComponents'}
+            cursorActive={editingField && activeField === 'allowedComponents'}
             editingValue={editingValue}
             valueText={valueText}
             cursorVisible={cursorVisible}
-            emptyMessage={activeField === 'allowedComponents' ? '(any — press [a] to add)' : '(any)'}
+            emptyMessage={editingField && activeField === 'allowedComponents' ? '(any — press [a] to add)' : '(any)'}
             emptyPaddingLeft={2}
-            showAddInput={activeField === 'allowedComponents'}
+            showAddInput={editingField && activeField === 'allowedComponents'}
           />
-          {editingValue?.mode === 'add' && activeField === 'allowedComponents' && pickerCandidates !== null && (
-            <Box paddingLeft={2} flexDirection="column">
-              {pickerCandidates.length === 0 ? (
-                <Text dimColor>{'(no valid components to add — all remaining candidates would create cycles)'}</Text>
-              ) : (
-                (() => {
-                  const filtered =
-                    valueText.length === 0
-                      ? pickerCandidates
-                      : pickerCandidates.filter((n) => n.toLowerCase().includes(valueText.toLowerCase()));
-                  if (filtered.length === 0) {
-                    return <Text dimColor>{'(no candidates match — Enter to add as free text)'}</Text>;
-                  }
-                  const cursor = pickerCursor % filtered.length;
-                  const MAX_VISIBLE = 5;
-                  const start = Math.max(0, Math.min(filtered.length - MAX_VISIBLE, cursor - 2));
-                  const slice = filtered.slice(start, start + MAX_VISIBLE);
-                  return (
-                    <Box flexDirection="column">
-                      <Text dimColor>{'  candidates (↑↓ cycle, Enter to add):'}</Text>
-                      {slice.map((name, i) => {
-                        const absIdx = start + i;
-                        const isCursor = absIdx === cursor;
-                        return (
-                          <Text key={name} color={isCursor ? PALETTE.info : undefined} dimColor={!isCursor}>
-                            {isCursor ? `  ${figures.pointer} ${name}` : `    ${name}`}
-                          </Text>
-                        );
-                      })}
-                    </Box>
-                  );
-                })()
-              )}
-            </Box>
-          )}
+          {editingField &&
+            editingValue?.mode === 'add' &&
+            activeField === 'allowedComponents' &&
+            pickerCandidates !== null && (
+              <Box paddingLeft={2} flexDirection="column">
+                {pickerCandidates.length === 0 ? (
+                  <Text dimColor>{'(no valid components to add — all remaining candidates would create cycles)'}</Text>
+                ) : (
+                  (() => {
+                    const filtered =
+                      valueText.length === 0
+                        ? pickerCandidates
+                        : pickerCandidates.filter((n) => n.toLowerCase().includes(valueText.toLowerCase()));
+                    if (filtered.length === 0) {
+                      return <Text dimColor>{'(no candidates match — Enter to add as free text)'}</Text>;
+                    }
+                    const cursor = pickerCursor % filtered.length;
+                    const MAX_VISIBLE = 5;
+                    const start = Math.max(0, Math.min(filtered.length - MAX_VISIBLE, cursor - 2));
+                    const slice = filtered.slice(start, start + MAX_VISIBLE);
+                    return (
+                      <Box flexDirection="column">
+                        <Text dimColor>{'  candidates (↑↓ cycle, Enter to add):'}</Text>
+                        {slice.map((name, i) => {
+                          const absIdx = start + i;
+                          const isCursor = absIdx === cursor;
+                          return (
+                            <Text key={name} color={isCursor ? PALETTE.info : undefined} dimColor={!isCursor}>
+                              {isCursor ? `  ${figures.pointer} ${name}` : `    ${name}`}
+                            </Text>
+                          );
+                        })}
+                      </Box>
+                    );
+                  })()
+                )}
+              </Box>
+            )}
         </Box>
       )}
 
-      {selected && activeField === 'description' && (
-        <Box paddingLeft={2} flexDirection="row">
-          <Text dimColor>desc:</Text>
-          <Box flexGrow={1} borderStyle="round" borderColor={PALETTE.info} paddingX={1}>
-            <Text>{slot.description.slice(0, textCursor)}</Text>
-            <Text inverse={cursorVisible}>{slot.description[textCursor] ?? cursor}</Text>
-            <Text>{slot.description.slice(textCursor + 1)}</Text>
-          </Box>
-        </Box>
-      )}
-      {selected && activeField !== 'description' && (
-        <Box paddingLeft={2} gap={1}>
-          <Text dimColor>desc:</Text>
-          <Text color={PALETTE.success}>{slot.description || '—'}</Text>
-        </Box>
-      )}
+      <DescriptionField
+        value={slot.description}
+        focused={selected && activeField === 'description'}
+        editing={selected && editingField && activeField === 'description'}
+        textCursor={textCursor}
+        cursorVisible={cursorVisible}
+        width={width}
+        compact={!selected}
+      />
     </Box>
   );
 }
@@ -836,6 +965,7 @@ export function FieldEditor({
   value,
   width,
   height,
+  fixedHeight = false,
   active = true,
   onChange,
   onSave,
@@ -860,6 +990,7 @@ export function FieldEditor({
 
   const [editorState, setEditorState] = useState<EditorState>(initialState);
   const [parseErr] = useState<string | null>(parseError);
+  const [listScrollStart, setListScrollStart] = useState(0);
 
   const initialFocus = (() => {
     if (initialFocusTarget?.kind === 'description') {
@@ -934,6 +1065,7 @@ export function FieldEditor({
   const [inSlots, setInSlots] = useState(initialFocus.inSlots);
   const [inComponentDesc, setInComponentDesc] = useState(initialFocus.focusLevel === 'componentDescription');
   const [activeField, setActiveField] = useState<PropField | SlotField | null>(initialFocus.activeField);
+  const [editingField, setEditingField] = useState(false);
   const [textCursor, setTextCursor] = useState(initialFocus.textCursor);
   const [valueCursor, setValueCursor] = useState(0);
   const [editingValue, setEditingValue] = useState<EditingValue | null>(null);
@@ -1012,8 +1144,9 @@ export function FieldEditor({
   };
 
   const textEntryActive =
-    (focusLevel === 'field' && activeField === 'description') ||
+    (focusLevel === 'field' && editingField && activeField === 'description') ||
     (focusLevel === 'field' &&
+      editingField &&
       activeField === 'default' &&
       (editorState.props[propIdx]?.type === 'string' || editorState.props[propIdx]?.type === 'token')) ||
     editingValue != null;
@@ -1054,9 +1187,7 @@ export function FieldEditor({
     }
   }, []);
   const initialStateRef = React.useRef<EditorState>(initialState);
-  const [baselineCanonical, setBaselineCanonical] = useState<string>(() =>
-    canonicalize(serializeState(initialState, value)),
-  );
+  const baselineCanonical = canonicalize(serializeState(initialState, value));
   const currentCanonical = canonicalize(serializeState(editorState, value));
   const isDirty = currentCanonical !== baselineCanonical;
   React.useEffect(() => {
@@ -1076,20 +1207,21 @@ export function FieldEditor({
     if (!active) return;
 
     if (showHelp) {
-      if (input === '?' || key.escape) {
+      if (input === 'h' || key.escape) {
         setShowHelp(false);
       }
       return;
     }
-    const inDescriptionTextEntryForHelp = focusLevel === 'field' && activeField === 'description';
+    const inDescriptionTextEntryForHelp = focusLevel === 'field' && editingField && activeField === 'description';
     const inStringDefaultTextEntryForHelp =
       focusLevel === 'field' &&
+      editingField &&
       activeField === 'default' &&
       currentProp != null &&
       (currentProp.type === 'string' || currentProp.type === 'token');
     const inValueListTextEntry = editingValue != null;
     if (
-      input === '?' &&
+      input === 'h' &&
       !key.ctrl &&
       !key.meta &&
       !inDescriptionTextEntryForHelp &&
@@ -1203,17 +1335,9 @@ export function FieldEditor({
       return;
     }
 
-    if (key.ctrl && input === 's') {
-      setValidationError(null);
-      const canonicalNow = canonicalize(serializeState(editorState, value));
-      setBaselineCanonical(canonicalNow);
-      initialStateRef.current = editorState;
-      onSave();
-      return;
-    }
-
-    const inDescriptionTextEntry = focusLevel === 'field' && activeField === 'description';
-    const inComponentDescTextEntry = focusLevel === 'field' && inComponentDesc && activeField === 'description';
+    const inDescriptionTextEntry = focusLevel === 'field' && editingField && activeField === 'description';
+    const inComponentDescTextEntry =
+      focusLevel === 'field' && editingField && inComponentDesc && activeField === 'description';
     if (input === 's' && !key.ctrl && !key.meta && !inDescriptionTextEntry && !inComponentDescTextEntry) {
       if (onToggleSourceExternal) {
         onToggleSourceExternal();
@@ -1242,6 +1366,7 @@ export function FieldEditor({
 
     const inStringDefaultTextEntry =
       focusLevel === 'field' &&
+      editingField &&
       activeField === 'default' &&
       currentProp != null &&
       (currentProp.type === 'string' || currentProp.type === 'token');
@@ -1274,9 +1399,16 @@ export function FieldEditor({
 
     if (key.escape) {
       if (focusLevel === 'field') {
-        if (inComponentDesc) setFocusLevel('componentDescription');
-        else setFocusLevel(inSlots ? 'slot' : 'prop');
-        setActiveField(null);
+        if (editingField) {
+          // Leaving a text field is an edit exit, not a cancellation. Persist
+          // the current draft before returning to field navigation.
+          onSave();
+          setEditingField(false);
+        } else {
+          if (inComponentDesc) setFocusLevel('componentDescription');
+          else setFocusLevel(inSlots ? 'slot' : 'prop');
+          setActiveField(null);
+        }
         return;
       }
       if (onExit) {
@@ -1288,10 +1420,10 @@ export function FieldEditor({
     }
 
     if (focusLevel === 'componentDescription') {
-      if (key.upArrow || input === 'k') {
+      if (key.upArrow) {
         return;
       }
-      if (key.downArrow || input === 'j') {
+      if (key.downArrow) {
         const firstSelectableRow = selectableRows[0];
         if (firstSelectableRow) focusSelectableRow(firstSelectableRow);
         return;
@@ -1299,6 +1431,7 @@ export function FieldEditor({
       if (key.return) {
         setFocusLevel('field');
         setActiveField('description');
+        setEditingField(false);
         setTextCursor(editorState.componentDescription.length);
         return;
       }
@@ -1306,7 +1439,7 @@ export function FieldEditor({
     }
 
     if (focusLevel === 'prop' || focusLevel === 'slot') {
-      if (key.upArrow || input === 'k') {
+      if (key.upArrow) {
         if (selectedSelectableIndex > 0) {
           focusSelectableRow(selectableRows[selectedSelectableIndex - 1]!);
         } else if (selectedSelectableIndex === 0) {
@@ -1316,7 +1449,7 @@ export function FieldEditor({
         }
         return;
       }
-      if (key.downArrow || input === 'j') {
+      if (key.downArrow) {
         if (selectedSelectableIndex >= 0 && selectedSelectableIndex < selectableRows.length - 1) {
           focusSelectableRow(selectableRows[selectedSelectableIndex + 1]!);
         }
@@ -1325,12 +1458,14 @@ export function FieldEditor({
       if (focusLevel === 'slot' && key.return && currentSlot) {
         setFocusLevel('field');
         setActiveField(SLOT_FIELDS[0] ?? null);
+        setEditingField(false);
         setTextCursor(currentSlot.description.length);
         return;
       }
       if (focusLevel === 'prop' && key.return && currentProp) {
         setFocusLevel('field');
         setActiveField(propFields(currentProp)[0] ?? null);
+        setEditingField(false);
         setTextCursor(currentProp.description.length);
         return;
       }
@@ -1340,46 +1475,22 @@ export function FieldEditor({
     if (focusLevel === 'field') {
       const fields = inSlots ? SLOT_FIELDS : currentProp ? propFields(currentProp) : [];
       const currentFieldIdx = fields.indexOf(activeField as never);
-      const isDescriptionTextEntry = activeField === 'description';
-      const isDefaultTextEntry =
-        activeField === 'default' &&
-        currentProp != null &&
-        (currentProp.type === 'string' || currentProp.type === 'token');
       const isValuesNav = activeField === 'values' || activeField === 'allowedComponents';
       const arrowUp = key.upArrow;
       const arrowDown = key.downArrow;
+      const arrowLeft = key.leftArrow;
+      const arrowRight = key.rightArrow;
 
-      if (isValuesNav) {
-        const vals =
-          activeField === 'values' && currentProp
-            ? currentProp.values
-            : activeField === 'allowedComponents' && currentSlot
-              ? currentSlot.allowedComponents
-              : null;
-        if (vals !== null) {
-          // Move the value cursor within the list. At a boundary, fall through to
-          // field navigation so the field itself is escapable (e.g. reach the
-          // slot `description` field past `allowedComponents`).
-          if (arrowUp || input === 'k') {
-            if (valueCursor > 0) {
-              setValueCursor((c) => Math.max(0, c - 1));
-              return;
-            }
-          } else if (arrowDown || input === 'j') {
-            if (valueCursor < vals.length - 1) {
-              setValueCursor((c) => Math.min(vals.length - 1, c + 1));
-              return;
-            }
-          }
+      if (!editingField) {
+        if (key.return) {
+          setEditingField(true);
+          return;
         }
-      }
-
-      {
-        const navUp = arrowUp || (!isDescriptionTextEntry && !isDefaultTextEntry && input === 'k');
-        const navDown = arrowDown || (!isDescriptionTextEntry && !isDefaultTextEntry && input === 'j');
-        if ((navUp || navDown) && fields.length > 0) {
+        const navPrevious = arrowUp || arrowLeft;
+        const navNext = arrowDown || arrowRight;
+        if ((navPrevious || navNext) && fields.length > 0) {
           const lastIdx = fields.length - 1;
-          const targetIdx = navDown
+          const targetIdx = navNext
             ? currentFieldIdx >= lastIdx
               ? 0
               : currentFieldIdx + 1
@@ -1401,11 +1512,47 @@ export function FieldEditor({
                 : next === 'allowedComponents' && currentSlot
                   ? currentSlot.allowedComponents
                   : [];
-            // Land at the entry edge matching travel direction so continued
-            // nav moves through the list before escaping the field again.
-            setValueCursor(navDown ? 0 : Math.max(0, nextVals.length - 1));
+            setValueCursor(navNext ? 0 : Math.max(0, nextVals.length - 1));
           }
-          return;
+        }
+        return;
+      }
+
+      if (key.return && activeField === 'category' && currentProp) {
+        const next = categorySwitchTarget(currentProp.category);
+        const nextProps = props.map((p, i) => (i === propIdx ? { ...p, category: next } : p));
+        commit({ ...editorState, props: nextProps });
+        setEditingField(false);
+        return;
+      }
+
+      if (key.return) {
+        setEditingField(false);
+        return;
+      }
+
+      if (isValuesNav) {
+        const vals =
+          activeField === 'values' && currentProp
+            ? currentProp.values
+            : activeField === 'allowedComponents' && currentSlot
+              ? currentSlot.allowedComponents
+              : null;
+        if (vals !== null) {
+          // Move the value cursor within the list. At a boundary, fall through to
+          // field navigation so the field itself is escapable (e.g. reach the
+          // slot `description` field past `allowedComponents`).
+          if (arrowUp) {
+            if (valueCursor > 0) {
+              setValueCursor((c) => Math.max(0, c - 1));
+              return;
+            }
+          } else if (arrowDown) {
+            if (valueCursor < vals.length - 1) {
+              setValueCursor((c) => Math.min(vals.length - 1, c + 1));
+              return;
+            }
+          }
         }
       }
 
@@ -1424,17 +1571,6 @@ export function FieldEditor({
         }
         if (next !== 'enum') updated.values = [];
         const nextProps = props.map((p, i) => (i === propIdx ? updated : p));
-        commit({ ...editorState, props: nextProps });
-        return;
-      }
-
-      if (activeField === 'category' && (key.leftArrow || key.rightArrow) && currentProp) {
-        const options = CDF_PROPERTY_CATEGORIES as readonly string[];
-        const idx = options.indexOf(currentProp.category);
-        const next = key.leftArrow
-          ? options[(idx - 1 + options.length) % options.length]
-          : options[(idx + 1) % options.length];
-        const nextProps = props.map((p, i) => (i === propIdx ? { ...p, category: next as PropState['category'] } : p));
         commit({ ...editorState, props: nextProps });
         return;
       }
@@ -1610,14 +1746,14 @@ export function FieldEditor({
           return;
         }
 
-        if (input === 'K' && valueCursor > 0) {
+        if (key.shift && key.upArrow && valueCursor > 0) {
           const nextVals = swapValues(currentValueList, valueCursor - 1, valueCursor);
           setCurrentValueList(nextVals);
           setValueCursor((c) => c - 1);
           return;
         }
 
-        if (input === 'J' && valueCursor < currentValueList.length - 1) {
+        if (key.shift && key.downArrow && valueCursor < currentValueList.length - 1) {
           const nextVals = swapValues(currentValueList, valueCursor, valueCursor + 1);
           setCurrentValueList(nextVals);
           setValueCursor((c) => c + 1);
@@ -1688,7 +1824,7 @@ export function FieldEditor({
           {"⚠ No properties classified for this component. The LLM didn't find anything to classify."}
         </Text>
         <Text dimColor>You can add fields manually below or reject this component.</Text>
-        <Text dimColor>Ctrl+S to save · Esc to discard</Text>
+        <Text dimColor>Enter to save · Esc to discard</Text>
       </Box>
     );
   }
@@ -1699,25 +1835,28 @@ export function FieldEditor({
     if (editingValue) {
       return editingValue.mode === 'add' ? 'Enter to add · Esc to cancel' : 'Enter to save edit · Esc to cancel';
     }
-    if (focusLevel === 'field' && activeField === 'description') {
-      return 'Type to edit  ←→ cursor  ↑↓ cycle field  Esc row  Ctrl+S save';
+    if (focusLevel === 'field' && editingField && activeField === 'description') {
+      return 'Type to edit  ←→ cursor  ↑↓ cycle field  Esc row  Enter save';
     }
-    if (
-      focusLevel === 'field' &&
-      (activeField === 'type' || activeField === 'category' || activeField === 'tokenKind')
-    ) {
-      return '←→ cycle value  ↑↓/jk cycle field  Esc row';
+    if (focusLevel === 'field' && editingField && (activeField === 'type' || activeField === 'tokenKind')) {
+      return '←→ cycle value  ↑↓/←→ cycle field  Esc row';
     }
-    if (focusLevel === 'field' && activeField === 'required') {
-      return 'Space/Enter toggle  ↑↓/jk cycle field  Esc row';
+    if (focusLevel === 'field' && editingField && activeField === 'category') {
+      return 'Enter switch property group  ↑↓/←→ cycle field  Esc row';
     }
-    if (focusLevel === 'field' && (activeField === 'values' || activeField === 'allowedComponents')) {
-      return '[a]dd  [e]dit  [r]emove  ↑↓/jk navigate  [K/J] reorder  Esc row';
+    if (focusLevel === 'field' && editingField && activeField === 'required') {
+      return 'Space toggle  Enter save  Esc back';
+    }
+    if (focusLevel === 'field' && editingField && (activeField === 'values' || activeField === 'allowedComponents')) {
+      return '[a]dd  [e]dit  [r]emove  ↑↓ navigate  Shift+↑/↓ reorder  Esc row';
+    }
+    if (focusLevel === 'field' && !editingField) {
+      return '↑↓/←→ navigate fields  Enter edit  Esc back';
     }
     if (rationaleOpen) {
-      return 'jk/Ctrl+u/d scroll  i/Esc close  rationale panel';
+      return '↑↓/Ctrl+u/d scroll  i/Esc close  rationale panel';
     }
-    return `↑↓/jk navigate rows  Enter edit fields  s source  ${propRationaleKey} prop rationale  ${componentRationaleKey} component rationale  ? help  Ctrl+S save  Esc exit panel`;
+    return `↑↓ navigate rows  Enter edit fields  s source  ${propRationaleKey} prop rationale  ${componentRationaleKey} component rationale  h help  Esc exit panel`;
   })();
 
   type Row =
@@ -1753,14 +1892,35 @@ export function FieldEditor({
       (r.kind === 'slot' && inSlots && r.idx === slotIdx) ||
       (r.kind === 'component-description' && inComponentDesc),
   );
-  const visibleRows = Math.max(1, height - 3);
-  const scrollStart = selectedRowIdx < 0 ? 0 : Math.max(0, Math.min(selectedRowIdx, rows.length - visibleRows));
+  // Every prop/slot now includes its default and description rows. Reserve
+  // enough vertical space for those fields so the fixed panel never clips a
+  // row in the middle of its description box while the list is scrolling.
+  const visibleRows = focusLevel === 'field' ? 1 : Math.max(1, Math.floor((height - 3) / 3));
+  useEffect(() => {
+    if (focusLevel === 'field' || selectedRowIdx < 0) return;
+    setListScrollStart((previous) => {
+      const maxStart = Math.max(0, rows.length - visibleRows);
+      const clamped = Math.min(previous, maxStart);
+      if (selectedRowIdx < clamped) return selectedRowIdx;
+      if (selectedRowIdx >= clamped + visibleRows) {
+        return Math.min(maxStart, selectedRowIdx - visibleRows + 1);
+      }
+      return clamped;
+    });
+  }, [focusLevel, rows.length, selectedRowIdx, visibleRows]);
+  const scrollStart = Math.min(listScrollStart, Math.max(0, rows.length - visibleRows));
+  const nextHeader = rows.slice(scrollStart + visibleRows).find((row) => row.kind === 'header');
+  const categoryBelow =
+    focusLevel !== 'field' && nextHeader?.kind === 'header'
+      ? nextHeader.label.replace(/^──\s*/, '').trim()
+      : null;
   const visibleRowSlice = rows.slice(scrollStart, scrollStart + visibleRows);
 
   return (
-    <Box
-      flexDirection="column"
+    <FixedPanel
       width={width}
+      {...(fixedHeight ? { height } : { minHeight: height })}
+      clipOverflow={fixedHeight}
       borderStyle="single"
       borderColor={hasEmptyProperties ? PALETTE.warning : PALETTE.info}
     >
@@ -1773,7 +1933,36 @@ export function FieldEditor({
       )}
 
       <Box flexDirection="column" width={innerWidth}>
-        {visibleRowSlice.map((row, i) => {
+        {focusLevel === 'field' && !inComponentDesc && currentProp ? (
+          <PropRow
+            prop={currentProp}
+            selected
+            activeField={activeField as PropField}
+            editingField={editingField}
+            textCursor={textCursor}
+            valueCursor={valueCursor}
+            cursorVisible={cursorVisible}
+            editingValue={editingValue}
+            valueText={valueText}
+            width={innerWidth}
+            rationale={metadata?.props?.[currentProp.name]?.rationale ?? null}
+          />
+        ) : focusLevel === 'field' && inSlots && currentSlot ? (
+          <SlotRow
+            slot={currentSlot}
+            selected
+            activeField={activeField as SlotField}
+            editingField={editingField}
+            textCursor={textCursor}
+            valueCursor={valueCursor}
+            cursorVisible={cursorVisible}
+            editingValue={editingValue}
+            valueText={valueText}
+            width={innerWidth}
+            pickerCandidates={null}
+            pickerCursor={pickerCursor}
+          />
+        ) : visibleRowSlice.map((row, i) => {
           if (row.kind === 'header') {
             return (
               <Text key={`header-${i}`} bold color={PALETTE.success}>
@@ -1782,35 +1971,20 @@ export function FieldEditor({
             );
           }
           if (row.kind === 'component-description') {
-            // Keep the description's selection styling scoped to the active
-            // panel. The sidebar owns focus on the initial render, so the
-            // editor must not appear focused until the operator tabs into it.
             const isSelected = inComponentDesc && active;
-            const isEditing = isSelected && focusLevel === 'field' && activeField === 'description';
+            const isEditing = isSelected && focusLevel === 'field' && editingField && activeField === 'description';
             const desc = editorState.componentDescription;
             return (
-              <Box key={`component-description-${i}`} flexDirection="column">
-                <Box gap={1}>
-                  <Text
-                    color={isSelected ? PALETTE.inverse : PALETTE.info}
-                    bold={isSelected}
-                    backgroundColor={isSelected ? 'blue' : undefined}
-                  >
-                    {`${isSelected ? '›' : ' '} description: `}
-                  </Text>
-                  {isEditing ? (
-                    <Box flexGrow={1} borderStyle="round" borderColor={PALETTE.info} paddingX={1}>
-                      <Text>{desc.slice(0, textCursor)}</Text>
-                      <Text inverse={cursorVisible}>{desc[textCursor] ?? (cursorVisible ? '█' : ' ')}</Text>
-                      <Text>{desc.slice(textCursor + 1)}</Text>
-                    </Box>
-                  ) : (
-                    <Text color={isSelected ? PALETTE.warning : PALETTE.inverse} dimColor={!desc}>
-                      {desc || '(none — Return to edit)'}
-                    </Text>
-                  )}
-                </Box>
-              </Box>
+              <DescriptionField
+                key={`component-description-${i}`}
+                value={desc}
+                focused={isSelected}
+                editing={isEditing}
+                textCursor={textCursor}
+                cursorVisible={cursorVisible}
+                width={innerWidth}
+                label="description:"
+              />
             );
           }
           if (row.kind === 'prop') {
@@ -1823,6 +1997,7 @@ export function FieldEditor({
                 prop={p}
                 selected={isSelected}
                 activeField={isSelected && focusLevel === 'field' ? (activeField as PropField) : null}
+                editingField={isSelected && focusLevel === 'field' && editingField}
                 textCursor={textCursor}
                 valueCursor={valueCursor}
                 cursorVisible={cursorVisible}
@@ -1850,6 +2025,7 @@ export function FieldEditor({
               slot={s}
               selected={isSelected}
               activeField={isSelected && focusLevel === 'field' ? (activeField as SlotField) : null}
+              editingField={isSelected && focusLevel === 'field' && editingField}
               textCursor={textCursor}
               valueCursor={valueCursor}
               cursorVisible={cursorVisible}
@@ -1862,6 +2038,9 @@ export function FieldEditor({
           );
         })}
       </Box>
+      {categoryBelow && (
+        <Text color={PALETTE.success} bold>{`(${categoryBelow} below)`}</Text>
+      )}
 
       {sourceOpen &&
         !onToggleSourceExternal &&
@@ -1903,21 +2082,20 @@ export function FieldEditor({
           </Text>
           <Text> </Text>
           <Text bold>Row navigation</Text>
-          <Text>{'  ↑/↓ or j/k       move between rows'}</Text>
+          <Text>{'  ↑/↓               move between rows'}</Text>
           <Text>{'  Enter            edit fields on the current row'}</Text>
           <Text>{'  Esc              exit the panel'}</Text>
           <Text> </Text>
           <Text bold>Field editing</Text>
-          <Text>{'  ↑/↓ or j/k       cycle through fields (j/k literal in text inputs)'}</Text>
+          <Text>{'  ↑/↓/←→           cycle through fields'}</Text>
           <Text>{'  ←/→              cycle picker values · move cursor in text inputs'}</Text>
           <Text>{'  Space/Enter      toggle required'}</Text>
           <Text>{'  Type             edit description / string default'}</Text>
-          <Text>{'  Ctrl+S           save changes'}</Text>
           <Text>{'  Esc              exit field-edit back to the row'}</Text>
           <Text> </Text>
           <Text bold>Values / allowedComponents</Text>
           <Text>{'  a / e / r        add · edit · remove'}</Text>
-          <Text>{'  ↑↓ or j/k        navigate the list'}</Text>
+          <Text>{'  ↑↓               navigate the list'}</Text>
           <Text>{'  K / J            reorder up · down'}</Text>
           <Text> </Text>
           <Text bold>Panels</Text>
@@ -1931,6 +2109,6 @@ export function FieldEditor({
       )}
       {validationError && <Text color={PALETTE.error}>{'✗ ' + validationError}</Text>}
       <Text dimColor>{modeLabel}</Text>
-    </Box>
+    </FixedPanel>
   );
 }

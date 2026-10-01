@@ -136,7 +136,7 @@ function ReviewPanelFooter({
         : sidebarFocused
           ? sidebarFooter
           : reviewEditor.showJson
-            ? '  [j/k] scroll  [Ctrl+u/d] half-page  [gg/G] top/bottom  [Tab] focus list'
+            ? '  [↑↓] scroll  [Ctrl+u/d] half-page  [gg/G] top/bottom  [Tab] focus list'
             : '  [Tab] focus list  (edit fields)' +
               (reviewEditor.currentTokenSuggestions().length > 0 ? '  [t] token review' : '')}
       {livePreview.status === 'running' && <Text>{`  ${livePreviewSpinner} live preview`}</Text>}
