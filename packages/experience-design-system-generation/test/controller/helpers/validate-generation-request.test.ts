@@ -35,19 +35,30 @@ describe('validateGenerationRequest', () => {
   });
 
   it('throws when timeoutMs is not a number', () => {
-    expect(() => validateGenerationRequest({ ...VALID_REQUEST, timeoutMs: '30000' as unknown as number })).toThrow(
-      TypeError,
-    );
+    expect(() =>
+      validateGenerationRequest({
+        ...VALID_REQUEST,
+        timeoutMs: '30000' as unknown as number,
+      }),
+    ).toThrow(TypeError);
   });
 
   it('throws when promptOptions is not an object', () => {
-    expect(() => validateGenerationRequest({ ...VALID_REQUEST, promptOptions: null as never })).toThrow(TypeError);
+    expect(() =>
+      validateGenerationRequest({
+        ...VALID_REQUEST,
+        promptOptions: null as never,
+      }),
+    ).toThrow(TypeError);
   });
 
   it('throws when onOutput is provided but not a function', () => {
-    expect(() => validateGenerationRequest({ ...VALID_REQUEST, onOutput: 'nope' as unknown as () => void })).toThrow(
-      TypeError,
-    );
+    expect(() =>
+      validateGenerationRequest({
+        ...VALID_REQUEST,
+        onOutput: 'nope' as unknown as () => void,
+      }),
+    ).toThrow(TypeError);
   });
 
   it('accepts a valid onOutput function', () => {
@@ -55,6 +66,12 @@ describe('validateGenerationRequest', () => {
   });
 
   it('accepts optional model and bedrock fields', () => {
-    expect(() => validateGenerationRequest({ ...VALID_REQUEST, model: 'opus', bedrock: true })).not.toThrow();
+    expect(() =>
+      validateGenerationRequest({
+        ...VALID_REQUEST,
+        model: 'opus',
+        bedrock: true,
+      }),
+    ).not.toThrow();
   });
 });

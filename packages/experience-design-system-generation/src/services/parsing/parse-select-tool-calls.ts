@@ -4,6 +4,7 @@ import type {
   SelectToolCall,
   RejectComponentCall,
 } from '../../types/tool-calls.js';
+import { parseSelectionSlotEvidence } from './helpers/parse-selection-slot-evidence.js';
 import { readToolCallObjects } from './helpers/read-tool-call-objects.js';
 
 const VALID_SELECT_TOOL_NAMES = new Set(['select_component', 'reject_component']);
@@ -20,7 +21,10 @@ export function parseSelectToolCallLines(stdout: string): ParsedSelectToolCalls 
       continue;
     }
 
-    const call = { tool: rec.tool as SelectToolCall['tool'], name: rec.name } as SelectToolCall;
+    const call = {
+      tool: rec.tool as SelectToolCall['tool'],
+      name: rec.name,
+    } as SelectToolCall;
     if (typeof rec.reason === 'string') (call as SelectComponentCall).reason = rec.reason;
     if (typeof rec.confidence === 'number' && rec.confidence >= 1 && rec.confidence <= 5) {
       if (call.tool === 'select_component') {
@@ -28,6 +32,10 @@ export function parseSelectToolCallLines(stdout: string): ParsedSelectToolCalls 
       } else {
         (call as RejectComponentCall).confidence = rec.confidence;
       }
+    }
+    if (call.tool === 'select_component') {
+      const slotEvidence = parseSelectionSlotEvidence(rec.slot_evidence, warnings);
+      if (slotEvidence !== undefined) call.slot_evidence = slotEvidence;
     }
     calls.push(call);
   }

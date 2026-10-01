@@ -130,6 +130,17 @@ describe('generate-components.md', () => {
   });
 });
 
+describe('select-components.md', () => {
+  it('documents machine-verifiable slot evidence output', async () => {
+    const content = await readSkill('select-components.md');
+    expect(content).toContain('slot_evidence');
+    expect(content).toContain('is_real_slot');
+    expect(content).toContain('allowed_components');
+    expect(content).toContain('exact declaration or JSX expression');
+    expect(content).toContain('zero real usages found');
+  });
+});
+
 describe('map-tokens.md', () => {
   it('exists', async () => {
     await expect(readSkill('map-tokens.md')).resolves.toBeDefined();

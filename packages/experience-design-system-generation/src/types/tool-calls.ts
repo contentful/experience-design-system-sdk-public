@@ -50,11 +50,26 @@ export interface ParsedToolCalls {
   warnings: string[];
 }
 
+export interface SelectionSlotEvidenceCitation {
+  source: string;
+  line: string;
+  quote: string;
+}
+
+export interface SelectionSlotEvidence {
+  name: string;
+  is_real_slot: boolean;
+  allowed_components?: string[];
+  evidence: SelectionSlotEvidenceCitation[];
+  reason: string;
+}
+
 export interface SelectComponentCall {
   tool: 'select_component';
   name: string;
   reason?: string;
   confidence?: number;
+  slot_evidence?: SelectionSlotEvidence[];
 }
 
 export interface RejectComponentCall {

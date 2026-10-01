@@ -26,7 +26,12 @@ describe('createGenerationEndpoint', () => {
   });
 
   it('run calls the orchestrator with the built prompt and returns the result', async () => {
-    const fakeResult = { exitCode: 0, stdout: 'tool output', stderr: '', timedOut: false };
+    const fakeResult = {
+      exitCode: 0,
+      stdout: 'tool output',
+      stderr: '',
+      timedOut: false,
+    };
     const fakeInvoke = vi.fn().mockResolvedValue(fakeResult);
 
     // Inject a fake local-cli invoker by monkey-patching the module — simpler
