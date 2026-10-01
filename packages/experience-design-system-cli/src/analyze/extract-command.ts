@@ -26,11 +26,10 @@ import {
 } from '../session/db.js';
 import { findSlotCycles, suggestCycleBreakEdge } from './cycle-detection.js';
 import { resolveMapping } from './composition/resolve-mapping.js';
-import { loadUserMap, resolveCompositionSources } from './composition/resolve-mapping-cli.js';
+import { resolveCompositionSources } from './composition/resolve-mapping-cli.js';
 import { selectCandidateFiles, capCandidatesToPromptBudget } from './composition/candidate-files.js';
 import { buildCompositionInputHash } from './composition/composition-cache-key.js';
 import { collectManifestDocEdges } from './composition/manifest-doc-evidence.js';
-import type { InterchangeMap } from './composition/interchange-schema.js';
 import { parsePromptOverrides, resolvePromptOverride } from '../lib/prompt-overrides.js';
 import {
   agentSupportsBedrock,
@@ -53,7 +52,6 @@ interface AnalyzeExtractOptions {
   dir?: string;
   resolveUnreachable?: 'auto' | 'always' | 'never';
   compositionRefresh?: boolean;
-  compositionMap?: string;
   prompt?: string[];
   agent?: string;
   bedrock?: boolean;
@@ -238,7 +236,6 @@ export function registerInternalExtractCommand(program: Command): void {
       'auto',
     )
     .option('--composition-refresh', 'Force the mapping agent to run even where deterministic sources answered')
-    .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map')
     .option(
       '--prompt <stage=value>',
       'Override a stage prompt (repeatable). value is a file path or literal text, e.g. --prompt composition=./p.md',
@@ -379,16 +376,6 @@ export function registerInternalExtractCommand(program: Command): void {
     {
       const sources = resolveCompositionSources(opts);
 
-      let userMap: InterchangeMap | undefined;
-      if (opts.compositionMap) {
-        const loaded = await loadUserMap(opts.compositionMap);
-        if (!loaded.ok) {
-          process.stderr.write(`Error: ${loaded.error}\n`);
-          process.exit(1);
-        }
-        userMap = loaded.map;
-      }
-
       const { overrides: promptOverrides, errors: promptErrors } = parsePromptOverrides(opts.prompt ?? []);
       for (const err of promptErrors) {
         process.stderr.write(`Error: ${err}\n`);
@@ -480,7 +467,6 @@ export function registerInternalExtractCommand(program: Command): void {
         });
         const result = await resolveMapping({
           components: validatedComponents,
-          ...(userMap ? { userMap } : {}),
           ...(extraEdges.length > 0 ? { extraEdges } : {}),
           forceAgent: sources.forceAgent,
           files: promptFiles,

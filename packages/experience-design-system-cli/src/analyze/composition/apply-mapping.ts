@@ -35,8 +35,7 @@ export function applyMapping(components: RawComponentDefinition[], edges: Compos
   }));
   const byName = new Map(cloned.map((c) => [c.name, c]));
 
-  const isHighTrust = (p: CompositionEdge['provenance']): boolean =>
-    p === 'user' || p === 'typed-slot' || p.startsWith('adapter:');
+  const isHighTrust = (p: CompositionEdge['provenance']): boolean => p === 'typed-slot' || p.startsWith('adapter:');
 
   const addAllowed = (slot: RawSlotDefinition, child: string): void => {
     const set = new Set(slot.allowedComponents ?? []);
