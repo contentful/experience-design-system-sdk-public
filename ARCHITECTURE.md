@@ -63,6 +63,18 @@ The CLI orchestration layer owns those concerns and returns the existing
 session contract to scope review and downstream generation. The persisted step
 label `analyze extract` remains for session compatibility.
 
+The extraction package is organized by responsibility:
+
+- `src/extract/controller/` owns endpoint validation and public progress mapping.
+- `src/extract/services/` owns extraction orchestration, classification, quality composition, and adapter registration.
+- `src/extract/policies/quality/` owns deterministic authorability, scoring, source inspection, and validation policies.
+- `src/extract/evidence/` owns reusable source, slot, and structural evidence.
+- `src/extract/adapters/<framework>/` owns framework-specific syntax and extraction behavior.
+- `src/extract/adapters/support/` owns shared adapter file processing, module/type resolution, source locations, and TSX mechanics.
+- `src/extract/model/` owns the typed extraction data and endpoint contracts.
+
+Package-root exports import canonical implementations from these boundaries; compatibility re-export files are not part of the supported layout.
+
 A separate JSON file at `~/.config/experiences/runs.json` records each successful wizard session (id, project path, save path, push target, component count) for list and detail views.
 
 When a raw token source is supplied, the wizard performs token generation internally and writes `tokens.json` before it extracts and generates components. For standalone `map tokens`, the generated CDF and DTCG artifacts must be present in the same pipeline session before mapping.
@@ -102,7 +114,7 @@ The next-generation TUI-first import wizard built on React/Ink. Separate from v1
 
 ### `experience-design-system-extraction`
 
-Component extraction engine: per-framework parsers (React, Vue, Astro, Stencil, Web Components) built on ts-morph, plus prop pre-classification. Consumed by the CLI's `analyze extract` command.
+Component extraction engine: per-framework adapters (React, Vue, Astro, Stencil, Web Components, and Svelte) built on ts-morph, shared adapter support, typed evidence, and deterministic quality policies. Its in-process endpoint and supported framework extractors are consumed by the CLI's `analyze extract` command.
 
 ### `experience-design-system-generation`
 

@@ -68,5 +68,5 @@ export {
 } from './extract/evidence/slot-evidence.js';
 
 // Pre-classification
-export { preClassifyProp, preClassifyComponent } from './pre-classify.js';
-export type { PreClassification } from './pre-classify.js';
+export { preClassifyProp, preClassifyComponent } from './extract/services/classification-service.js';
+export type { PreClassification } from './extract/services/classification-service.js';

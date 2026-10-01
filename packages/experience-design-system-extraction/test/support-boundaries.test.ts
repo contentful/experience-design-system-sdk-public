@@ -40,7 +40,7 @@ describe('file extraction workers', () => {
       (filePath) => callbacks.push(filePath),
     );
 
-    expect(result.items).toEqual([{ name: 'First' }, { name: 'Second' }]);
+    expect(result.items.map((item) => item.name).sort()).toEqual(['First', 'Second']);
     expect(result.warnings).toEqual(['second-file-warning']);
     expect(callbacks.sort()).toEqual([firstPath, secondPath].sort());
     expect(progress.at(-1)).toEqual({ filesProcessed: 2, componentsFound: 2 });

@@ -1,7 +1,7 @@
 # Extraction support and quality policy boundaries
 
 research_started_at: 2026-10-01T14:49
-status: phase-4-complete
+status: phase-5-complete
 base_commit: 964f09c2ffb4d300a782ce38b88e0781a766c60b
 branch: codex/extraction-support-policy-organization
 
@@ -27,8 +27,9 @@ This plan covers the remaining files under
 - `non-authorable-filter.ts`
 - `validate.ts`
 - `slot-detection.ts`
-- Compatibility re-exports: `pre-classify.ts`, `parse-imported-names.ts`,
-  `slot-allowed-components.ts`, and `structural-slot-evidence.ts`
+- Compatibility re-exports: `src/pre-classify.ts`,
+  `src/extract/parse-imported-names.ts`, `src/extract/slot-allowed-components.ts`,
+  and `src/extract/structural-slot-evidence.ts`
 
 The existing model, controller, evidence, service, and framework-adapter
 boundaries remain intact. No HTTP transport, dependency-injection framework,
@@ -189,16 +190,16 @@ pnpm exec vitest run test/analyze/extract/scoring.test.ts test/analyze/extract/s
 
 ## Phase 5: Remove stale compatibility files and document ownership
 
-- [ ] Confirm repository-wide consumers before deleting
+- [x] Confirm repository-wide consumers before deleting
   `pre-classify.ts`, `parse-imported-names.ts`, `slot-allowed-components.ts`,
   and `structural-slot-evidence.ts`.
-- [ ] Delete `slot-detection.ts` if the repository-wide audit confirms it is
+- [x] Delete `slot-detection.ts` after the repository-wide audit confirmed it is
   only a compatibility re-export.
-- [ ] Update `src/index.ts` to import canonical implementations directly while
+- [x] Update `src/index.ts` to import canonical implementations directly while
   retaining all supported root exports.
-- [ ] Update `AGENTS.md`, `ARCHITECTURE.md`, and `CONTRIBUTING.md` to describe
+- [x] Update `AGENTS.md`, `ARCHITECTURE.md`, and `CONTRIBUTING.md` to describe
   policy and adapter-support ownership and remove stale source paths.
-- [ ] Add an ADR documenting the final service, policy, evidence, and adapter
+- [x] Add an ADR documenting the final service, policy, evidence, and adapter
   support dependency rules.
 
 Verification:

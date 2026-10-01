@@ -99,7 +99,7 @@ In tests, set `EDS_PIPELINE_DB_PATH` to a temp path to avoid polluting the devel
 
 ## The React Extractor
 
-`src/analyze/extract/react.ts` is the most complex file (~2500 lines). Before editing it:
+`packages/experience-design-system-extraction/src/extract/adapters/react/extractor.ts` is the most complex extraction adapter (~2500 lines). Before editing it:
 
 1. Understand the DOM attribute prop surfacing strategy — see "DOM attribute prop surfacing" in `ARCHITECTURE.md`
 2. Understand how SVGProps is handled — it is one of the curated DOM attribute wrapper types (`EXPANDABLE_DOM_ATTRIBUTE_TYPE_NAMES`)
@@ -107,9 +107,23 @@ In tests, set `EDS_PIPELINE_DB_PATH` to a temp path to avoid polluting the devel
 Key invariant: **never call `getType().getProperties()` on a type that extends a DOM attribute wrapper** — this produces hundreds of inflated props. Use `extractPropsFromInterfaceDeclaration` (which restricts to own-declared members) or `getSyntheticDomAttributeProps` (which uses the curated allowlist).
 
 When adding a new DOM attribute wrapper type (e.g., `TableHTMLAttributes`):
-1. Add it to `EXPANDABLE_DOM_ATTRIBUTE_TYPE_NAMES` in `react.ts`
+1. Add it to `EXPANDABLE_DOM_ATTRIBUTE_TYPE_NAMES` in `packages/experience-design-system-extraction/src/extract/adapters/react/extractor.ts`
 2. Specify its curated prop list and optional parent type
 3. Write a test that verifies the prop count stays bounded
+
+## Extraction package boundaries
+
+The extraction package keeps ownership explicit:
+
+- `src/extract/controller/` validates the in-process endpoint contract.
+- `src/extract/services/` owns orchestration, classification, quality composition, and adapter registration.
+- `src/extract/policies/quality/` contains deterministic authorability, scoring, source-inspection, and validation rules.
+- `src/extract/evidence/` contains source and slot evidence that adapters and policies consume.
+- `src/extract/adapters/<framework>/` contains framework syntax and extraction behavior.
+- `src/extract/adapters/support/` contains shared adapter file-processing, resolution, and TSX mechanics.
+- `src/extract/model/` contains extraction data and contract types.
+
+Add shared adapter mechanics under `adapters/support/` and shared quality rules under `policies/quality/`; do not recreate package-root utility or compatibility buckets.
 
 ## Import Generation Internals
 

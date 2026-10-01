@@ -146,9 +146,10 @@ Commit the updated snapshot files alongside the code change.
 
 ## Adding a New Framework Extractor
 
-1. Create `src/analyze/extract/<framework>.ts` implementing the `ComponentExtractor` interface from `src/types.ts`
-2. Register it in `src/analyze/extract/pipeline.ts` — add to the `extractors` array and provide a `fileFilter`
-3. Write tests in `test/analyze/extract/<framework>.test.ts`
+1. Create `packages/experience-design-system-extraction/src/extract/adapters/<framework>/extractor.ts` implementing `ComponentExtractor` from `src/extract/services/ports/component-extractor.ts`
+2. Register it in `packages/experience-design-system-extraction/src/extract/services/extractor-registry.ts` with an ordered `fileFilter`
+3. Keep shared file processing and module/type resolution in `packages/experience-design-system-extraction/src/extract/adapters/support/`
+4. Write extraction-package boundary tests and CLI coverage in the corresponding `test/` directories
 
 ## Branching and Deployment
 
