@@ -46,10 +46,9 @@ src/tui/import/
   steps/
     index.ts             # public entry: one export line per screen
     01-welcome/          # steps are numbered in the order they appear in the flow
-      screen.tsx         # UI only: renders props and state, including the copy it displays
+      screen.tsx         # UI only: renders props and state, including the copy it displays and its props type
       controls.ts        # this screen's shortcuts (Esc, q) and the key hints shown for it
       logic.ts           # decisions: validation, derived values, loaders, result building
-      types.ts           # props and result types
 ```
 
 Rules for a screen:

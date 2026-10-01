@@ -4,7 +4,11 @@ import TextInput from 'ink-text-input';
 import { PALETTE } from '../../../home/home.theme.js';
 import { WELCOME_CONTROLS, useWelcomeControls } from './controls.js';
 import { toProjectPath } from './logic.js';
-import type { WelcomeScreenProps } from './types.js';
+
+export interface WelcomeScreenProps {
+  onContinue: (projectPath: string) => void;
+  onQuit: () => void;
+}
 
 const RULE = '────────────────────────────────────────';
 
