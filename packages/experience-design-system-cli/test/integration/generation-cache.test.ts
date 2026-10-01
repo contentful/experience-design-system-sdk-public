@@ -27,6 +27,7 @@ import {
   type ScriptedAgent,
 } from './cache-harness.js';
 import { resolveSkillPath } from '@contentful/experience-design-system-generation';
+import { openPipelineDb } from '../../src/session/db.js';
 
 const GEN_ARGS = (fix: CacheFixture, extra: string[] = []): string[] => [
   '__generate',
@@ -109,7 +110,10 @@ describe('cache integration: generation_cache', () => {
     const after1 = await agent.callCount();
 
     const mutated = [
-      { ...SAMPLE_TWO_COMPONENTS[0]!, props: [{ name: 'label', type: 'number', required: true }] },
+      {
+        ...SAMPLE_TWO_COMPONENTS[0]!,
+        props: [{ name: 'label', type: 'number', required: true }],
+      },
       SAMPLE_TWO_COMPONENTS[1]!,
     ];
     const { sessionId: s2 } = await fix.extractAgain(mutated);
@@ -127,7 +131,10 @@ describe('cache integration: generation_cache', () => {
     // hash. Re-extract the same components but with descriptions set.
     const withDocs = SAMPLE_TWO_COMPONENTS.map((c) => ({
       ...c,
-      props: c.props.map((p) => ({ ...p, description: 'jsdoc text added later' })),
+      props: c.props.map((p) => ({
+        ...p,
+        description: 'jsdoc text added later',
+      })),
     }));
     const { sessionId: s2 } = await fix.extractAgain(withDocs);
     await runCliWithEnv(GEN_ARGS({ ...fix, sessionId: s2 } as CacheFixture), baseEnv(fix, agent));
@@ -202,5 +209,49 @@ describe('cache integration: generation_cache', () => {
 
     await runCliWithEnv(GEN_ARGS(fix), baseEnv(fix, agent));
     expect(await agent.callCount()).toBe(after1);
+  });
+
+  it('20. an invalid cached child reference is treated as a cache miss and removed', async () => {
+    const { fix, agent } = await setup();
+    await runCliWithEnv(GEN_ARGS(fix), baseEnv(fix, agent));
+    const after1 = await agent.callCount();
+
+    const db = openPipelineDb(fix.dbPath);
+    const cardId = (
+      db
+        .prepare(`SELECT component_id FROM raw_components WHERE session_id = ? AND name = 'Card'`)
+        .get(fix.sessionId) as {
+        component_id: string;
+      }
+    ).component_id;
+    db.prepare(
+      `INSERT INTO raw_slot_allowed_components (session_id, component_id, slot_name, allowed_component, position)
+       VALUES (?, ?, 'children', 'Icon', 0)`,
+    ).run(fix.sessionId, cardId);
+    db.close();
+
+    const next = await fix.extractAgain(SAMPLE_TWO_COMPONENTS);
+    const nextFix = { ...fix, sessionId: next.sessionId } as CacheFixture;
+    const cacheStatus = await runCliWithEnv(GEN_ARGS(nextFix, ['--cache-status']), baseEnv(nextFix, agent));
+    expect(cacheStatus.stdout).toContain('cache-status=miss');
+
+    await runCliWithEnv(GEN_ARGS(nextFix), baseEnv(nextFix, agent));
+    expect(await agent.callCount()).toBe(after1 + 1);
+
+    const checkDb = openPipelineDb(fix.dbPath);
+    const nextCardId = (
+      checkDb
+        .prepare(`SELECT component_id FROM raw_components WHERE session_id = ? AND name = 'Card'`)
+        .get(next.sessionId) as {
+        component_id: string;
+      }
+    ).component_id;
+    const rows = checkDb
+      .prepare(
+        `SELECT allowed_component FROM raw_slot_allowed_components WHERE session_id = ? AND component_id = ? AND slot_name = 'children'`,
+      )
+      .all(next.sessionId, nextCardId) as Array<{ allowed_component: string }>;
+    expect(rows).toEqual([]);
+    checkDb.close();
   });
 });

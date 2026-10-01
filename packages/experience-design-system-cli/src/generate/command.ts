@@ -38,6 +38,8 @@ import {
   storeCaches,
   copyComponentFromCache,
   copyComponentsFromCache,
+  filterUnknownSlotAllowedComponents,
+  findUnknownSlotAllowedComponents,
   copyTokensFromCache,
   renameEmptySlots,
   type RawComponentWithId,
@@ -177,7 +179,6 @@ function cachedComponentResult(componentName: string, warnings: string[] = []): 
     renamedSlotsCount: 0,
   };
 }
-
 function normalizeComponentForCache(
   component: RawComponentDefinition & { component_id?: string },
 ): RawComponentDefinition & {
@@ -218,12 +219,23 @@ function resolveComponentCache(
   db: ReturnType<typeof openPipelineDb>,
   component: RawComponentDefinition & { component_id: string },
   promptHash: string,
+  allowedComponentNames: ReadonlySet<string>,
 ): ComponentCacheResolution | null {
   const cached = lookupComponentCache(db, component, promptHash);
-  if (cached) return { entry: cached, humanEdited: cached.humanEdited };
+  if (
+    cached &&
+    findUnknownSlotAllowedComponents(db, cached.sourceSessionId, allowedComponentNames, component.component_id)
+      .length === 0
+  ) {
+    return { entry: cached, humanEdited: cached.humanEdited };
+  }
 
   const pinned = lookupCacheByEntity(db, 'component', component.component_id);
-  return pinned?.humanEdited ? { entry: pinned, humanEdited: true } : null;
+  return pinned?.humanEdited &&
+    findUnknownSlotAllowedComponents(db, pinned.sourceSessionId, allowedComponentNames, component.component_id)
+      .length === 0
+    ? { entry: pinned, humanEdited: true }
+    : null;
 }
 
 async function runOneComponent(
@@ -244,6 +256,7 @@ async function runOneComponent(
   existingContentfulEntities: ExistingContentfulEntities | undefined,
   existingTokensInline: string | undefined,
   precomputedCachedNames: ReadonlySet<string>,
+  allowedComponentNames: ReadonlySet<string>,
 ): Promise<ComponentRunResult> {
   const pos = c.dim(`[${index + 1}/${total}]`);
 
@@ -263,6 +276,13 @@ async function runOneComponent(
     effectiveSlots = component.slots.map((s) => (renameMap.has(s.name) ? { ...s, name: renameMap.get(s.name)! } : s));
     for (const w of renameWarnings) process.stderr.write(`  ${c.yellow('⚠')}  ${w}\n`);
   }
+  effectiveSlots = effectiveSlots.map((slot) => {
+    if (!slot.allowedComponents) return slot;
+    return {
+      ...slot,
+      allowedComponents: slot.allowedComponents.filter((name) => allowedComponentNames.has(name)),
+    };
+  });
   const cacheComponent = normalizeComponentForCache(component);
 
   if (!noCache && precomputedCachedNames.has(component.name)) {
@@ -272,9 +292,11 @@ async function runOneComponent(
 
   if (!noCache) {
     const inputHash = computeComponentInputHash(cacheComponent);
-    const resolution = resolveComponentCache(db, component, promptHash);
+    const resolution = resolveComponentCache(db, component, promptHash, allowedComponentNames);
     if (resolution && !resolution.humanEdited) {
-      copyComponentFromCache(db, resolution.entry.sourceSessionId, sessionId, component.component_id);
+      copyComponentFromCache(db, resolution.entry.sourceSessionId, sessionId, component.component_id, true, {
+        allowedComponentNames,
+      });
       storeCache(
         db,
         inputHash,
@@ -288,7 +310,9 @@ async function runOneComponent(
       return cachedComponentResult(component.name);
     }
     if (resolution?.humanEdited) {
-      copyComponentFromCache(db, resolution.entry.sourceSessionId, sessionId, component.component_id);
+      copyComponentFromCache(db, resolution.entry.sourceSessionId, sessionId, component.component_id, true, {
+        allowedComponentNames,
+      });
       process.stderr.write(`  ${pos}  ${c.bold(component.name)}  ${c.cyan('pinned (human-edited)')}\n`);
       return cachedComponentResult(component.name, [`${component.name}: source changed but human edits preserved`]);
     }
@@ -329,6 +353,7 @@ async function runOneComponent(
     skillContentOverride,
     existingComponentsInline,
     existingTokensInline,
+    componentAllowlistInline: JSON.stringify([...allowedComponentNames].sort()),
   });
 
   const maxAttempts = 2;
@@ -372,7 +397,9 @@ async function runOneComponent(
       continue;
     }
 
-    const applied = applyToolCalls(db, sessionId, component.component_id, component.name, calls, warnings);
+    const applied = applyToolCalls(db, sessionId, component.component_id, component.name, calls, warnings, {
+      allowedComponentNames,
+    });
     if (!noCache) {
       const inputHash = computeComponentInputHash(cacheComponent);
       storeCache(db, inputHash, 'component', component.component_id, sessionId, false, promptHash);
@@ -416,6 +443,7 @@ async function runAllComponents(
   existingContentfulEntities: ExistingContentfulEntities | undefined,
   existingTokensInline: string | undefined,
   precomputedCachedNames: ReadonlySet<string>,
+  allowedComponentNames: ReadonlySet<string>,
 ): Promise<ComponentRunResult[]> {
   const concurrency = Number(process.env.EDS_GENERATE_CONCURRENCY ?? DEFAULT_COMPONENT_CONCURRENCY);
   process.stderr.write(
@@ -449,6 +477,7 @@ async function runAllComponents(
         existingContentfulEntities,
         existingTokensInline,
         precomputedCachedNames,
+        allowedComponentNames!,
       );
       completed += 1;
       process.stderr.write(`${formatGenerateProgressLine(completed, components.length, results[i]!.componentName)}\n`);
@@ -569,6 +598,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
   // Load raw components from DB for the components skill
   let sessionId: string | undefined;
   let allComponents: RawComponentWithId[] | undefined;
+  let allowedComponentNames: ReadonlySet<string> | undefined;
   if (skill === 'components') {
     sessionId = await resolveSessionId(opts.session);
     await bindAnalyticsSessionId(sessionId);
@@ -581,6 +611,27 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
     }
     if (allComponents.length === 0) {
       die(`Error: session '${sessionId}' has no raw components. Run analyze extract first.`);
+    }
+
+    allowedComponentNames = new Set([
+      ...allComponents.map((component) => component.name),
+      ...(existingContentfulEntities?.components ?? []).map((component) => component.name),
+    ]);
+    if (!opts.dryRun) {
+      const dbForReferences = openPipelineDb();
+      try {
+        const dropped = filterUnknownSlotAllowedComponents(dbForReferences, sessionId, allowedComponentNames);
+        for (const reference of dropped) {
+          process.stderr.write(
+            `Warning: ${reference.componentName}: slot '${reference.slotName}' — dropped unknown allowed component '${reference.allowedComponent}'\n`,
+          );
+        }
+        if (dropped.length > 0) {
+          allComponents = loadRawComponents(dbForReferences, sessionId, acceptedNames ?? undefined);
+        }
+      } finally {
+        dbForReferences.close();
+      }
     }
     if (acceptedNames) {
       process.stderr.write(`Scope: ${allComponents.length} accepted component(s) from analyze select\n`);
@@ -648,6 +699,8 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
       skillContentOverride: generatePrompt,
       existingComponentsInline: dryRunExistingComponentsInline,
       existingTokensInline: skill === 'components' ? existingTokensInline : undefined,
+      componentAllowlistInline:
+        skill === 'components' && allowedComponentNames ? JSON.stringify([...allowedComponentNames].sort()) : undefined,
     });
     process.stdout.write(prompt + '\n');
     await exitWithAnalytics(0);
@@ -687,12 +740,16 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
         const cacheEnabled = opts.cache !== false && process.env.EDS_NO_CACHE !== '1';
         const cachedComponents = cacheEnabled
           ? allComponents.flatMap((component) => {
-              const resolution = resolveComponentCache(db, component, promptHash);
+              const resolution = resolveComponentCache(db, component, promptHash, allowedComponentNames!);
               return resolution ? [{ component, resolution }] : [];
             })
           : [];
         if (cacheEnabled && opts.restoreCache) {
-          const restorations: Array<{ sourceSessionId: string; targetSessionId: string; componentId: string }> = [];
+          const restorations: Array<{
+            sourceSessionId: string;
+            targetSessionId: string;
+            componentId: string;
+          }> = [];
           const rekeyed: Array<{
             component: RawComponentWithId;
             cached: NonNullable<ReturnType<typeof lookupCache>>;
@@ -711,7 +768,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
             });
             rekeyed.push({ component, cached: resolution.entry });
           }
-          copyComponentsFromCache(db, restorations);
+          copyComponentsFromCache(db, restorations, { allowedComponentNames });
           storeCaches(
             db,
             rekeyed.map(({ component, cached }) => ({
@@ -748,6 +805,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
         existingContentfulEntities,
         existingTokensInline,
         precomputedCachedNames,
+        allowedComponentNames!,
       );
     } finally {
       db.close();
@@ -835,10 +893,17 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
           );
           db.close();
           // Skip agent invocation — jump to view
-          const viewResult: GenerateViewResult = { skill, agent, sessionId: sessionId ?? '' };
+          const viewResult: GenerateViewResult = {
+            skill,
+            agent,
+            sessionId: sessionId ?? '',
+          };
           if (process.stdout.isTTY) {
             const { waitUntilExit } = renderWithGoodbye(
-              createElement(GenerateView, { result: viewResult, onExit: () => void exitWithAnalytics(0) }),
+              createElement(GenerateView, {
+                result: viewResult,
+                onExit: () => void exitWithAnalytics(0),
+              }),
             );
             await waitUntilExit();
           } else {

@@ -43,7 +43,9 @@ const BUTTON_COMPONENT: RawComponentDefinition = {
 
 function setupSession(dbPath: string) {
   const db = openPipelineDb(dbPath);
-  const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+  const { sessionId } = getOrCreateSession(db, 'new', undefined, {
+    command: 'analyze extract',
+  });
   storeRawComponents(db, sessionId, [BUTTON_COMPONENT]);
   const components = loadRawComponents(db, sessionId);
   const component = components.find((c) => c.name === 'Button')!;
@@ -67,7 +69,11 @@ describe('applyToolCalls — classify_prop', () => {
         },
         { tool: 'exclude_prop', prop: 'variant', reason: 'not needed' },
         { tool: 'exclude_prop', prop: 'disabled', reason: 'not needed' },
-        { tool: 'exclude_prop', prop: 'className', reason: 'framework internal' },
+        {
+          tool: 'exclude_prop',
+          prop: 'className',
+          reason: 'framework internal',
+        },
         { tool: 'exclude_prop', prop: 'bgColor', reason: 'not needed' },
         { tool: 'classify_slot', slot: 'icon', required: false },
       ];
@@ -96,7 +102,13 @@ describe('applyToolCalls — classify_prop', () => {
         'Button',
         [
           { tool: 'classify_component' },
-          { tool: 'classify_prop', prop: 'label', cdf_type: 'string', cdf_category: 'content', required: true },
+          {
+            tool: 'classify_prop',
+            prop: 'label',
+            cdf_type: 'string',
+            cdf_category: 'content',
+            required: true,
+          },
           { tool: 'exclude_prop', prop: 'variant', reason: '' },
           { tool: 'exclude_prop', prop: 'disabled', reason: '' },
           { tool: 'exclude_prop', prop: 'className', reason: '' },
@@ -110,7 +122,11 @@ describe('applyToolCalls — classify_prop', () => {
         .prepare(
           `SELECT cdf_type, cdf_category, required FROM raw_props WHERE session_id = ? AND component_id = ? AND name = 'label'`,
         )
-        .get(sessionId, componentId) as { cdf_type: string; cdf_category: string; required: number };
+        .get(sessionId, componentId) as {
+        cdf_type: string;
+        cdf_category: string;
+        required: number;
+      };
       expect(prop.cdf_type).toBe('string');
       expect(prop.cdf_category).toBe('content');
       expect(prop.required).toBe(1);
@@ -168,7 +184,13 @@ describe('applyToolCalls — classify_prop', () => {
           { tool: 'exclude_prop', prop: 'variant', reason: '' },
           { tool: 'exclude_prop', prop: 'disabled', reason: '' },
           { tool: 'exclude_prop', prop: 'className', reason: '' },
-          { tool: 'classify_prop', prop: 'bgColor', cdf_type: 'token', cdf_category: 'design', token_kind: 'color' },
+          {
+            tool: 'classify_prop',
+            prop: 'bgColor',
+            cdf_type: 'token',
+            cdf_category: 'design',
+            token_kind: 'color',
+          },
           { tool: 'classify_slot', slot: 'icon' },
         ],
         [],
@@ -178,7 +200,10 @@ describe('applyToolCalls — classify_prop', () => {
         .prepare(
           `SELECT cdf_type, cdf_token_kind FROM raw_props WHERE session_id = ? AND component_id = ? AND name = 'bgColor'`,
         )
-        .get(sessionId, componentId) as { cdf_type: string; cdf_token_kind: string };
+        .get(sessionId, componentId) as {
+        cdf_type: string;
+        cdf_token_kind: string;
+      };
       expect(prop.cdf_type).toBe('token');
       expect(prop.cdf_token_kind).toBe('color');
       db.close();
@@ -198,7 +223,11 @@ describe('applyToolCalls — classify_prop', () => {
           { tool: 'exclude_prop', prop: 'label', reason: 'not needed' },
           { tool: 'exclude_prop', prop: 'variant', reason: '' },
           { tool: 'exclude_prop', prop: 'disabled', reason: '' },
-          { tool: 'exclude_prop', prop: 'className', reason: 'framework internal' },
+          {
+            tool: 'exclude_prop',
+            prop: 'className',
+            reason: 'framework internal',
+          },
           { tool: 'exclude_prop', prop: 'bgColor', reason: '' },
           { tool: 'classify_slot', slot: 'icon' },
         ],
@@ -209,7 +238,10 @@ describe('applyToolCalls — classify_prop', () => {
         .prepare(
           `SELECT cdf_type, cdf_category FROM raw_props WHERE session_id = ? AND component_id = ? AND name = 'className'`,
         )
-        .get(sessionId, componentId) as { cdf_type: string | null; cdf_category: string | null };
+        .get(sessionId, componentId) as {
+        cdf_type: string | null;
+        cdf_category: string | null;
+      };
       expect(prop.cdf_type).toBe('string');
       expect(prop.cdf_category).toBe('unattached');
       db.close();
@@ -226,7 +258,12 @@ describe('applyToolCalls — classify_prop', () => {
         'Button',
         [
           { tool: 'classify_component' },
-          { tool: 'classify_prop', prop: 'nonExistentProp', cdf_type: 'string', cdf_category: 'content' },
+          {
+            tool: 'classify_prop',
+            prop: 'nonExistentProp',
+            cdf_type: 'string',
+            cdf_category: 'content',
+          },
           { tool: 'exclude_prop', prop: 'label', reason: '' },
           { tool: 'exclude_prop', prop: 'variant', reason: '' },
           { tool: 'exclude_prop', prop: 'disabled', reason: '' },
@@ -261,7 +298,12 @@ describe('applyToolCalls — classify_slot', () => {
           { tool: 'exclude_prop', prop: 'disabled', reason: '' },
           { tool: 'exclude_prop', prop: 'className', reason: '' },
           { tool: 'exclude_prop', prop: 'bgColor', reason: '' },
-          { tool: 'classify_slot', slot: 'icon', required: false, description: 'Optional leading icon' },
+          {
+            tool: 'classify_slot',
+            slot: 'icon',
+            required: false,
+            description: 'Optional leading icon',
+          },
         ],
         [],
       );
@@ -270,7 +312,10 @@ describe('applyToolCalls — classify_slot', () => {
         .prepare(
           `SELECT required, description FROM raw_slots WHERE session_id = ? AND component_id = ? AND name = 'icon'`,
         )
-        .get(sessionId, componentId) as { required: number; description: string };
+        .get(sessionId, componentId) as {
+        required: number;
+        description: string;
+      };
       expect(slot.required).toBe(0);
       expect(slot.description).toBe('Optional leading icon');
       db.close();
@@ -292,7 +337,12 @@ describe('applyToolCalls — classify_slot', () => {
           { tool: 'exclude_prop', prop: 'disabled', reason: '' },
           { tool: 'exclude_prop', prop: 'className', reason: '' },
           { tool: 'exclude_prop', prop: 'bgColor', reason: '' },
-          { tool: 'classify_slot', slot: 'icon', required: false, allowed_components: ['Icon', 'Svg'] },
+          {
+            tool: 'classify_slot',
+            slot: 'icon',
+            required: false,
+            allowed_components: ['Icon', 'Svg'],
+          },
         ],
         [],
       );
@@ -303,6 +353,43 @@ describe('applyToolCalls — classify_slot', () => {
         )
         .all(sessionId, componentId) as Array<{ allowed_component: string }>;
       expect(rows.map((r) => r.allowed_component)).toEqual(['Icon', 'Svg']);
+      db.close();
+    });
+  });
+
+  it('drops generated children that are not in the component allowlist', async () => {
+    await withTempDb((dbPath) => {
+      const { db, sessionId, componentId } = setupSession(dbPath);
+      const result = applyToolCalls(
+        db,
+        sessionId,
+        componentId,
+        'Button',
+        [
+          { tool: 'classify_component' },
+          { tool: 'exclude_prop', prop: 'label', reason: '' },
+          { tool: 'exclude_prop', prop: 'variant', reason: '' },
+          { tool: 'exclude_prop', prop: 'disabled', reason: '' },
+          { tool: 'exclude_prop', prop: 'className', reason: '' },
+          { tool: 'exclude_prop', prop: 'bgColor', reason: '' },
+          {
+            tool: 'classify_slot',
+            slot: 'icon',
+            required: false,
+            allowed_components: ['Icon', 'Button', 'Svg'],
+          },
+        ],
+        [],
+        { allowedComponentNames: new Set(['Button', 'Svg']) },
+      );
+
+      const rows = db
+        .prepare(
+          `SELECT allowed_component FROM raw_slot_allowed_components WHERE session_id = ? AND component_id = ? AND slot_name = 'icon' ORDER BY position`,
+        )
+        .all(sessionId, componentId) as Array<{ allowed_component: string }>;
+      expect(rows.map((r) => r.allowed_component)).toEqual(['Button', 'Svg']);
+      expect(result.warnings).toContain("Button: classify_slot 'icon' — dropped unknown allowed component 'Icon'");
       db.close();
     });
   });
@@ -404,7 +491,13 @@ describe('applyToolCalls — loadCDFComponents integration', () => {
         'Button',
         [
           { tool: 'classify_component', description: 'A button' },
-          { tool: 'classify_prop', prop: 'label', cdf_type: 'string', cdf_category: 'content', required: true },
+          {
+            tool: 'classify_prop',
+            prop: 'label',
+            cdf_type: 'string',
+            cdf_category: 'content',
+            required: true,
+          },
           {
             tool: 'classify_prop',
             prop: 'variant',
@@ -413,9 +506,25 @@ describe('applyToolCalls — loadCDFComponents integration', () => {
             values: ['primary', 'secondary'],
             default: 'primary',
           },
-          { tool: 'classify_prop', prop: 'disabled', cdf_type: 'boolean', cdf_category: 'state', required: false },
-          { tool: 'classify_prop', prop: 'bgColor', cdf_type: 'token', cdf_category: 'design', token_kind: 'color' },
-          { tool: 'exclude_prop', prop: 'className', reason: 'framework internal' },
+          {
+            tool: 'classify_prop',
+            prop: 'disabled',
+            cdf_type: 'boolean',
+            cdf_category: 'state',
+            required: false,
+          },
+          {
+            tool: 'classify_prop',
+            prop: 'bgColor',
+            cdf_type: 'token',
+            cdf_category: 'design',
+            token_kind: 'color',
+          },
+          {
+            tool: 'exclude_prop',
+            prop: 'className',
+            reason: 'framework internal',
+          },
           {
             tool: 'classify_slot',
             slot: 'icon',
@@ -439,7 +548,10 @@ describe('applyToolCalls — loadCDFComponents integration', () => {
       expect(entry.entry.$properties['variant']?.$values).toEqual(['primary', 'secondary']);
       expect(entry.entry.$properties['disabled']?.$category).toBe('state');
       expect(entry.entry.$properties['bgColor']?.$type).toBe('token');
-      expect(entry.entry.$properties['className']).toMatchObject({ $type: 'string', $category: 'unattached' });
+      expect(entry.entry.$properties['className']).toMatchObject({
+        $type: 'string',
+        $category: 'unattached',
+      });
       expect(entry.entry.$slots?.['icon']?.$required).toBeUndefined();
       expect(entry.entry.$slots?.['icon']?.$allowedComponents).toEqual(['Icon']);
       db.close();
@@ -456,8 +568,18 @@ describe('applyToolCalls — loadCDFComponents integration', () => {
         'Button',
         [
           { tool: 'classify_component' },
-          { tool: 'classify_prop', prop: 'label', cdf_type: 'string', cdf_category: 'content' },
-          { tool: 'classify_prop', prop: 'ghost', cdf_type: 'string', cdf_category: 'content' },
+          {
+            tool: 'classify_prop',
+            prop: 'label',
+            cdf_type: 'string',
+            cdf_category: 'content',
+          },
+          {
+            tool: 'classify_prop',
+            prop: 'ghost',
+            cdf_type: 'string',
+            cdf_category: 'content',
+          },
           { tool: 'exclude_prop', prop: 'variant', reason: '' },
           { tool: 'exclude_prop', prop: 'disabled', reason: '' },
           { tool: 'exclude_prop', prop: 'className', reason: '' },
@@ -478,7 +600,9 @@ describe('applyTokenToolCalls', () => {
   it('stores tokens and groups, returns counts', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'generate tokens' });
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, {
+        command: 'generate tokens',
+      });
 
       const calls: TokenToolCall[] = [
         { tool: 'set_group', path: 'colors', description: 'Color palette' },
@@ -490,9 +614,19 @@ describe('applyTokenToolCalls', () => {
           value: '#0066ff',
           description: 'Primary brand color',
         },
-        { tool: 'set_token', path: 'colors.brand.secondary', type: 'color', value: '#6633cc' },
+        {
+          tool: 'set_token',
+          path: 'colors.brand.secondary',
+          type: 'color',
+          value: '#6633cc',
+        },
         { tool: 'set_group', path: 'spacing' },
-        { tool: 'set_token', path: 'spacing.sm', type: 'dimension', value: '8px' },
+        {
+          tool: 'set_token',
+          path: 'spacing.sm',
+          type: 'dimension',
+          value: '8px',
+        },
       ];
 
       const result = applyTokenToolCalls(db, sessionId, calls, []);
@@ -506,15 +640,28 @@ describe('applyTokenToolCalls', () => {
   it('stored tokens are retrievable via loadDTCGTokens', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'generate tokens' });
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, {
+        command: 'generate tokens',
+      });
 
       applyTokenToolCalls(
         db,
         sessionId,
         [
           { tool: 'set_group', path: 'colors', description: 'Colors' },
-          { tool: 'set_token', path: 'colors.primary', type: 'color', value: '#0066ff', description: 'Primary' },
-          { tool: 'set_token', path: 'colors.secondary', type: 'color', value: '#6633cc' },
+          {
+            tool: 'set_token',
+            path: 'colors.primary',
+            type: 'color',
+            value: '#0066ff',
+            description: 'Primary',
+          },
+          {
+            tool: 'set_token',
+            path: 'colors.secondary',
+            type: 'color',
+            value: '#6633cc',
+          },
         ],
         [],
       );
@@ -535,13 +682,28 @@ describe('applyTokenToolCalls', () => {
   it('stores complex object values (shadow)', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'generate tokens' });
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, {
+        command: 'generate tokens',
+      });
 
-      const shadow = { offsetX: '0px', offsetY: '4px', blur: '8px', spread: '0px', color: '#00000026' };
+      const shadow = {
+        offsetX: '0px',
+        offsetY: '4px',
+        blur: '8px',
+        spread: '0px',
+        color: '#00000026',
+      };
       applyTokenToolCalls(
         db,
         sessionId,
-        [{ tool: 'set_token', path: 'effects.shadow', type: 'shadow', value: shadow }],
+        [
+          {
+            tool: 'set_token',
+            path: 'effects.shadow',
+            type: 'shadow',
+            value: shadow,
+          },
+        ],
         [],
       );
 
@@ -554,7 +716,9 @@ describe('applyTokenToolCalls', () => {
   it('stores array values (gradient)', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'generate tokens' });
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, {
+        command: 'generate tokens',
+      });
 
       const gradient = [
         { color: '#000', position: 0 },
@@ -563,7 +727,14 @@ describe('applyTokenToolCalls', () => {
       applyTokenToolCalls(
         db,
         sessionId,
-        [{ tool: 'set_token', path: 'effects.gradient', type: 'gradient', value: gradient }],
+        [
+          {
+            tool: 'set_token',
+            path: 'effects.gradient',
+            type: 'gradient',
+            value: gradient,
+          },
+        ],
         [],
       );
 
@@ -576,18 +747,34 @@ describe('applyTokenToolCalls', () => {
   it('upserts — calling twice with same path updates existing row', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'generate tokens' });
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, {
+        command: 'generate tokens',
+      });
 
       applyTokenToolCalls(
         db,
         sessionId,
-        [{ tool: 'set_token', path: 'spacing.sm', type: 'dimension', value: '8px' }],
+        [
+          {
+            tool: 'set_token',
+            path: 'spacing.sm',
+            type: 'dimension',
+            value: '8px',
+          },
+        ],
         [],
       );
       applyTokenToolCalls(
         db,
         sessionId,
-        [{ tool: 'set_token', path: 'spacing.sm', type: 'dimension', value: '12px' }],
+        [
+          {
+            tool: 'set_token',
+            path: 'spacing.sm',
+            type: 'dimension',
+            value: '12px',
+          },
+        ],
         [],
       );
 
@@ -601,7 +788,9 @@ describe('applyTokenToolCalls', () => {
   it('passes through incoming warnings', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'generate tokens' });
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, {
+        command: 'generate tokens',
+      });
 
       const result = applyTokenToolCalls(
         db,
@@ -618,8 +807,12 @@ describe('applyTokenToolCalls', () => {
   it('isolates token data by session', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
-      const { sessionId: sid1 } = getOrCreateSession(db, 'new', undefined, { command: 'generate tokens' });
-      const { sessionId: sid2 } = getOrCreateSession(db, 'new', undefined, { command: 'generate tokens' });
+      const { sessionId: sid1 } = getOrCreateSession(db, 'new', undefined, {
+        command: 'generate tokens',
+      });
+      const { sessionId: sid2 } = getOrCreateSession(db, 'new', undefined, {
+        command: 'generate tokens',
+      });
 
       applyTokenToolCalls(db, sid1, [{ tool: 'set_token', path: 'a.token', type: 'color', value: '#aaa' }], []);
       applyTokenToolCalls(db, sid2, [{ tool: 'set_token', path: 'b.token', type: 'color', value: '#bbb' }], []);
@@ -660,13 +853,19 @@ describe('applyToolCalls — rationale persistence (Feature 1)', () => {
     await withTempDb((dbPath) => {
       const { db, sessionId, componentId } = setupSession(dbPath);
       const calls: ToolCall[] = [
-        { tool: 'exclude_prop', prop: 'className', reason: 'framework internal — not authorable' },
+        {
+          tool: 'exclude_prop',
+          prop: 'className',
+          reason: 'framework internal — not authorable',
+        },
       ];
       applyToolCalls(db, sessionId, componentId, 'Button', calls, []);
 
       const row = db
         .prepare(`SELECT rationale FROM raw_props WHERE session_id = ? AND component_id = ? AND name = ?`)
-        .get(sessionId, componentId, 'className') as { rationale: string | null };
+        .get(sessionId, componentId, 'className') as {
+        rationale: string | null;
+      };
       expect(row.rationale).toBe('framework internal — not authorable');
       db.close();
     });
