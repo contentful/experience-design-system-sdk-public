@@ -60,9 +60,9 @@ export async function runBuild(opts: {
 }
 
 /**
- * Walks `actionCommand` and its ancestors for a truthy `--bedrock`. --bedrock
- * is registered per-subcommand (not at program scope, unlike --debug), so a
- * root-level or subcommand-level setting can each carry it.
+ * Walks `actionCommand` and its ancestors for a truthy `--bedrock`.
+ * --bedrock is registered per-subcommand, so a root-level or
+ * subcommand-level setting can each carry it.
  */
 export function resolveBedrockFromAncestors(actionCommand: Command): boolean {
   for (let c: Command | null = actionCommand; c; c = c.parent) {
@@ -126,30 +126,7 @@ export function createProgram(): Command {
   registerSetupCommand(program);
   registerBuildCommand(program);
 
-  // Expose --debug on every subcommand. The flag is inherited automatically
-  // via `option()` at program scope + `preAction` reading merged opts from all
-  // ancestors. When set (or when EDSI_DEBUG / persisted config is on), the
-  // process-wide DebugLogger is initialized before the subcommand action runs
-  // and a bright-green "debug logs at <path>" banner is printed to stderr.
-  program.option(
-    '--debug',
-    'Write a JSONL trace of every decision to ~/.contentful/experience-design-system-cli/debug/',
-  );
-  program.option('--no-debug', 'Force debug logging off (overrides EDSI_DEBUG and persisted setup preference)');
-
   program.hook('preAction', async (_thisCommand, actionCommand) => {
-    // Merge opts from actionCommand and all ancestors — root-level --debug
-    // set alongside a subcommand ends up on the root command's opts, not the
-    // subcommand's.
-    let debug: boolean | undefined;
-    for (let c: Command | null = actionCommand; c; c = c.parent) {
-      const opts = c.opts() as { debug?: boolean };
-      if (opts.debug !== undefined) {
-        debug = opts.debug;
-        break;
-      }
-    }
-
     // Propagate --bedrock via env instead of relying on every subprocess spawn
     // site to re-forward the argv flag. `runAgent()` falls back to this var
     // when a call site omits `bedrock` explicitly, and any `node ... experiences
@@ -167,7 +144,7 @@ export function createProgram(): Command {
     const { analyticsDisabled } = await readExperiencesCredentials();
     setPersistedAnalyticsDisabled(analyticsDisabled ?? false);
     noteCommandStart(commandChain);
-    await beginCommand(commandChain, { ...(debug !== undefined ? { debug } : {}) });
+    await beginCommand(commandChain);
   });
 
   program.hook('postAction', async () => {

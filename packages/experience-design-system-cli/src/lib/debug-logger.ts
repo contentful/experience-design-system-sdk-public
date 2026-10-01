@@ -222,28 +222,6 @@ export function __resetDebugLoggerForTest(): void {
   delete process.env[DEBUG_LOG_ENV];
 }
 
-// ── Resolver ────────────────────────────────────────────────────────────────
-
-/**
- * Resolve effective debug-mode setting from three sources.
- *
- * Precedence (highest first):
- *   1. `--debug` / `--no-debug` CLI flag
- *   2. `EDSI_DEBUG` env var (truthy: 1, true, yes, on)
- *   3. Persisted `debug` field in credentials.json
- *   4. Default: OFF
- */
-export function resolveDebugMode(opts: { debug?: boolean }, configDebug?: boolean): boolean {
-  if (opts.debug !== undefined) return opts.debug;
-  const env = process.env['EDSI_DEBUG'];
-  if (env !== undefined && env !== '') {
-    const v = env.toLowerCase();
-    if (v === '1' || v === 'true' || v === 'yes' || v === 'on') return true;
-    if (v === '0' || v === 'false' || v === 'no' || v === 'off') return false;
-  }
-  if (configDebug !== undefined) return configDebug;
-  return false;
-}
 
 // ── Bright-green banner ─────────────────────────────────────────────────────
 
