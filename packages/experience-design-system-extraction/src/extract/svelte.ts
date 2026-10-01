@@ -12,7 +12,7 @@ import type {
 } from './model/component.js';
 import type { ExtractorOptions } from './model/options.js';
 import { computeExtractionScore, deriveNeedsReview } from './scoring.js';
-import { extractAllowedComponentsFromTypeText } from './slot-allowed-components.js';
+import { extractAllowedComponentsFromTypeText } from './evidence/allowed-components.js';
 import { runFileExtractionWorkers } from './file-extraction-workers.js';
 import { resolveLocalModule } from './resolve-local-module.js';
 

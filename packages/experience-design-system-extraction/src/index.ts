@@ -33,7 +33,7 @@ export { extractSvelteComponents } from './extract/svelte.js';
 export {
   extractAllowedComponentsFromTypeText,
   extractAllowedComponentsFromJsdoc,
-} from './extract/slot-allowed-components.js';
+} from './extract/evidence/allowed-components.js';
 
 // Post-extraction filtering and scoring
 export { isNonAuthorableComponent } from './extract/non-authorable-filter.js';
@@ -57,7 +57,7 @@ export {
   formatExclusionWarning,
   formatExcludedComponentLines,
 } from './extract/validate.js';
-export { parseImportedNames } from './extract/parse-imported-names.js';
+export { parseImportedNames } from './extract/evidence/source-evidence.js';
 
 // Slot detection helpers
 export {
@@ -65,7 +65,7 @@ export {
   isReactNodeType,
   isArrayReactNodeType,
   shouldBeSlot,
-} from './extract/slot-detection.js';
+} from './extract/evidence/slot-evidence.js';
 
 // Pre-classification
 export { preClassifyProp, preClassifyComponent } from './pre-classify.js';

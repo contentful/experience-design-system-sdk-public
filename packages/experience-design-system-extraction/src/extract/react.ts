@@ -28,15 +28,18 @@ import {
   getRenderableExports,
   isIntrinsicJsxElement,
 } from './tsx-shared.js';
-import { shouldBeSlot } from './slot-detection.js';
-import { extractAllowedComponentsFromTypeText, extractAllowedComponentsFromJsdoc } from './slot-allowed-components.js';
+import { shouldBeSlot } from './evidence/slot-evidence.js';
+import {
+  extractAllowedComponentsFromTypeText,
+  extractAllowedComponentsFromJsdoc,
+} from './evidence/allowed-components.js';
 import { getSourceLineMetadata } from './source-line-metadata.js';
 import {
   collectTypePredicateComponentReferences,
   collectRuntimeTypeCheckComponentReferences,
   collectRenderedComponentReferences,
   collectArrayMapRenderComponentReferences,
-} from './structural-slot-evidence.js';
+} from './evidence/structural-slot-evidence.js';
 
 const REACT_ELEMENT_GENERIC_TEST = /(?:React\.)?ReactElement\s*<\s*[A-Za-z_$][\w$.]*/;
 

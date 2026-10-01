@@ -1,6 +1,6 @@
 # Extraction model-controller-service refactor
 
-Status: Phase 4 complete; Phase 5 pending
+Status: Phase 5 complete; Phase 6 pending
 
 Baseline: `e2fbe38f6505fc2525dc090740ea63db89bb6b61`
 
@@ -194,19 +194,22 @@ codegen.
 
 ### 5. Isolate classification, quality, and evidence policies
 
-- [ ] Move `pre-classify.ts` behind a classification service while preserving
+- [x] Move `pre-classify.ts` behind a classification service while preserving
   exclusion rules and the `domAttribute` provenance removal boundary.
-- [ ] Group `non-authorable-filter.ts`, `source-inspection.ts`, `scoring.ts`,
+- [x] Group `non-authorable-filter.ts`, `source-inspection.ts`, `scoring.ts`,
   and `validate.ts` behind an explicit quality service.
-- [ ] Group slot detection, allowed-component parsing, structural slot evidence,
+- [x] Group slot detection, allowed-component parsing, structural slot evidence,
   and imported-name parsing under evidence modules.
-- [ ] Keep evidence provenance distinct from generated authorable props and
+- [x] Keep evidence provenance distinct from generated authorable props and
   slots.
-- [ ] Add unit tests for each service's positive and negative policy outcomes,
+- [x] Add unit tests for each service's positive and negative policy outcomes,
   especially retained-for-review versus excluded components.
 
-Verification: existing CLI pre-classification, non-authorable, slot, and source
-inspection tests pass without changing expected results.
+Verification completed: classification and quality boundary tests cover positive
+and negative policy outcomes; evidence boundary tests cover slot, declared
+allowed-component, and imported-name evidence; the extraction package passed 8
+test files and 26 tests, typecheck, and lint; the CLI extraction suite passed 23
+files and 334 tests; and CLI typecheck and extraction-test lint passed.
 
 ### 6. Reorganize framework adapters
 
