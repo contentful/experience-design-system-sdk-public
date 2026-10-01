@@ -1,6 +1,6 @@
 # Extraction model-controller-service refactor
 
-Status: Phase 3 complete; Phase 4 pending
+Status: Phase 4 complete; Phase 5 pending
 
 Baseline: `e2fbe38f6505fc2525dc090740ea63db89bb6b61`
 
@@ -156,7 +156,7 @@ tests passed with 4 files and 12 tests; extraction typecheck and lint passed;
 the CLI extraction suite passed with 23 files and 334 tests; and CLI typecheck
 passed. Root-level exports and runtime payload shapes remain compatible.
 
-### 3. Split the controller from the extraction service — complete
+### 3. Split the controller from the extraction service
 
 - [x] Rename `endpoint.ts` to the controller location while retaining the
   public function name `extractEndpoint`.
@@ -176,18 +176,21 @@ extraction typecheck and lint passed.
 
 ### 4. Decompose the pipeline service
 
-- [ ] Extract the framework registry and file-filter routing from `pipeline.ts`.
-- [ ] Extract parallel adapter execution and progress aggregation into a runner.
-- [ ] Extract family detection, identity keys, preferred-path selection, and
+- [x] Extract the framework registry and file-filter routing from `pipeline.ts`.
+- [x] Extract parallel adapter execution and progress aggregation into a runner.
+- [x] Extract family detection, identity keys, preferred-path selection, and
   duplicate warnings into a deduplication service.
-- [ ] Keep extractor registration order, concurrent execution behavior, warning
+- [x] Keep extractor registration order, concurrent execution behavior, warning
   text, and duplicate selection semantics unchanged.
-- [ ] Keep the service API small: one extraction use case plus explicit internal
+- [x] Keep the service API small: one extraction use case plus explicit internal
   ports rather than a generic dependency-injection container.
 
-Verification: add focused service tests for routing, progress aggregation,
-duplicate selection, and empty-file groups, then run the full extraction test
-surface.
+Verification completed: focused pipeline-service tests cover routing, progress
+aggregation, empty-file groups, duplicate selection, and cross-package
+collisions; the extraction package passed 6 test files and 19 tests, typecheck,
+and lint; the CLI extraction suite passed 23 files and 334 tests; and the CLI
+typecheck and extraction-test lint passed without invoking generated-client
+codegen.
 
 ### 5. Isolate classification, quality, and evidence policies
 
