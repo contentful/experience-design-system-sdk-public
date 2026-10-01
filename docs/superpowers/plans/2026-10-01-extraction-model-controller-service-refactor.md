@@ -1,6 +1,6 @@
 # Extraction model-controller-service refactor
 
-Status: Phase 1 complete; Phase 2 pending
+Status: Phase 2 complete; Phase 3 pending
 
 Baseline: `e2fbe38f6505fc2525dc090740ea63db89bb6b61`
 
@@ -139,21 +139,22 @@ tests; CLI extraction tests passed with 23 files and 334 tests, followed by the
 React suite at 70 tests after the DOM-surface guard was added; extraction
 typecheck and lint passed.
 
-### 2. Establish model and port boundaries
+### 2. Establish model and port boundaries — complete
 
-- [ ] Move `types.ts` into model modules without changing the root-level type
+- [x] Move `types.ts` into model modules without changing the root-level type
   exports or serialized `RawComponentDefinition` shape.
-- [ ] Move endpoint request, response, and progress types into the model
+- [x] Move endpoint request, response, and progress types into the model
   contract module.
-- [ ] Move `ComponentExtractor` into a service port module and keep its
+- [x] Move `ComponentExtractor` into a service port module and keep its
   `ExtractorOptions` and progress semantics unchanged.
-- [ ] Keep scoring and review metadata typed separately from extraction policy.
-- [ ] Update internal imports first, then confirm consumers still import from
+- [x] Keep scoring and review metadata typed separately from extraction policy.
+- [x] Update internal imports first, then confirm consumers still import from
   `@contentful/experience-design-system-extraction`.
 
-Verification: the model-boundary test and extraction regression suite pass after
-the model and port move; root-level exports and runtime payload shapes remain
-compatible.
+Verification completed: the model-boundary test passed with 2 tests; extraction
+tests passed with 4 files and 12 tests; extraction typecheck and lint passed;
+the CLI extraction suite passed with 23 files and 334 tests; and CLI typecheck
+passed. Root-level exports and runtime payload shapes remain compatible.
 
 ### 3. Split the controller from the extraction service
 

@@ -5,7 +5,7 @@ import type {
   RawSlotDefinition,
   ComponentExtractionResult,
   ExtractionExclusion,
-} from '../types.js';
+} from './model/component.js';
 import {
   extractAllowedValues,
   extractTsxComponents,

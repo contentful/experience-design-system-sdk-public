@@ -9,8 +9,8 @@ import type {
   RawPropDefinition,
   RawSlotDefinition,
   ComponentExtractionResult,
-  ExtractorOptions,
-} from '../types.js';
+} from './model/component.js';
+import type { ExtractorOptions } from './model/options.js';
 import { computeExtractionScore, deriveNeedsReview } from './scoring.js';
 import { extractAllowedComponentsFromTypeText } from './slot-allowed-components.js';
 import { runFileExtractionWorkers } from './file-extraction-workers.js';

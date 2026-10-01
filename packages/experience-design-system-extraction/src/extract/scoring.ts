@@ -1,18 +1,9 @@
-import type { RawComponentDefinition } from '../types.js';
+import type { RawComponentDefinition } from './model/component.js';
+import type { ExtractionConfidence, ExtractionScore, ExtractionScoreOptions } from './model/scoring.js';
+
+export type { ExtractionConfidence, ExtractionScore, ExtractionScoreOptions } from './model/scoring.js';
 
 // 1 = very low confidence (likely wrong), 5 = very high confidence (clearly correct)
-export type ExtractionConfidence = 1 | 2 | 3 | 4 | 5;
-
-export type ExtractionScore = {
-  confidence: ExtractionConfidence;
-  reasons: string[];
-};
-
-export interface ExtractionScoreOptions {
-  additionalIssueCount?: number;
-  additionalReasons?: string[];
-}
-
 // Prop type strings that indicate the extractor couldn't resolve a concrete type
 const OPAQUE_TYPES = new Set(['any', 'unknown', 'object', 'Record<string, unknown>', 'Record<string, any>']);
 

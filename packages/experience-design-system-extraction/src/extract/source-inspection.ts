@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import type { RawComponentDefinition } from '../types.js';
+import type { RawComponentDefinition } from './model/component.js';
 import { parseImportedNames } from './parse-imported-names.js';
 
 export const HIGH_CONFIDENCE_DATA_FETCH_WRAPPER_REASON = 'data-fetch-wrapper';

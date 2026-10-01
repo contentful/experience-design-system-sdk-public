@@ -1,5 +1,5 @@
 import type { Node } from 'ts-morph';
-import type { RawPropDefinition } from '../types.js';
+import type { RawPropDefinition } from './model/component.js';
 
 type LineAwareNode = Node & {
   getStartLineNumber?: () => number;

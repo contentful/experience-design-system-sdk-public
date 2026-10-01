@@ -5,7 +5,7 @@ import type {
   RawPropDefinition,
   RawSlotDefinition,
   ComponentExtractionResult,
-} from '../types.js';
+} from './model/component.js';
 import { createSortedExtractionResult, extractProjectSourceFiles } from './file-extraction-workers.js';
 import { kebabToPascal } from './tsx-shared.js';
 

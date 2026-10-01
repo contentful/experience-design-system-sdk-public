@@ -1,4 +1,4 @@
-// Types
+// Models and public contracts
 export type {
   RawComponentDefinition,
   RawPropDefinition,
@@ -6,12 +6,12 @@ export type {
   ComponentExtractionResult,
   ExtractionExclusion,
   ExtractorProgress,
-  ExtractorOptions,
-  ComponentExtractor,
   ExtractionValidationIssue,
   ExtractionValidationIssueCode,
-} from './types.js';
-export { stripScoringFields } from './types.js';
+} from './extract/model/component.js';
+export { stripScoringFields } from './extract/model/component.js';
+export type { ExtractorOptions } from './extract/model/options.js';
+export type { ComponentExtractor } from './extract/services/ports/component-extractor.js';
 
 // Core extraction pipeline
 export { extractComponents } from './extract/pipeline.js';
@@ -38,7 +38,7 @@ export {
 // Post-extraction filtering and scoring
 export { isNonAuthorableComponent } from './extract/non-authorable-filter.js';
 export { computeExtractionScore, deriveNeedsReview } from './extract/scoring.js';
-export type { ExtractionScore, ExtractionScoreOptions, ExtractionConfidence } from './extract/scoring.js';
+export type { ExtractionScore, ExtractionScoreOptions, ExtractionConfidence } from './extract/model/scoring.js';
 export {
   inspectComponentSource,
   describeReviewReasons,

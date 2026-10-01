@@ -6,7 +6,7 @@ import type {
   RawPropDefinition,
   RawSlotDefinition,
   ComponentExtractionResult,
-} from '../types.js';
+} from './model/component.js';
 import { createSortedExtractionResult, runFileExtractionWorkers } from './file-extraction-workers.js';
 import { resolveTypeProperty } from './resolve-type-property.js';
 import { getSourceLineMetadata } from './source-line-metadata.js';

@@ -4,7 +4,7 @@ import type {
   RawPropDefinition,
   RawSlotDefinition,
   ComponentExtractionResult,
-} from '../types.js';
+} from './model/component.js';
 import { getJsxTagNameNode, isIntrinsicJsxElement, kebabToPascal } from './tsx-shared.js';
 import { createSortedExtractionResult, extractProjectSourceFiles } from './file-extraction-workers.js';
 

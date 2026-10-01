@@ -1,4 +1,6 @@
-import type { ComponentExtractionResult, ComponentExtractor, ExtractionExclusion, ExtractorOptions } from '../types.js';
+import type { ComponentExtractionResult, ExtractionExclusion, ExtractorProgress } from './model/component.js';
+import type { ExtractorOptions } from './model/options.js';
+import type { ComponentExtractor } from './services/ports/component-extractor.js';
 import { extractStencilComponents } from './stencil.js';
 import { extractReactComponents } from './react.js';
 import { extractVueTsxComponents } from './vue-tsx.js';
@@ -278,14 +280,9 @@ function choosePreferredComponent(
   };
 }
 
-type ExtractProgress = {
-  filesProcessed: number;
-  componentsFound: number;
-};
-
 export async function extractComponents(
   filePaths: string[],
-  onProgress?: (progress: ExtractProgress) => void,
+  onProgress?: (progress: ExtractorProgress) => void,
   opts?: ExtractorOptions,
 ): Promise<ComponentExtractionResult> {
   const filesByExtractor = new Map<ComponentExtractor, string[]>();

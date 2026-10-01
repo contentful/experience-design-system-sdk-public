@@ -9,7 +9,7 @@ import type {
   RawPropDefinition,
   RawSlotDefinition,
   ComponentExtractionResult,
-} from '../types.js';
+} from './model/component.js';
 import { createSortedExtractionResult, runFileExtractionWorkers } from './file-extraction-workers.js';
 import { resolveLocalModule } from './resolve-local-module.js';
 import { resolveTypeProperty } from './resolve-type-property.js';

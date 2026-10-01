@@ -1,4 +1,5 @@
-import type { ExtractorOptions, RawComponentDefinition } from '../types.js';
+import type { RawComponentDefinition } from './model/component.js';
+import type { ExtractionEndpointRequest, ExtractionEndpointResponse } from './model/contract.js';
 import { extractComponents } from './pipeline.js';
 import { isNonAuthorableComponent } from './non-authorable-filter.js';
 import { computeExtractionScore, deriveNeedsReview } from './scoring.js';
@@ -6,22 +7,11 @@ import { inspectComponentSource, describeReviewReasons } from './source-inspecti
 import { preClassifyComponent } from '../pre-classify.js';
 import { validateExtractedComponents } from './validate.js';
 
-export type ExtractionEndpointProgress = {
-  phase: 'extract';
-  filesProcessed: number;
-  totalFiles: number;
-  componentsFound: number;
-};
-
-export interface ExtractionEndpointRequest extends ExtractorOptions {
-  readonly filePaths: readonly string[];
-  onProgress?: (progress: ExtractionEndpointProgress) => void;
-}
-
-export interface ExtractionEndpointResponse {
-  components: RawComponentDefinition[];
-  warnings: string[];
-}
+export type {
+  ExtractionEndpointProgress,
+  ExtractionEndpointRequest,
+  ExtractionEndpointResponse,
+} from './model/contract.js';
 
 function wrapperConfidenceToIssueCount(confidence: number): number {
   if (confidence >= 4) return 2;
