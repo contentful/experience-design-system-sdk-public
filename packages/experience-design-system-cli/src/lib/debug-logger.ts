@@ -222,7 +222,6 @@ export function __resetDebugLoggerForTest(): void {
   delete process.env[DEBUG_LOG_ENV];
 }
 
-
 // ── Bright-green banner ─────────────────────────────────────────────────────
 
 /**
