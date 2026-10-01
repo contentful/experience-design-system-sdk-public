@@ -1,23 +1,30 @@
 import React, { useState } from 'react';
 import { Box, Text } from 'ink';
+import TextInput from 'ink-text-input';
 import { PALETTE } from '../../../home/home.theme.js';
-import { useBlinkingCursor } from '../../../use-blinking-cursor.js';
-import { withCursor } from '../../input/line-editing.js';
 import { WELCOME_CONTROLS, useWelcomeControls } from './controls.js';
-import { WELCOME_OVERVIEW } from './overview.js';
+import { toProjectPath } from './logic.js';
 import type { WelcomeScreenProps } from './types.js';
 
 const RULE = '────────────────────────────────────────';
 
-/**
- * First page of the import flow. Render only: keyboard handling lives in `./controls.ts` and every decision in
- * `./logic.ts`. Reports the outcome through `onContinue` / `onQuit`; never exits the process itself.
- */
+const OVERVIEW = [
+  { label: 'Step 1', description: 'Extract components from your codebase' },
+  { label: 'Step 2', description: 'Review what was extracted' },
+  { label: 'Step 3', description: 'Generate CDF definitions with Claude' },
+  { label: 'Step 4', description: 'Review generated definitions' },
+  { label: 'Step 5', description: 'Push to Contentful' },
+] as const;
+
 export function WelcomeScreen({ onContinue, onQuit }: WelcomeScreenProps): React.ReactElement {
   const [projectPath, setProjectPath] = useState('');
-  const cursorVisible = useBlinkingCursor();
 
-  useWelcomeControls({ projectPath, setProjectPath, onContinue, onQuit });
+  useWelcomeControls(projectPath, onQuit);
+
+  const submit = (value: string) => {
+    const path = toProjectPath(value);
+    if (path) onContinue(path);
+  };
 
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
@@ -28,7 +35,7 @@ export function WelcomeScreen({ onContinue, onQuit }: WelcomeScreenProps): React
 
       <Box flexDirection="column" marginTop={1}>
         <Text dimColor>{RULE}</Text>
-        {WELCOME_OVERVIEW.map((item) => (
+        {OVERVIEW.map((item) => (
           <Box key={item.label} gap={1}>
             <Text bold>{item.label}</Text>
             <Text dimColor>{item.description}</Text>
@@ -42,7 +49,7 @@ export function WelcomeScreen({ onContinue, onQuit }: WelcomeScreenProps): React
         <Box gap={1}>
           <Text color={PALETTE.accent}>?</Text>
           <Text>Project path:</Text>
-          <Text>{withCursor(projectPath, cursorVisible)}</Text>
+          <TextInput value={projectPath} onChange={setProjectPath} onSubmit={submit} />
         </Box>
       </Box>
 

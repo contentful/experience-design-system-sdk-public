@@ -46,16 +46,16 @@ src/tui/import/
   steps/
     index.ts             # public entry: one export line per screen
     01-welcome/          # steps are numbered in the order they appear in the flow
-      screen.tsx         # UI only: renders props and state
-      controls.ts        # this screen's keyboard handling and key hints; applies what logic.ts decides
+      screen.tsx         # UI only: renders props and state, including the copy it displays
+      controls.ts        # this screen's shortcuts (Esc, q) and the key hints shown for it
       logic.ts           # decisions: validation, derived values, loaders, result building
-      overview.ts        # static copy the screen displays, as data (only when the screen has some)
       types.ts           # props and result types
-  input/                 # small helpers shared by several screens, such as single-line editing
 ```
 
 Rules for a screen:
-- Controls belong to the screen: its key handling and the hints shown for it live in that step's `controls.ts`, not in a shared file. Controls that really are common to every import screen belong in `PageContainer.tsx`.
+- Use Ink and its ecosystem for input and layout instead of writing our own. Text fields are `ink-text-input`, which handles focus, the cursor, pasting and editing; keys that are not part of a field go through Ink's `useInput`. Do not read stdin or parse keys by hand.
+- Controls belong to the screen: its shortcuts and the hints shown for it live in that step's `controls.ts`, not in a shared file. Controls that really are common to every import screen belong in `PageContainer.tsx`.
+- Keep comments out of v2 source. Names, types and small functions should carry the meaning.
 - Props in, a typed result out through callbacks. A screen does not know which screen comes next.
 - No `process.exit`, no database, network or subprocess calls, and no filesystem work while rendering. `logic.ts` never imports Ink or React components, so it can be tested without rendering.
 - Numbered folders are steps of the happy path. Pieces used by several steps are not steps and stay unnumbered.

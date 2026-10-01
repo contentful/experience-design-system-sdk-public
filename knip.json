@@ -4,5 +4,10 @@
   "ignoreDependencies": ["@hey-api/client-fetch", "@vue/compiler-sfc", "svelte", "ts-morph"],
   "ignoreIssues": {
     "packages/experience-design-system-cli-v2/**": ["files"]
+  },
+  "workspaces": {
+    "packages/experience-design-system-cli-v2": {
+      "entry": ["index.ts", "app.tsx", "src/tui/import/steps/index.ts"]
+    }
   }
 }
