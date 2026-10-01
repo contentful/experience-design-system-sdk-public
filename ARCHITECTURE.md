@@ -64,6 +64,23 @@ When a raw token source is supplied, the wizard performs token generation intern
 - `@contentful/experience-design-system-generation` — agent-invocation and skill-prompt engine used by the import wizard
 - `@contentful/experience-design-system-client` — generated API client used by `apply`
 
+### `experience-design-system-cli-v2`
+
+The next-generation TUI-first import wizard built on React/Ink. Separate from v1's command-based CLI. Prioritizes interactive step-by-step guidance over chained commands. Reads v1's pipeline DB for session persistence but otherwise operates independently.
+
+**See `packages/experience-design-system-cli-v2/DSI_TUI_ARCHITECTURE.md` for detailed v2-specific architecture, design patterns, and component guidelines.**
+
+**Quick overview**:
+- **State** — Component-driven by default; optional Jotai for shared state (3+ screens)
+- **Theme** — Centralized in `src/tui/ui/theme.ts`; colors, spacing, icons
+- **Flow** — Step callbacks + optional router (when 5+ interdependent steps)
+- **Patterns** — Adapted from PostHog's wizard; applied incrementally (not all at once)
+
+**Key dependencies:**
+- `ink` v4 — React renderer for terminals
+- `@inkjs/ui` v5 — Official UI components
+- `node:sqlite` (`DatabaseSync`) — Read from v1's pipeline.db
+
 ### `experience-design-system-extraction`
 
 Component extraction engine: per-framework parsers (React, Vue, Astro, Stencil, Web Components) built on ts-morph, plus prop pre-classification. Consumed by the CLI's `analyze extract` command.
@@ -501,3 +518,13 @@ Terminal width thresholds:
 - 60 columns — minimum for the wizard and `analyze select` TUI
 - 80 columns — sidebar + detail view
 - 120 columns — source panel in `analyze select`
+
+---
+
+## V2 TUI Resources
+
+Design patterns and detailed guidelines for building v2 TUI screens are documented in:
+
+- **`packages/experience-design-system-cli-v2/DSI_TUI_ARCHITECTURE.md`** — Full v2 architecture, state management decisions, when to use each pattern
+- **`packages/experience-design-system-cli-v2/.claude/skills/ink-api/SKILL.md`** — Ink core API (Box, Text, colors, hooks)
+- **`packages/experience-design-system-cli-v2/.claude/skills/ink-ui/SKILL.md`** — @inkjs/ui components with examples
