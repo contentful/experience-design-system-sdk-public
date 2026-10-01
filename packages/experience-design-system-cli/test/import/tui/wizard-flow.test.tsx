@@ -3,25 +3,30 @@ import { EventEmitter } from 'node:events';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { waitForFrame } from '../../helpers/wait-for-frame.js';
 
+const mockValidateToken = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+
 // ── Mock external modules BEFORE importing WizardApp ─────────────────────────
 
 vi.mock('../../../src/apply/api-client.js', () => ({
   DEFAULT_HOST: 'https://api.contentful.com',
-  ImportApiClient: vi.fn().mockImplementation(() => ({
-    resolveOrganizationId: vi.fn().mockResolvedValue('org-123'),
-    setOrganizationId: vi.fn(),
-    validateEnvironment: vi.fn().mockResolvedValue(undefined),
-    previewImport: vi.fn().mockResolvedValue({
-      components: { new: [], changed: [], removed: [], unchanged: [] },
-      tokens: { new: [], changed: [], removed: [], unchanged: [] },
-    }),
-    applyImport: vi.fn().mockResolvedValue({ sys: { id: 'op-1', status: 'queued' }, items: [] }),
-    pollOperation: vi.fn().mockResolvedValue({
-      sys: { id: 'op-1', status: 'succeeded' },
-      items: [],
-      summary: { total: 0, succeeded: 0, failed: 0, pending: 0 },
-    }),
-  })),
+  ImportApiClient: vi.fn(function () {
+    return {
+      resolveOrganizationId: vi.fn().mockResolvedValue('org-123'),
+      setOrganizationId: vi.fn(),
+      validateEnvironment: vi.fn().mockResolvedValue(undefined),
+      validateToken: mockValidateToken,
+      previewImport: vi.fn().mockResolvedValue({
+        components: { new: [], changed: [], removed: [], unchanged: [] },
+        tokens: { new: [], changed: [], removed: [], unchanged: [] },
+      }),
+      applyImport: vi.fn().mockResolvedValue({ sys: { id: 'op-1', status: 'queued' }, items: [] }),
+      pollOperation: vi.fn().mockResolvedValue({
+        sys: { id: 'op-1', status: 'succeeded' },
+        items: [],
+        summary: { total: 0, succeeded: 0, failed: 0, pending: 0 },
+      }),
+    };
+  }),
   ApiError: class ApiError extends Error {
     status: number;
     body: string;
@@ -103,6 +108,8 @@ beforeEach(async () => {
 
 afterEach(() => {
   mockExit.mockClear();
+  mockValidateToken.mockReset();
+  mockValidateToken.mockResolvedValue(undefined);
   vi.clearAllMocks();
 });
 
@@ -199,6 +206,63 @@ describe('WizardApp TUI flow', () => {
 });
 
 describe('WizardApp TUI — EU host support', () => {
+  it('silently validates prefilled credentials as soon as the credentials step opens', async () => {
+    const { lastFrame } = render(
+      <WizardApp
+        initialRawTokensPath="/tmp/tokens.json"
+        initialSpaceId="space1"
+        initialEnvironmentId="master"
+        initialCmaToken="token1"
+      />,
+    );
+
+    await waitForFrame(
+      () => lastFrame(),
+      () => mockValidateToken.mock.calls.length > 0,
+      3000,
+    );
+
+    expect(mockValidateToken).toHaveBeenCalled();
+    expect(lastFrame()).toContain('Credentials pre-filled');
+  });
+
+  it('ignores a background validation response after the operator edits a credential', async () => {
+    let resolveValidation!: () => void;
+    mockValidateToken.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveValidation = resolve;
+        }),
+    );
+
+    const { lastFrame, stdin } = render(
+      <WizardApp
+        initialRawTokensPath="/tmp/tokens.json"
+        initialSpaceId="space1"
+        initialEnvironmentId="master"
+        initialCmaToken="token1"
+      />,
+    );
+
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('Credentials pre-filled'),
+      3000,
+    );
+    stdin.write('x');
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('space1x'),
+      3000,
+    );
+
+    resolveValidation();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(lastFrame()).toContain('Credentials pre-filled');
+    expect(lastFrame()).not.toContain('Push components');
+  });
+
   it('renders without crash when initialHost is provided', async () => {
     const { lastFrame } = render(
       <WizardApp
