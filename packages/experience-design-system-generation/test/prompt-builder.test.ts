@@ -67,7 +67,13 @@ describe('buildPrompt', () => {
       components: [{ id: 'c1', name: 'Button', description: 'Primary CTA' }],
     });
     const existingTokensInline = JSON.stringify({
-      tokens: [{ id: 't1', name: 'unique-fixture-token-name-9c2f', type: 'DTCG.Color' }],
+      tokens: [
+        {
+          id: 't1',
+          name: 'unique-fixture-token-name-9c2f',
+          type: 'DTCG.Color',
+        },
+      ],
     });
     const prompt = await buildPrompt({
       skill: 'components',
@@ -86,9 +92,26 @@ describe('buildPrompt', () => {
     expect(prompt).toContain('unique-fixture-token-name-9c2f');
   });
 
+  it('inlines a hard component allowlist for slot children', async () => {
+    const prompt = await buildPrompt({
+      skill: 'components',
+      mode: 'autonomous',
+      rawComponentsInline: INLINE_COMPONENTS,
+      componentAllowlistInline: JSON.stringify(['Button', 'Card']),
+      outDir: '/fake/out',
+    });
+    expect(prompt).toContain('Known component names for slot allowed_components (hard allowlist');
+    expect(prompt).toContain('["Button","Card"]');
+    expect(prompt).toContain('Never invent a child from an import');
+  });
+
   it('inlines optional token data when provided', async () => {
-    const tokensInline = JSON.stringify({ colors: { primary: { $type: 'color', $value: '#0066ff' } } });
-    const tokenMapInline = JSON.stringify({ '--brand-primary': 'colors.primary' });
+    const tokensInline = JSON.stringify({
+      colors: { primary: { $type: 'color', $value: '#0066ff' } },
+    });
+    const tokenMapInline = JSON.stringify({
+      '--brand-primary': 'colors.primary',
+    });
     const prompt = await buildPrompt({
       skill: 'components',
       mode: 'autonomous',
@@ -271,7 +294,11 @@ describe('buildPrompt', () => {
       Card: {
         $type: 'component',
         $properties: {
-          bgColor: { $type: 'token', $category: 'design', '$token.kind': 'color' },
+          bgColor: {
+            $type: 'token',
+            $category: 'design',
+            '$token.kind': 'color',
+          },
           title: { $type: 'string', $category: 'content' },
         },
       },
@@ -351,7 +378,11 @@ describe('buildPrompt', () => {
         Card: {
           $type: 'component',
           $properties: {
-            bgColor: { $type: 'token', $category: 'design', '$token.kind': 'color' },
+            bgColor: {
+              $type: 'token',
+              $category: 'design',
+              '$token.kind': 'color',
+            },
           },
         },
       };
@@ -402,8 +433,16 @@ describe('buildPrompt', () => {
         Card: {
           $type: 'component',
           $properties: {
-            bgColor: { $type: 'token', $category: 'design', '$token.kind': 'color' },
-            gap: { $type: 'token', $category: 'design', '$token.kind': 'dimension' },
+            bgColor: {
+              $type: 'token',
+              $category: 'design',
+              '$token.kind': 'color',
+            },
+            gap: {
+              $type: 'token',
+              $category: 'design',
+              '$token.kind': 'dimension',
+            },
             unscopedProp: { $type: 'token', $category: 'design' },
           },
         },
@@ -433,13 +472,24 @@ describe('buildPrompt', () => {
         Widget: {
           $type: 'component',
           $properties: {
-            gap: { $type: 'token', $category: 'design', '$token.kind': 'dimension' },
-            color: { $type: 'token', $category: 'design', '$token.kind': 'color' },
+            gap: {
+              $type: 'token',
+              $category: 'design',
+              '$token.kind': 'dimension',
+            },
+            color: {
+              $type: 'token',
+              $category: 'design',
+              '$token.kind': 'color',
+            },
           },
         },
       };
       const tree = {
-        spacing: { md: { $type: 'dimension', $value: '16px' }, sm: { $type: 'dimension', $value: '8px' } },
+        spacing: {
+          md: { $type: 'dimension', $value: '16px' },
+          sm: { $type: 'dimension', $value: '8px' },
+        },
         colors: { brand: { primary: { $type: 'color', $value: '#0066ff' } } },
       };
       const buildOnce = () =>
@@ -532,7 +582,10 @@ describe('buildPrompt', () => {
           {
             ...SOURCE_REFS_WITH_CONTENT[0],
             siblingFiles: [
-              { path: 'src/Card.styles.ts', content: 'export const cardColorMap = { primary: "blue500" };' },
+              {
+                path: 'src/Card.styles.ts',
+                content: 'export const cardColorMap = { primary: "blue500" };',
+              },
             ],
           },
         ],
@@ -560,7 +613,10 @@ describe('buildPrompt', () => {
         skill: 'map-tokens',
         mode: 'autonomous',
         generatedCdf: {
-          Widget: { $type: 'component', $properties: { label: { $type: 'string', $category: 'content' } } },
+          Widget: {
+            $type: 'component',
+            $properties: { label: { $type: 'string', $category: 'content' } },
+          },
         },
         outDir: '/fake/out',
       });
@@ -582,7 +638,13 @@ describe('buildPrompt', () => {
 
   it('tokens autonomous preamble includes tool-call protocol instructions', async () => {
     const rawTokensInline = JSON.stringify([
-      { name: '--color-primary', value: '#0066ff', source: 'css', inferredKind: 'color', ambiguous: false },
+      {
+        name: '--color-primary',
+        value: '#0066ff',
+        source: 'css',
+        inferredKind: 'color',
+        ambiguous: false,
+      },
     ]);
     const prompt = await buildPrompt({
       skill: 'tokens',

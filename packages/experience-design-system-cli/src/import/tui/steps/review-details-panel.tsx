@@ -1,10 +1,11 @@
 import React from 'react';
-import { Box, Text } from 'ink';
+import { Text } from 'ink';
 import { ComponentRationalePanel } from '../../../analyze/select/tui/components/ComponentRationalePanel.js';
 import { JsonPanel } from '../../../analyze/select/tui/components/JsonPanel.js';
 import { RationalePanel, type RationaleRow } from '../../../analyze/select/tui/components/RationalePanel.js';
 import { TokenReviewPanel, type TokenPropSuggestion } from '../../../analyze/select/tui/components/TokenReviewPanel.js';
 import type { ComponentRationale, ComponentReviewMetadata } from '../../../session/db.js';
+import { FixedPanel } from '../../../tui/windowed-panel.js';
 
 type ReviewPanel = 'none' | 'prop-rationale' | 'component-rationale' | 'source' | 'token-review';
 
@@ -49,6 +50,10 @@ export function ReviewDetailsPanel({
   sidebarFocused,
   editor,
 }: ReviewDetailsPanelProps): React.ReactElement {
+  // The bordered scrollable panels reserve two rows for their border. Keep
+  // every alternate view inside the same outer slot as the field editor.
+  const panelContentHeight = Math.max(1, height - 2);
+
   if (panelOpen === 'prop-rationale') {
     const rows: RationaleRow[] = [
       ...(componentRationale?.props ?? []).map<RationaleRow>((p) => ({
@@ -68,7 +73,7 @@ export function ReviewDetailsPanel({
         rows={rows}
         scrollOffset={panelScrollOffset}
         width={width}
-        height={height}
+        height={panelContentHeight}
         active={true}
       />
     );
@@ -90,7 +95,7 @@ export function ReviewDetailsPanel({
         }
         scrollOffset={panelScrollOffset}
         width={width}
-        height={height}
+        height={panelContentHeight}
         active={true}
       />
     );
@@ -100,21 +105,24 @@ export function ReviewDetailsPanel({
     const path = reviewMetadata?.sourcePath ?? null;
     const source = reviewMetadata?.componentSource ?? null;
     const headerPath = path ?? '<unknown source path>';
-    const lines = source ? source.split('\n').slice(panelScrollOffset, panelScrollOffset + height) : [];
+    const sourceLineCount = Math.max(1, height - 4);
+    const lines = source ? source.split('\n').slice(panelScrollOffset, panelScrollOffset + sourceLineCount) : [];
     return (
-      <Box flexDirection="column" width={width} borderStyle="single" borderColor={sourceBorderColor} paddingX={1}>
-        <Text dimColor bold>{`source: ${headerPath}`}</Text>
+      <FixedPanel width={width} height={height} borderStyle="single" borderColor={sourceBorderColor} paddingLeft={1}>
+        <Text dimColor bold wrap="truncate-end">{`source: ${headerPath}`}</Text>
         {source ? (
           lines.map((line, index) => (
-            <Text key={`source-line-${index}`} dimColor>
+            <Text key={`source-line-${index}`} dimColor wrap="truncate-end">
               {line}
             </Text>
           ))
         ) : (
           <Text dimColor>{'(no source captured)'}</Text>
         )}
-        <Text dimColor>{'[s/Esc] close'}</Text>
-      </Box>
+        <Text dimColor wrap="truncate-end">
+          {'[s/Esc] close'}
+        </Text>
+      </FixedPanel>
     );
   }
 
@@ -128,7 +136,7 @@ export function ReviewDetailsPanel({
         editCursor={tokenReviewEditCursor}
         editSelection={tokenReviewEditSelection}
         width={width}
-        height={height}
+        height={panelContentHeight}
         active={true}
       />
     );
@@ -141,7 +149,7 @@ export function ReviewDetailsPanel({
         value={jsonValue}
         scrollOffset={jsonScrollOffset}
         width={width}
-        height={height}
+        height={panelContentHeight}
         active={!sidebarFocused}
       />
     );

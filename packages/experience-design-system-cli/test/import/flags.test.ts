@@ -70,7 +70,7 @@ describe('import — help output lists all flags', () => {
     const { stdout, code } = await run(['import', '--help']);
     expect(code).toBe(0);
 
-    const flags = ['--project', '--agent', '--model', '--skip-map-tokens', '--no-cache'];
+    const flags = ['--project', '--tokens', '--agent', '--prompt', '--no-cache'];
 
     for (const flag of flags) {
       expect(stdout, `expected ${flag} in help output`).toContain(flag);
@@ -90,10 +90,10 @@ describe('import — help output lists all flags', () => {
 });
 
 describe('import — skip flags', () => {
-  it('--skip-map-tokens is accepted by the import wizard', async () => {
-    const { stderr, code } = await run([...skipAll(), '--skip-map-tokens'], baseEnv());
-    expect(stderr).not.toContain("unknown option '--skip-map-tokens'");
-    expect(code).toBe(0);
+  it('--skip-map-tokens is rejected as a removed option', async () => {
+    const { stderr, code } = await run(['import', '--skip-map-tokens'], baseEnv());
+    expect(stderr).toContain("unknown option '--skip-map-tokens'");
+    expect(code).not.toBe(0);
   });
 
   it('does not retain the --no-map-tokens alias', async () => {
@@ -122,8 +122,8 @@ describe('import — agent and model flags', () => {
     expect(code).toBe(0);
   });
 
-  it('--model is accepted without error (combined with skip flags)', async () => {
-    const { stderr, code } = await run([...skipAll(), '--model', 'claude-opus-4-5'], baseEnv());
+  it('--agent accepts an inline model with a colon', async () => {
+    const { stderr, code } = await run([...skipAll(), '--agent', 'claude:claude-opus-4-5'], baseEnv());
     expect(stderr).not.toContain('unknown option');
     expect(code).toBe(0);
   });
@@ -158,10 +158,10 @@ describe('import — removed flags', () => {
     expect(stderr).toContain("unknown option '--deselect'");
   });
 
-  it('--tokens is rejected as an unknown option', async () => {
-    const { stderr, code } = await run(['import', '--tokens', '/dev/null'], baseEnv());
+  it('--bedrock is rejected as an unknown option', async () => {
+    const { stderr, code } = await run(['import', '--bedrock'], baseEnv());
     expect(code).not.toBe(0);
-    expect(stderr).toContain("unknown option '--tokens'");
+    expect(stderr).toContain("unknown option '--bedrock'");
   });
 });
 
@@ -179,18 +179,18 @@ describe('import — push-related flags', () => {
     // The important assertion is that the flag is recognized and acted upon.
   });
 
-  it('--raw-tokens <path> is accepted when the file exists', async () => {
-    const { stderr, code } = await run([...skipAll(), '--raw-tokens', '/dev/null'], baseEnv());
-    expect(stderr).not.toContain("unknown option '--raw-tokens'");
+  it('--tokens <path> is accepted when the file exists', async () => {
+    const { stderr, code } = await run([...skipAll(), '--tokens', '/dev/null'], baseEnv());
+    expect(stderr).not.toContain("unknown option '--tokens'");
     expect(stderr).not.toContain('file not found');
     expect(code).toBe(0);
   });
 
-  it('--raw-tokens errors at parse time when the file does not exist', async () => {
-    const { stderr, code } = await run(['import', '--raw-tokens', '/nonexistent/raw-tokens.scss'], baseEnv());
-    expect(stderr).toContain('--raw-tokens');
+  it('--tokens errors at parse time when the file does not exist', async () => {
+    const { stderr, code } = await run(['import', '--tokens', '/nonexistent/tokens.scss'], baseEnv());
+    expect(stderr).toContain('--tokens');
     expect(stderr).toContain('file not found');
-    expect(stderr).toContain('/nonexistent/raw-tokens.scss');
+    expect(stderr).toContain('/nonexistent/tokens.scss');
     expect(code).not.toBe(0);
   });
 });
@@ -210,19 +210,19 @@ describe('import — project path flag', () => {
   });
 });
 
-describe('import — ~ expansion for --project and --raw-tokens', () => {
+describe('import — ~ expansion for --project and --tokens', () => {
   const REAL_PROJECT_DIR = resolve(import.meta.dirname, '../fixtures/analyze/project');
 
-  it('--raw-tokens ~/tokens.json does not report a false file-not-found', async () => {
+  it('--tokens ~/tokens.json does not report a false file-not-found', async () => {
     const fakeHome = await createTempDir('fake-home-');
     await writeFile(join(fakeHome, 'tokens.json'), '{}');
 
-    const { stderr, code } = await run([...skipAll(), '--raw-tokens', '~/tokens.json'], {
+    const { stderr, code } = await run([...skipAll(), '--tokens', '~/tokens.json'], {
       ...baseEnv(),
       HOME: fakeHome,
     });
 
-    expect(stderr).not.toContain('--raw-tokens: file not found');
+    expect(stderr).not.toContain('--tokens: file not found');
     expect(code).toBe(0);
   });
 

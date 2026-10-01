@@ -114,6 +114,7 @@ export function useReviewEditor({
   const handleEditSave = (): void => {
     const current = components[selectedIdx];
     if (!current) return;
+    if (draftValue.trim() === '') return;
     try {
       const entry = parseReviewEntry(draftValue);
       const next = components.map((component, index) =>

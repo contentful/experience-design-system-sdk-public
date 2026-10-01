@@ -19,7 +19,7 @@ async function runSetup(opts: SetupSkipFlags): Promise<void> {
     process.exit(1);
   }
 
-  const { render } = await import('ink');
+  const { renderWithGoodbye } = await import('../tui/render-with-goodbye.js');
   const { createElement } = await import('react');
   const { SetupScreen } = await import('./SetupScreen.js');
 
@@ -28,7 +28,7 @@ async function runSetup(opts: SetupSkipFlags): Promise<void> {
   const completion: { outcome: SetupOutcome | null } = { outcome: null };
   let unmountInk: (() => void) | null = null;
 
-  const { waitUntilExit, unmount } = render(
+  const { waitUntilExit, unmount } = renderWithGoodbye(
     createElement(SetupScreen, {
       version: getCliVersion(),
       repoRoot,
@@ -59,9 +59,6 @@ export function registerSetupCommand(program: Command): void {
   program
     .command('setup')
     .description('Interactive setup: installs prerequisites and configures credentials for experiences import')
-    .option('--skip-build', 'Skip the pnpm install + build step')
-    .option('--skip-agent', 'Skip the coding agent check')
-    .option('--skip-credentials', 'Skip the Contentful credentials step')
-    .option('--skip-optional', 'Skip optional quality-of-life extras')
-    .action((opts: SetupSkipFlags) => runSetup(opts));
+    .helpOption(false)
+    .action(() => runSetup({}));
 }

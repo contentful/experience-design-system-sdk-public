@@ -1,5 +1,5 @@
 import React, { createElement } from 'react';
-import { render } from 'ink';
+import { GoodbyeBoundary, renderWithGoodbye } from '../tui/render-with-goodbye.js';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Command } from 'commander';
@@ -481,6 +481,7 @@ export function registerApplyCommand(program: Command): void {
   const applyCmd = program
     .command('apply')
     .description('Write component types and design tokens to Contentful ExO')
+    .helpOption(false)
     .argument('<file>', 'CDF file containing all component and design token definitions');
   applyCmd.action(async (file: string) => {
     const isTTY = getInteractiveTerminalSupport().supported;
@@ -555,12 +556,12 @@ export function registerApplyCommand(program: Command): void {
           environmentId,
           host,
           acknowledgeBreakingChanges: acknowledge,
-          rerender: (element) => instance.rerender(element),
+          rerender: (element) => instance.rerender(createElement(GoodbyeBoundary, null, element)),
           onDone: resolvePromise,
         });
       };
 
-      const instance = render(
+      const instance = renderWithGoodbye(
         createElement(ServerPreviewConfirm, {
           preview,
           spaceId,

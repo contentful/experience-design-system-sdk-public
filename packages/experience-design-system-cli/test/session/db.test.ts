@@ -2575,7 +2575,7 @@ describe('generation cache', () => {
     expect(computeComponentInputHash(base)).toBe(computeComponentInputHash(enrichedByLLM));
   });
 
-  it('computeComponentInputHash includes slot composition edges (allowedComponents) so composite and atomic runs never collide', () => {
+  it('computeComponentInputHash ignores generated slot composition metadata', () => {
     const atomic = {
       component_id: 'abc123',
       name: 'Card',
@@ -2588,13 +2588,13 @@ describe('generation cache', () => {
       ...atomic,
       slots: [{ name: 'children', isDefault: true, allowedComponents: ['Button', 'Icon'] }],
     };
-    expect(computeComponentInputHash(atomic)).not.toBe(computeComponentInputHash(composite));
+    expect(computeComponentInputHash(atomic)).toBe(computeComponentInputHash(composite));
 
     const differentEdges = {
       ...atomic,
       slots: [{ name: 'children', isDefault: true, allowedComponents: ['Button'] }],
     };
-    expect(computeComponentInputHash(composite)).not.toBe(computeComponentInputHash(differentEdges));
+    expect(computeComponentInputHash(composite)).toBe(computeComponentInputHash(differentEdges));
 
     const sameEdges = {
       ...atomic,
@@ -2697,7 +2697,7 @@ describe('generation cache', () => {
   });
 
   it('copyComponentFromCache copies all props, slots, and allowed values', async () => {
-    await withTempDb((dbPath) => {
+    await withTempDb(async (dbPath) => {
       const db = openPipelineDb(dbPath);
       const { sessionId: srcSession } = getOrCreateSession(db, 'new', undefined, { command: 'import' });
 
@@ -2716,6 +2716,21 @@ describe('generation cache', () => {
         },
       ];
       storeRawComponents(db, srcSession, raw);
+      db.prepare(
+        `UPDATE raw_components
+         SET component_description_rationale = ?, props_rationale = ?, slots_rationale = ?
+         WHERE session_id = ? AND name = ?`,
+      ).run('why the card exists', 'why these props exist', 'why this slot exists', srcSession, 'Card');
+      db.prepare(`UPDATE raw_props SET rationale = ? WHERE session_id = ? AND name = ?`).run(
+        'why the title prop exists',
+        srcSession,
+        'title',
+      );
+      db.prepare(`UPDATE raw_slots SET rationale = ? WHERE session_id = ? AND name = ?`).run(
+        'why the content slot exists',
+        srcSession,
+        'content',
+      );
       storeCDFComponents(db, srcSession, [
         {
           key: 'Card',
@@ -2732,6 +2747,11 @@ describe('generation cache', () => {
           },
         },
       ]);
+      db.prepare(`UPDATE raw_slots SET rationale = ? WHERE session_id = ? AND name = ?`).run(
+        'why the content slot exists',
+        srcSession,
+        'content',
+      );
 
       const { sessionId: tgtSession } = getOrCreateSession(db, 'new', undefined, { command: 'import' });
       storeRawComponents(db, tgtSession, raw);
@@ -2749,6 +2769,14 @@ describe('generation cache', () => {
       expect(loaded[0]!.entry.$properties['title']?.$type).toBe('string');
       expect(loaded[0]!.entry.$properties['variant']?.$values).toEqual(['flat', 'raised']);
       expect(loaded[0]!.entry.$slots?.['content']?.$allowedComponents).toEqual(['Text', 'Image']);
+
+      const { loadComponentRationale } = await import('../../src/session/db.js');
+      const rationale = loadComponentRationale(db, tgtSession, 'Card');
+      expect(rationale?.descriptionRationale).toBe('why the card exists');
+      expect(rationale?.propsRationale).toBe('why these props exist');
+      expect(rationale?.slotsRationale).toBe('why this slot exists');
+      expect(rationale?.props.find((prop) => prop.name === 'title')?.rationale).toBe('why the title prop exists');
+      expect(rationale?.slots.find((slot) => slot.name === 'content')?.rationale).toBe('why the content slot exists');
       db.close();
     });
   });

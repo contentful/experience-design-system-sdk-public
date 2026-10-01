@@ -74,6 +74,16 @@ export interface RawComponentDefinition {
 export interface ComponentExtractionResult {
   components: RawComponentDefinition[];
   warnings: string[];
+  exclusions?: ExtractionExclusion[];
+}
+
+/** A deterministic item removed before the interactive scope gate. */
+export interface ExtractionExclusion {
+  itemType: 'component' | 'file' | 'prop';
+  name: string;
+  source?: string;
+  reason: string;
+  stage: string;
 }
 
 export type ExtractorProgress = {

@@ -5,7 +5,7 @@ import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediat
 type GateStepProps = {
   successMessage: string;
   summary?: string;
-  context: string;
+  context?: string;
   continueLabel?: string;
   skipLabel?: string;
   onContinue: () => void;
@@ -51,9 +51,11 @@ export function GateStep({
       </Text>
       {summary && <Text dimColor>{summary}</Text>}
 
-      <Box marginTop={1}>
-        <Text>{context}</Text>
-      </Box>
+      {context && (
+        <Box marginTop={1}>
+          <Text>{context}</Text>
+        </Box>
+      )}
 
       <Box gap={3} marginTop={1}>
         <Text dimColor>[Enter] {continueLabel}</Text>

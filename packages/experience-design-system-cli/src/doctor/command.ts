@@ -2,12 +2,7 @@ import type { Command } from 'commander';
 import { findPkgRoot } from '../lib/cli-path.js';
 import { c } from '../output/format.js';
 import { reportAgent, reportBuild, reportDependencies, reportNode, reportPnpm } from './checks.js';
-import { fail, info, ok, section, warn } from './report.js';
-
-interface DoctorOptions {
-  skipBuild?: boolean;
-  skipAgent?: boolean;
-}
+import { fail, ok, section, warn } from './report.js';
 
 interface CheckOutcome {
   name: string;
@@ -16,7 +11,7 @@ interface CheckOutcome {
 }
 
 /** Run the checks in order, stopping a chain as soon as a later check can no longer pass. */
-async function runChecks(opts: DoctorOptions): Promise<CheckOutcome[]> {
+async function runChecks(): Promise<CheckOutcome[]> {
   const pkgRoot = findPkgRoot();
   const results: CheckOutcome[] = [];
   const record = (name: string, passed: boolean, required = true): boolean => {
@@ -27,14 +22,12 @@ async function runChecks(opts: DoctorOptions): Promise<CheckOutcome[]> {
   // Every later check needs a working Node, and install needs pnpm, so a failure stops the chain.
   if (record('Node.js version', await reportNode())) {
     const pnpmOk = record('pnpm', await reportPnpm(pkgRoot));
-    if (opts.skipBuild) {
-      info('\nSkipping install + build (--skip-build)');
-    } else if (pnpmOk && record('dependencies', await reportDependencies(pkgRoot))) {
+    if (pnpmOk && record('dependencies', await reportDependencies(pkgRoot))) {
       record('build', await reportBuild(pkgRoot));
     }
   }
 
-  if (!opts.skipAgent) record('coding agent', await reportAgent(), false);
+  record('coding agent', await reportAgent(), false);
 
   return results;
 }
@@ -68,16 +61,15 @@ function printSummary(results: CheckOutcome[]): number {
   return 1;
 }
 
-async function runDoctor(opts: DoctorOptions): Promise<void> {
+async function runDoctor(): Promise<void> {
   process.stderr.write(`${c.bold('experiences doctor')} — checking your environment\n`);
-  process.exitCode = printSummary(await runChecks(opts));
+  process.exitCode = printSummary(await runChecks());
 }
 
 export function registerDoctorCommand(program: Command): void {
   program
     .command('doctor')
     .description('Check prerequisites so experiences import runs without errors')
-    .option('--skip-build', 'Skip the pnpm install + build step (useful if already built)')
-    .option('--skip-agent', 'Skip the coding agent check')
-    .action((opts: DoctorOptions) => runDoctor(opts));
+    .helpOption(false)
+    .action(() => runDoctor());
 }

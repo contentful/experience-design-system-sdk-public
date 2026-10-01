@@ -31,6 +31,12 @@ describe('addAgentModelOptions', () => {
     expect(findOption(withoutModel, '--bedrock')).toBeDefined();
   });
 
+  it('omits --bedrock when includeBedrock is false', () => {
+    const cmd = new Command();
+    addAgentModelOptions(cmd, { includeBedrock: false });
+    expect(findOption(cmd, '--bedrock')).toBeUndefined();
+  });
+
   it('applies agentDescription and modelDescription overrides', () => {
     const cmd = new Command();
     addAgentModelOptions(cmd, {

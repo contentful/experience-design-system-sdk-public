@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Box, Text, useStdout } from 'ink';
+import { Box, Text } from 'ink';
 import { PALETTE } from '../analyze/select/tui/theme.js';
 import { SetupStepper } from './SetupStepper.js';
 import { CodingAgentScreen } from './steps/CodingAgentScreen.js';
@@ -8,6 +8,7 @@ import type { StepStatus } from './steps/StepLayout.js';
 import { PreferencesMenu } from './steps/preferences/PreferencesMenu.js';
 import { PrerequisitesScreen } from './steps/prerequisites/PrerequisitesScreen.js';
 import type { PrerequisitesOutcome } from './steps/prerequisites/deps.js';
+import { useTerminalSize } from '../tui/use-terminal-size.js';
 
 export type SetupResultEntry = {
   name: string;
@@ -54,8 +55,8 @@ export function SetupScreen({
   columns: columnsOverride,
   onComplete,
 }: SetupScreenProps): React.ReactElement {
-  const { stdout } = useStdout();
-  const columns = columnsOverride ?? stdout?.columns;
+  const { columns: terminalColumns } = useTerminalSize();
+  const columns = columnsOverride ?? terminalColumns;
 
   const [activeStep, setActiveStep] = useState(1);
   const [outcome, setOutcome] = useState<SetupOutcome | null>(null);

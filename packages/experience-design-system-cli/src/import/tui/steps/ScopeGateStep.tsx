@@ -1,4 +1,4 @@
-import { Box, Text, useStdout } from 'ink';
+import { Box, Text } from 'ink';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import figures from 'figures';
@@ -20,12 +20,14 @@ import { useSidebarSearchState } from '../hooks/sidebar-search-state.js';
 import { SearchMatchSummary } from '../components/SearchMatchSummary.js';
 import { useOverlayPanel } from '../hooks/useOverlayPanel.js';
 import { computeSidebarBudget, FALLBACK_ROWS } from '../lineage-layout.js';
+import { useTerminalSize } from '../../../tui/use-terminal-size.js';
 import { GotoBanner } from '../../../analyze/select/tui/components/GotoBanner.js';
 import { HelpOverlay, type HelpSection } from '../../../analyze/select/tui/components/HelpOverlay.js';
-import { legendEntry } from '../components/LegendEntry.js';
+import { CompactControlBar } from '../components/CompactControlBar.js';
 import { CounterStrip } from '../components/CounterStrip.js';
 import { isAiFlagged } from '../ai-flag.js';
 import { resolveGroupRoot } from '../group-collapse.js';
+import { WindowIndicator, WindowedPanel } from '../../../tui/windowed-panel.js';
 import {
   buildCycleUnits,
   collectReachableCycleUnits,
@@ -36,11 +38,10 @@ import { fuzzyMatches } from '../../../analyze/fuzzy-search.js';
 import { computeDirectNeighborhood, findAllAncestors } from '../../../analyze/search-neighborhood.js';
 import {
   buildAddedComponentsList,
-  buildAddedGroupsList,
   computeColumnWidths,
+  computePanelLayout,
   computeCounters,
   type AddedComponentEntry,
-  type AddedGroupEntry,
 } from '../scope-gate-columns.js';
 
 export type ScopeComponent = {
@@ -61,8 +62,6 @@ export type ScopeGateStepProps = {
   aiFilterError?: string | null;
   onCancelAutoFilter?: () => void;
 };
-
-const FOCUSED_REASON_MAX_LINES = 4;
 
 const HELP_SECTIONS: HelpSection[] = [
   {
@@ -87,6 +86,7 @@ const HELP_SECTIONS: HelpSection[] = [
     title: 'Panels',
     entries: [
       { keys: 'c', label: 'Cycle list' },
+      { keys: 'd', label: 'Show slot dependencies in main list' },
       { keys: 'x', label: 'Review flags' },
     ],
   },
@@ -98,18 +98,11 @@ const HELP_SECTIONS: HelpSection[] = [
     title: 'General',
     entries: [
       { keys: 'f', label: 'Continue' },
-      { keys: '?', label: 'Close help' },
+      { keys: 'h', label: 'Close help' },
       { keys: 'q', label: 'Quit' },
     ],
   },
 ];
-
-function capReasonForFocusedRow(reason: string, width: number): string {
-  const safeWidth = Math.max(20, width);
-  const budget = safeWidth * FOCUSED_REASON_MAX_LINES;
-  if (reason.length <= budget) return reason;
-  return reason.slice(0, budget - 1).trimEnd() + '…';
-}
 
 function toSidebarEntry(c: ScopeComponent): CDFComponentEntry {
   const $slots: NonNullable<CDFComponentEntry['$slots']> = {};
@@ -143,17 +136,16 @@ function ScopeGateStepView({
   onConfirm,
   onQuit,
 }: Omit<ScopeGateStepProps, 'components'> & { components: ScopeComponent[] }): React.ReactElement {
-  const { stdout } = useStdout();
-  const totalWidth = stdout?.columns ?? 80;
+  const { columns: totalWidth, rows: terminalRows } = useTerminalSize();
   const columnPlan = useMemo(() => computeColumnWidths(totalWidth), [totalWidth]);
   const sidebarWidth = columnPlan.main;
   type Decision = 'accepted' | 'rejected' | 'undecided';
   const [userDecisions, setUserDecisions] = useState<Map<string, Decision>>(new Map());
   const [nav, setNav] = useState<{ cursor: number; scrollOffset: number }>({ cursor: 0, scrollOffset: 0 });
-  type FocusedColumn = 'main' | 'added-components' | 'added-groups';
+  type FocusedColumn = 'main' | 'added-components';
   const [focusedColumn, setFocusedColumn] = useState<FocusedColumn>('main');
   const [addedComponentsCursor, setAddedComponentsCursor] = useState(0);
-  const [addedGroupsCursor, setAddedGroupsCursor] = useState(0);
+  const [showDependencies, setShowDependencies] = useState(false);
   const cursor = nav.cursor;
   const scrollOffset = nav.scrollOffset;
   const [cyclesPanelOpen, setCyclesPanelOpen] = useState(false);
@@ -186,8 +178,6 @@ function ScopeGateStepView({
     const v = userDecisions.get(name);
     return v ?? 'undecided';
   };
-
-  const isIncluded = (name: string): boolean => getState(name) === 'accepted';
 
   const applyDecisions = (entries: Iterable<[string, Decision]>): void => {
     setUserDecisions((prev) => {
@@ -274,6 +264,20 @@ function ScopeGateStepView({
     return set;
   }, [components]);
 
+  const dependencyFilterKeys = useMemo<Set<string> | undefined>(() => {
+    if (!showDependencies) return undefined;
+    const keys = new Set<string>();
+    for (const [root, closure] of closures) {
+      if (closure.nodes.length <= 1 || getState(root) !== 'accepted') continue;
+      for (const node of closure.nodes) keys.add(node.name);
+    }
+    for (const unit of cycleUnits.values()) {
+      if (![...unit].some((name) => getState(name) === 'accepted')) continue;
+      for (const name of unit) keys.add(name);
+    }
+    return keys;
+  }, [closures, cycleUnits, showDependencies, userDecisions]);
+
   const filterVisibleKeys = useMemo<Set<string> | undefined>(() => {
     if (jumpFilterTarget) {
       return findAllAncestors(jumpFilterTarget, graph);
@@ -288,8 +292,17 @@ function ScopeGateStepView({
       if (matches.length === 0) return undefined;
       return computeDirectNeighborhood(matches, graph);
     })();
-    return intersectFilterKeys(categoryKeys, searchKeys);
-  }, [jumpFilterTarget, activeFilters, cycleParticipants, brokenKeys, searchQuery, groupedItems, graph]);
+    return intersectFilterKeys(intersectFilterKeys(categoryKeys, searchKeys), dependencyFilterKeys);
+  }, [
+    jumpFilterTarget,
+    activeFilters,
+    cycleParticipants,
+    brokenKeys,
+    searchQuery,
+    groupedItems,
+    graph,
+    dependencyFilterKeys,
+  ]);
 
   const visibleRows = useMemo(
     () =>
@@ -310,7 +323,6 @@ function ScopeGateStepView({
 
   const currentRow = visibleRows[safeCursor];
   const currentRowKey = currentRow && currentRow.itemIdx >= 0 ? groupedItems[currentRow.itemIdx]?.key : undefined;
-  const focusedComponent = currentRowKey ? components.find((c) => c.name === currentRowKey) : undefined;
 
   const selectionStateByKey = useMemo(() => {
     const map = new Map<string, 'accepted' | 'rejected' | 'undecided'>();
@@ -392,10 +404,11 @@ function ScopeGateStepView({
   };
 
   const { sidebarVisibleCount: visibleCount, panelMaxRows } = computeSidebarBudget({
-    rows: stdout?.rows ?? FALLBACK_ROWS,
+    rows: terminalRows || FALLBACK_ROWS,
     panelOpen: false,
     entryCount: 0,
   });
+  const panelLayout = useMemo(() => computePanelLayout(visibleCount), [visibleCount]);
 
   useEffect(() => {
     setNav((prev) => {
@@ -433,7 +446,10 @@ function ScopeGateStepView({
   };
 
   useImmediateInput((input, key) => {
-    if (showHelp) return;
+    if (showHelp) {
+      if (input === 'h' || key.escape) setShowHelp(false);
+      return;
+    }
 
     if (pendingRejectCascade) {
       if (input === 'y' || input === 'Y') {
@@ -555,7 +571,7 @@ function ScopeGateStepView({
       onQuit();
       return;
     }
-    if (input === '?') {
+    if (input === 'h') {
       setShowHelp(true);
       return;
     }
@@ -568,6 +584,11 @@ function ScopeGateStepView({
       setCyclesPanelOpen(true);
       setCyclesCursor(0);
       aiRationalePanel.close();
+      return;
+    }
+    if (input === 'd') {
+      setShowDependencies((current) => !current);
+      setNav({ cursor: 0, scrollOffset: 0 });
       return;
     }
     if (input === 'x') {
@@ -592,12 +613,7 @@ function ScopeGateStepView({
       return;
     }
     if (input === 'i' && !key.tab && !key.ctrl) {
-      const targetKey =
-        focusedColumn === 'main'
-          ? focusedRowKey()
-          : focusedColumn === 'added-components'
-            ? addedComponents[safeAddedComponentsCursor]?.name
-            : addedGroups[safeAddedGroupsCursor]?.name;
+      const targetKey = focusedColumn === 'main' ? focusedRowKey() : addedComponents[safeAddedComponentsCursor]?.name;
       if (!targetKey) return;
       setJumpFilterTarget((prev) => (prev === targetKey ? null : targetKey));
       return;
@@ -625,12 +641,6 @@ function ScopeGateStepView({
         if (!isReject) return;
         const entry = addedComponents[safeAddedComponentsCursor];
         if (entry) requestReject(entry.name);
-        return;
-      }
-      if (focusedColumn === 'added-groups') {
-        if (!isReject) return;
-        const g = addedGroups[safeAddedGroupsCursor];
-        if (g) requestReject(g.name);
         return;
       }
       const key = focusedRowKey();
@@ -683,8 +693,8 @@ function ScopeGateStepView({
       return;
     }
     if (key.tab) {
-      if (columnPlan.layout !== 'three-column') return;
-      const forward: FocusedColumn[] = ['main', 'added-components', 'added-groups'];
+      if (columnPlan.layout === 'single') return;
+      const forward: FocusedColumn[] = ['main', 'added-components'];
       const curIdx = forward.indexOf(focusedColumn);
       const delta = key.shiftTab ? -1 : 1;
       setFocusedColumn(forward[(curIdx + delta + forward.length) % forward.length]);
@@ -697,23 +707,12 @@ function ScopeGateStepView({
         setFocusedColumn('main');
         return;
       }
-      if (focusedColumn === 'added-groups') {
-        const g = addedGroups[safeAddedGroupsCursor];
-        if (g) jumpCursorTo(g.name);
-        setFocusedColumn('main');
-        return;
-      }
       return;
     }
     if (key.upArrow) {
       if (focusedColumn === 'added-components') {
         if (addedComponents.length === 0) return;
         setAddedComponentsCursor((c) => Math.max(0, c - 1));
-        return;
-      }
-      if (focusedColumn === 'added-groups') {
-        if (addedGroups.length === 0) return;
-        setAddedGroupsCursor((c) => Math.max(0, c - 1));
         return;
       }
       if (total === 0) return;
@@ -729,11 +728,6 @@ function ScopeGateStepView({
         setAddedComponentsCursor((c) => Math.min(addedComponents.length - 1, c + 1));
         return;
       }
-      if (focusedColumn === 'added-groups') {
-        if (addedGroups.length === 0) return;
-        setAddedGroupsCursor((c) => Math.min(addedGroups.length - 1, c + 1));
-        return;
-      }
       if (total === 0) return;
       setNav(({ cursor: c, scrollOffset: prev }) => {
         const next = c >= total - 1 ? total - 1 : c + 1;
@@ -744,7 +738,6 @@ function ScopeGateStepView({
     }
   });
 
-  const includedCount = useMemo(() => components.filter((c) => isIncluded(c.name)).length, [components, userDecisions]);
   const hasAnyAi = components.some(isAiFlagged);
   const aiExcludedCount = components.filter(isAiFlagged).length;
   const aiExcludedWithReasons = components.filter(
@@ -761,8 +754,6 @@ function ScopeGateStepView({
 
   const selectedItemIdx = currentRow && currentRow.itemIdx >= 0 ? currentRow.itemIdx : -1;
 
-  const nothingIncluded = components.length > 0 && components.every((c) => !isIncluded(c.name));
-
   const totalComponents = components.length;
   const totalMatches = searchQuery ? searchMatches.length : 0;
 
@@ -770,30 +761,18 @@ function ScopeGateStepView({
     () => buildAddedComponentsList(components, selectionStateByKey, cycleParticipants),
     [components, selectionStateByKey, cycleParticipants],
   );
-  const addedGroups = useMemo(
-    () => buildAddedGroupsList(closures, selectionStateByKey, cycleParticipants, cycleUnits),
-    [closures, selectionStateByKey, cycleParticipants, cycleUnits],
-  );
   const counters = useMemo(
     () => computeCounters(components, closures, selectionStateByKey),
     [components, closures, selectionStateByKey],
   );
 
   const safeAddedComponentsCursor = Math.min(addedComponentsCursor, Math.max(0, addedComponents.length - 1));
-  const safeAddedGroupsCursor = Math.min(addedGroupsCursor, Math.max(0, addedGroups.length - 1));
-
   if (showHelp) {
-    return <HelpOverlay sections={HELP_SECTIONS} onClose={() => setShowHelp(false)} />;
+    return <HelpOverlay sections={HELP_SECTIONS} handleInput={false} onClose={() => setShowHelp(false)} />;
   }
 
   return (
     <Box flexDirection="column" paddingX={2}>
-      <Text color={PALETTE.success}>✓ Extraction complete</Text>
-      <Text dimColor>
-        Found {totalComponents} component{totalComponents === 1 ? '' : 's'}. Pick which ones to import. Generation runs
-        only on the included set.
-      </Text>
-
       {hasAnyAi && (
         <Box>
           <Text dimColor>
@@ -814,17 +793,7 @@ function ScopeGateStepView({
         </Box>
       )}
 
-      {nothingIncluded && (
-        <Box marginTop={1}>
-          <Text color={PALETTE.warning}>
-            no components accepted — press <Text color={PALETTE.info}>[Y]</Text> to accept all non-flagged,{' '}
-            <Text color={PALETTE.info}>[A]</Text> to toggle all, or <Text color={PALETTE.info}>[a]</Text> to accept the
-            highlighted row
-          </Text>
-        </Box>
-      )}
-
-      <Box flexDirection="row">
+      <Box flexDirection="row" alignItems="stretch">
         {aiRationalePanel.isOpen ? (
           <GotoBanner
             title={`Review flags (${aiExcludedCount})`}
@@ -844,6 +813,9 @@ function ScopeGateStepView({
             expandedGroups={expandedGroups}
             onToggleExpanded={toggleExpanded}
             width={sidebarWidth}
+            height={panelLayout.height}
+            title="All components"
+            wrapLabels
             focused={focusedColumn === 'main'}
             scrollOffset={scrollOffset}
             visibleCount={visibleCount}
@@ -856,7 +828,7 @@ function ScopeGateStepView({
             graph={graph}
           />
         )}
-        {columnPlan.layout === 'three-column' && (
+        {columnPlan.layout === 'two-column' && (
           <>
             <Box width={2} flexShrink={0} />
             <AddedComponentsColumn
@@ -864,50 +836,14 @@ function ScopeGateStepView({
               entries={addedComponents}
               cursor={safeAddedComponentsCursor}
               focused={focusedColumn === 'added-components'}
+              height={panelLayout.height}
+              title={`Accepted Components (${counters.accepted}/${counters.total})`}
               aiFlaggedByKey={aiFlaggedByKey}
-              visibleCount={visibleCount}
-            />
-            <Box width={2} flexShrink={0} />
-            <AddedGroupsColumn
-              width={columnPlan.groups}
-              entries={addedGroups}
-              cursor={safeAddedGroupsCursor}
-              focused={focusedColumn === 'added-groups'}
-              aiFlaggedByKey={aiFlaggedByKey}
-              visibleCount={visibleCount}
+              visibleCount={panelLayout.sideVisibleCount}
             />
           </>
         )}
       </Box>
-
-      {focusedComponent && (
-        <Box flexDirection="column" marginTop={1}>
-          <Text>
-            <Text color={PALETTE.info}>{focusedComponent.name}</Text>
-            <Text dimColor>{' — '}</Text>
-            {isIncluded(focusedComponent.name) ? (
-              <Text color={PALETTE.success}>included</Text>
-            ) : (
-              <Text color={PALETTE.error}>excluded</Text>
-            )}
-            {isAiFlagged(focusedComponent) && (
-              <Text color={PALETTE.warning} bold>
-                {' [×]'}
-              </Text>
-            )}
-          </Text>
-          {isAiFlagged(focusedComponent) &&
-            focusedComponent.aiReason !== null &&
-            focusedComponent.aiReason !== undefined &&
-            focusedComponent.aiReason !== '' && (
-              <Box width={totalWidth} height={FOCUSED_REASON_MAX_LINES} flexShrink={0}>
-                <Text dimColor wrap="wrap">
-                  {capReasonForFocusedRow(focusedComponent.aiReason, totalWidth)}
-                </Text>
-              </Box>
-            )}
-        </Box>
-      )}
 
       {cyclesPanelOpen && (
         <Box flexDirection="column" borderStyle="single" borderColor={PALETTE.warning} paddingX={1} marginTop={1}>
@@ -965,55 +901,7 @@ function ScopeGateStepView({
         marginTop={1}
       />
 
-      <Box columnGap={2} marginTop={1} flexWrap="wrap">
-        {includedCount > 0 ? (
-          <Text>
-            <Text color={PALETTE.success}>{includedCount}</Text>
-            <Text dimColor>/{totalComponents} included</Text>
-          </Text>
-        ) : (
-          <Text color={PALETTE.warning}>none included</Text>
-        )}
-        {legendEntry('[↑/↓]', 'move')}
-        {legendEntry('[a]', 'accept')}
-        {legendEntry('[r]', 'reject')}
-        {hasGroupRoots && legendEntry('[space]', 'expand/collapse group')}
-        {hasGroupRoots && legendEntry('[E/C]', 'expand/collapse all')}
-        {legendEntry('[A]', 'toggle all')}
-        {legendEntry('[Y]', 'accept non-flagged')}
-        {legendEntry('[L]', 'flat', columnOneView === 'flat')}
-        {legendEntry('[i]', 'focus lineage', jumpFilterTarget !== null)}
-        {hasCycles && legendEntry('[o]', 'only cycles', activeFilters.has('cycles'))}
-        {hasCycles && legendEntry('[c]', 'cycle list', cyclesPanelOpen)}
-        {legendEntry('[/]', 'search', searchOpen || searchQuery.length > 0)}
-        {legendEntry('[f]', 'continue')}
-        {legendEntry('[?]', 'help')}
-        {legendEntry('[q]', 'quit')}
-        {columnPlan.layout === 'three-column' && legendEntry('[Tab/Shift-Tab]', 'switch column')}
-        {columnPlan.layout === 'three-column' && legendEntry('[Enter]', 'jump to row in main')}
-        {hasAnyAi && legendEntry('[x]', 'review flags', aiRationalePanel.isOpen)}
-        {hasAnyAi && (
-          <Text>
-            <Text color={PALETTE.warning} bold>
-              [×]
-            </Text>{' '}
-            <Text dimColor>requires review</Text>
-          </Text>
-        )}
-      </Box>
-    </Box>
-  );
-}
-
-function ColumnHeader(props: { title: string; width: number; focused: boolean }): React.ReactElement {
-  const { title, width, focused } = props;
-  const sep = '─'.repeat(Math.max(0, width - 2));
-  return (
-    <Box flexDirection="column">
-      <Text bold color={focused ? PALETTE.inverse : PALETTE.info} inverse={focused}>
-        {title}
-      </Text>
-      <Text dimColor>{sep}</Text>
+      <CompactControlBar hasGroupRoots={hasGroupRoots} searchActive={searchOpen || searchQuery.length > 0} />
     </Box>
   );
 }
@@ -1032,13 +920,13 @@ export function sideColumnLabelStyle(input: { isCycle: boolean; isSelected: bool
   const isCursor = isSelected && focused;
   if (isCursor) {
     return {
-      nameColor: PALETTE.inverse,
+      nameColor: PALETTE.info,
       nameBold: true,
-      nameInverse: true,
+      nameInverse: false,
       nameUnderline: false,
-      suffixColor: PALETTE.inverse,
+      suffixColor: PALETTE.info,
       suffixDim: false,
-      suffixInverse: true,
+      suffixInverse: false,
       suffixUnderline: false,
     };
   }
@@ -1084,6 +972,7 @@ type AddedColumnEntry = { name: string; isCycle: boolean };
 type AddedColumnProps<T extends AddedColumnEntry> = {
   title: string;
   width: number;
+  height: number;
   entries: T[];
   cursor: number;
   focused: boolean;
@@ -1093,123 +982,85 @@ type AddedColumnProps<T extends AddedColumnEntry> = {
 };
 
 function AddedColumn<T extends AddedColumnEntry>(props: AddedColumnProps<T>): React.ReactElement {
-  const { title, width, entries, cursor, focused, aiFlaggedByKey, visibleCount, renderSuffix } = props;
+  const { title, width, height, entries, cursor, focused, aiFlaggedByKey, visibleCount, renderSuffix } = props;
   const reserveAiBadge = entries.some((e) => aiFlaggedByKey?.get(e.name) === true);
   const firstNonCycleIdx = entries.findIndex((e) => !e.isCycle);
   const window = computeColumnWindow(entries.length, cursor, Math.max(1, visibleCount));
   return (
-    <Box
-      flexDirection="column"
-      width={width}
-      flexShrink={0}
-      borderStyle="single"
-      borderColor={focused ? PALETTE.inverse : undefined}
-    >
-      <ColumnHeader title={title} width={width} focused={focused} />
+    <WindowedPanel width={width} height={height} title={title} focused={focused}>
+      <WindowIndicator direction="up" count={window.above} />
       {entries.length === 0 ? (
         <Text dimColor>(none)</Text>
       ) : (
-        <>
-          {window.above > 0 && <Text dimColor>{`↑ ${window.above} more`}</Text>}
-          {entries.slice(window.start, window.end).map((entry, vi) => {
-            const i = window.start + vi;
-            const isSelected = i === cursor;
-            const isCursor = focused && isSelected;
-            const aiFlagged = aiFlaggedByKey?.get(entry.name) === true;
-            const showSeparator = firstNonCycleIdx > 0 && i === firstNonCycleIdx;
-            const style = sideColumnLabelStyle({
-              isCycle: entry.isCycle,
-              isSelected,
-              focused,
-            });
-            return (
-              <React.Fragment key={entry.name}>
-                {showSeparator && <Text dimColor>{'─'.repeat(Math.max(0, width - 2))}</Text>}
-                <Box>
-                  {isCursor ? (
-                    <Text color={PALETTE.info} bold>
-                      {figures.pointer}
+        entries.slice(window.start, window.end).map((entry, vi) => {
+          const i = window.start + vi;
+          const isSelected = i === cursor;
+          const isCursor = focused && isSelected;
+          const aiFlagged = aiFlaggedByKey?.get(entry.name) === true;
+          const showSeparator = firstNonCycleIdx > 0 && i === firstNonCycleIdx;
+          const style = sideColumnLabelStyle({
+            isCycle: entry.isCycle,
+            isSelected,
+            focused,
+          });
+          return (
+            <React.Fragment key={entry.name}>
+              {showSeparator && <Text dimColor>{'─'.repeat(Math.max(0, width - 2))}</Text>}
+              <Box>
+                {isCursor ? (
+                  <Text color={PALETTE.info} bold>
+                    {figures.pointer}
+                  </Text>
+                ) : (
+                  <Text> </Text>
+                )}
+                {reserveAiBadge &&
+                  (aiFlagged ? (
+                    <Text color={PALETTE.warning} bold>
+                      {' [×]'}
                     </Text>
                   ) : (
-                    <Text> </Text>
-                  )}
-                  {reserveAiBadge &&
-                    (aiFlagged ? (
-                      <Text color={PALETTE.warning} bold>
-                        {' [×]'}
-                      </Text>
-                    ) : (
-                      <Text>{'    '}</Text>
-                    ))}
-                  {entry.isCycle && (
-                    <Text
-                      color={isCursor ? PALETTE.inverse : PALETTE.warning}
-                      bold
-                      inverse={isCursor}
-                      underline={style.nameUnderline}
-                    >
-                      {' ⚠'}
-                    </Text>
-                  )}
+                    <Text>{'    '}</Text>
+                  ))}
+                {entry.isCycle && (
                   <Text
-                    color={style.nameColor}
-                    bold={style.nameBold}
-                    inverse={style.nameInverse}
+                    color={isCursor ? PALETTE.info : PALETTE.warning}
+                    bold
+                    inverse={false}
                     underline={style.nameUnderline}
-                    wrap="truncate"
                   >
-                    {' ' + entry.name}
+                    {' ⚠'}
                   </Text>
-                  {renderSuffix?.(entry, style)}
-                </Box>
-              </React.Fragment>
-            );
-          })}
-          {window.below > 0 && <Text dimColor>{`↓ ${window.below} more`}</Text>}
-        </>
+                )}
+                <Text
+                  color={style.nameColor}
+                  bold={style.nameBold}
+                  inverse={style.nameInverse}
+                  underline={style.nameUnderline}
+                  wrap="wrap"
+                >
+                  {' ' + entry.name}
+                </Text>
+                {renderSuffix?.(entry, style)}
+              </Box>
+            </React.Fragment>
+          );
+        })
       )}
-    </Box>
+      <WindowIndicator direction="down" count={window.below} />
+    </WindowedPanel>
   );
 }
 
 function AddedComponentsColumn(props: {
   width: number;
+  height: number;
+  title: string;
   entries: AddedComponentEntry[];
   cursor: number;
   focused: boolean;
   aiFlaggedByKey?: Map<string, boolean>;
   visibleCount: number;
 }): React.ReactElement {
-  return <AddedColumn title="Accepted Components" {...props} />;
-}
-
-function AddedGroupsColumn(props: {
-  width: number;
-  entries: AddedGroupEntry[];
-  cursor: number;
-  focused: boolean;
-  aiFlaggedByKey?: Map<string, boolean>;
-  visibleCount: number;
-}): React.ReactElement {
-  return (
-    <AddedColumn
-      title="Accepted components with slot dependencies"
-      {...props}
-      renderSuffix={(entry, style) => {
-        const suffix = ` (${entry.depCount} dep${entry.depCount === 1 ? '' : 's'})`;
-        return (
-          <Text
-            color={style.suffixColor}
-            dimColor={style.suffixDim}
-            inverse={style.suffixInverse}
-            underline={style.suffixUnderline}
-            bold={style.nameBold}
-            wrap="truncate"
-          >
-            {suffix}
-          </Text>
-        );
-      }}
-    />
-  );
+  return <AddedColumn {...props} />;
 }

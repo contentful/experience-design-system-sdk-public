@@ -37,7 +37,7 @@ export function ValidateView({ results, onExit }: ValidateViewProps): React.Reac
       <TopBar
         subcommand="validate"
         hints={[
-          { key: '?', label: 'help' },
+          { key: 'h', label: 'help' },
           { key: 'q', label: 'quit' },
         ]}
       />

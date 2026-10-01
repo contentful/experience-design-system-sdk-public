@@ -1,5 +1,5 @@
 import { createElement } from 'react';
-import { render } from 'ink';
+import { renderWithGoodbye } from '../tui/render-with-goodbye.js';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { Command } from 'commander';
@@ -35,7 +35,11 @@ import {
   lookupCache,
   lookupCacheByEntity,
   storeCache,
+  storeCaches,
   copyComponentFromCache,
+  copyComponentsFromCache,
+  filterUnknownSlotAllowedComponents,
+  findUnknownSlotAllowedComponents,
   copyTokensFromCache,
   renameEmptySlots,
   type RawComponentWithId,
@@ -75,6 +79,9 @@ interface GenerateSubcommandOptions {
   prompt?: string[];
   /** Path to .existing-entities.json written after CMA credentials are supplied. */
   existingEntitiesPath?: string;
+  cacheStatus?: boolean;
+  restoreCache?: boolean;
+  cachedComponents?: string;
 }
 
 const invoker = createLocalCliAgentInvoker({
@@ -160,64 +167,147 @@ interface ComponentRunResult {
   renamedSlotsCount: number;
 }
 
-async function runOneComponent(
-  agent: AgentName,
-  model: string | undefined,
-  db: ReturnType<typeof openPipelineDb>,
-  sessionId: string,
-  component: RawComponentDefinition & { component_id: string },
-  tokensInline: string | undefined,
-  tokenMapInline: string | undefined,
-  index: number,
-  total: number,
-  verbose: boolean,
-  noCache: boolean,
-  skillPathOverride: string | undefined,
-  skillContentOverride: string | undefined,
-  promptHash: string,
-  existingContentfulEntities: ExistingContentfulEntities | undefined,
-  existingTokensInline: string | undefined,
-): Promise<ComponentRunResult> {
-  const pos = c.dim(`[${index + 1}/${total}]`);
+interface ComponentRunOptions {
+  agent: AgentName;
+  model: string | undefined;
+  db: ReturnType<typeof openPipelineDb>;
+  sessionId: string;
+  tokensInline: string | undefined;
+  tokenMapInline: string | undefined;
+  verbose: boolean;
+  noCache: boolean;
+  skillPathOverride: string | undefined;
+  skillContentOverride: string | undefined;
+  promptHash: string;
+  existingContentfulEntities: ExistingContentfulEntities | undefined;
+  existingTokensInline: string | undefined;
+  precomputedCachedNames: ReadonlySet<string>;
+  allowedComponentNames: ReadonlySet<string>;
+}
 
-  if (!noCache) {
-    const inputHash = computeComponentInputHash(component as RawComponentWithId);
-    const cached = lookupCache(db, inputHash, 'component', component.component_id, promptHash);
-    if (cached) {
-      copyComponentFromCache(db, cached.sourceSessionId, sessionId, component.component_id);
-      process.stderr.write(`  ${pos}  ${c.bold(component.name)}  ${c.green('cached')}\n`);
-      return {
-        componentName: component.name,
-        classified: 0,
-        excluded: 0,
-        slots: 0,
-        warnings: [],
-        failed: false,
-        cached: true,
-        renamedSlotsCount: 0,
-      };
-    }
-    // Check for pinned (human-edited) entry with a different hash
-    const pinned = lookupCacheByEntity(db, 'component', component.component_id);
-    if (pinned?.humanEdited) {
-      copyComponentFromCache(db, pinned.sourceSessionId, sessionId, component.component_id);
-      process.stderr.write(`  ${pos}  ${c.bold(component.name)}  ${c.cyan('pinned (human-edited)')}\n`);
-      return {
-        componentName: component.name,
-        classified: 0,
-        excluded: 0,
-        slots: 0,
-        warnings: [`${component.name}: source changed but human edits preserved`],
-        failed: false,
-        cached: true,
-        renamedSlotsCount: 0,
-      };
-    }
+function createCachedComponentResult(componentName: string, warnings: string[] = []): ComponentRunResult {
+  return {
+    componentName,
+    classified: 0,
+    excluded: 0,
+    slots: 0,
+    warnings,
+    failed: false,
+    cached: true,
+    renamedSlotsCount: 0,
+  };
+}
+
+function writeCachedComponentStatus(position: string, componentName: string, pinned: boolean): void {
+  const status = pinned ? c.cyan('pinned (human-edited)') : c.green('cached');
+  process.stderr.write(`  ${position}  ${c.bold(componentName)}  ${status}\n`);
+}
+
+async function showGenerateView(result: GenerateViewResult): Promise<void> {
+  if (process.stdout.isTTY) {
+    const { waitUntilExit } = renderWithGoodbye(
+      createElement(GenerateView, {
+        result,
+        onExit: () => void exitWithAnalytics(0),
+      }),
+    );
+    await waitUntilExit();
+    return;
   }
 
-  // Rename empty-named slots in the DB and patch the in-memory component so the
-  // prompt sees the heuristic names. applyToolCalls matches by name — a row with
-  // name="" would never be reachable by a classify_slot call otherwise.
+  process.stdout.write(
+    `generate complete\nskill: ${result.skill}\nagent: ${result.agent}\nsession=${result.sessionId}\n`,
+  );
+  await exitWithAnalytics(0);
+}
+
+function normalizeComponentForCache(
+  component: RawComponentDefinition & { component_id?: string },
+): RawComponentDefinition & {
+  component_id?: string;
+} {
+  const slots = component.slots.map((slot, index, allSlots) => ({
+    ...slot,
+    name: slot.name.trim() || (allSlots.length === 1 ? 'children' : `slot_${index}`),
+  }));
+  return { ...component, slots };
+}
+
+function lookupComponentCache(
+  db: ReturnType<typeof openPipelineDb>,
+  component: RawComponentDefinition & { component_id: string },
+  promptHash: string,
+): ReturnType<typeof lookupCache> {
+  const normalized = normalizeComponentForCache(component);
+  const inputHash = computeComponentInputHash(normalized);
+  const cached = lookupCache(db, inputHash, 'component', component.component_id, promptHash);
+  if (cached) return cached;
+
+  // Read entries written before empty slot names were normalized. A successful
+  // lookup is re-keyed below so the compatibility path is temporary.
+  const legacyInputHash = computeComponentInputHash(component);
+  return legacyInputHash === inputHash
+    ? null
+    : lookupCache(db, legacyInputHash, 'component', component.component_id, promptHash);
+}
+
+type ComponentCacheResolution = {
+  entry: NonNullable<ReturnType<typeof lookupCache>>;
+  humanEdited: boolean;
+};
+
+/** Resolve the reusable component definition with one shared precedence rule. */
+function resolveComponentCache(
+  db: ReturnType<typeof openPipelineDb>,
+  component: RawComponentDefinition & { component_id: string },
+  promptHash: string,
+  allowedComponentNames: ReadonlySet<string>,
+): ComponentCacheResolution | null {
+  const cached = lookupComponentCache(db, component, promptHash);
+  if (
+    cached &&
+    findUnknownSlotAllowedComponents(db, cached.sourceSessionId, allowedComponentNames, component.component_id)
+      .length === 0
+  ) {
+    return { entry: cached, humanEdited: cached.humanEdited };
+  }
+
+  const pinned = lookupCacheByEntity(db, 'component', component.component_id);
+  return pinned?.humanEdited &&
+    findUnknownSlotAllowedComponents(db, pinned.sourceSessionId, allowedComponentNames, component.component_id)
+      .length === 0
+    ? { entry: pinned, humanEdited: true }
+    : null;
+}
+
+async function runOneComponent(
+  options: ComponentRunOptions,
+  component: RawComponentDefinition & { component_id: string },
+  index: number,
+  total: number,
+): Promise<ComponentRunResult> {
+  const {
+    agent,
+    model,
+    db,
+    sessionId,
+    tokensInline,
+    tokenMapInline,
+    verbose,
+    noCache,
+    skillPathOverride,
+    skillContentOverride,
+    promptHash,
+    existingContentfulEntities,
+    existingTokensInline,
+    precomputedCachedNames,
+    allowedComponentNames,
+  } = options;
+  const pos = c.dim(`[${index + 1}/${total}]`);
+
+  // Normalize empty slot names before deriving the cache key. The rename is
+  // persisted in the session DB, so hashing the pre-rename component would
+  // make the next run miss the cache forever for that component.
   const { renames, warnings: renameWarnings } = renameEmptySlots(
     db,
     sessionId,
@@ -230,6 +320,49 @@ async function runOneComponent(
     const renameMap = new Map(renames.map((r) => [r.oldName, r.newName]));
     effectiveSlots = component.slots.map((s) => (renameMap.has(s.name) ? { ...s, name: renameMap.get(s.name)! } : s));
     for (const w of renameWarnings) process.stderr.write(`  ${c.yellow('⚠')}  ${w}\n`);
+  }
+  effectiveSlots = effectiveSlots.map((slot) => {
+    if (!slot.allowedComponents) return slot;
+    return {
+      ...slot,
+      allowedComponents: slot.allowedComponents.filter((name) => allowedComponentNames.has(name)),
+    };
+  });
+  const cacheComponent = normalizeComponentForCache(component);
+
+  if (!noCache && precomputedCachedNames.has(component.name)) {
+    writeCachedComponentStatus(pos, component.name, false);
+    return createCachedComponentResult(component.name);
+  }
+
+  if (!noCache) {
+    const inputHash = computeComponentInputHash(cacheComponent);
+    const resolution = resolveComponentCache(db, component, promptHash, allowedComponentNames);
+    if (resolution && !resolution.humanEdited) {
+      copyComponentFromCache(db, resolution.entry.sourceSessionId, sessionId, component.component_id, true, {
+        allowedComponentNames,
+      });
+      storeCache(
+        db,
+        inputHash,
+        'component',
+        component.component_id,
+        resolution.entry.sourceSessionId,
+        resolution.entry.humanEdited,
+        promptHash,
+      );
+      writeCachedComponentStatus(pos, component.name, false);
+      return createCachedComponentResult(component.name);
+    }
+    if (resolution?.humanEdited) {
+      copyComponentFromCache(db, resolution.entry.sourceSessionId, sessionId, component.component_id, true, {
+        allowedComponentNames,
+      });
+      writeCachedComponentStatus(pos, component.name, true);
+      return createCachedComponentResult(`${component.name}`, [
+        `${component.name}: source changed but human edits preserved`,
+      ]);
+    }
   }
 
   const rawComponentsInline = JSON.stringify(
@@ -267,6 +400,7 @@ async function runOneComponent(
     skillContentOverride,
     existingComponentsInline,
     existingTokensInline,
+    componentAllowlistInline: JSON.stringify([...allowedComponentNames].sort()),
   });
 
   const maxAttempts = 2;
@@ -310,9 +444,11 @@ async function runOneComponent(
       continue;
     }
 
-    const applied = applyToolCalls(db, sessionId, component.component_id, component.name, calls, warnings);
+    const applied = applyToolCalls(db, sessionId, component.component_id, component.name, calls, warnings, {
+      allowedComponentNames,
+    });
     if (!noCache) {
-      const inputHash = computeComponentInputHash(component as RawComponentWithId);
+      const inputHash = computeComponentInputHash(cacheComponent);
       storeCache(db, inputHash, 'component', component.component_id, sessionId, false, promptHash);
     }
     return {
@@ -339,20 +475,8 @@ async function runOneComponent(
 }
 
 async function runAllComponents(
-  agent: AgentName,
-  model: string | undefined,
-  db: ReturnType<typeof openPipelineDb>,
-  sessionId: string,
+  options: ComponentRunOptions,
   components: Array<RawComponentDefinition & { component_id: string }>,
-  tokensInline: string | undefined,
-  tokenMapInline: string | undefined,
-  verbose: boolean,
-  noCache: boolean,
-  skillPathOverride: string | undefined,
-  skillContentOverride: string | undefined,
-  promptHash: string,
-  existingContentfulEntities: ExistingContentfulEntities | undefined,
-  existingTokensInline: string | undefined,
 ): Promise<ComponentRunResult[]> {
   const concurrency = Number(process.env.EDS_GENERATE_CONCURRENCY ?? DEFAULT_COMPONENT_CONCURRENCY);
   process.stderr.write(
@@ -368,24 +492,7 @@ async function runAllComponents(
   async function worker(): Promise<void> {
     while (next < components.length) {
       const i = next++;
-      results[i] = await runOneComponent(
-        agent,
-        model,
-        db,
-        sessionId,
-        components[i]!,
-        tokensInline,
-        tokenMapInline,
-        i,
-        components.length,
-        verbose,
-        noCache,
-        skillPathOverride,
-        skillContentOverride,
-        promptHash,
-        existingContentfulEntities,
-        existingTokensInline,
-      );
+      results[i] = await runOneComponent(options, components[i]!, i, components.length);
       completed += 1;
       process.stderr.write(`${formatGenerateProgressLine(completed, components.length, results[i]!.componentName)}\n`);
     }
@@ -416,6 +523,16 @@ async function loadAcceptedNames(sessionId: string): Promise<Set<string> | null>
   }
 }
 
+function parsePrecomputedCachedNames(value: string | undefined): Set<string> {
+  if (!value) return new Set();
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return new Set(Array.isArray(parsed) ? parsed.filter((name): name is string => typeof name === 'string') : []);
+  } catch {
+    return new Set();
+  }
+}
+
 async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, verbose = false): Promise<void> {
   const savedCreds = await readExperiencesCredentials();
   const agentName = opts.agent ?? savedCreds.agent;
@@ -439,7 +556,8 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
   const { overrides: promptOverrides, errors: promptErrors } = parsePromptOverrides(opts.prompt ?? []);
   if (promptErrors.length > 0) die(`Error: ${promptErrors.join('; ')}`);
   let generatePrompt: string | undefined;
-  const generateOverride = promptOverrides.get('generate');
+  const promptStage = skill === 'tokens' ? 'tokens' : 'generate';
+  const generateOverride = promptOverrides.get(promptStage);
   if (generateOverride) {
     try {
       generatePrompt = await resolvePromptOverride(generateOverride);
@@ -494,6 +612,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
   // Load raw components from DB for the components skill
   let sessionId: string | undefined;
   let allComponents: RawComponentWithId[] | undefined;
+  let allowedComponentNames: ReadonlySet<string> | undefined;
   if (skill === 'components') {
     sessionId = await resolveSessionId(opts.session);
     await bindAnalyticsSessionId(sessionId);
@@ -506,6 +625,27 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
     }
     if (allComponents.length === 0) {
       die(`Error: session '${sessionId}' has no raw components. Run analyze extract first.`);
+    }
+
+    allowedComponentNames = new Set([
+      ...allComponents.map((component) => component.name),
+      ...(existingContentfulEntities?.components ?? []).map((component) => component.name),
+    ]);
+    if (!opts.dryRun) {
+      const dbForReferences = openPipelineDb();
+      try {
+        const dropped = filterUnknownSlotAllowedComponents(dbForReferences, sessionId, allowedComponentNames);
+        for (const reference of dropped) {
+          process.stderr.write(
+            `Warning: ${reference.componentName}: slot '${reference.slotName}' — dropped unknown allowed component '${reference.allowedComponent}'\n`,
+          );
+        }
+        if (dropped.length > 0) {
+          allComponents = loadRawComponents(dbForReferences, sessionId, acceptedNames ?? undefined);
+        }
+      } finally {
+        dbForReferences.close();
+      }
     }
     if (acceptedNames) {
       process.stderr.write(`Scope: ${allComponents.length} accepted component(s) from analyze select\n`);
@@ -573,6 +713,8 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
       skillContentOverride: generatePrompt,
       existingComponentsInline: dryRunExistingComponentsInline,
       existingTokensInline: skill === 'components' ? existingTokensInline : undefined,
+      componentAllowlistInline:
+        skill === 'components' && allowedComponentNames ? JSON.stringify([...allowedComponentNames].sort()) : undefined,
     });
     process.stdout.write(prompt + '\n');
     await exitWithAnalytics(0);
@@ -591,6 +733,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
   if (skill === 'components' && allComponents && sessionId) {
     const db = openPipelineDb();
     let componentResults: ComponentRunResult[];
+    const precomputedCachedNames = parsePrecomputedCachedNames(opts.cachedComponents);
     try {
       // Fold the existing-entities inputs (tokens summary + presence of entities)
       // into the prompt hash so cache entries invalidate when the target space
@@ -607,21 +750,78 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
         existingContentfulEntitiesHashInputs,
         generatePrompt,
       );
+      if (opts.cacheStatus) {
+        const cacheEnabled = opts.cache !== false && process.env.EDS_NO_CACHE !== '1';
+        const cachedComponents = cacheEnabled
+          ? allComponents.flatMap((component) => {
+              const resolution = resolveComponentCache(db, component, promptHash, allowedComponentNames!);
+              return resolution ? [{ component, resolution }] : [];
+            })
+          : [];
+        if (cacheEnabled && opts.restoreCache) {
+          const restorations: Array<{
+            sourceSessionId: string;
+            targetSessionId: string;
+            componentId: string;
+          }> = [];
+          const rekeyed: Array<{
+            component: RawComponentWithId;
+            cached: NonNullable<ReturnType<typeof lookupCache>>;
+          }> = [];
+          const componentStatus = db.prepare(
+            'SELECT status FROM raw_components WHERE session_id = ? AND component_id = ?',
+          );
+          for (const { component, resolution } of cachedComponents) {
+            const current = componentStatus.get(sessionId, component.component_id) as { status: string } | undefined;
+            if (current?.status === 'generated') continue;
+            renameEmptySlots(db, sessionId, component.component_id, component.name, component.slots.length);
+            restorations.push({
+              sourceSessionId: resolution.entry.sourceSessionId,
+              targetSessionId: sessionId,
+              componentId: component.component_id,
+            });
+            rekeyed.push({ component, cached: resolution.entry });
+          }
+          copyComponentsFromCache(db, restorations, { allowedComponentNames });
+          storeCaches(
+            db,
+            rekeyed.map(({ component, cached }) => ({
+              inputHash: computeComponentInputHash(normalizeComponentForCache(component)),
+              entityType: 'component' as const,
+              entityId: component.component_id,
+              sourceSessionId: cached.sourceSessionId,
+              humanEdited: cached.humanEdited,
+              promptHash,
+            })),
+          );
+        }
+        const fullyCached = cacheEnabled && cachedComponents.length === allComponents.length;
+        process.stdout.write(`cache-status=${fullyCached ? 'hit' : 'miss'}\n`);
+        process.stdout.write(
+          `cache-components=${JSON.stringify(cachedComponents.map(({ component }) => component.name))}\n`,
+        );
+        await exitWithAnalytics(0);
+        return;
+      }
       componentResults = await runAllComponents(
-        agent,
-        model,
-        db,
-        sessionId,
+        {
+          agent,
+          model,
+          db,
+          sessionId,
+          tokensInline,
+          tokenMapInline,
+          verbose,
+          noCache: opts.cache === false || process.env.EDS_NO_CACHE === '1',
+          skillPathOverride: generatePromptPath,
+          skillContentOverride: generatePrompt,
+          promptHash,
+          existingContentfulEntities,
+          existingTokensInline,
+          precomputedCachedNames,
+          allowedComponentNames: allowedComponentNames!,
+        },
         allComponents,
-        tokensInline,
-        tokenMapInline,
-        verbose,
-        opts.cache === false || process.env.EDS_NO_CACHE === '1',
-        generatePromptPath,
-        generatePrompt,
-        promptHash,
-        existingContentfulEntities,
-        existingTokensInline,
       );
     } finally {
       db.close();
@@ -709,16 +909,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
           );
           db.close();
           // Skip agent invocation — jump to view
-          const viewResult: GenerateViewResult = { skill, agent, sessionId: sessionId ?? '' };
-          if (process.stdout.isTTY) {
-            const { waitUntilExit } = render(
-              createElement(GenerateView, { result: viewResult, onExit: () => void exitWithAnalytics(0) }),
-            );
-            await waitUntilExit();
-          } else {
-            process.stdout.write(`generate complete\nskill: ${skill}\nagent: ${agent}\nsession=${sessionId}\n`);
-            await exitWithAnalytics(0);
-          }
+          await showGenerateView({ skill, agent, sessionId: sessionId ?? '' });
           return;
         }
       }
@@ -778,24 +969,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
     }
   }
 
-  const viewResult: GenerateViewResult = {
-    skill,
-    agent,
-    sessionId: sessionId ?? '',
-  };
-
-  if (process.stdout.isTTY) {
-    const { waitUntilExit } = render(
-      createElement(GenerateView, {
-        result: viewResult,
-        onExit: () => void exitWithAnalytics(0),
-      }),
-    );
-    await waitUntilExit();
-  } else {
-    process.stdout.write(`generate complete\nskill: ${skill}\nagent: ${agent}\nsession=${sessionId ?? ''}\n`);
-    await exitWithAnalytics(0);
-  }
+  await showGenerateView({ skill, agent, sessionId: sessionId ?? '' });
 }
 
 function addAgentFlags(cmd: Command): Command {
@@ -838,6 +1012,12 @@ export function registerInternalGenerateCommand(program: Command): void {
         'When present, per-component prompts include a summary of the target space so classifications can align to existing prop names/tokens. ' +
         'Missing/malformed files are treated as no-op.',
     );
+  componentsCmd.option('--cache-status', 'Check whether all selected component definitions are cached');
+  componentsCmd.option('--restore-cache', 'Restore cached component definitions into the current session');
+  componentsCmd.option(
+    '--cached-components <json>',
+    'Component names already restored by a prior cache-status lookup; skip per-component cache lookup',
+  );
   addAgentFlags(componentsCmd).action(async (opts: GenerateSubcommandOptions) => {
     await runGenerateSkill('components', opts, opts.verbose ?? false);
   });
@@ -846,7 +1026,13 @@ export function registerInternalGenerateCommand(program: Command): void {
   const tokensCmd = generate
     .command('tokens')
     .description('Invoke a coding agent to produce tokens.json from raw token data')
-    .option('--raw-tokens <path>', 'Path to raw token input file');
+    .option('--raw-tokens <path>', 'Path to raw token input file')
+    .option(
+      '--prompt <stage=value>',
+      'Override a stage prompt (repeatable). Used here for the tokens stage.',
+      (v: string, acc: string[]) => [...acc, v],
+      [] as string[],
+    );
   addAgentFlags(tokensCmd).action(async (opts: GenerateSubcommandOptions) => {
     await runGenerateSkill('tokens', opts, opts.verbose ?? false);
   });

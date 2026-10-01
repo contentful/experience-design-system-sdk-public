@@ -61,7 +61,7 @@ export async function runBuild(opts: {
 
 /**
  * Walks `actionCommand` and its ancestors for a truthy `--bedrock`. --bedrock
- * is registered per-subcommand (not at program scope, unlike --debug), so a
+ * is registered per-subcommand, so a
  * root-level or subcommand-level setting can each carry it.
  */
 export function resolveBedrockFromAncestors(actionCommand: Command): boolean {
@@ -75,22 +75,14 @@ export function resolveBedrockFromAncestors(actionCommand: Command): boolean {
 function registerImportV2Command(program: Command): void {
   program
     .command('importv2')
-    .description('Launch the v2 import')
+    .description('Launch the v2 import TUI (experience-design-system-cli-v2)')
+    .helpOption(false)
     .action(async () => {
-      const v2Path = join(
-        dirname(fileURLToPath(import.meta.url)),
-        '..',
-        '..',
-        '..',
-        'experience-design-system-cli-v2',
-        'bin',
-        'cli-v2.js',
-      );
-      const child = spawn('node', [v2Path], { stdio: 'inherit' });
-      await new Promise<void>((resolve) => {
-        child.on('exit', () => resolve());
-        child.on('error', () => resolve());
-      });
+      const { renderWithGoodbye } = await import('./tui/render-with-goodbye.js');
+      const { createElement } = await import('react');
+      const { App } = await import('@contentful/experience-design-system-cli-v2/app');
+      const { waitUntilExit } = renderWithGoodbye(createElement(App));
+      await waitUntilExit();
     });
 }
 
@@ -98,6 +90,7 @@ function registerBuildCommand(program: Command): void {
   program
     .command('build')
     .description('Rebuild from source and re-link exo/experiences binaries to this build')
+    .helpOption(false)
     .action(async () => {
       const pkgRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
       process.stderr.write('⚙  Building from source...\n');
@@ -107,6 +100,25 @@ function registerBuildCommand(program: Command): void {
       });
       process.exit(exitCode);
     });
+}
+
+function configureRootHelpOrder(program: Command): void {
+  const order = ['build', 'help', 'import', 'apply', 'importv2', 'setup', 'doctor'];
+  const rank = new Map(order.map((name, index) => [name, index]));
+
+  program.configureHelp({
+    visibleCommands(command) {
+      const internals = command as Command & {
+        _getHelpCommand?: () => Command | null;
+        _hidden?: boolean;
+      };
+      const visible = command.commands.filter((entry) => !(entry as Command & { _hidden?: boolean })._hidden);
+      const helpCommand = internals._getHelpCommand?.();
+      if (helpCommand && !(helpCommand as Command & { _hidden?: boolean })._hidden) visible.push(helpCommand);
+      if (command !== program) return visible;
+      return visible.sort((a, b) => (rank.get(a.name()) ?? order.length) - (rank.get(b.name()) ?? order.length));
+    },
+  });
 }
 
 export function createProgram(): Command {
@@ -119,37 +131,17 @@ export function createProgram(): Command {
   registerInternalExtractCommand(program);
   registerPrintCommand(program);
   registerMapTokensCommand(program);
-  registerApplyCommand(program);
-  registerImportCommand(program);
-  registerImportV2Command(program);
-  registerDoctorCommand(program);
-  registerSetupCommand(program);
-  registerBuildCommand(program);
 
-  // Expose --debug on every subcommand. The flag is inherited automatically
-  // via `option()` at program scope + `preAction` reading merged opts from all
-  // ancestors. When set (or when EDSI_DEBUG / persisted config is on), the
-  // process-wide DebugLogger is initialized before the subcommand action runs
-  // and a bright-green "debug logs at <path>" banner is printed to stderr.
-  program.option(
-    '--debug',
-    'Write a JSONL trace of every decision to ~/.contentful/experience-design-system-cli/debug/',
-  );
-  program.option('--no-debug', 'Force debug logging off (overrides EDSI_DEBUG and persisted setup preference)');
+  registerBuildCommand(program);
+  program.helpCommand('help [command]', 'display help for command');
+  registerImportCommand(program);
+  registerApplyCommand(program);
+  registerImportV2Command(program);
+  registerSetupCommand(program);
+  registerDoctorCommand(program);
+  configureRootHelpOrder(program);
 
   program.hook('preAction', async (_thisCommand, actionCommand) => {
-    // Merge opts from actionCommand and all ancestors — root-level --debug
-    // set alongside a subcommand ends up on the root command's opts, not the
-    // subcommand's.
-    let debug: boolean | undefined;
-    for (let c: Command | null = actionCommand; c; c = c.parent) {
-      const opts = c.opts() as { debug?: boolean };
-      if (opts.debug !== undefined) {
-        debug = opts.debug;
-        break;
-      }
-    }
-
     // Propagate --bedrock via env instead of relying on every subprocess spawn
     // site to re-forward the argv flag. `runAgent()` falls back to this var
     // when a call site omits `bedrock` explicitly, and any `node ... experiences
@@ -167,7 +159,7 @@ export function createProgram(): Command {
     const { analyticsDisabled } = await readExperiencesCredentials();
     setPersistedAnalyticsDisabled(analyticsDisabled ?? false);
     noteCommandStart(commandChain);
-    await beginCommand(commandChain, { ...(debug !== undefined ? { debug } : {}) });
+    await beginCommand(commandChain, {});
   });
 
   program.hook('postAction', async () => {

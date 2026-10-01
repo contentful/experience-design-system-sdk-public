@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PALETTE } from './theme.js';
-import { Box, Text, useStdout } from 'ink';
+import { Box, Text } from 'ink';
 import { readFile } from 'node:fs/promises';
 import type { PreviewAnnotation, ReviewComponentStatus, ReviewSessionSnapshot } from '../types.js';
 import { createReviewSessionDetail } from '../types.js';
+import { useTerminalSize } from '../../../tui/use-terminal-size.js';
 import { TopBar } from './components/TopBar.js';
 import { Sidebar, sortComponentsForSidebar } from './components/Sidebar.js';
 import { countValidationIssues } from '../types.js';
@@ -33,8 +34,7 @@ type AppProps = {
 };
 
 export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.ReactElement {
-  const { stdout } = useStdout();
-  const terminalWidth = stdout?.columns ?? 80;
+  const { columns: terminalWidth } = useTerminalSize();
 
   const {
     session: loadedSession,

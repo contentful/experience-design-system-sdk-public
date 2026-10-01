@@ -1,31 +1,42 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`HelpOverlay > matches snapshot in review mode 1`] = `
-"╭────────────────────────────────────────────╮
-│                                            │
-│ ────────────────── Help ────────────────── │
-│                                            │
-│ Navigation                                 │
-│   ↑ / k / PgUp     Scroll up               │
-│   ↓ / j / PgDn     Scroll down             │
-│   g / Home         Jump to top             │
-│   G / End          Jump to bottom          │
-│                                            │
-│ [Review mode only]                         │
-│   Tab              Toggle sidebar/detail   │
-│   a                Accept component        │
-│   r                Reject component        │
-│   e                Edit proposal           │
-│   s                Toggle source code      │
-│   A                Approve all             │
-│   F                Open finalize dialog    │
-│   Ctrl+S           Save draft              │
-│   Ctrl+Z           Undo                    │
-│   Ctrl+Y           Redo                    │
-│   Esc              Exit edit / close       │
-│                                            │
-│   ?                Close help              │
-│   q                Quit                    │
-│                                            │
-╰────────────────────────────────────────────╯"
+"╭──────────────────────────────────────────────────────────────╮
+│                                                              │
+│ ─────────────────────────── Help ─────────────────────────── │
+│                                                              │
+│ Navigation                                                   │
+│   ↑ / k / PgUp     Scroll up                                 │
+│   ↓ / j / PgDn     Scroll down                               │
+│   g / Home         Jump to top                               │
+│   G / End          Jump to bottom                            │
+│                                                              │
+│ [Review mode only]                                           │
+│   Tab              Toggle sidebar/detail                     │
+│   a                Accept component                          │
+│   r                Reject component                          │
+│   e                Edit proposal                             │
+│   s                Toggle source code                        │
+│   A                Approve all                               │
+│   F                Open finalize dialog                      │
+│   Ctrl+S           Save draft                                │
+│   Ctrl+Z           Undo                                      │
+│   Ctrl+Y           Redo                                      │
+│   Esc              Exit edit / close                         │
+│                                                              │
+│   h                Close help                                │
+│   q                Quit                                      │
+│                                                              │
+│                                                              │
+│                                                              │
+│                                                              │
+│                                                              │
+│                                                              │
+│                                                              │
+│                                                              │
+│                                                              │
+│                                                              │
+│                                                              │
+│                                                              │
+╰──────────────────────────────────────────────────────────────╯"
 `;

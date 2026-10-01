@@ -228,9 +228,8 @@ export function __resetDebugLoggerForTest(): void {
  * Resolve effective debug-mode setting from three sources.
  *
  * Precedence (highest first):
- *   1. `--debug` / `--no-debug` CLI flag
- *   2. `EDSI_DEBUG` env var (truthy: 1, true, yes, on)
- *   3. Persisted `debug` field in credentials.json
+ *   1. `EDSI_DEBUG` env var (truthy: 1, true, yes, on)
+ *   2. Persisted `debug` field in credentials.json
  *   4. Default: OFF
  */
 export function resolveDebugMode(opts: { debug?: boolean }, configDebug?: boolean): boolean {

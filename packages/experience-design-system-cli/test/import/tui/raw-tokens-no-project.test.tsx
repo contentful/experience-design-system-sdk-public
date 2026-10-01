@@ -93,12 +93,6 @@ describe('raw-tokens-only import with no --project', () => {
   it('routes to the credentials step (not path-validation)', async () => {
     const { lastFrame } = render(<WizardApp initialRawTokensPath="/tmp/fake-raw-tokens.json" />);
 
-    await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('Generating token definitions'),
-      3000,
-    );
-
     const frame = await waitForFrame(
       () => lastFrame(),
       (f) => f.includes('Directory not found') || f.includes('Space ID'),

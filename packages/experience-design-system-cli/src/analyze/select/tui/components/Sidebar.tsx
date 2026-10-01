@@ -20,9 +20,15 @@ export function previewBadge(annotation: PreviewAnnotation | undefined): Preview
 
 export type PreviewBadgeValue = { char: string; color: string; bold?: boolean; dim?: boolean };
 
-export function PreviewBadge({ badge }: { badge: PreviewBadgeValue | null }): React.ReactElement {
+export function PreviewBadge({
+  badge,
+  highlighted = false,
+}: {
+  badge: PreviewBadgeValue | null;
+  highlighted?: boolean;
+}): React.ReactElement {
   return badge ? (
-    <Text color={badge.color} bold={badge.bold} dimColor={badge.dim}>
+    <Text color={badge.color} bold={badge.bold} dimColor={highlighted ? false : badge.dim}>
       {badge.char}
     </Text>
   ) : (

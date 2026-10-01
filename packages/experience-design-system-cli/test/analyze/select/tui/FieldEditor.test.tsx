@@ -92,6 +92,8 @@ async function navigateToValuesField(stdin: { write: (data: string) => void }): 
   await tick();
   stdin.write('j');
   await tick();
+  stdin.write('\r');
+  await tick();
 }
 
 describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
@@ -132,6 +134,8 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
     stdin.write('j');
     await tick();
     stdin.write('\x1b[B');
+    await tick();
+    stdin.write('\r');
     await tick();
     stdin.write('X');
     await tick();
@@ -189,7 +193,10 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
     stdin.write('\r');
     await tick();
     const frame = lastFrame() ?? '';
-    expect(frame).toMatch(/cycle/);
+    expect(frame).toMatch(/navigate fields/);
+    stdin.write('\r');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/cycle/);
   });
 
   it('navigates type → category → required → default → description via j', async () => {
@@ -205,21 +212,23 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
     );
     stdin.write('\r');
     await tick();
-    expect(lastFrame() ?? '').toMatch(/cycle/);
+    expect(lastFrame() ?? '').toMatch(/navigate fields/);
 
     stdin.write('j');
     await tick();
-    expect(lastFrame() ?? '').toMatch(/cycle/);
+    expect(lastFrame() ?? '').toContain('category: content');
 
     stdin.write('j');
     await tick();
-    expect(lastFrame() ?? '').toMatch(/toggle/);
+    expect(lastFrame() ?? '').toContain('req: [ ]');
 
     stdin.write('j');
     await tick();
     expect(lastFrame() ?? '').toMatch(/default:/);
 
     stdin.write('\x1b[B');
+    await tick();
+    stdin.write('\r');
     await tick();
     expect(lastFrame() ?? '').toMatch(/Type to edit/);
   });
@@ -251,7 +260,7 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
     expect(lastFrame() ?? '').toMatch(/navigate rows/);
   });
 
-  it('j/k inside description (after explicitly entering it) types literal characters', async () => {
+  it('literal j/k characters inside description are editable text', async () => {
     const onChange = vi.fn();
     const { stdin } = render(
       <FieldEditor
@@ -272,6 +281,8 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
     stdin.write('j');
     await tick();
     stdin.write('\x1b[B');
+    await tick();
+    stdin.write('\r');
     await tick();
     stdin.write('j');
     await tick();
@@ -303,6 +314,8 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
     await tick();
     stdin.write('\x1b[B');
     await tick();
+    stdin.write('\r');
+    await tick();
     const frame = lastFrame() ?? '';
     expect(frame).toMatch(/Type to edit/);
     expect(frame).toContain('Hero title');
@@ -325,13 +338,15 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
       stdin.write('\x1b[B');
       await tick();
     }
+    stdin.write('\r');
+    await tick();
     const frame = lastFrame() ?? '';
     expect(frame).toContain('press [t] to edit allowed tokens');
     expect(frame).toContain('╭');
 
     stdin.write('\x1b[B');
     await tick();
-    expect(lastFrame() ?? '').not.toContain('press [t] to edit allowed tokens');
+    expect(lastFrame() ?? '').toContain('press [t] to edit allowed tokens');
   });
 
   it('sets design token defaults when a prop is converted to token', async () => {
@@ -348,14 +363,20 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
     );
     stdin.write('\r');
     await tick();
+    stdin.write('\r');
+    await tick();
     for (let i = 0; i < 6; i += 1) {
       stdin.write('\x1b[C');
       await tick();
     }
+    stdin.write('\r');
+    await tick();
     for (let i = 0; i < 6; i += 1) {
       stdin.write('\x1b[B');
       await tick();
     }
+    stdin.write('\r');
+    await tick();
     expect(lastFrame() ?? '').toContain('press [t] to edit allowed tokens');
     const updated = onChange.mock.calls.at(-1)?.[0] as string;
     expect(updated).toContain('"$type": "token"');
@@ -387,6 +408,30 @@ describe('FieldEditor — prop category grouping', () => {
     expect(frame).not.toContain('cat:');
     expect(frame).not.toContain('disabled');
     expect(frame).not.toContain('dataTestId');
+  });
+
+  it('wraps long enum values and keeps slot metadata from colliding', () => {
+    const value = JSON.stringify({
+      Carousel: {
+        $type: 'component',
+        $properties: {
+          variant: {
+            $type: 'enum',
+            $category: 'design',
+            $values: ['extra-large', 'large', 'small', 'very-long-variant-name'],
+          },
+        },
+        $slots: { items: { $required: true } },
+      },
+    });
+    const { lastFrame } = render(
+      <FieldEditor value={value} width={60} height={30} onChange={vi.fn()} onSave={vi.fn()} onDiscard={vi.fn()} />,
+    );
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('values:');
+    expect(frame).toContain('req: [✓]');
+    expect(frame).not.toContain('type:enumcategory');
+    expect(frame).not.toContain('sreq');
   });
 
   it('places state and unattached props in Other / Hidden after Slots when enabled', () => {
@@ -425,7 +470,11 @@ describe('FieldEditor — prop category grouping', () => {
     const enterAndAssert = async (expected: string) => {
       stdin.write('\r');
       await tick();
+      stdin.write('\r');
+      await tick();
       expect(lastFrame() ?? '').toContain(expected);
+      stdin.write('\x1b');
+      await tick();
       stdin.write('\x1b');
       await tick();
     };
@@ -436,6 +485,37 @@ describe('FieldEditor — prop category grouping', () => {
       await tick();
       await enterAndAssert(expected);
     }
+  });
+
+  it('switches a selected design property back to content without losing the row', async () => {
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={GROUPED_COMPONENT}
+        width={100}
+        height={30}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+
+    stdin.write('j');
+    await tick();
+    stdin.write('\r');
+    await tick();
+    stdin.write('j');
+    await tick();
+    expect(lastFrame() ?? '').toContain('category: design');
+    stdin.write('\r');
+    await tick();
+    expect(lastFrame() ?? '').toContain('switch to content property');
+    stdin.write('\r');
+    await tick();
+
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('color');
+    expect(frame).toContain('CONTENT PROPERTIES');
+    expect(frame).not.toContain('switch to content property');
   });
 
   it('omits empty category headers', () => {
@@ -708,8 +788,15 @@ describe('FieldEditor — field-nav cycling at edges (Bug 2)', () => {
     await tick();
     stdin.write('\x1b[B');
     await tick();
+    expect(lastFrame() ?? '').toMatch(/navigate fields/);
+    stdin.write('\r');
+    await tick();
     expect(lastFrame() ?? '').toMatch(/Type to edit/);
-    stdin.write('\x1b[B');
+    stdin.write('\x1b');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('\r');
     await tick();
     const frame = lastFrame() ?? '';
     expect(frame).toMatch(/cycle/);
@@ -729,8 +816,10 @@ describe('FieldEditor — field-nav cycling at edges (Bug 2)', () => {
     );
     stdin.write('\r');
     await tick();
-    expect(lastFrame() ?? '').toMatch(/cycle/);
     stdin.write('\x1b[A');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/navigate fields/);
+    stdin.write('\r');
     await tick();
     expect(lastFrame() ?? '').toMatch(/Type to edit/);
   });
@@ -749,6 +838,9 @@ describe('FieldEditor — field-nav cycling at edges (Bug 2)', () => {
     stdin.write('\r');
     await tick();
     stdin.write('k');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/navigate fields/);
+    stdin.write('\r');
     await tick();
     expect(lastFrame() ?? '').toMatch(/Type to edit/);
   });
@@ -780,8 +872,15 @@ describe('FieldEditor — field-nav cycling at edges (Bug 2)', () => {
     await tick();
     stdin.write('\x1b[B');
     await tick();
+    expect(lastFrame() ?? '').toMatch(/navigate fields/);
+    stdin.write('\r');
+    await tick();
     expect(lastFrame() ?? '').toMatch(/Type to edit/);
+    stdin.write('\x1b');
+    await tick();
     stdin.write('\x1b[B');
+    await tick();
+    stdin.write('\r');
     await tick();
     const frame = lastFrame() ?? '';
     expect(frame).toMatch(/cycle/);
@@ -813,20 +912,26 @@ describe('FieldEditor — onExit panel-exit callback (Bug 1)', () => {
   it('Esc at field-level still drops to row-level (does NOT call onExit)', async () => {
     const onExit = vi.fn();
     const onDiscard = vi.fn();
+    const onSave = vi.fn();
     const { stdin, lastFrame } = render(
       <FieldEditor
         value={STRING_COMPONENT}
         width={80}
         height={20}
         onChange={vi.fn()}
-        onSave={vi.fn()}
+        onSave={onSave}
         onDiscard={onDiscard}
         onExit={onExit}
       />,
     );
     stdin.write('\r');
     await tick();
-    expect(lastFrame() ?? '').toMatch(/cycle/);
+    expect(lastFrame() ?? '').toMatch(/navigate fields/);
+    stdin.write('\r');
+    await tick();
+    stdin.write('\x1b');
+    await tick();
+    expect(onSave).toHaveBeenCalledTimes(1);
     stdin.write('\x1b');
     await tick();
     expect(onExit).not.toHaveBeenCalled();
@@ -910,6 +1015,9 @@ describe('FieldEditor — Feature 5: propFields ordering ($default before descri
     await tick();
     stdin.write('j');
     await tick();
+    expect(lastFrame() ?? '').toMatch(/navigate fields/);
+    stdin.write('\r');
+    await tick();
     expect(lastFrame() ?? '').toMatch(/Type to edit/);
   });
 
@@ -936,6 +1044,8 @@ describe('FieldEditor — Feature 5: propFields ordering ($default before descri
     stdin.write('j');
     await tick();
     stdin.write('j');
+    await tick();
+    stdin.write('\r');
     await tick();
     expect(lastFrame() ?? '').toMatch(/Type to edit/);
   });
@@ -981,6 +1091,8 @@ describe('FieldEditor — Feature 5: $default editor per prop type', () => {
     await tick();
     stdin.write('j');
     await tick();
+    stdin.write('\r');
+    await tick();
     stdin.write('H');
     await tick();
     stdin.write('i');
@@ -1014,6 +1126,8 @@ describe('FieldEditor — Feature 5: $default editor per prop type', () => {
     stdin.write('j');
     await tick();
     stdin.write('j');
+    await tick();
+    stdin.write('\r');
     await tick();
     stdin.write('\x1b[C');
     await tick();
@@ -1049,6 +1163,8 @@ describe('FieldEditor — Feature 5: $default editor per prop type', () => {
     stdin.write('\x1b[A');
     await tick();
     stdin.write('\x1b[A');
+    await tick();
+    stdin.write('\r');
     await tick();
     stdin.write('\x1b[C');
     await tick();
@@ -1094,6 +1210,8 @@ describe('FieldEditor — Feature 5: $allowedComponents per-slot editor', () => 
     stdin.write('\r');
     await tick();
     stdin.write('j');
+    await tick();
+    stdin.write('\r');
     await tick();
   }
 
@@ -1226,15 +1344,17 @@ describe('FieldEditor — Feature 5: $allowedComponents per-slot editor', () => 
     );
     stdin.write('\r');
     await tick();
-    expect(lastFrame() ?? '').toMatch(/toggle/);
+    expect(lastFrame() ?? '').toMatch(/navigate fields/);
     stdin.write('\x1b[B');
+    await tick();
+    stdin.write('\r');
     await tick();
     expect(lastFrame() ?? '').toMatch(/\[a\]dd/);
     stdin.write('\x1b');
     await tick();
-    stdin.write('\r');
+    stdin.write('\x1b[B');
     await tick();
-    stdin.write('\x1b[A');
+    stdin.write('\r');
     await tick();
     expect(lastFrame() ?? '').toMatch(/Type to edit/);
   });
@@ -1248,12 +1368,16 @@ describe('FieldEditor — Feature 5: $allowedComponents per-slot editor', () => 
     await tick();
     stdin.write('\x1b[B'); // down → 'allowedComponents' (values-nav; cursor lands at top)
     await tick();
+    stdin.write('\r');
+    await tick();
     expect(lastFrame() ?? '').toMatch(/\[a\]dd/);
     // CONTAINER's slot has 2 allowedComponents (Card, Hero): first down moves the
     // value cursor to the last entry, second down escapes the field → 'description'.
-    stdin.write('\x1b[B');
+    stdin.write('\x1b');
     await tick();
     stdin.write('\x1b[B');
+    await tick();
+    stdin.write('\r');
     await tick();
     expect(lastFrame() ?? '').toMatch(/Type to edit/);
     stdin.write('X'); // typing edits the slot description
@@ -1315,6 +1439,8 @@ describe('FieldEditor — Feature 5: component $description as first navigable r
     await tick();
     stdin.write('\r');
     await tick();
+    stdin.write('\r');
+    await tick();
     expect(lastFrame() ?? '').toMatch(/Type to edit/);
   });
 
@@ -1331,6 +1457,8 @@ describe('FieldEditor — Feature 5: component $description as first navigable r
       />,
     );
     stdin.write('k');
+    await tick();
+    stdin.write('\r');
     await tick();
     stdin.write('\r');
     await tick();
@@ -1394,6 +1522,8 @@ describe('FieldEditor — Feature 5: component $description as first navigable r
     );
     stdin.write('\r');
     await tick();
+    stdin.write('\r');
+    await tick();
     expect(lastFrame() ?? '').toMatch(/Type to edit/);
   });
 });
@@ -1427,6 +1557,8 @@ describe('FieldEditor — Feature 5: parseToState round-trip ($default, $allowed
     stdin.write('j');
     await tick();
     stdin.write('j');
+    await tick();
+    stdin.write('\r');
     await tick();
     stdin.write(' ');
     await tick();
@@ -1468,6 +1600,8 @@ describe('FieldEditor — Feature 5: parseToState round-trip ($default, $allowed
     await tick();
     stdin.write('j');
     await tick();
+    stdin.write('\r');
+    await tick();
     stdin.write(' ');
     await tick();
     stdin.write(' ');
@@ -1504,6 +1638,8 @@ describe('FieldEditor — Feature 5: parseToState round-trip ($default, $allowed
     await tick();
     stdin.write('j');
     await tick();
+    stdin.write('\r');
+    await tick();
     stdin.write(' ');
     await tick();
     stdin.write(' ');
@@ -1511,6 +1647,141 @@ describe('FieldEditor — Feature 5: parseToState round-trip ($default, $allowed
 
     const last = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
     expect(last).toContain('"$description": "Top-level hero description"');
+  });
+});
+
+describe('FieldEditor — description boxes constrain long text', () => {
+  it('keeps component, prop, and slot descriptions inside the editor width', async () => {
+    const value = JSON.stringify(
+      {
+        Label: {
+          $type: 'component',
+          $description: [
+            'Text label rendered with configurable sizing, semantic HTML element, and nested content.',
+            'ThisDescriptionContainsAnExtremelyLongUnbrokenWordThatMustStillStayInsideTheDescriptionBox.',
+          ].join(' '),
+          $properties: {
+            size: {
+              $type: 'enum',
+              $category: 'design',
+              $description: 'Text label rendered with configurable sizing, semantic HTML element, and nested content.',
+              $values: ['small', 'medium', 'large'],
+            },
+          },
+          $slots: {
+            content: {
+              $description: 'Content placed inside the label and rendered after the label text.',
+            },
+          },
+        },
+      },
+      null,
+      2,
+    );
+
+    const { stdin, lastFrame } = render(
+      <FieldEditor value={value} width={60} height={30} onChange={vi.fn()} onSave={vi.fn()} onDiscard={vi.fn()} />,
+    );
+
+    stdin.write('\r');
+    await tick();
+    stdin.write('\r');
+    await tick();
+    const lines = (lastFrame() ?? '').split('\n');
+    const firstDescriptionBox = lines.findIndex((line) => line.includes('╭'));
+    const closingDescriptionBox = lines.findIndex((line, index) => index > firstDescriptionBox && line.includes('╯'));
+    expect(firstDescriptionBox).toBeGreaterThanOrEqual(0);
+    expect(closingDescriptionBox).toBeGreaterThan(firstDescriptionBox);
+    expect(lines[closingDescriptionBox]).not.toContain('element');
+    for (const line of lines) {
+      expect(line.length).toBeLessThanOrEqual(60);
+    }
+    for (const line of lines.slice(firstDescriptionBox, closingDescriptionBox + 1)) {
+      expect(line.startsWith('│') || line.startsWith('╭') || line.startsWith('╰')).toBe(true);
+      expect(line.endsWith('│') || line.endsWith('╮') || line.endsWith('╯')).toBe(true);
+    }
+  });
+
+  it('keeps wrapped description text above the field editor footer while editing', async () => {
+    const value = JSON.stringify({
+      Card: {
+        $type: 'component',
+        $description: 'A component description that is long enough to require multiple wrapped lines.',
+        $properties: { title: { $type: 'string', $category: 'content' } },
+      },
+    });
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={value}
+        width={40}
+        height={15}
+        initialFocusTarget={{ kind: 'description' }}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    stdin.write('\r');
+    await tick();
+    stdin.write('\r');
+    await tick();
+
+    const lines = (lastFrame() ?? '').split('\n');
+    const closingDescriptionBox = lines.findIndex((line, index) => index > 0 && line.includes('╰'));
+    const footer = lines.findIndex((line) => line.includes('Type to edit'));
+    expect(closingDescriptionBox).toBeGreaterThan(0);
+    expect(footer).toBeGreaterThan(closingDescriptionBox);
+    expect(lines.slice(closingDescriptionBox + 1, footer)).not.toContain(expect.stringContaining('description'));
+  });
+
+  it('keeps narrow enum metadata and descriptions in their own flow rows', () => {
+    const value = JSON.stringify({
+      Tag: {
+        $type: 'component',
+        $description: 'Compact label badge with configurable color, visual treatment.',
+        $properties: {
+          label: { $type: 'string', $category: 'content', $description: 'Text displayed inside the tag.' },
+          color: {
+            $type: 'enum',
+            $category: 'design',
+            $values: ['black', 'blue', 'green', 'grey', 'magenta', 'purple', 'red', 'teal', 'white', 'yellow'],
+            $default: 'grey',
+            $description: 'Color family for the tag.',
+          },
+          size: {
+            $type: 'enum',
+            $category: 'design',
+            $values: ['large', 'medium', 'small'],
+            $default: 'medium',
+            $description: 'Overall size of the tag.',
+          },
+          variant: {
+            $type: 'enum',
+            $category: 'design',
+            $values: ['blurred', 'filled', 'outlined'],
+            $default: 'filled',
+          },
+        },
+      },
+    });
+    const { lastFrame } = render(
+      <FieldEditor
+        value={value}
+        width={44}
+        height={40}
+        initialFocusTarget={{ kind: 'prop', name: 'color' }}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+
+    const lines = (lastFrame() ?? '').split('\n');
+    expect(lastFrame() ?? '').not.toMatch(/values:\s+design/);
+    expect(lastFrame() ?? '').toContain('Color family for the tag.');
+    expect(lines.some((line) => line.includes('CONTENT PROPERTIES') && line.includes('╯'))).toBe(false);
+    expect(lines.some((line) => line.includes('DESIGN PROPERTIES') && line.includes('╯'))).toBe(false);
+    for (const line of lines) expect(line.length).toBeLessThanOrEqual(44);
   });
 });
 
@@ -1594,7 +1865,7 @@ describe('FieldEditor — Feature 1 (rationale + source view)', () => {
     expect(frame).toContain('~ inferred enum from named type ButtonVariant');
   });
 
-  it('rationale is non-navigable — j/k from prop row does not land on it', async () => {
+  it('rationale is non-navigable — arrow navigation from prop row does not land on it', async () => {
     const { lastFrame, stdin } = render(
       <FieldEditor
         value={STRING_COMPONENT}
@@ -1757,8 +2028,8 @@ describe('FieldEditor — Feature 1 (rationale + source view)', () => {
   });
 });
 
-describe('FieldEditor — discoverability footer (s source, ? help)', () => {
-  it('row-level footer advertises the source-view (`s`) and help (`?`) keys', () => {
+describe('FieldEditor — discoverability footer (s source, h help)', () => {
+  it('row-level footer advertises the source-view (`s`) and help (`h`) keys', () => {
     const { lastFrame } = render(
       <FieldEditor
         value={STRING_COMPONENT}
@@ -1771,7 +2042,7 @@ describe('FieldEditor — discoverability footer (s source, ? help)', () => {
     );
     const frame = lastFrame() ?? '';
     expect(frame).toMatch(/s source/);
-    expect(frame).toMatch(/\? help/);
+    expect(frame).toMatch(/h help/);
   });
 });
 
@@ -1787,7 +2058,7 @@ describe('FieldEditor — keybindings overlay (`?`)', () => {
         onDiscard={vi.fn()}
       />,
     );
-    stdin.write('?');
+    stdin.write('h');
     await tick();
     const frame = lastFrame() ?? '';
     expect(frame).toMatch(/Keybindings/);
@@ -1809,10 +2080,10 @@ describe('FieldEditor — keybindings overlay (`?`)', () => {
         onDiscard={vi.fn()}
       />,
     );
-    stdin.write('?');
+    stdin.write('h');
     await tick();
     expect(lastFrame() ?? '').toMatch(/Keybindings/);
-    stdin.write('?');
+    stdin.write('h');
     await tick();
     expect(lastFrame() ?? '').not.toMatch(/Keybindings/);
   });
@@ -1828,7 +2099,7 @@ describe('FieldEditor — keybindings overlay (`?`)', () => {
         onDiscard={vi.fn()}
       />,
     );
-    stdin.write('?');
+    stdin.write('h');
     await tick();
     expect(lastFrame() ?? '').toMatch(/Keybindings/);
     stdin.write('\x1b');
@@ -1836,7 +2107,7 @@ describe('FieldEditor — keybindings overlay (`?`)', () => {
     expect(lastFrame() ?? '').not.toMatch(/Keybindings/);
   });
 
-  it('while overlay is open j/k/Enter/Ctrl+S do NOT mutate state or trigger callbacks', async () => {
+  it('while overlay is open arrow navigation/Enter/Ctrl+S do NOT mutate state or trigger callbacks', async () => {
     const onSave = vi.fn();
     const onChange = vi.fn();
     const { stdin } = render(
@@ -1849,7 +2120,7 @@ describe('FieldEditor — keybindings overlay (`?`)', () => {
         onDiscard={vi.fn()}
       />,
     );
-    stdin.write('?');
+    stdin.write('h');
     await tick();
     stdin.write('j');
     await tick();
@@ -1974,6 +2245,8 @@ describe('FieldEditor - rationale panels are lifted to the parent', () => {
     await tick();
     stdin.write('j');
     await tick();
+    stdin.write('\r');
+    await tick();
     stdin.write('i');
     await tick();
     expect(onTogglePropRationale).not.toHaveBeenCalled();
@@ -2004,6 +2277,8 @@ describe('FieldEditor - rationale panels are lifted to the parent', () => {
     stdin.write('j');
     await tick();
     stdin.write('j');
+    await tick();
+    stdin.write('\r');
     await tick();
     expect(onTextEntryActiveChange).toHaveBeenLastCalledWith(true);
   });
@@ -2062,7 +2337,7 @@ describe('FieldEditor - legend documents i and I keys', () => {
         metadata={META}
       />,
     );
-    stdin.write('?');
+    stdin.write('h');
     await tick();
     const out = lastFrame() ?? '';
     expect(out).toContain('toggle prop rationale panel');
@@ -2170,6 +2445,8 @@ describe('FieldEditor — INTEG-4401: picker render + input (render)', () => {
     stdin.write('\r');
     await new Promise((r) => setTimeout(r, 30));
     stdin.write('j');
+    await new Promise((r) => setTimeout(r, 30));
+    stdin.write('\r');
     await new Promise((r) => setTimeout(r, 30));
     stdin.write('a');
     await new Promise((r) => setTimeout(r, 30));
@@ -2425,6 +2702,8 @@ describe('FieldEditor — INTEG-4401: cycle existing $allowedComponents entries 
     await new Promise((r) => setTimeout(r, 30));
     stdin.write('j');
     await new Promise((r) => setTimeout(r, 30));
+    stdin.write('\r');
+    await new Promise((r) => setTimeout(r, 30));
   }
 
   it('→ replaces the entry at cursor with the next valid candidate', async () => {
@@ -2562,6 +2841,8 @@ describe('FieldEditor — onDirtyChange + discardTrigger (T5)', () => {
     stdin.write('j');
     await tick();
     stdin.write('\x1b[B');
+    await tick();
+    stdin.write('\r');
     await tick();
   }
 

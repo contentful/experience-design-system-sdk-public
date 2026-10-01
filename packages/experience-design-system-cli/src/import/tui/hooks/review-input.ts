@@ -30,12 +30,12 @@ export function handleReviewOverlayInput(
     return true;
   }
   if (state.showFinalize) {
-    // The dialog owns y/n/Enter/Esc; here we own j/k scroll of its deletion list.
-    if (input === 'j' || key.downArrow) {
+    // The dialog owns y/n/Enter/Esc; here we own arrow-key scrolling of its deletion list.
+    if (key.downArrow) {
       state.finalizePreview.scrollBy(1);
       return true;
     }
-    if (input === 'k' || key.upArrow) {
+    if (key.upArrow) {
       state.finalizePreview.scrollBy(-1);
       return true;
     }
@@ -95,11 +95,11 @@ function handleTokenReviewInput(input: string, key: ImmediateInputKey, state: To
 
   if (state.tokenReviewEditing) {
     if (row && row.paths.length > 0) {
-      if (key.upArrow || input === 'k') {
+      if (key.upArrow) {
         state.setTokenReviewEditCursor((cursor) => Math.max(0, cursor - 1));
         return true;
       }
-      if (key.downArrow || input === 'j') {
+      if (key.downArrow) {
         state.setTokenReviewEditCursor((cursor) => Math.min(row.paths.length - 1, cursor + 1));
         return true;
       }
@@ -114,10 +114,6 @@ function handleTokenReviewInput(input: string, key: ImmediateInputKey, state: To
         });
         return true;
       }
-      if (key.ctrl && input === 's') {
-        state.handleTokenEditSave(row);
-        return true;
-      }
     }
     if (key.escape) {
       state.setTokenReviewEditing(false);
@@ -126,11 +122,11 @@ function handleTokenReviewInput(input: string, key: ImmediateInputKey, state: To
     return true;
   }
 
-  if (key.upArrow || input === 'k') {
+  if (key.upArrow) {
     state.setTokenReviewRow((rowIndex) => Math.max(0, rowIndex - 1));
     return true;
   }
-  if (key.downArrow || input === 'j') {
+  if (key.downArrow) {
     state.setTokenReviewRow((rowIndex) => Math.min(Math.max(0, suggestions.length - 1), rowIndex + 1));
     return true;
   }
@@ -224,18 +220,12 @@ export function handleReviewPanelShortcuts(
 
 export type ReviewViewToggleInputState = Pick<
   UseReviewEditorResult,
-  'setShowJson' | 'setShowHiddenProps' | 'setJsonScrollOffset' | 'pendingGRef'
+  'setShowJson' | 'setJsonScrollOffset' | 'pendingGRef'
 >;
 
 export function handleReviewViewToggleInput(input: string, state: ReviewViewToggleInputState): boolean {
   if (input === 'J') {
     state.setShowJson((previous) => !previous);
-    state.setJsonScrollOffset(0);
-    state.pendingGRef.current = false;
-    return true;
-  }
-  if (input === 'H') {
-    state.setShowHiddenProps((previous) => !previous);
     state.setJsonScrollOffset(0);
     state.pendingGRef.current = false;
     return true;

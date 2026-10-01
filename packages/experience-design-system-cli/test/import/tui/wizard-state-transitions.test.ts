@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  nextStepAfterScopeGate,
-  nextStepAfterCredentialsValidated,
+  shouldGenerateAfterScopeGate,
+  shouldGenerateAfterCredentialsValidated,
   shouldSkipFinalReviewAfterCredentials,
   resolveNoCacheForGenerate,
   resolveCycleGateAction,
@@ -9,23 +9,23 @@ import {
 import { computeCycleAutoRejectTargets } from '../../../src/import/cycle-auto-reject.js';
 import type { ComponentGraphNode } from '../../../src/analyze/composite-closure.js';
 
-describe('nextStepAfterScopeGate', () => {
-  it('routes to generating when accepted > 0 and push is enabled', () => {
-    expect(nextStepAfterScopeGate({ acceptedCount: 5 })).toBe('generating');
+describe('shouldGenerateAfterScopeGate', () => {
+  it('generates when accepted components exist', () => {
+    expect(shouldGenerateAfterScopeGate({ acceptedCount: 5 })).toBe(true);
   });
 
-  it('routes to push-decision-gate when accepted === 0 and push is enabled', () => {
-    expect(nextStepAfterScopeGate({ acceptedCount: 0 })).toBe('push-decision-gate');
+  it('does not generate when no components are accepted', () => {
+    expect(shouldGenerateAfterScopeGate({ acceptedCount: 0 })).toBe(false);
   });
 });
 
-describe('nextStepAfterCredentialsValidated', () => {
-  it('routes to generating when there are accepted components to classify', () => {
-    expect(nextStepAfterCredentialsValidated({ acceptedCount: 3 })).toBe('generating');
+describe('shouldGenerateAfterCredentialsValidated', () => {
+  it('generates when accepted components exist', () => {
+    expect(shouldGenerateAfterCredentialsValidated({ acceptedCount: 3 })).toBe(true);
   });
 
-  it('routes to push-decision-gate when no components were accepted (skip generating + final-review)', () => {
-    expect(nextStepAfterCredentialsValidated({ acceptedCount: 0 })).toBe('push-decision-gate');
+  it('does not generate when no components are accepted', () => {
+    expect(shouldGenerateAfterCredentialsValidated({ acceptedCount: 0 })).toBe(false);
   });
 });
 
@@ -86,16 +86,16 @@ describe('inline-validation flow — no transition targets "validating-credentia
   // loading state via the `validating` prop. The state-machine helpers must
   // never return that string (any future regression that re-introduces it
   // would silently restore the dropped dedicated render screen).
-  it('nextStepAfterScopeGate never returns "validating-credentials"', () => {
+  it('shouldGenerateAfterScopeGate never returns "validating-credentials"', () => {
     for (const acceptedCount of [0, 1, 5]) {
-      const next = nextStepAfterScopeGate({ acceptedCount });
+      const next = shouldGenerateAfterScopeGate({ acceptedCount });
       expect(next).not.toBe('validating-credentials');
     }
   });
 
-  it('nextStepAfterCredentialsValidated never returns "validating-credentials"', () => {
+  it('shouldGenerateAfterCredentialsValidated never returns "validating-credentials"', () => {
     for (const acceptedCount of [0, 1, 5]) {
-      const next = nextStepAfterCredentialsValidated({ acceptedCount });
+      const next = shouldGenerateAfterCredentialsValidated({ acceptedCount });
       expect(next).not.toBe('validating-credentials');
     }
   });
