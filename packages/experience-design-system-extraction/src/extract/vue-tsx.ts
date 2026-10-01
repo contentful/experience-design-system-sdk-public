@@ -10,32 +10,13 @@ import {
   extractAllowedValues,
   getTypeReferenceName,
   getTypeTargetDeclarations,
-  getTsxExtractionContext,
   getValueTargetDeclarations,
-  resolveDefaultExportName,
+  extractTsxComponents,
+  getRenderableExports,
 } from './tsx-shared.js';
 
 export async function extractVueTsxComponents(filePaths: string[]): Promise<ComponentExtractionResult> {
-  const extractionContext = getTsxExtractionContext(filePaths, /\.tsx$/);
-  if (!extractionContext) {
-    return { components: [], warnings: [] };
-  }
-
-  const { componentFiles, project } = extractionContext;
-
-  const warnings: string[] = [];
-  const exclusions: ExtractionExclusion[] = [];
-  const components: RawComponentDefinition[] = [];
-
-  for (const filePath of componentFiles) {
-    try {
-      const sourceFile = project.getSourceFile(filePath);
-      if (!sourceFile) continue;
-      components.push(...extractFromSourceFile(sourceFile, exclusions));
-    } catch (e) {
-      warnings.push(`Failed to extract from ${filePath}: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
+  const { components, warnings, exclusions } = extractTsxComponents(filePaths, /\.tsx$/, extractFromSourceFile);
 
   return {
     components: components.sort((a, b) => a.name.localeCompare(b.name)),
@@ -46,29 +27,10 @@ export async function extractVueTsxComponents(filePaths: string[]): Promise<Comp
 
 function extractFromSourceFile(sourceFile: SourceFile, exclusions: ExtractionExclusion[]): RawComponentDefinition[] {
   const components: RawComponentDefinition[] = [];
-  const exported = sourceFile.getExportedDeclarations();
 
-  for (const [exportKey, declarations] of exported) {
-    let name = exportKey;
-
-    if (exportKey === 'default') {
-      const defaultExportName = resolveDefaultExportName(declarations, exported);
-      if (!defaultExportName) continue;
-      name = defaultExportName;
-    }
-
-    if (!/^[A-Z]/.test(name)) continue;
-    if (name.startsWith('use')) {
-      exclusions.push({
-        itemType: 'component',
-        name,
-        source: sourceFile.getFilePath(),
-        reason: 'Vue composition hook names are not renderable components',
-        stage: 'component-filter',
-      });
-      continue;
-    }
-
+  for (const { name, declarations } of getRenderableExports(sourceFile, exclusions, {
+    hookReason: 'Vue composition hook names are not renderable components',
+  })) {
     const component = extractVueTsxComponent(declarations, name, sourceFile);
     if (component) {
       components.push(component);

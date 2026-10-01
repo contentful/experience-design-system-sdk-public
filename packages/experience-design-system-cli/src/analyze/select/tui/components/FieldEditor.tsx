@@ -2041,6 +2041,16 @@ export function FieldEditor({
 
   const renderRow = (row: Row, index: number): React.ReactElement => {
     const key = rowKey(row, index);
+    const rowInteractionProps = (selected: boolean) => ({
+      selected,
+      editingField: selected && focusLevel === 'field' && editingField,
+      textCursor,
+      valueCursor,
+      cursorVisible,
+      editingValue: selected ? editingValue : null,
+      valueText: selected ? valueText : '',
+      width: innerWidth,
+    });
     if (row.kind === 'header') {
       return (
         <Text key={key} bold color={PALETTE.success}>
@@ -2072,15 +2082,8 @@ export function FieldEditor({
         <PropRow
           key={key}
           prop={p}
-          selected={isSelected}
+          {...rowInteractionProps(isSelected)}
           activeField={isSelected && focusLevel === 'field' ? (activeField as PropField) : null}
-          editingField={isSelected && focusLevel === 'field' && editingField}
-          textCursor={textCursor}
-          valueCursor={valueCursor}
-          cursorVisible={cursorVisible}
-          editingValue={isSelected ? editingValue : null}
-          valueText={isSelected ? valueText : ''}
-          width={innerWidth}
           rationale={propMeta?.rationale ?? null}
           showRationale={showInlineRationales}
           rowKey={String(row.idx)}
@@ -2101,15 +2104,8 @@ export function FieldEditor({
       <SlotRow
         key={key}
         slot={s}
-        selected={isSelected}
+        {...rowInteractionProps(isSelected)}
         activeField={isSelected && focusLevel === 'field' ? (activeField as SlotField) : null}
-        editingField={isSelected && focusLevel === 'field' && editingField}
-        textCursor={textCursor}
-        valueCursor={valueCursor}
-        cursorVisible={cursorVisible}
-        editingValue={isSelected ? editingValue : null}
-        valueText={isSelected ? valueText : ''}
-        width={innerWidth}
         pickerCandidates={slotPickerCandidates}
         pickerCursor={pickerCursor}
       />
