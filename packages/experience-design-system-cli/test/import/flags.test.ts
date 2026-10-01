@@ -122,10 +122,10 @@ describe('import — agent and model flags', () => {
     expect(code).toBe(0);
   });
 
-  it('--agent accepts an inline model with a colon', async () => {
-    const { stderr, code } = await run([...skipAll(), '--agent', 'claude:claude-opus-4-5'], baseEnv());
-    expect(stderr).not.toContain('unknown option');
-    expect(code).toBe(0);
+  it('--model is rejected as a removed public option', async () => {
+    const { stderr, code } = await run(['import', '--model', 'claude-opus-4-5'], baseEnv());
+    expect(stderr).toContain("unknown option '--model'");
+    expect(code).not.toBe(0);
   });
 });
 
@@ -162,6 +162,18 @@ describe('import — removed flags', () => {
     const { stderr, code } = await run(['import', '--bedrock'], baseEnv());
     expect(code).not.toBe(0);
     expect(stderr).toContain("unknown option '--bedrock'");
+  });
+
+  it('--raw-tokens is rejected as a removed public option', async () => {
+    const { stderr, code } = await run(['import', '--raw-tokens', '/dev/null'], baseEnv());
+    expect(code).not.toBe(0);
+    expect(stderr).toContain("unknown option '--raw-tokens'");
+  });
+
+  it('--composition-map is rejected as a removed public option', async () => {
+    const { stderr, code } = await run(['import', '--composition-map', '/dev/null'], baseEnv());
+    expect(code).not.toBe(0);
+    expect(stderr).toContain("unknown option '--composition-map'");
   });
 });
 
