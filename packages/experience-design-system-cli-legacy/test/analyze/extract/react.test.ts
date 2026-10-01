@@ -89,7 +89,9 @@ describe('ReactComponentExtractor', () => {
 
     expect(input?.props.find((prop) => prop.name === 'name')?.domAttribute).toBe(true);
     expect(semantic?.props.find((prop) => prop.name === 'name')?.domAttribute).toBeUndefined();
-    expect(preClassifyComponent(input!).props.find((prop) => prop.name === 'name')).toBeUndefined();
+    expect(preClassifyComponent(input!).props).toContainEqual(
+      expect.objectContaining({ name: 'name', category: 'content' }),
+    );
     expect(preClassifyComponent(semantic!).props).toContainEqual(
       expect.objectContaining({ name: 'name', category: 'content' }),
     );
@@ -381,7 +383,9 @@ describe('ReactComponentExtractor', () => {
     expect(baseCheckbox?.props.find((prop) => prop.name === 'name')?.domAttribute).toBe(true);
     expect(switchComponent?.props.find((prop) => prop.name === 'name')?.domAttribute).toBe(true);
     expect(flag?.props.find((prop) => prop.name === 'name')?.domAttribute).toBeUndefined();
-    expect(preClassifyComponent(switchComponent!).props.find((prop) => prop.name === 'name')).toBeUndefined();
+    expect(preClassifyComponent(switchComponent!).props).toContainEqual(
+      expect.objectContaining({ name: 'name', category: 'content' }),
+    );
     expect(preClassifyComponent(flag!).props).toContainEqual(
       expect.objectContaining({ name: 'name', category: 'content' }),
     );
@@ -407,7 +411,9 @@ describe('ReactComponentExtractor', () => {
     const guarded = result.components.find((component) => component.name === 'GuardedAlias');
 
     expect(guarded?.props.find((prop) => prop.name === 'name')?.domAttribute).toBe(true);
-    expect(preClassifyComponent(guarded!).props.find((prop) => prop.name === 'name')).toBeUndefined();
+    expect(preClassifyComponent(guarded!).props).toContainEqual(
+      expect.objectContaining({ name: 'name', category: 'content' }),
+    );
   });
 
   it('keeps DOM provenance when an unrelated prop is negated on the same element', async () => {
@@ -428,7 +434,9 @@ describe('ReactComponentExtractor', () => {
     const negated = result.components.find((component) => component.name === 'NegatedSibling');
 
     expect(negated?.props.find((prop) => prop.name === 'name')?.domAttribute).toBe(true);
-    expect(preClassifyComponent(negated!).props.find((prop) => prop.name === 'name')).toBeUndefined();
+    expect(preClassifyComponent(negated!).props).toContainEqual(
+      expect.objectContaining({ name: 'name', category: 'content' }),
+    );
   });
 
   it('keeps DOM provenance when the props object is negated before a spread forward', async () => {
@@ -450,7 +458,9 @@ describe('ReactComponentExtractor', () => {
     const spread = result.components.find((component) => component.name === 'NegatedSpread');
 
     expect(spread?.props.find((prop) => prop.name === 'name')?.domAttribute).toBe(true);
-    expect(preClassifyComponent(spread!).props.find((prop) => prop.name === 'name')).toBeUndefined();
+    expect(preClassifyComponent(spread!).props).toContainEqual(
+      expect.objectContaining({ name: 'name', category: 'content' }),
+    );
   });
 
   it('drops DOM provenance when an alias is rebound by an increment', async () => {
@@ -494,7 +504,9 @@ describe('ReactComponentExtractor', () => {
     const styled = result.components.find((component) => component.name === 'StyledField');
 
     expect(styled?.props.find((prop) => prop.name === 'name')?.domAttribute).toBe(true);
-    expect(preClassifyComponent(styled!).props.find((prop) => prop.name === 'name')).toBeUndefined();
+    expect(preClassifyComponent(styled!).props).toContainEqual(
+      expect.objectContaining({ name: 'name', category: 'content' }),
+    );
   });
 
   it('extracts props from TypeScript interface', async () => {
@@ -1072,7 +1084,9 @@ describe('ReactComponentExtractor', () => {
     expect(fieldSet.props.find((p) => p.name === 'id')).toBeDefined();
     expect(fieldSet.props.find((p) => p.name === 'title')).toBeDefined();
     expect(fieldSet.props.find((p) => p.name === 'name')?.domAttribute).toBe(true);
-    expect(preClassifyComponent(fieldSet).props.find((p) => p.name === 'name')).toBeUndefined();
+    expect(preClassifyComponent(fieldSet).props).toContainEqual(
+      expect.objectContaining({ name: 'name', category: 'content' }),
+    );
   });
 
   it('recovers DOM props for scoped forwardRef wrappers around primitive children', async () => {
