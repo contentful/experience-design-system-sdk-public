@@ -19,12 +19,9 @@ export function HelpOverlay(props: HelpOverlayProps): React.ReactElement {
   const panelWidth = Math.max(10, Math.min(64, terminalColumns - 2));
   const panelHeight = terminalPanelHeight(terminalRows, 2);
   const titleRule = Math.max(0, Math.floor((panelWidth - 10) / 2));
-  useImmediateInput(
-    (input, key) => {
-      if (input === 'h' || key.escape) onClose();
-    },
-    props.handleInput !== false,
-  );
+  useImmediateInput((input, key) => {
+    if (input === 'h' || key.escape) onClose();
+  }, props.handleInput !== false);
 
   if (props.sections) {
     return (

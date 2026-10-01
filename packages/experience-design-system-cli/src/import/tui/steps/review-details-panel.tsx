@@ -119,7 +119,9 @@ export function ReviewDetailsPanel({
         ) : (
           <Text dimColor>{'(no source captured)'}</Text>
         )}
-        <Text dimColor wrap="truncate-end">{'[s/Esc] close'}</Text>
+        <Text dimColor wrap="truncate-end">
+          {'[s/Esc] close'}
+        </Text>
       </FixedPanel>
     );
   }

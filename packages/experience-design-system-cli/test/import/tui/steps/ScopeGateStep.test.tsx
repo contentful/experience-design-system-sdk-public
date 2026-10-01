@@ -1066,9 +1066,7 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
 
     it('mount defaults — NO auto-reject (ADR-0010 §Part 1)', () => {
       const onConfirm = vi.fn();
-      const { stdin } = render(
-        <ScopeGateStep components={SCENARIO_A} onConfirm={onConfirm} onQuit={() => {}} />,
-      );
+      const { stdin } = render(<ScopeGateStep components={SCENARIO_A} onConfirm={onConfirm} onQuit={() => {}} />);
       stdin.write('f');
       const arg = onConfirm.mock.calls[0][0];
       expect(arg.accepted).toEqual([]);
@@ -1171,9 +1169,7 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
 
     it('mount defaults — everything undecided; NO auto-reject even though a cycle exists', () => {
       const onConfirm = vi.fn();
-      const { stdin } = render(
-        <ScopeGateStep components={SCENARIO_C} onConfirm={onConfirm} onQuit={() => {}} />,
-      );
+      const { stdin } = render(<ScopeGateStep components={SCENARIO_C} onConfirm={onConfirm} onQuit={() => {}} />);
       stdin.write('f');
       const arg = onConfirm.mock.calls[0][0];
       expect(arg.accepted).toEqual([]);
@@ -1835,7 +1831,9 @@ describe('ScopeGateStep — dependency view', () => {
       { name: 'Text', componentId: 'text' },
       { name: 'Standalone', componentId: 'standalone' },
     ];
-    const { lastFrame, stdin } = render(<ScopeGateStep components={components} onConfirm={() => {}} onQuit={() => {}} />);
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep components={components} onConfirm={() => {}} onQuit={() => {}} />,
+    );
     stdin.write('A');
     stdin.write('d');
     await new Promise((resolve) => setTimeout(resolve, 20));

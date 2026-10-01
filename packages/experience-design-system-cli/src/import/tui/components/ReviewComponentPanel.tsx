@@ -170,7 +170,9 @@ export function ReviewComponentPanel({
     <FixedPanel width={width} height={height} borderStyle={undefined} paddingLeft={1}>
       <Box flexDirection="column" width={contentWidth} height={height} flexShrink={0} overflowY="hidden">
         <Box width={contentWidth} height={1} flexShrink={0}>
-          <Text bold wrap="truncate-end">{selectedKey}</Text>
+          <Text bold wrap="truncate-end">
+            {selectedKey}
+          </Text>
           <Box flexGrow={1} />
           <Text dimColor wrap="truncate-end">
             {propCount} prop{propCount !== 1 ? 's' : ''}

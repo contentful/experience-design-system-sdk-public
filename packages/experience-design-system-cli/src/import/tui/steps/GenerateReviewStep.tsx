@@ -270,12 +270,12 @@ function BreakCyclePanel({
 }): React.ReactElement {
   return (
     <FixedPanel width={width} height={height} borderStyle="round" borderColor={PALETTE.warning} paddingLeft={1}>
-      <Text bold color={PALETTE.warning}>{'BREAK CYCLE — remove a slot edge'}</Text>
+      <Text bold color={PALETTE.warning}>
+        {'BREAK CYCLE — remove a slot edge'}
+      </Text>
       {cycle && <CyclePathLine segments={formatCyclePathSegments(cycle)} prefix="  " highlightComponents />}
       <Text dimColor>
-        {cycle
-          ? 'Deleting an edge removes it from $allowedComponents (undo with Ctrl+Z).'
-          : 'No cycle highlighted.'}
+        {cycle ? 'Deleting an edge removes it from $allowedComponents (undo with Ctrl+Z).' : 'No cycle highlighted.'}
       </Text>
       <Text> </Text>
       {edges.length > 0 && <Text dimColor>{'remove slot edge:'}</Text>}
@@ -285,7 +285,9 @@ function BreakCyclePanel({
         </Text>
       ))}
       {confirming ? (
-        <Text bold color={PALETTE.warning}>{'Delete this slot edge? [y] confirm  [n] cancel'}</Text>
+        <Text bold color={PALETTE.warning}>
+          {'Delete this slot edge? [y] confirm  [n] cancel'}
+        </Text>
       ) : (
         <Text dimColor>{'[↑↓] move  [Enter] delete  [x/Esc] close'}</Text>
       )}
@@ -1563,23 +1565,28 @@ function GenerateReviewStepView({
               height={panelHeight}
               jsonValue={visibleJsonPanelValue}
               sidebarFocused={sidebarFocused}
-              fieldEditor={buildReviewFieldEditor(reviewEditor, selectedJson, () => {
-                reviewEditor.handleEditSave();
-                setSidebarFocused(true);
-              }, {
-                key:
-                  pendingEditorFocus && pendingEditorFocus.componentName === selected.key
-                    ? `${selected.key}::${pendingEditorFocus.target.kind}:${pendingEditorFocus.target.name}`
-                    : selected.key,
-                propRationaleKey: 'p',
-                componentRationaleKey: 'P',
-                projectSlotGraph,
-                currentComponentName: selected.key,
-                initialFocusTarget:
-                  pendingEditorFocus && pendingEditorFocus.componentName === selected.key
-                    ? pendingEditorFocus.target
-                    : { kind: 'description' },
-              })}
+              fieldEditor={buildReviewFieldEditor(
+                reviewEditor,
+                selectedJson,
+                () => {
+                  reviewEditor.handleEditSave();
+                  setSidebarFocused(true);
+                },
+                {
+                  key:
+                    pendingEditorFocus && pendingEditorFocus.componentName === selected.key
+                      ? `${selected.key}::${pendingEditorFocus.target.kind}:${pendingEditorFocus.target.name}`
+                      : selected.key,
+                  propRationaleKey: 'p',
+                  componentRationaleKey: 'P',
+                  projectSlotGraph,
+                  currentComponentName: selected.key,
+                  initialFocusTarget:
+                    pendingEditorFocus && pendingEditorFocus.componentName === selected.key
+                      ? pendingEditorFocus.target
+                      : { kind: 'description' },
+                },
+              )}
               saveError={reviewEditor.saveError}
               sidebarFooter={hasGroupRoots ? '  [Space] expand/collapse group  [E/C] expand/collapse all' : ''}
               livePreview={livePreviewHook}

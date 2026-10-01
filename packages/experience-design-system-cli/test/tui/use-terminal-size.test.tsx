@@ -26,7 +26,11 @@ import { useTerminalSize } from '../../src/tui/use-terminal-size.js';
 
 function SizeProbe(): React.ReactElement {
   const { columns, rows } = useTerminalSize();
-  return <Text>{columns}x{rows}</Text>;
+  return (
+    <Text>
+      {columns}x{rows}
+    </Text>
+  );
 }
 
 describe('useTerminalSize', () => {

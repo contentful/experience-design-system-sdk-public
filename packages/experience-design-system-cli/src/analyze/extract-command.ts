@@ -327,15 +327,15 @@ export function registerInternalExtractCommand(program: Command): void {
       }
 
       const allFilesCached =
-        !noCache &&
-        sourceFiles.length > 0 &&
-        sourceFiles.every((filePath) => cachedByPath.get(filePath) !== null);
+        !noCache && sourceFiles.length > 0 && sourceFiles.every((filePath) => cachedByPath.get(filePath) !== null);
       if (allFilesCached) {
         const cachedComponents = sourceFiles.flatMap((filePath) => cachedByPath.get(filePath)!.components);
         extractionCacheHits = sourceFiles.length;
         extraction = { components: cachedComponents, warnings: [], exclusions: [] };
         if (!process.stdout.isTTY) {
-          process.stderr.write(`progress=extract:${sourceFiles.length}/${sourceFiles.length}:${cachedComponents.length}\n`);
+          process.stderr.write(
+            `progress=extract:${sourceFiles.length}/${sourceFiles.length}:${cachedComponents.length}\n`,
+          );
         }
         getDebugLogger().event('analyze', 'extract.cache-hit', {
           files: sourceFiles.length,

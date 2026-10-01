@@ -36,12 +36,8 @@ export function GoodbyeBoundary({ children }: { children: React.ReactNode }): Re
 }
 
 export function renderWithGoodbye(element: React.ReactElement, options?: RenderOptions): Instance {
-  let instance: Instance | undefined;
-  const clearScreen = (): void => {
-    instance?.clear();
-  };
-  instance = render(
-    <ScreenTransitionClearContext.Provider value={clearScreen}>
+  const instance = render(
+    <ScreenTransitionClearContext.Provider value={() => instance.clear()}>
       <GoodbyeBoundary>{element}</GoodbyeBoundary>
     </ScreenTransitionClearContext.Provider>,
     {

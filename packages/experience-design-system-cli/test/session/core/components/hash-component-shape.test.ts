@@ -32,7 +32,9 @@ describe('hashComponentShape', () => {
     const a = makeComponent({
       slots: [{ name: 'children', isDefault: true, allowedComponents: ['A', 'B'] }],
     });
-    expect(hashComponentShape(a)).toBe(hashComponentShape(makeComponent({ slots: [{ name: 'children', isDefault: true }] })));
+    expect(hashComponentShape(a)).toBe(
+      hashComponentShape(makeComponent({ slots: [{ name: 'children', isDefault: true }] })),
+    );
   });
 
   it('is sensitive to slot order (slots array is not sorted)', () => {

@@ -613,10 +613,7 @@ function ScopeGateStepView({
       return;
     }
     if (input === 'i' && !key.tab && !key.ctrl) {
-      const targetKey =
-        focusedColumn === 'main'
-          ? focusedRowKey()
-          : addedComponents[safeAddedComponentsCursor]?.name;
+      const targetKey = focusedColumn === 'main' ? focusedRowKey() : addedComponents[safeAddedComponentsCursor]?.name;
       if (!targetKey) return;
       setJumpFilterTarget((prev) => (prev === targetKey ? null : targetKey));
       return;
@@ -990,70 +987,65 @@ function AddedColumn<T extends AddedColumnEntry>(props: AddedColumnProps<T>): Re
   const firstNonCycleIdx = entries.findIndex((e) => !e.isCycle);
   const window = computeColumnWindow(entries.length, cursor, Math.max(1, visibleCount));
   return (
-    <WindowedPanel
-      width={width}
-      height={height}
-      title={title}
-      focused={focused}
-    >
+    <WindowedPanel width={width} height={height} title={title} focused={focused}>
       <WindowIndicator direction="up" count={window.above} />
       {entries.length === 0 ? (
         <Text dimColor>(none)</Text>
       ) : (
         entries.slice(window.start, window.end).map((entry, vi) => {
-            const i = window.start + vi;
-            const isSelected = i === cursor;
-            const isCursor = focused && isSelected;
-            const aiFlagged = aiFlaggedByKey?.get(entry.name) === true;
-            const showSeparator = firstNonCycleIdx > 0 && i === firstNonCycleIdx;
-            const style = sideColumnLabelStyle({
-              isCycle: entry.isCycle,
-              isSelected,
-              focused,
-            });
-            return (
-              <React.Fragment key={entry.name}>
-                {showSeparator && <Text dimColor>{'─'.repeat(Math.max(0, width - 2))}</Text>}
-                <Box>
-                  {isCursor ? (
-                    <Text color={PALETTE.info} bold>
-                      {figures.pointer}
+          const i = window.start + vi;
+          const isSelected = i === cursor;
+          const isCursor = focused && isSelected;
+          const aiFlagged = aiFlaggedByKey?.get(entry.name) === true;
+          const showSeparator = firstNonCycleIdx > 0 && i === firstNonCycleIdx;
+          const style = sideColumnLabelStyle({
+            isCycle: entry.isCycle,
+            isSelected,
+            focused,
+          });
+          return (
+            <React.Fragment key={entry.name}>
+              {showSeparator && <Text dimColor>{'─'.repeat(Math.max(0, width - 2))}</Text>}
+              <Box>
+                {isCursor ? (
+                  <Text color={PALETTE.info} bold>
+                    {figures.pointer}
+                  </Text>
+                ) : (
+                  <Text> </Text>
+                )}
+                {reserveAiBadge &&
+                  (aiFlagged ? (
+                    <Text color={PALETTE.warning} bold>
+                      {' [×]'}
                     </Text>
                   ) : (
-                    <Text> </Text>
-                  )}
-                  {reserveAiBadge &&
-                    (aiFlagged ? (
-                      <Text color={PALETTE.warning} bold>
-                        {' [×]'}
-                      </Text>
-                    ) : (
-                      <Text>{'    '}</Text>
-                    ))}
-                  {entry.isCycle && (
-                    <Text
-                      color={isCursor ? PALETTE.info : PALETTE.warning}
-                      bold
-                      inverse={false}
-                      underline={style.nameUnderline}
-                    >
-                      {' ⚠'}
-                    </Text>
-                  )}
+                    <Text>{'    '}</Text>
+                  ))}
+                {entry.isCycle && (
                   <Text
-                    color={style.nameColor}
-                    bold={style.nameBold}
-                    inverse={style.nameInverse}
+                    color={isCursor ? PALETTE.info : PALETTE.warning}
+                    bold
+                    inverse={false}
                     underline={style.nameUnderline}
-                    wrap="wrap"
                   >
-                    {' ' + entry.name}
+                    {' ⚠'}
                   </Text>
-                  {renderSuffix?.(entry, style)}
-                </Box>
-              </React.Fragment>
-            );
-          })
+                )}
+                <Text
+                  color={style.nameColor}
+                  bold={style.nameBold}
+                  inverse={style.nameInverse}
+                  underline={style.nameUnderline}
+                  wrap="wrap"
+                >
+                  {' ' + entry.name}
+                </Text>
+                {renderSuffix?.(entry, style)}
+              </Box>
+            </React.Fragment>
+          );
+        })
       )}
       <WindowIndicator direction="down" count={window.below} />
     </WindowedPanel>

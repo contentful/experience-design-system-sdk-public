@@ -130,9 +130,16 @@ describe('wizard generate-components cache', () => {
     const source = await readFile(wizardAppPath, 'utf8');
     const scopeGateBlock = source.slice(source.indexOf('onAdvanceToGenerate'), source.indexOf('onAdvanceToPushFlow'));
     expect(scopeGateBlock).toContain('void finishCachedGeneration(sid, acceptedCount);');
-    expect(scopeGateBlock).toContain("step: 'generating',\n                            generateProgress: null,\n                            acceptedCount,");
-    expect(scopeGateBlock).toContain('void runGenerate(sid, state.tokensPath, acceptedCount, false, restoredCachedNames);');
-    const cacheBranch = scopeGateBlock.slice(scopeGateBlock.indexOf('if (cacheHit)'), scopeGateBlock.indexOf('} else {'));
+    expect(scopeGateBlock).toContain(
+      "step: 'generating',\n                            generateProgress: null,\n                            acceptedCount,",
+    );
+    expect(scopeGateBlock).toContain(
+      'void runGenerate(sid, state.tokensPath, acceptedCount, false, restoredCachedNames);',
+    );
+    const cacheBranch = scopeGateBlock.slice(
+      scopeGateBlock.indexOf('if (cacheHit)'),
+      scopeGateBlock.indexOf('} else {'),
+    );
     expect(cacheBranch).not.toContain("step: 'generating'");
     expect(source).not.toContain('GENERATION_SCREEN_DELAY_MS');
     expect(source).toContain('const promise = checkGenerateCacheComponents(sessionId, state.tokensPath, true);');

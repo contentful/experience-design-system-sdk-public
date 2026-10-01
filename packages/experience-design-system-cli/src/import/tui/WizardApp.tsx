@@ -345,11 +345,7 @@ function startWizardTimer(name: string, payload: Record<string, unknown> = {}): 
   return startedAt;
 }
 
-function finishWizardTimer(
-  name: string,
-  startedAt: number,
-  payload: Record<string, unknown> = {},
-): void {
+function finishWizardTimer(name: string, startedAt: number, payload: Record<string, unknown> = {}): void {
   getDebugLogger().event('wizard', `${name}.complete`, {
     ...payload,
     durationMs: Date.now() - startedAt,
@@ -1086,7 +1082,9 @@ export function WizardApp({
     generatePromptPath?: string,
     cachedComponents?: string[],
   ): string[] =>
-    buildGenerateComponentsArgs(buildGenerateOptions(extractSessionId, tokensPath, generatePromptPath, cachedComponents));
+    buildGenerateComponentsArgs(
+      buildGenerateOptions(extractSessionId, tokensPath, generatePromptPath, cachedComponents),
+    );
 
   const checkGenerateCache = async (extractSessionId: string, tokensPath: string): Promise<boolean> => {
     const timer = startWizardTimer('generation-cache-status', {
@@ -2354,7 +2352,7 @@ export function WizardApp({
             ? rememberedForSession
             : loadedComponents.length > 0
               ? loadedComponents
-              : rememberedForSession ?? [];
+              : (rememberedForSession ?? []);
         return (
           <ScopeGateStep
             components={components}

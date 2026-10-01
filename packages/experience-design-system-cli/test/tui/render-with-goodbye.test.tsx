@@ -10,7 +10,11 @@ describe('renderWithGoodbye', () => {
 
   it('replaces the active view before exiting on SIGINT', async () => {
     const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
-    const instance = render(<GoodbyeBoundary><Text>Active view</Text></GoodbyeBoundary>);
+    const instance = render(
+      <GoodbyeBoundary>
+        <Text>Active view</Text>
+      </GoodbyeBoundary>,
+    );
 
     expect(instance.lastFrame()).toContain('Active view');
 
@@ -27,7 +31,11 @@ describe('renderWithGoodbye', () => {
 
   it('replaces the active view when raw terminal input reports Ctrl+C', async () => {
     const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
-    const instance = render(<GoodbyeBoundary><Text>Active view</Text></GoodbyeBoundary>);
+    const instance = render(
+      <GoodbyeBoundary>
+        <Text>Active view</Text>
+      </GoodbyeBoundary>,
+    );
 
     await new Promise((resolve) => setImmediate(resolve));
     instance.stdin.write('\x03');
