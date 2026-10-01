@@ -1,5 +1,5 @@
 import { createElement } from 'react';
-import { render } from 'ink';
+import { renderWithGoodbye } from '../tui/render-with-goodbye.js';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { Command } from 'commander';
@@ -712,7 +712,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
           // Skip agent invocation — jump to view
           const viewResult: GenerateViewResult = { skill, agent, sessionId: sessionId ?? '' };
           if (process.stdout.isTTY) {
-            const { waitUntilExit } = render(
+            const { waitUntilExit } = renderWithGoodbye(
               createElement(GenerateView, { result: viewResult, onExit: () => void exitWithAnalytics(0) }),
             );
             await waitUntilExit();
@@ -786,7 +786,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
   };
 
   if (process.stdout.isTTY) {
-    const { waitUntilExit } = render(
+    const { waitUntilExit } = renderWithGoodbye(
       createElement(GenerateView, {
         result: viewResult,
         onExit: () => void exitWithAnalytics(0),

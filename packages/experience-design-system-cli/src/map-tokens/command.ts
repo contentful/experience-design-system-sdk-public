@@ -1,5 +1,5 @@
 import { createElement } from 'react';
-import { render } from 'ink';
+import { renderWithGoodbye } from '../tui/render-with-goodbye.js';
 import { readFile } from 'node:fs/promises';
 import type { Command } from 'commander';
 import {
@@ -58,7 +58,9 @@ interface MapTokensOptions {
 
 async function renderResult(result: MapTokensViewResult): Promise<void> {
   if (process.stdout.isTTY) {
-    const { waitUntilExit } = render(createElement(MapTokensView, { result, onExit: () => void exitWithAnalytics(0) }));
+    const { waitUntilExit } = renderWithGoodbye(
+      createElement(MapTokensView, { result, onExit: () => void exitWithAnalytics(0) }),
+    );
     await waitUntilExit();
   } else {
     const summary = result.cached ? 'cached' : `${result.applied} mapping(s) applied`;
