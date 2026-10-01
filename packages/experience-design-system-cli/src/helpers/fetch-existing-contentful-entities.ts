@@ -1,9 +1,4 @@
-import {
-  fetchAll,
-  type ComponentProps,
-  type DesignTokenProps,
-  type PlainClientAPI,
-} from 'contentful-management';
+import { fetchAll, type ComponentProps, type DesignTokenProps, type PlainClientAPI } from 'contentful-management';
 
 export interface ExistingContentfulEntities {
   components: ComponentProps[];
