@@ -6,7 +6,8 @@ import type {
   RawSlotDefinition,
   ComponentExtractionResult,
 } from '../../model/component.js';
-import { createSortedExtractionResult, extractProjectSourceFiles } from '../../file-extraction-workers.js';
+import { createSortedExtractionResult } from '../support/file-processing/result-normalizer.js';
+import { extractProjectSourceFiles } from '../support/file-processing/project-source-files.js';
 import { kebabToPascal } from '../support/tsx-shared.js';
 import {
   extractAccessorProperties,

@@ -33,7 +33,7 @@ import {
   extractAllowedComponentsFromTypeText,
   extractAllowedComponentsFromJsdoc,
 } from '../../evidence/allowed-components.js';
-import { getSourceLineMetadata } from '../../source-line-metadata.js';
+import { getSourceLineMetadata } from '../support/resolution/source-location.js';
 import {
   collectTypePredicateComponentReferences,
   collectRuntimeTypeCheckComponentReferences,

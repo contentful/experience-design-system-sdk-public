@@ -6,7 +6,8 @@ import type {
   ComponentExtractionResult,
 } from '../../model/component.js';
 import { getJsxTagNameNode, isIntrinsicJsxElement, kebabToPascal } from '../support/tsx-shared.js';
-import { createSortedExtractionResult, extractProjectSourceFiles } from '../../file-extraction-workers.js';
+import { createSortedExtractionResult } from '../support/file-processing/result-normalizer.js';
+import { extractProjectSourceFiles } from '../support/file-processing/project-source-files.js';
 
 function isStencilFile(sourceFile: SourceFile): boolean {
   return sourceFile.getImportDeclarations().some((imp) => imp.getModuleSpecifierValue() === '@stencil/core');

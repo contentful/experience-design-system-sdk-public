@@ -4,14 +4,12 @@ import { tmpdir } from 'node:os';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Project } from 'ts-morph';
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-  createSortedExtractionResult,
-  extractProjectSourceFiles,
-  runFileExtractionWorkers,
-} from '../src/extract/file-extraction-workers.js';
-import { resolveLocalModule } from '../src/extract/resolve-local-module.js';
-import { resolveTypeProperty } from '../src/extract/resolve-type-property.js';
-import { getSourceLineMetadata } from '../src/extract/source-line-metadata.js';
+import { runFileExtractionWorkers } from '../src/extract/adapters/support/file-processing/file-workers.js';
+import { extractProjectSourceFiles } from '../src/extract/adapters/support/file-processing/project-source-files.js';
+import { createSortedExtractionResult } from '../src/extract/adapters/support/file-processing/result-normalizer.js';
+import { resolveLocalModule } from '../src/extract/adapters/support/resolution/local-module.js';
+import { resolveTypeProperty } from '../src/extract/adapters/support/resolution/type-property.js';
+import { getSourceLineMetadata } from '../src/extract/adapters/support/resolution/source-location.js';
 
 const tempDirectories: string[] = [];
 

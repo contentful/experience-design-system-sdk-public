@@ -13,8 +13,8 @@ import type {
 import type { ExtractorOptions } from '../../model/options.js';
 import { computeExtractionScore, deriveNeedsReview } from '../../scoring.js';
 import { extractAllowedComponentsFromTypeText } from '../../evidence/allowed-components.js';
-import { runFileExtractionWorkers } from '../../file-extraction-workers.js';
-import { resolveLocalModule } from '../../resolve-local-module.js';
+import { runFileExtractionWorkers } from '../support/file-processing/file-workers.js';
+import { resolveLocalModule } from '../support/resolution/local-module.js';
 import type { AstNode } from './ast.js';
 import { getSvelteComponentName } from './identity.js';
 import { extractTemplateSlots, mergeSlots } from './slots.js';

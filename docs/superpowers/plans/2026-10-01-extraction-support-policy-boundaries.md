@@ -1,7 +1,7 @@
 # Extraction support and quality policy boundaries
 
 research_started_at: 2026-10-01T14:49
-status: phase-1-complete
+status: phase-2-complete
 base_commit: 964f09c2ffb4d300a782ce38b88e0781a766c60b
 branch: codex/extraction-support-policy-organization
 
@@ -122,18 +122,18 @@ pnpm exec vitest run test/analyze/extract
 
 ## Phase 2: Move and split adapter support infrastructure
 
-- [ ] Move `file-extraction-workers.ts` into adapter support and split its three
+- [x] Move `file-extraction-workers.ts` into adapter support and split its three
   responsibilities into file workers, ts-morph project-source iteration, and
   result normalization.
-- [ ] Move `resolve-local-module.ts` to the adapter-support resolution area as
+- [x] Move `resolve-local-module.ts` to the adapter-support resolution area as
   `local-module.ts`.
-- [ ] Move `resolve-type-property.ts` to the adapter-support resolution area as
+- [x] Move `resolve-type-property.ts` to the adapter-support resolution area as
   `type-property.ts`.
-- [ ] Move `source-line-metadata.ts` to the adapter-support resolution area as
+- [x] Move `source-line-metadata.ts` to the adapter-support resolution area as
   `source-location.ts`.
-- [ ] Update every adapter import and preserve warning, ordering, progress,
+- [x] Update every adapter import and preserve warning, ordering, progress,
   JavaScript fallback, required-property, and source-line behavior.
-- [ ] Keep `tsx-shared.ts` alongside these helpers as the adapter-support
+- [x] Keep `tsx-shared.ts` alongside these helpers as the adapter-support
   boundary; do not create a package-wide miscellaneous utility directory.
 
 Verification:
