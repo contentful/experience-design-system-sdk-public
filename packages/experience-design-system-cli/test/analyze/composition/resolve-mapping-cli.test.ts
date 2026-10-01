@@ -16,6 +16,11 @@ describe('resolve-mapping-cli (T2/T6 flag routing)', () => {
       expect(res.forceAgent).toBe(true);
     });
 
+    it('flags forceAgent when --no-cache is enabled', () => {
+      const res = resolveCompositionSources({ noCache: true });
+      expect(res.forceAgent).toBe(true);
+    });
+
     it('keeps edge emission enabled when no refresh is requested', () => {
       const res = resolveCompositionSources({});
       expect(res.forceAgent).toBeFalsy();
