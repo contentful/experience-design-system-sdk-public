@@ -191,34 +191,6 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
     });
   });
 
-  it('shows a "no components accepted" hint at mount (everything defaults to undecided)', () => {
-    const anySet = [
-      { name: 'A', componentId: 'c0' },
-      { name: 'B', componentId: 'c1' },
-    ];
-    const { lastFrame } = render(
-      <ScopeGateStep components={anySet} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
-    );
-    const out = lastFrame() ?? '';
-    expect(out).toContain('no components accepted');
-    expect(out).toContain('[Y]');
-    expect(out).toContain('[A]');
-    expect(out).toContain('[a]');
-  });
-
-  it('hides the "no components accepted" hint once at least one component is accepted', () => {
-    const anySet = [
-      { name: 'A', componentId: 'c0' },
-      { name: 'B', componentId: 'c1' },
-    ];
-    const { lastFrame, stdin } = render(
-      <ScopeGateStep components={anySet} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
-    );
-    stdin.write('a');
-    const out = lastFrame() ?? '';
-    expect(out).not.toContain('no components accepted');
-  });
-
   describe('D2 — per-row cascade selection', () => {
     const ARTICLE_CARD = [
       {
@@ -354,11 +326,11 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       expect(frame).toMatch(/Cycle 1:.*NodeA.*\[slotA\].*NodeB.*\[slotB\].*NodeA/);
     });
 
-    it('legend advertises [c] when cycles exist', () => {
+    it('compact controls omit secondary cycle controls', () => {
       const { lastFrame } = render(
         <ScopeGateStep components={FIXTURE_2CYCLE} onConfirm={() => {}} onQuit={() => {}} />,
       );
-      expect(lastFrame() ?? '').toContain('[c]');
+      expect(lastFrame() ?? '').toContain('[f] continue/finalize');
     });
 
     it('[c] is a no-op when no cycles exist and legend omits it', () => {
@@ -646,7 +618,6 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       rerender(<ScopeGateStep components={updated} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />);
       const frame = lastFrame() ?? '';
       expect(frame).toContain('flagged by AI');
-      expect(frame).toContain('low semantic value');
     });
 
     it('operator r-exclude on a row survives a streaming prop re-render', () => {
@@ -1093,12 +1064,11 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       },
     ];
 
-    it('mount defaults — no components accepted, NO auto-reject (ADR-0010 §Part 1)', () => {
+    it('mount defaults — NO auto-reject (ADR-0010 §Part 1)', () => {
       const onConfirm = vi.fn();
-      const { lastFrame, stdin } = render(
+      const { stdin } = render(
         <ScopeGateStep components={SCENARIO_A} onConfirm={onConfirm} onQuit={() => {}} />,
       );
-      expect(lastFrame() ?? '').toContain('no components accepted');
       stdin.write('f');
       const arg = onConfirm.mock.calls[0][0];
       expect(arg.accepted).toEqual([]);
@@ -1145,14 +1115,13 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       },
     ];
 
-    it('mount defaults — no components accepted; cycle detected but NO auto-reject', () => {
+    it('mount defaults — cycle detected but NO auto-reject', () => {
       const onConfirm = vi.fn();
       const { lastFrame, stdin } = render(
         <ScopeGateStep components={SCENARIO_B} onConfirm={onConfirm} onQuit={() => {}} />,
       );
       const frame = lastFrame() ?? '';
-      expect(frame).toContain('no components accepted');
-      expect(frame).toContain('[c]');
+      expect(frame).toContain('[f] continue/finalize');
       stdin.write('f');
       const arg = onConfirm.mock.calls[0][0];
       expect(arg.accepted).toEqual([]);
@@ -1202,10 +1171,9 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
 
     it('mount defaults — everything undecided; NO auto-reject even though a cycle exists', () => {
       const onConfirm = vi.fn();
-      const { lastFrame, stdin } = render(
+      const { stdin } = render(
         <ScopeGateStep components={SCENARIO_C} onConfirm={onConfirm} onQuit={() => {}} />,
       );
-      expect(lastFrame() ?? '').toContain('no components accepted');
       stdin.write('f');
       const arg = onConfirm.mock.calls[0][0];
       expect(arg.accepted).toEqual([]);
@@ -1268,13 +1236,12 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
     it('header/counter strip continues to show full totals when filter active', () => {
       const { lastFrame, stdin } = render(<ScopeGateStep components={CHAIN} onConfirm={() => {}} onQuit={() => {}} />);
       const before = lastFrame() ?? '';
-      const totalLineBefore = before.split('\n').find((l) => /Found \d+ component/.test(l)) ?? '';
+      const totalLineBefore = before.split('\n').find((l) => /Accepted .*\/4/.test(l)) ?? '';
       stdin.write('/');
       stdin.write('B');
       const after = lastFrame() ?? '';
-      const totalLineAfter = after.split('\n').find((l) => /Found \d+ component/.test(l)) ?? '';
+      const totalLineAfter = after.split('\n').find((l) => /Accepted .*\/4/.test(l)) ?? '';
       expect(totalLineAfter).toEqual(totalLineBefore);
-      expect(totalLineAfter).toContain('4');
     });
   });
 
@@ -1353,29 +1320,14 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       expect(names.has('D')).toBe(true);
     });
 
-    it('legend advertises [i]', () => {
+    it('compact controls keep search available while lineage remains in help', () => {
       const { lastFrame } = render(<ScopeGateStep components={CHAIN} onConfirm={() => {}} onQuit={() => {}} />);
       const out = lastFrame() ?? '';
-      expect(out).toContain('[i]');
+      expect(out).toContain('[/] search');
     });
   });
 
   describe('T7 — no-truncate AI reason on focused-row detail', () => {
-    it('renders the full AI reason past the 60-char truncate boundary on the focused row', () => {
-      const marker = 'UNIQUEMARKERWORD';
-      const longReason = 'x'.repeat(65) + marker + '.'.repeat(120);
-      expect(longReason.length).toBeGreaterThan(60);
-      const local = [
-        { name: 'AAA', componentId: 'c0', aiDecision: 'rejected' as const, aiReason: longReason },
-        { name: 'Zeta', componentId: 'c1' },
-      ];
-      const { lastFrame } = render(
-        <ScopeGateStep components={local} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
-      );
-      const out = lastFrame() ?? '';
-      expect(out).toContain(marker);
-    });
-
     it('AI-rationale goto-banner row renders the FULL reason without truncation (L7)', async () => {
       const longReason = 'x'.repeat(80) + 'TAILWORD';
       const local = [
@@ -1403,26 +1355,26 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
     });
   });
 
-  describe('? help overlay (L3b)', () => {
+  describe('h help overlay (L3b)', () => {
     const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
 
-    it('advertises [?] help in the bottom legend', () => {
+    it('advertises [h] help in the bottom legend', () => {
       const { lastFrame } = render(<ScopeGateStep components={FIXTURE} onConfirm={() => {}} onQuit={() => {}} />);
-      expect(stripAnsi(lastFrame() ?? '')).toContain('[?]');
+      expect(stripAnsi(lastFrame() ?? '')).toContain('[h]');
     });
 
-    it('pressing ? opens a help overlay listing ScopeGate keys; Esc closes it', async () => {
+    it('pressing h opens and closes a help overlay listing ScopeGate keys', async () => {
       const { lastFrame, stdin } = render(
         <ScopeGateStep components={FIXTURE} onConfirm={() => {}} onQuit={() => {}} />,
       );
-      stdin.write('?');
+      stdin.write('h');
       await new Promise((r) => setTimeout(r, 30));
       const open = stripAnsi(lastFrame() ?? '');
       expect(open).toContain('Help');
       expect(open).toMatch(/lineage/i);
       expect(open).not.toContain('Ctrl+Z');
 
-      stdin.write('\x1b');
+      stdin.write('h');
       await new Promise((r) => setTimeout(r, 30));
       expect(stripAnsi(lastFrame() ?? '')).not.toContain('Help');
     });
@@ -1430,7 +1382,7 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
     it('while the help overlay is open, other step keys are gated (f does not confirm)', async () => {
       const onConfirm = vi.fn();
       const { stdin } = render(<ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />);
-      stdin.write('?');
+      stdin.write('h');
       await new Promise((r) => setTimeout(r, 30));
       stdin.write('f');
       await new Promise((r) => setTimeout(r, 30));
@@ -1513,7 +1465,7 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       expect(out).not.toContain('no semantic content');
     });
 
-    it('[x] opens a goto-banner in the sidebar slot listing AI-flagged components; columns 2 & 3 stay', async () => {
+    it('[x] opens a goto-banner in the sidebar slot listing AI-flagged components', async () => {
       const restore = withWideStdout(160);
       try {
         const { lastFrame, stdin } = render(
@@ -1522,7 +1474,6 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
         const before = stripAnsi(lastFrame() ?? '');
         expect(before).toContain('Hero');
         expect(before).toContain('Accepted Components');
-        expect(before).toContain('Accepted components with slot dependencies');
 
         stdin.write('x');
         await new Promise((r) => setTimeout(r, 30));
@@ -1532,7 +1483,6 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
         expect(open).toContain('DivWrapper');
         expect(open).not.toContain('Hero');
         expect(open).toContain('Accepted Components');
-        expect(open).toContain('Accepted components with slot dependencies');
 
         stdin.write('\x1b');
         await new Promise((r) => setTimeout(r, 30));
@@ -1614,13 +1564,13 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       expect(stripAnsi(lastFrame() ?? '')).toContain('Standalone');
     });
 
-    it('legend advertises [o] only cycles when cycles exist; does not show [w]', async () => {
+    it('keeps secondary cycle controls out of the compact banner', async () => {
       const { lastFrame } = render(<ScopeGateStep components={FIX} onConfirm={() => {}} onQuit={() => {}} />);
       await new Promise((r) => setTimeout(r, 20));
       const out = stripAnsi(lastFrame() ?? '');
       expect(out).not.toContain('[w]');
-      expect(out).toContain('[o]');
-      expect(out).toContain('only cycles');
+      expect(out).not.toContain('[o]');
+      expect(out).not.toContain('only cycles');
     });
 
     it('does not advertise a [d] deleted filter (ScopeGate has no deleted concept)', async () => {
@@ -1643,10 +1593,10 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       const { stdin, lastFrame } = render(<ScopeGateStep components={CYC} onConfirm={() => {}} onQuit={() => {}} />);
       await new Promise((r) => setTimeout(r, 20));
       const legend = stripAnsi(lastFrame() ?? '');
-      expect(legend).toContain('[c] cycle list');
-      expect(legend).toContain('[o] only cycles');
+      expect(legend).not.toContain('[c] cycle list');
+      expect(legend).not.toContain('[o] only cycles');
       expect(legend).not.toContain('[w]');
-      stdin.write('?');
+      stdin.write('h');
       await new Promise((r) => setTimeout(r, 30));
       const help = stripAnsi(lastFrame() ?? '');
       expect(help).toMatch(/Cycle list/i);
@@ -1657,16 +1607,15 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       const { lastFrame } = render(<ScopeGateStep components={CYC} onConfirm={() => {}} onQuit={() => {}} />);
       await new Promise((r) => setTimeout(r, 20));
       const legend = stripAnsi(lastFrame() ?? '');
-      expect(legend).toContain('[L] flat');
       expect(legend).toContain('[/] search');
-      expect(legend).toContain('[i] focus lineage');
-      expect(legend).toContain('[i] focus lineage');
+      expect(legend).not.toContain('[L] flat');
+      expect(legend).not.toContain('[i] focus lineage');
     });
 
     it('help panel groups sidebar-view keys (L, l, o, w, i) together', async () => {
       const { stdin, lastFrame } = render(<ScopeGateStep components={CYC} onConfirm={() => {}} onQuit={() => {}} />);
       await new Promise((r) => setTimeout(r, 20));
-      stdin.write('?');
+      stdin.write('h');
       await new Promise((r) => setTimeout(r, 30));
       const help = stripAnsi(lastFrame() ?? '');
       expect(help).toMatch(/Sidebar views/i);
@@ -1774,16 +1723,15 @@ describe('ScopeGateStep — L9 collapse + accept rebind', () => {
   it('legend advertises [space] collapse + [E/C] and NOT "a/space" accept', () => {
     const { lastFrame } = render(<ScopeGateStep components={GROUP} onConfirm={() => {}} onQuit={() => {}} />);
     const legend = stripAnsi(lastFrame() ?? '');
-    expect(legend).toContain('[a] accept');
+    expect(legend).toContain('[a/r] accept/reject');
     expect(legend).not.toContain('[a/space]');
-    expect(legend).toMatch(/\[space\][^\n]*expand\/collapse group/);
-    expect(legend).toMatch(/\[E\/C\]/);
+    expect(legend).toContain('[space/E/C] expand/collapse');
   });
 
   it('help panel Selection entry no longer says "a / space"', async () => {
     const { stdin, lastFrame } = render(<ScopeGateStep components={GROUP} onConfirm={() => {}} onQuit={() => {}} />);
     await new Promise((r) => setTimeout(r, 20));
-    stdin.write('?');
+    stdin.write('h');
     await new Promise((r) => setTimeout(r, 30));
     const help = stripAnsi(lastFrame() ?? '');
     expect(help).not.toContain('a / space');
@@ -1877,5 +1825,24 @@ describe('ScopeGateStep — no components', () => {
     const { lastFrame } = render(<ScopeGateStep components={[]} onConfirm={() => {}} onQuit={() => {}} />);
     const out = lastFrame() ?? '';
     expect(out).toMatch(/no components/i);
+  });
+});
+
+describe('ScopeGateStep — dependency view', () => {
+  it('moves accepted slot dependencies into the main list with [d]', async () => {
+    const components = [
+      { name: 'Card', componentId: 'card', slots: [{ name: 'body', allowedComponents: ['Text'] }] },
+      { name: 'Text', componentId: 'text' },
+      { name: 'Standalone', componentId: 'standalone' },
+    ];
+    const { lastFrame, stdin } = render(<ScopeGateStep components={components} onConfirm={() => {}} onQuit={() => {}} />);
+    stdin.write('A');
+    stdin.write('d');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const out = lastFrame() ?? '';
+    expect(out).not.toContain('[d] dependencies');
+    expect(out).toContain('Card');
+    expect(out).toContain('Text');
+    expect(out).not.toContain('Accepted components with slot dependencies');
   });
 });

@@ -35,8 +35,8 @@ export const PANEL_BOX_CHROME = 6;
 /**
  * L2e — fixed vertical chrome around the sidebar in the BASE (no-panel) case,
  * counting EVERYTHING that is not a variable sidebar entry row: the wizard
- * header bar, the "✓ Extraction complete" + "Found N…" intro, the counter
- * strip (with its blank separator), the cycle banner, the nothing-selected /
+ * header bar, the counter strip (with its blank separator), the cycle banner,
+ * the nothing-selected /
  * AI-exclusion hint, the GroupedSidebar box borders + scroll indicator, the
  * focused-detail block, and the wrapping legend region. Measured via the PTY
  * harness against the react-ux-matrix fixture (cycles present = a tall case):
@@ -44,7 +44,7 @@ export const PANEL_BOX_CHROME = 6;
  * compression, i.e. ≈19 lines of chrome. We use 20 for a one-line safety
  * margin so the total frame stays strictly within `stdout.rows`.
  */
-export const BASE_CHROME_OVERHEAD = 20;
+export const BASE_CHROME_OVERHEAD = 18;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
