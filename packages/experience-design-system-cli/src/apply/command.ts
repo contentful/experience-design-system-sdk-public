@@ -481,6 +481,7 @@ export function registerApplyCommand(program: Command): void {
   const applyCmd = program
     .command('apply')
     .description('Write component types and design tokens to Contentful ExO')
+    .helpOption(false)
     .argument('<file>', 'CDF file containing all component and design token definitions');
   applyCmd.action(async (file: string) => {
     const isTTY = getInteractiveTerminalSupport().supported;

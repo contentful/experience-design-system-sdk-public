@@ -75,7 +75,8 @@ export function resolveBedrockFromAncestors(actionCommand: Command): boolean {
 function registerImportV2Command(program: Command): void {
   program
     .command('importv2')
-    .description('Launch the v2 import')
+    .description('Launch the v2 import TUI (experience-design-system-cli-v2)')
+    .helpOption(false)
     .action(async () => {
       const v2Path = join(
         dirname(fileURLToPath(import.meta.url)),
@@ -98,6 +99,7 @@ function registerBuildCommand(program: Command): void {
   program
     .command('build')
     .description('Rebuild from source and re-link exo/experiences binaries to this build')
+    .helpOption(false)
     .action(async () => {
       const pkgRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
       process.stderr.write('⚙  Building from source...\n');
@@ -107,6 +109,25 @@ function registerBuildCommand(program: Command): void {
       });
       process.exit(exitCode);
     });
+}
+
+function configureRootHelpOrder(program: Command): void {
+  const order = ['build', 'help', 'import', 'apply', 'importv2', 'setup', 'doctor'];
+  const rank = new Map(order.map((name, index) => [name, index]));
+
+  program.configureHelp({
+    visibleCommands(command) {
+      const internals = command as Command & {
+        _getHelpCommand?: () => Command | null;
+        _hidden?: boolean;
+      };
+      const visible = command.commands.filter((entry) => !(entry as Command & { _hidden?: boolean })._hidden);
+      const helpCommand = internals._getHelpCommand?.();
+      if (helpCommand && !(helpCommand as Command & { _hidden?: boolean })._hidden) visible.push(helpCommand);
+      if (command !== program) return visible;
+      return visible.sort((a, b) => (rank.get(a.name()) ?? order.length) - (rank.get(b.name()) ?? order.length));
+    },
+  });
 }
 
 export function createProgram(): Command {
@@ -119,13 +140,15 @@ export function createProgram(): Command {
   registerInternalExtractCommand(program);
   registerPrintCommand(program);
   registerMapTokensCommand(program);
-  registerApplyCommand(program);
-  registerImportCommand(program);
-  registerImportV2Command(program);
-  registerDoctorCommand(program);
-  registerSetupCommand(program);
-  registerBuildCommand(program);
 
+  registerBuildCommand(program);
+  program.helpCommand('help [command]', 'display help for command');
+  registerImportCommand(program);
+  registerApplyCommand(program);
+  registerImportV2Command(program);
+  registerSetupCommand(program);
+  registerDoctorCommand(program);
+  configureRootHelpOrder(program);
   program.hook('preAction', async (_thisCommand, actionCommand) => {
     // Propagate --bedrock via env instead of relying on every subprocess spawn
     // site to re-forward the argv flag. `runAgent()` falls back to this var
