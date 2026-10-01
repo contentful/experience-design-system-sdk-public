@@ -37,10 +37,25 @@ const existingRuntimeExports = [
   'preClassifyComponent',
 ] as const;
 
+const internalRuntimeExports = [
+  'runFileExtractionWorkers',
+  'extractProjectSourceFiles',
+  'createSortedExtractionResult',
+  'resolveLocalModule',
+  'resolveTypeProperty',
+  'getSourceLineMetadata',
+] as const;
+
 describe('extraction package root exports', () => {
   it('preserves the existing runtime export surface', () => {
     for (const exportName of existingRuntimeExports) {
       expect(extraction, `missing root export: ${exportName}`).toHaveProperty(exportName);
+    }
+  });
+
+  it('keeps adapter-support helpers internal to the package', () => {
+    for (const exportName of internalRuntimeExports) {
+      expect(extraction, `unexpected root export: ${exportName}`).not.toHaveProperty(exportName);
     }
   });
 });
