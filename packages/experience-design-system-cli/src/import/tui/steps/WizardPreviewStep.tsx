@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { Box, Text } from 'ink';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
+import { useTerminalSize } from '../../../tui/use-terminal-size.js';
 import type {
   ChangeClassification,
   ServerPreviewResponse,
@@ -247,7 +248,6 @@ type WizardPreviewStepProps = {
   totalSteps: number;
   onConfirm: (acknowledge: boolean) => void;
   onEdit?: () => void;
-  onSaveFiles?: () => void;
   onQuit: () => void;
 };
 
@@ -259,7 +259,6 @@ export function WizardPreviewStep({
   totalSteps,
   onConfirm,
   onEdit,
-  onSaveFiles,
   onQuit,
 }: WizardPreviewStepProps): React.ReactElement {
   const breakingWithImpact = hasBreakingChangesWithImpact(preview);
@@ -323,10 +322,6 @@ export function WizardPreviewStep({
       onEdit();
       return;
     }
-    if (input === 's' && onSaveFiles) {
-      onSaveFiles();
-      return;
-    }
     if (input === 'q' || key.escape) {
       onQuit();
       return;
@@ -378,9 +373,8 @@ export function WizardPreviewStep({
       <Box gap={3} marginTop={1}>
         <Text dimColor>[Enter] Push to Contentful</Text>
         <Text dimColor>[d] {diffExpanded ? 'Hide' : 'Show'} diff</Text>
-        {maxScroll > 0 && <Text dimColor>[↑↓] Scroll [f/b] Page</Text>}
+        {diffExpanded && <Text dimColor>[↑↓] Scroll [f/b] Page</Text>}
         {onEdit && <Text dimColor>[e] Edit definitions</Text>}
-        {onSaveFiles && <Text dimColor>[s] Save files instead</Text>}
         <Text dimColor>[q] Cancel</Text>
       </Box>
     </Box>
