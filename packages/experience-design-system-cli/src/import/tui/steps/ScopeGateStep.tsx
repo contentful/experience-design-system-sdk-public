@@ -1,4 +1,4 @@
-import { Box, Text, useStdout } from 'ink';
+import { Box, Text } from 'ink';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import figures from 'figures';
@@ -20,9 +20,10 @@ import { useSidebarSearchState } from '../hooks/sidebar-search-state.js';
 import { SearchMatchSummary } from '../components/SearchMatchSummary.js';
 import { useOverlayPanel } from '../hooks/useOverlayPanel.js';
 import { computeSidebarBudget, FALLBACK_ROWS } from '../lineage-layout.js';
+import { useTerminalSize } from '../../../tui/use-terminal-size.js';
 import { GotoBanner } from '../../../analyze/select/tui/components/GotoBanner.js';
 import { HelpOverlay, type HelpSection } from '../../../analyze/select/tui/components/HelpOverlay.js';
-import { legendEntry } from '../components/LegendEntry.js';
+import { CompactControlBar } from '../components/CompactControlBar.js';
 import { CounterStrip } from '../components/CounterStrip.js';
 import { isAiFlagged } from '../ai-flag.js';
 import { resolveGroupRoot } from '../group-collapse.js';
@@ -135,8 +136,7 @@ function ScopeGateStepView({
   onConfirm,
   onQuit,
 }: Omit<ScopeGateStepProps, 'components'> & { components: ScopeComponent[] }): React.ReactElement {
-  const { stdout } = useStdout();
-  const totalWidth = stdout?.columns ?? 80;
+  const { columns: totalWidth, rows: terminalRows } = useTerminalSize();
   const columnPlan = useMemo(() => computeColumnWidths(totalWidth), [totalWidth]);
   const sidebarWidth = columnPlan.main;
   type Decision = 'accepted' | 'rejected' | 'undecided';
@@ -404,7 +404,7 @@ function ScopeGateStepView({
   };
 
   const { sidebarVisibleCount: visibleCount, panelMaxRows } = computeSidebarBudget({
-    rows: stdout?.rows ?? FALLBACK_ROWS,
+    rows: terminalRows || FALLBACK_ROWS,
     panelOpen: false,
     entryCount: 0,
   });
@@ -447,7 +447,7 @@ function ScopeGateStepView({
 
   useImmediateInput((input, key) => {
     if (showHelp) {
-      if (input === 'h') setShowHelp(false);
+      if (input === 'h' || key.escape) setShowHelp(false);
       return;
     }
 
@@ -771,7 +771,7 @@ function ScopeGateStepView({
 
   const safeAddedComponentsCursor = Math.min(addedComponentsCursor, Math.max(0, addedComponents.length - 1));
   if (showHelp) {
-    return <HelpOverlay sections={HELP_SECTIONS} onClose={() => setShowHelp(false)} />;
+    return <HelpOverlay sections={HELP_SECTIONS} handleInput={false} onClose={() => setShowHelp(false)} />;
   }
 
   return (
@@ -904,15 +904,7 @@ function ScopeGateStepView({
         marginTop={1}
       />
 
-      <Box borderStyle="single" borderColor={PALETTE.border} paddingX={1} marginTop={1} flexWrap="wrap" columnGap={2}>
-        {legendEntry('[↑/↓]', 'move')}
-        {legendEntry('[a/r]', 'accept/reject')}
-        {hasGroupRoots && legendEntry('[space/E/C]', 'expand/collapse')}
-        {legendEntry('[/]', 'search', searchOpen || searchQuery.length > 0)}
-        {legendEntry('[f]', 'continue/finalize')}
-        {legendEntry('[h]', 'help')}
-        {legendEntry('[q]', 'quit')}
-      </Box>
+      <CompactControlBar hasGroupRoots={hasGroupRoots} searchActive={searchOpen || searchQuery.length > 0} />
     </Box>
   );
 }

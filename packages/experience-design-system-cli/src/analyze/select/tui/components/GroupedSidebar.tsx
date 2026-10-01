@@ -577,12 +577,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
   const rows = windowed ? allRows.slice(start, end) : allRows;
 
   return (
-    <WindowedPanel
-      width={width}
-      height={props.height}
-      title={title}
-      focused={focused}
-    >
+    <WindowedPanel width={width} height={props.height} title={title} focused={focused}>
       {windowed && <WindowIndicator direction="up" count={start} />}
       {rows.map((row, i) => {
         const absoluteRowIdx = start + i;
@@ -644,10 +639,10 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
             ) : (
               <Text> </Text>
             )}
-            <PreviewBadge badge={badge} />
+            <PreviewBadge badge={badge} highlighted={isSelected} />
             {selectionStateByKey !== undefined &&
               (selGlyph && !isSynthetic ? (
-                <Text color={selColor} dimColor={selDim} bold={selBold}>
+                <Text color={selColor} dimColor={isSelected ? false : selDim} bold={selBold}>
                   {' ' + selGlyph}
                 </Text>
               ) : (
@@ -666,7 +661,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
               bold={isSelected || labelStyle.bold}
               inverse={false}
               underline={isSelected && !focused}
-              dimColor={labelStyle.dim}
+              dimColor={isSelected ? false : labelStyle.dim}
               wrap={wrapLabels ? 'wrap' : 'truncate'}
             >
               {' '}
