@@ -66,13 +66,7 @@ These are **not** valid reasons to reject a component:
 
 > **Data-fetch wrapper rule**: Reject a component if it imports or calls a generated query hook, loads data, and then forwards that data into a sibling renderer. The sibling renderer is the Component Type; the data-loader wrapper is not.
 
-> **Utility-wrapper rule**: Reject a component if **all three** of the following are true:
->
-> 1. It has no props that meaningfully shape user-facing content (no text strings, headings, image URLs, links, body content, rich text, or media references).
-> 2. The props it does have are purely structural or behavioral — e.g., `container`, `target`, `as`, `asChild`, render-prop callbacks, internal `ref` forwarding, focus/portal targets, debug toggles, or `children` only.
-> 3. It is a utility wrapper rather than a composable content surface. Concrete examples to reject under this rule: `Portal`, `SrOnly` (screen-reader-only wrappers), `FocusTrap`, `ErrorBoundary`, `Suspense` fallbacks, debug-only wrappers, and provider-shaped components whose only job is to forward children.
->
-> Use `reject_component` with a reason like `"Utility wrapper — no authorable content surface"` or `"Structural-only component — no user-shaping props"`. This rule is additive to the categories above; do **not** use it to reject a component that has even one author-shaping prop (e.g., a `label`, `title`, `text`, `href`, `src`, or `richText` prop) — those still belong as Component Types per the "one rule" above.
+> **Renderability rule**: Renderability, not authorable surface, is the bar for inclusion. Do not reject a component merely because it has no props, few props, or only structural/behavioral props when it independently renders visible, placeable UI. Reject it only when it belongs to one of the categories listed above.
 
 ## Using `selectionContext`
 
@@ -252,7 +246,7 @@ SearchInput — search field with dropdown
 
 The preamble may include an "Existing components in the target Contentful space" JSON block and a rolled-up token summary. Use them as **signal, not as a filter**. Rules:
 
-1. Never let a name overlap force a decision. Acceptance is still driven purely by "does the codebase component render visible, authorable UI?" — a name match does not auto-accept, and a name conflict does not auto-reject.
+1. Never let a name overlap force a decision. Acceptance is still driven purely by "does the codebase component render visible, placeable UI?" — a name match does not auto-accept, and a name conflict does not auto-reject.
 2. When a codebase component appears to correspond to an existing space component (name overlap, semantic overlap in the description), note it in your `reason` — e.g. `"accepted; likely maps to existing space component 'Button'"`. This surfaces the mapping for downstream review.
 3. When the space is mature (many existing components, dozens of tokens) and the codebase has thin wrappers with no visible UI difference, lean harder toward rejecting the wrappers. Extra noise in a mature space is more costly than in an empty one.
 4. When no overlap exists, the acceptance decision is unchanged from the rules above.
