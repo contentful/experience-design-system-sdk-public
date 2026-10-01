@@ -14,7 +14,7 @@ export type { ExtractorOptions } from './extract/model/options.js';
 export type { ComponentExtractor } from './extract/services/ports/component-extractor.js';
 
 // Core extraction pipeline
-export { extractComponents } from './extract/pipeline.js';
+export { extractComponents } from './extract/services/extraction-pipeline.js';
 export { extractEndpoint } from './extract/controller/extract-controller.js';
 export type {
   ExtractionEndpointProgress,

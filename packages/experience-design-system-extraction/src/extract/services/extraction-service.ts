@@ -1,7 +1,7 @@
 import type { ExtractorProgress } from '../model/component.js';
 import type { ExtractionEndpointResponse } from '../model/contract.js';
 import type { ExtractorOptions } from '../model/options.js';
-import { extractComponents } from '../pipeline.js';
+import { extractComponents } from './extraction-pipeline.js';
 import { preClassifyComponent } from './classification-service.js';
 import { evaluateExtractionQuality } from './quality-service.js';
 

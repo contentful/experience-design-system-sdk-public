@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
-import { extractComponents } from '../src/index.js';
+import { extractComponents } from '../src/extract/services/extraction-pipeline.js';
 
 const tempDirs: string[] = [];
 

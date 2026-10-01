@@ -1,8 +1,8 @@
-import type { ComponentExtractionResult, ExtractorProgress } from './model/component.js';
-import type { ExtractorOptions } from './model/options.js';
-import { deduplicateComponents } from './services/component-deduplicator.js';
-import { extractorRegistry, routeFilesToExtractors } from './services/extractor-registry.js';
-import { runExtractorBatches } from './services/extraction-runner.js';
+import type { ComponentExtractionResult, ExtractorProgress } from '../model/component.js';
+import type { ExtractorOptions } from '../model/options.js';
+import { deduplicateComponents } from './component-deduplicator.js';
+import { extractorRegistry, routeFilesToExtractors } from './extractor-registry.js';
+import { runExtractorBatches } from './extraction-runner.js';
 
 export async function extractComponents(
   filePaths: string[],

@@ -1,7 +1,7 @@
 # Extraction support and quality policy boundaries
 
 research_started_at: 2026-10-01T14:49
-status: phase-2-complete
+status: phase-3-complete
 base_commit: 964f09c2ffb4d300a782ce38b88e0781a766c60b
 branch: codex/extraction-support-policy-organization
 
@@ -146,12 +146,12 @@ pnpm exec vitest run test/analyze/extract
 
 ## Phase 3: Move the pipeline facade into services
 
-- [ ] Move `pipeline.ts` to `services/extraction-pipeline.ts`.
-- [ ] Preserve the `extractComponents` signature, adapter routing order,
+- [x] Move `pipeline.ts` to `services/extraction-pipeline.ts`.
+- [x] Preserve the `extractComponents` signature, adapter routing order,
   concurrent execution, deduplication, hook filtering, warnings, and progress.
-- [ ] Keep the package-root `extractComponents` export stable while changing
+- [x] Keep the package-root `extractComponents` export stable while changing
   only its internal source path.
-- [ ] Update service and test imports to make the pipeline service the explicit
+- [x] Update service and test imports to make the pipeline service the explicit
   owner of adapter composition.
 
 Verification:
