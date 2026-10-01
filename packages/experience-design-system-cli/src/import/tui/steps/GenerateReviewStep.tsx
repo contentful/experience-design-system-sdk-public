@@ -41,10 +41,8 @@ import {
 } from '../../../analyze/search-neighborhood.js';
 import { computeSidebarWidth } from '../sidebar-width.js';
 import { computeAcceptCascade, computeRejectCascade } from '../../../analyze/selection-cascade.js';
-import { useLineage } from '../hooks/useLineage.js';
 import { computeCycleAutoRejectTargets } from '../../cycle-auto-reject.js';
 import { useOverlayPanel } from '../hooks/useOverlayPanel.js';
-import { LineagePanel } from '../../../analyze/select/tui/components/LineagePanel.js';
 import { GotoBanner } from '../../../analyze/select/tui/components/GotoBanner.js';
 import { computeSidebarBudget, FALLBACK_ROWS } from '../lineage-layout.js';
 import { HelpOverlay, type HelpSection } from '../../../analyze/select/tui/components/HelpOverlay.js';
@@ -58,7 +56,6 @@ import { buildFlatDimPredicate, computeFilterKeys, intersectFilterKeys, type Fil
 import { createSidebarViewsHelpSection } from '../sidebar-help.js';
 import { handleSidebarSearchInput } from '../sidebar-input.js';
 import { collectExpandedGroupRoots, computeSidebarViewToggle } from '../sidebar-navigation.js';
-import { handleLineageNavigation } from '../lineage-input.js';
 import { useSidebarSearchState } from '../hooks/sidebar-search-state.js';
 import { SearchMatchSummary } from '../components/SearchMatchSummary.js';
 import {
@@ -69,7 +66,7 @@ import {
   ReviewFinalizeError,
   ReviewNoSelection,
 } from '../components/ReviewComponentPanel.js';
-import { ReviewLoadError, ReviewLoadingState, ReviewStatusBar } from '../components/ReviewStatus.js';
+import { ReviewLoadError, ReviewLoadingState } from '../components/ReviewStatus.js';
 import {
   createReviewHistorySnapshot,
   loadReviewSessionState,
@@ -437,8 +434,6 @@ function GenerateReviewStepView({
     showHelp,
     setShowHelp,
   } = useSidebarSearchState();
-  const lineagePanel = useOverlayPanel({ toggleKey: 'l' });
-  const [lineageCursor, setLineageCursor] = useState(0);
   const breakingPanel = useOverlayPanel({ toggleKey: 'b', onClose: () => setBreakingDetailOpen(false) });
   const [breakingChanges, setBreakingChanges] = useState<BreakingComponent[]>([]);
   const [breakingCursor, setBreakingCursor] = useState(0);
@@ -672,12 +667,9 @@ function GenerateReviewStepView({
   }, [visibleRowsMemo]);
   const selectedIdx = visibleRowsMemo[cursorRowIdx]?.itemIdx ?? -1;
   const focusedComponentKey: string | null = components[selectedIdx]?.key ?? null;
-  const { entries: lineageEntries, jumpables: lineageJumpables } = useLineage(focusedComponentKey, componentGraph);
-
   const { sidebarVisibleCount: visibleCount, panelMaxRows } = computeSidebarBudget({
     rows: stdout?.rows ?? FALLBACK_ROWS,
-    panelOpen: lineagePanel.isOpen,
-    entryCount: lineageEntries.length,
+    panelOpen: false,
   });
   useEffect(() => {
     if (selectableRowPositions.length === 0) return;
@@ -955,23 +947,6 @@ function GenerateReviewStepView({
       }
       return;
     }
-    if (lineagePanel.isOpen) {
-      if (lineagePanel.handleInput(input, key)) return;
-      if (
-        handleLineageNavigation({
-          input,
-          key,
-          cursor: lineageCursor,
-          jumpables: lineageJumpables,
-          onCursorChange: setLineageCursor,
-          onJump: jumpCursorToName,
-          onClose: lineagePanel.close,
-          allowTab: true,
-        })
-      )
-        return;
-      return;
-    }
     if (breakPanel.isOpen) {
       if (breakConfirm) {
         if (input === 'y') {
@@ -1042,11 +1017,6 @@ function GenerateReviewStepView({
       cyclePanel.open();
       setCyclePanelScroll(0);
       setCyclesCursor(0);
-      return;
-    }
-    if (input === 'l' && sidebarFocused && focusedComponentKey) {
-      lineagePanel.open();
-      setLineageCursor(0);
       return;
     }
     if (input === 'b' && sidebarFocused && breakingChanges.length > 0) {
@@ -1537,15 +1507,6 @@ function GenerateReviewStepView({
               width={sidebarWidth}
               footerHint="[↑/↓] move · [Enter] jump · [D] detail · [Esc] close"
             />
-          ) : lineagePanel.isOpen && focusedComponentKey ? (
-            <LineagePanel
-              focusedComponentKey={focusedComponentKey}
-              entries={lineageEntries}
-              cursor={lineageCursor}
-              jumpables={lineageJumpables}
-              maxRows={panelMaxRows}
-              width={sidebarWidth}
-            />
           ) : (
             <GroupedSidebar
               items={groupedItems}
@@ -1665,7 +1626,6 @@ function GenerateReviewStepView({
               {legendEntry('[A]', 'accept all')}
               {legendEntry('[F]', 'finalize')}
               {legendEntry('[L]', 'flat', columnOneView === 'flat')}
-              {legendEntry('[l]', 'lineage', lineagePanel.isOpen)}
               {legendEntry('[i]', 'focus lineage', jumpFilterTarget !== null)}
               {legendEntry('[w]', 'only breaking', activeFilters.has('broken'))}
               {slotCycles.length > 0 && legendEntry('[o]', 'only cycles', activeFilters.has('cycles'))}
@@ -1693,15 +1653,6 @@ function GenerateReviewStepView({
             </>
           )}
         </Box>
-      )}
-      {!dialogOpen && (
-        <ReviewStatusBar
-          entries={components}
-          onApproveAll={() => {
-            setComponents((prev) => prev.map((c) => (c.status === 'needs-review' ? { ...c, status: 'accepted' } : c)));
-          }}
-          onFinalize={() => setShowFinalize(true)}
-        />
       )}
     </Box>
   );
