@@ -12,7 +12,7 @@ export type ExperiencesCredentials = {
   agentModel?: string;
   /** Feature 8: persisted custom prompt path for `generate components`. */
   generatePromptPath?: string;
-  /** Feature: default debug-mode (writes JSONL trace of every decision) for all commands. */
+  /** Write JSONL trace of every command decision to ~/.contentful/experience-design-system-cli/debug/. */
   debug?: boolean;
   /** Print plain text with no color; an exported NO_COLOR still wins. */
   noColor?: boolean;
