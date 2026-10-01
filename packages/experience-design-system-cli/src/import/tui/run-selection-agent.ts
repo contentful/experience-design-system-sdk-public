@@ -28,10 +28,7 @@ export async function runSelectionAgent(options: {
 }): Promise<void> {
   const db = openPipelineDb();
   let components: Awaited<ReturnType<typeof loadRawComponents>>;
-  const cachedDecisions = new Map<
-    string,
-    { decision: 'accepted' | 'rejected'; reason: string | null }
-  >();
+  const cachedDecisions = new Map<string, { decision: 'accepted' | 'rejected'; reason: string | null }>();
   const cliVersion = await getCliCacheVersion();
   const promptHash = await hashPromptForSkill(
     'select',
