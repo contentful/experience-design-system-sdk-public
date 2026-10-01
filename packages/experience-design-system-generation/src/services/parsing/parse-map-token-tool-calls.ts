@@ -37,7 +37,12 @@ export function parseMapTokenPropToolCallLines(stdout: string): ParsedMapTokenPr
       continue;
     }
 
-    calls.push({ tool: 'map_token_prop', component: rec.component, prop: rec.prop, token_allowed: rec.token_allowed });
+    calls.push({
+      tool: 'map_token_prop',
+      component: rec.component,
+      prop: rec.prop,
+      token_allowed: rec.token_allowed,
+    });
   }
 
   return { calls, warnings };

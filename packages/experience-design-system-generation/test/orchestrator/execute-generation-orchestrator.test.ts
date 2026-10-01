@@ -4,7 +4,12 @@ import type { GenerationOrchestratorRequest } from '../../src/orchestrator/execu
 
 describe('executeGenerationOrchestrator', () => {
   it('builds a prompt from promptOptions and passes it to the invoker', async () => {
-    const fakeResult = { exitCode: 0, stdout: 'tool output', stderr: '', timedOut: false };
+    const fakeResult = {
+      exitCode: 0,
+      stdout: 'tool output',
+      stderr: '',
+      timedOut: false,
+    };
     const fakeInvoke = vi.fn().mockResolvedValue(fakeResult);
     const fakeInvoker = { invoke: fakeInvoke, checkAuth: vi.fn() };
 
@@ -32,7 +37,12 @@ describe('executeGenerationOrchestrator', () => {
   });
 
   it('forwards model, bedrock, and onOutput to the invoker', async () => {
-    const fakeInvoke = vi.fn().mockResolvedValue({ exitCode: 0, stdout: '', stderr: '', timedOut: false });
+    const fakeInvoke = vi.fn().mockResolvedValue({
+      exitCode: 0,
+      stdout: '',
+      stderr: '',
+      timedOut: false,
+    });
     const onOutput = vi.fn();
 
     const request: GenerationOrchestratorRequest = {

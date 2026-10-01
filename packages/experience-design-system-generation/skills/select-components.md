@@ -110,6 +110,24 @@ This evidence is separate from component inclusion: a component can be a valid, 
 
 ---
 
+## Structured slot evidence output
+
+When a selected component has ReactNode-shaped or child-like slot candidates, include a `slot_evidence` array on its `select_component` tool call. Emit one entry for every candidate, including candidates that are not real slots; do not silently omit a declared-but-unused candidate.
+
+Each entry must contain:
+
+- `name`: the exact prop or slot name from the extracted component.
+- `is_real_slot`: `true` only when a concrete caller renders a named reusable component into that prop; otherwise `false`.
+- `allowed_components`: when `is_real_slot` is `true`, the exact component names observed at the cited call sites, with no guessed or normalized names.
+- `evidence`: an array of `{ "source": "path", "line": "line-or-range", "quote": "exact declaration or JSX expression" }` citations. A real slot requires at least one citation; a false slot must cite the plain-text, inline, omitted, zero-caller, or ambiguous evidence that led to that result when such evidence exists.
+- `reason`: a concise explanation of why the cited evidence proves or fails to prove a reusable component relationship.
+
+Use an empty `evidence` array only when the bounded context contains no usage evidence at all, and say `zero real usages found` in `reason`. The parser treats a real slot without a citation as invalid. Example:
+
+```json
+{"tool":"select_component","name":"Card","reason":"renders visible UI","slot_evidence":[{"name":"children","is_real_slot":true,"allowed_components":["CardBadge"],"evidence":[{"source":"src/Panel.tsx","line":"42","quote":"<Card><CardBadge /></Card>"}],"reason":"CardBadge is rendered into children at the caller."},{"name":"footer","is_real_slot":false,"evidence":[],"reason":"zero real usages found"}]}
+```
+
 ## Output protocol
 
 Emit one JSON object on a single line. Lines not starting with `{` are ignored by the parser — use them freely for reasoning.

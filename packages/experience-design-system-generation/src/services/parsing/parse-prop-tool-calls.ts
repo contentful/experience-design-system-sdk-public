@@ -55,7 +55,11 @@ export function parsePropToolCallLines(stdout: string): ParsedToolCalls {
         warnings.push('exclude_prop missing prop name — skipped');
         continue;
       }
-      calls.push({ tool: 'exclude_prop', prop: rec.prop, reason: typeof rec.reason === 'string' ? rec.reason : '' });
+      calls.push({
+        tool: 'exclude_prop',
+        prop: rec.prop,
+        reason: typeof rec.reason === 'string' ? rec.reason : '',
+      });
     } else if (tool === 'classify_component') {
       const call: ClassifyComponentCall = { tool: 'classify_component' };
       if (typeof rec.description === 'string') call.description = rec.description;
