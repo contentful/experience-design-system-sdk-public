@@ -15,12 +15,12 @@ export type { ComponentExtractor } from './extract/services/ports/component-extr
 
 // Core extraction pipeline
 export { extractComponents } from './extract/pipeline.js';
-export {
-  extractEndpoint,
-  type ExtractionEndpointProgress,
-  type ExtractionEndpointRequest,
-  type ExtractionEndpointResponse,
-} from './extract/endpoint.js';
+export { extractEndpoint } from './extract/controller/extract-controller.js';
+export type {
+  ExtractionEndpointProgress,
+  ExtractionEndpointRequest,
+  ExtractionEndpointResponse,
+} from './extract/model/contract.js';
 
 // Framework-specific extractors
 export { extractReactComponents } from './extract/react.js';

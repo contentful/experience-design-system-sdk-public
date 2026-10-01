@@ -1,6 +1,6 @@
 # Extraction model-controller-service refactor
 
-Status: Phase 2 complete; Phase 3 pending
+Status: Phase 3 complete; Phase 4 pending
 
 Baseline: `e2fbe38f6505fc2525dc090740ea63db89bb6b61`
 
@@ -156,20 +156,23 @@ tests passed with 4 files and 12 tests; extraction typecheck and lint passed;
 the CLI extraction suite passed with 23 files and 334 tests; and CLI typecheck
 passed. Root-level exports and runtime payload shapes remain compatible.
 
-### 3. Split the controller from the extraction service
+### 3. Split the controller from the extraction service — complete
 
-- [ ] Rename `endpoint.ts` to the controller location while retaining the
+- [x] Rename `endpoint.ts` to the controller location while retaining the
   public function name `extractEndpoint`.
-- [ ] Extract request validation and public progress mapping into the
+- [x] Extract request validation and public progress mapping into the
   controller/contract boundary.
-- [ ] Move the extraction use case into `ExtractionService`, preserving the
+- [x] Move the extraction use case into `ExtractionService`, preserving the
   exact order: extraction, pre-classification, source inspection,
   non-authorable policy, scoring, and validation.
-- [ ] Preserve the endpoint guarantees that it does not scan directories,
+- [x] Preserve the endpoint guarantees that it does not scan directories,
   invoke agents, or persist sessions.
 
-Verification: endpoint behavior remains covered while the controller and service
-boundary is introduced.
+Verification completed: the controller boundary tests cover request validation,
+service delegation, and progress translation; the service integration test
+covers scored and validated output with explicit file paths and no CLI/session
+dependencies; extraction package tests passed with 5 files and 15 tests;
+extraction typecheck and lint passed.
 
 ### 4. Decompose the pipeline service
 
