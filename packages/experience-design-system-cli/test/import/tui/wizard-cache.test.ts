@@ -1,3 +1,6 @@
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   buildGenerateTokensArgs,
@@ -6,6 +9,8 @@ import {
   buildMapTokensArgs,
   shouldRunMapTokens,
 } from '../../../src/import/tui/WizardApp.js';
+
+const wizardAppPath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../src/import/tui/WizardApp.tsx');
 
 describe('wizard combined CDF output', () => {
   it('writes components and tokens into one schema-valid CDF document', () => {
@@ -45,6 +50,16 @@ describe('wizard generate-tokens cache', () => {
       noCache: true,
     });
     expect(args).toContain('--no-cache');
+  });
+
+  it('passes precomputed cached component names to generation', () => {
+    const args = buildGenerateComponentsArgs({
+      sessionId: 'abc-123',
+      agent: 'claude',
+      cachedComponents: ['Button', 'Card'],
+    });
+    expect(args).toContain('--cached-components');
+    expect(args).toContain('["Button","Card"]');
   });
 
   it('forwards prompt overrides to token generation', () => {
@@ -101,6 +116,27 @@ describe('wizard generate-components cache', () => {
     });
     expect(explicit).not.toContain('--no-cache');
     expect(omitted).not.toContain('--no-cache');
+  });
+
+  it('does not render a dedicated cache-check or cache-restore screen', async () => {
+    const source = await readFile(wizardAppPath, 'utf8');
+    expect(source).not.toContain('generation-cache-check');
+    expect(source).not.toContain('generationCacheHit');
+    expect(source).not.toContain('Reusing cached definitions');
+    expect(source).not.toContain('Checking cached definitions');
+  });
+
+  it('does not enter the generation screen when cached definitions are restored', async () => {
+    const source = await readFile(wizardAppPath, 'utf8');
+    const scopeGateBlock = source.slice(source.indexOf('onAdvanceToGenerate'), source.indexOf('onAdvanceToPushFlow'));
+    expect(scopeGateBlock).toContain('void finishCachedGeneration(sid, acceptedCount);');
+    expect(scopeGateBlock).toContain("step: 'generating',\n                            generateProgress: null,\n                            acceptedCount,");
+    expect(scopeGateBlock).toContain('void runGenerate(sid, state.tokensPath, acceptedCount, false, restoredCachedNames);');
+    const cacheBranch = scopeGateBlock.slice(scopeGateBlock.indexOf('if (cacheHit)'), scopeGateBlock.indexOf('} else {'));
+    expect(cacheBranch).not.toContain("step: 'generating'");
+    expect(source).not.toContain('GENERATION_SCREEN_DELAY_MS');
+    expect(source).toContain('const promise = checkGenerateCacheComponents(sessionId, state.tokensPath, true);');
+    expect(source).toContain('await cachePromise;');
   });
 });
 

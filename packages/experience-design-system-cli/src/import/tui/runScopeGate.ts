@@ -1,4 +1,5 @@
 import { writeScopeDecisionsSnapshot } from '../../analyze/select/persistence.js';
+import { getDebugLogger } from '../../lib/debug-logger.js';
 import { applyScopeDecisions, openPipelineDb } from '../../session/db.js';
 
 export async function runScopeGate(opts: {
@@ -7,6 +8,12 @@ export async function runScopeGate(opts: {
   onAdvanceToGenerate: (info: { sessionId: string; acceptedCount: number }) => Promise<void> | void;
   onAdvanceToPushFlow: (acceptedCount: number) => Promise<void> | void;
 }): Promise<void> {
+  const startedAt = Date.now();
+  getDebugLogger().event('wizard', 'scope-decision-persistence.start', {
+    sessionId: opts.sessionId,
+    acceptedCount: opts.decisions.accepted.length,
+    rejectedCount: opts.decisions.rejected.length,
+  });
   const db = openPipelineDb();
   try {
     applyScopeDecisions(db, opts.sessionId, opts.decisions);
@@ -15,6 +22,21 @@ export async function runScopeGate(opts: {
     // scope-gate decisions never reach the generator and rejected components
     // get processed by the LLM anyway.
     await writeScopeDecisionsSnapshot(db, opts.sessionId, opts.decisions);
+    getDebugLogger().event('wizard', 'scope-decision-persistence.complete', {
+      sessionId: opts.sessionId,
+      acceptedCount: opts.decisions.accepted.length,
+      rejectedCount: opts.decisions.rejected.length,
+      durationMs: Date.now() - startedAt,
+    });
+  } catch (error) {
+    getDebugLogger().event('wizard', 'scope-decision-persistence.error', {
+      sessionId: opts.sessionId,
+      acceptedCount: opts.decisions.accepted.length,
+      rejectedCount: opts.decisions.rejected.length,
+      durationMs: Date.now() - startedAt,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
   } finally {
     db.close();
   }
