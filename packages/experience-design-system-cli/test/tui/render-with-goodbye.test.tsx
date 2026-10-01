@@ -58,12 +58,17 @@ describe('renderWithGoodbye', () => {
       return <Text>Active view</Text>;
     }
 
-    const instance = renderWithGoodbye(<ClearOnMount />, { patchConsole: false });
+    const inputInstance = render(<Text>Input</Text>);
+    const instance = renderWithGoodbye(<ClearOnMount />, {
+      patchConsole: false,
+      stdin: inputInstance.stdin as unknown as NodeJS.ReadStream,
+    });
     const clear = vi.spyOn(instance, 'clear');
 
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(clear).toHaveBeenCalledTimes(1);
     instance.unmount();
+    inputInstance.unmount();
   });
 });
