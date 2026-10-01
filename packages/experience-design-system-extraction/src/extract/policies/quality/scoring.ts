@@ -1,7 +1,7 @@
-import type { RawComponentDefinition } from './model/component.js';
-import type { ExtractionConfidence, ExtractionScore, ExtractionScoreOptions } from './model/scoring.js';
+import type { RawComponentDefinition } from '../../model/component.js';
+import type { ExtractionConfidence, ExtractionScore, ExtractionScoreOptions } from '../../model/scoring.js';
 
-export type { ExtractionConfidence, ExtractionScore, ExtractionScoreOptions } from './model/scoring.js';
+export type { ExtractionConfidence, ExtractionScore, ExtractionScoreOptions } from '../../model/scoring.js';
 
 // 1 = very low confidence (likely wrong), 5 = very high confidence (clearly correct)
 // Prop type strings that indicate the extractor couldn't resolve a concrete type

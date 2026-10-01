@@ -1,4 +1,4 @@
-import type { RawComponentDefinition, RawPropDefinition } from './model/component.js';
+import type { RawComponentDefinition, RawPropDefinition } from '../../model/component.js';
 
 interface NonAuthorableResult {
   skip: boolean;

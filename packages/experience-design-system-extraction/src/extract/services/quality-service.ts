@@ -1,9 +1,9 @@
 import type { RawComponentDefinition } from '../model/component.js';
 import type { ExtractionEndpointResponse } from '../model/contract.js';
-import { isNonAuthorableComponent } from '../non-authorable-filter.js';
-import { computeExtractionScore, deriveNeedsReview } from '../scoring.js';
-import { inspectComponentSource, describeReviewReasons } from '../source-inspection.js';
-import { validateExtractedComponents } from '../validate.js';
+import { isNonAuthorableComponent } from '../policies/quality/authorability.js';
+import { computeExtractionScore, deriveNeedsReview } from '../policies/quality/scoring.js';
+import { inspectComponentSource, describeReviewReasons } from '../policies/quality/source-inspection.js';
+import { validateExtractedComponents } from '../policies/quality/validation.js';
 
 function wrapperConfidenceToIssueCount(confidence: number): number {
   if (confidence >= 4) return 2;

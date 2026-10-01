@@ -11,7 +11,7 @@ import type {
   ComponentExtractionResult,
 } from '../../model/component.js';
 import type { ExtractorOptions } from '../../model/options.js';
-import { computeExtractionScore, deriveNeedsReview } from '../../scoring.js';
+import { computeExtractionScore, deriveNeedsReview } from '../../policies/quality/scoring.js';
 import { extractAllowedComponentsFromTypeText } from '../../evidence/allowed-components.js';
 import { runFileExtractionWorkers } from '../support/file-processing/file-workers.js';
 import { resolveLocalModule } from '../support/resolution/local-module.js';

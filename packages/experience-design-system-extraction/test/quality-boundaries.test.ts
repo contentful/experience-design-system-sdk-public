@@ -3,10 +3,10 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { RawComponentDefinition, RawPropDefinition } from '../src/extract/model/component.js';
-import { isNonAuthorableComponent } from '../src/extract/non-authorable-filter.js';
-import { computeExtractionScore, deriveNeedsReview } from '../src/extract/scoring.js';
-import { inspectComponentSource } from '../src/extract/source-inspection.js';
-import { validateExtractedComponents } from '../src/extract/validate.js';
+import { isNonAuthorableComponent } from '../src/extract/policies/quality/authorability.js';
+import { computeExtractionScore, deriveNeedsReview } from '../src/extract/policies/quality/scoring.js';
+import { inspectComponentSource } from '../src/extract/policies/quality/source-inspection.js';
+import { validateExtractedComponents } from '../src/extract/policies/quality/validation.js';
 
 const tempDirectories: string[] = [];
 

@@ -36,8 +36,8 @@ export {
 } from './extract/evidence/allowed-components.js';
 
 // Post-extraction filtering and scoring
-export { isNonAuthorableComponent } from './extract/non-authorable-filter.js';
-export { computeExtractionScore, deriveNeedsReview } from './extract/scoring.js';
+export { isNonAuthorableComponent } from './extract/policies/quality/authorability.js';
+export { computeExtractionScore, deriveNeedsReview } from './extract/policies/quality/scoring.js';
 export type { ExtractionScore, ExtractionScoreOptions, ExtractionConfidence } from './extract/model/scoring.js';
 export {
   inspectComponentSource,
@@ -47,8 +47,8 @@ export {
   HIGH_CONFIDENCE_DATA_FETCH_WRAPPER_REASON,
   POSSIBLE_DATA_FETCH_WRAPPER_REASON,
   ZERO_SURFACE_RENDERED_UI_REASON,
-} from './extract/source-inspection.js';
-export type { ComponentSourceInspection } from './extract/source-inspection.js';
+} from './extract/policies/quality/source-inspection.js';
+export type { ComponentSourceInspection } from './extract/policies/quality/source-inspection.js';
 
 // Validation
 export {
@@ -56,7 +56,7 @@ export {
   shouldExcludeDueToValidation,
   formatExclusionWarning,
   formatExcludedComponentLines,
-} from './extract/validate.js';
+} from './extract/policies/quality/validation.js';
 export { parseImportedNames } from './extract/evidence/source-evidence.js';
 
 // Slot detection helpers

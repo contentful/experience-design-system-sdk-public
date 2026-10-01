@@ -1,7 +1,7 @@
 # Extraction support and quality policy boundaries
 
 research_started_at: 2026-10-01T14:49
-status: phase-3-complete
+status: phase-4-complete
 base_commit: 964f09c2ffb4d300a782ce38b88e0781a766c60b
 branch: codex/extraction-support-policy-organization
 
@@ -163,21 +163,22 @@ pnpm exec vitest run test/analyze/extract/pipeline.test.ts test/analyze/extract/
 
 ## Phase 4: Isolate quality policies
 
-- [ ] Move `non-authorable-filter.ts` to
+- [x] Move `non-authorable-filter.ts` to
   `policies/quality/authorability.ts`.
-- [ ] Move the scoring algorithm in `scoring.ts` to
+- [x] Move the scoring algorithm in `scoring.ts` to
   `policies/quality/scoring.ts`; keep the score data shapes in
   `model/scoring.ts`.
-- [ ] Move `source-inspection.ts` to
+- [x] Move `source-inspection.ts` to
   `policies/quality/source-inspection.ts`.
-- [ ] Move `validate.ts` to `policies/quality/validation.ts`.
-- [ ] Update `quality-service.ts` and root exports without changing the public
+- [x] Move `validate.ts` to `policies/quality/validation.ts`.
+- [x] Update `quality-service.ts` and root exports without changing the public
   helper names.
-- [ ] Characterize and then resolve the Svelte adapter's direct scoring calls;
-  the preferred end state is for adapters to emit extraction reasons and for
-  `quality-service` to calculate final confidence and `needsReview` once.
-- [ ] Stop and preserve the adapter-local provisional score if direct adapter
-  consumers depend on it and no explicit contract change has been approved.
+- [x] Characterize the Svelte adapter's direct scoring consumers through the
+  public adapter and CLI Svelte coverage; preserve its adapter-local
+  provisional score because those consumers observe `extractionConfidence`,
+  `reviewReasons`, and `needsReview` before endpoint-level quality evaluation.
+- [x] Preserve the adapter-local provisional score pending an explicit public
+  contract change that moves final confidence ownership to `quality-service`.
 
 Verification:
 
