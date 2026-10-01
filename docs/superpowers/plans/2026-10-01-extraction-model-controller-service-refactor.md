@@ -1,6 +1,6 @@
 # Extraction model-controller-service refactor
 
-Status: Phase 5 complete; Phase 6 pending
+Status: Phase 6 complete; Phase 7 pending
 
 Baseline: `e2fbe38f6505fc2525dc090740ea63db89bb6b61`
 
@@ -213,18 +213,21 @@ files and 334 tests; and CLI typecheck and extraction-test lint passed.
 
 ### 6. Reorganize framework adapters
 
-- [ ] Move each framework extractor into its adapter directory with no behavior
+- [x] Move each framework extractor into its adapter directory with no behavior
   changes: React, Vue, Vue TSX, Astro, Svelte, Stencil, and Web Components.
-- [ ] Move shared TSX utilities to the adapter-support/infrastructure boundary
+- [x] Move shared TSX utilities to the adapter-support/infrastructure boundary
   and make the dependency explicit for React, Stencil, and Web Components.
-- [ ] Split only the largest adapters after relocation, using cohesive seams
+- [x] Split only the largest adapters after relocation, using cohesive seams
   for props, slots, dataflow/type resolution, and result normalization.
-- [ ] Preserve framework-specific sharp edges: React DOM prop allowlists,
+- [x] Preserve framework-specific sharp edges: React DOM prop allowlists,
   Svelte unresolved-type retry behavior, Vue inherited-prop resolution,
   Stencil decorator handling, and Web Component Lit metadata filtering.
 
-Verification: run the complete framework extraction suites, including React
-prop-count assertions and the structural composition tests.
+Verification completed: the adapter boundary characterization test passes; the
+extraction package passes 9 test files and 32 tests, typecheck, and lint; and
+the complete CLI extraction suite passes 23 files and 334 tests. The CLI
+typecheck remains gated by the environment's `tsx` IPC `listen EPERM` during
+unrelated generated-client codegen.
 
 ### 7. Stabilize exports, documentation, and cleanup
 

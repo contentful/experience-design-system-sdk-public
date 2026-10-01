@@ -4,9 +4,9 @@ import type {
   RawPropDefinition,
   RawSlotDefinition,
   ComponentExtractionResult,
-} from './model/component.js';
-import { getJsxTagNameNode, isIntrinsicJsxElement, kebabToPascal } from './tsx-shared.js';
-import { createSortedExtractionResult, extractProjectSourceFiles } from './file-extraction-workers.js';
+} from '../../model/component.js';
+import { getJsxTagNameNode, isIntrinsicJsxElement, kebabToPascal } from '../support/tsx-shared.js';
+import { createSortedExtractionResult, extractProjectSourceFiles } from '../../file-extraction-workers.js';
 
 function isStencilFile(sourceFile: SourceFile): boolean {
   return sourceFile.getImportDeclarations().some((imp) => imp.getModuleSpecifierValue() === '@stencil/core');

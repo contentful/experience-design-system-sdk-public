@@ -16,7 +16,7 @@ import type {
   RawSlotDefinition,
   ComponentExtractionResult,
   ExtractionExclusion,
-} from './model/component.js';
+} from '../../model/component.js';
 import {
   extractAllowedValues,
   getNodeDefinitions,
@@ -27,19 +27,19 @@ import {
   extractTsxComponents,
   getRenderableExports,
   isIntrinsicJsxElement,
-} from './tsx-shared.js';
-import { shouldBeSlot } from './evidence/slot-evidence.js';
+} from '../support/tsx-shared.js';
+import { shouldBeSlot } from '../../evidence/slot-evidence.js';
 import {
   extractAllowedComponentsFromTypeText,
   extractAllowedComponentsFromJsdoc,
-} from './evidence/allowed-components.js';
-import { getSourceLineMetadata } from './source-line-metadata.js';
+} from '../../evidence/allowed-components.js';
+import { getSourceLineMetadata } from '../../source-line-metadata.js';
 import {
   collectTypePredicateComponentReferences,
   collectRuntimeTypeCheckComponentReferences,
   collectRenderedComponentReferences,
   collectArrayMapRenderComponentReferences,
-} from './evidence/structural-slot-evidence.js';
+} from '../../evidence/structural-slot-evidence.js';
 
 const REACT_ELEMENT_GENERIC_TEST = /(?:React\.)?ReactElement\s*<\s*[A-Za-z_$][\w$.]*/;
 

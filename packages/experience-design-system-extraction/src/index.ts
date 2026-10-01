@@ -23,13 +23,13 @@ export type {
 } from './extract/model/contract.js';
 
 // Framework-specific extractors
-export { extractReactComponents } from './extract/react.js';
-export { extractVueComponents } from './extract/vue.js';
-export { extractVueTsxComponents } from './extract/vue-tsx.js';
-export { extractStencilComponents } from './extract/stencil.js';
-export { extractAstroComponents } from './extract/astro.js';
-export { extractWebComponentDefinitions } from './extract/web-components.js';
-export { extractSvelteComponents } from './extract/svelte.js';
+export { extractReactComponents } from './extract/adapters/react/extractor.js';
+export { extractVueComponents } from './extract/adapters/vue/extractor.js';
+export { extractVueTsxComponents } from './extract/adapters/vue-tsx/extractor.js';
+export { extractStencilComponents } from './extract/adapters/stencil/extractor.js';
+export { extractAstroComponents } from './extract/adapters/astro/extractor.js';
+export { extractWebComponentDefinitions } from './extract/adapters/web-components/extractor.js';
+export { extractSvelteComponents } from './extract/adapters/svelte/extractor.js';
 export {
   extractAllowedComponentsFromTypeText,
   extractAllowedComponentsFromJsdoc,

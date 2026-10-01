@@ -1,5 +1,5 @@
 import os from 'node:os';
-import { basename, dirname, resolve, join } from 'node:path';
+import { dirname, resolve, join } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { parse as parseSvelte } from 'svelte/compiler';
@@ -9,22 +9,19 @@ import type {
   RawPropDefinition,
   RawSlotDefinition,
   ComponentExtractionResult,
-} from './model/component.js';
-import type { ExtractorOptions } from './model/options.js';
-import { computeExtractionScore, deriveNeedsReview } from './scoring.js';
-import { extractAllowedComponentsFromTypeText } from './evidence/allowed-components.js';
-import { runFileExtractionWorkers } from './file-extraction-workers.js';
-import { resolveLocalModule } from './resolve-local-module.js';
+} from '../../model/component.js';
+import type { ExtractorOptions } from '../../model/options.js';
+import { computeExtractionScore, deriveNeedsReview } from '../../scoring.js';
+import { extractAllowedComponentsFromTypeText } from '../../evidence/allowed-components.js';
+import { runFileExtractionWorkers } from '../../file-extraction-workers.js';
+import { resolveLocalModule } from '../../resolve-local-module.js';
+import type { AstNode } from './ast.js';
+import { getSvelteComponentName } from './identity.js';
+import { extractTemplateSlots, mergeSlots } from './slots.js';
 
 type RawSlotDefinitionInternal = RawSlotDefinition & {
   _rawTypeText?: string;
 };
-
-interface AstNode {
-  type: string;
-  loc?: { start?: { line?: number }; end?: { line?: number } };
-  [key: string]: unknown;
-}
 interface Comment {
   type: 'Line' | 'Block';
   value: string;
@@ -534,31 +531,6 @@ async function extractFromSvelteFile(
   }
 
   return { component, warnings, ...(retryContext ? { retryContext } : {}) };
-}
-
-const ANATOMY_FOLDERS = new Set(['anatomy', 'parts']);
-
-function getSvelteComponentName(filePath: string): string {
-  const file = basename(filePath, '.svelte');
-  const parentDir = basename(dirname(filePath));
-  if (file === 'index') return toPascalCase(parentDir);
-  if (ANATOMY_FOLDERS.has(parentDir)) {
-    const grandparent = basename(dirname(dirname(filePath)));
-    if (grandparent && grandparent !== '.' && grandparent !== '/') {
-      return `${toPascalCase(grandparent)}${toPascalCase(file)}`;
-    }
-  }
-  return toPascalCase(file);
-}
-
-function toPascalCase(s: string): string {
-  if (!s) return s;
-  if (/^[A-Z]/.test(s) && !s.includes('-') && !s.includes('_')) return s;
-  return s
-    .split(/[-_]+/)
-    .filter(Boolean)
-    .map((part) => part[0]!.toUpperCase() + part.slice(1))
-    .join('');
 }
 
 function hasV4ExportLetProps(instance: AstNode): boolean {
@@ -1379,65 +1351,4 @@ function extractAllowedValuesFromText(typeText: string): string[] | undefined {
     out.push(m[1]!);
   }
   return out.length > 0 ? out : undefined;
-}
-
-function extractTemplateSlots(fragment: AstNode): RawSlotDefinition[] {
-  const slots: RawSlotDefinition[] = [];
-  const seen = new Set<string>();
-  walk(fragment);
-  return slots;
-
-  function walk(node: AstNode | undefined) {
-    if (!node) return;
-    if (node.type === 'SlotElement') {
-      const name = readSlotName(node);
-      if (!seen.has(name)) {
-        seen.add(name);
-        slots.push({ name, isDefault: name === 'default' });
-      }
-    }
-    const children = (node['nodes'] as AstNode[] | undefined) ?? (node['children'] as AstNode[] | undefined) ?? [];
-    for (const c of children) walk(c);
-    const fragChild = node['fragment'] as AstNode | undefined;
-    if (fragChild) walk(fragChild);
-  }
-}
-
-function readSlotName(slotEl: AstNode): string {
-  const attrs = (slotEl['attributes'] as AstNode[] | undefined) ?? [];
-  for (const attr of attrs) {
-    if (attr['name'] !== 'name') continue;
-    const value = attr['value'] as AstNode[] | AstNode | undefined;
-    if (Array.isArray(value)) {
-      for (const v of value) {
-        if (v.type === 'Text' && typeof v['data'] === 'string') return v['data'] as string;
-      }
-    }
-  }
-  return 'default';
-}
-
-function mergeSlots(
-  fromSnippetProps: RawSlotDefinition[],
-  fromTemplate: RawSlotDefinition[],
-): { slots: RawSlotDefinition[]; mixedWarning: boolean } {
-  if (fromSnippetProps.length === 0) return { slots: fromTemplate, mixedWarning: false };
-  if (fromTemplate.length === 0) return { slots: fromSnippetProps, mixedWarning: false };
-
-  const byName = new Map<string, RawSlotDefinition>();
-  for (const s of fromSnippetProps) byName.set(s.name, s);
-  const snippetHasDefault = fromSnippetProps.some((s) => s.isDefault);
-  let mixed = false;
-  for (const s of fromTemplate) {
-    if (s.isDefault && snippetHasDefault) {
-      mixed = true;
-      continue;
-    }
-    if (byName.has(s.name)) {
-      mixed = true;
-      continue;
-    }
-    byName.set(s.name, s);
-  }
-  return { slots: [...byName.values()], mixedWarning: mixed };
 }

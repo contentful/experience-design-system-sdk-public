@@ -7,7 +7,7 @@ import {
   type SourceFile,
 } from 'ts-morph';
 import { extractAllowedComponentsFromTypeText, type AllowedComponentsContext } from './allowed-components.js';
-import { isIntrinsicJsxElement } from '../tsx-shared.js';
+import { isIntrinsicJsxElement } from '../adapters/support/tsx-shared.js';
 
 type FunctionLike = FunctionDeclaration | ArrowFunction | FunctionExpression;
 

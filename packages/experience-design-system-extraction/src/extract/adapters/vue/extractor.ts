@@ -9,10 +9,10 @@ import type {
   RawPropDefinition,
   RawSlotDefinition,
   ComponentExtractionResult,
-} from './model/component.js';
-import { createSortedExtractionResult, runFileExtractionWorkers } from './file-extraction-workers.js';
-import { resolveLocalModule } from './resolve-local-module.js';
-import { resolveTypeProperty } from './resolve-type-property.js';
+} from '../../model/component.js';
+import { createSortedExtractionResult, runFileExtractionWorkers } from '../../file-extraction-workers.js';
+import { resolveLocalModule } from '../../resolve-local-module.js';
+import { resolveTypeProperty } from '../../resolve-type-property.js';
 
 // @vue/compiler-core NodeTypes enum values (stable since Vue 3.0)
 const ELEMENT_TYPE = 1;

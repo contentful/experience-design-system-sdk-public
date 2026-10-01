@@ -1,11 +1,11 @@
 import type { ComponentExtractor } from './ports/component-extractor.js';
-import { extractAstroComponents } from '../astro.js';
-import { extractReactComponents } from '../react.js';
-import { extractStencilComponents } from '../stencil.js';
-import { extractSvelteComponents } from '../svelte.js';
-import { extractVueTsxComponents } from '../vue-tsx.js';
-import { extractVueComponents } from '../vue.js';
-import { extractWebComponentDefinitions } from '../web-components.js';
+import { extractAstroComponents } from '../adapters/astro/extractor.js';
+import { extractReactComponents } from '../adapters/react/extractor.js';
+import { extractStencilComponents } from '../adapters/stencil/extractor.js';
+import { extractSvelteComponents } from '../adapters/svelte/extractor.js';
+import { extractVueTsxComponents } from '../adapters/vue-tsx/extractor.js';
+import { extractVueComponents } from '../adapters/vue/extractor.js';
+import { extractWebComponentDefinitions } from '../adapters/web-components/extractor.js';
 
 export interface ExtractorFileGroup {
   extractor: ComponentExtractor;
