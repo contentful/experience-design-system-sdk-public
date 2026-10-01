@@ -254,6 +254,41 @@ describe('buildPrompt', () => {
     expect(prompt).toContain('React hooks');
   });
 
+  it('passes source evidence for inherited versus redeclared DOM props to generation', async () => {
+    const prompt = await buildPrompt({
+      skill: 'components',
+      mode: 'autonomous',
+      rawComponentsInline: JSON.stringify([
+        {
+          name: 'Card',
+          source: 'src/Card.tsx',
+          framework: 'react',
+          props: [{ name: 'title', type: 'string', required: false }],
+          slots: [],
+        },
+      ]),
+      componentSourceRefs: [
+        {
+          component: 'Card',
+          sourcePath: 'src/Card.tsx',
+          content: `interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
+  title?: string;
+}
+
+export function Card({ title, ...props }: CardProps) {
+  return <div {...props}>{title}</div>;
+}`,
+        },
+      ],
+      outDir: '/fake/out',
+      componentName: 'Card',
+    });
+
+    expect(prompt).toContain('interface CardProps extends React.HTMLAttributes<HTMLDivElement>');
+    expect(prompt).toContain('a component that redeclares one of these with its own type or JSDoc');
+    expect(prompt).toContain('title?: string');
+  });
+
   describe('skillPathOverride (Feature 8)', () => {
     it('reads from override path when provided', async () => {
       const dir = await mkdtemp(join(tmpdir(), 'eds-skill-override-'));
