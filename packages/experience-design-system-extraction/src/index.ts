@@ -15,6 +15,12 @@ export { stripScoringFields } from './types.js';
 
 // Core extraction pipeline
 export { extractComponents } from './extract/pipeline.js';
+export {
+  extractEndpoint,
+  type ExtractionEndpointProgress,
+  type ExtractionEndpointRequest,
+  type ExtractionEndpointResponse,
+} from './extract/endpoint.js';
 
 // Framework-specific extractors
 export { extractReactComponents } from './extract/react.js';

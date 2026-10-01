@@ -157,7 +157,7 @@ The apply flow validates the target, builds a `ManifestPayload` through the shar
 
 ## The Import Orchestrator (headless)
 
-`src/import/orchestrator.ts` runs the full pipeline in non-interactive mode by shelling out to the CLI binary — it does not re-implement step logic. It captures `session=<id>` from `analyze extract` stdout via `/^session=(.+)$/m` and passes it as `--session` to downstream commands.
+The import workflow calls the CLI extraction orchestration boundary directly. `extractProject()` scans the project, calls the extraction package's typed `extractEndpoint()`, resolves composition evidence, and persists the existing `analyze extract` SQLite step before downstream commands consume its session ID. Extraction progress and failures are structured in-process rather than parsed from a hidden command's stdout or stderr.
 
 By default, headless `import` runs `analyze select-agent` to select components automatically. Manual selection is available through the standalone `analyze select` command.
 

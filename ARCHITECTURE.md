@@ -44,6 +44,25 @@ Design system codebase
 
 Component-analysis data between pipeline steps flows through a local SQLite session database (`~/.contentful/experience-design-system-cli/pipeline.db`). The standalone `map tokens` command enriches its session before artifacts are written on demand; `experiences import` does not invoke it. `experiences apply <file>` reads one CDF file containing both component and design-token definitions and builds the request for the sources API.
 
+### Extraction boundary
+
+The import wizard uses an in-process endpoint rather than a hidden extraction
+subcommand:
+
+```text
+WizardApp
+  → CLI extractProject()
+      → extraction-package extractEndpoint()
+          → source files → pre-classified, scored, validated components
+      → composition evidence → SQLite session persistence
+```
+
+The extraction package owns source analysis and extraction-time quality signals
+but does not scan directories, invoke composition agents, or persist sessions.
+The CLI orchestration layer owns those concerns and returns the existing
+session contract to scope review and downstream generation. The persisted step
+label `analyze extract` remains for session compatibility.
+
 A separate JSON file at `~/.config/experiences/runs.json` records each successful wizard session (id, project path, save path, push target, component count) for list and detail views.
 
 When a raw token source is supplied, the wizard performs token generation internally and writes `tokens.json` before it extracts and generates components. For standalone `map tokens`, the generated CDF and DTCG artifacts must be present in the same pipeline session before mapping.
