@@ -146,10 +146,15 @@ Commit the updated snapshot files alongside the code change.
 
 ## Adding a New Framework Extractor
 
-1. Create `packages/experience-design-system-extraction/src/extract/adapters/<framework>/extractor.ts` implementing `ComponentExtractor` from `src/extract/services/ports/component-extractor.ts`
-2. Register it in `packages/experience-design-system-extraction/src/extract/services/extractor-registry.ts` with an ordered `fileFilter`
-3. Keep shared file processing and module/type resolution in `packages/experience-design-system-extraction/src/extract/adapters/support/`
-4. Write extraction-package boundary tests and CLI coverage in the corresponding `test/` directories
+1. Create `packages/experience-design-system-extraction/src/extract/adapters/<framework>/extractor.ts` implementing the `ComponentExtractor` port from `packages/experience-design-system-extraction/src/extract/services/ports/component-extractor.ts`
+2. Register it in `packages/experience-design-system-extraction/src/extract/services/extractor-registry.ts` with a `name`, `fileFilter`, and adapter function
+3. Add focused extraction-package tests under `packages/experience-design-system-extraction/test/` and framework regressions under `packages/experience-design-system-cli/test/analyze/extract/`
+4. Keep shared file processing and module/type resolution in `packages/experience-design-system-extraction/src/extract/adapters/support/`
+5. Write extraction-package boundary tests and CLI coverage in the corresponding `test/` directories
+
+Keep adapters focused on framework syntax and extraction evidence. Request
+validation belongs to the controller, orchestration and policy belong to the
+services, and filesystem scanning or session persistence belongs to the CLI.
 
 ## Branching and Deployment
 

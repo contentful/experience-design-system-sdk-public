@@ -2101,8 +2101,8 @@ export async function extractReactComponents(filePaths: string[]): Promise<Compo
     }
   }
 
-  // Structural evidence (usage, not a declared slot contract) — see
-  // structural-slot-evidence.ts. Only fills slots the typed-slot pass above
+  // Structural evidence (usage, not a declared slot contract) — see the
+  // structural slot evidence pass. Only fills slots the typed-slot pass above
   // found nothing for; a declared contract always takes precedence. File-wide
   // signals (type-predicate functions, `.type === Component` identity checks)
   // are computed once per file and shared across every component in it, since

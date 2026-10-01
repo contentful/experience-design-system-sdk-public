@@ -12,7 +12,7 @@ Nx monorepo with five packages:
 - `packages/experience-design-system-client` — generated API client for the Experience Design System Integrations API (from `openapi.json` via `@hey-api/openapi-ts`); a runtime dependency of the CLI's `apply` command
 - `packages/experience-design-system-types` — shared types, schemas, validation
 
-The CLI extracts React/Vue/Astro/Stencil/Web Component definitions from customer codebases using the TypeScript compiler API (ts-morph), invokes a coding agent to produce CDF artifacts, validates them against JSON schemas, and provides interactive terminal UIs (Ink) for reviewing, finalizing, and pushing them to Contentful ExO.
+The CLI extracts React/Vue/Astro/Stencil/Svelte/Web Component definitions from customer codebases using the TypeScript compiler API (ts-morph), invokes a coding agent to produce CDF artifacts, validates them against JSON schemas, and provides interactive terminal UIs (Ink) for reviewing, finalizing, and pushing them to Contentful ExO.
 
 The supported import pipeline is internal to `experiences import`: **extract → select-agent → internal generation → validate → apply.** When a raw token source is supplied, the wizard performs token generation internally before component extraction and generation; standalone `map tokens` runs only after CDF and DTCG data are available in the same session, and `experiences import` does not invoke it. The extraction and selection stages are implementation modules, not public commands.
 
@@ -102,7 +102,7 @@ In tests, set `EDS_PIPELINE_DB_PATH` to a temp path to avoid polluting the devel
 `packages/experience-design-system-extraction/src/extract/adapters/react/extractor.ts` is the most complex extraction adapter (~2500 lines). Before editing it:
 
 1. Understand the DOM attribute prop surfacing strategy — see "DOM attribute prop surfacing" in `ARCHITECTURE.md`
-2. Understand how SVGProps is handled — it is one of the curated DOM attribute wrapper types (`EXPANDABLE_DOM_ATTRIBUTE_TYPE_NAMES`)
+2. Understand how SVGProps is handled — it is one of the curated DOM attribute wrapper types (`EXPANDABLE_DOM_ATTRIBUTE_TYPE_NAMES` in the adapter)
 
 Key invariant: **never call `getType().getProperties()` on a type that extends a DOM attribute wrapper** — this produces hundreds of inflated props. Use `extractPropsFromInterfaceDeclaration` (which restricts to own-declared members) or `getSyntheticDomAttributeProps` (which uses the curated allowlist).
 

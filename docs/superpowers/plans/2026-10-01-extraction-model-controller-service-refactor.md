@@ -231,20 +231,20 @@ unrelated generated-client codegen.
 
 ### 7. Stabilize exports, documentation, and cleanup
 
-- [ ] Update `src/index.ts` to export the stable controller contract, models,
+- [x] Update `src/index.ts` to export the stable controller contract, models,
   supported adapter entrypoints, and policy helpers intentionally.
-- [ ] Remove only accidental internal exports after checking repository-wide
+- [x] Remove only accidental internal exports after checking repository-wide
   consumers; retain compatibility re-exports when a supported consumer exists.
-- [ ] Update `AGENTS.md`, `ARCHITECTURE.md`, and `CONTRIBUTING.md` paths and
+- [x] Update `AGENTS.md`, `ARCHITECTURE.md`, and `CONTRIBUTING.md` paths and
   diagrams to describe the new package boundaries.
-- [ ] Add a short architecture decision record if the new dependency rules are
+- [x] Add a short architecture decision record if the new dependency rules are
   intended to remain a long-term package invariant.
-- [ ] Remove empty compatibility files and stale path references only after all
+- [x] Remove empty compatibility files and stale path references only after all
   tests and generated declarations pass.
 
-Verification: package build, typecheck, lint, package tests, and affected CLI
-tests pass; `rg` finds no stale `src/analyze/extract` references for this
-package.
+Verification: the extraction package build, typecheck, lint, and tests pass;
+the CLI extraction suite passes 23 files and 334 tests; and scoped `rg` finds no
+stale extraction-package `src/analyze/extract` references.
 
 ## Commit strategy
 
