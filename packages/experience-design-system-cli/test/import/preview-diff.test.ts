@@ -5,7 +5,8 @@ import {
   formatOldProp,
   formatPropDef,
 } from '../../src/import/tui/steps/preview-diff.js';
-import type { ComponentTypeSummary, PropertySummary } from '@contentful/experience-design-system-types';
+import { buildPreviewSummaryLines } from '../../src/import/tui/steps/WizardPreviewStep.js';
+import type { ComponentTypeSummary, PropertySummary, ServerPreviewResponse } from '@contentful/experience-design-system-types';
 
 function makeCurrent(overrides: Partial<ComponentTypeSummary> = {}): ComponentTypeSummary {
   return {
@@ -371,5 +372,22 @@ describe('computeComponentDiffLines', () => {
     expect(removedSlots).toHaveLength(0);
     expect(lines.find((l) => l.text.includes('added'))).toBeDefined();
     expect(lines.find((l) => l.text.includes('removed'))).toBeDefined();
+  });
+});
+
+describe('buildPreviewSummaryLines', () => {
+  it('keeps every component name available to the bounded scroll view', () => {
+    const preview = {
+      components: {
+        new: [{ key: 'NewComponent' }],
+        changed: [{ current: { name: 'ChangedComponent' }, proposed: {}, hasPendingDraftChanges: false }],
+        removed: [{ name: 'RemovedComponent' }],
+        unchanged: [],
+      },
+      tokens: { new: [], changed: [], removed: [], unchanged: [] },
+    } as unknown as ServerPreviewResponse;
+
+    const lines = buildPreviewSummaryLines(preview).map((line) => line.text);
+    expect(lines).toEqual(expect.arrayContaining(['  + NewComponent', ' ~ ChangedComponent', ' ⊘ RemovedComponent']));
   });
 });

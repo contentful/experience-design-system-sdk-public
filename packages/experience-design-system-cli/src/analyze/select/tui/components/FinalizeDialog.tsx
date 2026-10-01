@@ -86,18 +86,16 @@ export function FinalizeDialog({
           <Text> </Text>
         </>
       )}
-      {previewStatus === 'running' && (
-        <>
+      <Box flexDirection="column" height={2}>
+        {previewStatus === 'running' ? (
           <Text dimColor>Previewing deletions against the target space…</Text>
-          <Text> </Text>
-        </>
-      )}
-      {previewStatus === 'error' && (
-        <>
+        ) : previewStatus === 'error' ? (
           <Text color={PALETTE.warning}>{'⚠ Could not preview deletions (the push will still proceed).'}</Text>
+        ) : (
           <Text> </Text>
-        </>
-      )}
+        )}
+        <Text> </Text>
+      </Box>
       {previewStatus === 'done' && removed.length > 0 && (
         <>
           <Text bold color={PALETTE.error}>

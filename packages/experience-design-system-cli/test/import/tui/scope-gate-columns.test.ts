@@ -22,7 +22,7 @@ describe('computeColumnWidths', () => {
   });
 
   it('produces a main list and accepted-components column at wide terminals', () => {
-    const plan = computeColumnWidths(120);
+    const plan = computeColumnWidths(100);
     expect(plan.layout).toBe('two-column');
     expect(plan.main).toBe(SCOPE_GATE_MAIN_COLUMN_WIDTH);
     expect(plan.added).toBe(ACCEPTED_COMPONENTS_COLUMN_WIDTH);

@@ -1,8 +1,8 @@
-/** Sidebar height (rows) — unchanged whether or not the panel is open. */
-export const VISIBLE_COUNT = 20;
+/** Maximum layout rows; the active terminal height determines the actual budget. */
+export const VISIBLE_COUNT = 200;
 
-/** Panel window ceiling (matches LineagePanel's DEFAULT_MAX_ROWS from L2b). */
-export const MAX_PANEL_ROWS = 15;
+/** Maximum supported panel window; normal terminals remain terminal-sized. */
+export const MAX_PANEL_ROWS = 200;
 
 /** Floors — both surfaces stay usable even on a small terminal. */
 export const SIDEBAR_MIN = 4;
@@ -11,8 +11,8 @@ export const MIN_PANEL_ROWS = 4;
 /**
  * Fallback when `stdout.rows` is unavailable (piped output, tests). No TTY
  * means Ink is not interactively repainting, so there is no flicker risk — we
- * assume enough height for the FULL sidebar (BASE_CHROME_OVERHEAD + the full
- * VISIBLE_COUNT) so the non-interactive render is complete and unclipped.
+ * assume enough height for a terminal-sized sidebar so the non-interactive
+ * render is complete and unclipped.
  */
 export const FALLBACK_ROWS = 40;
 
@@ -38,11 +38,8 @@ export const PANEL_BOX_CHROME = 6;
  * header bar, the counter strip (with its blank separator), the cycle banner,
  * the nothing-selected /
  * AI-exclusion hint, the GroupedSidebar box borders + scroll indicator, the
- * focused-detail block, and the wrapping legend region. Measured via the PTY
- * harness against the react-ux-matrix fixture (cycles present = a tall case):
- * the base frame was 39 lines with a 20-row sidebar after the legend row-gap
- * compression, i.e. ≈19 lines of chrome. We use 20 for a one-line safety
- * margin so the total frame stays strictly within `stdout.rows`.
+ * focused-detail block, and the wrapping legend region. The value intentionally
+ * leaves a small safety margin so resize-induced wrapping does not overflow.
  */
 export const BASE_CHROME_OVERHEAD = 18;
 
@@ -68,19 +65,18 @@ export interface LineageLayout {
 
 /**
  * The sidebar height is constant (the panel replaces it in the same slot, so
- * there is nothing to shrink). When the panel is open its entry window is sized
- * to fit the sidebar's footprint AND the terminal — never taller than the
- * sidebar was, so opening lineage cannot grow the frame past `rows`.
+ * there is nothing to shrink). Both values are derived from the terminal so
+ * resizing grows or shrinks the viewport without content-driven layout changes.
  */
 export function computeLineageLayout({ rows, panelOpen, entryCount }: LineageLayoutInput): LineageLayout {
-  const sidebarVisible = VISIBLE_COUNT;
+  const sidebarVisible = clamp(rows - BASE_CHROME_OVERHEAD, SIDEBAR_MIN, VISIBLE_COUNT);
   if (!panelOpen) {
     return { sidebarVisible, panelMaxRows: MAX_PANEL_ROWS };
   }
   // Rows available for panel ENTRIES given the terminal and the panel's box
   // chrome; also never taller than the sidebar footprint it replaces.
   const terminalFit = rows - FIXED_OVERHEAD - PANEL_BOX_CHROME;
-  let panelBase = Math.min(VISIBLE_COUNT, terminalFit);
+  let panelBase = Math.min(MAX_PANEL_ROWS, terminalFit);
   if (entryCount !== undefined && entryCount > 0) {
     panelBase = Math.min(panelBase, entryCount);
   }
@@ -97,12 +93,9 @@ export interface SidebarBudget {
 
 /**
  * L2e — autoscale the BASE frame to the terminal height. Even with the lineage
- * panel closed, a fixed 20-row sidebar plus the always-on chrome can exceed a
- * small terminal's rows, so plain Ink (no alt-screen) full-repaints (`\x1b[2J`)
- * on every cursor move = flicker. This sizes the sidebar's visible-row budget
- * from `stdout.rows` minus `BASE_CHROME_OVERHEAD` so the whole frame fits at
- * 24/30/40 rows, and unifies the panel-open sizing with `computeLineageLayout`
- * so BOTH cases stay within the terminal.
+ * panel closed, the visible-row budget follows `stdout.rows` minus
+ * `BASE_CHROME_OVERHEAD` so the whole frame stays within the terminal while
+ * preserving the shared panel-open sizing behavior.
  *
  * Floor: `BASE_CHROME_OVERHEAD + SIDEBAR_MIN`. Below it `SIDEBAR_MIN`
  * (usability) intentionally wins over the fit — a terminal that small can't
