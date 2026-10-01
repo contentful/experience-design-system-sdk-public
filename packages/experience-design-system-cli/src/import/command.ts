@@ -1,19 +1,31 @@
 import type { Command } from 'commander';
 import { normalizePath } from './path-utils.js';
+import { parseAgentModel, resolveAgent, resolveModel } from './agent-model-resolve.js';
+import { addAgentModelOptions } from '../lib/agent-model-options.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
+import { buildCompositionForwardingOptions } from './composition-options.js';
 import { getInteractiveTerminalSupport, requireInteractiveTerminal } from '../lib/terminal-capabilities.js';
 
 export function registerImportCommand(program: Command): void {
-  program
+  const cmd = program
     .command('import')
     .description('Run the full pipeline: analyze → select → generate → push')
-    .option('--project <path>', 'Path to the project root to analyze', '.')
-    .option('--tokens <path>', 'Path to a raw token source file to import alongside components')
-    .option('--agent <name>', 'Agent to use for generation (overrides credentials.json; falls back to "claude")')
+    .option('--project <path>', 'Path to the project root to analyze', '.');
+  cmd.option(
+    '--tokens <path>',
+    'Path to a raw token source file (SCSS, CSS variables, JS/TS, Style Dictionary, etc.) to classify and import alongside components. Bypasses the interactive token prompt.',
+  );
+  addAgentModelOptions(cmd, {
+    agentDescription:
+      'Agent and optional model as agent:model or "agent model" (overrides credentials.json; falls back to "claude")',
+    includeModel: false,
+    includeBedrock: false,
+  });
+  cmd
     .option(
       '--prompt <stage=value>',
-      'Override a stage prompt (repeatable). value is a file path or literal text, e.g. --prompt composition=./p.md',
+      'Override a composition, selection, token, generation, or token-mapping prompt (repeatable). value is a file path or literal text, e.g. --prompt select=./p.md',
       (v: string, acc: string[]) => [...acc, v],
       [] as string[],
     )
@@ -51,7 +63,6 @@ export function registerImportCommand(program: Command): void {
           initialModel?: string;
           bedrock?: boolean;
           initialProjectPath?: string;
-          compositionMap?: string;
           promptOverrides?: string[];
           noCache?: boolean;
           skipMapTokens?: boolean;
@@ -60,9 +71,9 @@ export function registerImportCommand(program: Command): void {
           initialRawTokensPath?: string;
         };
         const creds = await readExperiencesCredentials();
-        const resolvedAgent = opts.agent || creds.agent || 'claude';
-        const resolvedModel = creds.agentModel || undefined;
-
+        const parsedAgentModel = parseAgentModel(opts.agent);
+        const resolvedAgent = resolveAgent(parsedAgentModel.agent, creds.agent);
+        const resolvedModel = resolveModel(parsedAgentModel.model, creds.agentModel);
         const { waitUntilExit } = render(
           createElement<WizardProps>(WizardApp, {
             initialSpaceId: creds.spaceId,
@@ -72,8 +83,9 @@ export function registerImportCommand(program: Command): void {
             initialAgent: resolvedAgent,
             ...(resolvedModel ? { initialModel: resolvedModel } : {}),
             initialProjectPath: opts.project !== '.' ? normalizePath(opts.project) : undefined,
-            ...(opts.prompt && opts.prompt.length > 0 ? { promptOverrides: opts.prompt } : {}),
+            ...buildCompositionForwardingOptions(opts),
             noCache: opts.cache === false,
+            skipMapTokens: false,
             livePreview: true,
             generatePromptPath: creds.generatePromptPath,
             ...(opts.tokens ? { initialRawTokensPath: normalizePath(opts.tokens) } : {}),
