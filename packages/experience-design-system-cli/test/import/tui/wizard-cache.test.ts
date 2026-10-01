@@ -46,6 +46,16 @@ describe('wizard generate-tokens cache', () => {
     });
     expect(args).toContain('--no-cache');
   });
+
+  it('forwards prompt overrides to token generation', () => {
+    const args = buildGenerateTokensArgs({
+      rawTokensPath: '/tmp/raw-tokens.scss',
+      agent: 'claude',
+      promptOverrides: ['tokens=./tokens.md'],
+    });
+    expect(args).toContain('--prompt');
+    expect(args).toContain('tokens=./tokens.md');
+  });
 });
 
 describe('wizard generate-components cache', () => {
@@ -124,6 +134,16 @@ describe('wizard map-tokens step', () => {
         skipAgent: true,
       }),
     ).toEqual(['map', 'tokens', '--session', 'generated-session', '--agent', 'claude', '--skip-agent']);
+  });
+
+  it('forwards prompt overrides to token mapping', () => {
+    const args = buildMapTokensArgs({
+      sessionId: 'generated-session',
+      agent: 'claude',
+      promptOverrides: ['map-tokens=./map.md'],
+    });
+    expect(args).toContain('--prompt');
+    expect(args).toContain('map-tokens=./map.md');
   });
 
   it('requires both mappable props and raw tokens before invoking the agent', () => {
