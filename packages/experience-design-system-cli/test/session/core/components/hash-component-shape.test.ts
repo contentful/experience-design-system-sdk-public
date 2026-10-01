@@ -32,9 +32,6 @@ describe('hashComponentShape', () => {
     const a = makeComponent({
       slots: [{ name: 'children', isDefault: true, allowedComponents: ['A', 'B'] }],
     });
-    const b = makeComponent({
-      slots: [{ name: 'children', isDefault: true, allowedComponents: ['B', 'A'] }],
-    });
     expect(hashComponentShape(a)).toBe(hashComponentShape(makeComponent({ slots: [{ name: 'children', isDefault: true }] })));
   });
 
