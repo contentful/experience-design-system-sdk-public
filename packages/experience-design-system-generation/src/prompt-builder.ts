@@ -3,43 +3,9 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { flattenDTCG, type CDFComponentEntry } from '@contentful/experience-design-system-types';
+import type { GeneratedCdf, PromptOptions, Skill } from './generate/model/prompt.js';
 
-/** `components` — classify component props; `tokens` — classify design tokens; `select` — decide whether a component belongs in Contentful Experience Orchestration; `map-tokens` — suggest `$token.allowed` restrictions for design-category token props */
-export type Skill = 'components' | 'tokens' | 'select' | 'map-tokens';
-export type Mode = 'autonomous';
-
-/**
- * A component name paired with the source file it was extracted from, for
- * token-mapping evidence. `content` is the real file text (bounded, see
- * MAX_COMPONENT_SOURCE_CHARS) — this pipeline is agent-fs-free by design (see
- * generate-components.md's "you do not write any files"), so the caller must
- * read the file itself and inline the text here rather than handing the
- * agent a path and expecting it to open the file. `null` when the file
- * couldn't be read (moved/deleted since extraction) — callers fall back to
- * inferring from the prop name and $token.kind alone in that case.
- * `siblingFiles` carries the content of files the source file relatively
- * imports (e.g. a co-located `.styles.ts`) — token-resolution logic often
- * lives one hop away from the component file itself. `truncatedSiblingCount`
- * is set when the caller found more resolvable sibling files than it inlines
- * (see MAX_SIBLING_FILES) — surfaced in the prompt so the classifier knows
- * evidence was dropped rather than that the search came up empty.
- */
-export interface ComponentSourceRef {
-  component: string;
-  sourcePath: string;
-  content: string | null;
-  siblingFiles?: Array<{ path: string; content: string }>;
-  truncatedSiblingCount?: number;
-  /**
-   * Properties with at least one use that fell outside the excerpt budget of
-   * the file it sits in. The reader cannot see that use, so its absence is a
-   * gap in the evidence, not evidence of absence.
-   */
-  usesNotShown?: string[];
-}
-
-/** Plain-data shape of the CDF generated so far — component name -> component entry. */
-export type GeneratedCdf = Record<string, CDFComponentEntry>;
+export type { ComponentSourceRef, GeneratedCdf, Mode, PromptOptions, Skill } from './generate/model/prompt.js';
 
 /**
  * Render the warning banner shown when a custom skill prompt is active.
@@ -52,42 +18,6 @@ export function formatCustomPromptBanner(skill: 'components' | 'select', path: s
     `  Bundled invariants (utility-wrapper rejection, description content rules) do NOT apply.\n` +
     `  You are responsible for the prompt's correctness.\n`
   );
-}
-
-export interface PromptOptions {
-  skill: Skill;
-  mode: Mode;
-  rawComponentsInline?: string;
-  rawTokensInline?: string;
-  /** Original filename for raw tokens — used to set the correct code fence language. */
-  rawTokensFilename?: string;
-  tokensInline?: string;
-  tokenMapInline?: string;
-  outDir: string;
-  /** For components skill only: the single component's name (used in error messages). */
-  componentName?: string;
-  /** For map-tokens skill: the CDF generated so far. Filtered internally to design-category token-typed props only. */
-  generatedCdf?: GeneratedCdf;
-  /** For map-tokens skill: the full DTCG token tree. Flattened internally to a path+`$type` index, with `$value` stripped. */
-  tokenTree?: Record<string, unknown>;
-  /** Component source file references — consumption evidence for the components skill, explicit-restriction evidence (comments, allowlists) for map-tokens. */
-  componentSourceRefs?: ComponentSourceRef[];
-  /**
-   * Feature 8: custom prompt path override. When set, this absolute or relative
-   * `.md` path is read in place of the bundled skill file. The bundled-prompt
-   * invariants (utility-wrapper rejection, description content rules, etc.) do
-   * NOT apply under an override — callers are responsible for showing the
-   * appropriate warning banner.
-   */
-  skillPathOverride?: string;
-  /** Inline prompt instructions, taking precedence over the bundled skill or path override. */
-  skillContentOverride?: string;
-  /** JSON-serialized summary of existing space Components. Callers pre-project the shape per skill. */
-  existingComponentsInline?: string;
-  /** JSON-serialized summary of existing space DesignTokens. Callers pre-project the shape per skill. */
-  existingTokensInline?: string;
-  /** JSON-serialized hard allowlist for generated slot allowed-components references. */
-  componentAllowlistInline?: string;
 }
 
 const SKILL_FILES: Record<Skill, string> = {

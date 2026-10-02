@@ -1,14 +1,8 @@
-import type { AgentDebugEvent, AgentAuthStatus, AgentName, AgentRunResult } from './agent-runner.js';
+import type { AgentDebugEvent } from './generate/model/invocation.js';
+import type { AgentInvoker } from './generate/services/ports/agent-invoker.js';
 import { checkAgentAuth, runAgent } from './agent-runner.js';
 
-export interface InvokeAgentOptions {
-  agent: AgentName;
-  model?: string;
-  bedrock?: boolean;
-  prompt: string;
-  timeoutMs: number;
-  onOutput?: (chunk: string) => void;
-}
+export type { AgentInvoker, InvokeAgentOptions } from './generate/services/ports/agent-invoker.js';
 
 /**
  * Abstracts "invoke an agent and get a result back" from the local-subprocess
@@ -16,11 +10,6 @@ export interface InvokeAgentOptions {
  * internal agents service) implements the same contract without importing
  * this package's subprocess transport.
  */
-export interface AgentInvoker {
-  invoke(options: InvokeAgentOptions): Promise<AgentRunResult>;
-  checkAuth(agent: AgentName): Promise<AgentAuthStatus>;
-}
-
 export interface CreateLocalCliAgentInvokerOptions {
   /** Wire in a debug-event sink (e.g. the CLI's own debug logger). No-op by default. */
   onDebugEvent?: AgentDebugEvent;

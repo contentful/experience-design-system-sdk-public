@@ -323,7 +323,7 @@ production implementation files.
 
 ### Phase 2 — Establish model and port boundaries
 
-Status: Pending.
+Status: Complete.
 
 Files:
 
@@ -355,6 +355,12 @@ Verification:
   CLI dependencies.
 - Package typecheck catches unused legacy exports and circular imports.
 - Existing parser, prompt, and CLI consumer tests remain green.
+
+Completed verification: the generation package build, typecheck, lint, and
+tests passed with 6 test files and 182 tests. The CLI typecheck passed, and the
+full CLI suite passed with 241 test files and 2,682 tests. The model layer has
+no Node runtime imports, and the old root source files remain compatibility
+facades while the new model and port modules own the contracts.
 
 ### Phase 3 — Split agent configuration, authentication, and local process execution
 

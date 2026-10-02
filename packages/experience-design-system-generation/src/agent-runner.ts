@@ -1,86 +1,49 @@
 import { spawn } from 'node:child_process';
-import type { AgentName } from './agent-names.js';
+import type { AgentName } from './generate/model/agent.js';
+import type { AgentAuthStatus, AgentDebugEvent, AgentRunResult } from './generate/model/invocation.js';
+import type {
+  ClassifyComponentCall,
+  ClassifyPropCall,
+  ClassifySlotCall,
+  MapTokenPropCall,
+  ParsedMapTokenPropToolCalls,
+  ParsedSelectToolCalls,
+  ParsedTokenToolCalls,
+  ParsedToolCalls,
+  RejectComponentCall,
+  SelectComponentCall,
+  SelectToolCall,
+  SetGroupCall,
+  SetTokenCall,
+  TokenToolCall,
+  ToolCall,
+} from './generate/model/protocol.js';
 
-export { AGENT_NAMES, DEFAULT_AGENT_NAME, isAgentName, type AgentName } from './agent-names.js';
-
-export interface AgentRunResult {
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-  timedOut: boolean;
-}
+export { AGENT_NAMES, DEFAULT_AGENT_NAME, isAgentName } from './generate/model/agent.js';
+export type { AgentName } from './generate/model/agent.js';
+export type { AgentAuthStatus, AgentDebugEvent, AgentRunResult } from './generate/model/invocation.js';
+export type {
+  ClassifyComponentCall,
+  ClassifyPropCall,
+  ClassifySlotCall,
+  ExcludePropCall,
+  MapTokenPropCall,
+  ParsedMapTokenPropToolCalls,
+  ParsedSelectToolCalls,
+  ParsedTokenToolCalls,
+  ParsedToolCalls,
+  RejectComponentCall,
+  SelectComponentCall,
+  SelectToolCall,
+  SetGroupCall,
+  SetTokenCall,
+  TokenToolCall,
+  ToolCall,
+} from './generate/model/protocol.js';
 
 // --- Tool call protocol ---
 
-export interface ClassifyPropCall {
-  tool: 'classify_prop';
-  prop: string;
-  cdf_type: string;
-  cdf_category: 'content' | 'design' | 'state';
-  values?: string[];
-  token_kind?: string;
-  required?: boolean;
-  description?: string;
-  default?: string | boolean;
-  /** Internal LLM rationale; not customer-facing. Persisted to raw_props.rationale. */
-  reason?: string;
-}
-
-export interface ExcludePropCall {
-  tool: 'exclude_prop';
-  prop: string;
-  reason: string;
-}
-
-export interface ClassifyComponentCall {
-  tool: 'classify_component';
-  description?: string;
-  /**
-   * Component-level rationale strings. Surfaced by the `I` ComponentRationalePanel.
-   * Each field is optional; missing fields leave existing DB values untouched
-   * (sparse update semantics in applyToolCalls).
-   */
-  rationale?: {
-    description?: string;
-    props?: string;
-    slots?: string;
-  };
-}
-
-export interface ClassifySlotCall {
-  tool: 'classify_slot';
-  slot: string;
-  required?: boolean;
-  allowed_components?: string[];
-  description?: string;
-  /** Per-slot rationale; persisted to raw_slots.rationale. */
-  rationale?: string;
-}
-
-export type ToolCall = ClassifyPropCall | ExcludePropCall | ClassifyComponentCall | ClassifySlotCall;
-
 // --- Select tool calls ---
-
-export interface SelectComponentCall {
-  tool: 'select_component';
-  name: string;
-  reason?: string;
-  confidence?: number; // 1–5 scale, agent's certainty this belongs in ExO
-}
-
-export interface RejectComponentCall {
-  tool: 'reject_component';
-  name: string;
-  reason?: string;
-  confidence?: number; // 1–5 scale, agent's certainty this should be excluded
-}
-
-export type SelectToolCall = SelectComponentCall | RejectComponentCall;
-
-export interface ParsedSelectToolCalls {
-  calls: SelectToolCall[];
-  warnings: string[];
-}
 
 const VALID_SELECT_TOOL_NAMES = new Set(['select_component', 'reject_component']);
 
@@ -177,32 +140,6 @@ export function parseSelectToolCallLines(stdout: string): ParsedSelectToolCalls 
 }
 
 // --- Token tool calls ---
-
-export interface SetTokenCall {
-  tool: 'set_token';
-  path: string; // dot-notation DTCG path, e.g. "colors.brand.primary"
-  type: string; // DTCG $type, e.g. "color"
-  value: unknown; // $value — may be string, number, array, or object
-  description?: string;
-}
-
-export interface SetGroupCall {
-  tool: 'set_group';
-  path: string; // dot-notation group path, e.g. "colors.brand"
-  description?: string;
-}
-
-export type TokenToolCall = SetTokenCall | SetGroupCall;
-
-export interface ParsedTokenToolCalls {
-  calls: TokenToolCall[];
-  warnings: string[];
-}
-
-export interface ParsedToolCalls {
-  calls: ToolCall[];
-  warnings: string[];
-}
 
 const VALID_TOOL_NAMES = new Set(['classify_prop', 'exclude_prop', 'classify_component', 'classify_slot']);
 const VALID_TOKEN_TOOL_NAMES = new Set(['set_token', 'set_group']);
@@ -328,19 +265,6 @@ export function parseTokenToolCallLines(stdout: string): ParsedTokenToolCalls {
 }
 
 // --- Map-tokens tool calls ---
-
-export interface MapTokenPropCall {
-  tool: 'map_token_prop';
-  component: string;
-  prop: string;
-  /** Narrowed subset of tokens the prop may draw from. Required and non-empty. */
-  token_allowed: string[];
-}
-
-export interface ParsedMapTokenPropToolCalls {
-  calls: MapTokenPropCall[];
-  warnings: string[];
-}
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((v) => typeof v === 'string');
@@ -491,8 +415,6 @@ function codexBedrockConfigArgs(): string[] {
   return ['-c', 'model_provider=amazon-bedrock', '-c', `model_providers.amazon-bedrock.region=${region}`];
 }
 
-export type AgentDebugEvent = (name: string, payload?: Record<string, unknown>) => void;
-
 export function buildArgs(
   agent: AgentName,
   prompt: string,
@@ -641,8 +563,6 @@ export async function runAgent(options: {
     });
   });
 }
-
-export type AgentAuthStatus = 'ok' | 'unauthenticated' | 'not-found';
 
 export async function checkAgentAuth(agent: AgentName): Promise<AgentAuthStatus> {
   const binary = resolveBinary(agent);
