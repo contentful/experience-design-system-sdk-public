@@ -143,4 +143,28 @@ describe('source call-site composition evidence', () => {
     expect(result.edges).toEqual([]);
     expect(result.warnings.join(' ')).toContain('citation');
   });
+
+  it('captures a caller-side child rendered into a named slot', () => {
+    const result = collectSourceCallSiteEvidence(
+      [
+        {
+          path: '/project/Page.tsx',
+          content: [
+            "import { Card } from './Card';",
+            "import { Button } from './Button';",
+            'export function Page() {',
+            '  return <Card><Button slot="actions" /></Card>;',
+            '}',
+          ].join('\n'),
+        },
+        { path: '/project/Card.tsx', content: 'export function Card() { return null; }' },
+        { path: '/project/Button.tsx', content: 'export function Button() { return null; }' },
+      ],
+      [component('Card', '/project/Card.tsx'), component('Button', '/project/Button.tsx')],
+    );
+
+    expect(result.accepted).toEqual([
+      expect.objectContaining({ parent: 'Card', child: 'Button', slot: 'actions', startLine: 4, endLine: 4 }),
+    ]);
+  });
 });
