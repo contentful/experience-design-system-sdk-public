@@ -12,7 +12,7 @@ Nx monorepo with five packages:
 - `packages/experience-design-system-client` — generated API client for the Experience Design System Integrations API (from `openapi.json` via `@hey-api/openapi-ts`); a runtime dependency of the CLI's `apply` command
 - `packages/experience-design-system-types` — shared types, schemas, validation
 
-The CLI extracts React/Vue/Astro/Stencil/Svelte/Web Component definitions from customer codebases using the TypeScript compiler API (ts-morph), invokes a coding agent to produce CDF artifacts, validates them against JSON schemas, and provides interactive terminal UIs (Ink) for reviewing, finalizing, and pushing them to Contentful ExO.
+The CLI extracts React/Vue/Astro/Stencil/Web Component definitions from customer codebases using the TypeScript compiler API (ts-morph), invokes a coding agent to produce CDF artifacts, validates them against JSON schemas, and provides interactive terminal UIs (Ink) for reviewing, finalizing, and pushing them to Contentful ExO.
 
 The supported import pipeline is internal to `experiences import`: **extract → select-agent → internal generation → validate → apply.** When a raw token source is supplied, the wizard performs token generation internally before component extraction and generation; standalone `map tokens` runs only after CDF and DTCG data are available in the same session, and `experiences import` does not invoke it. The extraction and selection stages are implementation modules, not public commands.
 
@@ -99,31 +99,17 @@ In tests, set `EDS_PIPELINE_DB_PATH` to a temp path to avoid polluting the devel
 
 ## The React Extractor
 
-`packages/experience-design-system-extraction/src/extract/adapters/react/extractor.ts` is the most complex extraction adapter (~2500 lines). Before editing it:
+`src/analyze/extract/react.ts` is the most complex file (~2500 lines). Before editing it:
 
 1. Understand the DOM attribute prop surfacing strategy — see "DOM attribute prop surfacing" in `ARCHITECTURE.md`
-2. Understand how SVGProps is handled — it is one of the curated DOM attribute wrapper types (`EXPANDABLE_DOM_ATTRIBUTE_TYPE_NAMES` in the adapter)
+2. Understand how SVGProps is handled — it is one of the curated DOM attribute wrapper types (`EXPANDABLE_DOM_ATTRIBUTE_TYPE_NAMES`)
 
 Key invariant: **never call `getType().getProperties()` on a type that extends a DOM attribute wrapper** — this produces hundreds of inflated props. Use `extractPropsFromInterfaceDeclaration` (which restricts to own-declared members) or `getSyntheticDomAttributeProps` (which uses the curated allowlist).
 
 When adding a new DOM attribute wrapper type (e.g., `TableHTMLAttributes`):
-1. Add it to `EXPANDABLE_DOM_ATTRIBUTE_TYPE_NAMES` in `packages/experience-design-system-extraction/src/extract/adapters/react/extractor.ts`
+1. Add it to `EXPANDABLE_DOM_ATTRIBUTE_TYPE_NAMES` in `react.ts`
 2. Specify its curated prop list and optional parent type
 3. Write a test that verifies the prop count stays bounded
-
-## Extraction package boundaries
-
-The extraction package keeps ownership explicit:
-
-- `src/extract/controller/` validates the in-process endpoint contract.
-- `src/extract/services/` owns orchestration, classification, quality composition, and adapter registration.
-- `src/extract/policies/quality/` contains deterministic authorability, scoring, source-inspection, and validation rules.
-- `src/extract/evidence/` contains source and slot evidence that adapters and policies consume.
-- `src/extract/adapters/<framework>/` contains framework syntax and extraction behavior.
-- `src/extract/adapters/support/` contains shared adapter file-processing, resolution, and TSX mechanics.
-- `src/extract/model/` contains extraction data and contract types.
-
-Add shared adapter mechanics under `adapters/support/` and shared quality rules under `policies/quality/`; do not recreate package-root utility or compatibility buckets.
 
 ## Import Generation Internals
 
@@ -171,7 +157,7 @@ The apply flow validates the target, builds a `ManifestPayload` through the shar
 
 ## The Import Orchestrator (headless)
 
-The import workflow calls the CLI extraction orchestration boundary directly. `extractProject()` scans the project, calls the extraction package's typed `extractEndpoint()`, resolves composition evidence, and persists the existing `analyze extract` SQLite step before downstream commands consume its session ID. Extraction progress and failures are structured in-process rather than parsed from a hidden command's stdout or stderr.
+`src/import/orchestrator.ts` runs the full pipeline in non-interactive mode by shelling out to the CLI binary — it does not re-implement step logic. It captures `session=<id>` from `analyze extract` stdout via `/^session=(.+)$/m` and passes it as `--session` to downstream commands.
 
 By default, headless `import` runs `analyze select-agent` to select components automatically. Manual selection is available through the standalone `analyze select` command.
 
