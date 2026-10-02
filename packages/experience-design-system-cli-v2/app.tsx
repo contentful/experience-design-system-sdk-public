@@ -18,11 +18,25 @@ export type Screen =
   | 'settings-debug-mode'
   | 'upgrade';
 
-export function App(): React.ReactElement {
-  const [screen, setScreen] = useState<Screen>('start');
+export interface AppProps {
+  /** Called when the user picks Import; the host unmounts the app and runs v1. */
+  onLaunchImport?: () => void;
+  /** Set when returning from a v1 import run; opens the result screen. */
+  importExitCode?: number;
+}
+
+export function App({ onLaunchImport, importExitCode }: AppProps): React.ReactElement {
+  const [screen, setScreen] = useState<Screen>(importExitCode === undefined ? 'start' : 'import');
+  const navigate = (next: Screen): void => {
+    if (next === 'import' && onLaunchImport) {
+      onLaunchImport();
+      return;
+    }
+    setScreen(next);
+  };
 
   if (screen === 'import') {
-    return <ImportScreen onDone={() => setScreen('start')} />;
+    return <ImportScreen exitCode={importExitCode} onDone={() => setScreen('start')} />;
   }
   if (screen === 'help') {
     return <HelpScreen onDone={() => setScreen('start')} />;
@@ -43,5 +57,5 @@ export function App(): React.ReactElement {
     return <UpgradeScreen onDone={() => setScreen('start')} />;
   }
 
-  return <HomeScreen onNavigate={setScreen} />;
+  return <HomeScreen onNavigate={navigate} />;
 }

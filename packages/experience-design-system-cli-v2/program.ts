@@ -18,8 +18,27 @@ export function createProgram(): Command {
       const { render } = await import('ink');
       const { createElement } = await import('react');
       const { App } = await import('./app.js');
-      const { waitUntilExit } = render(createElement(App));
-      await waitUntilExit();
+      const { spawnV1Import } = await import('./src/tui/import/spawn-v1-import.js');
+
+      let importExitCode: number | undefined;
+      for (;;) {
+        let launchImport = false;
+        const instance = render(
+          createElement(App, {
+            importExitCode,
+            onLaunchImport: () => {
+              launchImport = true;
+              instance.unmount();
+            },
+          }),
+        );
+        await instance.waitUntilExit();
+        if (!launchImport) return;
+
+        // v1 inherits the terminal, so v2's Ink app must be fully unmounted while
+        // it runs. Otherwise both read the same stdin and keypresses get split.
+        importExitCode = (await spawnV1Import({})).exitCode;
+      }
     });
 
   return program;

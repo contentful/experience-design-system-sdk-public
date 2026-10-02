@@ -44,23 +44,15 @@ export async function spawnV1Import(options: SpawnV1ImportOptions = {}): Promise
   const args = buildArgs(options);
 
   return new Promise((resolvePromise) => {
-    // v1 inherits v2's terminal, pause v2's during v1's execution to avoid input conflicts.
-    process.stdin.pause();
-    const resumeStdin = (): void => {
-      process.stdin.resume();
-    };
-
     const child = spawn('node', [cliPath, ...args], {
       stdio: 'inherit',
     });
 
     child.on('close', (code) => {
-      resumeStdin();
       resolvePromise({ exitCode: code ?? 1, result: undefined, stdout: '', stderr: '' });
     });
 
     child.on('error', (err) => {
-      resumeStdin();
       resolvePromise({ exitCode: 1, result: undefined, stdout: '', stderr: err.message });
     });
   });
