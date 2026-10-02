@@ -1,4 +1,4 @@
-import type { ComponentExtractionResult, RawComponentDefinition } from '../model/component.js';
+import type { ComponentExtractionResult, ExtractionExclusion, RawComponentDefinition } from '../model/component.js';
 
 type ExtractedComponent = RawComponentDefinition;
 
@@ -201,6 +201,7 @@ function choosePreferredComponent(
 
 export function deduplicateComponents(results: readonly ComponentExtractionResult[]): ComponentExtractionResult {
   const allWarnings: string[] = [];
+  const exclusions: ExtractionExclusion[] = [];
   const componentsByKey = new Map<string, ExtractedComponent>();
   const keysByName = new Map<string, string[]>();
   const topLevelFamiliesByRoot = new Map<string, Set<string>>();
@@ -221,6 +222,7 @@ export function deduplicateComponents(results: readonly ComponentExtractionResul
 
   for (const result of results) {
     allWarnings.push(...result.warnings);
+    exclusions.push(...(result.exclusions ?? []));
     for (const component of result.components) {
       const scopeKey = getFamilyScopeKey(component.source, component.name, topLevelFamiliesByRoot);
       const identityKey = `${component.name}::${scopeKey}`;
@@ -230,6 +232,13 @@ export function deduplicateComponents(results: readonly ComponentExtractionResul
         allWarnings.push(
           `Duplicate component "${component.name}" found in ${component.source} (already seen in ${existing.source}); ${selected.reason}`,
         );
+        exclusions.push({
+          itemType: 'component',
+          name: selected.loser.name,
+          source: selected.loser.source,
+          reason: `duplicate identity; ${selected.reason}`,
+          stage: 'duplicate-filter',
+        });
         componentsByKey.set(identityKey, selected.winner);
         continue;
       }
@@ -253,5 +262,6 @@ export function deduplicateComponents(results: readonly ComponentExtractionResul
   return {
     components: [...componentsByKey.values()].sort((a, b) => a.name.localeCompare(b.name)),
     warnings: allWarnings,
+    exclusions,
   };
 }

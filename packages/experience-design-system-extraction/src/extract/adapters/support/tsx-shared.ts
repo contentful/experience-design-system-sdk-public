@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { Node, Project, SyntaxKind, type SourceFile, type Type } from 'ts-morph';
 import ts from 'typescript';
-import type { ExtractionExclusion } from '../types.js';
+import type { ExtractionExclusion } from '../../model/component.js';
 
 type WorkspacePackageManifest = {
   name: string;

@@ -15,11 +15,10 @@ import {
 } from '../session/db.js';
 import { findSlotCycles, suggestCycleBreakEdge } from '../analyze/cycle-detection.js';
 import { resolveMapping } from '../analyze/composition/resolve-mapping.js';
-import { loadUserMap, resolveCompositionSources } from '../analyze/composition/resolve-mapping-cli.js';
+import { resolveCompositionSources } from '../analyze/composition/resolve-mapping-cli.js';
 import { selectCandidateFiles, capCandidatesToPromptBudget } from '../analyze/composition/candidate-files.js';
 import { buildCompositionInputHash } from '../analyze/composition/composition-cache-key.js';
 import { collectManifestDocEdges } from '../analyze/composition/manifest-doc-evidence.js';
-import type { InterchangeMap } from '../analyze/composition/interchange-schema.js';
 import { parsePromptOverrides, resolvePromptOverride } from '../lib/prompt-overrides.js';
 import {
   agentSupportsBedrock,
@@ -46,7 +45,6 @@ export interface ExtractProjectOptions {
   dir?: string;
   resolveUnreachable?: 'auto' | 'always' | 'never';
   compositionRefresh?: boolean;
-  compositionMap?: string;
   prompt?: string[];
   agent?: string;
   bedrock?: boolean;
@@ -279,13 +277,6 @@ export async function extractProject(opts: ExtractProjectOptions): Promise<Extra
     const warnings = [...extraction.warnings];
 
     const sources = resolveCompositionSources(opts);
-    let userMap: InterchangeMap | undefined;
-    if (opts.compositionMap) {
-      const loaded = await loadUserMap(opts.compositionMap);
-      if (!loaded.ok) throw new Error(loaded.error);
-      userMap = loaded.map;
-    }
-
     const { overrides: promptOverrides, errors: promptErrors } = parsePromptOverrides(opts.prompt ?? []);
     if (promptErrors.length > 0) throw new Error(promptErrors.join('; '));
 
@@ -339,7 +330,6 @@ export async function extractProject(opts: ExtractProjectOptions): Promise<Extra
     });
     const result = await resolveMapping({
       components: validatedComponents,
-      ...(userMap ? { userMap } : {}),
       ...(manifestDocEdges.length > 0 ? { extraEdges: manifestDocEdges } : {}),
       forceAgent: sources.forceAgent,
       files: promptFiles,
