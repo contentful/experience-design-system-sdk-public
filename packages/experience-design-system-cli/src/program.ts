@@ -158,7 +158,7 @@ export function createProgram(): Command {
     const { analyticsDisabled } = await readExperiencesCredentials();
     setPersistedAnalyticsDisabled(analyticsDisabled ?? false);
     noteCommandStart(commandChain);
-    await beginCommand(commandChain);
+    await beginCommand(commandChain, {});
   });
 
   program.hook('postAction', async () => {

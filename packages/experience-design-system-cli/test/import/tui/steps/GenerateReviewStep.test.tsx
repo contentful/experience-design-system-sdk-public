@@ -197,18 +197,18 @@ describe('GenerateReviewStep — form by default (Fix 1)', () => {
     expect(backFrame).not.toMatch(/GENERATED DEFINITION \(read-only\)/);
   });
 
-  it('hint shows "show JSON" / "hide JSON" labels reflecting the toggle', async () => {
+  it('does not advertise the JSON toggle in the compact control bar', async () => {
     const { lastFrame, stdin } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
     await tick();
     let frame = lastFrame() ?? '';
-    expect(frame).toMatch(/\[J\] show JSON/);
+    expect(frame).not.toMatch(/\[J\] show JSON/);
 
     stdin.write('J');
     await tick();
     frame = lastFrame() ?? '';
-    expect(frame).toMatch(/\[J\] hide JSON/);
+    expect(frame).not.toMatch(/\[J\] hide JSON/);
   });
 });
 
@@ -708,7 +708,7 @@ describe('GenerateReviewStep — diff summary panel (R2)', () => {
     const frame = lastFrame() ?? '';
     expect(frame).toMatch(/Button/);
     expect(frame).toMatch(/\[Tab\] focus panel/);
-    expect(frame).toMatch(/accept all/);
+    expect(frame).not.toMatch(/accept all/);
   });
 });
 
@@ -1323,11 +1323,11 @@ describe('GenerateReviewStep — GA-3 cycle features (A1/A2/A7/A8)', () => {
     return utils;
   }
 
-  it('legend labels [o] "only cycles" (filter) and [c] "cycle list" (panel) distinctly', async () => {
+  it('does not advertise secondary cycle controls in the compact legend', async () => {
     const { lastFrame } = await renderWithCycle();
     const frame = stripAnsi(lastFrame() ?? '');
-    expect(frame).toMatch(/\[o\]\s*only cycles/);
-    expect(frame).toMatch(/\[c\]\s*cycle list/);
+    expect(frame).not.toMatch(/\[o\]\s*only cycles/);
+    expect(frame).not.toMatch(/\[c\]\s*cycle list/);
   });
 
   it('filters to cycle participants when [o] is pressed from the review panel', async () => {
@@ -2956,11 +2956,11 @@ describe('GenerateReviewStep — view toggle (T8)', () => {
     return utils;
   }
 
-  it('legend advertises [L] flat when sidebar is focused', async () => {
+  it('does not advertise [L] flat in the compact legend', async () => {
     const { lastFrame } = await renderToggleFixture();
     const out = lastFrame() ?? '';
-    expect(out).toContain('[L]');
-    expect(out).toContain('flat');
+    expect(out).not.toContain('[L]');
+    expect(out).not.toContain('flat');
   });
 
   it('pressing [L] toggles to flat view (composite tree glyphs disappear)', async () => {
@@ -3295,7 +3295,7 @@ describe('GenerateReviewStep — undo/redo + reload-from-save (T4)', () => {
     );
     await tick();
     const frame = (lastFrame() ?? '').replace(/\s+/g, ' ');
-    expect(frame).toContain('[Ctrl+Z/Y/R] undo/redo/reload');
+    expect(frame).not.toContain('[Ctrl+Z/Y/R] undo/redo/reload');
   });
 });
 
@@ -3545,7 +3545,7 @@ describe('GenerateReviewStep — [i] jump-and-filter (T5b)', () => {
     expect(lastFrame() ?? '').toContain('RATIONALE');
   });
 
-  it('legend advertises [i] focus lineage without inline rationale controls', async () => {
+  it('does not advertise [i] focus lineage in the compact legend', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(CHAIN);
     const { lastFrame } = render(
@@ -3554,7 +3554,7 @@ describe('GenerateReviewStep — [i] jump-and-filter (T5b)', () => {
     await tick();
 
     const frame = (lastFrame() ?? '').replace(/\[[0-9;]*m/g, '').replace(/\s+/g, ' ');
-    expect(frame).toMatch(/\[i\][^\n]*focus lineage/);
+    expect(frame).not.toMatch(/\[i\][^\n]*focus lineage/);
     expect(frame).not.toMatch(/\[p\][^\n]*rationale/);
   });
 });
@@ -3568,7 +3568,7 @@ describe('GenerateReviewStep — undo/redo legend + h help overlay (L3b)', () =>
     );
     await tick();
     const frame = stripAnsi(lastFrame() ?? '');
-    expect(frame).toContain('Ctrl+Z/Y/R');
+    expect(frame).not.toContain('Ctrl+Z/Y/R');
     expect(frame).not.toContain('Cmd+Z');
     expect(frame).not.toContain('Cmd+Y');
   });
@@ -3692,7 +3692,7 @@ describe('GenerateReviewStep — breaking-changes goto-banner (L6)', () => {
     await tick();
     lastOnResult!(previewWithBreaking());
     await tick();
-    expect(stripAnsiL6(lastFrame() ?? '')).toContain('[b] breaking changes');
+    expect(stripAnsiL6(lastFrame() ?? '')).toContain('[b] 1 breaking change');
   });
 
   const SAMPLE_BUTTON = {
@@ -4112,7 +4112,7 @@ describe('GenerateReviewStep — category filters (L8)', () => {
     expect(filtered).toContain('Keeper');
   });
 
-  it('L11: legend advertises [w] and (with cycles) [o] but NOT a [d] deleted filter', async () => {
+  it('L11: compact legend omits [w] and [o] and does not advertise a [d] deleted filter', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
       { key: 'CycleA', entry: CYCLE_A },
@@ -4133,8 +4133,8 @@ describe('GenerateReviewStep — category filters (L8)', () => {
     );
     await tick();
     const out = stripAnsi(lastFrame() ?? '');
-    expect(out).toContain('[o]');
-    expect(out).toContain('[w]');
+    expect(out).not.toContain('[o]');
+    expect(out).not.toContain('[w]');
     expect(out).not.toContain('[d] deleted');
   });
 
@@ -4151,7 +4151,7 @@ describe('GenerateReviewStep — category filters (L8)', () => {
     expect(out).not.toMatch(/Deleted/);
   });
 
-  it('L11: GR legend disambiguates [c] cycle list vs [o] only cycles', async () => {
+  it('L11: GR compact legend omits [c] and [o] secondary cycle controls', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
       { key: 'CycleA', entry: CYCLE_A },
@@ -4172,8 +4172,8 @@ describe('GenerateReviewStep — category filters (L8)', () => {
     );
     await tick();
     const out = stripAnsi(lastFrame() ?? '');
-    expect(out).toContain('[c] cycle list');
-    expect(out).toContain('[o] only cycles');
+    expect(out).not.toContain('[c] cycle list');
+    expect(out).not.toContain('[o] only cycles');
   });
 
   it('L11: GR bottom legend matches the compact ScopeGate key', async () => {
@@ -4189,9 +4189,9 @@ describe('GenerateReviewStep — category filters (L8)', () => {
     expect(out).toContain('[f] continue/finalize');
     expect(out).toContain('[h] help');
     expect(out).toContain('[q] quit');
-    expect(out).toContain('[L] flat');
-    expect(out).toContain('[i] focus lineage');
-    expect(out).toContain('[Ctrl+Z/Y/R] undo/redo/reload');
+    expect(out).not.toContain('[L] flat');
+    expect(out).not.toContain('[i] focus lineage');
+    expect(out).not.toContain('[Ctrl+Z/Y/R] undo/redo/reload');
   });
 
   it('L11: GR help panel lists P (not I) for component rationale', async () => {
@@ -4271,7 +4271,7 @@ describe('GenerateReviewStep — GA-1 (A3/A5/A6)', () => {
     expect(filtered).not.toMatch(/^.*Reject.*\[[ ✓✗×]\]/m);
   });
 
-  it('A3: [w] filter legend advertises "only breaking" and NOT "only broken"', async () => {
+  it('A3: [w] filter remains available but is not advertised in the compact legend', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Alpha', entry: leaf('Alpha') }]);
     const { lastFrame } = render(
@@ -4279,7 +4279,7 @@ describe('GenerateReviewStep — GA-1 (A3/A5/A6)', () => {
     );
     await tick();
     const out = stripAnsi(lastFrame() ?? '');
-    expect(out).toContain('only breaking');
+    expect(out).not.toContain('only breaking');
     expect(out).not.toContain('only broken');
   });
 
@@ -4508,12 +4508,12 @@ describe('GenerateReviewStep — groups re-expand after reload (A2-1)', () => {
 });
 
 describe('GenerateReviewStep — token review panel', () => {
-  it('shows the [t] token review hint when the selected component has a suggestion', async () => {
+  it('does not advertise token review in the compact control bar', async () => {
     const { lastFrame } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
     await tick();
-    expect(lastFrame() ?? '').toMatch(/\[t\] token review/);
+    expect(lastFrame() ?? '').not.toMatch(/\[t\] token review/);
   });
 
   it('opens the token review panel on [t] and lists the suggested prop', async () => {
@@ -4557,7 +4557,7 @@ describe('GenerateReviewStep — token review editing', () => {
     }
     stdin.write('\x13');
     await tick();
-    expect(lastFrame() ?? '').toMatch(/\[t\] token review/);
+    expect(lastFrame() ?? '').not.toMatch(/\[t\] token review/);
   });
 
   it('shows and opens token review after Tab focuses the prop list', async () => {

@@ -222,6 +222,19 @@ export function __resetDebugLoggerForTest(): void {
   delete process.env[DEBUG_LOG_ENV];
 }
 
+/** Resolve debug mode from an explicit option, environment, or saved settings. */
+export function resolveDebugMode(opts: { debug?: boolean }, configDebug?: boolean): boolean {
+  if (opts.debug !== undefined) return opts.debug;
+  const env = process.env['EDSI_DEBUG'];
+  if (env !== undefined && env !== '') {
+    const value = env.toLowerCase();
+    if (value === '1' || value === 'true' || value === 'yes' || value === 'on') return true;
+    if (value === '0' || value === 'false' || value === 'no' || value === 'off') return false;
+  }
+  if (configDebug !== undefined) return configDebug;
+  return false;
+}
+
 // ── Bright-green banner ─────────────────────────────────────────────────────
 
 /**

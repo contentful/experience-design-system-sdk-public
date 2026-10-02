@@ -331,7 +331,7 @@ export function registerInternalExtractCommand(program: Command): void {
       if (allFilesCached) {
         const cachedComponents = sourceFiles.flatMap((filePath) => cachedByPath.get(filePath)!.components);
         extractionCacheHits = sourceFiles.length;
-        extraction = { components: cachedComponents, warnings: [] };
+        extraction = { components: cachedComponents, warnings: [], exclusions: [] };
         if (!process.stdout.isTTY) {
           process.stderr.write(
             `progress=extract:${sourceFiles.length}/${sourceFiles.length}:${cachedComponents.length}\n`,
@@ -609,7 +609,7 @@ export function registerInternalExtractCommand(program: Command): void {
       }
     }
 
-    await retryDatabaseWrite(() => storeRawComponents(db, sessionId, validatedComponents));
+    await retryDatabaseWrite(() => storeRawComponents(db, sessionId, validatedComponents, { preserveStatus: true }));
 
     const cycleInput = validatedComponents.map((c) => ({
       name: c.name,

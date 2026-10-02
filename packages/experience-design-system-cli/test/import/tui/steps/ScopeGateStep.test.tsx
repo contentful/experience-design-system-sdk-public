@@ -326,23 +326,23 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       expect(frame).toMatch(/Cycle 1:.*NodeA.*\[slotA\].*NodeB.*\[slotB\].*NodeA/);
     });
 
-    it('compact controls advertise cycle and breaking filters', () => {
+    it('compact controls omit secondary cycle and breaking filters', () => {
       const { lastFrame } = render(
         <ScopeGateStep components={FIXTURE_2CYCLE} onConfirm={() => {}} onQuit={() => {}} />,
       );
       expect(lastFrame() ?? '').toContain('[f] continue/finalize');
-      expect(lastFrame() ?? '').toContain('[o] only cycles');
-      expect(lastFrame() ?? '').toContain('[c] cycle list');
-      expect(lastFrame() ?? '').toContain('[w] only breaking');
+      expect(lastFrame() ?? '').not.toContain('[o] only cycles');
+      expect(lastFrame() ?? '').not.toContain('[c] cycle list');
+      expect(lastFrame() ?? '').not.toContain('[w] only breaking');
     });
 
-    it('[c] is a no-op when no cycles exist', () => {
+    it('[c] is a no-op when no cycles exist and is not advertised', () => {
       const noCycles = [{ name: 'Solo', componentId: 's' }];
       const { lastFrame, stdin } = render(
         <ScopeGateStep components={noCycles} onConfirm={() => {}} onQuit={() => {}} />,
       );
       const before = lastFrame() ?? '';
-      expect(before).toContain('[c] cycle list');
+      expect(before).not.toContain('[c] cycle list');
       stdin.write('c');
       const after = lastFrame() ?? '';
       expect(after).not.toContain('Cycles detected');
@@ -1563,13 +1563,13 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       expect(stripAnsi(lastFrame() ?? '')).toContain('Standalone');
     });
 
-    it('shows cycle and breaking filters in the compact banner', async () => {
+    it('omits cycle and breaking filters from the compact banner', async () => {
       const { lastFrame } = render(<ScopeGateStep components={FIX} onConfirm={() => {}} onQuit={() => {}} />);
       await new Promise((r) => setTimeout(r, 20));
       const out = stripAnsi(lastFrame() ?? '');
-      expect(out).toContain('[w] only breaking');
-      expect(out).toContain('[o] only cycles');
-      expect(out).toContain('[c] cycle list');
+      expect(out).not.toContain('[w] only breaking');
+      expect(out).not.toContain('[o] only cycles');
+      expect(out).not.toContain('[c] cycle list');
     });
 
     it('does not advertise a [d] deleted filter (ScopeGate has no deleted concept)', async () => {
@@ -1588,13 +1588,13 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       { name: 'Standalone', componentId: 's' },
     ];
 
-    it('shows [c], [o], and [w] filters in the legend when cycles exist', async () => {
+    it('omits [c], [o], and [w] filters from the legend when cycles exist', async () => {
       const { stdin, lastFrame } = render(<ScopeGateStep components={CYC} onConfirm={() => {}} onQuit={() => {}} />);
       await new Promise((r) => setTimeout(r, 20));
       const legend = stripAnsi(lastFrame() ?? '');
-      expect(legend).toContain('[c] cycle list');
-      expect(legend).toContain('[o] only cycles');
-      expect(legend).toContain('[w] only breaking');
+      expect(legend).not.toContain('[c] cycle list');
+      expect(legend).not.toContain('[o] only cycles');
+      expect(legend).not.toContain('[w] only breaking');
       stdin.write('h');
       await new Promise((r) => setTimeout(r, 30));
       const help = stripAnsi(lastFrame() ?? '');
@@ -1607,8 +1607,8 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       await new Promise((r) => setTimeout(r, 20));
       const legend = stripAnsi(lastFrame() ?? '');
       expect(legend).toContain('[/] search');
-      expect(legend).toContain('[L] flat');
-      expect(legend).toContain('[i] focus lineage');
+      expect(legend).not.toContain('[L] flat');
+      expect(legend).not.toContain('[i] focus lineage');
     });
 
     it('help panel groups sidebar-view keys (L, l, o, w, i) together', async () => {
