@@ -25,7 +25,7 @@ export interface RawPropDefinition {
    * that select visible content (for example an icon or flag name).
    */
   domAttribute?: boolean;
-  category?: 'content' | 'design' | 'state';
+  category?: 'content' | 'design' | 'state'; //BOI type this
   defaultValue?: string;
   allowedValues?: string[];
   description?: string;
@@ -54,7 +54,7 @@ export interface RawSlotDefinition {
 export interface RawComponentDefinition {
   name: string;
   source: string;
-  framework: 'react' | 'next' | 'vue' | 'astro' | 'web-component' | 'stencil' | 'svelte';
+  framework: 'react' | 'next' | 'vue' | 'astro' | 'web-component' | 'stencil' | 'svelte'; // BOI type this
   props: RawPropDefinition[];
   slots: RawSlotDefinition[];
   /**

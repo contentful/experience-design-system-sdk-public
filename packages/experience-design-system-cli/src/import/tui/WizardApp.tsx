@@ -85,7 +85,7 @@ import { parsePromptOverrides, resolvePromptOverride } from '../../lib/prompt-ov
 import { runSelectionAgent } from './run-selection-agent.js';
 import { useTerminalSize } from '../../tui/use-terminal-size.js';
 import { useScreenTransitionClear } from '../../tui/render-with-goodbye.js';
-import { extractProject } from '../../analyze/extract-endpoint.js';
+import { extractProject } from '../extract-project.js';
 
 const SAVE_CONFIRMATION_DELAY_MS = 1000;
 

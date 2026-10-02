@@ -43,11 +43,13 @@ request and returns structured components, warnings, and typed progress. It
 does not scan directories, invoke composition agents, write the session
 database, or communicate over a network.
 
-The CLI exposes `extractProject` as its orchestration boundary. It resolves
+The CLI exposes `import/extract-project.ts` and its `extractProject` function as
+its orchestration boundary. It resolves
 the project and source directory, scans files, calls the extraction-package
 endpoint, resolves composition evidence, persists the result in the existing
 SQLite session, and returns the session contract needed by the wizard. The
-wizard calls this function directly.
+wizard calls this function directly. The CLI module is an orchestration
+adapter; it does not define or re-export the extraction contract.
 
 The SQLite step label `analyze extract` remains unchanged for session
 compatibility and downstream session resolution. It names persisted pipeline

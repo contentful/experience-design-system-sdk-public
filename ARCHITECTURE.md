@@ -59,9 +59,10 @@ WizardApp
 
 The extraction package owns source analysis and extraction-time quality signals
 but does not scan directories, invoke composition agents, or persist sessions.
-The CLI orchestration layer owns those concerns and returns the existing
-session contract to scope review and downstream generation. The persisted step
-label `analyze extract` remains for session compatibility.
+The CLI `import/extract-project.ts` module is only an orchestration adapter for
+those concerns and returns the existing session contract to scope review and
+downstream generation. The persisted step label `analyze extract` remains for
+session compatibility.
 
 The extraction package is organized by responsibility:
 

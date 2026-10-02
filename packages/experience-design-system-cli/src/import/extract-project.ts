@@ -13,13 +13,13 @@ import {
   lookupCompositionCache,
   storeCompositionCache,
 } from '../session/db.js';
-import { findSlotCycles, suggestCycleBreakEdge } from './cycle-detection.js';
-import { resolveMapping } from './composition/resolve-mapping.js';
-import { loadUserMap, resolveCompositionSources } from './composition/resolve-mapping-cli.js';
-import { selectCandidateFiles, capCandidatesToPromptBudget } from './composition/candidate-files.js';
-import { buildCompositionInputHash } from './composition/composition-cache-key.js';
-import { collectManifestDocEdges } from './composition/manifest-doc-evidence.js';
-import type { InterchangeMap } from './composition/interchange-schema.js';
+import { findSlotCycles, suggestCycleBreakEdge } from '../analyze/cycle-detection.js';
+import { resolveMapping } from '../analyze/composition/resolve-mapping.js';
+import { loadUserMap, resolveCompositionSources } from '../analyze/composition/resolve-mapping-cli.js';
+import { selectCandidateFiles, capCandidatesToPromptBudget } from '../analyze/composition/candidate-files.js';
+import { buildCompositionInputHash } from '../analyze/composition/composition-cache-key.js';
+import { collectManifestDocEdges } from '../analyze/composition/manifest-doc-evidence.js';
+import type { InterchangeMap } from '../analyze/composition/interchange-schema.js';
 import { parsePromptOverrides, resolvePromptOverride } from '../lib/prompt-overrides.js';
 import {
   agentSupportsBedrock,
@@ -36,12 +36,12 @@ import {
 } from '../analytics/index.js';
 import { getDebugLogger } from '../lib/debug-logger.js';
 
-export type ExtractEndpointProgress =
+export type ExtractProjectProgress =
   | { phase: 'scan'; scanned: number }
   | { phase: 'extract'; filesProcessed: number; totalFiles: number; componentsFound: number }
   | { phase: 'composition'; status: string };
 
-export interface ExtractEndpointOptions {
+export interface ExtractProjectOptions {
   project: string;
   dir?: string;
   resolveUnreachable?: 'auto' | 'always' | 'never';
@@ -50,10 +50,10 @@ export interface ExtractEndpointOptions {
   prompt?: string[];
   agent?: string;
   bedrock?: boolean;
-  onProgress?: (progress: ExtractEndpointProgress) => void;
+  onProgress?: (progress: ExtractProjectProgress) => void;
 }
 
-export interface ExtractEndpointResult {
+export interface ExtractProjectResult {
   sessionId: string;
   projectRoot: string;
   sourceDirectory: string;
@@ -220,7 +220,7 @@ async function readCandidateFiles(
   return out;
 }
 
-export async function extractProject(opts: ExtractEndpointOptions): Promise<ExtractEndpointResult> {
+export async function extractProject(opts: ExtractProjectOptions): Promise<ExtractProjectResult> {
   const resolveUnreachable = opts.resolveUnreachable ?? 'auto';
   if (resolveUnreachable !== 'auto' && resolveUnreachable !== 'always' && resolveUnreachable !== 'never') {
     throw new Error(`--resolve-unreachable must be one of 'auto', 'always', or 'never' (got '${resolveUnreachable}')`);

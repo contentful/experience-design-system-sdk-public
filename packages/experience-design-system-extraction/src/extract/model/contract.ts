@@ -2,7 +2,7 @@ import type { RawComponentDefinition } from './component.js';
 import type { ExtractorOptions } from './options.js';
 
 export type ExtractionEndpointProgress = {
-  phase: 'extract';
+  phase: 'extract'; // BOI give each phase a type
   filesProcessed: number;
   totalFiles: number;
   componentsFound: number;

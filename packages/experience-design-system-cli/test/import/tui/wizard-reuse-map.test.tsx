@@ -33,7 +33,7 @@ vi.mock('../../../src/import/tui/steps/GenerateReviewStep.js', () => ({
   GenerateReviewStep: () => <Text>FINAL_REVIEW</Text>,
 }));
 
-vi.mock('../../../src/analyze/extract-endpoint.js', () => ({
+vi.mock('../../../src/import/extract-project.js', () => ({
   extractProject: vi.fn().mockResolvedValue({
     sessionId: 'extract-session',
     projectRoot: '/tmp/project',
