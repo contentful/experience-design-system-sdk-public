@@ -107,6 +107,10 @@ function collectCallerSlotEvidence(
 
     for (const childNode of parentElement.getJsxChildren()) {
       if (!Node.isJsxElement(childNode) && !Node.isJsxSelfClosingElement(childNode)) {
+        if (Node.isJsxText(childNode) && childNode.getText().trim()) {
+          const lines = sourceExcerpt(sourceFile, childNode);
+          rejected.push({ parent, candidate: '<text>', ...lines, reason: 'text-only-child' });
+        }
         continue;
       }
 

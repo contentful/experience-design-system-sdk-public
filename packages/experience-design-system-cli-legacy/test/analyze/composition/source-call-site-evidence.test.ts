@@ -36,7 +36,9 @@ describe('source call-site composition evidence', () => {
         excerpt: 'return <Button>Continue</Button>;',
       }),
     ]);
-    expect(result.rejected).toEqual([]);
+    expect(result.rejected).toEqual([
+      expect.objectContaining({ parent: 'Button', candidate: '<text>', reason: 'text-only-child' }),
+    ]);
   });
 
   it('rejects a non-allowlisted component name instead of treating it as a relationship', () => {
@@ -165,6 +167,23 @@ describe('source call-site composition evidence', () => {
 
     expect(result.accepted).toEqual([
       expect.objectContaining({ parent: 'Card', child: 'Button', slot: 'actions', startLine: 4, endLine: 4 }),
+    ]);
+  });
+
+  it('retains text-only content as rejected evidence', () => {
+    const result = collectSourceCallSiteEvidence(
+      [
+        {
+          path: '/project/Page.tsx',
+          content: "import { Card } from './Card';\nexport function Page() { return <Card>Plain text</Card>; }",
+        },
+      ],
+      [component('Card', '/project/Card.tsx')],
+    );
+
+    expect(result.accepted).toEqual([]);
+    expect(result.rejected).toEqual([
+      expect.objectContaining({ parent: 'Card', candidate: '<text>', reason: 'text-only-child' }),
     ]);
   });
 });
