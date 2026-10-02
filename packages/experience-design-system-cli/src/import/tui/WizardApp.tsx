@@ -9,6 +9,7 @@ import { execFile, spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import { buildRunTeaserLine } from './run-teaser.js';
 import { getDebugLogger } from '../../lib/debug-logger.js';
+import { readExperiencesCredentials, writeExperiencesCredentials } from '../../credentials-store.js';
 import { PathPrompt } from '../../runs/path-prompt.js';
 import { SaveConflictGate } from '../../runs/save-conflict.js';
 import { detectSaveConflict, buildTimestampedSubdir } from '../../runs/save-path-resolver.js';
@@ -70,7 +71,6 @@ import { runScopeGate } from './runScopeGate.js';
 import { checkAgentAuth, type AgentName } from '@contentful/experience-design-system-generation';
 import { normalizePath } from '../path-utils.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../../host-utils.js';
-import { writeExperiencesCredentials } from '../../credentials-store.js';
 import { fetchAndPersistExistingContentfulEntities } from '../../helpers/fetch-and-persist-existing-contentful-entities.js';
 import {
   nextStepAfterScopeGate,
@@ -785,6 +785,7 @@ export function WizardApp({
           ...(state.agentModel ? { model: state.agentModel } : {}),
           ...(selectionPromptText !== undefined ? { promptText: selectionPromptText } : {}),
           ...(selectionPromptPath ? { promptPath: selectionPromptPath } : {}),
+          noCache: effectiveNoCache,
         });
       })()
         .catch((error: unknown) => {
@@ -1060,7 +1061,9 @@ export function WizardApp({
   const confirmCredentials = async (spaceId: string, environmentId: string, cmaToken: string, host: string) => {
     const resolvedHost = resolveWizardHost(host);
     try {
+      const stored = await readExperiencesCredentials();
       await writeExperiencesCredentials({
+        ...stored,
         spaceId,
         environmentId,
         cmaToken,
@@ -1957,15 +1960,14 @@ export function WizardApp({
       case 'generating': {
         const p = state.generateProgress;
         const stepNum = hasTokenStage ? 4 : 3;
-        const progressDetail = p
-          ? `[${p.done}/${p.total}] ${p.current} — this can take 10–30 minutes for large libraries`
-          : `Starting up ${state.agent}... (this can take 10–30 minutes for large libraries — grab a coffee)`;
+        const displayAgent = state.agent.charAt(0).toUpperCase() + state.agent.slice(1);
+        const progressDetail = p ? `[${p.done}/${p.total}] ${p.current}` : `Starting up ${displayAgent}...`;
         return (
           <RunningStep
             stepNumber={stepNum}
             totalSteps={totalSteps}
             title="Generating definitions"
-            description={`${formatAcceptanceSummary({ accepted: state.acceptedCount, autoRejected: state.autoRejectedCount })} ${state.agent} is mapping your TypeScript types to Contentful's CDF format.${hasTokens ? ' Using your design tokens for prop resolution.' : ''}`}
+            description={`${formatAcceptanceSummary({ accepted: state.acceptedCount, autoRejected: state.autoRejectedCount })} ${displayAgent} is mapping your selected components to CDF format.${hasTokens ? ' Using your design tokens for prop resolution.' : ''}`}
             detail={progressDetail}
           />
         );
