@@ -58,4 +58,11 @@ export { formatGenerateProgressLine } from './progress.js';
 export type { GenerateProgressEvent } from './generate/model/progress.js';
 
 // Generation endpoint contract
+export { createGenerateEndpoint } from './generate/controller/generate-endpoint.js';
+export type {
+  GenerateEndpoint,
+  GenerateEndpointDependencies,
+  GeneratePromptService,
+  GenerateProtocolParser,
+} from './generate/controller/generate-endpoint.js';
 export type { GenerateEndpointRequest, GenerateEndpointResponse } from './generate/model/endpoint.js';

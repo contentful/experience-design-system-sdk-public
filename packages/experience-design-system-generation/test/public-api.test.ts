@@ -10,6 +10,7 @@ const CURRENT_RUNTIME_EXPORTS = [
   'buildPrompt',
   'checkAgentAuth',
   'createLocalCliAgentInvoker',
+  'createGenerateEndpoint',
   'describeAgentFailure',
   'extractSentinelOutput',
   'formatCustomPromptBanner',

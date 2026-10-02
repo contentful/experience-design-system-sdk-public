@@ -1,6 +1,6 @@
 # Generation model-controller-service refactor
 
-Status: Phase 5 complete; Phase 6 pending.
+Status: Phase 6 complete; Phase 7 pending.
 
 research_started_at: `2026-10-02T15:41:33Z`
 
@@ -507,6 +507,8 @@ context, preamble, and assembly services.
 
 ### Phase 6 — Implement the generation controller endpoint
 
+Status: Complete.
+
 Files:
 
 - Add `src/generate/controller/generate-endpoint.ts`.
@@ -536,6 +538,12 @@ Verification:
 - Tests cover prompt failure, non-zero exit, timeout, empty calls, parser
   warnings, and successful parsed output for all four stages.
 - Controller tests prove there is no database, filesystem scan, or CLI output.
+
+Completed verification: controller tests passed with 21 generation test files
+and 219 tests; generation typecheck and lint passed, the CLI typecheck passed,
+and the endpoint factory and typed contracts are exported from the package
+root. The endpoint returns prompt-only results for dry runs, preserves raw run
+metadata and parsed warnings, and leaves retries and persistence to callers.
 
 ### Phase 7 — Migrate CLI consumers and retain compatibility exports
 
