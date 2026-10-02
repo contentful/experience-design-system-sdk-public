@@ -439,7 +439,7 @@ describe('FieldEditor — prop category grouping', () => {
       <FieldEditor
         value={GROUPED_COMPONENT}
         width={100}
-        height={30}
+        height={60}
         showHiddenProps
         onChange={vi.fn()}
         onSave={vi.fn()}
@@ -544,8 +544,8 @@ describe('FieldEditor — prop category grouping', () => {
   });
 });
 
-describe('FieldEditor — flat enum-values (Fix 3)', () => {
-  it('renders enum values inline for selected and unselected rows', async () => {
+describe('FieldEditor — wrapped enum-values (Fix 3)', () => {
+  it('renders enum values for selected and unselected rows', async () => {
     const value = JSON.stringify({
       Card: {
         $type: 'component',
@@ -560,15 +560,16 @@ describe('FieldEditor — flat enum-values (Fix 3)', () => {
       },
     });
     const { stdin, lastFrame } = render(
-      <FieldEditor value={value} width={100} height={20} onChange={vi.fn()} onSave={vi.fn()} onDiscard={vi.fn()} />,
+      <FieldEditor value={value} width={100} height={40} onChange={vi.fn()} onSave={vi.fn()} onDiscard={vi.fn()} />,
     );
 
-    expect(lastFrame() ?? '').toContain('values: [primary, secondary, tertiary]');
-    expect(lastFrame() ?? '').toContain('values: []');
+    expect(lastFrame() ?? '').toContain('values:');
+    expect(lastFrame() ?? '').toContain('[primary, secondary, tertiary]');
+    expect(lastFrame() ?? '').toContain('[]');
 
     stdin.write('\r');
     await tick();
-    expect(lastFrame() ?? '').toContain('values: [primary, secondary, tertiary]');
+    expect(lastFrame() ?? '').toContain('[primary, secondary, tertiary]');
   });
 
   it('renders the values legend when activeField is values', async () => {
@@ -2063,7 +2064,7 @@ describe('FieldEditor — keybindings overlay (`?`)', () => {
     const frame = lastFrame() ?? '';
     expect(frame).toMatch(/Keybindings/);
     expect(frame).toMatch(/navigate.*rows|move between rows/i);
-    expect(frame).toMatch(/Ctrl\+S/);
+    expect(frame).not.toMatch(/Ctrl\+S/);
     expect(frame).toMatch(/source-view|source/i);
     expect(frame).toMatch(/\? or Esc to close|press \? .* close/i);
     expect(frame).not.toMatch(/\bd\b.*removed/i);
