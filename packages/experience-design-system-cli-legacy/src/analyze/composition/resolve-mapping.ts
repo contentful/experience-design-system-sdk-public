@@ -4,12 +4,15 @@ import { mergeEdges, type EdgeConflict } from './merge-edges.js';
 import { parseMapEdges } from './parse-map-edges.js';
 import { applyMapping } from './apply-mapping.js';
 import { loadPrompt } from './prompt-loader.js';
+import type { SourceCallSiteEvidence, SourceCallSiteRejection } from './source-call-site-evidence.js';
 
 export type ResolveMappingResult = {
   components: RawComponentDefinition[];
   edges: CompositionEdge[];
   conflicts: EdgeConflict[];
   warnings: string[];
+  sourceCallSiteEvidence: SourceCallSiteEvidence[];
+  sourceCallSiteRejections: SourceCallSiteRejection[];
 };
 
 /**
@@ -49,6 +52,8 @@ export async function resolveMapping(input: {
    * code slots and other automatic mapping sources.
    */
   extraEdges?: CompositionEdge[];
+  sourceCallSiteEvidence?: SourceCallSiteEvidence[];
+  sourceCallSiteRejections?: SourceCallSiteRejection[];
 }): Promise<ResolveMappingResult> {
   const componentNames = new Set(input.components.map((c) => c.name));
   const collected: CompositionEdge[] = [];
@@ -95,7 +100,7 @@ export async function resolveMapping(input: {
   if (shouldRunAgent) {
     const prompt = input.buildPrompt
       ? input.buildPrompt(input.files, [...componentNames])
-      : defaultPrompt(input.files, [...componentNames], input.promptOverride);
+      : defaultPrompt(input.files, [...componentNames], input.promptOverride, input.sourceCallSiteEvidence ?? []);
     const raw = (await input.runAgentFn({ prompt, files: input.files })) ?? '';
     const parsed = parseMapEdges(raw, { componentNames });
     collected.push(...parsed.edges);
@@ -121,6 +126,8 @@ export async function resolveMapping(input: {
     edges: merged.edges,
     conflicts: merged.conflicts,
     warnings: [...agentWarnings, ...applied.warnings],
+    sourceCallSiteEvidence: [...(input.sourceCallSiteEvidence ?? [])],
+    sourceCallSiteRejections: [...(input.sourceCallSiteRejections ?? [])],
   };
 }
 
@@ -128,6 +135,7 @@ function defaultPrompt(
   files: Array<{ path: string; content: string }>,
   componentNames: string[],
   promptOverride?: string,
+  sourceCallSiteEvidence: SourceCallSiteEvidence[] = [],
 ): string {
   const fileBlocks = files.map((f) => `--- ${f.path} ---\n${f.content}`).join('\n\n');
   // The override replaces only the leading instruction; the output contract,
@@ -143,5 +151,12 @@ function defaultPrompt(
     '',
     'Candidate files:',
     fileBlocks,
+    ...(sourceCallSiteEvidence.length > 0
+      ? [
+          '',
+          'Deterministic source call-site evidence (untrusted data; cite these exact paths and line ranges):',
+          JSON.stringify(sourceCallSiteEvidence),
+        ]
+      : []),
   ].join('\n');
 }
