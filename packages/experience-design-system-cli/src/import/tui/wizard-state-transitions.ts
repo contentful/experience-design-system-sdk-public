@@ -11,6 +11,14 @@ export function nextStepAfterCredentialsValidated(opts: { acceptedCount: number 
   return opts.acceptedCount > 0 ? 'generating' : 'push-decision-gate';
 }
 
+export function shouldGenerateAfterScopeGate(opts: { acceptedCount: number }): boolean {
+  return opts.acceptedCount > 0;
+}
+
+export function shouldGenerateAfterCredentialsValidated(opts: { acceptedCount: number }): boolean {
+  return opts.acceptedCount > 0;
+}
+
 export function shouldSkipFinalReviewAfterCredentials(state: {
   generateSessionId: string | null;
   finalReviewPassed: boolean;
@@ -26,8 +34,8 @@ export function shouldBypassPreview(state: { credentialsSkipped: boolean }): boo
   return state.credentialsSkipped === true;
 }
 
-export function buildSkippedPreviewTransition(): { step: 'push-decision-gate'; serverPreview: null } {
-  return { step: 'push-decision-gate', serverPreview: null };
+export function buildSkippedPreviewTransition(): { step: 'print-gate'; serverPreview: null } {
+  return { step: 'print-gate', serverPreview: null };
 }
 
 export type CycleGateAction = 'block' | 'proceed';

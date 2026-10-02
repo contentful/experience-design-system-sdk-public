@@ -18,7 +18,6 @@ describe('ScopeGateStep — rendering', () => {
     expect(out).toContain('DebugPanel');
     expect(out).toContain('Card');
   });
-
   it('surfaces an AI-recommended-exclusions summary when any component is AI-flagged', () => {
     const { lastFrame } = render(
       <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
@@ -83,14 +82,14 @@ describe('ScopeGateStep — accept semantics', () => {
     expect(arg.rejected).not.toContain('Button');
   });
 
-  it('focused-row detail line shows `included` after [a]', () => {
+  it('marks the focused row as accepted after [a]', () => {
     const { lastFrame, stdin } = render(
       <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
     );
     stdin.write('a');
     const out = lastFrame() ?? '';
     expect(out).toContain('Button');
-    expect(out).toContain('included');
+    expect(out).toContain('[✓]');
   });
 });
 
@@ -129,8 +128,8 @@ describe('ScopeGateStep — manual decision wins over streaming AI', () => {
   });
 });
 
-describe('ScopeGateStep — AI reason surfacing on focused row', () => {
-  it('renders the AI reason as focused-row detail on an AI-flagged row', () => {
+describe('ScopeGateStep — AI reason surfacing', () => {
+  it('surfaces the AI reason through the review-flags panel instead of the row detail', () => {
     const { lastFrame, stdin } = render(
       <ScopeGateStep
         components={[
@@ -142,15 +141,16 @@ describe('ScopeGateStep — AI reason surfacing on focused row', () => {
         aiFilterStatus="complete"
       />,
     );
-    stdin.write('\x1b[B');
+    stdin.write('x');
     const out = lastFrame() ?? '';
+    expect(out).toContain('Review flags');
     expect(out).toContain('DebugPanel');
     expect(out).toContain('internal-only widget');
   });
 
-  it('truncates a long AI reason on the focused-row detail line', () => {
+  it('does not render a long AI reason in the default sidebar', () => {
     const longReason = 'a'.repeat(600) + 'TAILMARKER';
-    const { lastFrame, stdin } = render(
+    const { lastFrame } = render(
       <ScopeGateStep
         components={[
           { name: 'Button', componentId: 'c0' },
@@ -161,27 +161,28 @@ describe('ScopeGateStep — AI reason surfacing on focused row', () => {
         aiFilterStatus="complete"
       />,
     );
-    stdin.write('\x1b[B');
+    // The reason is available from [x], but should not push the component
+    // list down in the default view.
     const out = lastFrame() ?? '';
-    expect(out).toContain('…');
+    expect(out).not.toContain('a'.repeat(80));
     expect(out).not.toContain('TAILMARKER');
   });
 });
 
-describe('ScopeGateStep — legend', () => {
-  it('legend advertises accept, reject, lineage, search, continue, quit, toggle-all, accept-non-flagged', () => {
+describe('ScopeGateStep — compact controls', () => {
+  it('advertises the controls available in the default view', () => {
     const { lastFrame } = render(
       <ScopeGateStep components={[{ name: 'Button', componentId: 'c0' }]} onConfirm={() => {}} onQuit={() => {}} />,
     );
     const out = lastFrame() ?? '';
-    expect(out).toContain('accept');
-    expect(out).toContain('reject');
-    expect(out).toContain('toggle all');
-    expect(out).toContain('accept non-flagged');
-    expect(out).toContain('continue');
-    expect(out).toContain('quit');
-    expect(out).toContain('lineage');
-    expect(out).toContain('search');
+    expect(out).toContain('[a/r] accept/reject');
+    expect(out).toContain('[/] search');
+    expect(out).toContain('[f] continue/finalize');
+    expect(out).toContain('[h] help');
+    expect(out).toContain('[q] quit');
+    expect(out).not.toContain('toggle all');
+    expect(out).not.toContain('accept non-flagged');
+    expect(out).not.toContain('lineage');
   });
 
   it('shows [x] review flags only when at least one flagged row exists', () => {
@@ -203,7 +204,7 @@ describe('ScopeGateStep — legend', () => {
       />,
     );
     const aiOut = frameAi() ?? '';
-    expect(aiOut).toContain('[x]');
-    expect(aiOut).toContain('review flags');
+    expect(aiOut).toContain('[x] to see why');
+    expect(aiOut).toContain('flagged by AI');
   });
 });

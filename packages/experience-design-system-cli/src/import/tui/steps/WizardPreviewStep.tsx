@@ -112,6 +112,36 @@ function formatPreviewScrollIndicator(totalLines: number, offset: number, viewpo
   return parts.length > 0 ? ` ${parts.join(' · ')}` : ' ';
 }
 
+function getPreviewScrollOffset(
+  input: string,
+  downArrow: boolean,
+  upArrow: boolean,
+  diffExpanded: boolean,
+  currentOffset: number,
+  viewportHeight: number,
+  maxScroll: number,
+): number | undefined {
+  if ((diffExpanded && (input === 'j' || downArrow)) || (!diffExpanded && downArrow)) {
+    return Math.min(currentOffset + 1, maxScroll);
+  }
+  if ((diffExpanded && (input === 'k' || upArrow)) || (!diffExpanded && upArrow)) {
+    return Math.max(currentOffset - 1, 0);
+  }
+  if (diffExpanded && input === 'f') {
+    return Math.min(currentOffset + viewportHeight, maxScroll);
+  }
+  if (diffExpanded && input === 'b') {
+    return Math.max(currentOffset - viewportHeight, 0);
+  }
+  if (!diffExpanded && input === 'f') {
+    return Math.min(currentOffset + viewportHeight, maxScroll);
+  }
+  if (!diffExpanded && input === 'b') {
+    return Math.max(currentOffset - viewportHeight, 0);
+  }
+  return undefined;
+}
+
 function appendChangedPreviewLine(
   lines: PreviewDiffLine[],
   keyPrefix: string,
@@ -265,40 +295,29 @@ export function WizardPreviewStep({
       setScrollOffset(0);
       return;
     }
-    if (diffExpanded) {
-      if (input === 'j' || key.downArrow) {
-        setScrollOffset((prev) => Math.min(prev + 1, maxScroll));
-        return;
-      }
-      if (input === 'k' || key.upArrow) {
-        setScrollOffset((prev) => Math.max(prev - 1, 0));
-        return;
-      }
-      if (input === 'f') {
-        setScrollOffset((prev) => Math.min(prev + viewportHeight, maxScroll));
-        return;
-      }
-      if (input === 'b') {
-        setScrollOffset((prev) => Math.max(prev - viewportHeight, 0));
-        return;
-      }
-    } else {
-      if (key.downArrow) {
-        setScrollOffset((prev) => Math.min(prev + 1, maxScroll));
-        return;
-      }
-      if (key.upArrow) {
-        setScrollOffset((prev) => Math.max(prev - 1, 0));
-        return;
-      }
-      if (input === 'f') {
-        setScrollOffset((prev) => Math.min(prev + viewportHeight, maxScroll));
-        return;
-      }
-      if (input === 'b') {
-        setScrollOffset((prev) => Math.max(prev - viewportHeight, 0));
-        return;
-      }
+    const nextScrollOffset = getPreviewScrollOffset(
+      input,
+      key.downArrow,
+      key.upArrow,
+      diffExpanded,
+      scrollOffset,
+      viewportHeight,
+      maxScroll,
+    );
+    if (nextScrollOffset !== undefined) {
+      setScrollOffset(
+        (previous) =>
+          getPreviewScrollOffset(
+            input,
+            key.downArrow,
+            key.upArrow,
+            diffExpanded,
+            previous,
+            viewportHeight,
+            maxScroll,
+          ) ?? previous,
+      );
+      return;
     }
     if ((input === 'e' || input === 'E') && onEdit) {
       onEdit();

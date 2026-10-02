@@ -6,7 +6,11 @@ import {
   formatPropDef,
 } from '../../src/import/tui/steps/preview-diff.js';
 import { buildPreviewSummaryLines } from '../../src/import/tui/steps/WizardPreviewStep.js';
-import type { ComponentTypeSummary, PropertySummary, ServerPreviewResponse } from '@contentful/experience-design-system-types';
+import type {
+  ComponentTypeSummary,
+  PropertySummary,
+  ServerPreviewResponse,
+} from '@contentful/experience-design-system-types';
 
 function makeCurrent(overrides: Partial<ComponentTypeSummary> = {}): ComponentTypeSummary {
   return {

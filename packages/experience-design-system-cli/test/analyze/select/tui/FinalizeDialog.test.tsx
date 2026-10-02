@@ -128,7 +128,7 @@ describe('FinalizeDialog', () => {
     expect(renderHeight('done')).toBe(renderHeight('idle'));
   });
 
-  it('windows a long removed list and advertises arrow-key scrolling', () => {
+  it('windows a long removed list and advertises j/k scrolling', () => {
     const removed = Array.from({ length: 10 }, (_, i) => summary(`c${i}`, `Comp${i}`));
     const { lastFrame } = render(
       <FinalizeDialog
@@ -144,7 +144,7 @@ describe('FinalizeDialog', () => {
     );
     const frame = lastFrame() ?? '';
     expect(frame).toMatch(/Removed components \(10\)/);
-    expect(frame).toMatch(/\[↑↓\] scroll/);
+    expect(frame).toMatch(/\[j\/k\] scroll deletions/);
     expect(frame).toMatch(/more below/);
     // Only the first window is shown; a later one is scrolled off.
     expect(frame).toContain('Comp0');

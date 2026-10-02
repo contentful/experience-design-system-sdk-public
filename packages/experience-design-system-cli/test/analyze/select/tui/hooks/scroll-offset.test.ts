@@ -19,14 +19,16 @@ function k(
 }
 
 describe('computeNextScrollOffset', () => {
-  it('j at offset 0 returns 1', () => {
-    expect(computeNextScrollOffset(0, 'j', k(), TOTAL, HEIGHT)).toBe(1);
+  it('j is reserved for field navigation', () => {
+    expect(computeNextScrollOffset(0, 'j', k(), TOTAL, HEIGHT)).toBeNull();
   });
-  it('k at offset 0 clamps to 0', () => {
-    expect(computeNextScrollOffset(0, 'k', k(), TOTAL, HEIGHT)).toBe(0);
+  it('k is reserved for field navigation', () => {
+    expect(computeNextScrollOffset(0, 'k', k(), TOTAL, HEIGHT)).toBeNull();
   });
-  it('j at offset 15 clamps to maxOffset', () => {
-    expect(computeNextScrollOffset(15, 'j', k(), TOTAL, HEIGHT)).toBe(15);
+  it('arrow keys scroll one line', () => {
+    expect(computeNextScrollOffset(0, '', k({ downArrow: true }), TOTAL, HEIGHT)).toBe(1);
+    expect(computeNextScrollOffset(15, '', k({ downArrow: true }), TOTAL, HEIGHT)).toBe(15);
+    expect(computeNextScrollOffset(1, '', k({ upArrow: true }), TOTAL, HEIGHT)).toBe(0);
   });
   it('Ctrl+d at offset 0 returns half-page (floor(5/2)=2)', () => {
     expect(computeNextScrollOffset(0, 'd', k({ ctrl: true }), TOTAL, HEIGHT)).toBe(2);

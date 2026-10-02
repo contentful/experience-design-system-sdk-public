@@ -758,8 +758,7 @@ export function WizardApp({
   const runExtract = async (projectPath: string, showProgress = true) => {
     const outDir = join(resolve(projectPath), '.contentful');
     const existingEntitiesExpected =
-      !state.credentialsSkipped &&
-      Boolean(state.spaceId && state.environmentId && state.cmaToken && projectPath);
+      !state.credentialsSkipped && Boolean(state.spaceId && state.environmentId && state.cmaToken && projectPath);
     update({
       ...(showProgress ? { step: 'extracting' as WizardStep } : {}),
       outDir,
@@ -1862,9 +1861,7 @@ export function WizardApp({
                 : `Source file has not changed since tokens were last generated.\n  ${state.tokensPath}`
             }
             context={
-              state.tokenSourceChanged
-                ? 'The source tokens file changed — regenerating is recommended.'
-                : undefined
+              state.tokenSourceChanged ? 'The source tokens file changed — regenerating is recommended.' : undefined
             }
             continueLabel="Reuse existing tokens"
             skipLabel="Regenerate tokens"
@@ -1917,8 +1914,7 @@ export function WizardApp({
       case 'extracting': {
         const ep = state.extractProgress;
         const compositionComplete = state.compositionPhase === 'done' || state.compositionPhase === 'cache-hit';
-        const tokenGenerationComplete =
-          !state.rawTokensPath || state.tokenGenerationStatus === 'complete';
+        const tokenGenerationComplete = !state.rawTokensPath || state.tokenGenerationStatus === 'complete';
         const extractionTasksComplete =
           ep !== null &&
           ep.totalFiles > 0 &&

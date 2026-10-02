@@ -22,7 +22,7 @@ import {
  */
 
 describe('wizard flow — credentials skipped end-to-end', () => {
-  it('walks extract → scope-gate → credentials → skip → preview-bypass → push-decision-gate → save-only → done without calling previewImport', async () => {
+  it('walks extract → scope-gate → credentials → skip → preview-bypass → print-gate without calling previewImport', async () => {
     // Stub API client. Pin: previewImport must never fire.
     const previewImport = vi.fn();
     const applyImport = vi.fn();
@@ -45,16 +45,15 @@ describe('wizard flow — credentials skipped end-to-end', () => {
     // ── Step: runPreview is called. The guard short-circuits.
     if (shouldBypassPreview(state)) {
       const patch = buildSkippedPreviewTransition();
-      expect(patch.step).toBe('push-decision-gate');
+      expect(patch.step).toBe('print-gate');
       expect(patch.serverPreview).toBeNull();
     } else {
       await previewImport();
     }
     expect(previewImport).not.toHaveBeenCalled();
 
-    // ── Step: push-decision-gate renders with pushDisabled = true and
-    //   only "Save only" is selectable. The operator picks save-only;
-    //   that fires the print-files local-save path (no runPush call).
+    // ── Step: print-gate renders the locally saved files; no push is possible
+    //   without credentials.
 
     // ── Defensive: if a future regression routed an operator into
     //   runPush anyway, the guard refuses and re-routes to print-gate.
