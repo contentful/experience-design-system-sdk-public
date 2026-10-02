@@ -4,6 +4,7 @@ import type { RawComponentDefinition } from '../../types.js';
 export type SourceCallSiteEvidence = {
   parent: string;
   child: string;
+  slot?: string;
   sourcePath: string;
   startLine: number;
   endLine: number;
@@ -18,7 +19,7 @@ export type SourceCallSiteRejection = {
   startLine: number;
   endLine: number;
   excerpt: string;
-  reason: 'unknown-component' | 'unbound-component';
+  reason: 'unknown-component' | 'unbound-component' | 'text-only-child';
 };
 
 export type SourceCallSiteEvidenceResult = {
@@ -82,10 +83,57 @@ export function collectSourceCallSiteEvidence(
     }
   }
 
+  for (const sourceFile of sourceFiles.values()) {
+    collectCallerSlotEvidence(sourceFile, componentNames, collectBoundNames(sourceFile), accepted, rejected);
+  }
+
   return {
     accepted: dedupeEvidence(accepted),
     rejected: dedupeRejections(rejected),
   };
+}
+
+function collectCallerSlotEvidence(
+  sourceFile: SourceFile,
+  componentNames: ReadonlySet<string>,
+  boundNames: ReadonlySet<string>,
+  accepted: SourceCallSiteEvidence[],
+  rejected: SourceCallSiteRejection[],
+): void {
+  for (const parentElement of sourceFile.getDescendantsOfKind(SyntaxKind.JsxElement)) {
+    const parentTag = parentElement.getOpeningElement().getTagNameNode().getText();
+    const parent = parentTag.split('.').at(-1) ?? parentTag;
+    if (!componentNames.has(parent) || !boundNames.has(parentTag)) continue;
+
+    for (const childNode of parentElement.getJsxChildren()) {
+      if (!Node.isJsxElement(childNode) && !Node.isJsxSelfClosingElement(childNode)) {
+        continue;
+      }
+
+      const childTag = Node.isJsxElement(childNode)
+        ? childNode.getOpeningElement().getTagNameNode().getText()
+        : childNode.getTagNameNode().getText();
+      const child = childTag.split('.').at(-1) ?? childTag;
+      if (isIntrinsicTag(child)) continue;
+      const lines = sourceExcerpt(sourceFile, childNode);
+      if (!componentNames.has(child)) {
+        rejected.push({ parent, candidate: child, ...lines, reason: 'unknown-component' });
+        continue;
+      }
+      if (!boundNames.has(childTag) && !boundNames.has(child)) {
+        rejected.push({ parent, candidate: child, ...lines, reason: 'unbound-component' });
+        continue;
+      }
+
+      const slotAttribute = Node.isJsxElement(childNode)
+        ? childNode.getOpeningElement().getAttribute('slot')
+        : childNode.getAttribute('slot');
+      const slotValue =
+        slotAttribute && Node.isJsxAttribute(slotAttribute) ? slotAttribute.getInitializer() : undefined;
+      const slot = slotValue && Node.isStringLiteral(slotValue) ? slotValue.getLiteralValue() : undefined;
+      accepted.push({ parent, child, ...(slot ? { slot } : {}), ...lines, kind: 'jsx-render' });
+    }
+  }
 }
 
 function collectBoundNames(sourceFile: SourceFile): Set<string> {
@@ -140,7 +188,7 @@ function dedupeEvidence(evidence: SourceCallSiteEvidence[]): SourceCallSiteEvide
   const seen = new Set<string>();
   return evidence
     .filter((item) => {
-      const key = `${item.parent}\u0000${item.child}\u0000${item.sourcePath}\u0000${item.startLine}`;
+      const key = `${item.parent}\u0000${item.child}\u0000${item.slot ?? ''}\u0000${item.sourcePath}\u0000${item.startLine}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
