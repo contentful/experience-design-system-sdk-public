@@ -1,6 +1,6 @@
 # Generation model-controller-service refactor
 
-Status: Phase 3 complete; Phase 4 pending.
+Status: Phase 5 complete; Phase 6 pending.
 
 research_started_at: `2026-10-02T15:41:33Z`
 
@@ -414,6 +414,8 @@ dedicated service and adapter modules; the old `agent-runner.ts` and
 
 ### Phase 4 — Isolate protocol parsers
 
+Status: Complete.
+
 Files:
 
 - Add `src/generate/services/protocol-parser-service.ts`.
@@ -444,7 +446,13 @@ Verification:
 - CLI session application tests still accept the exact parsed call unions.
 - Root exports point to the parser service without changing consumer imports.
 
+Completed verification: the generation package build, typecheck, lint, and
+tests passed with 15 test files and 202 tests; the CLI typecheck passed, and
+the full CLI suite passed with 241 test files and 2,682 tests.
+
 ### Phase 5 — Decompose prompt loading, context rendering, and preambles
+
+Status: Complete.
 
 Files:
 
@@ -489,6 +497,13 @@ Verification:
 - Tests cover omitted optional sections, missing source content, truncated
   siblings, unscoped token kinds, custom prompt overrides, and invalid skills.
 - `skills/` packaging tests pass from both source and built output contexts.
+
+Completed verification: the prompt behavior remained covered by the existing
+regression suite plus focused service tests; generation typecheck and lint
+passed, generation tests passed with 19 test files and 209 tests, the CLI
+typecheck passed, and the full CLI suite passed with 241 test files and 2,682
+tests. The prompt builder is now a compatibility facade over explicit skill,
+context, preamble, and assembly services.
 
 ### Phase 6 — Implement the generation controller endpoint
 

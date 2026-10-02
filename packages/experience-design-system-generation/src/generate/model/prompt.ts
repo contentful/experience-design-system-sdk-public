@@ -46,6 +46,7 @@ export interface PromptOptions {
   rawTokensFilename?: string;
   tokensInline?: string;
   tokenMapInline?: string;
+  /** Retained for source compatibility; prompt services do not read or write this path. */
   outDir: string;
   /** For components skill only: the single component's name (used in error messages). */
   componentName?: string;
