@@ -22,7 +22,7 @@ vi.mock('../../../src/import/tui/steps/ScopeGateStep.js', () => ({
     useEffect(() => {
       if (!confirmed.current) {
         confirmed.current = true;
-        onConfirm({});
+        onConfirm({ accepted: ['Card'], rejected: [] });
       }
     }, [onConfirm]);
     return <></>;
