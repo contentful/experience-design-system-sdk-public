@@ -27,8 +27,14 @@ export interface AppProps {
 }
 
 export function App({ onLaunchImport, importExitCode }: AppProps): React.ReactElement {
-  const [screen, setScreen] = useState<Screen>(importExitCode === undefined ? 'start' : 'import');
-  const navigate = (next: Screen): void => {
+  const returnedFromImport = importExitCode !== undefined;
+  const [screen, setScreen] = useState<Screen>(returnedFromImport ? 'import' : 'start');
+
+  const goToStart = (): void => setScreen('start');
+  const goToSettings = (): void => setScreen('settings');
+
+  // Import runs in the v1 CLI, so the host has to unmount this app first.
+  const navigateFromStart = (next: Screen): void => {
     if (next === 'import' && onLaunchImport) {
       onLaunchImport();
       return;
@@ -36,29 +42,24 @@ export function App({ onLaunchImport, importExitCode }: AppProps): React.ReactEl
     setScreen(next);
   };
 
-  if (screen === 'import') {
-    return <ImportScreen exitCode={importExitCode} onDone={() => setScreen('start')} />;
+  switch (screen) {
+    case 'import':
+      return <ImportScreen exitCode={importExitCode} onDone={goToStart} />;
+    case 'help':
+      return <HelpScreen onDone={goToStart} />;
+    case 'upgrade':
+      return <UpgradeScreen onDone={goToStart} />;
+    case 'settings':
+      return <SettingsScreen onNavigate={setScreen} onBack={goToStart} />;
+    case 'settings-configuration':
+      return <ConfigurationScreen onDone={goToSettings} />;
+    case 'settings-opt-in-analytics':
+      return <OptInAnalyticsScreen onDone={goToSettings} />;
+    case 'settings-debug-mode':
+      return <DebugModeScreen onDone={goToSettings} />;
+    case 'start':
+      return <HomeScreen onNavigate={navigateFromStart} />;
   }
-  if (screen === 'help') {
-    return <HelpScreen onDone={() => setScreen('start')} />;
-  }
-  if (screen === 'settings') {
-    return <SettingsScreen onNavigate={setScreen} onBack={() => setScreen('start')} />;
-  }
-  if (screen === 'settings-configuration') {
-    return <ConfigurationScreen onDone={() => setScreen('settings')} />;
-  }
-  if (screen === 'settings-opt-in-analytics') {
-    return <OptInAnalyticsScreen onDone={() => setScreen('settings')} />;
-  }
-  if (screen === 'settings-debug-mode') {
-    return <DebugModeScreen onDone={() => setScreen('settings')} />;
-  }
-  if (screen === 'upgrade') {
-    return <UpgradeScreen onDone={() => setScreen('start')} />;
-  }
-
-  return <HomeScreen onNavigate={navigate} />;
 }
 
 interface AppInstance {
@@ -66,30 +67,29 @@ interface AppInstance {
   waitUntilExit: () => Promise<unknown>;
 }
 
-/**
- * Runs the v2 app. When the user picks Import, the app is fully unmounted and v1
- * runs with the terminal to itself; then the app is re-rendered on the result screen.
- * `renderApp` is the host's Ink render function, so each entry point keeps its own
- * render options.
- */
-export async function runApp(renderApp: (element: React.ReactElement) => AppInstance): Promise<void> {
-  let importExitCode: number | undefined;
-  for (;;) {
-    let launchImport = false;
-    const instance: AppInstance = renderApp(
-      <App
-        importExitCode={importExitCode}
-        onLaunchImport={() => {
-          launchImport = true;
-          instance.unmount();
-        }}
-      />,
-    );
-    await instance.waitUntilExit();
-    if (!launchImport) return;
+type RenderApp = (element: React.ReactElement) => AppInstance;
 
-    // v1 inherits the terminal, so v2's Ink app must be fully unmounted while it
-    // runs. Otherwise both read the same stdin and keypresses get split.
+async function renderUntilExit(renderApp: RenderApp, importExitCode: number | undefined): Promise<boolean> {
+  let importRequested = false;
+
+  const instance: AppInstance = renderApp(
+    <App
+      importExitCode={importExitCode}
+      onLaunchImport={() => {
+        importRequested = true;
+        instance.unmount();
+      }}
+    />,
+  );
+  await instance.waitUntilExit();
+
+  return importRequested;
+}
+
+export async function runApp(renderApp: RenderApp): Promise<void> {
+  let importExitCode: number | undefined;
+
+  while (await renderUntilExit(renderApp, importExitCode)) {
     importExitCode = (await spawnV1Import({})).exitCode;
   }
 }
