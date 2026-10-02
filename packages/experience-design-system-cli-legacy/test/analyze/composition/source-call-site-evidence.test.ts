@@ -186,4 +186,22 @@ describe('source call-site composition evidence', () => {
       expect.objectContaining({ parent: 'Card', candidate: '<text>', reason: 'text-only-child' }),
     ]);
   });
+
+  it('retains a declared relationship without a render site as rejected evidence', () => {
+    const result = collectSourceCallSiteEvidence(
+      [{ path: '/project/Card.tsx', content: 'export function Card() { return null; }' }],
+      [
+        {
+          ...component('Card', '/project/Card.tsx'),
+          slots: [{ name: 'children', isDefault: true, allowedComponents: ['Button'] }],
+        },
+        component('Button', '/project/Button.tsx'),
+      ],
+    );
+
+    expect(result.accepted).toEqual([]);
+    expect(result.rejected).toEqual([
+      expect.objectContaining({ parent: 'Card', candidate: 'Button', reason: 'no-call-site' }),
+    ]);
+  });
 });
