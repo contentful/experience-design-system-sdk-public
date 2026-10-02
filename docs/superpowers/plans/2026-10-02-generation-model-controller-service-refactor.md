@@ -1,6 +1,6 @@
 # Generation model-controller-service refactor
 
-Status: Phase 1 complete; Phase 2 pending.
+Status: Phase 3 complete; Phase 4 pending.
 
 research_started_at: `2026-10-02T15:41:33Z`
 
@@ -364,6 +364,8 @@ facades while the new model and port modules own the contracts.
 
 ### Phase 3 — Split agent configuration, authentication, and local process execution
 
+Status: Complete.
+
 Files:
 
 - Add `src/generate/services/agent-configuration-service.ts`.
@@ -373,12 +375,14 @@ Files:
 - Add `src/generate/adapters/local/local-agent-invoker.ts`.
 - Move or replace `src/agent-invoker.ts` and the invocation sections of
   `src/agent-runner.ts`.
-- Split `test/agent-runner.test.ts` into focused suites such as:
+- Add focused suites:
   `test/services/agent-configuration-service.test.ts`,
   `test/services/agent-auth-service.test.ts`,
   `test/services/failure-diagnostics-service.test.ts`, and
   `test/adapters/local/local-agent-process.test.ts`.
 - Move `test/run-agent-stdin.test.ts` to the local adapter test location.
+- Retain `test/agent-runner.test.ts` as compatibility coverage for parser and
+  facade exports until the parser extraction in Phase 4.
 
 Work:
 
@@ -400,6 +404,13 @@ Verification:
 - No test requires a real agent binary or credentials.
 - CLI composition and generation tests continue to receive the same invoker
   result shape.
+
+Completed verification: the generation package build, typecheck, lint, and
+tests passed with 10 test files and 192 tests. The CLI typecheck passed, and
+the full CLI suite passed with 241 test files and 2,682 tests. Configuration,
+authentication, diagnostics, and local subprocess ownership now live in their
+dedicated service and adapter modules; the old `agent-runner.ts` and
+`agent-invoker.ts` paths remain compatibility facades.
 
 ### Phase 4 — Isolate protocol parsers
 
