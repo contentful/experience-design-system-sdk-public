@@ -16,7 +16,7 @@ import { appendRun, updateRun } from '../../runs/store.js';
 import { buildSourceFingerprint } from '../../runs/fingerprint.js';
 import { TopBar } from '../../analyze/select/tui/components/TopBar.js';
 import { CustomPromptBanner } from './CustomPromptBanner.js';
-import { WelcomeStep } from './steps/WelcomeStep.js';
+import { WelcomeScreen } from '@contentful/experience-design-system-cli-v2/import-steps';
 import { PathValidationStep } from './steps/PathValidationStep.js';
 import { RunningStep } from './steps/RunningStep.js';
 import { GateStep } from './steps/GateStep.js';
@@ -2159,7 +2159,7 @@ export function WizardApp({
     switch (state.step) {
       case 'welcome':
         return (
-          <WelcomeStep
+          <WelcomeScreen
             onContinue={(path) => {
               const projectPath = normalizePath(path);
               const outDir = join(projectPath, '.contentful');

@@ -16,6 +16,8 @@ export function ImportScreen({ onDone }: { onDone: () => void }): React.ReactEle
         if (pipelineResult) {
           setResult(pipelineResult);
           setStage('result');
+        } else if (exitCode === 0) {
+          onDone();
         } else {
           setRunError(`Import process exited with code ${exitCode}`);
           setStage('result');
