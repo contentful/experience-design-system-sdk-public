@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { HomeScreen } from './src/tui/home/home.js';
 import { ImportScreen } from './src/tui/import/PageContainer.js';
 import { spawnV1Import } from './src/tui/import/spawn-v1-import.js';
+import { startReadingTerminal, stopReadingTerminal } from './src/tui/import/terminal-input.js';
 import { HelpScreen } from './src/tui/help/PageContainer.js';
 import { SettingsScreen } from './src/tui/settings/PageContainer.js';
 import { ConfigurationScreen } from './src/tui/settings/contentful-configuration/ContentfulConfigScreen.js';
@@ -20,9 +21,7 @@ export type Screen =
   | 'upgrade';
 
 export interface AppProps {
-  /** Called when the user picks Import; the host unmounts the app and runs v1. */
   onLaunchImport?: () => void;
-  /** Set when returning from a v1 import run; opens the result screen. */
   importExitCode?: number;
 }
 
@@ -33,8 +32,7 @@ export function App({ onLaunchImport, importExitCode }: AppProps): React.ReactEl
   const goToStart = (): void => setScreen('start');
   const goToSettings = (): void => setScreen('settings');
 
-  // Import runs in the v1 CLI, so the host has to unmount this app first.
-  const navigateFromStart = (next: Screen): void => {
+  const navigateFromHome = (next: Screen): void => {
     if (next === 'import' && onLaunchImport) {
       onLaunchImport();
       return;
@@ -58,7 +56,7 @@ export function App({ onLaunchImport, importExitCode }: AppProps): React.ReactEl
     case 'settings-debug-mode':
       return <DebugModeScreen onDone={goToSettings} />;
     case 'start':
-      return <HomeScreen onNavigate={navigateFromStart} />;
+      return <HomeScreen onNavigate={navigateFromHome} />;
   }
 }
 
@@ -69,7 +67,10 @@ interface AppInstance {
 
 type RenderApp = (element: React.ReactElement) => AppInstance;
 
-async function renderUntilExit(renderApp: RenderApp, importExitCode: number | undefined): Promise<boolean> {
+async function renderUntilImportRequestedOrExit(
+  renderApp: RenderApp,
+  importExitCode: number | undefined,
+): Promise<boolean> {
   let importRequested = false;
 
   const instance: AppInstance = renderApp(
@@ -82,6 +83,7 @@ async function renderUntilExit(renderApp: RenderApp, importExitCode: number | un
     />,
   );
   await instance.waitUntilExit();
+  await stopReadingTerminal();
 
   return importRequested;
 }
@@ -89,7 +91,8 @@ async function renderUntilExit(renderApp: RenderApp, importExitCode: number | un
 export async function runApp(renderApp: RenderApp): Promise<void> {
   let importExitCode: number | undefined;
 
-  while (await renderUntilExit(renderApp, importExitCode)) {
+  while (await renderUntilImportRequestedOrExit(renderApp, importExitCode)) {
     importExitCode = (await spawnV1Import({})).exitCode;
+    startReadingTerminal();
   }
 }
