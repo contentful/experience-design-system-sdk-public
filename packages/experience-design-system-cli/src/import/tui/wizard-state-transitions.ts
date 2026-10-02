@@ -6,14 +6,6 @@ export function shouldGenerateAfterCredentialsValidated(opts: { acceptedCount: n
   return opts.acceptedCount > 0;
 }
 
-export function shouldGenerateAfterScopeGate(opts: { acceptedCount: number }): boolean {
-  return opts.acceptedCount > 0;
-}
-
-export function shouldGenerateAfterCredentialsValidated(opts: { acceptedCount: number }): boolean {
-  return opts.acceptedCount > 0;
-}
-
 export function shouldSkipFinalReviewAfterCredentials(state: {
   generateSessionId: string | null;
   finalReviewPassed: boolean;
