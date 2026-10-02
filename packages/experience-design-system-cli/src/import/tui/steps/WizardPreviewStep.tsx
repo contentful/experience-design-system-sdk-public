@@ -13,7 +13,6 @@ import { computeComponentDiffLines } from './preview-diff.js';
 import { StepHeader } from '../components/StepHeader.js';
 import { SpaceEnvironment } from '../components/SpaceEnvironment.js';
 import { usePreviewConfirmationInput } from '../preview-confirmation-input.js';
-import { useTerminalSize } from '../../../tui/use-terminal-size.js';
 import { WindowedPanel, terminalPanelHeight } from '../../../tui/windowed-panel.js';
 
 export interface PreviewDiffLine {
