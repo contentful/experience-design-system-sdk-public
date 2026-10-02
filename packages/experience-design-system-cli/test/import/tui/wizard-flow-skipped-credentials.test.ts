@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  nextStepAfterScopeGate,
-  nextStepAfterCredentialsValidated,
+  shouldGenerateAfterScopeGate,
+  shouldGenerateAfterCredentialsValidated,
   shouldBypassPreview,
   buildSkippedPreviewTransition,
   shouldRefusePush,
@@ -22,7 +22,7 @@ import {
  */
 
 describe('wizard flow — credentials skipped end-to-end', () => {
-  it('walks extract → scope-gate → credentials → skip → preview-bypass → print-gate without calling previewImport', async () => {
+  it('walks the skipped-credentials path to saved output without calling previewImport', async () => {
     // Stub API client. Pin: previewImport must never fire.
     const previewImport = vi.fn();
     const applyImport = vi.fn();
@@ -30,30 +30,25 @@ describe('wizard flow — credentials skipped end-to-end', () => {
     // ── Step: scope-gate confirmed with accepted > 0, push enabled.
     //   Credentials are collected before extraction, so generation starts
     //   immediately after scope approval even when they were skipped.
-    const afterScope = nextStepAfterScopeGate({ acceptedCount: 5 });
-    expect(afterScope).toBe('generating');
+    expect(shouldGenerateAfterScopeGate({ acceptedCount: 5 })).toBe(true);
 
     // ── Step: credentials were skipped at the front of the wizard. The
     //   post-credentials helper still routes accepted components to generate.
     const state = { credentialsSkipped: true, acceptedCount: 5 };
-    const afterCreds = nextStepAfterCredentialsValidated({ acceptedCount: state.acceptedCount });
-    expect(afterCreds).toBe('generating');
+    expect(shouldGenerateAfterCredentialsValidated({ acceptedCount: state.acceptedCount })).toBe(true);
 
     // ── Step: generation completes (out of scope for this pin — we just
-    //   need to land at preview/push-decision-gate).
+    //   need to land at the save/push flow).
 
     // ── Step: runPreview is called. The guard short-circuits.
     if (shouldBypassPreview(state)) {
       const patch = buildSkippedPreviewTransition();
-      expect(patch.step).toBe('print-gate');
+      expect(patch.step).toBe('done');
       expect(patch.serverPreview).toBeNull();
     } else {
       await previewImport();
     }
     expect(previewImport).not.toHaveBeenCalled();
-
-    // ── Step: print-gate renders the locally saved files; no push is possible
-    //   without credentials.
 
     // ── Defensive: if a future regression routed an operator into
     //   runPush anyway, the guard refuses and re-routes to print-gate.
