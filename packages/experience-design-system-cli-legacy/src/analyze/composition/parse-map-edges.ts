@@ -1,4 +1,5 @@
 import type { CompositionEdge } from './interchange-schema.js';
+import type { SourceCallSiteEvidence } from './source-call-site-evidence.js';
 
 /**
  * Lenient JSONL parser for the composition-mapping agent's tool-call output
@@ -13,7 +14,10 @@ export type ParseMapEdgesResult = { edges: CompositionEdge[]; warnings: string[]
 
 const VALID_MAP_TOOL_NAMES = new Set(['map_edge']);
 
-export function parseMapEdges(raw: string, opts: { componentNames: Set<string> }): ParseMapEdgesResult {
+export function parseMapEdges(
+  raw: string,
+  opts: { componentNames: Set<string>; sourceCallSiteEvidence?: readonly SourceCallSiteEvidence[] },
+): ParseMapEdgesResult {
   const edges: CompositionEdge[] = [];
   const warnings: string[] = [];
   const { componentNames } = opts;
@@ -57,6 +61,25 @@ export function parseMapEdges(raw: string, opts: { componentNames: Set<string> }
 
     const edge: CompositionEdge = { parent, child, provenance: 'agent' };
 
+    if (opts.sourceCallSiteEvidence && opts.sourceCallSiteEvidence.length > 0) {
+      const citation = parseCitation(rec.citation);
+      const matchedEvidence = citation
+        ? opts.sourceCallSiteEvidence.find(
+            (evidence) =>
+              evidence.parent === parent &&
+              evidence.child === child &&
+              evidence.sourcePath === citation.sourcePath &&
+              evidence.startLine === citation.startLine &&
+              evidence.endLine === citation.endLine,
+          )
+        : undefined;
+      if (!matchedEvidence) {
+        warnings.push(`map_edge (${parent}→${child}) missing citation matching source evidence — skipped`);
+        continue;
+      }
+      edge.citation = citation;
+    }
+
     if (typeof rec.slot === 'string' && rec.slot) {
       edge.slot = rec.slot;
     }
@@ -76,4 +99,21 @@ export function parseMapEdges(raw: string, opts: { componentNames: Set<string> }
   }
 
   return { edges, warnings };
+}
+
+function parseCitation(value: unknown): CompositionEdge['citation'] | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.sourcePath !== 'string' ||
+    typeof record.startLine !== 'number' ||
+    typeof record.endLine !== 'number' ||
+    !Number.isInteger(record.startLine) ||
+    !Number.isInteger(record.endLine) ||
+    record.startLine < 1 ||
+    record.endLine < record.startLine
+  ) {
+    return undefined;
+  }
+  return { sourcePath: record.sourcePath, startLine: record.startLine, endLine: record.endLine };
 }

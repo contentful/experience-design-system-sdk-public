@@ -102,7 +102,7 @@ export async function resolveMapping(input: {
       ? input.buildPrompt(input.files, [...componentNames])
       : defaultPrompt(input.files, [...componentNames], input.promptOverride, input.sourceCallSiteEvidence ?? []);
     const raw = (await input.runAgentFn({ prompt, files: input.files })) ?? '';
-    const parsed = parseMapEdges(raw, { componentNames });
+    const parsed = parseMapEdges(raw, { componentNames, sourceCallSiteEvidence: input.sourceCallSiteEvidence });
     collected.push(...parsed.edges);
     agentWarnings.push(...parsed.warnings);
   }
@@ -145,7 +145,7 @@ function defaultPrompt(
   return [
     instruction,
     '',
-    'Emit one JSON object per line, each: {"tool":"map_edge","parent":"<Name>","child":"<Name>","slot"?:"<slot>","confidence"?:1-5,"reason":"<cite the file + declaration>"}.',
+    'Emit one JSON object per line, each: {"tool":"map_edge","parent":"<Name>","child":"<Name>","slot"?:"<slot>","confidence"?:1-5,"reason":"<cite the file + declaration>","citation"?:{"sourcePath":"<exact path>","startLine":1,"endLine":1}}.',
     'Use ONLY these exact component names (an edge naming anything else is dropped):',
     componentNames.join(', '),
     '',

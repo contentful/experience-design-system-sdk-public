@@ -83,4 +83,64 @@ describe('source call-site composition evidence', () => {
     expect(prompts[0]).toContain('/project/Card.tsx');
     expect(prompts[0]).toContain('return <Button />;');
   });
+
+  it('accepts an agent edge only when its citation matches source evidence', async () => {
+    const evidence = {
+      parent: 'Card',
+      child: 'Button',
+      sourcePath: '/project/Card.tsx',
+      startLine: 4,
+      endLine: 4,
+      excerpt: 'return <Button />;',
+      kind: 'jsx-render' as const,
+    };
+    const result = await resolveMapping({
+      components: [component('Card', '/project/Card.tsx'), component('Button', '/project/Button.tsx')],
+      files: [{ path: '/project/Card.tsx', content: 'return <Button />;' }],
+      sourceCallSiteEvidence: [evidence],
+      runAgentFn: async () =>
+        JSON.stringify({
+          tool: 'map_edge',
+          parent: 'Card',
+          child: 'Button',
+          citation: { sourcePath: '/project/Card.tsx', startLine: 4, endLine: 4 },
+        }),
+    });
+
+    expect(result.edges).toEqual([
+      expect.objectContaining({
+        parent: 'Card',
+        child: 'Button',
+        citation: { sourcePath: '/project/Card.tsx', startLine: 4, endLine: 4 },
+      }),
+    ]);
+  });
+
+  it('rejects an agent edge with a citation that is not in the evidence set', async () => {
+    const result = await resolveMapping({
+      components: [component('Card', '/project/Card.tsx'), component('Button', '/project/Button.tsx')],
+      files: [{ path: '/project/Card.tsx', content: 'return <Button />;' }],
+      sourceCallSiteEvidence: [
+        {
+          parent: 'Card',
+          child: 'Button',
+          sourcePath: '/project/Card.tsx',
+          startLine: 4,
+          endLine: 4,
+          excerpt: 'return <Button />;',
+          kind: 'jsx-render',
+        },
+      ],
+      runAgentFn: async () =>
+        JSON.stringify({
+          tool: 'map_edge',
+          parent: 'Card',
+          child: 'Button',
+          citation: { sourcePath: '/project/Card.tsx', startLine: 99, endLine: 99 },
+        }),
+    });
+
+    expect(result.edges).toEqual([]);
+    expect(result.warnings.join(' ')).toContain('citation');
+  });
 });
