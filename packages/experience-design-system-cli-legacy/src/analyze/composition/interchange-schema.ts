@@ -15,5 +15,12 @@ export type CompositionEdge = {
   slot?: string;
   /** 1–5 scale, same as select/reject agent tools. */
   confidence?: number;
+  citation?: CompositionCitation;
   provenance: EdgeProvenance;
+};
+
+export type CompositionCitation = {
+  sourcePath: string;
+  startLine: number;
+  endLine: number;
 };
