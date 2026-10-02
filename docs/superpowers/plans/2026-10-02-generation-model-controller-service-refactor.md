@@ -1,6 +1,6 @@
 # Generation model-controller-service refactor
 
-Status: Phase 8 complete; Phase 9 pending.
+Status: Complete; all phases finished.
 
 research_started_at: `2026-10-02T15:41:33Z`
 
@@ -646,6 +646,8 @@ Verification:
 
 ### Phase 9 — Full verification and release-readiness audit
 
+Status: Complete.
+
 Run in serial order because generated-code tasks can contend for workspace
 artifacts:
 
@@ -668,6 +670,18 @@ Final checks:
 - Package build declarations expose only intentional public symbols.
 - `pnpm pack --dry-run` or the repository-equivalent package inspection shows
   the four skill assets are published.
+
+Completed verification:
+
+- Generation build, typecheck, lint, and test passed with 21 test files and
+  219 tests.
+- CLI typecheck passed after rebuilding dependent packages.
+- The full CLI suite passed with 241 test files and 2,682 tests.
+- Built declarations expose the canonical model, controller, service, and
+  adapter exports without Node-internal declaration imports.
+- Package inspection confirmed `dist/`, package metadata, and all four skill
+  assets are included.
+- `git diff --check` passed and the worktree is clean.
 - No credentials, customer data, internal ticket identifiers, or private
   operational details appear in source, tests, comments, commit messages, or
   plan artifacts.
