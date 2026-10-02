@@ -2352,7 +2352,7 @@ export function WizardApp({
             ? rememberedForSession
             : loadedComponents.length > 0
               ? loadedComponents
-              : rememberedForSession ?? [];
+              : (rememberedForSession ?? []);
         return (
           <ScopeGateStep
             components={components}
