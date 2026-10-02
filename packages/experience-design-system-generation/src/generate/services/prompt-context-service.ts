@@ -88,6 +88,7 @@ export function renderPromptContext(options: PromptOptions): string {
     componentSourceRefs,
     existingComponentsInline,
     existingTokensInline,
+    componentAllowlistInline,
   } = options;
 
   const sections: string[] = [];
@@ -100,6 +101,11 @@ export function renderPromptContext(options: PromptOptions): string {
   if (existingTokensInline) {
     sections.push(
       `Existing design tokens in the target Contentful space (JSON) — prefer binding to these paths over inventing new ones:\n\`\`\`json\n${existingTokensInline}\n\`\`\``,
+    );
+  }
+  if (componentAllowlistInline) {
+    sections.push(
+      `Known component names for slot allowed_components (hard allowlist; never use any other name). Never invent a child from an import, JSX element, type name, icon name, or implementation helper.\n\`\`\`json\n${componentAllowlistInline}\n\`\`\``,
     );
   }
   if (rawComponentsInline) {
