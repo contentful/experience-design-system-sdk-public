@@ -109,10 +109,9 @@ describe('sideColumnLabelStyle', () => {
 });
 
 describe('ScopeGateStep — counter strip', () => {
-  it('always renders the counter strip with Accepted / Composite / Rejected / Undecided labels', () => {
+  it('always renders the composite, rejected, and undecided counters', () => {
     const { lastFrame } = render(<ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />);
     const out = lastFrame() ?? '';
-    expect(out).toContain('Accepted');
     expect(out).toContain('Composite');
     expect(out).toContain('Rejected');
     expect(out).toContain('Undecided');
@@ -121,10 +120,10 @@ describe('ScopeGateStep — counter strip', () => {
   it('counter values reflect the undecided baseline at mount (nothing pre-accepted)', () => {
     const { lastFrame } = render(<ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />);
     const out = lastFrame() ?? '';
-    expect(out).toMatch(/Accepted[^0-9]*0[^0-9]*4/);
     expect(out).toMatch(/Composite[^0-9]*0/);
     expect(out).toMatch(/Rejected[^0-9]*0/);
     expect(out).toMatch(/Undecided[^0-9]*4/);
+    expect(out).toContain('none included');
   });
 
   it('counter values after [A]: 4 accepted, 1 group, 0 rejected, 0 undecided', () => {
@@ -133,10 +132,10 @@ describe('ScopeGateStep — counter strip', () => {
     );
     stdin.write('A');
     const out = lastFrame() ?? '';
-    expect(out).toMatch(/Accepted[^0-9]*4[^0-9]*4/);
     expect(out).toMatch(/Composite[^0-9]*1/);
     expect(out).toMatch(/Rejected[^0-9]*0/);
     expect(out).toMatch(/Undecided[^0-9]*0/);
+    expect(out).toContain('4/4 included');
   });
 });
 
@@ -245,8 +244,8 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     stdin.write('r');
     const out = lastFrame() ?? '';
     expect(out).not.toMatch(/❯ +Standalone\b/);
-    expect(out).toMatch(/Accepted[^0-9]*3[^0-9]*4/);
     expect(out).toMatch(/Rejected[^0-9]*1/);
+    expect(out).toContain('3/4 included');
   });
 
   it('[a] in Added-components is a no-op (side columns only accept [r])', () => {
@@ -262,8 +261,8 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     stdin.write('a');
     const out = lastFrame() ?? '';
     expect(out).toMatch(/❯ +Standalone\b/);
-    expect(out).toMatch(/Accepted[^0-9]*4[^0-9]*4/);
     expect(out).toMatch(/Rejected[^0-9]*0/);
+    expect(out).toContain('4/4 included');
   });
 
   it('Space in Added-components is a no-op (side columns only accept [r])', () => {
@@ -279,8 +278,8 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     stdin.write(' ');
     const out = lastFrame() ?? '';
     expect(out).toMatch(/❯ +Standalone\b/);
-    expect(out).toMatch(/Accepted[^0-9]*4[^0-9]*4/);
     expect(out).toMatch(/Rejected[^0-9]*0/);
+    expect(out).toContain('4/4 included');
   });
 
   it('[a] in Added-groups is a no-op; [r] rejects the composite root', () => {
@@ -295,11 +294,11 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     stdin.write('a');
     const afterA = lastFrame() ?? '';
     expect(afterA).toMatch(/❯ +Card \(2 deps\)/);
-    expect(afterA).toMatch(/Accepted[^0-9]*4[^0-9]*4/);
+    expect(afterA).toContain('4/4 included');
     stdin.write(' ');
     const afterSpace = lastFrame() ?? '';
     expect(afterSpace).toMatch(/❯ +Card \(2 deps\)/);
-    expect(afterSpace).toMatch(/Accepted[^0-9]*4[^0-9]*4/);
+    expect(afterSpace).toContain('4/4 included');
     stdin.write('r');
     stdin.write('y');
     const afterR = lastFrame() ?? '';

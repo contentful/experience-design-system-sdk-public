@@ -891,7 +891,7 @@ export function storeRawComponents(
   db: DatabaseSync,
   sessionId: string,
   components: RawComponentDefinition[],
-  options?: { status?: string; preserveCDF?: boolean },
+  options?: { status?: string; preserveCDF?: boolean; preserveStatus?: boolean },
 ): void {
   const now = new Date().toISOString();
 
@@ -929,10 +929,12 @@ export function storeRawComponents(
     };
     type DescSnapshot = { component_id: string; description: string };
     type AVSnapshot = { component_id: string; prop_name: string; position: number; value: string };
+    type StatusSnapshot = { component_id: string; status: string; reject_reason: string | null };
 
     let cdfSnapshot: CDFSnapshot[] = [];
     let descSnapshot: DescSnapshot[] = [];
     let avSnapshot: AVSnapshot[] = [];
+    let statusSnapshot: StatusSnapshot[] = [];
 
     if (options?.preserveCDF) {
       cdfSnapshot = db
@@ -957,6 +959,15 @@ export function storeRawComponents(
           )
           .all(sessionId) as AVSnapshot[];
       }
+    }
+
+    if (options?.preserveStatus) {
+      statusSnapshot = db
+        .prepare(
+          `SELECT component_id, status, reject_reason
+           FROM raw_components WHERE session_id = ?`,
+        )
+        .all(sessionId) as StatusSnapshot[];
     }
 
     db.prepare('DELETE FROM raw_components WHERE session_id = ?').run(sessionId);
@@ -1078,6 +1089,16 @@ export function storeRawComponents(
           }
           insertAV.run(sessionId, av.component_id, av.prop_name, av.position, av.value);
         }
+      }
+    }
+
+    if (options?.preserveStatus && statusSnapshot.length > 0) {
+      const restoreStatus = db.prepare(
+        `UPDATE raw_components SET status = ?, reject_reason = ?
+         WHERE session_id = ? AND component_id = ?`,
+      );
+      for (const snapshot of statusSnapshot) {
+        restoreStatus.run(snapshot.status, snapshot.reject_reason, sessionId, snapshot.component_id);
       }
     }
 

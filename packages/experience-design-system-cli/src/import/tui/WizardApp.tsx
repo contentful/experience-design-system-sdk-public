@@ -94,7 +94,6 @@ type WizardStep =
   | 'checking-claude-auth'
   | 'credential-test-gate'
   | 'validating-credentials'
-  | 'generating-tokens'
   | 'path-validation'
   | 'extracting'
   | 'scope-gate'
@@ -133,6 +132,7 @@ type WizardState = {
   tokenSourceChanged: boolean | null;
   skipComponents: boolean;
   tokenSessionId: string | null;
+  tokenGenerationStatus: 'idle' | 'running' | 'complete' | 'failed';
   tokenCount: number;
   extractSessionId: string | null;
   generateSessionId: string | null;
@@ -141,6 +141,7 @@ type WizardState = {
   generatedCount: number;
   generatedAcceptedCount: number;
   generateProgress: { done: number; total: number; current: string } | null;
+  selectionAgentStatus: 'idle' | 'running' | 'complete';
   extractProgress: {
     scanned: number;
     filesProcessed: number;
@@ -166,6 +167,7 @@ type WizardState = {
   previewValidationErrors: PreviewValidationError[];
   previewValidationMissingNames: string[];
   credentialsValidating: boolean;
+  credentialsBackgroundValidating: boolean;
   generatePrefetchStatus: 'idle' | 'running' | 'complete' | 'failed';
   generatePrefetchError: string | null;
   mapTokensEligible: boolean | null;
@@ -177,6 +179,7 @@ type WizardState = {
    * with the target space.
    */
   existingEntitiesPath: string | null;
+  existingEntitiesStatus: 'idle' | 'running' | 'complete' | 'failed';
   lastRunId: string | null;
   finalizeErrorBanner: string | null;
   finalReviewPassed: boolean;
@@ -272,13 +275,19 @@ function runCli(args: string[]): Promise<{ exitCode: number; stdout: string; std
 
 type SpawnedCliResult = { exitCode: number; stdout: string; stderr: string };
 
-function runSpawnedCli(args: string[], onStderr?: (chunk: string) => void): Promise<SpawnedCliResult> {
+function runSpawnedCli(
+  args: string[],
+  onStderr?: (chunk: string) => void,
+  onStdout?: (chunk: string) => void,
+): Promise<SpawnedCliResult> {
   return new Promise((res) => {
     const child = spawn('node', args);
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (d: Buffer) => {
-      stdout += String(d);
+      const chunk = String(d);
+      stdout += chunk;
+      onStdout?.(chunk);
     });
     child.stderr.on('data', (d: Buffer) => {
       const chunk = String(d);
@@ -384,6 +393,9 @@ export function WizardApp({
   const allowEmptyDeleteAllRef = useRef(false);
 
   const generateChildRef = useRef<import('node:child_process').ChildProcess | null>(null);
+  const credentialsValidationIdRef = useRef(0);
+  const tokenGenerationPromiseRef = useRef<Promise<boolean> | null>(null);
+  const existingEntitiesPromiseRef = useRef<Promise<boolean> | null>(null);
   const generatePromiseRef = useRef<Promise<{
     exitCode: number;
     signal: NodeJS.Signals | null;
@@ -394,7 +406,9 @@ export function WizardApp({
   const rawTokensEntryReady = !!initialRawTokensPath;
   const effectiveNoCache = resolveNoCacheForGenerate({ cliNoCache: noCache });
   const initialStepResolved: WizardStep = rawTokensEntryReady
-    ? 'generating-tokens'
+    ? initialProjectPath
+      ? 'path-validation'
+      : 'credentials'
     : initialProjectPath
       ? 'token-input'
       : 'welcome';
@@ -412,6 +426,7 @@ export function WizardApp({
     tokenSourceChanged: null,
     skipComponents: false,
     tokenSessionId: null,
+    tokenGenerationStatus: 'idle',
     tokenCount: 0,
     extractSessionId: null,
     generateSessionId: null,
@@ -420,6 +435,7 @@ export function WizardApp({
     generatedCount: 0,
     generatedAcceptedCount: 0,
     generateProgress: null,
+    selectionAgentStatus: 'idle',
     extractProgress: null,
     compositionPhase: null,
     componentsPath: '',
@@ -443,11 +459,13 @@ export function WizardApp({
     previewValidationErrors: [],
     previewValidationMissingNames: [],
     credentialsValidating: false,
+    credentialsBackgroundValidating: false,
     generatePrefetchStatus: 'idle',
     generatePrefetchError: null,
     mapTokensEligible: null,
     credentialsSkipped: false,
     existingEntitiesPath: null,
+    existingEntitiesStatus: 'idle',
     lastRunId: null,
     finalizeErrorBanner: null,
     finalReviewPassed: false,
@@ -509,7 +527,7 @@ export function WizardApp({
   };
 
   const runAgentAuthCheck = async (nextStep: WizardStep): Promise<boolean> => {
-    const authCheckStepNumber = nextStep === 'generating-tokens' ? 1 : state.tokensPath ? 4 : 3;
+    const authCheckStepNumber = state.tokensPath ? 4 : 3;
     update({ step: 'checking-claude-auth', authCheckStepNumber });
     const status = await checkAgentAuth(state.agent as AgentName);
     if (status === 'not-found') {
@@ -536,7 +554,8 @@ export function WizardApp({
     return true;
   };
 
-  const runGenerateTokens = async (rawTokensPath: string, outDir: string) => {
+  const runGenerateTokens = async (rawTokensPath: string, outDir: string): Promise<boolean> => {
+    update({ tokenGenerationStatus: 'running' });
     const tokenArgs = buildGenerateTokensArgs({
       rawTokensPath,
       agent: state.agent,
@@ -549,10 +568,11 @@ export function WizardApp({
     if (result.exitCode !== 0) {
       update({
         step: 'error',
+        tokenGenerationStatus: 'failed',
         errorStep: 'generate tokens',
         errorMessage: result.stderr.trim() || 'Unknown error',
       });
-      return;
+      return false;
     }
     const sessionMatch = /^session=(.+)$/m.exec(result.stdout);
     const tokenSessionId = sessionMatch ? sessionMatch[1]!.trim() : null;
@@ -564,10 +584,11 @@ export function WizardApp({
     if (r.exitCode !== 0) {
       update({
         step: 'error',
+        tokenGenerationStatus: 'failed',
         errorStep: 'print tokens',
         errorMessage: r.stderr.trim() || 'Unknown error',
       });
-      return;
+      return false;
     }
     const tokenCount = parsePrintTokensCount(r.stdout);
     if (!state.projectPath) {
@@ -578,14 +599,16 @@ export function WizardApp({
         tokensPath,
         tokenSessionId,
         tokenCount,
+        tokenGenerationStatus: 'complete',
         skipComponents: true,
         acceptedCount: 0,
         outDir: state.outDir || join(process.cwd(), '.contentful'),
       });
       update({ step: 'credentials' });
-      return;
+      return true;
     }
-    update({ step: 'path-validation', tokensPath, tokenSessionId, tokenCount });
+    update({ tokensPath, tokenSessionId, tokenCount, tokenGenerationStatus: 'complete' });
+    return true;
   };
 
   const runMapTokens = async (sessionId: string): Promise<boolean> => {
@@ -661,54 +684,188 @@ export function WizardApp({
     return true;
   };
 
+  const startExistingEntitiesFetch = (projectPath: string, outDir: string): Promise<boolean> | null => {
+    if (state.credentialsSkipped || !state.spaceId || !state.environmentId || !state.cmaToken || !projectPath) {
+      return null;
+    }
+    const startedAt = Date.now();
+    getDebugLogger().event('wizard', 'existing-entities.fetch.start', {
+      spaceId: state.spaceId,
+      environmentId: state.environmentId,
+      host: state.host,
+      outDir,
+    });
+    update({ existingEntitiesStatus: 'running' });
+    const promise = (async (): Promise<boolean> => {
+      try {
+        await mkdir(outDir, { recursive: true });
+        const result = await fetchAndPersistExistingContentfulEntities({
+          spaceId: state.spaceId,
+          environmentId: state.environmentId,
+          cmaToken: state.cmaToken,
+          ...(state.host ? { host: state.host } : {}),
+          outDir,
+        });
+        if (result.ok) {
+          getDebugLogger().event('wizard', 'existing-entities.fetch.ok', {
+            durationMs: result.durationMs,
+            components: result.entities.components.length,
+            tokens: result.entities.tokens.length,
+          });
+          update({ existingEntitiesPath: result.path, existingEntitiesStatus: 'complete' });
+          return true;
+        }
+        getDebugLogger().event('wizard', 'existing-entities.fetch.error', {
+          durationMs: result.durationMs,
+          error: result.error,
+        });
+        update({ existingEntitiesStatus: 'failed' });
+        return false;
+      } catch (error) {
+        getDebugLogger().event('wizard', 'existing-entities.fetch.error', {
+          durationMs: Date.now() - startedAt,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        update({ existingEntitiesStatus: 'failed' });
+        return false;
+      }
+    })();
+    existingEntitiesPromiseRef.current = promise;
+    return promise;
+  };
+
   const runExtract = async (projectPath: string) => {
     const outDir = join(resolve(projectPath), '.contentful');
-    update({ step: 'extracting', outDir, extractProgress: null, compositionPhase: null });
+    update({
+      step: 'extracting',
+      outDir,
+      extractProgress: null,
+      compositionPhase: 'resolving',
+      selectionAgentStatus: 'idle',
+    });
+    const existingEntitiesPromise = startExistingEntitiesFetch(projectPath, outDir);
     const extractArgs = [findCliPath(), '__extract', '--project', projectPath];
     if (noCache) extractArgs.push('--composition-refresh');
     for (const p of promptOverrides ?? []) extractArgs.push('--prompt', p);
     // Composition resolution uses the same agent the user picked for the run.
     if (state.agent) extractArgs.push('--agent', state.agent);
     if (state.bedrock) extractArgs.push('--bedrock');
-    const r = await runSpawnedCli(extractArgs, (chunk) => {
-      for (const line of chunk.split('\n')) {
-        const scanMatch = /^progress=scan:(\d+)$/.exec(line.trim());
-        if (scanMatch) {
-          const scanned = Number(scanMatch[1]);
-          setState((prev) => ({
-            ...prev,
-            extractProgress: {
-              scanned,
-              filesProcessed: prev.extractProgress?.filesProcessed ?? 0,
-              totalFiles: prev.extractProgress?.totalFiles ?? 0,
-              componentsFound: prev.extractProgress?.componentsFound ?? 0,
-            },
-          }));
-          continue;
-        }
-        const extractMatch = /^progress=extract:(\d+)\/(\d+):(\d+)$/.exec(line.trim());
-        if (extractMatch) {
-          const filesProcessed = Number(extractMatch[1]);
-          const totalFiles = Number(extractMatch[2]);
-          const componentsFound = Number(extractMatch[3]);
-          setState((prev) => ({
-            ...prev,
-            extractProgress: {
-              scanned: prev.extractProgress?.scanned ?? 0,
-              filesProcessed,
-              totalFiles,
-              componentsFound,
-            },
-          }));
-          continue;
-        }
-        const compositionMatch = /^progress=composition:(.+)$/.exec(line.trim());
-        if (compositionMatch) {
-          const phase = compositionMatch[1];
-          setState((prev) => ({ ...prev, compositionPhase: phase }));
-        }
+    let selectionPromptText: string | undefined;
+    let selectionPromptPath: string | undefined;
+    try {
+      const { overrides, errors } = parsePromptOverrides(promptOverrides ?? []);
+      if (errors.length > 0) throw new Error(errors.join('; '));
+      const selectOverride = overrides.get('select');
+      if (selectOverride?.kind === 'text') selectionPromptText = selectOverride.value;
+      if (selectOverride?.kind === 'path') {
+        selectionPromptPath = resolve(selectOverride.value);
+        await resolvePromptOverride(selectOverride);
       }
-    });
+    } catch (error) {
+      update({
+        step: 'error',
+        errorStep: 'selection agent',
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+
+    let selectionPromise: Promise<void> | null = null;
+    let selectionError: unknown;
+    let selectionStarted = false;
+    const startSelection = (sessionId: string): void => {
+      if (selectionStarted || !state.agent) return;
+      selectionStarted = true;
+      update({ selectionAgentStatus: 'running' });
+      selectionPromise = (async () => {
+        if (existingEntitiesPromise) await existingEntitiesPromise;
+        await runSelectionAgent({
+          sessionId,
+          agent: state.agent as AgentName,
+          ...(state.agentModel ? { model: state.agentModel } : {}),
+          ...(selectionPromptText !== undefined ? { promptText: selectionPromptText } : {}),
+          ...(selectionPromptPath ? { promptPath: selectionPromptPath } : {}),
+        });
+      })()
+        .catch((error: unknown) => {
+          selectionError = error;
+        })
+        .finally(() => update({ selectionAgentStatus: 'complete' }));
+    };
+
+    let stderrBuffer = '';
+    let stdoutBuffer = '';
+    const r = await runSpawnedCli(
+      extractArgs,
+      (chunk) => {
+        stderrBuffer += chunk;
+        const lines = stderrBuffer.split('\n');
+        stderrBuffer = lines.pop() ?? '';
+        for (const line of lines) {
+          const scanMatch = /^progress=scan:(\d+)$/.exec(line.trim());
+          if (scanMatch) {
+            const scanned = Number(scanMatch[1]);
+            setState((prev) => ({
+              ...prev,
+              extractProgress: {
+                scanned,
+                filesProcessed: prev.extractProgress?.filesProcessed ?? 0,
+                totalFiles: prev.extractProgress?.totalFiles ?? 0,
+                componentsFound: prev.extractProgress?.componentsFound ?? 0,
+              },
+            }));
+            continue;
+          }
+          const scanDoneMatch = /^progress=scan-done:(\d+)$/.exec(line.trim());
+          if (scanDoneMatch) {
+            const scanned = Number(scanDoneMatch[1]);
+            setState((prev) => ({
+              ...prev,
+              extractProgress: {
+                scanned,
+                filesProcessed: prev.extractProgress?.filesProcessed ?? 0,
+                totalFiles: scanned,
+                componentsFound: prev.extractProgress?.componentsFound ?? 0,
+              },
+            }));
+            continue;
+          }
+          const extractMatch = /^progress=extract:(\d+)\/(\d+):(\d+)$/.exec(line.trim());
+          if (extractMatch) {
+            const filesProcessed = Number(extractMatch[1]);
+            const totalFiles = Number(extractMatch[2]);
+            const componentsFound = Number(extractMatch[3]);
+            setState((prev) => ({
+              ...prev,
+              extractProgress: {
+                scanned: prev.extractProgress?.scanned ?? 0,
+                filesProcessed,
+                totalFiles,
+                componentsFound,
+              },
+            }));
+            continue;
+          }
+          const compositionMatch = /^progress=composition:(.+)$/.exec(line.trim());
+          if (compositionMatch) {
+            setState((prev) => ({ ...prev, compositionPhase: compositionMatch[1]!.trim() }));
+          }
+        }
+      },
+      (chunk) => {
+        stdoutBuffer += chunk;
+        const lines = stdoutBuffer.split('\n');
+        stdoutBuffer = lines.pop() ?? '';
+        for (const line of lines) {
+          const sessionMatch = /^session=(.+)$/.exec(line.trim());
+          if (sessionMatch) startSelection(sessionMatch[1]!.trim());
+        }
+      },
+    );
+    const sessionMatch = /^session=(.+)$/m.exec(r.stdout);
+    if (!selectionStarted && sessionMatch) startSelection(sessionMatch[1]!.trim());
+    if (selectionPromise) await selectionPromise;
+    if (!selectionStarted && existingEntitiesPromise) await existingEntitiesPromise;
     if (r.exitCode !== 0) {
       update({
         step: 'error',
@@ -717,7 +874,6 @@ export function WizardApp({
       });
       return;
     }
-    const sessionMatch = /^session=(.+)$/m.exec(r.stdout);
     const extractSessionId = sessionMatch ? sessionMatch[1]!.trim() : null;
     const countMatch = /Extracted (\d+) components?/.exec(r.stderr);
     const extractedCount = countMatch ? Number(countMatch[1]) : 0;
@@ -729,37 +885,23 @@ export function WizardApp({
       });
       return;
     }
-    try {
-      const { overrides, errors } = parsePromptOverrides(promptOverrides ?? []);
-      if (errors.length > 0) throw new Error(errors.join('; '));
-      const selectOverride = overrides.get('select');
-      let promptText: string | undefined;
-      let promptPath: string | undefined;
-      if (selectOverride?.kind === 'text') promptText = selectOverride.value;
-      if (selectOverride?.kind === 'path') {
-        promptPath = resolve(selectOverride.value);
-        await resolvePromptOverride(selectOverride);
-      }
-      if (state.agent) {
-        await runSelectionAgent({
-          sessionId: extractSessionId ?? '',
-          agent: state.agent as AgentName,
-          ...(state.agentModel ? { model: state.agentModel } : {}),
-          ...(promptText !== undefined ? { promptText } : {}),
-          ...(promptPath ? { promptPath } : {}),
-        });
-      }
-    } catch (error) {
+    if (selectionError) {
       update({
         step: 'error',
         errorStep: 'selection agent',
-        errorMessage: error instanceof Error ? error.message : String(error),
+        errorMessage: selectionError instanceof Error ? selectionError.message : String(selectionError),
       });
       return;
+    }
+    if (state.rawTokensPath && tokenGenerationPromiseRef.current) {
+      const tokenGenerationSucceeded = await tokenGenerationPromiseRef.current;
+      tokenGenerationPromiseRef.current = null;
+      if (!tokenGenerationSucceeded) return;
     }
     update({
       step: 'scope-gate',
       extractSessionId,
+      selectionAgentStatus: 'complete',
     });
   };
 
@@ -938,8 +1080,21 @@ export function WizardApp({
     }
   };
 
-  const validateCredentials = async (spaceId: string, environmentId: string, cmaToken: string, host: string) => {
-    update({ step: 'credentials', credentialsValidating: true, credentialsError: '' });
+  const validateCredentials = async (
+    spaceId: string,
+    environmentId: string,
+    cmaToken: string,
+    host: string,
+    options: { background?: boolean; validationId?: number } = {},
+  ) => {
+    const validationId = options.validationId ?? ++credentialsValidationIdRef.current;
+    const isCurrent = (): boolean => credentialsValidationIdRef.current === validationId;
+    update({
+      step: 'credentials',
+      credentialsValidating: true,
+      credentialsBackgroundValidating: options.background === true,
+      credentialsError: '',
+    });
     try {
       const resolvedHost = resolveWizardHost(host);
       const client = new ImportApiClient({
@@ -949,14 +1104,25 @@ export function WizardApp({
         host: resolvedHost,
       });
       await client.validateToken();
-      update({ spaceId, environmentId, cmaToken, host: resolvedHost, credentialsValidating: false });
-      await advanceAfterCredentialsValidated();
+      if (!isCurrent()) return;
+      update({
+        spaceId,
+        environmentId,
+        cmaToken,
+        host: resolvedHost,
+        credentialsValidating: false,
+        credentialsBackgroundValidating: false,
+      });
+      if (options.background) return;
+      await advanceAfterCredentialsValidated(validationId);
     } catch (e) {
+      if (!isCurrent()) return;
       if (e instanceof ApiError && (e.status === 401 || e.status === 403 || e.status === 404)) {
         cancelGeneratePrefetch();
         update({
           step: 'credentials',
           credentialsValidating: false,
+          credentialsBackgroundValidating: false,
           credentialsError: formatApiError(e, process.env['EDSI_VERBOSE_ERRORS'] === '1'),
         });
         return;
@@ -969,30 +1135,37 @@ export function WizardApp({
         errorMessage: msg,
         errorAllowCredentialRetry: false,
         credentialsValidating: false,
+        credentialsBackgroundValidating: false,
       });
     }
   };
 
-  const advanceAfterCredentialsValidated = async () => {
-    // Fire the existing-entities fetch immediately after credentials validate,
-    // before any agent subprocess runs. `state.existingEntitiesPath` gets
-    // threaded into buildSelectAgentArgs / buildGenerateComponentsArgs /
-    // buildMapTokensArgs downstream. Fetch failure is silent — downstream
-    // agents just run without space context.
-    if (!state.credentialsSkipped && state.spaceId && state.environmentId && state.cmaToken && state.projectPath) {
-      const outDir = join(resolve(state.projectPath), '.contentful');
-      await mkdir(outDir, { recursive: true });
-      const result = await fetchAndPersistExistingContentfulEntities({
-        spaceId: state.spaceId,
-        environmentId: state.environmentId,
-        cmaToken: state.cmaToken,
-        ...(state.host ? { host: state.host } : {}),
-        outDir,
-      });
-      if (result.ok) {
-        update({ existingEntitiesPath: result.path });
-      }
+  const handleCredentialValuesChange = (): void => {
+    credentialsValidationIdRef.current += 1;
+    if (state.credentialsValidating) {
+      update({ credentialsValidating: false, credentialsBackgroundValidating: false, credentialsError: '' });
     }
+  };
+
+  useEffect(() => {
+    if (state.step !== 'credentials' || state.credentialsSkipped) return;
+    if (!state.spaceId.trim() || !state.environmentId.trim() || !state.cmaToken.trim()) return;
+
+    const validationId = ++credentialsValidationIdRef.current;
+    void validateCredentials(state.spaceId, state.environmentId, state.cmaToken, state.host, {
+      background: true,
+      validationId,
+    });
+
+    return () => {
+      credentialsValidationIdRef.current += 1;
+    };
+  }, [state.step]);
+
+  const advanceAfterCredentialsValidated = async (validationId?: number) => {
+    const isCurrent = (): boolean => validationId === undefined || credentialsValidationIdRef.current === validationId;
+    if (!isCurrent()) return;
+    if (!isCurrent()) return;
     // Under the front-of-flow ordering, credentials are collected right after
     // path-validation and before extract. When we get here without an extract
     // session, the user hasn't started the pipeline yet — kick it off.
@@ -1526,14 +1699,15 @@ export function WizardApp({
 
   const tokenReuseChecked = useRef(false);
   useEffect(() => {
-    if (state.step === 'generating-tokens') {
+    if (state.rawTokensPath) {
       if (tokenReuseChecked.current) return; // already checked or user chose regenerate
       tokenReuseChecked.current = true;
+      const tokenNextStep: WizardStep = state.projectPath ? 'path-validation' : 'credentials';
       const existingTokensPath = join(state.outDir, 'tokens.json');
       if (effectiveNoCache) {
-        void runAgentAuthCheck('generating-tokens').then((ok) => {
-          if (ok) void runGenerateTokens(state.rawTokensPath, state.outDir);
-        });
+        tokenGenerationPromiseRef.current = runAgentAuthCheck(tokenNextStep).then((ok) =>
+          ok ? runGenerateTokens(state.rawTokensPath, state.outDir) : false,
+        );
         return;
       }
       (async () => {
@@ -1550,18 +1724,17 @@ export function WizardApp({
             tokenSourceChanged: sourceChanged,
           });
         } catch {
-          if (await runAgentAuthCheck('generating-tokens')) {
-            void runGenerateTokens(state.rawTokensPath, state.outDir);
-          }
+          tokenGenerationPromiseRef.current = runAgentAuthCheck(tokenNextStep).then((ok) =>
+            ok ? runGenerateTokens(state.rawTokensPath, state.outDir) : false,
+          );
         }
       })();
     }
-  }, [state.step]);
+  }, [state.rawTokensPath]);
 
   const noQuitSteps: WizardStep[] = [
     'checking-claude-auth',
     'validating-credentials',
-    'generating-tokens',
     'extracting',
     'generating',
     'mapping-tokens',
@@ -1572,8 +1745,9 @@ export function WizardApp({
   const hints = noQuitSteps.includes(state.step) ? [] : [{ key: 'q', label: 'quit' }];
 
   const hasTokens = !!state.tokensPath;
+  const hasTokenStage = hasTokens || !!state.rawTokensPath;
   const hasComponents = !state.skipComponents;
-  const totalSteps = 3 + (hasTokens ? 1 : 0) + (hasComponents ? 2 : 0) + (state.mapTokensEligible === true ? 1 : 0);
+  const totalSteps = 3 + (hasTokenStage ? 1 : 0) + (hasComponents ? 2 : 0) + (state.mapTokensEligible === true ? 1 : 0);
 
   const stepContent = (() => {
     switch (state.step) {
@@ -1593,7 +1767,7 @@ export function WizardApp({
         return (
           <TokenInputStep
             onConfirm={(rawTokensPath) => {
-              update({ rawTokensPath, step: 'generating-tokens' });
+              update({ rawTokensPath, step: 'path-validation', tokenGenerationStatus: 'idle' });
             }}
             onSkip={() => update({ step: 'path-validation' })}
             onQuit={() => process.exit(0)}
@@ -1617,11 +1791,19 @@ export function WizardApp({
             continueLabel="Reuse existing tokens"
             skipLabel="Regenerate tokens"
             showSkip={true}
-            onContinue={() => update({ step: 'path-validation', tokenSessionId: null })}
+            onContinue={() =>
+              update({
+                step: state.projectPath ? 'path-validation' : 'credentials',
+                tokenSessionId: null,
+                tokenGenerationStatus: 'complete',
+              })
+            }
             onSkip={async () => {
               update({ tokenSourceChanged: null });
-              if (await runAgentAuthCheck('generating-tokens')) {
-                void runGenerateTokens(state.rawTokensPath, state.outDir);
+              const tokenNextStep: WizardStep = state.projectPath ? 'path-validation' : 'credentials';
+              update({ step: tokenNextStep });
+              if (await runAgentAuthCheck(tokenNextStep)) {
+                tokenGenerationPromiseRef.current = runGenerateTokens(state.rawTokensPath, state.outDir);
               }
             }}
             onQuit={() => process.exit(0)}
@@ -1635,16 +1817,6 @@ export function WizardApp({
             totalSteps={totalSteps}
             title={`Checking ${state.agent}`}
             description={`Verifying ${state.agent} is installed and authenticated...`}
-          />
-        );
-
-      case 'generating-tokens':
-        return (
-          <RunningStep
-            stepNumber={1}
-            totalSteps={totalSteps}
-            title="Generating token definitions"
-            description={`${state.agent} is mapping your design tokens to DTCG format and writing tokens.json. This may take a few minutes.`}
           />
         );
 
@@ -1671,32 +1843,63 @@ export function WizardApp({
       case 'extracting': {
         const ep = state.extractProgress;
         let extractDetail: string;
+        let extractComplete = false;
         if (ep && ep.totalFiles > 0) {
-          extractDetail = `Analyzing ${ep.filesProcessed}/${ep.totalFiles} files · ${ep.componentsFound} component${ep.componentsFound === 1 ? '' : 's'} found`;
-        } else if (ep && ep.scanned > 0) {
-          extractDetail = `Scanned ${ep.scanned} file${ep.scanned === 1 ? '' : 's'}...`;
+          extractDetail = `Scanned ${ep.scanned} file${ep.scanned === 1 ? '' : 's'}`;
+          extractComplete = true;
+        } else if (ep) {
+          extractDetail = `Scanning ${ep.scanned} file${ep.scanned === 1 ? '' : 's'}`;
         } else {
-          extractDetail = 'Scanning...';
+          extractDetail = 'Scanning files...';
         }
-        const compositionDetail = ((): string | undefined => {
-          const phase = state.compositionPhase;
-          if (!phase) return undefined;
-          if (phase === 'resolving') return 'Resolving composition mapping...';
-          if (phase === 'cache-hit') return 'Composition mapping (cached)...';
-          if (phase === 'authoring') return 'Writing a composition parser...';
-          if (phase === 'parsing') return 'Running the composition parser...';
-          if (phase.startsWith('agent:')) return `Resolving composition via ${phase.slice('agent:'.length)} agent...`;
-          if (phase === 'done') return 'Composition mapping resolved ✓';
-          return `Composition: ${phase}`;
-        })();
+        const selectionDetail =
+          state.selectionAgentStatus === 'idle'
+            ? undefined
+            : state.selectionAgentStatus === 'running'
+              ? `Filtering component selection via ${state.agent}...`
+              : 'Selection agent complete';
+        const compositionDetail =
+          state.compositionPhase === 'done'
+            ? 'Composition mapping complete'
+            : state.compositionPhase === 'cache-hit'
+              ? 'Composition mapping (cached)'
+              : state.compositionPhase?.startsWith('agent:')
+                ? `Mapping composition via ${state.compositionPhase.slice('agent:'.length)}...`
+                : `Mapping composition via ${state.agent}...`;
         return (
           <RunningStep
-            stepNumber={hasTokens ? 2 : 1}
+            stepNumber={hasTokenStage ? 2 : 1}
             totalSteps={totalSteps}
-            title="Extracting components"
-            description="I'm scanning your files and figuring out what components exist, what props they have, and how they're structured. This is fully automatic — sit tight."
+            title="Extracting context"
+            description="Extracting context from your source files."
             detail={extractDetail}
+            detailComplete={extractComplete}
             secondaryDetail={compositionDetail}
+            secondaryComplete={state.compositionPhase === 'done'}
+            tertiaryDetail={selectionDetail}
+            tertiaryComplete={state.selectionAgentStatus === 'complete'}
+            quaternaryDetail={
+              state.existingEntitiesStatus === 'running'
+                ? 'Fetching existing components and tokens...'
+                : state.existingEntitiesStatus === 'complete'
+                  ? 'Existing components and tokens ready'
+                  : state.existingEntitiesStatus === 'failed'
+                    ? 'Existing entities unavailable; continuing without them'
+                    : undefined
+            }
+            quaternaryComplete={
+              state.existingEntitiesStatus === 'complete' || state.existingEntitiesStatus === 'failed'
+            }
+            quinaryDetail={
+              state.rawTokensPath
+                ? state.tokenGenerationStatus === 'running'
+                  ? `Generating token definitions via ${state.agent}...`
+                  : state.tokenGenerationStatus === 'complete'
+                    ? 'Token definitions ready'
+                    : undefined
+                : undefined
+            }
+            quinaryComplete={state.tokenGenerationStatus === 'complete'}
           />
         );
       }
@@ -1753,7 +1956,7 @@ export function WizardApp({
 
       case 'generating': {
         const p = state.generateProgress;
-        const stepNum = hasTokens ? 4 : 3;
+        const stepNum = hasTokenStage ? 4 : 3;
         const progressDetail = p
           ? `[${p.done}/${p.total}] ${p.current} — this can take 10–30 minutes for large libraries`
           : `Starting up ${state.agent}... (this can take 10–30 minutes for large libraries — grab a coffee)`;
@@ -1769,7 +1972,7 @@ export function WizardApp({
       }
 
       case 'mapping-tokens': {
-        const stepNum = hasTokens ? 5 : 4;
+        const stepNum = hasTokenStage ? 5 : 4;
         return (
           <RunningStep
             stepNumber={stepNum}
@@ -1884,11 +2087,13 @@ export function WizardApp({
             initialHost={state.host}
             error={state.credentialsError || undefined}
             validating={state.credentialsValidating}
+            backgroundValidating={state.credentialsBackgroundValidating}
             generatePrefetchStatus={state.generatePrefetchStatus}
             generatePrefetchError={state.generatePrefetchError}
             onConfirm={(spaceId, environmentId, cmaToken, host) => {
               void confirmCredentials(spaceId, environmentId, cmaToken, host);
             }}
+            onValuesChange={handleCredentialValuesChange}
             onContinue={(spaceId, environmentId, cmaToken, host) => {
               void confirmCredentials(spaceId, environmentId, cmaToken, host);
             }}

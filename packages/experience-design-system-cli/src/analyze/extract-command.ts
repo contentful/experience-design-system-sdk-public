@@ -5,6 +5,7 @@ import { addAgentModelOptions } from '../lib/agent-model-options.js';
 import {
   extractComponents,
   preClassifyComponent,
+  preClassifyProp,
   isNonAuthorableComponent,
   computeExtractionScore,
   deriveNeedsReview,
@@ -306,6 +307,9 @@ export function registerInternalExtractCommand(program: Command): void {
         process.stderr.write(`progress=scan:${count}\n`);
       }
     });
+    if (!process.stdout.isTTY) {
+      process.stderr.write(`progress=scan-done:${sourceFiles.length}\n`);
+    }
 
     const extractionCacheDb = openPipelineDb();
     let extraction: Awaited<ReturnType<typeof extractComponents>>;
@@ -387,6 +391,23 @@ export function registerInternalExtractCommand(program: Command): void {
       }
     }
     const classifiedComponents = extraction.components.map(preClassifyComponent);
+    for (const exclusion of extraction.exclusions ?? []) {
+      getDebugLogger().event('filter', 'extract.excluded', { ...exclusion });
+    }
+    for (const component of extraction.components) {
+      for (const prop of component.props) {
+        if (preClassifyProp(prop)?.category === 'exclude') {
+          getDebugLogger().event('filter', 'extract.excluded', {
+            itemType: 'prop',
+            name: prop.name,
+            source: component.source,
+            component: component.name,
+            reason: 'deterministic pre-classification excluded this wiring prop',
+            stage: 'pre-classify',
+          });
+        }
+      }
+    }
     const inspectedComponents = await Promise.all(
       classifiedComponents.map(async (component) => ({
         component,
@@ -448,6 +469,13 @@ export function registerInternalExtractCommand(program: Command): void {
       });
     }
     let validatedComponents = validateExtractedComponents(filteredComponents);
+
+    // Persist the extraction result before composition mapping so downstream
+    // stages can start working while the (potentially agent-backed) mapper
+    // continues. The final write below replaces these definitions with the
+    // composition-enriched version while preserving selection decisions.
+    storeRawComponents(db, sessionId, validatedComponents);
+    process.stdout.write(`session=${sessionId}\n`);
 
     // Composition mapping resolution is always enabled. Every extracted CDF
     // preserves embedded-component edges.
@@ -604,7 +632,6 @@ export function registerInternalExtractCommand(program: Command): void {
     db.close();
 
     const allWarnings = [...extraction.warnings, ...filterWarnings];
-    process.stdout.write(`session=${sessionId}\n`);
     const summaryLines = [
       `Scanned ${pluralize(sourceFiles.length, 'source file')} in ${sourceDirectory}`,
       `Extracted ${pluralize(extraction.components.length, 'component')}`,

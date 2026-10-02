@@ -15,17 +15,19 @@ import type {
   RawPropDefinition,
   RawSlotDefinition,
   ComponentExtractionResult,
+  ExtractionExclusion,
 } from '../types.js';
 import {
   extractAllowedValues,
   getNodeDefinitions,
   getTypeReferenceName,
   getTypeTargetDeclarations,
-  getTsxExtractionContext,
+  extractTsxComponents,
   getValueTargetDeclarations,
   getJsxTagNameNode,
   isIntrinsicJsxElement,
-  resolveDefaultExportName,
+  isCompositionHookName,
+  resolveComponentExportName,
 } from './tsx-shared.js';
 import { shouldBeSlot } from './slot-detection.js';
 import { extractAllowedComponentsFromTypeText, extractAllowedComponentsFromJsdoc } from './slot-allowed-components.js';
@@ -2055,29 +2057,18 @@ function hasImplementationChildrenHint(funcNode: FunctionLike, param: ParameterD
 }
 
 export async function extractReactComponents(filePaths: string[]): Promise<ComponentExtractionResult> {
-  const extractionContext = getTsxExtractionContext(filePaths, /\.[jt]sx$/);
+  const exclusions: ExtractionExclusion[] = [];
+  const extractionContext = extractTsxComponents(filePaths, /\.[jt]sx$/, (sourceFile) => {
+    if (isStencilFile(sourceFile)) return [];
+    const fileExports = [...sourceFile.getExportedDeclarations().keys()];
+    const isNext = isNextJsComponent(sourceFile.getFilePath(), fileExports);
+    return extractFromSourceFile(sourceFile, isNext, exclusions);
+  });
   if (!extractionContext) {
     return { components: [], warnings: [] };
   }
 
-  const { componentFiles, project } = extractionContext;
-
-  const warnings: string[] = [];
-  const components: RawComponentDefinitionInternal[] = [];
-
-  for (const filePath of componentFiles) {
-    try {
-      const sourceFile = project.getSourceFile(filePath);
-      if (!sourceFile) continue;
-      if (isStencilFile(sourceFile)) continue;
-      const fileExports = [...sourceFile.getExportedDeclarations().keys()];
-      const isNext = isNextJsComponent(sourceFile.getFilePath(), fileExports);
-      const extracted = extractFromSourceFile(sourceFile, isNext);
-      components.push(...extracted);
-    } catch (e) {
-      warnings.push(`Failed to extract from ${filePath}: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
+  const { project, components, warnings } = extractionContext;
 
   const propsToComponent = new Map<string, string>();
   const componentNames = new Set<string>();
@@ -2200,25 +2191,32 @@ export async function extractReactComponents(filePaths: string[]): Promise<Compo
   return {
     components: components.sort((a, b) => a.name.localeCompare(b.name)),
     warnings,
+    exclusions,
   };
 }
 
-function extractFromSourceFile(sourceFile: SourceFile, isNext: boolean): RawComponentDefinitionInternal[] {
+function extractFromSourceFile(
+  sourceFile: SourceFile,
+  isNext: boolean,
+  exclusions: ExtractionExclusion[],
+): RawComponentDefinitionInternal[] {
   const components: RawComponentDefinitionInternal[] = [];
   const exported = sourceFile.getExportedDeclarations();
   const usesCreateContext = sourceFileUsesCreateContext(sourceFile);
 
   for (const [exportKey, declarations] of exported) {
-    let name = exportKey;
-
-    if (exportKey === 'default') {
-      const defaultExportName = resolveDefaultExportName(declarations, exported, true);
-      if (!defaultExportName) continue;
-      name = defaultExportName;
+    const name = resolveComponentExportName(exportKey, declarations, exported, true);
+    if (!name) continue;
+    if (isCompositionHookName(name)) {
+      exclusions.push({
+        itemType: 'component',
+        name,
+        source: sourceFile.getFilePath(),
+        reason: 'React hook names are not renderable components',
+        stage: 'component-filter',
+      });
+      continue;
     }
-
-    if (!/^[A-Z]/.test(name)) continue;
-    if (name.startsWith('use')) continue;
 
     const funcNode = resolveBestFunctionNode(declarations);
     if (!funcNode) continue;
