@@ -20,12 +20,12 @@ export type Screen =
   | 'settings-debug-mode'
   | 'upgrade';
 
-export interface AppProps {
+interface AppProps {
   onLaunchImport?: () => void;
   importExitCode?: number;
 }
 
-export function App({ onLaunchImport, importExitCode }: AppProps): React.ReactElement {
+function App({ onLaunchImport, importExitCode }: AppProps): React.ReactElement {
   const returnedFromImport = importExitCode !== undefined;
   const [screen, setScreen] = useState<Screen>(returnedFromImport ? 'import' : 'start');
 

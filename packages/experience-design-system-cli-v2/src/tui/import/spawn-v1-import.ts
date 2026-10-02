@@ -10,7 +10,7 @@ interface StepResult {
   error?: string;
 }
 
-export interface PipelineResult {
+interface PipelineResult {
   session: string;
   project: string;
   steps: StepResult[];
