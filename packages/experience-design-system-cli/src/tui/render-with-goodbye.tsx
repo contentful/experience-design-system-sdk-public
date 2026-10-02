@@ -1,27 +1,30 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { render, Text, type Instance, type RenderOptions } from 'ink';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { render, Text, useInput, type Instance, type RenderOptions } from 'ink';
 
 const GOODBYE_RENDER_DELAY_MS = 50;
 
 export function GoodbyeBoundary({ children }: { children: React.ReactNode }): React.ReactElement {
   const [isExiting, setIsExiting] = useState(false);
   const isExitingRef = useRef(false);
+  const exitTimerRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const requestExit = useCallback((): void => {
+    if (isExitingRef.current) return;
+    isExitingRef.current = true;
+    setIsExiting(true);
+    exitTimerRef.current = setTimeout(() => process.exit(0), GOODBYE_RENDER_DELAY_MS);
+  }, []);
+
+  useInput((input, key) => {
+    if (key.ctrl && input === 'c') requestExit();
+  });
 
   useEffect(() => {
-    let exitTimer: NodeJS.Timeout | undefined;
-    const handleSigint = (): void => {
-      if (isExitingRef.current) return;
-      isExitingRef.current = true;
-      setIsExiting(true);
-      exitTimer = setTimeout(() => process.exit(0), GOODBYE_RENDER_DELAY_MS);
-    };
-
-    process.on('SIGINT', handleSigint);
+    process.on('SIGINT', requestExit);
     return () => {
-      process.off('SIGINT', handleSigint);
-      if (exitTimer) clearTimeout(exitTimer);
+      process.off('SIGINT', requestExit);
+      if (exitTimerRef.current) clearTimeout(exitTimerRef.current);
     };
-  }, []);
+  }, [requestExit]);
 
   return isExiting ? <Text>Goodbye!</Text> : <>{children}</>;
 }
