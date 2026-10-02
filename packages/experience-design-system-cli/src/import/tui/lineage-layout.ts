@@ -59,7 +59,7 @@ export interface LineageLayoutInput {
 export interface LineageLayout {
   /** Rows the sidebar should render (`visibleCount`). Constant across open/closed. */
   sidebarVisible: number;
-  /** Rows the LineagePanel should window to (`maxRows`). */
+  /** Rows a sidebar replacement panel should window to (`maxRows`). */
   panelMaxRows: number;
 }
 
@@ -87,7 +87,7 @@ export function computeLineageLayout({ rows, panelOpen, entryCount }: LineageLay
 export interface SidebarBudget {
   /** Rows the GroupedSidebar should render (`visibleCount`). */
   sidebarVisibleCount: number;
-  /** Rows the LineagePanel should window to (`maxRows`). */
+  /** Rows a sidebar replacement panel should window to (`maxRows`). */
   panelMaxRows: number;
 }
 
