@@ -30,12 +30,12 @@ export function handleReviewOverlayInput(
     return true;
   }
   if (state.showFinalize) {
-    // The dialog owns y/n/Enter/Esc; here we own j/k scroll of its deletion list.
-    if (input === 'j' || key.downArrow) {
+    // The dialog owns y/n/Enter/Esc; here we own arrow-key scrolling of its deletion list.
+    if (key.downArrow) {
       state.finalizePreview.scrollBy(1);
       return true;
     }
-    if (input === 'k' || key.upArrow) {
+    if (key.upArrow) {
       state.finalizePreview.scrollBy(-1);
       return true;
     }
@@ -94,6 +94,10 @@ function handleTokenReviewInput(input: string, key: ImmediateInputKey, state: To
   const row = suggestions[state.tokenReviewRow];
 
   if (state.tokenReviewEditing) {
+    if (key.ctrl && input === 's' && row) {
+      state.handleTokenEditSave(row);
+      return true;
+    }
     if (row && row.paths.length > 0) {
       if (key.upArrow || input === 'k') {
         state.setTokenReviewEditCursor((cursor) => Math.max(0, cursor - 1));
@@ -112,10 +116,6 @@ function handleTokenReviewInput(input: string, key: ImmediateInputKey, state: To
           else next.add(path);
           return next;
         });
-        return true;
-      }
-      if (key.ctrl && input === 's') {
-        state.handleTokenEditSave(row);
         return true;
       }
     }
@@ -224,18 +224,12 @@ export function handleReviewPanelShortcuts(
 
 export type ReviewViewToggleInputState = Pick<
   UseReviewEditorResult,
-  'setShowJson' | 'setShowHiddenProps' | 'setJsonScrollOffset' | 'pendingGRef'
+  'setShowJson' | 'setJsonScrollOffset' | 'pendingGRef'
 >;
 
 export function handleReviewViewToggleInput(input: string, state: ReviewViewToggleInputState): boolean {
   if (input === 'J') {
     state.setShowJson((previous) => !previous);
-    state.setJsonScrollOffset(0);
-    state.pendingGRef.current = false;
-    return true;
-  }
-  if (input === 'H') {
-    state.setShowHiddenProps((previous) => !previous);
     state.setJsonScrollOffset(0);
     state.pendingGRef.current = false;
     return true;

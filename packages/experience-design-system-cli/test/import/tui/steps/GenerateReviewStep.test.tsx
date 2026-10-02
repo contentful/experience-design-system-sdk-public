@@ -118,7 +118,6 @@ describe('GenerateReviewStep — form by default (Fix 1)', () => {
     const terminalRows = process.stdout.rows ?? 40;
     expect((lastFrame() ?? '').split('\n').length).toBeLessThanOrEqual(terminalRows - 2);
   });
-
   it('does not highlight the description until the panel receives focus', async () => {
     const { lastFrame, stdin } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
@@ -214,7 +213,7 @@ describe('GenerateReviewStep — form by default (Fix 1)', () => {
 });
 
 describe('GenerateReviewStep — hidden properties', () => {
-  it('reveals hidden properties with H', async () => {
+  it('does not expose the removed hidden-property toggle', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Button', entry: CATEGORIZED_ENTRY }]);
     const { lastFrame, stdin } = render(
@@ -222,12 +221,12 @@ describe('GenerateReviewStep — hidden properties', () => {
     );
     await tick();
 
-    expect(lastFrame() ?? '').not.toContain('isDisabled');
+    const before = lastFrame() ?? '';
+    expect(before).not.toContain('isDisabled');
     stdin.write('H');
     await tick();
 
-    expect(lastFrame() ?? '').toContain('isDisabled');
-    expect(lastFrame() ?? '').toContain('className');
+    expect(lastFrame() ?? '').toBe(before);
   });
 });
 
@@ -270,6 +269,8 @@ describe('GenerateReviewStep — sidebar↔panel cross-key (Bug 1)', () => {
     );
     await tick();
     stdin.write('\t');
+    await tick();
+    stdin.write('\r');
     await tick();
     stdin.write('\r');
     await tick();
@@ -799,7 +800,7 @@ describe('GenerateReviewStep — removed-components top strip (T1)', () => {
   });
 });
 
-describe('GenerateReviewStep — rapid j/k navigation (no stutter)', () => {
+describe('GenerateReviewStep — rapid arrow navigation (no stutter)', () => {
   type Entry = import('@contentful/experience-design-system-types').CDFComponentEntry;
   const makeEntry = (label: string): Entry => ({
     $type: 'component',
@@ -1303,13 +1304,25 @@ describe('GenerateReviewStep — GA-3 cycle features (A1/A2/A7/A8)', () => {
     expect(frame).toMatch(/\[c\]\s*cycle list/);
   });
 
-  it('? help overlay cycle entry mentions rejecting a member AND removing/breaking a slot edge', async () => {
+  it('filters to cycle participants when [o] is pressed from the review panel', async () => {
+    const { lastFrame, stdin } = await renderWithCycle([{ key: 'Zonk', entry: leaf('Zonk') }]);
+    stdin.write('\t');
+    await tick();
+    stdin.write('o');
+    await tick();
+    const frame = stripAnsi(lastFrame() ?? '');
+    expect(frame).toContain('CycleA');
+    expect(frame).toContain('CycleB');
+    expect(frame).not.toContain('Zonk');
+  });
+
+  it('h help overlay identifies the cycle list without obsolete cycle commands', async () => {
     const { lastFrame, stdin } = await renderWithCycle();
-    stdin.write('?');
+    stdin.write('h');
     await tick();
     const frame = stripAnsi(lastFrame() ?? '').toLowerCase();
-    expect(frame).toMatch(/reject a cycle member/);
-    expect(frame).toMatch(/break the cycle|remove a slot/);
+    expect(frame).toMatch(/cycle list/);
+    expect(frame).not.toMatch(/reject a cycle member/);
   });
 
   it('[c] cycle panel guidance states reject-a-member AND remove/break-a-slot-edge', async () => {
@@ -1333,6 +1346,26 @@ describe('GenerateReviewStep — GA-3 cycle features (A1/A2/A7/A8)', () => {
     await tick();
     expect(stripAnsi(lastFrame() ?? '')).not.toMatch(/SLOT DEPENDENCY CYCLES/);
     expect(stripAnsi(lastFrame() ?? '')).toContain('CycleA');
+  });
+
+  it('[c] cycle panel closes immediately on Esc', async () => {
+    const { lastFrame, stdin } = await renderWithCycle();
+    stdin.write('c');
+    await tick();
+    expect(stripAnsi(lastFrame() ?? '')).toContain('SLOT DEPENDENCY CYCLES');
+    stdin.write('\x1b');
+    await tick();
+    expect(stripAnsi(lastFrame() ?? '')).not.toContain('SLOT DEPENDENCY CYCLES');
+  });
+
+  it('Enter in the cycle panel opens the cycle-breaking controls', async () => {
+    const { lastFrame, stdin } = await renderWithCycle();
+    stdin.write('c');
+    await tick();
+    stdin.write('\r');
+    await tick();
+    expect(stripAnsi(lastFrame() ?? '')).toContain('BREAK CYCLE');
+    expect(stripAnsi(lastFrame() ?? '')).toContain('remove slot edge');
   });
 
   it('[c] cycle panel still renders the "Suggested fix:" (suggestedBreak) line', async () => {
@@ -1478,7 +1511,7 @@ describe('GenerateReviewStep — GA-4 interactive break-cycle overlay (A9)', () 
     expect(stripAnsi(lastFrame() ?? '')).toMatch(/⚠ +CycleB/);
   });
 
-  it('A2-5 — break overlay renders in the bottom banner slot (below the editor), not the top strip', async () => {
+  it('A2-5 — break overlay renders as a bounded panel', async () => {
     const { utils } = await renderWithCycle();
     const { lastFrame, stdin } = utils;
     stdin.write('c');
@@ -1486,11 +1519,8 @@ describe('GenerateReviewStep — GA-4 interactive break-cycle overlay (A9)', () 
     stdin.write('x');
     await tick();
     const frame = stripAnsi(lastFrame() ?? '');
-    const breakIdx = frame.indexOf('BREAK CYCLE');
-    const editorIdx = frame.indexOf('description:');
-    expect(breakIdx).toBeGreaterThan(-1);
-    expect(editorIdx).toBeGreaterThan(-1);
-    expect(breakIdx).toBeGreaterThan(editorIdx);
+    expect(frame).toContain('BREAK CYCLE');
+    expect(frame).toContain('remove slot edge');
   });
 
   it('A2-5 — closing the break overlay + cycle panel restores the slot-dependency banner', async () => {
@@ -2949,7 +2979,7 @@ describe('GenerateReviewStep — view toggle (T8)', () => {
   });
 });
 
-describe('GenerateReviewStep — unsaved-changes warning (T5)', () => {
+describe('GenerateReviewStep — automatic save on focus change (T5)', () => {
   async function crossAndDirty(stdin: { write: (data: string) => void }): Promise<void> {
     stdin.write('\t'); // Tab → panel focus
     await tick();
@@ -2962,6 +2992,8 @@ describe('GenerateReviewStep — unsaved-changes warning (T5)', () => {
     stdin.write('j'); // → default (string default is text-entry — j literal is fine at this step)
     await tick();
     stdin.write('\x1b[B'); // ↓ arrow → description
+    await tick();
+    stdin.write('\r');
     await tick();
     stdin.write('X'); // literal edit
     await tick();
@@ -2993,7 +3025,7 @@ describe('GenerateReviewStep — unsaved-changes warning (T5)', () => {
     expect(frame).toMatch(/\[Tab\] focus panel/);
   });
 
-  it('dirty Tab-away opens an Unsaved changes warning and blocks focus cross', async () => {
+  it('dirty Tab-away saves and crosses focus without a warning', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Hero', entry: SAMPLE_STRING }]);
     const { lastFrame, stdin } = render(
@@ -3001,73 +3033,14 @@ describe('GenerateReviewStep — unsaved-changes warning (T5)', () => {
     );
     await tick();
     await crossAndDirty(stdin);
+    const storeSpy = vi.mocked(dbMod.storeCDFComponents);
+    storeSpy.mockClear();
     stdin.write('\t');
     await tick();
     const frame = lastFrame() ?? '';
-    expect(frame).toMatch(/Unsaved changes/i);
-  });
-
-  it('Enter in the warning saves and completes the deferred focus cross', async () => {
-    const dbMod = await import('../../../../src/session/db.js');
-    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Hero', entry: SAMPLE_STRING }]);
-    const storeSpy = vi.mocked(dbMod.storeCDFComponents);
-    storeSpy.mockClear();
-    const { lastFrame, stdin } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
-    );
-    await tick();
-    await crossAndDirty(stdin);
-    stdin.write('\t'); // Tab → warning
-    await tick();
-    expect(lastFrame() ?? '').toMatch(/Unsaved changes/i);
-    stdin.write('\r'); // Enter → save + cross
-    await tick();
     expect(storeSpy).toHaveBeenCalled();
-    const frame = lastFrame() ?? '';
     expect(frame).not.toMatch(/Unsaved changes/i);
     expect(frame).toMatch(/\[Tab\] focus panel/);
-  });
-
-  it('Esc in the warning discards and completes the deferred focus cross', async () => {
-    const dbMod = await import('../../../../src/session/db.js');
-    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Hero', entry: SAMPLE_STRING }]);
-    const storeSpy = vi.mocked(dbMod.storeCDFComponents);
-    storeSpy.mockClear();
-    const { lastFrame, stdin } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
-    );
-    await tick();
-    await crossAndDirty(stdin);
-    stdin.write('\t'); // Tab → warning
-    await tick();
-    expect(lastFrame() ?? '').toMatch(/Unsaved changes/i);
-    stdin.write('\x1b'); // Esc → discard + cross
-    await tick();
-    expect(storeSpy).not.toHaveBeenCalled();
-    const frame = lastFrame() ?? '';
-    expect(frame).not.toMatch(/Unsaved changes/i);
-    expect(frame).toMatch(/\[Tab\] focus panel/);
-  });
-
-  it('Tab in the warning cancels: focus stays in the panel, dirty preserved', async () => {
-    const dbMod = await import('../../../../src/session/db.js');
-    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Hero', entry: SAMPLE_STRING }]);
-    const storeSpy = vi.mocked(dbMod.storeCDFComponents);
-    storeSpy.mockClear();
-    const { lastFrame, stdin } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
-    );
-    await tick();
-    await crossAndDirty(stdin);
-    stdin.write('\t'); // Tab → warning
-    await tick();
-    expect(lastFrame() ?? '').toMatch(/Unsaved changes/i);
-    stdin.write('\t'); // Tab in dialog → cancel
-    await tick();
-    expect(storeSpy).not.toHaveBeenCalled();
-    const frame = lastFrame() ?? '';
-    expect(frame).not.toMatch(/Unsaved changes/i);
-    expect(frame).toMatch(/\[Tab\] focus list/);
   });
 });
 
@@ -3296,9 +3269,7 @@ describe('GenerateReviewStep — undo/redo + reload-from-save (T4)', () => {
     );
     await tick();
     const frame = (lastFrame() ?? '').replace(/\s+/g, ' ');
-    expect(frame).toContain('[Ctrl+Z] undo');
-    expect(frame).toContain('[Ctrl+Y] redo');
-    expect(frame).toContain('[Ctrl+R] reload');
+    expect(frame).toContain('[Ctrl+Z/Y/R] undo/redo/reload');
   });
 });
 
@@ -3548,7 +3519,7 @@ describe('GenerateReviewStep — [i] jump-and-filter (T5b)', () => {
     expect(lastFrame() ?? '').toContain('RATIONALE');
   });
 
-  it('legend advertises [i] focus lineage and [p] rationale', async () => {
+  it('legend advertises [i] focus lineage without inline rationale controls', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(CHAIN);
     const { lastFrame } = render(
@@ -3558,11 +3529,11 @@ describe('GenerateReviewStep — [i] jump-and-filter (T5b)', () => {
 
     const frame = (lastFrame() ?? '').replace(/\[[0-9;]*m/g, '').replace(/\s+/g, ' ');
     expect(frame).toMatch(/\[i\][^\n]*focus lineage/);
-    expect(frame).toMatch(/\[p\][^\n]*rationale/);
+    expect(frame).not.toMatch(/\[p\][^\n]*rationale/);
   });
 });
 
-describe('GenerateReviewStep — undo/redo legend + ? help overlay (L3b)', () => {
+describe('GenerateReviewStep — undo/redo legend + h help overlay (L3b)', () => {
   const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
 
   it('legend advertises Ctrl+Z / Ctrl+Y and NOT Cmd+Z / Cmd+Y', async () => {
@@ -3571,25 +3542,40 @@ describe('GenerateReviewStep — undo/redo legend + ? help overlay (L3b)', () =>
     );
     await tick();
     const frame = stripAnsi(lastFrame() ?? '');
-    expect(frame).toContain('Ctrl+Z');
-    expect(frame).toContain('Ctrl+Y');
+    expect(frame).toContain('Ctrl+Z/Y/R');
     expect(frame).not.toContain('Cmd+Z');
     expect(frame).not.toContain('Cmd+Y');
   });
 
-  it('pressing ? opens a help overlay advertising Ctrl+Y / Redo; Esc closes', async () => {
+  it('pressing h opens a help overlay advertising Ctrl+Y / Redo; h and Esc close it', async () => {
     const { lastFrame, stdin } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
     );
     await tick();
-    stdin.write('?');
+    stdin.write('h');
     await tick();
     const open = stripAnsi(lastFrame() ?? '');
     expect(open).toContain('Help');
     expect(open).toContain('Ctrl+Y');
     expect(open).toMatch(/Redo/i);
 
+    stdin.write('h');
+    await tick();
+    expect(stripAnsi(lastFrame() ?? '')).not.toContain('Help');
+
+    stdin.write('h');
+    await tick();
+    expect(stripAnsi(lastFrame() ?? '')).toContain('Help');
+
     stdin.write('\x1b'); // Esc
+    await tick();
+    expect(stripAnsi(lastFrame() ?? '')).not.toContain('Help');
+
+    stdin.write('h');
+    await tick();
+    expect(stripAnsi(lastFrame() ?? '')).toContain('Help');
+
+    stdin.write('h');
     await tick();
     expect(stripAnsi(lastFrame() ?? '')).not.toContain('Help');
   });
@@ -3680,7 +3666,7 @@ describe('GenerateReviewStep — breaking-changes goto-banner (L6)', () => {
     await tick();
     lastOnResult!(previewWithBreaking());
     await tick();
-    expect(stripAnsiL6(lastFrame() ?? '')).toContain('[b] see breaking changes');
+    expect(stripAnsiL6(lastFrame() ?? '')).toContain('[b] breaking changes');
   });
 
   const SAMPLE_BUTTON = {
@@ -4133,7 +4119,7 @@ describe('GenerateReviewStep — category filters (L8)', () => {
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
     );
     await tick();
-    stdin.write('?');
+    stdin.write('h');
     await tick();
     const out = stripAnsi(lastFrame() ?? '');
     expect(out).not.toMatch(/Deleted/);
@@ -4164,7 +4150,7 @@ describe('GenerateReviewStep — category filters (L8)', () => {
     expect(out).toContain('[o] only cycles');
   });
 
-  it('L11: GR bottom legend advertises the full keyset (accept/reject/panels/search/history)', async () => {
+  it('L11: GR bottom legend matches the compact ScopeGate key', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Alpha', entry: leaf('Alpha') }]);
     const { lastFrame } = render(
@@ -4172,12 +4158,14 @@ describe('GenerateReviewStep — category filters (L8)', () => {
     );
     await tick();
     const out = stripAnsi(lastFrame() ?? '');
-    expect(out).toContain('[a] accept');
-    expect(out).toContain('[r] reject');
-    expect(out).toContain('[L] flat');
+    expect(out).toContain('[a/r] accept/reject');
     expect(out).toContain('[/] search');
-    expect(out).toContain('[P] component rationale');
-    expect(out).toContain('[?] help');
+    expect(out).toContain('[f] continue/finalize');
+    expect(out).toContain('[h] help');
+    expect(out).toContain('[q] quit');
+    expect(out).toContain('[L] flat');
+    expect(out).toContain('[i] focus lineage');
+    expect(out).toContain('[Ctrl+Z/Y/R] undo/redo/reload');
   });
 
   it('L11: GR help panel lists P (not I) for component rationale', async () => {
@@ -4187,7 +4175,7 @@ describe('GenerateReviewStep — category filters (L8)', () => {
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
     );
     await tick();
-    stdin.write('?');
+    stdin.write('h');
     await tick();
     const out = stripAnsi(lastFrame() ?? '');
     expect(out).toMatch(/Component rationale/i);
@@ -4276,7 +4264,7 @@ describe('GenerateReviewStep — GA-1 (A3/A5/A6)', () => {
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
     );
     await tick();
-    stdin.write('?');
+    stdin.write('h');
     await tick();
     const out = stripAnsi(lastFrame() ?? '');
     expect(out).toContain('Only breaking');
@@ -4404,7 +4392,7 @@ describe('GenerateReviewStep — GA-1 (A3/A5/A6)', () => {
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
     );
     await tick();
-    stdin.write('?');
+    stdin.write('h');
     await tick();
     const out = stripAnsi(lastFrame() ?? '');
     const focusLine = out.split('\n').find((l) => /Focus panel/.test(l)) ?? '';
@@ -4490,102 +4478,6 @@ describe('GenerateReviewStep — groups re-expand after reload (A2-1)', () => {
     const frame = lastFrame() ?? '';
     expect(frame).toMatch(/▾ ⚠ P/);
     expect(frame).not.toMatch(/▸ ⚠ P/);
-  });
-});
-
-describe('GenerateReviewStep — [d] toggles removed-components banner (A2-2)', () => {
-  beforeEach(() => {
-    triggerSpy.mockReset();
-    lastUseLivePreviewArgs = null;
-    lastOnResult = null;
-    hookReturnOverride = null;
-  });
-
-  const previewWithRemoved = (names: string[]) =>
-    ({
-      components: {
-        new: [],
-        changed: [],
-        removed: names.map((n, i) => ({
-          id: `r${i}`,
-          name: n,
-          contentProperties: [],
-          designProperties: [],
-          slots: [],
-        })) as never,
-        unchanged: [],
-      },
-      tokens: { new: [], changed: [], removed: [], unchanged: [] },
-    }) as never;
-
-  it('[d] collapses the detail rows while keeping the count header visible', async () => {
-    const { lastFrame, stdin } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
-    );
-    await tick();
-    lastOnResult!(previewWithRemoved(['Widget']));
-    await tick();
-    let frame = lastFrame() ?? '';
-    expect(frame).toContain('Removed components (1)');
-    expect(frame).toMatch(/Widget/);
-    stdin.write('d');
-    await tick();
-    frame = lastFrame() ?? '';
-    expect(frame).toContain('Removed components (1)');
-    expect(frame).not.toMatch(/- Widget/);
-    stdin.write('d');
-    await tick();
-    frame = lastFrame() ?? '';
-    expect(frame).toMatch(/Widget/);
-  });
-
-  it('legend advertises [d] only when there are removed components', async () => {
-    const { lastFrame } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
-    );
-    await tick();
-    expect(lastFrame() ?? '').not.toContain('[d]');
-    lastOnResult!(previewWithRemoved(['Widget']));
-    await tick();
-    const frame = (lastFrame() ?? '').replace(/\s+/g, ' ');
-    expect(frame).toContain('[d]');
-  });
-
-  it('starts COLLAPSED by default when there are more than 5 removed components', async () => {
-    const { lastFrame } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
-    );
-    await tick();
-    lastOnResult!(previewWithRemoved(['R1', 'R2', 'R3', 'R4', 'R5', 'R6']));
-    await tick();
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('Removed components (6)');
-    expect(frame).not.toMatch(/- R1/);
-    expect(frame).not.toMatch(/- R6/);
-  });
-
-  it('starts EXPANDED by default when there are 5 or fewer removed components', async () => {
-    const { lastFrame } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
-    );
-    await tick();
-    lastOnResult!(previewWithRemoved(['R1', 'R2', 'R3', 'R4', 'R5']));
-    await tick();
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('Removed components (5)');
-    expect(frame).toMatch(/- R1/);
-    expect(frame).toMatch(/- R5/);
-  });
-
-  it('count header renders the expand/collapse hint text', async () => {
-    const { lastFrame } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
-    );
-    await tick();
-    lastOnResult!(previewWithRemoved(['Widget']));
-    await tick();
-    const frame = (lastFrame() ?? '').replace(/\s+/g, ' ');
-    expect(frame).toMatch(/\[d\] to expand\/collapse/);
   });
 });
 

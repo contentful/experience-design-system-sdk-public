@@ -108,7 +108,7 @@ export function ComponentRationalePanel({
       ))}
       <Box>
         {overflowed ? (
-          <Text dimColor>{`${visibleStart}-${visibleEnd}/${totalLines}    [j/k] scroll    [I/Esc] close`}</Text>
+          <Text dimColor>{`${visibleStart}-${visibleEnd}/${totalLines}    [↑↓] scroll    [I/Esc] close`}</Text>
         ) : (
           <Text dimColor>{'[I/Esc] close'}</Text>
         )}
