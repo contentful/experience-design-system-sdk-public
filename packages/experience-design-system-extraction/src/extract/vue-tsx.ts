@@ -12,20 +12,11 @@ import {
   getTypeReferenceName,
   getTypeTargetDeclarations,
   getValueTargetDeclarations,
-  isCompositionHookName,
-  resolveComponentExportName,
+  getRenderableExports,
 } from './tsx-shared.js';
 
 export async function extractVueTsxComponents(filePaths: string[]): Promise<ComponentExtractionResult> {
-  const exclusions: ExtractionExclusion[] = [];
-  const extractionContext = extractTsxComponents(filePaths, /\.tsx$/, (sourceFile) =>
-    extractFromSourceFile(sourceFile, exclusions),
-  );
-  if (!extractionContext) {
-    return { components: [], warnings: [] };
-  }
-
-  const { components, warnings } = extractionContext;
+  const { components, warnings, exclusions } = extractTsxComponents(filePaths, /\.tsx$/, extractFromSourceFile);
 
   return {
     components: components.sort((a, b) => a.name.localeCompare(b.name)),
@@ -36,22 +27,10 @@ export async function extractVueTsxComponents(filePaths: string[]): Promise<Comp
 
 function extractFromSourceFile(sourceFile: SourceFile, exclusions: ExtractionExclusion[]): RawComponentDefinition[] {
   const components: RawComponentDefinition[] = [];
-  const exported = sourceFile.getExportedDeclarations();
 
-  for (const [exportKey, declarations] of exported) {
-    const name = resolveComponentExportName(exportKey, declarations, exported);
-    if (!name) continue;
-    if (isCompositionHookName(name)) {
-      exclusions.push({
-        itemType: 'component',
-        name,
-        source: sourceFile.getFilePath(),
-        reason: 'Vue composition hook names are not renderable components',
-        stage: 'component-filter',
-      });
-      continue;
-    }
-
+  for (const { name, declarations } of getRenderableExports(sourceFile, exclusions, {
+    hookReason: 'Vue composition hook names are not renderable components',
+  })) {
     const component = extractVueTsxComponent(declarations, name, sourceFile);
     if (component) {
       components.push(component);

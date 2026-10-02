@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { Node, Project, SyntaxKind, type SourceFile, type Type } from 'ts-morph';
 import ts from 'typescript';
+import type { ExtractionExclusion } from '../types.js';
 
 type WorkspacePackageManifest = {
   name: string;
@@ -53,40 +54,29 @@ export function getTsxExtractionContext(
 export function extractTsxComponents<T>(
   filePaths: string[],
   componentFilePattern: RegExp,
-  extractSourceFile: (sourceFile: SourceFile) => T[],
-): { componentFiles: string[]; project: Project; components: T[]; warnings: string[] } | undefined {
+  extract: (sourceFile: SourceFile, exclusions: ExtractionExclusion[]) => T[],
+): { components: T[]; warnings: string[]; exclusions: ExtractionExclusion[]; project?: Project } {
   const extractionContext = getTsxExtractionContext(filePaths, componentFilePattern);
-  if (!extractionContext) return undefined;
+  if (!extractionContext) {
+    return { components: [], warnings: [], exclusions: [] };
+  }
 
-  const warnings: string[] = [];
+  const { componentFiles, project } = extractionContext;
   const components: T[] = [];
+  const warnings: string[] = [];
+  const exclusions: ExtractionExclusion[] = [];
 
-  for (const filePath of extractionContext.componentFiles) {
+  for (const filePath of componentFiles) {
     try {
-      const sourceFile = extractionContext.project.getSourceFile(filePath);
+      const sourceFile = project.getSourceFile(filePath);
       if (!sourceFile) continue;
-      components.push(...extractSourceFile(sourceFile));
+      components.push(...extract(sourceFile, exclusions));
     } catch (e) {
       warnings.push(`Failed to extract from ${filePath}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
-  return { ...extractionContext, components, warnings };
-}
-
-export function resolveComponentExportName(
-  exportKey: string,
-  declarations: Node[],
-  exported: { has(name: string): boolean },
-  allowVariableDeclaration = false,
-): string | undefined {
-  const name =
-    exportKey === 'default' ? resolveDefaultExportName(declarations, exported, allowVariableDeclaration) : exportKey;
-  return name && /^[A-Z]/.test(name) ? name : undefined;
-}
-
-export function isCompositionHookName(name: string): boolean {
-  return name.startsWith('use');
+  return { components, warnings, exclusions, project };
 }
 
 export function resolveDefaultExportName(
@@ -103,6 +93,36 @@ export function resolveDefaultExportName(
 
   if (!name || !/^[A-Z]/.test(name) || exported.has(name)) return undefined;
   return name;
+}
+
+export function getRenderableExports(
+  sourceFile: SourceFile,
+  exclusions: ExtractionExclusion[],
+  options: { allowVariableDeclaration?: boolean; hookReason: string },
+): Array<{ name: string; declarations: Node[] }> {
+  const renderable: Array<{ name: string; declarations: Node[] }> = [];
+  const exported = sourceFile.getExportedDeclarations();
+
+  for (const [exportKey, declarations] of exported) {
+    const name =
+      exportKey === 'default'
+        ? resolveDefaultExportName(declarations, exported, options.allowVariableDeclaration)
+        : exportKey;
+    if (!name || !/^[A-Z]/.test(name)) continue;
+    if (name.startsWith('use')) {
+      exclusions.push({
+        itemType: 'component',
+        name,
+        source: sourceFile.getFilePath(),
+        reason: options.hookReason,
+        stage: 'component-filter',
+      });
+      continue;
+    }
+    renderable.push({ name, declarations });
+  }
+
+  return renderable;
 }
 
 export function kebabToPascal(input: string): string {
