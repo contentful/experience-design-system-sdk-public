@@ -16,10 +16,10 @@ export type SourceCallSiteRejection = {
   parent: string;
   candidate: string;
   sourcePath: string;
-  startLine: number;
-  endLine: number;
-  excerpt: string;
-  reason: 'unknown-component' | 'unbound-component' | 'text-only-child';
+  startLine?: number;
+  endLine?: number;
+  excerpt?: string;
+  reason: 'unknown-component' | 'unbound-component' | 'text-only-child' | 'no-call-site';
 };
 
 export type SourceCallSiteEvidenceResult = {
@@ -85,6 +85,23 @@ export function collectSourceCallSiteEvidence(
 
   for (const sourceFile of sourceFiles.values()) {
     collectCallerSlotEvidence(sourceFile, componentNames, collectBoundNames(sourceFile), accepted, rejected);
+  }
+
+  const verifiedPairs = new Set(accepted.map((evidence) => `${evidence.parent}\u0000${evidence.child}`));
+  for (const component of components) {
+    const candidates = component.slots.flatMap((slot) => [
+      ...(slot.allowedComponents ?? []),
+      ...(slot.structuralAllowedComponents ?? []),
+    ]);
+    for (const candidate of candidates) {
+      if (verifiedPairs.has(`${component.name}\u0000${candidate}`)) continue;
+      rejected.push({
+        parent: component.name,
+        candidate,
+        sourcePath: component.sourcePath ?? component.source,
+        reason: 'no-call-site',
+      });
+    }
   }
 
   return {
