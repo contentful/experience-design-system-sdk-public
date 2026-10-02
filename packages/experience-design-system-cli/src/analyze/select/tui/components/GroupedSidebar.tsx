@@ -13,6 +13,7 @@ import type { RenderStatus } from '../../../issue-inheritance.js';
 import { PreviewBadge, previewBadge } from './Sidebar.js';
 import { PALETTE } from '../theme.js';
 import type { PreviewAnnotation } from '../../types.js';
+import { WindowIndicator, WindowedPanel } from '../../../../tui/windowed-panel.js';
 
 export interface GroupedSidebarItem {
   key: string;
@@ -29,6 +30,9 @@ export interface GroupedSidebarProps {
   expandedGroups: Set<string>;
   onToggleExpanded: (rootName: string) => void;
   width: number;
+  height?: number;
+  title?: string;
+  wrapLabels?: boolean;
   focused: boolean;
   renderStatusByKey?: Map<string, RenderStatus>;
   previewAnnotationByKey?: Map<string, PreviewAnnotation>;
@@ -536,6 +540,8 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
     expandedGroups,
     focused,
     width,
+    title,
+    wrapLabels = false,
     selectedIdx,
     selectedRowIdx,
     renderStatusByKey,
@@ -569,18 +575,10 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
   const start = windowed ? Math.max(0, scrollOffset ?? 0) : 0;
   const end = windowed ? start + (visibleCount ?? allRows.length) : allRows.length;
   const rows = windowed ? allRows.slice(start, end) : allRows;
-  const showScrollUp = windowed && start > 0;
-  const showScrollDown = windowed && end < allRows.length;
 
   return (
-    <Box
-      flexDirection="column"
-      width={width}
-      flexShrink={0}
-      borderStyle="single"
-      borderColor={focused ? 'white' : undefined}
-    >
-      {showScrollUp && <Text dimColor>▲</Text>}
+    <WindowedPanel width={width} height={props.height} title={title} focused={focused}>
+      {windowed && <WindowIndicator direction="up" count={start} />}
       {rows.map((row, i) => {
         const absoluteRowIdx = start + i;
         const isSelected =
@@ -623,7 +621,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
           dimPredicate(itemName);
 
         const isSynthetic = row.kind === 'flat-header';
-        const isCursor = isSelected && focused;
+        const isCursor = isSelected;
         const wouldDim = row.kind === 'flat-header' || row.sharedSuffix === true || canDim;
         const labelStyle = labelStyleFor({ row, isCursor, wouldDim });
         const inheritanceStyle = inheritanceGlyphStyleFor({
@@ -641,10 +639,10 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
             ) : (
               <Text> </Text>
             )}
-            <PreviewBadge badge={badge} />
+            <PreviewBadge badge={badge} highlighted={isSelected} />
             {selectionStateByKey !== undefined &&
               (selGlyph && !isSynthetic ? (
-                <Text color={selColor} dimColor={selDim} bold={selBold}>
+                <Text color={selColor} dimColor={isSelected ? false : selDim} bold={selBold}>
                   {' ' + selGlyph}
                 </Text>
               ) : (
@@ -659,12 +657,12 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
                 <Text>{'    '}</Text>
               ))}
             <Text
-              color={labelStyle.color}
-              bold={labelStyle.bold}
-              inverse={isSelected && focused}
+              color={isSelected ? PALETTE.info : labelStyle.color}
+              bold={isSelected || labelStyle.bold}
+              inverse={false}
               underline={isSelected && !focused}
-              dimColor={labelStyle.dim}
-              wrap="truncate"
+              dimColor={isSelected ? false : labelStyle.dim}
+              wrap={wrapLabels ? 'wrap' : 'truncate'}
             >
               {' '}
               {row.label}
@@ -677,7 +675,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
           </Box>
         );
       })}
-      {showScrollDown && <Text dimColor>▼</Text>}
-    </Box>
+      {windowed && <WindowIndicator direction="down" count={allRows.length - end} />}
+    </WindowedPanel>
   );
 }

@@ -1,5 +1,5 @@
 import { createElement } from 'react';
-import { render } from 'ink';
+import { renderWithGoodbye } from '../tui/render-with-goodbye.js';
 import { access, mkdir, stat, writeFile } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 import type { Command } from 'commander';
@@ -253,7 +253,7 @@ export function registerPrintCommand(program: Command): void {
       const exitCode = failed ? 1 : 0;
 
       if (getInteractiveTerminalSupport().supported) {
-        const { waitUntilExit } = render(
+        const { waitUntilExit } = renderWithGoodbye(
           createElement(ValidateView, {
             results: viewResults,
             onExit: () => void exitWithAnalytics(exitCode),

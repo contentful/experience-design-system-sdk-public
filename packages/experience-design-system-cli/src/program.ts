@@ -78,20 +78,11 @@ function registerImportV2Command(program: Command): void {
     .description('Launch the v2 import TUI (experience-design-system-cli-v2)')
     .helpOption(false)
     .action(async () => {
-      const v2Path = join(
-        dirname(fileURLToPath(import.meta.url)),
-        '..',
-        '..',
-        '..',
-        'experience-design-system-cli-v2',
-        'bin',
-        'cli-v2.js',
-      );
-      const child = spawn('node', [v2Path], { stdio: 'inherit' });
-      await new Promise<void>((resolve) => {
-        child.on('exit', () => resolve());
-        child.on('error', () => resolve());
-      });
+      const { renderWithGoodbye } = await import('./tui/render-with-goodbye.js');
+      const { createElement } = await import('react');
+      const { App } = await import('@contentful/experience-design-system-cli-v2/app');
+      const { waitUntilExit } = renderWithGoodbye(createElement(App));
+      await waitUntilExit();
     });
 }
 

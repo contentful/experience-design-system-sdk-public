@@ -100,6 +100,7 @@ export function ReviewDetailsEditor({
           height={height}
           active={!sidebarFocused}
           metadata={toFieldEditorMetadata(reviewMetadata)}
+          showInlineRationales={false}
         />
       }
     />

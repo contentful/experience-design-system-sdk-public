@@ -1,5 +1,4 @@
 import type { Closure } from '../../analyze/composite-closure.js';
-import { computeSidebarWidth } from './sidebar-width.js';
 /** Structural subset of ScopeComponent needed by these helpers. */
 export interface ScopeComponentLike {
   name: string;
@@ -7,32 +6,46 @@ export interface ScopeComponentLike {
 
 export type Decision = 'accepted' | 'rejected' | 'undecided';
 
-const THREE_COLUMN_MIN_WIDTH = 120;
+const TWO_COLUMN_MIN_WIDTH = 100;
+export const SCOPE_GATE_MAIN_COLUMN_WIDTH = 54;
+export const ACCEPTED_COMPONENTS_COLUMN_WIDTH = 36;
+const PANEL_BORDER_ROWS = 2;
+const PANEL_INDICATOR_ROWS = 2;
+const PANEL_HEADER_ROWS = 2;
+
+export interface ScopeGatePanelLayout {
+  height: number;
+  mainVisibleCount: number;
+  sideVisibleCount: number;
+}
+
+/**
+ * All scope-gate panels share one terminal-sized frame. Panels with a header
+ * therefore receive the same content rows because every scope-gate panel has
+ * the same header and indicator chrome.
+ */
+export function computePanelLayout(mainVisibleCount: number): ScopeGatePanelLayout {
+  const safeMainVisibleCount = Math.max(1, mainVisibleCount);
+  const height = safeMainVisibleCount + PANEL_BORDER_ROWS + PANEL_INDICATOR_ROWS + PANEL_HEADER_ROWS;
+  const sideVisibleCount = Math.max(1, height - PANEL_BORDER_ROWS - PANEL_INDICATOR_ROWS - PANEL_HEADER_ROWS);
+  return { height, mainVisibleCount: safeMainVisibleCount, sideVisibleCount };
+}
 
 export function computeColumnWidths(totalWidth: number): {
-  layout: 'single' | 'three-column';
+  layout: 'single' | 'two-column';
   main: number;
   added: number;
-  groups: number;
 } {
-  if (totalWidth < THREE_COLUMN_MIN_WIDTH) {
-    return { layout: 'single', main: computeSidebarWidth(totalWidth), added: 0, groups: 0 };
+  if (totalWidth < TWO_COLUMN_MIN_WIDTH) {
+    return { layout: 'single', main: SCOPE_GATE_MAIN_COLUMN_WIDTH, added: 0 };
   }
-  const main = computeSidebarWidth(totalWidth);
-  const remaining = Math.max(0, totalWidth - main - 4);
-  const added = Math.floor(remaining * 0.45);
-  const groups = Math.max(0, remaining - added - 2);
-  return { layout: 'three-column', main, added, groups };
+  const main = SCOPE_GATE_MAIN_COLUMN_WIDTH;
+  const added = ACCEPTED_COMPONENTS_COLUMN_WIDTH;
+  return { layout: 'two-column', main, added };
 }
 
 export interface AddedComponentEntry {
   name: string;
-  isCycle: boolean;
-}
-
-export interface AddedGroupEntry {
-  name: string;
-  depCount: number;
   isCycle: boolean;
 }
 
@@ -59,41 +72,6 @@ export function buildAddedComponentsList(
     seen.add(c.name);
     if (cycleParticipants.has(c.name)) cycleTier.push({ name: c.name, isCycle: true });
     else restTier.push({ name: c.name, isCycle: false });
-  }
-  return sortTieredEntries(cycleTier, restTier);
-}
-
-export function buildAddedGroupsList(
-  closures: Map<string, Closure>,
-  stateByKey: Map<string, Decision>,
-  cycleParticipants: Set<string> = new Set<string>(),
-  cycleUnits: Map<string, Set<string>> = new Map<string, Set<string>>(),
-): AddedGroupEntry[] {
-  const cycleTier: AddedGroupEntry[] = [];
-  const restTier: AddedGroupEntry[] = [];
-  const seenNames = new Set<string>();
-  for (const [root, closure] of closures.entries()) {
-    if (closure.nodes.length <= 1) continue;
-    if (stateByKey.get(root) !== 'accepted') continue;
-    const entry: AddedGroupEntry = {
-      name: root,
-      depCount: closure.nodes.length - 1,
-      isCycle: cycleParticipants.has(root),
-    };
-    if (entry.isCycle) cycleTier.push(entry);
-    else restTier.push(entry);
-    seenNames.add(root);
-  }
-  const seenUnits = new Set<Set<string>>();
-  for (const unit of cycleUnits.values()) {
-    if (seenUnits.has(unit)) continue;
-    seenUnits.add(unit);
-    for (const member of unit) {
-      if (stateByKey.get(member) !== 'accepted') continue;
-      if (seenNames.has(member)) continue;
-      seenNames.add(member);
-      cycleTier.push({ name: member, depCount: unit.size - 1, isCycle: true });
-    }
   }
   return sortTieredEntries(cycleTier, restTier);
 }

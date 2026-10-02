@@ -53,6 +53,7 @@ export type FieldEditorProps = {
   discardTrigger?: number;
   initialFocusTarget?: { kind: 'description' } | { kind: 'prop' | 'slot'; name: string };
   showHiddenProps?: boolean;
+  showInlineRationales?: boolean;
 };
 
 type FocusLevel = 'section' | 'prop' | 'slot' | 'field' | 'componentDescription';
@@ -853,6 +854,7 @@ export function FieldEditor({
   discardTrigger,
   initialFocusTarget,
   showHiddenProps = true,
+  showInlineRationales = true,
 }: FieldEditorProps): React.ReactElement {
   const { state: initialState, error: parseError } = parseToState(value);
 
@@ -1780,7 +1782,10 @@ export function FieldEditor({
             );
           }
           if (row.kind === 'component-description') {
-            const isSelected = inComponentDesc;
+            // Keep the description's selection styling scoped to the active
+            // panel. The sidebar owns focus on the initial render, so the
+            // editor must not appear focused until the operator tabs into it.
+            const isSelected = inComponentDesc && active;
             const isEditing = isSelected && focusLevel === 'field' && activeField === 'description';
             const desc = editorState.componentDescription;
             return (
@@ -1791,7 +1796,7 @@ export function FieldEditor({
                     bold={isSelected}
                     backgroundColor={isSelected ? 'blue' : undefined}
                   >
-                    {' description: '}
+                    {`${isSelected ? '›' : ' '} description: `}
                   </Text>
                   {isEditing ? (
                     <Box flexGrow={1} borderStyle="round" borderColor={PALETTE.info} paddingX={1}>
@@ -1824,7 +1829,7 @@ export function FieldEditor({
                 editingValue={isSelected ? editingValue : null}
                 valueText={isSelected ? valueText : ''}
                 width={innerWidth}
-                rationale={propMeta?.rationale ?? null}
+                rationale={showInlineRationales ? (propMeta?.rationale ?? null) : null}
                 rowKey={String(row.idx)}
               />
             );

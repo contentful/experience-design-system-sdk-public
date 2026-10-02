@@ -8,15 +8,16 @@
  * binding (caller should NOT update state in that case).
  *
  * Supported bindings:
- * - j / downArrow      → +1 line
- * - k / upArrow        → -1 line
+ * - downArrow          → +1 line
+ * - upArrow            → -1 line
  * - Ctrl+d             → +half-page (floor(panelHeight / 2))
  * - Ctrl+u             → -half-page
  * - PageDown           → +panelHeight
  * - PageUp             → -panelHeight
  * - G                  → jump to maxOffset
  *
- * `g` (single-tap) and `gg` (double-tap → jump to 0) are handled separately
+ * `j`/`k` are intentionally not handled here because they are field-navigation
+ * keys in the editor. `g` (single-tap) and `gg` (double-tap → jump to 0) are handled separately
  * by the caller via a pending-flag ref, since they need transient state.
  */
 export type ScrollKeyState = {
@@ -43,10 +44,10 @@ export function computeNextScrollOffset(
   if (key.ctrl && input === 'u') {
     return Math.max(0, current - halfPage);
   }
-  if (key.downArrow || input === 'j') {
+  if (key.downArrow) {
     return Math.min(maxOffset, current + 1);
   }
-  if (key.upArrow || input === 'k') {
+  if (key.upArrow) {
     return Math.max(0, current - 1);
   }
   if (key.pageDown) {

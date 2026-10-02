@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { PALETTE } from '../../analyze/select/tui/theme.js';
-import { Box, Text, useStdout } from 'ink';
+import { Box, Text } from 'ink';
 import { join, resolve } from 'node:path';
 import { appendFileSync, writeFileSync } from 'node:fs';
 import { access, stat, writeFile } from 'node:fs/promises';
@@ -11,7 +11,6 @@ import { buildRunTeaserLine } from './run-teaser.js';
 import { getDebugLogger } from '../../lib/debug-logger.js';
 import { readExperiencesCredentials, writeExperiencesCredentials } from '../../credentials-store.js';
 import { PathPrompt } from '../../runs/path-prompt.js';
-import { SaveConflictGate } from '../../runs/save-conflict.js';
 import { detectSaveConflict, buildTimestampedSubdir } from '../../runs/save-path-resolver.js';
 import { appendRun, updateRun } from '../../runs/store.js';
 import { buildSourceFingerprint } from '../../runs/fingerprint.js';
@@ -30,8 +29,6 @@ import { PreviewValidationErrorStep } from './steps/PreviewValidationErrorStep.j
 import { PushingStep } from './steps/PushingStep.js';
 import { type PushProgress } from './push-progress.js';
 import { nextStateAfterPrint } from './run-print-files-helpers.js';
-import { PushDecisionGateStep } from './steps/PushDecisionGateStep.js';
-import { chooseGateAction } from './push-decision-gate-helpers.js';
 import { ImportApiClient, ApiError, type PreviewValidationError } from '../../apply/api-client.js';
 import {
   detectSlotCycles,
@@ -68,13 +65,13 @@ import {
 import { ScopeGateStep, type ScopeComponent } from './steps/ScopeGateStep.js';
 import { GenerateReviewStep } from './steps/GenerateReviewStep.js';
 import { runScopeGate } from './runScopeGate.js';
-import { checkAgentAuth, type AgentName } from '@contentful/experience-design-system-generation';
+import { checkAgentAuth, type AgentAuthStatus, type AgentName } from '@contentful/experience-design-system-generation';
 import { normalizePath } from '../path-utils.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../../host-utils.js';
 import { fetchAndPersistExistingContentfulEntities } from '../../helpers/fetch-and-persist-existing-contentful-entities.js';
 import {
-  nextStepAfterScopeGate,
-  nextStepAfterCredentialsValidated,
+  shouldGenerateAfterScopeGate,
+  shouldGenerateAfterCredentialsValidated,
   shouldBypassPreview,
   buildSkippedPreviewTransition,
   shouldRefusePush,
@@ -86,6 +83,9 @@ import {
 import { findCliPath } from '../../lib/cli-path.js';
 import { parsePromptOverrides, resolvePromptOverride } from '../../lib/prompt-overrides.js';
 import { runSelectionAgent } from './run-selection-agent.js';
+import { useTerminalSize } from '../../tui/use-terminal-size.js';
+
+const SAVE_CONFIRMATION_DELAY_MS = 1000;
 
 type WizardStep =
   | 'welcome'
@@ -100,13 +100,11 @@ type WizardStep =
   | 'generating'
   | 'mapping-tokens'
   | 'final-review'
-  | 'push-decision-gate'
   | 'credentials'
   | 'previewing'
   | 'preview-gate'
   | 'pushing'
   | 'path-prompt'
-  | 'save-conflict-gate'
   | 'printing'
   | 'print-gate'
   | 'done'
@@ -133,6 +131,7 @@ type WizardState = {
   skipComponents: boolean;
   tokenSessionId: string | null;
   tokenGenerationStatus: 'idle' | 'running' | 'complete' | 'failed';
+  mapTokensStatus: 'idle' | 'running' | 'complete' | 'failed';
   tokenCount: number;
   extractSessionId: string | null;
   generateSessionId: string | null;
@@ -349,6 +348,7 @@ export type WizardAppProps = {
   generatePromptPath?: string;
   skipMapTokens?: boolean;
   initialRawTokensPath?: string;
+  initialAgentAuth?: Promise<AgentAuthStatus>;
 };
 
 export function WizardApp({
@@ -367,12 +367,15 @@ export function WizardApp({
   generatePromptPath,
   skipMapTokens = false,
   initialRawTokensPath,
+  initialAgentAuth,
 }: WizardAppProps = {}): React.ReactElement {
   const defaultConfiguredHost = toConfiguredHost(host || process.env['EDS_HOST']) ?? DEFAULT_CONFIGURED_HOST;
   const resolveWizardHost = (hostValue?: string): string => hostValue || defaultConfiguredHost;
-  const { stdout } = useStdout();
-  const terminalWidth = stdout.columns;
+  const credentialKey = (spaceId: string, environmentId: string, cmaToken: string, hostValue: string): string =>
+    [spaceId.trim(), environmentId.trim(), cmaToken.trim(), resolveWizardHost(hostValue)].join('\u0000');
+  const { columns: terminalWidth } = useTerminalSize();
   const logInit = useRef(false);
+  const initialAgentAuthRef = useRef<Promise<AgentAuthStatus> | null>(initialAgentAuth ?? null);
   if (!logInit.current) {
     writeFileSync(WIZARD_LOG, `--- experiences import session ${new Date().toISOString()} ---\n`);
     logInit.current = true;
@@ -394,7 +397,16 @@ export function WizardApp({
 
   const generateChildRef = useRef<import('node:child_process').ChildProcess | null>(null);
   const credentialsValidationIdRef = useRef(0);
+  const pendingCredentialValidationRef = useRef<{
+    key: string;
+    promise: Promise<boolean>;
+  } | null>(null);
+  const validatedCredentialsKeyRef = useRef<string | null>(null);
   const tokenGenerationPromiseRef = useRef<Promise<boolean> | null>(null);
+  const extractPromiseRef = useRef<Promise<void> | null>(null);
+  const extractStartedRef = useRef(false);
+  const credentialsReadyRef = useRef(false);
+  const scopeGateCompletedRef = useRef(false);
   const existingEntitiesPromiseRef = useRef<Promise<boolean> | null>(null);
   const generatePromiseRef = useRef<Promise<{
     exitCode: number;
@@ -427,6 +439,7 @@ export function WizardApp({
     skipComponents: false,
     tokenSessionId: null,
     tokenGenerationStatus: 'idle',
+    mapTokensStatus: 'idle',
     tokenCount: 0,
     extractSessionId: null,
     generateSessionId: null,
@@ -528,8 +541,10 @@ export function WizardApp({
 
   const runAgentAuthCheck = async (nextStep: WizardStep): Promise<boolean> => {
     const authCheckStepNumber = state.tokensPath ? 4 : 3;
-    update({ step: 'checking-claude-auth', authCheckStepNumber });
-    const status = await checkAgentAuth(state.agent as AgentName);
+    const prefetchedAuth = initialAgentAuthRef.current;
+    initialAgentAuthRef.current = null;
+    if (!prefetchedAuth) update({ step: 'checking-claude-auth', authCheckStepNumber });
+    const status = await (prefetchedAuth ?? checkAgentAuth(state.agent as AgentName));
     if (status === 'not-found') {
       update({
         step: 'error',
@@ -554,14 +569,18 @@ export function WizardApp({
     return true;
   };
 
-  const runGenerateTokens = async (rawTokensPath: string, outDir: string): Promise<boolean> => {
+  const runGenerateTokens = async (
+    rawTokensPath: string,
+    outDir: string,
+    forceRegenerate = false,
+  ): Promise<boolean> => {
     update({ tokenGenerationStatus: 'running' });
     const tokenArgs = buildGenerateTokensArgs({
       rawTokensPath,
       agent: state.agent,
       ...(state.agentModel ? { model: state.agentModel } : {}),
       ...(state.bedrock ? { bedrock: true } : {}),
-      noCache: effectiveNoCache,
+      noCache: effectiveNoCache || forceRegenerate,
       promptOverrides,
     });
     const result = await runSpawnedCli(tokenArgs);
@@ -653,11 +672,11 @@ export function WizardApp({
     }
 
     if (!shouldRunMapTokens({ mappablePropCount, rawTokenCount })) {
-      update({ mapTokensEligible: false });
+      update({ mapTokensEligible: false, mapTokensStatus: 'complete' });
       return true;
     }
 
-    update({ step: 'mapping-tokens', mapTokensEligible: true });
+    update({ mapTokensEligible: true, mapTokensStatus: 'running' });
     const args = buildMapTokensArgs({
       sessionId,
       agent: state.agent,
@@ -672,6 +691,7 @@ export function WizardApp({
     if (result.exitCode !== 0) {
       update({
         step: 'error',
+        mapTokensStatus: 'failed',
         errorStep: 'map tokens',
         errorMessage: result.stderr.trim() || 'Unknown error',
       });
@@ -681,6 +701,7 @@ export function WizardApp({
     // The command can still report "Nothing to map" if the database changes
     // between eligibility detection and subprocess startup. Treat that as a
     // successful no-op and continue to final review.
+    update({ mapTokensStatus: 'complete' });
     return true;
   };
 
@@ -734,18 +755,24 @@ export function WizardApp({
     return promise;
   };
 
-  const runExtract = async (projectPath: string) => {
+  const runExtract = async (projectPath: string, showProgress = true) => {
     const outDir = join(resolve(projectPath), '.contentful');
+    const existingEntitiesExpected =
+      !state.credentialsSkipped && Boolean(state.spaceId && state.environmentId && state.cmaToken && projectPath);
     update({
-      step: 'extracting',
+      ...(showProgress ? { step: 'extracting' as WizardStep } : {}),
       outDir,
       extractProgress: null,
       compositionPhase: 'resolving',
-      selectionAgentStatus: 'idle',
+      // Put every extraction-stage task on the first frame. The selection
+      // agent cannot start until extraction emits its session, but it is
+      // already part of this stage and should not appear later as a new row.
+      selectionAgentStatus: state.agent ? 'running' : 'complete',
+      existingEntitiesStatus: existingEntitiesExpected ? 'running' : 'idle',
     });
     const existingEntitiesPromise = startExistingEntitiesFetch(projectPath, outDir);
     const extractArgs = [findCliPath(), '__extract', '--project', projectPath];
-    if (noCache) extractArgs.push('--composition-refresh');
+    if (effectiveNoCache) extractArgs.push('--composition-refresh', '--no-cache');
     for (const p of promptOverrides ?? []) extractArgs.push('--prompt', p);
     // Composition resolution uses the same agent the user picked for the run.
     if (state.agent) extractArgs.push('--agent', state.agent);
@@ -776,7 +803,6 @@ export function WizardApp({
     const startSelection = (sessionId: string): void => {
       if (selectionStarted || !state.agent) return;
       selectionStarted = true;
-      update({ selectionAgentStatus: 'running' });
       selectionPromise = (async () => {
         if (existingEntitiesPromise) await existingEntitiesPromise;
         await runSelectionAgent({
@@ -900,9 +926,19 @@ export function WizardApp({
       if (!tokenGenerationSucceeded) return;
     }
     update({
-      step: 'scope-gate',
       extractSessionId,
       selectionAgentStatus: 'complete',
+      ...(credentialsReadyRef.current ? { step: 'scope-gate' as WizardStep } : {}),
+    });
+  };
+
+  const startExtract = (projectPath: string, showProgress = true): void => {
+    if (extractStartedRef.current) return;
+    extractStartedRef.current = true;
+    const promise = runExtract(projectPath, showProgress);
+    extractPromiseRef.current = promise;
+    void promise.finally(() => {
+      extractPromiseRef.current = null;
     });
   };
 
@@ -1038,9 +1074,8 @@ export function WizardApp({
   };
 
   const advanceToPushFlow = (generatedAcceptedCount: number) => {
-    // Credentials collected at the front of the wizard — push flow decides
-    // directly at the push-decision-gate.
-    update({ generatedAcceptedCount, step: 'push-decision-gate' });
+    update({ generatedAcceptedCount });
+    void runSaveAndPush();
   };
 
   const runEditFromPreview = async () => {
@@ -1053,9 +1088,22 @@ export function WizardApp({
     void runPreview(sid, tp, state.spaceId, state.environmentId, state.cmaToken, state.host);
   };
 
-  const advanceWithCredentials = (spaceId: string, environmentId: string, cmaToken: string, host: string) => {
+  const advanceWithCredentials = async (spaceId: string, environmentId: string, cmaToken: string, host: string) => {
     const resolvedHost = resolveWizardHost(host);
-    void validateCredentials(spaceId, environmentId, cmaToken, resolvedHost);
+    const key = credentialKey(spaceId, environmentId, cmaToken, resolvedHost);
+
+    if (validatedCredentialsKeyRef.current === key) {
+      await advanceAfterCredentialsValidated();
+      return;
+    }
+
+    const pending = pendingCredentialValidationRef.current;
+    if (pending?.key === key) {
+      if (await pending.promise) await advanceAfterCredentialsValidated();
+      return;
+    }
+
+    await validateCredentials(spaceId, environmentId, cmaToken, resolvedHost);
   };
 
   const confirmCredentials = async (spaceId: string, environmentId: string, cmaToken: string, host: string) => {
@@ -1089,9 +1137,10 @@ export function WizardApp({
     cmaToken: string,
     host: string,
     options: { background?: boolean; validationId?: number } = {},
-  ) => {
+  ): Promise<boolean> => {
     const validationId = options.validationId ?? ++credentialsValidationIdRef.current;
     const isCurrent = (): boolean => credentialsValidationIdRef.current === validationId;
+    const key = credentialKey(spaceId, environmentId, cmaToken, host);
     update({
       step: 'credentials',
       credentialsValidating: true,
@@ -1107,7 +1156,8 @@ export function WizardApp({
         host: resolvedHost,
       });
       await client.validateToken();
-      if (!isCurrent()) return;
+      if (!isCurrent()) return false;
+      validatedCredentialsKeyRef.current = key;
       update({
         spaceId,
         environmentId,
@@ -1116,10 +1166,11 @@ export function WizardApp({
         credentialsValidating: false,
         credentialsBackgroundValidating: false,
       });
-      if (options.background) return;
+      if (options.background) return true;
       await advanceAfterCredentialsValidated(validationId);
+      return true;
     } catch (e) {
-      if (!isCurrent()) return;
+      if (!isCurrent()) return false;
       if (e instanceof ApiError && (e.status === 401 || e.status === 403 || e.status === 404)) {
         cancelGeneratePrefetch();
         update({
@@ -1128,7 +1179,7 @@ export function WizardApp({
           credentialsBackgroundValidating: false,
           credentialsError: formatApiError(e, process.env['EDSI_VERBOSE_ERRORS'] === '1'),
         });
-        return;
+        return false;
       }
       const msg = e instanceof Error ? e.message : 'Credential check failed';
       cancelGeneratePrefetch();
@@ -1140,11 +1191,14 @@ export function WizardApp({
         credentialsValidating: false,
         credentialsBackgroundValidating: false,
       });
+      return false;
     }
   };
 
   const handleCredentialValuesChange = (): void => {
     credentialsValidationIdRef.current += 1;
+    pendingCredentialValidationRef.current = null;
+    validatedCredentialsKeyRef.current = null;
     if (state.credentialsValidating) {
       update({ credentialsValidating: false, credentialsBackgroundValidating: false, credentialsError: '' });
     }
@@ -1155,13 +1209,24 @@ export function WizardApp({
     if (!state.spaceId.trim() || !state.environmentId.trim() || !state.cmaToken.trim()) return;
 
     const validationId = ++credentialsValidationIdRef.current;
-    void validateCredentials(state.spaceId, state.environmentId, state.cmaToken, state.host, {
+    const key = credentialKey(state.spaceId, state.environmentId, state.cmaToken, state.host);
+    const promise = validateCredentials(state.spaceId, state.environmentId, state.cmaToken, state.host, {
       background: true,
       validationId,
     });
+    pendingCredentialValidationRef.current = { key, promise };
+    void promise.then(
+      () => {
+        if (pendingCredentialValidationRef.current?.promise === promise) pendingCredentialValidationRef.current = null;
+      },
+      () => {
+        if (pendingCredentialValidationRef.current?.promise === promise) pendingCredentialValidationRef.current = null;
+      },
+    );
 
     return () => {
       credentialsValidationIdRef.current += 1;
+      pendingCredentialValidationRef.current = null;
     };
   }, [state.step]);
 
@@ -1169,11 +1234,18 @@ export function WizardApp({
     const isCurrent = (): boolean => validationId === undefined || credentialsValidationIdRef.current === validationId;
     if (!isCurrent()) return;
     if (!isCurrent()) return;
+    credentialsReadyRef.current = true;
     // Under the front-of-flow ordering, credentials are collected right after
     // path-validation and before extract. When we get here without an extract
     // session, the user hasn't started the pipeline yet — kick it off.
     if (!sessionRef.current.extractSessionId && state.projectPath) {
-      void runExtract(state.projectPath);
+      if (extractPromiseRef.current) update({ step: 'extracting' });
+      else startExtract(state.projectPath);
+      return;
+    }
+    if (!scopeGateCompletedRef.current && sessionRef.current.extractSessionId) {
+      if (extractPromiseRef.current) update({ step: 'extracting' });
+      else update({ step: 'scope-gate' });
       return;
     }
     if (
@@ -1182,11 +1254,10 @@ export function WizardApp({
         finalReviewPassed: state.finalReviewPassed,
       })
     ) {
-      update({ step: 'push-decision-gate' });
+      void runSaveAndPush();
       return;
     }
-    const next = nextStepAfterCredentialsValidated({ acceptedCount: state.acceptedCount });
-    if (next === 'generating') {
+    if (shouldGenerateAfterCredentialsValidated({ acceptedCount: state.acceptedCount })) {
       const sid = sessionRef.current.extractSessionId;
       if (!sid) {
         update({
@@ -1214,7 +1285,7 @@ export function WizardApp({
       }
       return;
     }
-    update({ step: 'push-decision-gate' });
+    void runSaveAndPush();
   };
 
   const runPreview = async (
@@ -1628,6 +1699,9 @@ export function WizardApp({
       });
       return { ok: false };
     }
+    // Keep the successful write confirmation visible long enough to read
+    // before the save-and-push flow advances to preview.
+    await new Promise<void>((resolve) => setTimeout(resolve, SAVE_CONFIRMATION_DELAY_MS));
     update(nextStateAfterPrint({ skipGate: opts.skipGate, componentsPath }));
     return { ok: true };
   };
@@ -1787,9 +1861,7 @@ export function WizardApp({
                 : `Source file has not changed since tokens were last generated.\n  ${state.tokensPath}`
             }
             context={
-              state.tokenSourceChanged
-                ? 'The source tokens file changed — regenerating is recommended.'
-                : 'No changes detected — reusing the existing tokens avoids nondeterministic AI drift.'
+              state.tokenSourceChanged ? 'The source tokens file changed — regenerating is recommended.' : undefined
             }
             continueLabel="Reuse existing tokens"
             skipLabel="Regenerate tokens"
@@ -1806,7 +1878,7 @@ export function WizardApp({
               const tokenNextStep: WizardStep = state.projectPath ? 'path-validation' : 'credentials';
               update({ step: tokenNextStep });
               if (await runAgentAuthCheck(tokenNextStep)) {
-                tokenGenerationPromiseRef.current = runGenerateTokens(state.rawTokensPath, state.outDir);
+                tokenGenerationPromiseRef.current = runGenerateTokens(state.rawTokensPath, state.outDir, true);
               }
             }}
             onQuit={() => process.exit(0)}
@@ -1828,12 +1900,8 @@ export function WizardApp({
           <PathValidationStep
             projectPath={state.projectPath}
             onConfirm={(path) => {
-              // Front-of-flow: collect credentials before running extract so
-              // downstream agents (select, generate, map-tokens) can align
-              // suggestions against the target Contentful space. If the user
-              // has no creds and hits [S] on the credentials screen, the
-              // pipeline still proceeds (agents just run without space context).
               update({ projectPath: path, step: 'credentials' });
+              startExtract(path, false);
             }}
             onSkipComponents={() => {
               update({ step: 'credentials', skipComponents: true, acceptedCount: 0 });
@@ -1845,6 +1913,22 @@ export function WizardApp({
 
       case 'extracting': {
         const ep = state.extractProgress;
+        const compositionComplete = state.compositionPhase === 'done' || state.compositionPhase === 'cache-hit';
+        const tokenGenerationComplete = !state.rawTokensPath || state.tokenGenerationStatus === 'complete';
+        const extractionTasksComplete =
+          ep !== null &&
+          ep.totalFiles > 0 &&
+          compositionComplete &&
+          state.selectionAgentStatus === 'complete' &&
+          tokenGenerationComplete &&
+          state.existingEntitiesStatus !== 'running';
+
+        // Once extraction, composition, and selection are all cached, there is
+        // no useful intermediate screen to show. Keep this screen only while
+        // the existing-entity fetch is still doing work; it is intentionally
+        // independent of the local pipeline caches.
+        if (extractionTasksComplete) return null;
+
         let extractDetail: string;
         let extractComplete = false;
         if (ep && ep.totalFiles > 0) {
@@ -1856,16 +1940,14 @@ export function WizardApp({
           extractDetail = 'Scanning files...';
         }
         const selectionDetail =
-          state.selectionAgentStatus === 'idle'
-            ? undefined
-            : state.selectionAgentStatus === 'running'
-              ? `Filtering component selection via ${state.agent}...`
-              : 'Selection agent complete';
+          state.selectionAgentStatus === 'complete'
+            ? 'Selection agent complete'
+            : `Filtering component selection via ${state.agent}...`;
         const compositionDetail =
-          state.compositionPhase === 'done'
-            ? 'Composition mapping complete'
-            : state.compositionPhase === 'cache-hit'
-              ? 'Composition mapping (cached)'
+          state.compositionPhase === 'cache-hit'
+            ? 'Composition mapping (cached)'
+            : compositionComplete
+              ? 'Composition mapping complete'
               : state.compositionPhase?.startsWith('agent:')
                 ? `Mapping composition via ${state.compositionPhase.slice('agent:'.length)}...`
                 : `Mapping composition via ${state.agent}...`;
@@ -1878,7 +1960,7 @@ export function WizardApp({
             detail={extractDetail}
             detailComplete={extractComplete}
             secondaryDetail={compositionDetail}
-            secondaryComplete={state.compositionPhase === 'done'}
+            secondaryComplete={compositionComplete}
             tertiaryDetail={selectionDetail}
             tertiaryComplete={state.selectionAgentStatus === 'complete'}
             quaternaryDetail={
@@ -1899,7 +1981,9 @@ export function WizardApp({
                   ? `Generating token definitions via ${state.agent}...`
                   : state.tokenGenerationStatus === 'complete'
                     ? 'Token definitions ready'
-                    : undefined
+                    : state.tokenGenerationStatus === 'failed'
+                      ? 'Token definition generation failed'
+                      : `Generating token definitions via ${state.agent}...`
                 : undefined
             }
             quinaryComplete={state.tokenGenerationStatus === 'complete'}
@@ -1931,22 +2015,27 @@ export function WizardApp({
                 sessionId,
                 decisions,
                 onAdvanceToGenerate: async ({ sessionId: sid, acceptedCount }) => {
-                  update({ acceptedCount, autoRejectedCount: 0 });
-                  const next = nextStepAfterScopeGate({ acceptedCount });
-                  if (next === 'generating') {
+                  scopeGateCompletedRef.current = true;
+                  if (shouldGenerateAfterScopeGate({ acceptedCount })) {
+                    // Leave the scope-gate view before awaiting auth. The
+                    // persisted decisions change accepted rows to `generated`,
+                    // so rendering the gate during that await briefly makes
+                    // its component query appear empty.
+                    update({
+                      acceptedCount,
+                      autoRejectedCount: 0,
+                      step: 'checking-claude-auth',
+                      authCheckStepNumber: state.tokensPath ? 4 : 3,
+                    });
                     if (await runAgentAuthCheck('generating')) {
                       void runGenerate(sid, state.tokensPath, acceptedCount);
                     }
                     return;
                   }
-                  // Credentials are collected at the front of the wizard, so
-                  // by the time we reach this branch we either have them or
-                  // the user opted to skip. If skipped, credentialsSkipped is
-                  // set and downstream push gates handle the missing-creds
-                  // case; otherwise proceed straight to the push decision.
-                  update({ step: 'push-decision-gate' });
+                  void runSaveAndPush();
                 },
                 onAdvanceToPushFlow: (count) => {
+                  scopeGateCompletedRef.current = true;
                   update({ acceptedCount: count, autoRejectedCount: 0 });
                   advanceToPushFlow(count);
                 },
@@ -1962,6 +2051,16 @@ export function WizardApp({
         const stepNum = hasTokenStage ? 4 : 3;
         const displayAgent = state.agent.charAt(0).toUpperCase() + state.agent.slice(1);
         const progressDetail = p ? `[${p.done}/${p.total}] ${p.current}` : `Starting up ${displayAgent}...`;
+        const mapTokensDetail =
+          state.mapTokensStatus === 'running'
+            ? skipMapTokens
+              ? 'Resolving token defaults...'
+              : `Mapping token restrictions via ${displayAgent}...`
+            : state.mapTokensStatus === 'complete'
+              ? skipMapTokens
+                ? 'Token defaults ready'
+                : 'Token restrictions ready'
+              : undefined;
         return (
           <RunningStep
             stepNumber={stepNum}
@@ -1969,6 +2068,8 @@ export function WizardApp({
             title="Generating definitions"
             description={`${formatAcceptanceSummary({ accepted: state.acceptedCount, autoRejected: state.autoRejectedCount })} ${displayAgent} is mapping your selected components to CDF format.${hasTokens ? ' Using your design tokens for prop resolution.' : ''}`}
             detail={progressDetail}
+            secondaryDetail={mapTokensDetail}
+            secondaryComplete={state.mapTokensStatus === 'complete'}
           />
         );
       }
@@ -2033,47 +2134,8 @@ export function WizardApp({
               }
               const allowEmptyDeleteAll = acceptedCount === 0;
               allowEmptyDeleteAllRef.current = allowEmptyDeleteAll;
-              update({ finalReviewPassed: true });
-              update({ generatedAcceptedCount: acceptedCount, step: 'push-decision-gate' });
-            }}
-            onQuit={() => process.exit(0)}
-          />
-        );
-      }
-
-      case 'push-decision-gate': {
-        const files = hasComponents || hasTokens ? 'components.json' : null;
-        const count = state.generatedAcceptedCount > 0 ? state.generatedAcceptedCount : state.generatedCount;
-        const summary = hasComponents
-          ? `${count} component definition${count !== 1 ? 's' : ''} ready${hasTokens ? ', design tokens ready' : ''}.`
-          : hasTokens
-            ? 'Design tokens ready.'
-            : 'Ready to continue.';
-        return (
-          <PushDecisionGateStep
-            summary={summary}
-            context={`Save ${files || 'output files'} to disk, push to your Contentful space, or both.`}
-            fileList={files || 'files'}
-            pushDisabled={state.credentialsSkipped}
-            onChoice={(choice) => {
-              const action = chooseGateAction(choice);
-              if (action === 'save-and-push') {
-                void runSaveAndPush();
-                return;
-              }
-              if (action === 'push-only') {
-                const { extractSessionId, tokensPath } = sessionRef.current;
-                void runPreview(
-                  extractSessionId,
-                  tokensPath,
-                  state.spaceId,
-                  state.environmentId,
-                  state.cmaToken,
-                  state.host,
-                );
-                return;
-              }
-              void startSaveFlow();
+              update({ finalReviewPassed: true, generatedAcceptedCount: acceptedCount });
+              void runSaveAndPush();
             }}
             onQuit={() => process.exit(0)}
           />
@@ -2109,6 +2171,7 @@ export function WizardApp({
             }
             onSkip={() => {
               update({ credentialsSkipped: true, credentialsError: '' });
+              credentialsReadyRef.current = true;
               void advanceAfterCredentialsValidated();
             }}
             onQuit={() => {
@@ -2153,9 +2216,6 @@ export function WizardApp({
               );
             }}
             {...(editableComponentCount > 0 ? { onEdit: () => void runEditFromPreview() } : {})}
-            onSaveFiles={() => {
-              void startSaveFlow();
-            }}
             onQuit={() => process.exit(0)}
           />
         );
@@ -2173,31 +2233,15 @@ export function WizardApp({
                 await mkdir(submitted, { recursive: true });
                 const hasConflict = await detectSaveConflict(submitted);
                 if (hasConflict) {
-                  setState((prev) => ({ ...prev, step: 'save-conflict-gate', outDir: submitted }));
+                  const subdir = buildTimestampedSubdir(submitted);
+                  await mkdir(subdir, { recursive: true });
+                  await proceedToWrite(subdir);
                   return;
                 }
                 await proceedToWrite(submitted);
               })();
             }}
             onCancel={() => process.exit(0)}
-          />
-        );
-
-      case 'save-conflict-gate':
-        return (
-          <SaveConflictGate
-            path={state.outDir}
-            onOverwrite={() => {
-              void proceedToWrite(state.outDir);
-            }}
-            onNew={() => {
-              const subdir = buildTimestampedSubdir(state.outDir);
-              void (async () => {
-                await mkdir(subdir, { recursive: true });
-                await proceedToWrite(subdir);
-              })();
-            }}
-            onCancel={() => setState((prev) => ({ ...prev, step: 'path-prompt' }))}
           />
         );
 

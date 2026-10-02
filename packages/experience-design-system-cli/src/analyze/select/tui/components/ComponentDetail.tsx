@@ -5,6 +5,8 @@ import { stripScoringFields } from '../../../../types.js';
 import { JsonPanel } from './JsonPanel.js';
 import { JsonEditor } from './JsonEditor.js';
 import { SourcePanel } from './SourcePanel.js';
+import { terminalPanelHeight } from '../../../../tui/windowed-panel.js';
+import { useTerminalSize } from '../../../../tui/use-terminal-size.js';
 
 type ComponentDetailProps = {
   component: ReviewComponentDetail;
@@ -51,9 +53,10 @@ export function ComponentDetail({
   onSaveDraft,
   onDiscardDraft,
 }: ComponentDetailProps): React.ReactElement {
+  const { rows: terminalRows } = useTerminalSize();
   const sidebarWidth = terminalWidth < 80 ? 5 : 20;
   const availableWidth = terminalWidth - sidebarWidth - 2;
-  const panelHeight = 20;
+  const panelHeight = terminalPanelHeight(terminalRows, 8);
 
   let originalWidth: number;
   let editWidth: number;
