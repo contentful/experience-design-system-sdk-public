@@ -79,10 +79,8 @@ function registerImportV2Command(program: Command): void {
     .helpOption(false)
     .action(async () => {
       const { renderWithGoodbye } = await import('./tui/render-with-goodbye.js');
-      const { createElement } = await import('react');
-      const { App } = await import('@contentful/experience-design-system-cli-v2/app');
-      const { waitUntilExit } = renderWithGoodbye(createElement(App));
-      await waitUntilExit();
+      const { runApp } = await import('@contentful/experience-design-system-cli-v2/app');
+      await runApp((element) => renderWithGoodbye(element));
     });
 }
 
