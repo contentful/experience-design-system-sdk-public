@@ -33,6 +33,18 @@ vi.mock('../../../src/import/tui/steps/GenerateReviewStep.js', () => ({
   GenerateReviewStep: () => <Text>FINAL_REVIEW</Text>,
 }));
 
+vi.mock('../../../src/import/extract-project.js', () => ({
+  extractProject: vi.fn().mockResolvedValue({
+    sessionId: 'extract-session',
+    projectRoot: '/tmp/project',
+    sourceDirectory: '/tmp/project',
+    sourceFiles: [],
+    extractedComponentCount: 1,
+    componentCount: 1,
+    warnings: [],
+  }),
+}));
+
 vi.mock('../../../src/import/tui/spawn-generate.js', () => ({
   spawnGenerateChild: () => ({
     child: { kill: vi.fn() },
@@ -58,18 +70,12 @@ vi.mock('node:child_process', async (importOriginal) => {
       if (commandArgs.includes('map') && commandArgs.includes('tokens')) mapInvocations.push(commandArgs);
       callback(null, 'map tokens complete\nsession=generated-session\n1 mapping(s) applied\n', '');
     }),
-    spawn: vi.fn((_command, args) => {
+    spawn: vi.fn(() => {
       const stdout = {
-        on: (event: string, callback: (chunk: Buffer) => void) => {
-          if (event === 'data' && (args as string[]).includes('__extract'))
-            callback(Buffer.from('session=extract-session\n'));
-        },
+        on: () => undefined,
       };
       const stderr = {
-        on: (event: string, callback: (chunk: Buffer) => void) => {
-          if (event === 'data' && (args as string[]).includes('__extract'))
-            callback(Buffer.from('Extracted 1 component\n'));
-        },
+        on: () => undefined,
       };
       return {
         stdout,

@@ -10,7 +10,6 @@ import { registerMapTokensCommand } from './map-tokens/command.js';
 import { registerImportCommand } from './import/command.js';
 import { registerDoctorCommand } from './doctor/command.js';
 import { registerSetupCommand } from './setup/command.js';
-import { registerInternalExtractCommand } from './analyze/extract-command.js';
 import { beginCommand } from './lib/debug-preamble.js';
 import {
   completeActiveCommand,
@@ -128,7 +127,6 @@ export function createProgram(): Command {
     .version(pkg.version, '--version', 'Print version number');
 
   registerInternalGenerateCommand(program);
-  registerInternalExtractCommand(program);
   registerPrintCommand(program);
   registerMapTokensCommand(program);
 

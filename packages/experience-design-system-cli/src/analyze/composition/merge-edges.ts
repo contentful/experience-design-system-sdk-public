@@ -7,7 +7,7 @@ import type { CompositionEdge, EdgeProvenance } from './interchange-schema.js';
  *
  * `structural` sits just below a declared slot contract: it's usage evidence
  * (a runtime type-predicate function, a `.type === Component` identity check,
- * direct JSX instantiation — see `structural-slot-evidence.ts`) rather than a
+ * direct JSX instantiation — see the structural slot evidence pass) rather than a
  * typed generic or explicit marker, so a declared contract always overrides
  * it on conflict, but it still outranks the LLM agent.
  *

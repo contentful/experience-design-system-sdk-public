@@ -1,4 +1,4 @@
-// Types
+// Models and public contracts
 export type {
   RawComponentDefinition,
   RawPropDefinition,
@@ -6,33 +6,39 @@ export type {
   ComponentExtractionResult,
   ExtractionExclusion,
   ExtractorProgress,
-  ExtractorOptions,
-  ComponentExtractor,
   ExtractionValidationIssue,
   ExtractionValidationIssueCode,
-} from './types.js';
-export { stripScoringFields } from './types.js';
+} from './extract/model/component.js';
+export { stripScoringFields } from './extract/model/component.js';
+export type { ExtractorOptions } from './extract/model/options.js';
+export type { ComponentExtractor } from './extract/services/ports/component-extractor.js';
 
 // Core extraction pipeline
-export { extractComponents } from './extract/pipeline.js';
+export { extractComponents } from './extract/services/extraction-pipeline.js';
+export { extractEndpoint } from './extract/controller/extract-controller.js';
+export type {
+  ExtractionEndpointProgress,
+  ExtractionEndpointRequest,
+  ExtractionEndpointResponse,
+} from './extract/model/contract.js';
 
 // Framework-specific extractors
-export { extractReactComponents } from './extract/react.js';
-export { extractVueComponents } from './extract/vue.js';
-export { extractVueTsxComponents } from './extract/vue-tsx.js';
-export { extractStencilComponents } from './extract/stencil.js';
-export { extractAstroComponents } from './extract/astro.js';
-export { extractWebComponentDefinitions } from './extract/web-components.js';
-export { extractSvelteComponents } from './extract/svelte.js';
+export { extractReactComponents } from './extract/adapters/react/extractor.js';
+export { extractVueComponents } from './extract/adapters/vue/extractor.js';
+export { extractVueTsxComponents } from './extract/adapters/vue-tsx/extractor.js';
+export { extractStencilComponents } from './extract/adapters/stencil/extractor.js';
+export { extractAstroComponents } from './extract/adapters/astro/extractor.js';
+export { extractWebComponentDefinitions } from './extract/adapters/web-components/extractor.js';
+export { extractSvelteComponents } from './extract/adapters/svelte/extractor.js';
 export {
   extractAllowedComponentsFromTypeText,
   extractAllowedComponentsFromJsdoc,
-} from './extract/slot-allowed-components.js';
+} from './extract/evidence/allowed-components.js';
 
 // Post-extraction filtering and scoring
-export { isNonAuthorableComponent } from './extract/non-authorable-filter.js';
-export { computeExtractionScore, deriveNeedsReview } from './extract/scoring.js';
-export type { ExtractionScore, ExtractionScoreOptions, ExtractionConfidence } from './extract/scoring.js';
+export { isNonAuthorableComponent } from './extract/policies/quality/authorability.js';
+export { computeExtractionScore, deriveNeedsReview } from './extract/policies/quality/scoring.js';
+export type { ExtractionScore, ExtractionScoreOptions, ExtractionConfidence } from './extract/model/scoring.js';
 export {
   inspectComponentSource,
   describeReviewReasons,
@@ -41,8 +47,8 @@ export {
   HIGH_CONFIDENCE_DATA_FETCH_WRAPPER_REASON,
   POSSIBLE_DATA_FETCH_WRAPPER_REASON,
   ZERO_SURFACE_RENDERED_UI_REASON,
-} from './extract/source-inspection.js';
-export type { ComponentSourceInspection } from './extract/source-inspection.js';
+} from './extract/policies/quality/source-inspection.js';
+export type { ComponentSourceInspection } from './extract/policies/quality/source-inspection.js';
 
 // Validation
 export {
@@ -50,8 +56,8 @@ export {
   shouldExcludeDueToValidation,
   formatExclusionWarning,
   formatExcludedComponentLines,
-} from './extract/validate.js';
-export { parseImportedNames } from './extract/parse-imported-names.js';
+} from './extract/policies/quality/validation.js';
+export { parseImportedNames } from './extract/evidence/source-evidence.js';
 
 // Slot detection helpers
 export {
@@ -59,8 +65,8 @@ export {
   isReactNodeType,
   isArrayReactNodeType,
   shouldBeSlot,
-} from './extract/slot-detection.js';
+} from './extract/evidence/slot-evidence.js';
 
 // Pre-classification
-export { preClassifyProp, preClassifyComponent } from './pre-classify.js';
-export type { PreClassification } from './pre-classify.js';
+export { preClassifyProp, preClassifyComponent } from './extract/services/classification-service.js';
+export type { PreClassification } from './extract/services/classification-service.js';
