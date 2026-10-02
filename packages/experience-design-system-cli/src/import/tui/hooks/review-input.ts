@@ -94,12 +94,16 @@ function handleTokenReviewInput(input: string, key: ImmediateInputKey, state: To
   const row = suggestions[state.tokenReviewRow];
 
   if (state.tokenReviewEditing) {
+    if (key.ctrl && input === 's' && row) {
+      state.handleTokenEditSave(row);
+      return true;
+    }
     if (row && row.paths.length > 0) {
-      if (key.upArrow) {
+      if (key.upArrow || input === 'k') {
         state.setTokenReviewEditCursor((cursor) => Math.max(0, cursor - 1));
         return true;
       }
-      if (key.downArrow) {
+      if (key.downArrow || input === 'j') {
         state.setTokenReviewEditCursor((cursor) => Math.min(row.paths.length - 1, cursor + 1));
         return true;
       }
@@ -122,11 +126,11 @@ function handleTokenReviewInput(input: string, key: ImmediateInputKey, state: To
     return true;
   }
 
-  if (key.upArrow) {
+  if (key.upArrow || input === 'k') {
     state.setTokenReviewRow((rowIndex) => Math.max(0, rowIndex - 1));
     return true;
   }
-  if (key.downArrow) {
+  if (key.downArrow || input === 'j') {
     state.setTokenReviewRow((rowIndex) => Math.min(Math.max(0, suggestions.length - 1), rowIndex + 1));
     return true;
   }

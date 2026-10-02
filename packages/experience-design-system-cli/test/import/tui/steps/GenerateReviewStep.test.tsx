@@ -213,7 +213,7 @@ describe('GenerateReviewStep — form by default (Fix 1)', () => {
 });
 
 describe('GenerateReviewStep — hidden properties', () => {
-  it('reveals hidden properties with H', async () => {
+  it('does not expose the removed hidden-property toggle', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Button', entry: CATEGORIZED_ENTRY }]);
     const { lastFrame, stdin } = render(
@@ -221,12 +221,12 @@ describe('GenerateReviewStep — hidden properties', () => {
     );
     await tick();
 
-    expect(lastFrame() ?? '').not.toContain('isDisabled');
+    const before = lastFrame() ?? '';
+    expect(before).not.toContain('isDisabled');
     stdin.write('H');
     await tick();
 
-    expect(lastFrame() ?? '').toContain('isDisabled');
-    expect(lastFrame() ?? '').toContain('className');
+    expect(lastFrame() ?? '').toBe(before);
   });
 });
 
@@ -1316,13 +1316,13 @@ describe('GenerateReviewStep — GA-3 cycle features (A1/A2/A7/A8)', () => {
     expect(frame).not.toContain('Zonk');
   });
 
-  it('h help overlay cycle entry mentions rejecting a member AND removing/breaking a slot edge', async () => {
+  it('h help overlay identifies the cycle list without obsolete cycle commands', async () => {
     const { lastFrame, stdin } = await renderWithCycle();
     stdin.write('h');
     await tick();
     const frame = stripAnsi(lastFrame() ?? '').toLowerCase();
-    expect(frame).toMatch(/reject a cycle member/);
-    expect(frame).toMatch(/break the cycle|remove a slot/);
+    expect(frame).toMatch(/cycle list/);
+    expect(frame).not.toMatch(/reject a cycle member/);
   });
 
   it('[c] cycle panel guidance states reject-a-member AND remove/break-a-slot-edge', async () => {
@@ -1511,7 +1511,7 @@ describe('GenerateReviewStep — GA-4 interactive break-cycle overlay (A9)', () 
     expect(stripAnsi(lastFrame() ?? '')).toMatch(/⚠ +CycleB/);
   });
 
-  it('A2-5 — break overlay renders in the bottom banner slot (below the editor), not the top strip', async () => {
+  it('A2-5 — break overlay renders as a bounded panel', async () => {
     const { utils } = await renderWithCycle();
     const { lastFrame, stdin } = utils;
     stdin.write('c');
@@ -1519,11 +1519,8 @@ describe('GenerateReviewStep — GA-4 interactive break-cycle overlay (A9)', () 
     stdin.write('x');
     await tick();
     const frame = stripAnsi(lastFrame() ?? '');
-    const breakIdx = frame.indexOf('BREAK CYCLE');
-    const editorIdx = frame.indexOf('description:');
-    expect(breakIdx).toBeGreaterThan(-1);
-    expect(editorIdx).toBeGreaterThan(-1);
-    expect(breakIdx).toBeGreaterThan(editorIdx);
+    expect(frame).toContain('BREAK CYCLE');
+    expect(frame).toContain('remove slot edge');
   });
 
   it('A2-5 — closing the break overlay + cycle panel restores the slot-dependency banner', async () => {
@@ -3272,9 +3269,7 @@ describe('GenerateReviewStep — undo/redo + reload-from-save (T4)', () => {
     );
     await tick();
     const frame = (lastFrame() ?? '').replace(/\s+/g, ' ');
-    expect(frame).toContain('[Ctrl+Z] undo');
-    expect(frame).toContain('[Ctrl+Y] redo');
-    expect(frame).toContain('[Ctrl+R] reload');
+    expect(frame).toContain('[Ctrl+Z/Y/R] undo/redo/reload');
   });
 });
 
@@ -3524,7 +3519,7 @@ describe('GenerateReviewStep — [i] jump-and-filter (T5b)', () => {
     expect(lastFrame() ?? '').toContain('RATIONALE');
   });
 
-  it('legend advertises [i] focus lineage and [p] rationale', async () => {
+  it('legend advertises [i] focus lineage without inline rationale controls', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(CHAIN);
     const { lastFrame } = render(
@@ -3534,7 +3529,7 @@ describe('GenerateReviewStep — [i] jump-and-filter (T5b)', () => {
 
     const frame = (lastFrame() ?? '').replace(/\[[0-9;]*m/g, '').replace(/\s+/g, ' ');
     expect(frame).toMatch(/\[i\][^\n]*focus lineage/);
-    expect(frame).toMatch(/\[p\][^\n]*rationale/);
+    expect(frame).not.toMatch(/\[p\][^\n]*rationale/);
   });
 });
 
@@ -3547,8 +3542,7 @@ describe('GenerateReviewStep — undo/redo legend + h help overlay (L3b)', () =>
     );
     await tick();
     const frame = stripAnsi(lastFrame() ?? '');
-    expect(frame).toContain('Ctrl+Z');
-    expect(frame).toContain('Ctrl+Y');
+    expect(frame).toContain('Ctrl+Z/Y/R');
     expect(frame).not.toContain('Cmd+Z');
     expect(frame).not.toContain('Cmd+Y');
   });
@@ -3672,7 +3666,7 @@ describe('GenerateReviewStep — breaking-changes goto-banner (L6)', () => {
     await tick();
     lastOnResult!(previewWithBreaking());
     await tick();
-    expect(stripAnsiL6(lastFrame() ?? '')).toContain('[b] see breaking changes');
+    expect(stripAnsiL6(lastFrame() ?? '')).toContain('[b] breaking changes');
   });
 
   const SAMPLE_BUTTON = {
@@ -4169,9 +4163,9 @@ describe('GenerateReviewStep — category filters (L8)', () => {
     expect(out).toContain('[f] continue/finalize');
     expect(out).toContain('[h] help');
     expect(out).toContain('[q] quit');
-    expect(out).not.toContain('[L] flat');
-    expect(out).not.toContain('[P] component rationale');
-    expect(out).not.toContain('[Ctrl+Z] undo');
+    expect(out).toContain('[L] flat');
+    expect(out).toContain('[i] focus lineage');
+    expect(out).toContain('[Ctrl+Z/Y/R] undo/redo/reload');
   });
 
   it('L11: GR help panel lists P (not I) for component rationale', async () => {
@@ -4484,102 +4478,6 @@ describe('GenerateReviewStep — groups re-expand after reload (A2-1)', () => {
     const frame = lastFrame() ?? '';
     expect(frame).toMatch(/▾ ⚠ P/);
     expect(frame).not.toMatch(/▸ ⚠ P/);
-  });
-});
-
-describe('GenerateReviewStep — [d] toggles removed-components banner (A2-2)', () => {
-  beforeEach(() => {
-    triggerSpy.mockReset();
-    lastUseLivePreviewArgs = null;
-    lastOnResult = null;
-    hookReturnOverride = null;
-  });
-
-  const previewWithRemoved = (names: string[]) =>
-    ({
-      components: {
-        new: [],
-        changed: [],
-        removed: names.map((n, i) => ({
-          id: `r${i}`,
-          name: n,
-          contentProperties: [],
-          designProperties: [],
-          slots: [],
-        })) as never,
-        unchanged: [],
-      },
-      tokens: { new: [], changed: [], removed: [], unchanged: [] },
-    }) as never;
-
-  it('[d] collapses the detail rows while keeping the count header visible', async () => {
-    const { lastFrame, stdin } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
-    );
-    await tick();
-    lastOnResult!(previewWithRemoved(['Widget']));
-    await tick();
-    let frame = lastFrame() ?? '';
-    expect(frame).toContain('Removed components (1)');
-    expect(frame).toMatch(/Widget/);
-    stdin.write('d');
-    await tick();
-    frame = lastFrame() ?? '';
-    expect(frame).toContain('Removed components (1)');
-    expect(frame).not.toMatch(/- Widget/);
-    stdin.write('d');
-    await tick();
-    frame = lastFrame() ?? '';
-    expect(frame).toMatch(/Widget/);
-  });
-
-  it('legend advertises [d] only when there are removed components', async () => {
-    const { lastFrame } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
-    );
-    await tick();
-    expect(lastFrame() ?? '').not.toContain('[d]');
-    lastOnResult!(previewWithRemoved(['Widget']));
-    await tick();
-    const frame = (lastFrame() ?? '').replace(/\s+/g, ' ');
-    expect(frame).toContain('[d]');
-  });
-
-  it('starts COLLAPSED by default when there are more than 5 removed components', async () => {
-    const { lastFrame } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
-    );
-    await tick();
-    lastOnResult!(previewWithRemoved(['R1', 'R2', 'R3', 'R4', 'R5', 'R6']));
-    await tick();
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('Removed components (6)');
-    expect(frame).not.toMatch(/- R1/);
-    expect(frame).not.toMatch(/- R6/);
-  });
-
-  it('starts EXPANDED by default when there are 5 or fewer removed components', async () => {
-    const { lastFrame } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
-    );
-    await tick();
-    lastOnResult!(previewWithRemoved(['R1', 'R2', 'R3', 'R4', 'R5']));
-    await tick();
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('Removed components (5)');
-    expect(frame).toMatch(/- R1/);
-    expect(frame).toMatch(/- R5/);
-  });
-
-  it('count header renders the expand/collapse hint text', async () => {
-    const { lastFrame } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
-    );
-    await tick();
-    lastOnResult!(previewWithRemoved(['Widget']));
-    await tick();
-    const frame = (lastFrame() ?? '').replace(/\s+/g, ' ');
-    expect(frame).toMatch(/\[d\] to expand\/collapse/);
   });
 });
 

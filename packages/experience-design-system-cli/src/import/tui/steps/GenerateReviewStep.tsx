@@ -221,6 +221,9 @@ function CycleDetailPanel({
     <Text key="cyc-sub" dimColor>
       {'push will fail until these are resolved'}
     </Text>,
+    <Text key="cyc-guidance" dimColor>
+      {'Reject a cycle member or remove a slot edge to break the cycle.'}
+    </Text>,
     <Text key="cyc-space"> </Text>,
   ];
   cycles.forEach((cycle, index) => {
@@ -270,12 +273,12 @@ function BreakCyclePanel({
 }): React.ReactElement {
   return (
     <FixedPanel width={width} height={height} borderStyle="round" borderColor={PALETTE.warning} paddingLeft={1}>
-      <Text bold color={PALETTE.warning}>{'BREAK CYCLE — remove a slot edge'}</Text>
+      <Text bold color={PALETTE.warning}>
+        {'BREAK CYCLE — remove a slot edge'}
+      </Text>
       {cycle && <CyclePathLine segments={formatCyclePathSegments(cycle)} prefix="  " highlightComponents />}
       <Text dimColor>
-        {cycle
-          ? 'Deleting an edge removes it from $allowedComponents (undo with Ctrl+Z).'
-          : 'No cycle highlighted.'}
+        {cycle ? 'Deleting an edge removes it from $allowedComponents (undo with Ctrl+Z).' : 'No cycle highlighted.'}
       </Text>
       <Text> </Text>
       {edges.length > 0 && <Text dimColor>{'remove slot edge:'}</Text>}
@@ -285,7 +288,9 @@ function BreakCyclePanel({
         </Text>
       ))}
       {confirming ? (
-        <Text bold color={PALETTE.warning}>{'Delete this slot edge? [y] confirm  [n] cancel'}</Text>
+        <Text bold color={PALETTE.warning}>
+          {'Delete this slot edge? [y] confirm  [n] cancel'}
+        </Text>
       ) : (
         <Text dimColor>{'[↑↓] move  [Enter] delete  [x/Esc] close'}</Text>
       )}
@@ -1019,12 +1024,12 @@ function GenerateReviewStepView({
         setBreakingDetailOpen((prev) => !prev);
         return;
       }
-      if (key.upArrow) {
+      if (key.upArrow || input === 'k') {
         setBreakingDetailOpen(false);
         setBreakingCursor((c) => Math.max(0, c - 1));
         return;
       }
-      if (key.downArrow) {
+      if (key.downArrow || input === 'j') {
         setBreakingDetailOpen(false);
         setBreakingCursor((c) => Math.min(Math.max(0, breakingRows.length - 1), c + 1));
         return;
@@ -1086,7 +1091,7 @@ function GenerateReviewStepView({
         cyclePanel.close();
         return;
       }
-      if (key.upArrow) {
+      if (key.upArrow || input === 'k') {
         setCyclesCursor((c) => {
           const next = Math.max(0, c - 1);
           setCyclePanelScroll((scroll) => followCycleScroll(scroll, next, cycleRows, cycleViewportHeight));
@@ -1094,7 +1099,7 @@ function GenerateReviewStepView({
         });
         return;
       }
-      if (key.downArrow) {
+      if (key.downArrow || input === 'j') {
         setCyclesCursor((c) => {
           const next = Math.min(Math.max(0, cycleRows.length - 1), c + 1);
           setCyclePanelScroll((scroll) => followCycleScroll(scroll, next, cycleRows, cycleViewportHeight));
@@ -1174,6 +1179,23 @@ function GenerateReviewStepView({
       })
     )
       return;
+
+    if (sidebarFocused && (input === 'j' || input === 'k')) {
+      setNav(({ cursorRowIdx: previousRow, sidebarScrollOffset: previousScroll }) =>
+        moveSelectableCursor({
+          direction: input === 'j' ? 'down' : 'up',
+          previousRow,
+          previousScroll,
+          positions: selectableRowPositions,
+          visibleCount,
+        }),
+      );
+      reviewEditor.setJsonScrollOffset(0);
+      reviewEditor.handleEditSave();
+      reviewEditor.setSaveError(null);
+      setPendingEditorFocus(null);
+      return;
+    }
 
     if (!sidebarFocused) return;
 
@@ -1563,23 +1585,28 @@ function GenerateReviewStepView({
               height={panelHeight}
               jsonValue={visibleJsonPanelValue}
               sidebarFocused={sidebarFocused}
-              fieldEditor={buildReviewFieldEditor(reviewEditor, selectedJson, () => {
-                reviewEditor.handleEditSave();
-                setSidebarFocused(true);
-              }, {
-                key:
-                  pendingEditorFocus && pendingEditorFocus.componentName === selected.key
-                    ? `${selected.key}::${pendingEditorFocus.target.kind}:${pendingEditorFocus.target.name}`
-                    : selected.key,
-                propRationaleKey: 'p',
-                componentRationaleKey: 'P',
-                projectSlotGraph,
-                currentComponentName: selected.key,
-                initialFocusTarget:
-                  pendingEditorFocus && pendingEditorFocus.componentName === selected.key
-                    ? pendingEditorFocus.target
-                    : { kind: 'description' },
-              })}
+              fieldEditor={buildReviewFieldEditor(
+                reviewEditor,
+                selectedJson,
+                () => {
+                  reviewEditor.handleEditSave();
+                  setSidebarFocused(true);
+                },
+                {
+                  key:
+                    pendingEditorFocus && pendingEditorFocus.componentName === selected.key
+                      ? `${selected.key}::${pendingEditorFocus.target.kind}:${pendingEditorFocus.target.name}`
+                      : selected.key,
+                  propRationaleKey: 'p',
+                  componentRationaleKey: 'P',
+                  projectSlotGraph,
+                  currentComponentName: selected.key,
+                  initialFocusTarget:
+                    pendingEditorFocus && pendingEditorFocus.componentName === selected.key
+                      ? pendingEditorFocus.target
+                      : { kind: 'description' },
+                },
+              )}
               saveError={reviewEditor.saveError}
               sidebarFooter={hasGroupRoots ? '  [Space] expand/collapse group  [E/C] expand/collapse all' : ''}
               livePreview={livePreviewHook}
@@ -1619,7 +1646,12 @@ function GenerateReviewStepView({
         hidden={dialogOpen}
       />
       {!dialogOpen && sidebarFocused && (
-        <CompactControlBar hasGroupRoots={hasGroupRoots} searchActive={searchOpen || searchQuery.length > 0} />
+        <CompactControlBar
+          hasGroupRoots={hasGroupRoots}
+          searchActive={searchOpen || searchQuery.length > 0}
+          showJson={reviewEditor.showJson}
+          tokenReviewAvailable={reviewEditor.currentTokenSuggestions().length > 0}
+        />
       )}
     </Box>
   );

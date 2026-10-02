@@ -182,7 +182,7 @@ describe('ScopeGateStep — compact controls', () => {
     expect(out).toContain('[q] quit');
     expect(out).not.toContain('toggle all');
     expect(out).not.toContain('accept non-flagged');
-    expect(out).not.toContain('lineage');
+    expect(out).toContain('[i] focus lineage');
   });
 
   it('shows [x] review flags only when at least one flagged row exists', () => {
