@@ -165,7 +165,22 @@ interface ComponentRunResult {
   renamedSlotsCount: number;
 }
 
-function normalizeComponentForCache(component: RawComponentDefinition & { component_id?: string }): RawComponentDefinition & {
+function cachedComponentResult(componentName: string, warnings: string[] = []): ComponentRunResult {
+  return {
+    componentName,
+    classified: 0,
+    excluded: 0,
+    slots: 0,
+    warnings,
+    failed: false,
+    cached: true,
+    renamedSlotsCount: 0,
+  };
+}
+
+function normalizeComponentForCache(
+  component: RawComponentDefinition & { component_id?: string },
+): RawComponentDefinition & {
   component_id?: string;
 } {
   const slots = component.slots.map((slot, index, allSlots) => ({
@@ -252,16 +267,7 @@ async function runOneComponent(
 
   if (!noCache && precomputedCachedNames.has(component.name)) {
     process.stderr.write(`  ${pos}  ${c.bold(component.name)}  ${c.green('cached')}\n`);
-    return {
-      componentName: component.name,
-      classified: 0,
-      excluded: 0,
-      slots: 0,
-      warnings: [],
-      failed: false,
-      cached: true,
-      renamedSlotsCount: 0,
-    };
+    return cachedComponentResult(component.name);
   }
 
   if (!noCache) {
@@ -279,30 +285,12 @@ async function runOneComponent(
         promptHash,
       );
       process.stderr.write(`  ${pos}  ${c.bold(component.name)}  ${c.green('cached')}\n`);
-      return {
-        componentName: component.name,
-        classified: 0,
-        excluded: 0,
-        slots: 0,
-        warnings: [],
-        failed: false,
-        cached: true,
-        renamedSlotsCount: 0,
-      };
+      return cachedComponentResult(component.name);
     }
     if (resolution?.humanEdited) {
       copyComponentFromCache(db, resolution.entry.sourceSessionId, sessionId, component.component_id);
       process.stderr.write(`  ${pos}  ${c.bold(component.name)}  ${c.cyan('pinned (human-edited)')}\n`);
-      return {
-        componentName: component.name,
-        classified: 0,
-        excluded: 0,
-        slots: 0,
-        warnings: [`${component.name}: source changed but human edits preserved`],
-        failed: false,
-        cached: true,
-        renamedSlotsCount: 0,
-      };
+      return cachedComponentResult(component.name, [`${component.name}: source changed but human edits preserved`]);
     }
   }
 
@@ -738,7 +726,9 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
         }
         const fullyCached = cacheEnabled && cachedComponents.length === allComponents.length;
         process.stdout.write(`cache-status=${fullyCached ? 'hit' : 'miss'}\n`);
-        process.stdout.write(`cache-components=${JSON.stringify(cachedComponents.map(({ component }) => component.name))}\n`);
+        process.stdout.write(
+          `cache-components=${JSON.stringify(cachedComponents.map(({ component }) => component.name))}\n`,
+        );
         await exitWithAnalytics(0);
         return;
       }

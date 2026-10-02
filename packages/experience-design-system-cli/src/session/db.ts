@@ -2313,9 +2313,7 @@ export function storeCache(
   humanEdited: boolean,
   promptHash: string = '',
 ): void {
-  storeCaches(db, [
-    { inputHash, entityType, entityId, sourceSessionId, humanEdited, promptHash },
-  ]);
+  storeCaches(db, [{ inputHash, entityType, entityId, sourceSessionId, humanEdited, promptHash }]);
 }
 
 export function storeCaches(
