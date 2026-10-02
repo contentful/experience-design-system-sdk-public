@@ -198,6 +198,11 @@ function createCachedComponentResult(componentName: string, warnings: string[] =
   };
 }
 
+function writeCachedComponentStatus(position: string, componentName: string, pinned: boolean): void {
+  const status = pinned ? c.cyan('pinned (human-edited)') : c.green('cached');
+  process.stderr.write(`  ${position}  ${c.bold(componentName)}  ${status}\n`);
+}
+
 async function showGenerateView(result: GenerateViewResult): Promise<void> {
   if (process.stdout.isTTY) {
     const { waitUntilExit } = renderWithGoodbye(
@@ -214,11 +219,6 @@ async function showGenerateView(result: GenerateViewResult): Promise<void> {
     `generate complete\nskill: ${result.skill}\nagent: ${result.agent}\nsession=${result.sessionId}\n`,
   );
   await exitWithAnalytics(0);
-}
-
-function writeCachedComponentStatus(position: string, componentName: string, pinned: boolean): void {
-  const status = pinned ? c.cyan('pinned (human-edited)') : c.green('cached');
-  process.stderr.write(`  ${position}  ${c.bold(componentName)}  ${status}\n`);
 }
 
 function normalizeComponentForCache(
@@ -359,7 +359,7 @@ async function runOneComponent(
         allowedComponentNames,
       });
       writeCachedComponentStatus(pos, component.name, true);
-      return createCachedComponentResult(component.name, [
+      return createCachedComponentResult(`${component.name}`, [
         `${component.name}: source changed but human edits preserved`,
       ]);
     }

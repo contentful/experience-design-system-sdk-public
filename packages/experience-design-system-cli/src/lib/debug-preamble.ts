@@ -1,21 +1,20 @@
-import { initDebugLogger, printDebugBanner, type DebugLogger } from './debug-logger.js';
+import { initDebugLogger, printDebugBanner, resolveDebugMode, type DebugLogger } from './debug-logger.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 
 let endBannerRegistered = false;
 
 /**
- * Initialize the debug logger from persisted credentials.
- * Debug mode can only be configured via setup preferences;
+ * Resolve and initialize the debug logger before a top-level command runs.
  */
-export async function beginCommand(command: string): Promise<DebugLogger> {
+export async function beginCommand(command: string, opts: { debug?: boolean }): Promise<DebugLogger> {
   let configDebug: boolean | undefined;
   try {
     const creds = await readExperiencesCredentials();
     configDebug = creds.debug;
   } catch {
-    // Missing credentials.json is fine — defaults to OFF.
+    // Missing credentials.json is fine — the resolver falls through to OFF.
   }
-  const enabled = configDebug ?? false;
+  const enabled = resolveDebugMode(opts, configDebug);
   const logger = initDebugLogger({ enabled, command });
   if (logger.enabled) {
     printDebugBanner(logger, 'start');

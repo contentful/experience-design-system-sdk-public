@@ -1266,6 +1266,23 @@ describe('storeCDFComponents + loadCDFComponents', () => {
     });
   });
 
+  it('preserves generated status when raw components are refreshed', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db, sessionId, RAW);
+      db.prepare(`UPDATE raw_components SET status = 'generated' WHERE session_id = ?`).run(sessionId);
+
+      storeRawComponents(db, sessionId, RAW, { preserveStatus: true });
+
+      const row = db
+        .prepare(`SELECT status FROM raw_components WHERE session_id = ? AND name = 'Button'`)
+        .get(sessionId) as { status: string } | undefined;
+      expect(row?.status).toBe('generated');
+      db.close();
+    });
+  });
+
   it('stores and loads $values for an agent-added component (new-component path)', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);

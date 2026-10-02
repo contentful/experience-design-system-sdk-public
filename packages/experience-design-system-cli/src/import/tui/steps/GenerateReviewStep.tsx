@@ -1646,12 +1646,7 @@ function GenerateReviewStepView({
         hidden={dialogOpen}
       />
       {!dialogOpen && sidebarFocused && (
-        <CompactControlBar
-          hasGroupRoots={hasGroupRoots}
-          searchActive={searchOpen || searchQuery.length > 0}
-          showJson={reviewEditor.showJson}
-          tokenReviewAvailable={reviewEditor.currentTokenSuggestions().length > 0}
-        />
+        <CompactControlBar hasGroupRoots={hasGroupRoots} searchActive={searchOpen || searchQuery.length > 0} />
       )}
     </Box>
   );
