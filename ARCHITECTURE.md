@@ -87,7 +87,15 @@ Component extraction engine: per-framework parsers (React, Vue, Astro, Stencil, 
 
 ### `experience-design-system-generation`
 
-Agent-invocation (`agent-invoker.ts`, `agent-runner.ts`), skill-prompt building (`prompt-builder.ts`), and progress reporting for coding-agent subprocesses. Consumed by the import wizard's internal generation step.
+Typed in-process generation endpoint consumed by the import wizard. The package is organized by responsibility:
+
+- `src/generate/model/` contains transport-neutral request, response, prompt, invocation, protocol, agent, and progress contracts.
+- `src/generate/controller/` coordinates one stage attempt: prompt construction, local or future adapter invocation, stage-specific parsing, and failure diagnostics.
+- `src/generate/services/` contains skill loading, prompt context rendering, stage preambles, protocol parsing, agent configuration/authentication, failure diagnostics, and progress formatting.
+- `src/generate/adapters/local/` contains the local subprocess process and its `AgentInvoker` adapter.
+- `src/index.ts` exposes the canonical package surface; root modules such as `agent-runner.ts` and `prompt-builder.ts` remain compatibility facades for existing consumers.
+
+The generation package does not own HTTP, session storage, caching, batching, retries, parsed-call persistence, or terminal presentation. Those concerns remain in the CLI.
 
 ### `experience-design-system-client`
 
@@ -432,16 +440,39 @@ React components commonly extend `HTMLAttributes<T>`, `ButtonHTMLAttributes<T>`,
 
 ## Internal Generation
 
-The import wizard's component and token generation stages build prompts by combining a skill file (markdown instructions) with a runtime preamble:
+The import wizard's component and token generation stages call the generation endpoint. The endpoint is transport-neutral and can be wired to a local subprocess adapter today or another `AgentInvoker` implementation later.
+
+```mermaid
+flowchart LR
+    CLI[CLI command] --> Endpoint[Generate endpoint]
+    Endpoint --> Prompt[Prompt service]
+    Prompt --> Skill[Skill loader]
+    Prompt --> Context[Context renderer and stage preamble]
+    Endpoint --> Invoker[AgentInvoker port]
+    Invoker --> Local[Local subprocess adapter]
+    Local --> Agent[Local coding-agent process]
+    Agent --> Parser[Protocol parser service]
+    Parser --> Endpoint
+    Endpoint --> Result[Typed response]
+    Result --> CLI
+```
+
+The prompt service combines a skill file (markdown instructions) with a runtime preamble:
 
 - **Skill file** — `skills/generate-components.md` or `skills/generate-tokens.md`; shipped with the package and located at runtime by walking up from the compiled output
 - **Runtime preamble** — sets mode (autonomous/interactive), embeds raw component data inline as JSON, lists optional file paths, and instructs the agent on the output protocol
 
-**Output protocol:** the agent emits one JSON tool-call object per line to stdout (no sentinel markers). `parseToolCallLines()` in `agent-runner.ts` handles line-by-line parsing. (An earlier sentinel-block protocol, `extractSentinelOutput()`, still exists in the codebase but is dead code — nothing in the live pipeline calls it.)
+**Output protocol:** the agent emits one JSON tool-call object per line to stdout (no sentinel markers). The protocol parser service handles stage-specific validation and returns parsed calls plus warnings. `extractSentinelOutput()` remains a compatibility export for older consumers, but it is not used by the live generation pipeline.
 
 **Raw components are passed inline, not as a file path.** The session database is read before the prompt is built, and the JSON array is embedded directly in the prompt text. This removes any file system coupling between `analyze extract` and internal generation.
 
 Do not use agent SDKs or APIs — the import wizard invokes agents as subprocesses only. This is a firm constraint.
+
+### Endpoint ownership
+
+`GenerateEndpointRequest` is a discriminated union for `components`, `tokens`, `select`, and `map-tokens`, with a prompt whose skill must match the stage. A single endpoint execution builds one prompt, performs at most one invocation, parses the corresponding protocol, and returns raw run metadata, typed calls, warnings, and an optional curated failure description. Dry runs stop after prompt construction.
+
+Retries, concurrency, cache policy, SQLite writes, and application of parsed calls remain outside the endpoint so they stay explicit in the CLI workflow.
 
 ---
 

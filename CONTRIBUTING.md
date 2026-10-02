@@ -31,7 +31,7 @@ pnpm typecheck
 packages/
   experience-design-system-cli/         # CLI + TUI
   experience-design-system-extraction/  # Component extraction engine (ts-morph, per-framework parsers)
-  experience-design-system-generation/  # Agent-invocation and skill-prompt engine (used internally by the import wizard)
+  experience-design-system-generation/  # Typed generation endpoint, services, and local agent adapter
   experience-design-system-client/      # Generated API client (from openapi.json), used by `apply`
   experience-design-system-types/       # Shared types and schemas
 .github/workflows/                      # CI/CD pipelines
@@ -59,6 +59,10 @@ pnpm -F @contentful/experience-design-system-cli typecheck
 pnpm -F @contentful/experience-design-system-cli lint
 pnpm -F @contentful/experience-design-system-cli lint:fix
 ```
+
+The generation package keeps its contracts in `src/generate/model/`, endpoint orchestration in `src/generate/controller/`, reusable policies in `src/generate/services/`, and local subprocess behavior in `src/generate/adapters/local/`. The CLI remains responsible for persistence, caching, retries, concurrency, parsed-call application, and terminal output.
+
+When changing prompt or agent behavior, run the generation package tests and verify the packaged skill assets with a build or package inspection. The `skills/` Markdown files are runtime inputs and must remain included in the published package.
 
 ### Running the CLI locally
 

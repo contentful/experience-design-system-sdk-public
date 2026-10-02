@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatGenerateProgressLine } from '../src/progress.js';
+import { formatGenerateProgressLine } from '../src/generate/services/progress-service.js';
 
 describe('formatGenerateProgressLine', () => {
   it('formats a progress=generate completion line', () => {

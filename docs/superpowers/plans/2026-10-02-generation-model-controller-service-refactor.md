@@ -1,6 +1,6 @@
 # Generation model-controller-service refactor
 
-Status: Phase 7 complete; Phase 8 pending.
+Status: Phase 8 complete; Phase 9 pending.
 
 research_started_at: `2026-10-02T15:41:33Z`
 
@@ -599,6 +599,8 @@ tool-call application, progress rendering, and error presentation.
 
 ### Phase 8 — Remove obsolete implementation files and document the boundary
 
+Status: Complete.
+
 Files:
 
 - Remove empty or superseded `src/agent-runner.ts`, `src/prompt-builder.ts`,
@@ -621,6 +623,19 @@ Work:
 - Do not remove `extractSentinelOutput` solely because this repository has no
   production caller; make that a documented public API decision.
 - Confirm all package and CLI import paths use `.js` extensions and remain ESM.
+
+Completed work:
+
+- Root implementation files remain compatibility facades where their exports
+  are part of the supported package surface.
+- Progress formatting and legacy sentinel parsing now have canonical service
+  ownership, while the old root paths continue to re-export them.
+- The package barrel exports canonical model, service, adapter, and endpoint
+  paths directly.
+- `AGENTS.md`, `ARCHITECTURE.md`, and `CONTRIBUTING.md` document the endpoint
+  boundary and CLI ownership rules.
+- `docs/decisions/0005-generation-model-controller-service-boundary.md` records
+  the durable architecture decision.
 
 Verification:
 

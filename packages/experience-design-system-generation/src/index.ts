@@ -6,14 +6,14 @@ export type { AgentName } from './generate/model/agent.js';
 export {
   agentSupportsBedrock,
   buildArgs,
-  checkAgentAuth,
-  describeAgentFailure,
-  extractSentinelOutput,
   resolveAgentModel,
   resolveBinary,
-  runAgent,
-} from './agent-runner.js';
+} from './generate/services/agent-configuration-service.js';
+export { checkAgentAuth } from './generate/services/agent-auth-service.js';
+export { describeAgentFailure } from './generate/services/failure-diagnostics-service.js';
+export { runAgent } from './generate/adapters/local/local-agent-process.js';
 export {
+  extractSentinelOutput,
   parseMapTokenPropToolCallLines,
   parseSelectToolCallLines,
   parseTokenToolCallLines,
@@ -45,16 +45,17 @@ export type {
 } from './generate/model/protocol.js';
 
 // Agent invocation (interface)
-export { createLocalCliAgentInvoker } from './agent-invoker.js';
-export type { CreateLocalCliAgentInvokerOptions } from './agent-invoker.js';
+export { createLocalCliAgentInvoker } from './generate/adapters/local/local-agent-invoker.js';
+export type { CreateLocalCliAgentInvokerOptions } from './generate/adapters/local/local-agent-invoker.js';
 export type { AgentInvoker, InvokeAgentOptions } from './generate/services/ports/agent-invoker.js';
 
 // Prompt building
-export { buildPrompt, formatCustomPromptBanner, resolveSkillPath } from './prompt-builder.js';
+export { buildPrompt, formatCustomPromptBanner } from './generate/services/prompt-service.js';
+export { resolveSkillPath } from './generate/services/skill-loader.js';
 export type { ComponentSourceRef, GeneratedCdf, Mode, PromptOptions, Skill } from './generate/model/prompt.js';
 
 // Progress reporting
-export { formatGenerateProgressLine } from './progress.js';
+export { formatGenerateProgressLine } from './generate/services/progress-service.js';
 export type { GenerateProgressEvent } from './generate/model/progress.js';
 
 // Generation endpoint contract

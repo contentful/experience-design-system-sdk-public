@@ -113,19 +113,22 @@ When adding a new DOM attribute wrapper type (e.g., `TableHTMLAttributes`):
 
 ## Import Generation Internals
 
-`src/generate/` contains the generation pipeline used internally by `experiences import`:
+The generation package exposes a typed in-process endpoint while keeping the local agent CLI as an adapter:
 
-- `command.ts` — validation, session resolution, agent invocation, sentinel extraction, file writes
-- `prompt-builder.ts` — combines a skill file with a runtime preamble; uses `existsSync` walk to locate `skills/` regardless of compiled vs. source context
-- `agent-runner.ts` — spawns the agent via `sh -c`; autonomous mode pipes stdout/stderr, interactive inherits stdio
-- `skills/generate-components.md` and `skills/generate-tokens.md` — the actual skill instructions shipped with the package
-- `skills/select-components.md` — skill instructions for the `analyze select-agent` command
+- `src/generate/controller/` — validates stage-specific requests, coordinates one prompt/invocation/parse attempt, and returns typed results
+- `src/generate/model/` — owns transport-neutral agent, prompt, protocol, progress, and endpoint contracts
+- `src/generate/services/` — owns prompt assembly, skill loading, stage preambles, protocol parsing, agent configuration, authentication, diagnostics, and progress formatting
+- `src/generate/adapters/local/` — owns local subprocess execution and the `AgentInvoker` implementation
+- `src/index.ts` — publishes the canonical endpoint and contracts; root files such as `agent-runner.ts` and `prompt-builder.ts` remain compatibility facades for supported imports
+- `skills/generate-components.md`, `skills/generate-tokens.md`, `skills/select-components.md`, and `skills/map-tokens.md` — skill instructions shipped as package assets
+
+The CLI owns session resolution, caching, concurrency, retries, SQLite persistence, parsed-call application, and terminal presentation. It calls `createGenerateEndpoint()` for one generation attempt rather than composing prompt, process, and parser details itself.
 
 Raw components are loaded from the session DB and embedded as an inline JSON block in the prompt — the agent never reads a file path. `PromptOptions.rawComponentsInline` carries this string; `rawComponentsPath` does not exist.
 
-The output protocol for internal component and token generation: the agent emits one JSON tool-call object per line to stdout (no sentinel markers). `parseToolCallLines()` in `agent-runner.ts` handles line-by-line parsing.
+The output protocol for internal component and token generation: the agent emits one JSON tool-call object per line to stdout (no sentinel markers). The protocol parser service handles line-by-line parsing and returns typed calls plus warnings.
 
-The output protocol for `analyze select-agent`: the agent emits exactly one JSON object on a single line — either `{"tool":"select_component",...}` or `{"tool":"reject_component",...}`. `parseSelectToolCallLines()` in `agent-runner.ts` handles parsing.
+The output protocol for `analyze select-agent`: the agent emits exactly one JSON object on a single line — either `{"tool":"select_component",...}` or `{"tool":"reject_component",...}`. The same protocol parser service selects the appropriate stage parser.
 
 **Do not use agent SDKs or APIs** — the import wizard invokes agents as subprocesses only. This is a firm constraint.
 

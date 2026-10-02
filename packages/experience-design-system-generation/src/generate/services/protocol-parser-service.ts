@@ -277,3 +277,22 @@ export function parseMapTokenPropToolCallLines(stdout: string): ParsedMapTokenPr
 
   return { calls, warnings };
 }
+
+/** Parses the legacy sentinel block retained for root API compatibility. */
+export function extractSentinelOutput(stdout: string): string | null | 'multiple' {
+  const startMarker = '<<<EDS_OUTPUT_START>>>';
+  const endMarker = '<<<EDS_OUTPUT_END>>>';
+  const startIndex = stdout.indexOf(startMarker);
+  const endIndex = stdout.indexOf(endMarker);
+
+  if (startIndex === -1 || endIndex === -1 || endIndex <= startIndex) return null;
+
+  const secondStart = stdout.indexOf(startMarker, startIndex + startMarker.length);
+  if (secondStart !== -1 && secondStart < endIndex) return 'multiple';
+
+  const firstEnd = stdout.indexOf(endMarker, startIndex);
+  const secondEnd = stdout.indexOf(endMarker, firstEnd + endMarker.length);
+  if (secondEnd !== -1) return 'multiple';
+
+  return stdout.slice(startIndex + startMarker.length, endIndex).trim();
+}
