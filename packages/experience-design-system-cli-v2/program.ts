@@ -16,10 +16,8 @@ export function createProgram(): Command {
     .description('Launch the v2 import TUI')
     .action(async () => {
       const { render } = await import('ink');
-      const { createElement } = await import('react');
-      const { App } = await import('./app.js');
-      const { waitUntilExit } = render(createElement(App));
-      await waitUntilExit();
+      const { runApp } = await import('./app.js');
+      await runApp(render);
     });
 
   return program;

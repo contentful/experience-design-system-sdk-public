@@ -1,70 +1,27 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Box, Text, useInput } from 'ink';
 import { PALETTE } from '../home/home.theme.js';
-import { spawnV1Import, type PipelineResult } from './spawn-v1-import.js';
 
-type Stage = 'running' | 'result';
+export function ImportScreen({ exitCode, onDone }: { exitCode?: number; onDone: () => void }): React.ReactElement {
+  useInput((input, key) => {
+    if (key.return || key.escape || input === 'q') {
+      onDone();
+    }
+  });
 
-export function ImportScreen({ onDone }: { onDone: () => void }): React.ReactElement {
-  const [stage, setStage] = useState<Stage>('running');
-  const [result, setResult] = useState<PipelineResult>();
-  const [runError, setRunError] = useState<string | null>(null);
+  const isSuccess = exitCode === 0;
 
-  useEffect(() => {
-    spawnV1Import({})
-      .then(({ exitCode, result: pipelineResult }) => {
-        if (pipelineResult) {
-          setResult(pipelineResult);
-          setStage('result');
-        } else {
-          setRunError(`Import process exited with code ${exitCode}`);
-          setStage('result');
-        }
-      })
-      .catch((err: unknown) => {
-        setRunError(err instanceof Error ? err.message : String(err));
-        setStage('result');
-      });
-  }, []);
-
-  useInput(
-    (input, key) => {
-      if (key.return || key.escape || input === 'q') {
-        onDone();
-      }
-    },
-    { isActive: stage === 'result' },
+  return (
+    <Box flexDirection="column" paddingX={2} paddingY={1}>
+      <Text bold>Import</Text>
+      <Text> </Text>
+      {isSuccess ? (
+        <Text color={PALETTE.success}>✓ Import complete</Text>
+      ) : (
+        <Text color={PALETTE.error}>✗ Import failed: process exited with code {exitCode ?? 'unknown'}</Text>
+      )}
+      <Text> </Text>
+      <Text dimColor>[Enter] Back to Start</Text>
+    </Box>
   );
-
-  if (stage === 'result') {
-    const isSuccess = result && result.steps.every((s: { status: string }) => s.status !== 'failed');
-    return (
-      <Box flexDirection="column" paddingX={2} paddingY={1}>
-        <Text bold>Import</Text>
-        <Text> </Text>
-        {isSuccess ? (
-          <Text color={PALETTE.success}>✓ Import complete</Text>
-        ) : (
-          <Text color={PALETTE.error}>✗ Import failed{runError ? `: ${runError}` : ''}</Text>
-        )}
-        {result && (
-          <Box flexDirection="column" marginTop={1}>
-            {result.steps.map((step) => (
-              <Text
-                key={step.step}
-                color={step.status === 'failed' ? PALETTE.error : undefined}
-                dimColor={step.status === 'skipped'}
-              >
-                {step.status === 'complete' ? '✓' : step.status === 'skipped' ? '·' : '✗'} {step.step}
-              </Text>
-            ))}
-          </Box>
-        )}
-        <Text> </Text>
-        <Text dimColor>[Enter] Back to Start</Text>
-      </Box>
-    );
-  }
-
-  return <Box />;
 }
