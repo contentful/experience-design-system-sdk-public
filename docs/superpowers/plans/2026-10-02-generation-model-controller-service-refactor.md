@@ -1,6 +1,6 @@
 # Generation model-controller-service refactor
 
-Status: Phase 6 complete; Phase 7 pending.
+Status: Phase 7 complete; Phase 8 pending.
 
 research_started_at: `2026-10-02T15:41:33Z`
 
@@ -547,6 +547,8 @@ metadata and parsed warnings, and leaves retries and persistence to callers.
 
 ### Phase 7 — Migrate CLI consumers and retain compatibility exports
 
+Status: Complete.
+
 Files:
 
 - Update `packages/experience-design-system-cli/src/generate/command.ts`.
@@ -588,6 +590,12 @@ Verification:
   hits.
 - A repository-wide search finds no production import of the old implementation
   paths except intentional compatibility shims.
+
+Completed verification: the CLI typecheck, lint, and full suite passed with
+241 test files and 2,682 tests. Generate components, generate tokens, map
+tokens, dry-run prompt output, and composition resolution now use the package
+endpoint or invoker boundary while the CLI retains retries, caching, SQLite,
+tool-call application, progress rendering, and error presentation.
 
 ### Phase 8 — Remove obsolete implementation files and document the boundary
 

@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import type { Command } from 'commander';
 import {
   AGENT_NAMES,
-  buildPrompt,
+  createGenerateEndpoint,
   createLocalCliAgentInvoker,
   describeAgentFailure,
   isAgentName,
@@ -221,22 +221,26 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
       }
     }
 
-    const buildMapPrompt = (): Promise<string> =>
-      buildPrompt({
-        skill: 'map-tokens',
-        mode: 'autonomous',
-        generatedCdf,
-        tokenTree,
-        componentSourceRefs,
-        outDir: process.cwd(),
-        existingTokensInline,
-        ...(mapPromptText !== undefined ? { skillContentOverride: mapPromptText } : {}),
-        ...(mapPromptText === undefined && mapPromptPath ? { skillPathOverride: mapPromptPath } : {}),
-      });
-
     if (opts.printPrompt) {
-      const prompt = await buildMapPrompt();
-      process.stdout.write(prompt + '\n');
+      const promptEndpoint = createGenerateEndpoint({ invoker: createLocalCliAgentInvoker() });
+      const promptResponse = await promptEndpoint.execute({
+        stage: 'map-tokens',
+        prompt: {
+          skill: 'map-tokens',
+          mode: 'autonomous',
+          generatedCdf,
+          tokenTree,
+          componentSourceRefs,
+          outDir: process.cwd(),
+          existingTokensInline,
+          ...(mapPromptText !== undefined ? { skillContentOverride: mapPromptText } : {}),
+          ...(mapPromptText === undefined && mapPromptPath ? { skillPathOverride: mapPromptPath } : {}),
+        },
+        invocation: { agent: configuredAgent ?? 'claude', model, timeoutMs: DEFAULT_TIMEOUT_MS },
+        dryRun: true,
+      });
+      if (!promptResponse.dryRun) throw new Error('expected prompt-only generation response');
+      process.stdout.write(promptResponse.prompt + '\n');
       await exitWithAnalytics(0);
       return;
     }
@@ -287,10 +291,25 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
 
     const stepId = createStep(db, sessionId, 'map tokens', { agent, model: model ?? '' });
 
-    const prompt = await buildMapPrompt();
-
     const invoker = createLocalCliAgentInvoker();
-    const result = await invoker.invoke({ agent, model, prompt, timeoutMs: DEFAULT_TIMEOUT_MS });
+    const endpoint = createGenerateEndpoint({ invoker });
+    const response = await endpoint.execute({
+      stage: 'map-tokens',
+      prompt: {
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        generatedCdf,
+        tokenTree,
+        componentSourceRefs,
+        outDir: process.cwd(),
+        existingTokensInline,
+        ...(mapPromptText !== undefined ? { skillContentOverride: mapPromptText } : {}),
+        ...(mapPromptText === undefined && mapPromptPath ? { skillPathOverride: mapPromptPath } : {}),
+      },
+      invocation: { agent, model, timeoutMs: DEFAULT_TIMEOUT_MS },
+    });
+    if (response.dryRun) throw new Error('expected an executed generation response');
+    const result = response.run;
 
     if (result.timedOut || result.exitCode !== 0) {
       const error = result.timedOut

@@ -16,7 +16,10 @@ import {
   parseTokenToolCallLines,
   resolveBinary,
   resolveSkillPath,
-  buildPrompt,
+  type AgentInvoker,
+  type GenerateEndpointResponse,
+  type InvokeAgentOptions,
+  type PromptOptions,
   type Skill,
 } from '@contentful/experience-design-system-generation';
 import { c } from '../output/format.js';
@@ -387,7 +390,7 @@ async function runOneComponent(
   const existingComponentsInline = existingContentfulEntities
     ? JSON.stringify(summarizeForGenerateAgent(existingContentfulEntities, component.name))
     : undefined;
-  const prompt = await buildPrompt({
+  const promptOptions: PromptOptions & { skill: 'components' } = {
     skill: 'components',
     mode: 'autonomous',
     rawComponentsInline,
@@ -401,18 +404,34 @@ async function runOneComponent(
     existingComponentsInline,
     existingTokensInline,
     componentAllowlistInline: JSON.stringify([...allowedComponentNames].sort()),
-  });
+  };
+
+  let outputBuf = '';
+  const outputInvoker: AgentInvoker = {
+    async invoke({ onOutput: _onOutput, ...invokeOptions }: InvokeAgentOptions) {
+      const result = await invokeAgentWithOutput(invoker, invokeOptions, verbose);
+      outputBuf = result.output;
+      return result.result;
+    },
+    checkAuth(agentName) {
+      return invoker.checkAuth(agentName);
+    },
+  };
+  const endpoint = createGenerateEndpoint({ invoker: outputInvoker });
 
   const maxAttempts = 2;
   let lastError = '';
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     if (attempt > 1) await new Promise((res) => setTimeout(res, RETRY_BACKOFF_MS));
-    const { result, output: outputBuf } = await invokeAgentWithOutput(
-      invoker,
-      { agent, model, prompt, timeoutMs: DEFAULT_TIMEOUT_MS },
-      verbose,
-    );
+    outputBuf = '';
+    const response = await endpoint.execute({
+      stage: 'components',
+      prompt: promptOptions,
+      invocation: { agent, model, timeoutMs: DEFAULT_TIMEOUT_MS },
+    });
+    if (response.dryRun) throw new Error('expected an executed generation response');
+    const result = response.run;
 
     // Write header + all tool-call output as one block so concurrent workers don't interleave.
     const retryNote = attempt > 1 ? `  ${c.yellow(`retrying (${attempt}/${maxAttempts})`)}` : '';
@@ -699,7 +718,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
       skill === 'components' && existingContentfulEntities && sampleComponent
         ? JSON.stringify(summarizeForGenerateAgent(existingContentfulEntities, sampleComponent.name))
         : undefined;
-    const prompt = await buildPrompt({
+    const promptOptions: PromptOptions = {
       skill,
       mode: 'autonomous',
       rawComponentsInline: sampleInline ?? rawTokensInline,
@@ -715,8 +734,24 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
       existingTokensInline: skill === 'components' ? existingTokensInline : undefined,
       componentAllowlistInline:
         skill === 'components' && allowedComponentNames ? JSON.stringify([...allowedComponentNames].sort()) : undefined,
-    });
-    process.stdout.write(prompt + '\n');
+    };
+    const promptEndpoint = createGenerateEndpoint({ invoker });
+    const promptResponse =
+      skill === 'components'
+        ? await promptEndpoint.execute({
+            stage: 'components',
+            prompt: { ...promptOptions, skill: 'components' },
+            invocation: { agent, model, timeoutMs: DEFAULT_TIMEOUT_MS },
+            dryRun: true,
+          })
+        : await promptEndpoint.execute({
+            stage: 'tokens',
+            prompt: { ...promptOptions, skill: 'tokens' },
+            invocation: { agent, model, timeoutMs: DEFAULT_TIMEOUT_MS },
+            dryRun: true,
+          });
+    if (!promptResponse.dryRun) throw new Error('expected prompt-only generation response');
+    process.stdout.write(promptResponse.prompt + '\n');
     await exitWithAnalytics(0);
   }
 
@@ -915,7 +950,10 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
       }
 
       // Cache miss — invoke agent
-      const prompt = await buildPrompt({
+      const endpoint = createGenerateEndpoint({ invoker });
+      const response = await endpoint.execute({
+        stage: 'tokens',
+        prompt: {
         skill,
         mode: 'autonomous',
         rawTokensInline,
@@ -923,14 +961,11 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
         tokensInline,
         tokenMapInline,
         outDir: process.cwd(),
+        },
+        invocation: { agent, model, timeoutMs: DEFAULT_TIMEOUT_MS * 5 },
       });
-
-      const result = await invoker.invoke({
-        agent,
-        model,
-        prompt,
-        timeoutMs: DEFAULT_TIMEOUT_MS * 5,
-      });
+      if (response.dryRun) throw new Error('expected an executed generation response');
+      const result = response.run;
 
       if (result.timedOut) {
         die(`Error: agent did not complete within ${(DEFAULT_TIMEOUT_MS * 5) / 60000} minutes`);
