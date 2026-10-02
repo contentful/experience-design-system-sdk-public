@@ -31,7 +31,7 @@ describe('applyMapping (T7 — enrichment pass)', () => {
 
   it('writes onto a named slot when edge.slot matches an existing slot', () => {
     const components = [comp('A', [slot('header', false), slot('children', true)]), comp('B')];
-    const res = applyMapping(components, [edge('A', 'B', 'user', 'header')]);
+    const res = applyMapping(components, [edge('A', 'B', 'typed-slot', 'header')]);
     const a = res.components.find((c) => c.name === 'A')!;
     expect(a.slots.find((s) => s.name === 'header')!.allowedComponents).toEqual(['B']);
     expect(a.slots.find((s) => s.isDefault)!.allowedComponents ?? []).toEqual([]);
@@ -84,7 +84,7 @@ describe('applyMapping (T7 — enrichment pass)', () => {
 
   it('does not mutate the input components', () => {
     const components = [comp('A', [slot('children', true)]), comp('B')];
-    applyMapping(components, [edge('A', 'B', 'user')]);
+    applyMapping(components, [edge('A', 'B', 'typed-slot')]);
     expect(components.find((c) => c.name === 'A')!.slots[0].allowedComponents).toBeUndefined();
   });
 });
