@@ -2313,15 +2313,49 @@ export function storeCache(
   humanEdited: boolean,
   promptHash: string = '',
 ): void {
+  storeCaches(db, [{ inputHash, entityType, entityId, sourceSessionId, humanEdited, promptHash }]);
+}
+
+export function storeCaches(
+  db: DatabaseSync,
+  entries: Array<{
+    inputHash: string;
+    entityType: CacheEntityType;
+    entityId: string;
+    sourceSessionId: string;
+    humanEdited: boolean;
+    promptHash?: string;
+  }>,
+): void {
+  if (entries.length === 0) return;
   const now = new Date().toISOString();
-  db.prepare(
+  const insert = db.prepare(
     `INSERT INTO generation_cache (input_hash, entity_type, entity_id, source_session_id, human_edited, created_at, updated_at, prompt_hash)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(input_hash, prompt_hash, entity_type, entity_id) DO UPDATE SET
        source_session_id = excluded.source_session_id,
        human_edited = CASE WHEN generation_cache.human_edited = 1 THEN 1 ELSE excluded.human_edited END,
        updated_at = excluded.updated_at`,
-  ).run(inputHash, entityType, entityId, sourceSessionId, humanEdited ? 1 : 0, now, now, promptHash);
+  );
+  db.exec('BEGIN');
+  try {
+    for (const entry of entries) {
+      insert.run(
+        entry.inputHash,
+        entry.entityType,
+        entry.entityId,
+        entry.sourceSessionId,
+        entry.humanEdited ? 1 : 0,
+        now,
+        now,
+        entry.promptHash ?? '',
+      );
+    }
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
 }
 
 export function storeScannedFiles(db: DatabaseSync, sessionId: string, filePaths: string[]): void {
@@ -2413,9 +2447,10 @@ export function copyComponentFromCache(
   sourceSessionId: string,
   targetSessionId: string,
   componentId: string,
+  manageTransaction = true,
 ): void {
   const now = new Date().toISOString();
-  db.exec('BEGIN');
+  if (manageTransaction) db.exec('BEGIN');
   try {
     const srcComp = db
       .prepare(
@@ -2538,6 +2573,23 @@ export function copyComponentFromCache(
     }
 
     db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, targetSessionId);
+    if (manageTransaction) db.exec('COMMIT');
+  } catch (e) {
+    if (manageTransaction) db.exec('ROLLBACK');
+    throw e;
+  }
+}
+
+export function copyComponentsFromCache(
+  db: DatabaseSync,
+  entries: Array<{ sourceSessionId: string; targetSessionId: string; componentId: string }>,
+): void {
+  if (entries.length === 0) return;
+  db.exec('BEGIN');
+  try {
+    for (const entry of entries) {
+      copyComponentFromCache(db, entry.sourceSessionId, entry.targetSessionId, entry.componentId, false);
+    }
     db.exec('COMMIT');
   } catch (e) {
     db.exec('ROLLBACK');

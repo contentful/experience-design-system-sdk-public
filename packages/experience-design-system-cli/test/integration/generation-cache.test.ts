@@ -62,6 +62,27 @@ describe('cache integration: generation_cache', () => {
     expect(await agent.callCount()).toBe(after1);
   });
 
+  it('11a. restored cache hits can be handed to generation without a second lookup', async () => {
+    const { fix, agent } = await setup();
+    await runCliWithEnv(GEN_ARGS(fix), baseEnv(fix, agent));
+    const after1 = await agent.callCount();
+
+    const { sessionId: s2 } = await fix.extractAgain(SAMPLE_TWO_COMPONENTS);
+    const nextFix = { ...fix, sessionId: s2 } as CacheFixture;
+    const cacheStatus = await runCliWithEnv(
+      GEN_ARGS(nextFix, ['--cache-status', '--restore-cache']),
+      baseEnv(nextFix, agent),
+    );
+    const cachedNames = JSON.parse(/^cache-components=(.+)$/m.exec(cacheStatus.stdout)?.[1] ?? '[]') as string[];
+    expect(cachedNames).toHaveLength(SAMPLE_TWO_COMPONENTS.length);
+
+    await runCliWithEnv(
+      GEN_ARGS(nextFix, ['--cached-components', JSON.stringify(cachedNames)]),
+      baseEnv(nextFix, agent),
+    );
+    expect(await agent.callCount()).toBe(after1);
+  });
+
   it('12. PR #82 — fresh session with identical sources reuses cache (no description drift)', async () => {
     const { fix, agent } = await setup();
     await runCliWithEnv(GEN_ARGS(fix), baseEnv(fix, agent));
@@ -161,5 +182,25 @@ describe('cache integration: generation_cache', () => {
     const { sessionId: s2 } = await fix.extractAgain(extra);
     await runCliWithEnv(GEN_ARGS({ ...fix, sessionId: s2 } as CacheFixture), baseEnv(fix, agent));
     expect(await agent.callCount()).toBe(after1 + 1);
+  });
+
+  it('19. normalizing an empty slot does not invalidate the cache on the next run', async () => {
+    const components = [
+      {
+        ...SAMPLE_TWO_COMPONENTS[0]!,
+        slots: [{ name: '', isDefault: false }],
+      },
+    ];
+    const { fix, agent } = await setup(components);
+
+    await runCliWithEnv(GEN_ARGS(fix), baseEnv(fix, agent));
+    const after1 = await agent.callCount();
+    expect(after1).toBe(1);
+
+    const cacheStatus = await runCliWithEnv(GEN_ARGS(fix, ['--cache-status']), baseEnv(fix, agent));
+    expect(cacheStatus.stdout).toContain('cache-status=hit');
+
+    await runCliWithEnv(GEN_ARGS(fix), baseEnv(fix, agent));
+    expect(await agent.callCount()).toBe(after1);
   });
 });

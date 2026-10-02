@@ -2575,7 +2575,7 @@ describe('generation cache', () => {
     expect(computeComponentInputHash(base)).toBe(computeComponentInputHash(enrichedByLLM));
   });
 
-  it('computeComponentInputHash includes slot composition edges (allowedComponents) so composite and atomic runs never collide', () => {
+  it('computeComponentInputHash ignores generated slot composition metadata', () => {
     const atomic = {
       component_id: 'abc123',
       name: 'Card',
@@ -2588,13 +2588,13 @@ describe('generation cache', () => {
       ...atomic,
       slots: [{ name: 'children', isDefault: true, allowedComponents: ['Button', 'Icon'] }],
     };
-    expect(computeComponentInputHash(atomic)).not.toBe(computeComponentInputHash(composite));
+    expect(computeComponentInputHash(atomic)).toBe(computeComponentInputHash(composite));
 
     const differentEdges = {
       ...atomic,
       slots: [{ name: 'children', isDefault: true, allowedComponents: ['Button'] }],
     };
-    expect(computeComponentInputHash(composite)).not.toBe(computeComponentInputHash(differentEdges));
+    expect(computeComponentInputHash(composite)).toBe(computeComponentInputHash(differentEdges));
 
     const sameEdges = {
       ...atomic,

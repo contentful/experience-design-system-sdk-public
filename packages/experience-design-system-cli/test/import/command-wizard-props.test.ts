@@ -5,7 +5,10 @@ const renderMock = vi.fn(() => ({ waitUntilExit: vi.fn().mockResolvedValue(undef
 const createElementMock = vi.fn((_component: unknown, props: unknown) => props);
 
 vi.mock('ink', () => ({ render: renderMock }));
-vi.mock('react', () => ({ createElement: createElementMock }));
+vi.mock('react', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react')>()),
+  createElement: createElementMock,
+}));
 vi.mock('../../src/import/tui/WizardApp.js', () => ({ WizardApp: vi.fn() }));
 
 const readExperiencesCredentialsMock = vi.fn();
