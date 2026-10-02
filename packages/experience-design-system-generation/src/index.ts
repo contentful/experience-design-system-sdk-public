@@ -9,14 +9,16 @@ export {
   checkAgentAuth,
   describeAgentFailure,
   extractSentinelOutput,
-  parseMapTokenPropToolCallLines,
-  parseSelectToolCallLines,
-  parseTokenToolCallLines,
-  parseToolCallLines,
   resolveAgentModel,
   resolveBinary,
   runAgent,
 } from './agent-runner.js';
+export {
+  parseMapTokenPropToolCallLines,
+  parseSelectToolCallLines,
+  parseTokenToolCallLines,
+  parseToolCallLines,
+} from './generate/services/protocol-parser-service.js';
 export type {
   AgentAuthStatus,
   AgentDebugEvent,
