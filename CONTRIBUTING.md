@@ -2,10 +2,10 @@
 
 ## Prerequisites
 
-| Tool | Version | Notes |
-|---|---|---|
-| Node.js | 24 (see `.nvmrc`) | Use `nvm use` to switch automatically |
-| pnpm | 10.27.0+ | Run `corepack enable` then `corepack prepare` |
+| Tool    | Version           | Notes                                         |
+| ------- | ----------------- | --------------------------------------------- |
+| Node.js | 24 (see `.nvmrc`) | Use `nvm use` to switch automatically         |
+| pnpm    | 10.27.0+          | Run `corepack enable` then `corepack prepare` |
 
 ## Getting Started
 
@@ -29,7 +29,8 @@ pnpm typecheck
 
 ```
 packages/
-  experience-design-system-cli/         # CLI + TUI
+  experience-design-system-cli/         # CLI + import wizard TUI (v1)
+  experience-design-system-cli-v2/      # Newer Ink TUI (`experiences importv2`); v1 depends on it, never the reverse
   experience-design-system-extraction/  # Component extraction engine (ts-morph, per-framework parsers)
   experience-design-system-generation/  # Agent-invocation and skill-prompt engine (used internally by the import wizard)
   experience-design-system-client/      # Generated API client (from openapi.json), used by `apply`
@@ -75,15 +76,13 @@ npm install -g packages/experience-design-system-cli
 experience-design-system-cli --help
 ```
 
-### Testing the analyze command against a real codebase
+### Testing the import wizard against a real codebase
 
 ```bash
-experience-design-system-cli analyze extract \
-  --project /path/to/your/component-library \
-  --dir src
+node packages/experience-design-system-cli/bin/cli.js import --project /path/to/your/component-library
 ```
 
-Extracted components are stored in the session database. Run `analyze select` (alias `analyze edit`) to review and accept proposals via the standalone JsonEditor TUI, or provide credentials when calling `experiences import` for a fully non-interactive run.
+`import` needs an interactive terminal and a coding agent on your `$PATH` (`claude` by default; pick another with `--agent`). Extracted components are stored in the session database (`EDS_PIPELINE_DB_PATH` overrides its location); use a temp path to avoid touching your real one. Pass `--tokens <file>` to include a token source. To push, run `experiences setup` first or export the `CONTENTFUL_*` variables described in the CLI README.
 
 ## Commit Convention
 
@@ -96,9 +95,10 @@ type(scope): description
 Valid types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `perf`, `ci`, `build`, `revert`
 
 Examples:
+
 ```
-feat(cli): add --format flag to analyze command
-fix(analyze): handle SVGProps without inflating prop count
+feat(cli): add --tokens flag to import
+fix(extraction): handle SVGProps without inflating prop count
 chore: update pnpm lockfile
 docs: add ARCHITECTURE.md
 ```
@@ -146,13 +146,16 @@ Commit the updated snapshot files alongside the code change.
 
 ## Adding a New Framework Extractor
 
-1. Create `src/analyze/extract/<framework>.ts` implementing the `ComponentExtractor` interface from `src/types.ts`
-2. Register it in `src/analyze/extract/pipeline.ts` — add to the `extractors` array and provide a `fileFilter`
-3. Write tests in `test/analyze/extract/<framework>.test.ts`
+These live in `packages/experience-design-system-extraction`:
+
+1. Create `src/extract/<framework>.ts` implementing the `ComponentExtractor` interface from `src/types.ts`
+2. Register it in `src/extract/pipeline.ts` — add to the `extractors` array and provide a `fileFilter`
+3. Write tests under `test/` alongside the existing extractor tests
 
 ## Branching and Deployment
 
-- `main` — production. Every push runs a stable, conventional-commit-driven release: version bump, git tag, publish to GitHub Packages, then mirror the new version to the public npmjs.org registry.
+- `development` — default integration branch. Branch from it and open PRs against it. Pushes run CI (lint, test, quality) and pull requests into `development` publish dev builds.
+- `main` — production, updated by release PRs from `development`. Every push runs a stable, conventional-commit-driven release: version bump, git tag, publish to GitHub Packages, then mirror the new version to the public npmjs.org registry.
 - `canary` — pre-release integration branch. Every push publishes a real, tagged `X.Y.Z-alpha.N` prerelease (npm dist-tag `canary`) to GitHub Packages. The release step syncs `main` into `canary` before releasing, so canary always includes everything already on main.
 - Any other branch or open PR — no dedicated naming convention is enforced. Every PR (and any push to a non-main, non-canary branch that CI runs on) publishes a throwaway, SHA-stamped dev prerelease (npm dist-tag `dev`) for the Nx-affected packages only, with no git commit/tag/push. If no packages are affected, the release step is a no-op.
 
@@ -168,16 +171,17 @@ Commit the updated snapshot files alongside the code change.
 
 All CI runs via GitHub Actions (`.github/workflows/ci.yml`):
 
-| Job | Trigger | What it does |
-|---|---|---|
-| `lint` | push to main/canary, PR to main, merge group | ESLint + Prettier via `pnpm affected:lint` |
-| `test` | push to main/canary, PR to main, merge group | Vitest + TypeScript compile via `pnpm affected:test` |
-| `test-summary` | always, after `lint`/`test` | Fails the check if either upstream job failed — a single required status for branch protection |
-| `release` | push to main (excluding automation-bot commits), push to canary (excluding dependabot and automation-bot commits), or any PR targeting main | Runs `pnpm release` (see Release Process below). Behavior branches internally on `GITHUB_REF` — this is one job, not separate prod/dev jobs |
+| Job            | Trigger                                                                                                                                                                                            | What it does                                                                                                                                                  |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lint`         | push to main/canary/development, PR to main or development, merge group                                                                                                                            | ESLint + Prettier via `pnpm affected:lint`                                                                                                                    |
+| `test`         | push to main/canary/development, PR to main or development, merge group                                                                                                                            | Vitest + TypeScript compile via `pnpm affected:test`                                                                                                          |
+| `quality`      | same as `lint`                                                                                                                                                                                     | Quality ratchets: Knip for v1 and cli-v2 (`quality:knip:v1`, `quality:knip:cli-v2`) and jscpd for v1 (`quality:jscpd:v1`); budgets live in `scripts/quality/` |
+| `test-summary` | always, after `lint`/`test`                                                                                                                                                                        | Fails the check if either upstream job failed — a single required status for branch protection                                                                |
+| `release`      | push to main (excluding automation-bot commits), push to canary (excluding dependabot and automation-bot commits), or any PR targeting main or development, once `lint`, `test` and `quality` pass | Runs `pnpm release` (see Release Process below). Behavior branches internally on `GITHUB_REF` — this is one job, not separate prod/dev jobs                   |
 
 A second workflow, `.github/workflows/release-guard.yml`, runs on PR open/sync/reopen and merge-group events. It does not itself gate anything — release concurrency is already serialized by the `release` job's `concurrency.group` in `ci.yml` — but it gives PRs a named check to point at.
 
-Nx affected detection uses `nrwl/nx-set-shas` to compare `NX_BASE..NX_HEAD`. Only packages with changed files run lint/test/build.
+The `release` job depends on `lint`, `test` and `quality`. Nx affected detection uses `nrwl/nx-set-shas` to compare `NX_BASE..NX_HEAD`. Only packages with changed files run lint/test/build.
 
 Releases follow [Conventional Commits](https://www.conventionalcommits.org/): `fix` → patch, `feat` → minor, `feat!` or `BREAKING CHANGE` → major.
 
@@ -186,12 +190,14 @@ Releases follow [Conventional Commits](https://www.conventionalcommits.org/): `f
 Releases are fully automated via `scripts/release.js` (invoked as `pnpm release` from the `release` job in CI). The script branches on which ref triggered it:
 
 **`main` (stable release):**
+
 1. Nx Release reads conventional commit history since the last tag to determine the version bump
 2. Commits the version bump, tags it, and pushes to `main`
 3. Publishes the new version to GitHub Packages
 4. If a new tag now points at `HEAD`, a follow-up CI step mirrors the same version to the public npmjs.org registry via OIDC trusted publishing, so it's installable from `npmjs.org` and not just GitHub Packages
 
 **`canary` (pre-release integration):**
+
 1. Syncs `main` into `canary` first
 2. Nx Release computes an `X.Y.Z-alpha.N` prerelease version from conventional commits
 3. Commits, tags, and pushes the prerelease to `canary`
@@ -199,14 +205,15 @@ Releases are fully automated via `scripts/release.js` (invoked as `pnpm release`
 5. Exits without publishing if there are no releasable changes since the last canary tag
 
 **Any other branch or PR (dev build):**
+
 1. Determines the Nx-affected packages; exits with no publish if none changed
 2. Publishes a throwaway prerelease per affected package, versioned `<version>-dev-build-<git-sha>`, to GitHub Packages under the npm dist-tag `dev`
 3. No git commit, tag, or push — dev builds leave no permanent trace in the repo
 
 **You do not manually bump versions or create tags.** On `main` and `canary`, the commit type determines the version bump:
 
-| Commit type | Version bump |
-|---|---|
-| `fix` | patch (0.0.x) |
-| `feat` | minor (0.x.0) |
+| Commit type                         | Version bump  |
+| ----------------------------------- | ------------- |
+| `fix`                               | patch (0.0.x) |
+| `feat`                              | minor (0.x.0) |
 | `feat!` or `BREAKING CHANGE` footer | major (x.0.0) |

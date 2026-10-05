@@ -6,11 +6,11 @@ CLI for extracting, reviewing, generating, validating, and pushing Contentful Ex
 
 The package installs three equivalent binaries:
 
-| Binary                          | Notes                                                                |
-| ------------------------------- | -------------------------------------------------------------------- |
-| `experiences`                   | Preferred entry point — short and operator-facing                    |
-| `exo`                           | Shorthand for Experience Orchestration                               |
-| `experience-design-system-cli`  | Full name; used in CI / scripts where clarity matters                |
+| Binary                         | Notes                                                 |
+| ------------------------------ | ----------------------------------------------------- |
+| `experiences`                  | Preferred entry point — short and operator-facing     |
+| `exo`                          | Shorthand for Experience Orchestration                |
+| `experience-design-system-cli` | Full name; used in CI / scripts where clarity matters |
 
 The rest of this README uses `experiences`.
 
@@ -18,11 +18,13 @@ The rest of this README uses `experiences`.
 
 The CLI has two primary workflows:
 
-1. **`experiences import`** — the wizard. Drives the full pipeline (extract → AI select → scope-gate → internal generation → final-review → save/push) from a single command in a full-screen interactive TUI. **This is the recommended path for almost everyone.**
+1. **`experiences import`** — the wizard. Drives the full pipeline (extract → AI select → scope-gate → generation → final-review → save and push) from a single command in a full-screen interactive TUI. **This is the recommended path for almost everyone.**
 
-2. **`experiences apply`** — applies generated component and token definitions to Contentful.
+2. **`experiences apply <file>`** — applies a CDF file of component and token definitions to Contentful.
 
-The import wizard owns extraction, selection, generation, validation, and apply orchestration internally; those implementation stages are not exposed as standalone commands.
+`experiences setup` and `experiences doctor` configure and check your environment. `experiences importv2` launches the newer v2 TUI, and `experiences build` rebuilds a local checkout and re-links the binaries.
+
+The import wizard owns extraction, selection, generation, validation, and apply orchestration internally; those implementation stages are not exposed as public commands. Hidden internal commands (`__extract`, `__generate`, `map tokens`, `print`) are what the wizard runs in subprocesses.
 
 All intermediate data flows through a local SQLite session database (`~/.contentful/experience-design-system-cli/pipeline.db`). No JSON files are written between steps — each pipeline step reads its inputs from the session and writes its outputs back to it.
 
@@ -39,7 +41,7 @@ All imports use composite mode: embedded-component relationships are resolved an
 Relationships are resolved from the highest-confidence source available, in this precedence order:
 
 1. **Typed slots (code)** — slots the source already declares, e.g. React `ReactElement<XProps>` / `children`, Svelte `Snippet<[XProps]>`, or an explicit `@allowedComponents` JSDoc tag. Fully deterministic; picked up automatically.
-2. **Agent** — direct edge emission for codebases that encode composition in *code patterns* rather than typed slots (common in real-world design systems). It is enabled automatically in composite mode and only runs when the deterministic sources above find nothing.
+2. **Agent** — direct edge emission for codebases that encode composition in _code patterns_ rather than typed slots (common in real-world design systems). It is enabled automatically in composite mode and only runs when the deterministic sources above find nothing.
 
 When more than one source speaks to the same relationship, the higher-precedence one wins (**code slots > agent**).
 
@@ -48,7 +50,7 @@ When more than one source speaks to the same relationship, the higher-precedence
 The composition agent emits one structured edge per relationship. The CLI validates component names and merges those edges with deterministic sources by provenance and precedence.
 
 - `--no-cache` — ignore caches and re-resolve composition from scratch, forcing the agent to run.
-- `--agent <name>` — which coding agent authors the parser (`claude`, `codex`, `opencode`, `cursor`, `copilot`).
+- `--agent <name>` — which coding agent runs composition, and the rest of the wizard's agent stages (`claude`, `codex`, `opencode`, `cursor`, `copilot`).
 - `--prompt composition=<file-or-text>` — override the composition stage's prompt.
 
 Because the agent path spawns a coding agent, it adds latency and cost and is best-effort.
@@ -65,13 +67,13 @@ If the resolved graph contains a circular slot dependency (A slots B, B slots A)
 
 The import wizard's generation steps require a coding agent CLI in your `$PATH`. Choose one:
 
-| Agent | Install | Auth |
-|---|---|---|
-| **Claude Code** (`claude`) | `npm install -g @anthropic-ai/claude-code` | `claude login` (browser OAuth) **or** set `ANTHROPIC_API_KEY` |
-| **OpenAI Codex** (`codex`) | `npm install -g @openai/codex` | Set `OPENAI_API_KEY` |
-| **OpenCode** (`opencode`) | `npm install -g opencode-ai` | Configure via `opencode auth` (supports multiple providers) |
-| **Cursor** (`cursor`) | Install [Cursor](https://cursor.com) | Sign in to Cursor; exposes `cursor-agent` binary |
-| **GitHub Copilot** (`copilot`) | `npm install -g @github/copilot` | Run `copilot` once to complete GitHub OAuth login. Free plan uses Auto model selection by default. Paid plans can pin a specific model via `EDS_AGENT_MODEL_COPILOT=<model-id>` (e.g. `claude-sonnet-4.6`) |
+| Agent                          | Install                                    | Auth                                                                                                                                                                                                       |
+| ------------------------------ | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Claude Code** (`claude`)     | `npm install -g @anthropic-ai/claude-code` | `claude login` (browser OAuth) **or** set `ANTHROPIC_API_KEY`                                                                                                                                              |
+| **OpenAI Codex** (`codex`)     | `npm install -g @openai/codex`             | Set `OPENAI_API_KEY`                                                                                                                                                                                       |
+| **OpenCode** (`opencode`)      | `npm install -g opencode-ai`               | Configure via `opencode auth` (supports multiple providers)                                                                                                                                                |
+| **Cursor** (`cursor`)          | Install [Cursor](https://cursor.com)       | Sign in to Cursor; exposes `cursor-agent` binary                                                                                                                                                           |
+| **GitHub Copilot** (`copilot`) | `npm install -g @github/copilot`           | Run `copilot` once to complete GitHub OAuth login. Free plan uses Auto model selection by default. Paid plans can pin a specific model via `EDS_AGENT_MODEL_COPILOT=<model-id>` (e.g. `claude-sonnet-4.6`) |
 
 The CLI invokes the agent non-interactively in a subprocess. If the binary is not found in `$PATH`, the command exits 1 and prints manual fallback instructions.
 
@@ -103,38 +105,40 @@ experiences import [flags]
 
 ### Wizard step machine
 
+The order below is the normal path. The first step depends on how the wizard is started: `--project` jumps straight to `token-input`, and `--tokens` jumps to `path-validation` (with `--project`) or `credentials` (without it).
+
 ```
-welcome
+welcome                — project path
   ↓
-extracting             — runs analyze extract with composite relationships enabled;
-                         spawns internal generation in parallel (prefetch)
+token-input            — optional raw token file; Enter on an empty field skips
+  ↓                       (token-generation and token-reuse-gate run here when a file is given)
+path-validation        — confirms the project path and how many files will be scanned
   ↓
-[auto-filter]          — analyze select-agent runs automatically
+credentials            — space ID, environment, CMA token and API host, prefilled from
+                         `experiences setup`; press [s] to skip and save files only
   ↓
-scope-gate             — single human review gate: confirm AI selection, toggle components
+extracting             — composite relationships enabled; the selection agent runs here
+                         once components are extracted
   ↓
-credentials            — operator reviews the prefilled space-id / env / token (internal generation is already running)
-                         press [s] Skip to save-only without pushing
+scope-gate             — single human review gate: confirm the AI selection, toggle components
   ↓
-final-review           — minimum-viable port of the JsonEditor; edit names, $description,
-                         $default, $allowedComponents per slot, $values, source/rationale panels
+generating             — component generation, then token mapping when a token file was given
   ↓
-preview                — diff vs. live Contentful
+final-review           — edit names, $description, $default, $allowedComponents per slot,
+                         $values, with source and rationale panels
   ↓
-push-decision-gate     — choose Save AND push (default) or one of the alternatives
+path-prompt            — where to save `components.json` (and `tokens.json`)
   ↓
-pushing → done         — push emits a Contentful webapp view URL for the imported components
+previewing → preview-gate — diff against live Contentful; confirm to push
+  ↓
+pushing → done         — the push emits a Contentful webapp view URL for the imported components
 ```
 
-There is now a single human review gate (`scope-gate`) before generation; the legacy two-step extract-review + select-review flow has been collapsed.
+There is a single human review gate (`scope-gate`) before generation. Choosing to skip credentials still saves the files; it bypasses the preview and refuses to push.
 
-### Configurable AI auto-filter
+### Save and push
 
-The auto-filter (`analyze select-agent` invoked before scope-gate) is on by default; the value selected in setup is persisted to `credentials.json` so subsequent runs default to your saved preference.
-
-### Save-and-push default
-
-The push-decision-gate defaults to **save AND push**: it writes one combined `components.json` CDF containing components and design tokens, then pushes it to Contentful in one step.
+After final-review the wizard always saves one combined `components.json` CDF (components and design tokens) and then, unless credentials were skipped, previews the diff and pushes it to Contentful. The wizard records each saved run in `~/.config/experiences/runs.json`.
 
 ### Custom skill prompts
 
@@ -142,39 +146,25 @@ Custom `.md` skill prompt paths can be saved via `experiences setup`; the CLI em
 
 ### Flag reference — `experiences import`
 
-| Flag                              | Default                                | Description                                                                                                  |
-| --------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `--project <path>`                | `.`                                    | Project root to analyze                                                                                      |
-| `--agent <name>`                  | saved by setup / `claude`              | Agent for `analyze select-agent` and internal generation                                                     |
-| `--model <name>`                  | agent default                          | Model name                                                                                                   |
-| `--composition-map <path>`        | —                                      | Consume a hand-authored parent→children interchange map                                                       |
-| `--prompt <stage=value>`          | —                                      | Override a stage prompt (repeatable); value is a file path or literal text, e.g. `--prompt composition=./p.md` |
-| `--skip-map-tokens`               | —                                      | Skip the `map tokens` step between internal generation and apply                                             |
-| `--no-cache`                      | cache on                               | Bypass extract/select/internal-generation/map-tokens/composition caches and force re-run                    |
+| Flag                     | Default                   | Description                                                                                                                                                         |
+| ------------------------ | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--project <path>`       | `.`                       | Project root to analyze                                                                                                                                             |
+| `--tokens <path>`        | —                         | Raw token source file (SCSS, CSS variables, JS/TS, Style Dictionary, …) to classify and import alongside components; skips the interactive token prompt             |
+| `--agent <name>`         | saved by setup / `claude` | Coding agent, with an optional model as `agent:model` or `"agent model"`                                                                                            |
+| `--prompt <stage=value>` | —                         | Override a stage prompt (repeatable); value is a file path or literal text, e.g. `--prompt select=./p.md`. Stages used today: `composition`, `select`, `map-tokens` |
+| `--no-cache`             | cache on                  | Re-run all steps instead of reusing cached results                                                                                                                  |
 
-### `--model` and `--agent` overrides
+`--model`, `--composition-map`, `--skip-map-tokens` and `--raw-tokens` were removed from `import`. Unknown flags are rejected. Pass the model through `--agent` instead, and use `--tokens` for a token file.
 
-`--model <name>` overrides the stored model for this run. The resolution order is:
+### Choosing the agent and model
 
-1. `--model <name>` flag
-2. `model` field saved in `~/.config/experiences/credentials.json`
-3. Built-in default for the chosen agent
+`--agent` accepts `claude`, `codex`, `opencode`, `cursor` or `copilot`, optionally followed by a model: `--agent claude:sonnet` or `--agent "claude sonnet"`. The agent resolves in this order:
 
-`--agent <name>` works the same way and is a fully functional wizard override — earlier releases plumbed the flag but the commander default shadowed it; the flag now wins over the saved value as expected.
+1. `--agent <name>` flag
+2. `agent` field saved in `~/.config/experiences/credentials.json` by `experiences setup`
+3. Built-in default, `claude`
 
----
-
-### `print components` / `print tokens` / `print validate`
-
-Unchanged from prior releases.
-
-```bash
-experiences print components [--session <id>] [--out <path>]
-experiences print tokens     [--session <id>] [--out <path>]
-experiences print validate   [--components <path>] [--tokens <path>]
-```
-
-`print validate` exits `0` on success, `1` on validation errors.
+The model resolves the same way: the model part of `--agent`, then the `agentModel` field in `credentials.json`, then the agent's own lightweight default. You can also set a model per agent with `EDS_AGENT_MODEL_<AGENT>` (for example `EDS_AGENT_MODEL_CLAUDE`).
 
 ---
 
@@ -183,6 +173,8 @@ experiences print validate   [--components <path>] [--tokens <path>]
 This command is the non-wizard route to the same diff and push logic. It accepts one CDF file containing all component and design token definitions.
 
 `apply` emits a Contentful webapp view URL for the imported components in its JSON summary (`viewUrl`) so callers can deep-link into the management UI after a successful push.
+
+Design tokens are read from the same CDF file, so there is no separate token flag.
 
 ```bash
 experiences apply <file>
@@ -202,9 +194,7 @@ All pipeline state is stored in `~/.contentful/experience-design-system-cli/pipe
 
 ## Terminal Compatibility
 
-- Minimum 60 columns required for the wizard and the `analyze select` TUI
-- 80+ columns recommended for full sidebar + detail view
-- 120+ columns required to show the source code panel in `analyze select`
+- The scope-gate step shows two columns at 100 or more terminal columns and one column below that; a wider terminal is more comfortable for the final-review editor
 - `NO_COLOR=1` suppresses all ANSI color output
 - Interactive views require both stdin and stdout to be TTYs and stdin to support raw mode.
 - On Windows, use Windows Terminal with PowerShell. Older ConEmu and cmd.exe hosts may not provide the raw-mode support the interactive UI needs.
@@ -227,7 +217,7 @@ What may be included:
 
 You can turn this off two ways:
 
-- Persistently: run `experiences setup` and answer "yes" at the analytics prompt. This writes an opt-out to `~/.config/experiences/credentials.json` that persists across invocations until you change it again — it will not silently re-enable itself.
+- Persistently: run `experiences setup`, open **Usage analytics** and choose "Don't share usage data". This writes `analyticsDisabled: true` to `~/.config/experiences/credentials.json`, which persists across invocations until you change it again — it will not silently re-enable itself.
 - Per invocation:
 
   ```bash
