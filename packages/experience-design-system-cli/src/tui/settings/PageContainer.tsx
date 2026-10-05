@@ -1,7 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { Screen } from '../../../app.js';
-import { startDebugRun, finishDebugRun } from '../debug-store.js';
 
 export function SettingsScreen({
   onNavigate,
@@ -17,15 +16,6 @@ export function SettingsScreen({
     { label: 'Debug Mode', screen: 'settings-debug-mode' },
   ];
 
-  useEffect(() => {
-    startDebugRun({
-      flow: 'settings',
-      step: '01-settings',
-      menuOption: 'Settings',
-      inputs: { options: items.map((item) => item.label) },
-    });
-  }, []);
-
   useInput((input, key) => {
     if (key.upArrow) {
       setFocusIdx((i) => (i - 1 + items.length) % items.length);
@@ -38,17 +28,11 @@ export function SettingsScreen({
     if (key.return) {
       const screen = items[focusIdx]!.screen;
       if (screen) {
-        void finishDebugRun({
-          outputs: { selected: items[focusIdx]!.label },
-          status: 'success',
-          exitMethod: 'saved',
-        });
         onNavigate(screen);
       }
       return;
     }
     if (key.escape || input === 'q') {
-      void finishDebugRun({ outputs: {}, status: 'success', exitMethod: 'discarded' });
       onBack();
     }
   });
