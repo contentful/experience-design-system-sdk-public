@@ -75,4 +75,8 @@ export {
 
 // Pre-classification
 export { preClassifyProp, preClassifyComponent } from './extract/services/classification/classify-component-props.js';
-export type { PreClassification } from './extract/types/classification.js';
+export {
+  bucketComponentProps,
+  bucketComponentsProps,
+} from './extract/services/classification/bucket-component-props.js';
+export type { PreClassification, PropBucket, PropBucketAssignment } from './extract/types/classification.js';
