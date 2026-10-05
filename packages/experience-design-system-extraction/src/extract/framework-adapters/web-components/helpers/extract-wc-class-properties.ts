@@ -1,10 +1,6 @@
 import { Node, type ClassDeclaration } from 'ts-morph';
 import type { RawPropDefinition } from '../../../types/component.js';
-import {
-  hasInternalJsDocTag,
-  isNonPublicLitMember,
-  isInternalRuntimeField,
-} from './detect-wc-non-public-members.js';
+import { hasInternalJsDocTag, isNonPublicLitMember, isInternalRuntimeField } from './detect-wc-non-public-members.js';
 
 function kebabToCamel(input: string): string {
   return input.replace(/-([a-z0-9])/gi, (_, char: string) => char.toUpperCase());

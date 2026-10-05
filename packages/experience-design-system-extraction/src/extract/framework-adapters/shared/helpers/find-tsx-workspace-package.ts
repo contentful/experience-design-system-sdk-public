@@ -16,7 +16,10 @@ function findNearestPackageRootDir(filePath: string): string | undefined {
       return currentDir;
     }
     const parentDir = dirname(currentDir);
-    if (parentDir === currentDir) { packageRootByFilePathCache.set(filePath, null); return undefined; }
+    if (parentDir === currentDir) {
+      packageRootByFilePathCache.set(filePath, null);
+      return undefined;
+    }
     currentDir = parentDir;
   }
 }
@@ -24,10 +27,13 @@ function findNearestPackageRootDir(filePath: string): string | undefined {
 function getWorkspacePackageManifestForSourceFile(sourceFile: SourceFile): WorkspacePackageManifest | undefined {
   const packageRootDir = findNearestPackageRootDir(sourceFile.getFilePath());
   if (!packageRootDir) return undefined;
-  if (workspacePackageManifestCache.has(packageRootDir)) return workspacePackageManifestCache.get(packageRootDir) ?? undefined;
+  if (workspacePackageManifestCache.has(packageRootDir))
+    return workspacePackageManifestCache.get(packageRootDir) ?? undefined;
   const packageJsonPath = join(packageRootDir, 'package.json');
   try {
-    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as { name?: unknown };
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+      name?: unknown;
+    };
     const manifest = typeof packageJson.name === 'string' ? { name: packageJson.name, rootDir: packageRootDir } : null;
     workspacePackageManifestCache.set(packageRootDir, manifest);
     return manifest ?? undefined;
@@ -50,8 +56,10 @@ export function findWorkspacePackageEntrySourceFile(
   const packageRootDir = getWorkspacePackageManifestForSourceFile(candidateSourceFiles[0]!)?.rootDir;
   if (!packageRootDir) return undefined;
   for (const entryPath of [
-    join(packageRootDir, 'src/index.ts'), join(packageRootDir, 'src/index.tsx'),
-    join(packageRootDir, 'index.ts'), join(packageRootDir, 'index.tsx'),
+    join(packageRootDir, 'src/index.ts'),
+    join(packageRootDir, 'src/index.tsx'),
+    join(packageRootDir, 'index.ts'),
+    join(packageRootDir, 'index.tsx'),
   ]) {
     const entrySourceFile = project.getSourceFile(entryPath);
     if (entrySourceFile) return entrySourceFile;

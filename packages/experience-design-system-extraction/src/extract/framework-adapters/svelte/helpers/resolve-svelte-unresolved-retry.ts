@@ -4,7 +4,10 @@ import { createRequire } from 'node:module';
 import { Project, ScriptTarget, ModuleKind, ts } from 'ts-morph';
 import type { RawComponentDefinition } from '../../../types/component.js';
 import type { ExtractorOptions } from '../../../types/options.js';
-import { computeExtractionScore, deriveNeedsReview } from '../../../services/quality/helpers/scoring/compute-extraction-score.js';
+import {
+  computeExtractionScore,
+  deriveNeedsReview,
+} from '../../../services/quality/helpers/scoring/compute-extraction-score.js';
 import { mergeSlots } from './extract-svelte-template-slots.js';
 import type { AstNode } from '../types/svelte-ast-node.js';
 import {

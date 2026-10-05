@@ -5,7 +5,9 @@ import { buildComponentLookupMaps } from '../../shared/helpers/build-component-l
 type RawSlotDefinitionInternal = RawSlotDefinition & {
   _rawTypeText?: string;
 };
-type ComponentWithInternalProps = RawComponentDefinition & { _propsTypeName?: string };
+type ComponentWithInternalProps = RawComponentDefinition & {
+  _propsTypeName?: string;
+};
 
 export function resolveAllowedComponents(components: RawComponentDefinition[]): void {
   const { propsToComponent, componentNames } = buildComponentLookupMaps(components);
@@ -14,7 +16,10 @@ export function resolveAllowedComponents(components: RawComponentDefinition[]): 
     for (const slot of c.slots as RawSlotDefinitionInternal[]) {
       const raw = slot._rawTypeText;
       if (raw) {
-        const found = extractAllowedComponentsFromTypeText(raw, { propsToComponent, componentNames });
+        const found = extractAllowedComponentsFromTypeText(raw, {
+          propsToComponent,
+          componentNames,
+        });
         if (found.length > 0) slot.allowedComponents = found;
       }
       delete slot._rawTypeText;

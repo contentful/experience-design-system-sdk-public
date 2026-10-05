@@ -1,7 +1,10 @@
 import { SyntaxKind, type SourceFile } from 'ts-morph';
 import type { ExtractionExclusion } from '../../../types/component.js';
 import { getRenderableExports } from '../../shared/helpers/tsx-shared.js';
-import { extractReactComponentFromExport, type RawComponentDefinitionInternal } from './extract-react-component-from-export.js';
+import {
+  extractReactComponentFromExport,
+  type RawComponentDefinitionInternal,
+} from './extract-react-component-from-export.js';
 
 export function sourceFileUsesCreateContext(sourceFile: SourceFile): boolean {
   return sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression).some((call) => {

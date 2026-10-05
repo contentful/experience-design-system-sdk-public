@@ -111,9 +111,11 @@ describe('adapter support resolution', () => {
     await writeFile(fallbackPath, '');
 
     expect(resolveLocalModule(importingFilePath, './Widget')).toBe(modulePath);
-    expect(resolveLocalModule(importingFilePath, './Fallback.js', { allowJavaScriptExtensionFallback: true })).toBe(
-      fallbackPath,
-    );
+    expect(
+      resolveLocalModule(importingFilePath, './Fallback.js', {
+        allowJavaScriptExtensionFallback: true,
+      }),
+    ).toBe(fallbackPath);
     expect(resolveLocalModule(importingFilePath, './Missing')).toBeNull();
   });
 
@@ -126,10 +128,18 @@ describe('adapter support resolution', () => {
     const properties = sourceFile.getInterfaceOrThrow('Props').getType().getProperties();
 
     expect(resolveTypeProperty(properties.find((property) => property.getName() === 'label')!)).toEqual(
-      expect.objectContaining({ name: 'label', typeText: 'string', required: true }),
+      expect.objectContaining({
+        name: 'label',
+        typeText: 'string',
+        required: true,
+      }),
     );
     expect(resolveTypeProperty(properties.find((property) => property.getName() === 'count')!)).toEqual(
-      expect.objectContaining({ name: 'count', typeText: 'number', required: false }),
+      expect.objectContaining({
+        name: 'count',
+        typeText: 'number',
+        required: false,
+      }),
     );
   });
 
@@ -141,7 +151,10 @@ describe('adapter support resolution', () => {
     );
     const declaration = sourceFile.getInterfaceOrThrow('Props').getProperties()[0];
 
-    expect(getSourceLineMetadata(declaration)).toEqual({ sourceStartLine: 2, sourceEndLine: 2 });
+    expect(getSourceLineMetadata(declaration)).toEqual({
+      sourceStartLine: 2,
+      sourceEndLine: 2,
+    });
     expect(getSourceLineMetadata(undefined)).toEqual({});
   });
 });

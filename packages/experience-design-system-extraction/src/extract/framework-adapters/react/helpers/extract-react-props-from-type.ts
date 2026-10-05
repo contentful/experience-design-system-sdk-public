@@ -1,6 +1,10 @@
 import { Node, type Type } from 'ts-morph';
 import type { RawPropDefinition } from '../../../types/component.js';
-import { extractAllowedValues, getTypeReferenceName, getTypeTargetDeclarations } from '../../shared/helpers/tsx-shared.js';
+import {
+  extractAllowedValues,
+  getTypeReferenceName,
+  getTypeTargetDeclarations,
+} from '../../shared/helpers/tsx-shared.js';
 import { getSourceLineMetadata } from '../../shared/helpers/get-node-source-lines.js';
 import {
   collectExpandableDomAttributeWrapperContexts,
@@ -35,7 +39,10 @@ function filterExcludedSyntaxProps(
   excludedProps: Set<string>,
 ): { props: RawPropDefinition[]; hasChildren: boolean } {
   if (excludedProps.size === 0) return extraction;
-  return { ...extraction, props: extraction.props.filter((prop) => !excludedProps.has(prop.name)) };
+  return {
+    ...extraction,
+    props: extraction.props.filter((prop) => !excludedProps.has(prop.name)),
+  };
 }
 
 export function extractPropsFromTypeSymbols(
@@ -81,7 +88,10 @@ export function extractPropsFromTypeSymbols(
     });
   }
 
-  return { props: props.sort((a, b) => a.name.localeCompare(b.name)), hasChildren };
+  return {
+    props: props.sort((a, b) => a.name.localeCompare(b.name)),
+    hasChildren,
+  };
 }
 
 function extractPropsFromInterfaceDeclaration(
@@ -112,7 +122,7 @@ function extractPropsFromInterfaceDeclaration(
             const propType = symbol.getTypeAtLocation(decl);
             const typeText = propType.isAny()
               ? (('getTypeNode' in decl &&
-                  typeof (decl as { getTypeNode?: () => Node | undefined }).getTypeNode === 'function'
+                typeof (decl as { getTypeNode?: () => Node | undefined }).getTypeNode === 'function'
                   ? (decl as { getTypeNode: () => Node | undefined }).getTypeNode()?.getText()
                   : undefined) ?? propType.getText(decl))
               : propType.getText(decl);
@@ -292,7 +302,10 @@ export function extractPropsFromTypeNode(
 
     if (isExpandableDomAttributeWrapperName(typeName) || typeName === 'Pick') {
       return typeName === 'Pick'
-        ? { props: extractPickedPropsFromTypeNode(typeNode, slotNames, excludedProps), hasChildren: false }
+        ? {
+            props: extractPickedPropsFromTypeNode(typeNode, slotNames, excludedProps),
+            hasChildren: false,
+          }
         : { props: [], hasChildren: false };
     }
 
@@ -344,9 +357,7 @@ export function extractPropsFromTypeNode(
 
     const wrappedTypeNode =
       unwrapRepoLocalTransparentPolymorphicWrapper(typeNode, allowImportedOmitWorkspaceFallback) ??
-      (!allowImportedOmitWorkspaceFallback
-        ? unwrapRepoLocalTransparentPolymorphicWrapper(typeNode, true)
-        : undefined);
+      (!allowImportedOmitWorkspaceFallback ? unwrapRepoLocalTransparentPolymorphicWrapper(typeNode, true) : undefined);
     if (wrappedTypeNode) {
       return extractPropsFromTypeNode(
         wrappedTypeNode,

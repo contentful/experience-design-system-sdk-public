@@ -90,4 +90,3 @@ export type ExtractorProgress = {
   filesProcessed: number;
   componentsFound: number;
 };
-

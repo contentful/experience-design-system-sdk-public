@@ -22,7 +22,11 @@ function extractGenericSetupProps(typeText: string): RawPropDefinition[] {
     if (!resolved.required) {
       resolvedTypeText = resolvedTypeText.replace(/\s*\|\s*undefined$/, '').replace(/^undefined\s*\|\s*/, '');
     }
-    props.push({ name: resolved.name, type: resolvedTypeText, required: resolved.required });
+    props.push({
+      name: resolved.name,
+      type: resolvedTypeText,
+      required: resolved.required,
+    });
   }
 
   return props.sort((a, b) => a.name.localeCompare(b.name));
@@ -43,7 +47,11 @@ export async function extractVueSetupProps(
   let genericTypeText: string | null = null;
   sf.forEachDescendant((node) => {
     if (genericTypeText !== null) return;
-    if (Node.isCallExpression(node) && node.getExpression().getText() === 'defineProps' && node.getTypeArguments().length > 0) {
+    if (
+      Node.isCallExpression(node) &&
+      node.getExpression().getText() === 'defineProps' &&
+      node.getTypeArguments().length > 0
+    ) {
       genericTypeText = node.getTypeArguments()[0].getText();
     }
   });
@@ -55,7 +63,11 @@ export async function extractVueSetupProps(
   const visitedImports = new Set<string>();
   for (const node of sf.getDescendants()) {
     if (objectProps !== null) break;
-    if (Node.isCallExpression(node) && node.getExpression().getText() === 'defineProps' && node.getTypeArguments().length === 0) {
+    if (
+      Node.isCallExpression(node) &&
+      node.getExpression().getText() === 'defineProps' &&
+      node.getTypeArguments().length === 0
+    ) {
       const args = node.getArguments();
       if (args.length > 0 && Node.isObjectLiteralExpression(args[0])) {
         objectProps = await mergeSetupObjectProps(args[0], importedObjectRefs, visitedImports);

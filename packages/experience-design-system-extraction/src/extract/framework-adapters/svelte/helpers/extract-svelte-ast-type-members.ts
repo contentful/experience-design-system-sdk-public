@@ -30,7 +30,16 @@ export function readPropertySignature(member: AstNode, snippetLocals: Set<string
   const allowedValues = collectStringLiteralUnion(typeNode);
   const leading = (member['leadingComments'] as Comment[] | undefined) ?? [];
   const description = extractJsdocText(leading);
-  return { name, optional, typeText, isSnippet, allowedValues, description, line: member.loc?.start?.line, endLine: member.loc?.end?.line };
+  return {
+    name,
+    optional,
+    typeText,
+    isSnippet,
+    allowedValues,
+    description,
+    line: member.loc?.start?.line,
+    endLine: member.loc?.end?.line,
+  };
 }
 
 export function readMembersFromTypeLiteral(literal: AstNode, snippetLocals: Set<string>): ResolvedTypeMember[] {

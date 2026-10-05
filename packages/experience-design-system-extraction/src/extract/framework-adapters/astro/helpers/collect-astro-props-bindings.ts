@@ -28,9 +28,7 @@ export function extractBindingPropName(element: import('ts-morph').BindingElemen
   return element.getPropertyNameNode()?.getText() ?? element.getNameNode().getText();
 }
 
-export function collectAstroPropsBindings(
-  frontmatter: string,
-): import('ts-morph').BindingElement[] {
+export function collectAstroPropsBindings(frontmatter: string): import('ts-morph').BindingElement[] {
   const elements: import('ts-morph').BindingElement[] = [];
   const sf = createAstroFrontmatterProject().createSourceFile('__frontmatter__.ts', frontmatter);
   sf.forEachDescendant((node) => {

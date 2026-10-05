@@ -28,7 +28,11 @@ export function resolveStaticStringExpression(
       const declarationNode = definition.getDeclarationNode();
       if (!declarationNode) continue;
       if (Node.isVariableDeclaration(declarationNode)) {
-        const resolved = resolveStaticStringExpression(declarationNode.getInitializer(), declarationNode.getSourceFile(), project);
+        const resolved = resolveStaticStringExpression(
+          declarationNode.getInitializer(),
+          declarationNode.getSourceFile(),
+          project,
+        );
         if (resolved) return resolved;
       }
       if (Node.isImportSpecifier(declarationNode)) {
@@ -36,7 +40,11 @@ export function resolveStaticStringExpression(
         if (!importedSource) continue;
         const importedDeclaration = importedSource.sourceFile.getVariableDeclaration(importedSource.importedName);
         if (!importedDeclaration) continue;
-        const resolved = resolveStaticStringExpression(importedDeclaration.getInitializer(), importedSource.sourceFile, project);
+        const resolved = resolveStaticStringExpression(
+          importedDeclaration.getInitializer(),
+          importedSource.sourceFile,
+          project,
+        );
         if (resolved) return resolved;
       }
     }
@@ -63,15 +71,26 @@ export function resolveStaticStringExpression(
       if (!variableDeclaration) continue;
       let objectLiteral = variableDeclaration.getInitializerIfKind(SyntaxKind.ObjectLiteralExpression);
       const initializer = variableDeclaration.getInitializer();
-      if (!objectLiteral && initializer && Node.isCallExpression(initializer) && initializer.getExpression().getText() === 'Object.freeze') {
+      if (
+        !objectLiteral &&
+        initializer &&
+        Node.isCallExpression(initializer) &&
+        initializer.getExpression().getText() === 'Object.freeze'
+      ) {
         objectLiteral = initializer.getArguments()[0]?.asKind(SyntaxKind.ObjectLiteralExpression) ?? undefined;
       }
-      const property = objectLiteral?.getProperties().find(
-        (prop): prop is import('ts-morph').PropertyAssignment =>
-          Node.isPropertyAssignment(prop) && prop.getName() === propertyName,
-      );
+      const property = objectLiteral
+        ?.getProperties()
+        .find(
+          (prop): prop is import('ts-morph').PropertyAssignment =>
+            Node.isPropertyAssignment(prop) && prop.getName() === propertyName,
+        );
       if (!property) continue;
-      const resolved = resolveStaticStringExpression(property.getInitializer(), variableDeclaration.getSourceFile(), project);
+      const resolved = resolveStaticStringExpression(
+        property.getInitializer(),
+        variableDeclaration.getSourceFile(),
+        project,
+      );
       if (resolved) return resolved;
     }
   }
@@ -80,5 +99,8 @@ export function resolveStaticStringExpression(
 }
 
 function camelToKebab(input: string): string {
-  return input.replace(/([a-z0-9])([A-Z])/g, '$1-$2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2').toLowerCase();
+  return input
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
+    .toLowerCase();
 }

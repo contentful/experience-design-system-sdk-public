@@ -22,10 +22,17 @@ afterEach(async () => {
 
 describe('extract controller and orchestrator boundary', () => {
   it('maps the orchestrator progress contract to the public endpoint contract', async () => {
-    const response: ExtractionEndpointResponse = { components: [], warnings: [] };
+    const response: ExtractionEndpointResponse = {
+      components: [],
+      warnings: [],
+    };
     executeExtractionOrchestrator.mockResolvedValue(response);
-    const progress: Array<{ phase: 'extract'; filesProcessed: number; totalFiles: number; componentsFound: number }> =
-      [];
+    const progress: Array<{
+      phase: 'extract';
+      filesProcessed: number;
+      totalFiles: number;
+      componentsFound: number;
+    }> = [];
 
     await extractEndpoint({
       filePaths: ['/project/Button.tsx'],
@@ -46,8 +53,18 @@ describe('extract controller and orchestrator boundary', () => {
     );
 
     orchestratorRequest.onProgress?.({ filesProcessed: 1, componentsFound: 0 });
-    expect(progress).toContainEqual({ phase: 'extract', filesProcessed: 1, totalFiles: 1, componentsFound: 0 });
-    expect(progress.at(-1)).toEqual({ phase: 'extract', filesProcessed: 1, totalFiles: 1, componentsFound: 0 });
+    expect(progress).toContainEqual({
+      phase: 'extract',
+      filesProcessed: 1,
+      totalFiles: 1,
+      componentsFound: 0,
+    });
+    expect(progress.at(-1)).toEqual({
+      phase: 'extract',
+      filesProcessed: 1,
+      totalFiles: 1,
+      componentsFound: 0,
+    });
   });
 
   it('validates public input before invoking the orchestrator', async () => {
@@ -75,10 +92,17 @@ describe('executeExtractionOrchestrator integration contract', () => {
     const { executeExtractionOrchestrator: runRealOrchestrator } = await vi.importActual<{
       executeExtractionOrchestrator: (request: ExtractionOrchestratorRequest) => Promise<ExtractionEndpointResponse>;
     }>('../../src/extract/orchestrator/execute-extraction-orchestrator.js');
-    const result = await runRealOrchestrator({ filePaths: [sourcePath], projectRoot });
+    const result = await runRealOrchestrator({
+      filePaths: [sourcePath],
+      projectRoot,
+    });
 
     expect(result.components[0]).toEqual(
-      expect.objectContaining({ name: 'Button', extractionConfidence: 5, validationIssues: [] }),
+      expect.objectContaining({
+        name: 'Button',
+        extractionConfidence: 5,
+        validationIssues: [],
+      }),
     );
     expect(result.warnings).toEqual([]);
   });

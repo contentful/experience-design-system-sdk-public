@@ -32,8 +32,14 @@ describe('extraction model and port boundaries', () => {
       filePaths: ['/project/Button.tsx'],
       projectRoot: '/project',
     };
-    const options: ExtractorOptions = { resolveUnreachable: 'auto', projectRoot: '/project' };
-    const response: ExtractionEndpointResponse = { components: [], warnings: [] };
+    const options: ExtractorOptions = {
+      resolveUnreachable: 'auto',
+      projectRoot: '/project',
+    };
+    const response: ExtractionEndpointResponse = {
+      components: [],
+      warnings: [],
+    };
     const extractor: ComponentExtractor = {
       name: 'test',
       fileFilter: () => true,

@@ -15,7 +15,11 @@ export async function extractComponents(
   const routedFiles = routeFilesToExtractors(filePaths, extractorRegistry);
   const results = await runExtractorBatches(routedFiles, onProgress, opts);
   const deduplicated = deduplicateComponents(results);
-  const { components, exclusions: hookExclusions, warnings: hookWarnings } = filterHookComponents(deduplicated.components);
+  const {
+    components,
+    exclusions: hookExclusions,
+    warnings: hookWarnings,
+  } = filterHookComponents(deduplicated.components);
 
   deduplicated.warnings.push(...hookWarnings);
   const allExclusions = [...routeExclusions, ...hookExclusions, ...(deduplicated.exclusions ?? [])];

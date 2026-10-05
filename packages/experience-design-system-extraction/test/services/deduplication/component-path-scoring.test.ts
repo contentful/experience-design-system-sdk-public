@@ -11,7 +11,14 @@ import {
 } from '../../../src/extract/services/deduplication/helpers/component-path-scoring.js';
 
 function component(source: string, name = 'MyComponent'): RawComponentDefinition {
-  return { name, source, sourcePath: source, framework: 'react', props: [], slots: [] };
+  return {
+    name,
+    source,
+    sourcePath: source,
+    framework: 'react',
+    props: [],
+    slots: [],
+  };
 }
 
 describe('scoreComponentSourcePath', () => {
@@ -99,11 +106,7 @@ describe('isWithinComponentFamily', () => {
 describe('resolveDeduplicationScopeKey', () => {
   it('returns a family scope key when the component is within its top-level family', () => {
     const families = new Map([['repo/packages/ui', new Set(['Button'])]]);
-    const key = resolveDeduplicationScopeKey(
-      '/repo/packages/ui/src/Button/index.tsx',
-      'Button',
-      families,
-    );
+    const key = resolveDeduplicationScopeKey('/repo/packages/ui/src/Button/index.tsx', 'Button', families);
     expect(key).toBe('repo/packages/ui::Button');
   });
 

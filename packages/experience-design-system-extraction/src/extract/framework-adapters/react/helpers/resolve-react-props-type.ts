@@ -31,7 +31,11 @@ export function normalizePropsTypeNode(typeNode: Node): {
     if (!firstTypeArg) return { typeNode, hasWrappedChildren: true, suppressProps: false };
 
     if (isPureExpandableDomAttributeWrapperType(firstTypeArg)) {
-      return { typeNode: firstTypeArg, hasWrappedChildren: true, suppressProps: true };
+      return {
+        typeNode: firstTypeArg,
+        hasWrappedChildren: true,
+        suppressProps: true,
+      };
     }
 
     const normalized = normalizePropsTypeNode(firstTypeArg);

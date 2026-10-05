@@ -34,9 +34,7 @@ function extractSlotsFromTypeNode(typeNode: Node | undefined, seen: Set<Node>): 
   return [];
 }
 
-function extractSlotsFromSetupFunction(
-  options: import('ts-morph').ObjectLiteralExpression,
-): RawSlotDefinition[] {
+function extractSlotsFromSetupFunction(options: import('ts-morph').ObjectLiteralExpression): RawSlotDefinition[] {
   const setupProp = options.getProperty('setup');
   if (!setupProp) return [];
 
@@ -75,7 +73,10 @@ function extractSlotsFromSetupFunction(
     if (access.getExpression().getText() !== slotsName) continue;
     const slotName = access.getName();
     if (!slotsByName.has(slotName)) {
-      slotsByName.set(slotName, { name: slotName, isDefault: slotName === 'default' });
+      slotsByName.set(slotName, {
+        name: slotName,
+        isDefault: slotName === 'default',
+      });
     }
   }
 

@@ -38,7 +38,10 @@ export function collectStringLiteralUnion(typeNode: AstNode | undefined): string
 }
 
 export function extractAllowedValuesFromText(typeText: string): string[] | undefined {
-  const parts = typeText.split('|').map((p) => p.trim()).filter(Boolean);
+  const parts = typeText
+    .split('|')
+    .map((p) => p.trim())
+    .filter(Boolean);
   if (parts.length < 2) return undefined;
   const out: string[] = [];
   for (const p of parts) {
@@ -53,6 +56,11 @@ export function extractJsdocText(comments: Comment[]): string | undefined {
   if (!comments.length) return undefined;
   const last = comments[comments.length - 1]!;
   if (last.type !== 'Block') return undefined;
-  const text = last.value.split('\n').map((l) => l.replace(/^\s*\*\s?/, '').trim()).filter(Boolean).join(' ').trim();
+  const text = last.value
+    .split('\n')
+    .map((l) => l.replace(/^\s*\*\s?/, '').trim())
+    .filter(Boolean)
+    .join(' ')
+    .trim();
   return text || undefined;
 }

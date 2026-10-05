@@ -18,8 +18,13 @@ export function resolveWorkspaceVueImport(specifier: string, importingFilePath: 
     subpath = parts.length > 2 ? './' + parts.slice(2).join('/') : '.';
   } else {
     const slashIndex = specifier.indexOf('/');
-    if (slashIndex === -1) { packageName = specifier; subpath = '.'; }
-    else { packageName = specifier.substring(0, slashIndex); subpath = './' + specifier.substring(slashIndex + 1); }
+    if (slashIndex === -1) {
+      packageName = specifier;
+      subpath = '.';
+    } else {
+      packageName = specifier.substring(0, slashIndex);
+      subpath = './' + specifier.substring(slashIndex + 1);
+    }
   }
 
   const packageDir = packageDirs.get(packageName);
@@ -49,7 +54,9 @@ export function resolveWorkspaceVueImport(specifier: string, importingFilePath: 
               const resolved = resolve(base, main);
               if (existsSync(resolved)) return resolved;
             }
-          } catch { /* skip */ }
+          } catch {
+            /* skip */
+          }
         }
       }
     }
@@ -61,7 +68,9 @@ export function resolveWorkspaceVueImport(specifier: string, importingFilePath: 
         if (existsSync(resolved)) return resolved;
       }
     }
-  } catch { /* skip malformed */ }
+  } catch {
+    /* skip malformed */
+  }
 
   return null;
 }

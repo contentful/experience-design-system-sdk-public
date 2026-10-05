@@ -51,7 +51,11 @@ export function locateDtsForSpecifier(req: NodeJS.Require, specifier: string, pa
     if (existsSync(pkgJsonPath)) {
       try {
         const pkgRaw = readFileSync(pkgJsonPath, 'utf-8') as string;
-        const pkg = JSON.parse(pkgRaw) as { types?: string; typings?: string; exports?: unknown };
+        const pkg = JSON.parse(pkgRaw) as {
+          types?: string;
+          typings?: string;
+          exports?: unknown;
+        };
         const typesField = pkg.types ?? pkg.typings;
         if (typeof typesField === 'string') {
           const candidate = resolve(pkgRoot, typesField);

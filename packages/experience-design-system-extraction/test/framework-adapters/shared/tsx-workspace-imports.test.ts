@@ -29,7 +29,9 @@ describe('matchTsConfigPathPattern', () => {
   });
 
   it('does not match a non-matching exact pattern', () => {
-    expect(matchTsConfigPathPattern('@ui/components', '@ui/icons')).toEqual({ matched: false });
+    expect(matchTsConfigPathPattern('@ui/components', '@ui/icons')).toEqual({
+      matched: false,
+    });
   });
 
   it('matches a wildcard pattern and returns the captured segment', () => {
@@ -38,7 +40,9 @@ describe('matchTsConfigPathPattern', () => {
   });
 
   it('does not match when prefix does not match', () => {
-    expect(matchTsConfigPathPattern('@ui/*', '@other/Button')).toEqual({ matched: false });
+    expect(matchTsConfigPathPattern('@ui/*', '@other/Button')).toEqual({
+      matched: false,
+    });
   });
 
   it('captures an empty wildcard when specifier exactly equals the non-wildcard parts', () => {

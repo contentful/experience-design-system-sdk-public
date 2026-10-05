@@ -22,7 +22,10 @@ function result(...components: RawComponentDefinition[]): ComponentExtractionRes
 
 describe('extractor registry', () => {
   it('routes each file to every matching extractor in registry order', () => {
-    const react = { name: 'react', fileFilter: (filePath: string) => filePath.endsWith('.tsx') } as ComponentExtractor;
+    const react = {
+      name: 'react',
+      fileFilter: (filePath: string) => filePath.endsWith('.tsx'),
+    } as ComponentExtractor;
     const styles = {
       name: 'styles',
       fileFilter: (filePath: string) => filePath.endsWith('.css'),
@@ -88,7 +91,10 @@ describe('component deduplicator', () => {
       name: 'Dropdown',
       source: '/repo/packages/ui/Dropdown/components/Dropdown.tsx',
     });
-    const index = component({ name: 'Dropdown', source: '/repo/packages/ui/Dropdown/index.tsx' });
+    const index = component({
+      name: 'Dropdown',
+      source: '/repo/packages/ui/Dropdown/index.tsx',
+    });
 
     const deduplicated = deduplicateComponents([result(implementation), result(index)]);
 
@@ -99,8 +105,14 @@ describe('component deduplicator', () => {
   });
 
   it('preserves same-name components from separate package scopes and emits a collision warning', () => {
-    const modals = component({ source: '/repo/packages/modals/Body.tsx', name: 'Body' });
-    const chrome = component({ source: '/repo/packages/chrome/Body.tsx', name: 'Body' });
+    const modals = component({
+      source: '/repo/packages/modals/Body.tsx',
+      name: 'Body',
+    });
+    const chrome = component({
+      source: '/repo/packages/chrome/Body.tsx',
+      name: 'Body',
+    });
 
     const deduplicated = deduplicateComponents([result(modals), result(chrome)]);
 

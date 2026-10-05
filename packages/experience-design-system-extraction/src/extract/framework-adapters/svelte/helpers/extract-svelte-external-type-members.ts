@@ -50,15 +50,17 @@ export function readTypeLiteralMembers(
     const allowed = extractAllowedValuesFromText(typeText);
     const jsdocs = m.getJsDocs();
     const description = jsdocs.length > 0 ? jsdocs[0]!.getDescription().trim() : undefined;
-    return [{
-      name: m.getName(),
-      optional: m.hasQuestionToken(),
-      typeText,
-      isSnippet: isSnippetTypeText(typeText, snippetLocals),
-      ...(allowed ? { allowedValues: allowed } : {}),
-      ...(description ? { description } : {}),
-      line: m.getStartLineNumber(),
-      endLine: m.getEndLineNumber(),
-    } satisfies ResolvedTypeMember];
+    return [
+      {
+        name: m.getName(),
+        optional: m.hasQuestionToken(),
+        typeText,
+        isSnippet: isSnippetTypeText(typeText, snippetLocals),
+        ...(allowed ? { allowedValues: allowed } : {}),
+        ...(description ? { description } : {}),
+        line: m.getStartLineNumber(),
+        endLine: m.getEndLineNumber(),
+      } satisfies ResolvedTypeMember,
+    ];
   });
 }

@@ -1,6 +1,12 @@
 import type { RawPropDefinition, RawComponentDefinition } from '../../types/component.js';
 import type { PreClassification } from '../../types/classification.js';
-import { isStringLiteralUnion, isBooleanType, isStringType, isNumberType, isComplexType } from './helpers/check-prop-types.js';
+import {
+  isStringLiteralUnion,
+  isBooleanType,
+  isStringType,
+  isNumberType,
+  isComplexType,
+} from './helpers/check-prop-types.js';
 import { isDomPassThroughProp } from './helpers/detect-dom-props.js';
 
 export type { PreClassification } from '../../types/classification.js';
@@ -152,7 +158,12 @@ export function preClassifyComponent(component: RawComponentDefinition): RawComp
       return [authorableProp];
     }
 
-    return [{ ...authorableProp, category: result.category as 'content' | 'design' | 'state' }];
+    return [
+      {
+        ...authorableProp,
+        category: result.category as 'content' | 'design' | 'state',
+      },
+    ];
   });
 
   return { ...component, props };

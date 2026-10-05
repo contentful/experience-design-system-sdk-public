@@ -1,6 +1,10 @@
 import { Node, SyntaxKind, type ParameterDeclaration } from 'ts-morph';
 import type { FunctionLike } from './resolve-component-function.js';
-import { collectRestBindingNames, isComponentSpreadAttribute, inferPrimitiveDomPropsFromImplementation } from './infer-primitive-dom-props.js';
+import {
+  collectRestBindingNames,
+  isComponentSpreadAttribute,
+  inferPrimitiveDomPropsFromImplementation,
+} from './infer-primitive-dom-props.js';
 
 export { collectRestBindingNames, isComponentSpreadAttribute, inferPrimitiveDomPropsFromImplementation };
 

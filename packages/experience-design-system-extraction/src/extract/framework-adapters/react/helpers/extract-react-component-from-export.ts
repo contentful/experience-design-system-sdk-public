@@ -17,10 +17,7 @@ import {
   filterImplementationOnlyAliasProps,
   extractDestructuredBindingFallbackProps,
 } from './extract-react-binding-defaults.js';
-import {
-  inferPrimitiveDomPropsFromImplementation,
-  hasImplementationChildrenHint,
-} from './collect-react-impl-hints.js';
+import { inferPrimitiveDomPropsFromImplementation, hasImplementationChildrenHint } from './collect-react-impl-hints.js';
 import { extractPropTypes } from './extract-react-prop-types.js';
 
 const REACT_ELEMENT_GENERIC_TEST = /(?:React\.)?ReactElement\s*<\s*[A-Za-z_$][\w$.]*/;
@@ -50,7 +47,13 @@ export function extractReactComponentFromExport(
 
   const framework = isNext ? ('next' as const) : ('react' as const);
   const source = sourceFile.getFilePath();
-  const base = { name, source, sourcePath: source, framework, ...(usesCreateContext && { usesCreateContext: true }) };
+  const base = {
+    name,
+    source,
+    sourcePath: source,
+    framework,
+    ...(usesCreateContext && { usesCreateContext: true }),
+  };
 
   const params = funcNode.getParameters();
   if (params.length === 0) {
@@ -76,7 +79,9 @@ export function extractReactComponentFromExport(
       hasSyntheticDomChildren(resolvedPropsType.typeNode) ||
       hasImplementationChildren,
   );
-  const syntheticDomProps = resolvedPropsType.suppressProps ? [] : getSyntheticDomAttributeProps(resolvedPropsType.typeNode);
+  const syntheticDomProps = resolvedPropsType.suppressProps
+    ? []
+    : getSyntheticDomAttributeProps(resolvedPropsType.typeNode);
   const implementationPrimitiveDomProps =
     !resolvedPropsType.suppressProps && !hasMeaningfulExtractedProps && syntheticDomProps.length === 0
       ? inferPrimitiveDomPropsFromImplementation(funcNode, params[0])
@@ -87,14 +92,21 @@ export function extractReactComponentFromExport(
       containsAnyPickType(firstParamTypeNode) ||
       (!hasMeaningfulExtractedProps && Node.isObjectBindingPattern(params[0].getNameNode())));
   const bindingFallbackProps = shouldTryBindingFallback
-    ? extractDestructuredBindingFallbackProps(funcNode, params[0], new Set(props.map((p) => p.name)), renderPropSlotNames)
+    ? extractDestructuredBindingFallbackProps(
+        funcNode,
+        params[0],
+        new Set(props.map((p) => p.name)),
+        renderPropSlotNames,
+      )
     : [];
 
   const mergedPropsByName = new Map<string, RawPropDefinition>();
   for (const prop of props) mergedPropsByName.set(prop.name, prop);
   for (const prop of syntheticDomProps) if (!mergedPropsByName.has(prop.name)) mergedPropsByName.set(prop.name, prop);
-  for (const prop of implementationPrimitiveDomProps) if (!mergedPropsByName.has(prop.name)) mergedPropsByName.set(prop.name, prop);
-  for (const prop of bindingFallbackProps) if (!mergedPropsByName.has(prop.name)) mergedPropsByName.set(prop.name, prop);
+  for (const prop of implementationPrimitiveDomProps)
+    if (!mergedPropsByName.has(prop.name)) mergedPropsByName.set(prop.name, prop);
+  for (const prop of bindingFallbackProps)
+    if (!mergedPropsByName.has(prop.name)) mergedPropsByName.set(prop.name, prop);
   const resolvedProps = [...mergedPropsByName.values()];
 
   const noUsefulTypes = resolvedProps.length === 0 || resolvedProps.every((p) => p.type === 'any');
@@ -114,7 +126,11 @@ export function extractReactComponentFromExport(
     if (existingSlotNames.has(prop.name)) return true;
     const isElementSlot = REACT_ELEMENT_GENERIC_TEST.test(prop.type);
     if (shouldBeSlot(prop.name, prop.type) || isElementSlot) {
-      expandedSlots.push({ name: prop.name, isDefault: false, ...(isElementSlot ? { _rawTypeText: prop.type } : {}) });
+      expandedSlots.push({
+        name: prop.name,
+        isDefault: false,
+        ...(isElementSlot ? { _rawTypeText: prop.type } : {}),
+      });
       return false;
     }
     return true;

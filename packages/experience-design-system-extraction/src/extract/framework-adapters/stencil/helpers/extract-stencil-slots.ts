@@ -22,14 +22,22 @@ export function extractStencilSlots(
       slots.set(slot.name, slot);
       return;
     }
-    slots.set(slot.name, { ...existing, ...slot, description: existing.description ?? slot.description });
+    slots.set(slot.name, {
+      ...existing,
+      ...slot,
+      description: existing.description ?? slot.description,
+    });
   };
 
   // JSDoc @slot tags
   for (const comment of collectJsDocSlotComments(classDecl)) {
     if (comment.startsWith('{')) {
       try {
-        const parsed = JSON.parse(comment) as { name?: string; description?: string; isDeprecated?: boolean };
+        const parsed = JSON.parse(comment) as {
+          name?: string;
+          description?: string;
+          isDeprecated?: boolean;
+        };
         const slot = parseStencilSlot(parsed.name);
         let description = parsed.description || undefined;
         if (parsed.isDeprecated && description) {

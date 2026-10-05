@@ -25,7 +25,11 @@ export function getElementTagNameFromSiblingDefine(classDecl: ClassDeclaration, 
   const siblingPath = `${sourceFilePath.slice(0, -'.component.ts'.length)}.ts`;
   let siblingFile = project.getSourceFile(siblingPath);
   if (!siblingFile) {
-    try { siblingFile = project.addSourceFileAtPath(siblingPath); } catch { return null; }
+    try {
+      siblingFile = project.addSourceFileAtPath(siblingPath);
+    } catch {
+      return null;
+    }
   }
 
   const className = classDecl.getName();
@@ -55,10 +59,12 @@ export function getElementTagNameFromFastDefinition(classDecl: ClassDeclaration,
     if (!Node.isPropertyAccessExpression(expression) || expression.getName() !== 'compose') continue;
     const options = callExpr.getArguments()[0];
     if (!options || !Node.isObjectLiteralExpression(options)) continue;
-    const nameProperty = options.getProperties().find(
-      (prop): prop is import('ts-morph').PropertyAssignment =>
-        Node.isPropertyAssignment(prop) && (prop.getName() === 'name' || prop.getName() === 'baseName'),
-    );
+    const nameProperty = options
+      .getProperties()
+      .find(
+        (prop): prop is import('ts-morph').PropertyAssignment =>
+          Node.isPropertyAssignment(prop) && (prop.getName() === 'name' || prop.getName() === 'baseName'),
+      );
     if (!nameProperty) continue;
     const resolved = resolveStaticStringExpression(nameProperty.getInitializer(), definitionFile, project);
     if (resolved) return resolved;

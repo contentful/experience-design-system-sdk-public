@@ -2,8 +2,14 @@ import { Node } from 'ts-morph';
 import type { RawPropDefinition } from '../../../types/component.js';
 
 const VUE_TYPE_MAP: Record<string, string> = {
-  String: 'string', Number: 'number', Boolean: 'boolean',
-  Array: 'any[]', Object: 'object', Function: 'function', Date: 'Date', Symbol: 'symbol',
+  String: 'string',
+  Number: 'number',
+  Boolean: 'boolean',
+  Array: 'any[]',
+  Object: 'object',
+  Function: 'function',
+  Date: 'Date',
+  Symbol: 'symbol',
 };
 
 export function isPublicVuePropName(name: string): boolean {
@@ -21,7 +27,13 @@ export function parseVueObjectProps(obj: import('ts-morph').ObjectLiteralExpress
     const init = prop.getInitializer();
 
     if (!init || !Node.isObjectLiteralExpression(init)) {
-      result.push({ name, type: VUE_TYPE_MAP[init?.getText() ?? ''] ?? 'any', required: false, sourceStartLine: prop.getStartLineNumber(), sourceEndLine: prop.getEndLineNumber() });
+      result.push({
+        name,
+        type: VUE_TYPE_MAP[init?.getText() ?? ''] ?? 'any',
+        required: false,
+        sourceStartLine: prop.getStartLineNumber(),
+        sourceEndLine: prop.getEndLineNumber(),
+      });
       continue;
     }
 
@@ -47,7 +59,14 @@ export function parseVueObjectProps(obj: import('ts-morph').ObjectLiteralExpress
       if (defInit) defaultValue = defInit.getText().replace(/^['"]|['"]$/g, '');
     }
 
-    result.push({ name, type, required, ...(defaultValue !== undefined && { defaultValue }), sourceStartLine: prop.getStartLineNumber(), sourceEndLine: prop.getEndLineNumber() });
+    result.push({
+      name,
+      type,
+      required,
+      ...(defaultValue !== undefined && { defaultValue }),
+      sourceStartLine: prop.getStartLineNumber(),
+      sourceEndLine: prop.getEndLineNumber(),
+    });
   }
 
   return result;

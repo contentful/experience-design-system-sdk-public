@@ -59,7 +59,8 @@ function resolveVueTsxPropType(node: Node): string {
 function readVueTsxObjectPropertyName(property: import('ts-morph').PropertyAssignment): string | undefined {
   const nameNode = property.getNameNode();
   if (Node.isIdentifier(nameNode) || Node.isPrivateIdentifier(nameNode)) return nameNode.getText();
-  if (Node.isStringLiteral(nameNode) || Node.isNoSubstitutionTemplateLiteral(nameNode)) return nameNode.getLiteralText();
+  if (Node.isStringLiteral(nameNode) || Node.isNoSubstitutionTemplateLiteral(nameNode))
+    return nameNode.getLiteralText();
   if (Node.isComputedPropertyName(nameNode)) {
     const expression = nameNode.getExpression();
     if (Node.isStringLiteral(expression) || Node.isNoSubstitutionTemplateLiteral(expression)) {
@@ -108,7 +109,11 @@ function buildPropFromInitializer(propName: string, initializer: Node | undefine
   if (Node.isObjectLiteralExpression(initializer)) {
     return buildPropFromObjectLiteral(propName, initializer);
   }
-  return { name: propName, type: resolveVueTsxPropType(initializer), required: false };
+  return {
+    name: propName,
+    type: resolveVueTsxPropType(initializer),
+    required: false,
+  };
 }
 
 function extractPropsFromObjectLiteral(
@@ -195,9 +200,7 @@ export function extractPropsFromExpression(node: Node, seen: Set<Node>): RawProp
 }
 
 /** Extracts all props from a `defineComponent({ props: ... })` options object. */
-export function extractVueTsxComponentProps(
-  options: import('ts-morph').ObjectLiteralExpression,
-): RawPropDefinition[] {
+export function extractVueTsxComponentProps(options: import('ts-morph').ObjectLiteralExpression): RawPropDefinition[] {
   const propsProp = options.getProperty('props');
   if (!propsProp || !Node.isPropertyAssignment(propsProp)) return [];
   const initializer = propsProp.getInitializer();

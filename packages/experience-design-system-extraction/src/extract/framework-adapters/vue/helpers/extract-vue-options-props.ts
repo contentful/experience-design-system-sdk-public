@@ -57,9 +57,11 @@ export async function extractVueOptionsProps(
     }
 
     const propsProp = expr.getProperty('props');
-    if (!propsProp || !Node.isPropertyAssignment(propsProp)) return [...mergedProps.values()].sort((a, b) => a.name.localeCompare(b.name));
+    if (!propsProp || !Node.isPropertyAssignment(propsProp))
+      return [...mergedProps.values()].sort((a, b) => a.name.localeCompare(b.name));
     const propsInit = propsProp.getInitializer();
-    if (!propsInit || !Node.isObjectLiteralExpression(propsInit)) return [...mergedProps.values()].sort((a, b) => a.name.localeCompare(b.name));
+    if (!propsInit || !Node.isObjectLiteralExpression(propsInit))
+      return [...mergedProps.values()].sort((a, b) => a.name.localeCompare(b.name));
     for (const prop of parseVueObjectProps(propsInit)) mergedProps.set(prop.name, prop);
     return [...mergedProps.values()].sort((a, b) => a.name.localeCompare(b.name));
   }

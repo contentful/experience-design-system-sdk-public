@@ -3,22 +3,32 @@ import type { AstNode } from '../types/svelte-ast-node.js';
 export function renderType(typeNode: AstNode | undefined): string {
   if (!typeNode) return 'unknown';
   switch (typeNode.type) {
-    case 'TSStringKeyword': return 'string';
-    case 'TSNumberKeyword': return 'number';
-    case 'TSBooleanKeyword': return 'boolean';
-    case 'TSAnyKeyword': return 'any';
-    case 'TSUnknownKeyword': return 'unknown';
-    case 'TSNullKeyword': return 'null';
-    case 'TSUndefinedKeyword': return 'undefined';
-    case 'TSVoidKeyword': return 'void';
+    case 'TSStringKeyword':
+      return 'string';
+    case 'TSNumberKeyword':
+      return 'number';
+    case 'TSBooleanKeyword':
+      return 'boolean';
+    case 'TSAnyKeyword':
+      return 'any';
+    case 'TSUnknownKeyword':
+      return 'unknown';
+    case 'TSNullKeyword':
+      return 'null';
+    case 'TSUndefinedKeyword':
+      return 'undefined';
+    case 'TSVoidKeyword':
+      return 'void';
     case 'TSArrayType':
       return `${renderType(typeNode['elementType'] as AstNode)}[]`;
     case 'TSTupleType': {
       const elements = (typeNode['elementTypes'] as AstNode[] | undefined) ?? [];
-      return `[${elements.map((el) => {
-        if (el.type === 'TSNamedTupleMember') return renderType(el['elementType'] as AstNode | undefined);
-        return renderType(el);
-      }).join(', ')}]`;
+      return `[${elements
+        .map((el) => {
+          if (el.type === 'TSNamedTupleMember') return renderType(el['elementType'] as AstNode | undefined);
+          return renderType(el);
+        })
+        .join(', ')}]`;
     }
     case 'TSUnionType': {
       const members = (typeNode['types'] as AstNode[] | undefined) ?? [];
@@ -48,7 +58,8 @@ export function renderType(typeNode: AstNode | undefined): string {
       const ret = (typeNode['returnType'] as AstNode | undefined)?.['typeAnnotation'] as AstNode | undefined;
       return `(${params.join(', ')}) => ${renderType(ret)}`;
     }
-    default: return 'unknown';
+    default:
+      return 'unknown';
   }
 }
 

@@ -10,7 +10,12 @@ import {
 
 function readMembersFromExternalFile(filePath: string, exportName: string): ResolvedTypeMember[] | null {
   const project = new Project({
-    compilerOptions: { strict: false, target: ScriptTarget.ESNext, module: ModuleKind.ESNext, allowJs: true },
+    compilerOptions: {
+      strict: false,
+      target: ScriptTarget.ESNext,
+      module: ModuleKind.ESNext,
+      allowJs: true,
+    },
     useInMemoryFileSystem: false,
     skipAddingFilesFromTsConfig: true,
   });
@@ -30,7 +35,10 @@ function readMembersFromExternalFile(filePath: string, exportName: string): Reso
       const typeNode = decl.getTypeNode();
       if (typeNode && Node.isTypeLiteral(typeNode)) {
         const declSf = decl.getSourceFile();
-        return readTypeLiteralMembers(typeNode, declSf === sf ? snippetLocals : collectSnippetLocalsFromSourceFile(declSf));
+        return readTypeLiteralMembers(
+          typeNode,
+          declSf === sf ? snippetLocals : collectSnippetLocalsFromSourceFile(declSf),
+        );
       }
     }
   }
@@ -62,7 +70,9 @@ export async function resolveImportedTypeMembers(
     }
     if (!importedExport) continue;
 
-    const resolvedFile = resolveLocalModule(filePath, specifierValue, { allowJavaScriptExtensionFallback: true });
+    const resolvedFile = resolveLocalModule(filePath, specifierValue, {
+      allowJavaScriptExtensionFallback: true,
+    });
     if (!resolvedFile) continue;
     return readMembersFromExternalFile(resolvedFile, importedExport);
   }

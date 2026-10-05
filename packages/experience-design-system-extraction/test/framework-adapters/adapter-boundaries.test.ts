@@ -9,7 +9,10 @@ import { extractWebComponentDefinitions } from '../../src/extract/framework-adap
 import { kebabToPascal } from '../../src/extract/framework-adapters/shared/helpers/tsx-shared.js';
 import { resolveBestFunctionNode } from '../../src/extract/framework-adapters/react/helpers/resolve-component-function.js';
 import { collectPropDataflow } from '../../src/extract/framework-adapters/react/helpers/collect-prop-dataflow.js';
-import { extractClassProperties, mergePropLists } from '../../src/extract/framework-adapters/web-components/helpers/merge-wc-prop-lists.js';
+import {
+  extractClassProperties,
+  mergePropLists,
+} from '../../src/extract/framework-adapters/web-components/helpers/merge-wc-prop-lists.js';
 import { getSvelteComponentName } from '../../src/extract/framework-adapters/svelte/helpers/get-svelte-component-name.js';
 import { mergeSlots } from '../../src/extract/framework-adapters/svelte/helpers/extract-svelte-template-slots.js';
 import { extractorRegistry } from '../../src/extract/services/extraction/helpers/register-extractors.js';

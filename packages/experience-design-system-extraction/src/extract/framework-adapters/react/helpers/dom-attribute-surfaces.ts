@@ -38,7 +38,11 @@ function createTextControlSurface(onChangeType: string, specificProps: RawPropDe
     { name: 'placeholder', type: 'string', required: false },
     { name: 'readOnly', type: 'boolean', required: false },
     { name: 'required', type: 'boolean', required: false },
-    { name: 'value', type: 'string | number | readonly string[]', required: false },
+    {
+      name: 'value',
+      type: 'string | number | readonly string[]',
+      required: false,
+    },
   ];
 }
 
@@ -48,7 +52,11 @@ export const DOM_ATTRIBUTE_PROP_SURFACES: Record<ExpandableDomAttributeWrapperNa
     { name: 'className', type: 'string', required: false },
     { name: 'hidden', type: 'boolean', required: false },
     { name: 'id', type: 'string', required: false },
-    { name: 'onClick', type: 'MouseEventHandler<HTMLElement>', required: false },
+    {
+      name: 'onClick',
+      type: 'MouseEventHandler<HTMLElement>',
+      required: false,
+    },
     { name: 'style', type: 'CSSProperties', required: false },
     { name: 'tabIndex', type: 'number', required: false },
     { name: 'title', type: 'string', required: false },
@@ -57,7 +65,12 @@ export const DOM_ATTRIBUTE_PROP_SURFACES: Record<ExpandableDomAttributeWrapperNa
     { name: 'alt', type: 'string', required: false },
     { name: 'crossOrigin', type: 'string', required: false },
     { name: 'height', type: 'number | string', required: false },
-    { name: 'loading', type: 'string', required: false, allowedValues: ['eager', 'lazy'] },
+    {
+      name: 'loading',
+      type: 'string',
+      required: false,
+      allowedValues: ['eager', 'lazy'],
+    },
     { name: 'sizes', type: 'string', required: false },
     { name: 'src', type: 'string', required: false },
     { name: 'srcSet', type: 'string', required: false },
@@ -70,7 +83,12 @@ export const DOM_ATTRIBUTE_PROP_SURFACES: Record<ExpandableDomAttributeWrapperNa
     { name: 'hrefLang', type: 'string', required: false },
     { name: 'referrerPolicy', type: 'string', required: false },
     { name: 'rel', type: 'string', required: false },
-    { name: 'target', type: 'string', required: false, allowedValues: ['_blank', '_parent', '_self', '_top'] },
+    {
+      name: 'target',
+      type: 'string',
+      required: false,
+      allowedValues: ['_blank', '_parent', '_self', '_top'],
+    },
   ],
   ButtonHTMLAttributes: [
     { name: 'autoFocus', type: 'boolean', required: false },
@@ -81,8 +99,17 @@ export const DOM_ATTRIBUTE_PROP_SURFACES: Record<ExpandableDomAttributeWrapperNa
     { name: 'formNoValidate', type: 'boolean', required: false },
     { name: 'formTarget', type: 'string', required: false },
     { name: 'name', type: 'string', required: false },
-    { name: 'type', type: 'string', required: false, allowedValues: ['button', 'reset', 'submit'] },
-    { name: 'value', type: 'string | number | readonly string[]', required: false },
+    {
+      name: 'type',
+      type: 'string',
+      required: false,
+      allowedValues: ['button', 'reset', 'submit'],
+    },
+    {
+      name: 'value',
+      type: 'string | number | readonly string[]',
+      required: false,
+    },
   ],
   InputHTMLAttributes: createTextControlSurface('ChangeEventHandler<HTMLInputElement>', [
     { name: 'checked', type: 'boolean', required: false },
@@ -107,13 +134,26 @@ export const DOM_ATTRIBUTE_PROP_SURFACES: Record<ExpandableDomAttributeWrapperNa
     { name: 'form', type: 'string', required: false },
     { name: 'multiple', type: 'boolean', required: false },
     { name: 'name', type: 'string', required: false },
-    { name: 'onChange', type: 'ChangeEventHandler<HTMLSelectElement>', required: false },
+    {
+      name: 'onChange',
+      type: 'ChangeEventHandler<HTMLSelectElement>',
+      required: false,
+    },
     { name: 'required', type: 'boolean', required: false },
     { name: 'size', type: 'number', required: false },
-    { name: 'value', type: 'string | number | readonly string[]', required: false },
+    {
+      name: 'value',
+      type: 'string | number | readonly string[]',
+      required: false,
+    },
   ],
   SVGAttributes: [
-    { name: 'focusable', type: 'boolean | "auto"', required: false, allowedValues: ['auto'] },
+    {
+      name: 'focusable',
+      type: 'boolean | "auto"',
+      required: false,
+      allowedValues: ['auto'],
+    },
     { name: 'height', type: 'number | string', required: false },
     { name: 'viewBox', type: 'string', required: false },
     { name: 'width', type: 'number | string', required: false },
@@ -125,7 +165,12 @@ export const DOM_ATTRIBUTE_PROP_SURFACES: Record<ExpandableDomAttributeWrapperNa
     { name: 'wrap', type: 'string', required: false },
   ]),
   TdHTMLAttributes: [
-    { name: 'align', type: 'string', required: false, allowedValues: ['center', 'char', 'justify', 'left', 'right'] },
+    {
+      name: 'align',
+      type: 'string',
+      required: false,
+      allowedValues: ['center', 'char', 'justify', 'left', 'right'],
+    },
     { name: 'colSpan', type: 'number', required: false },
     { name: 'headers', type: 'string', required: false },
     { name: 'rowSpan', type: 'number', required: false },
@@ -182,7 +227,10 @@ export function getDomAttributeSurface(
     propsByName.set(prop.name, prop);
   }
 
-  return [...propsByName.values()].map((prop) => ({ ...prop, domAttribute: true }));
+  return [...propsByName.values()].map((prop) => ({
+    ...prop,
+    domAttribute: true,
+  }));
 }
 
 export function getBoundedImportedJsxDomSurface(tagNameNode: Node): ExpandableDomAttributeWrapperName | undefined {

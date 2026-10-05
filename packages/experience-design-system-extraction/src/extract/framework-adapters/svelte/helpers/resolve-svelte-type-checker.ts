@@ -27,15 +27,25 @@ export async function resolveViaTypeChecker(
   const instanceText = getScriptText(source, instance);
   const synthetic = [moduleText, instanceText, `type __SveltePropsT__ = ${annotationText};`].filter(Boolean).join('\n');
 
-  const project = externalProject ?? new Project({
-    compilerOptions: { strict: false, target: ScriptTarget.ESNext, module: ModuleKind.ESNext, allowJs: true, jsx: ts.JsxEmit.Preserve },
-    useInMemoryFileSystem: false,
-    skipAddingFilesFromTsConfig: true,
-  });
+  const project =
+    externalProject ??
+    new Project({
+      compilerOptions: {
+        strict: false,
+        target: ScriptTarget.ESNext,
+        module: ModuleKind.ESNext,
+        allowJs: true,
+        jsx: ts.JsxEmit.Preserve,
+      },
+      useInMemoryFileSystem: false,
+      skipAddingFilesFromTsConfig: true,
+    });
   const syntheticPath = `${filePath}.__svelte-props__.ts`;
   let sf: import('ts-morph').SourceFile;
   try {
-    sf = project.createSourceFile(syntheticPath, synthetic, { overwrite: true });
+    sf = project.createSourceFile(syntheticPath, synthetic, {
+      overwrite: true,
+    });
   } catch {
     return null;
   }
@@ -67,7 +77,9 @@ export async function resolveViaTypeChecker(
       isSnippetTypeText(typeText, snippetLocals);
 
     members.push({
-      name, optional, typeText,
+      name,
+      optional,
+      typeText,
       ...(declaredTypeText ? { declaredTypeText } : {}),
       isSnippet,
       ...(allowed ? { allowedValues: allowed } : {}),

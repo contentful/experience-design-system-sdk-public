@@ -1,9 +1,4 @@
-import {
-  SyntaxKind,
-  type FunctionDeclaration,
-  type ArrowFunction,
-  type FunctionExpression,
-} from 'ts-morph';
+import { SyntaxKind, type FunctionDeclaration, type ArrowFunction, type FunctionExpression } from 'ts-morph';
 import { isIntrinsicJsxElement } from '../../../framework-adapters/shared/helpers/tsx-shared.js';
 import { getReturnedJsxTagName, isJsxCarryingTypeText } from './get-jsx-ast-data.js';
 

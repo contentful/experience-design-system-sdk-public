@@ -11,8 +11,12 @@ export { scoreComponentSourcePath, resolvePackageRootInfo, resolveComponentScope
 export function isWithinComponentFamily(relativeSegments: string[], componentName: string): boolean {
   const [first, second, third] = relativeSegments;
   const componentFilenames = new Set([
-    `${componentName}.tsx`, `${componentName}.ts`, `${componentName}.vue`,
-    'index.tsx', 'index.ts', 'index.vue',
+    `${componentName}.tsx`,
+    `${componentName}.ts`,
+    `${componentName}.vue`,
+    'index.tsx',
+    'index.ts',
+    'index.vue',
   ]);
 
   if (relativeSegments.length === 1) {
@@ -52,12 +56,35 @@ export function resolveDeduplicationScopeKey(
 export function selectPreferredComponentSource(
   existing: RawComponentDefinition,
   candidate: RawComponentDefinition,
-): { winner: RawComponentDefinition; loser: RawComponentDefinition; reason: string } {
+): {
+  winner: RawComponentDefinition;
+  loser: RawComponentDefinition;
+  reason: string;
+} {
   const existingScore = scoreComponentSourcePath(existing.source);
   const candidateScore = scoreComponentSourcePath(candidate.source);
 
-  if (candidateScore > existingScore) return { winner: candidate, loser: existing, reason: `preferred ${candidate.source} over ${existing.source} based on path heuristics` };
-  if (candidateScore < existingScore) return { winner: existing, loser: candidate, reason: `kept ${existing.source} over ${candidate.source} based on path heuristics` };
-  if (candidate.source.length < existing.source.length) return { winner: candidate, loser: existing, reason: `preferred shorter path ${candidate.source} over ${existing.source}` };
-  return { winner: existing, loser: candidate, reason: `kept ${existing.source} over ${candidate.source} by stable first-seen order` };
+  if (candidateScore > existingScore)
+    return {
+      winner: candidate,
+      loser: existing,
+      reason: `preferred ${candidate.source} over ${existing.source} based on path heuristics`,
+    };
+  if (candidateScore < existingScore)
+    return {
+      winner: existing,
+      loser: candidate,
+      reason: `kept ${existing.source} over ${candidate.source} based on path heuristics`,
+    };
+  if (candidate.source.length < existing.source.length)
+    return {
+      winner: candidate,
+      loser: existing,
+      reason: `preferred shorter path ${candidate.source} over ${existing.source}`,
+    };
+  return {
+    winner: existing,
+    loser: candidate,
+    reason: `kept ${existing.source} over ${candidate.source} by stable first-seen order`,
+  };
 }

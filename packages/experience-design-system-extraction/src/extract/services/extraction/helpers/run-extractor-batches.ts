@@ -28,7 +28,10 @@ export async function runExtractorBatches(
           totalComponentsFound += progress.componentsFound - previousComponents;
           perExtractorFiles.set(extractor, progress.filesProcessed);
           perExtractorComponents.set(extractor, progress.componentsFound);
-          onProgress?.({ filesProcessed: totalFilesProcessed, componentsFound: totalComponentsFound });
+          onProgress?.({
+            filesProcessed: totalFilesProcessed,
+            componentsFound: totalComponentsFound,
+          });
         },
         options,
       );

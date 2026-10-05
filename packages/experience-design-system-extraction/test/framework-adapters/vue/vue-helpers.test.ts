@@ -63,7 +63,12 @@ describe('extractSlotsFromVueTemplate', () => {
 
   it('deduplicates slots with the same name', () => {
     const slotEl = { type: ELEMENT_TYPE, tag: 'slot', props: [], children: [] };
-    const ast = { type: ELEMENT_TYPE, tag: 'div', props: [], children: [slotEl, slotEl] };
+    const ast = {
+      type: ELEMENT_TYPE,
+      tag: 'div',
+      props: [],
+      children: [slotEl, slotEl],
+    };
     expect(extractSlotsFromVueTemplate(ast as never)).toHaveLength(1);
   });
 

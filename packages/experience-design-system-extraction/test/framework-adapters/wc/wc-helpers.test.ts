@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { extractSlotsFromTemplate, mergeSlotLists } from '../../../src/extract/framework-adapters/web-components/helpers/extract-wc-slots.js';
+import {
+  extractSlotsFromTemplate,
+  mergeSlotLists,
+} from '../../../src/extract/framework-adapters/web-components/helpers/extract-wc-slots.js';
 
 describe('extractSlotsFromTemplate', () => {
   it('extracts a default slot from a bare <slot> element', () => {
@@ -7,9 +10,7 @@ describe('extractSlotsFromTemplate', () => {
   });
 
   it('extracts a named slot', () => {
-    expect(extractSlotsFromTemplate('<slot name="header"></slot>')).toEqual([
-      { name: 'header', isDefault: false },
-    ]);
+    expect(extractSlotsFromTemplate('<slot name="header"></slot>')).toEqual([{ name: 'header', isDefault: false }]);
   });
 
   it('extracts multiple distinct slots and sorts them', () => {

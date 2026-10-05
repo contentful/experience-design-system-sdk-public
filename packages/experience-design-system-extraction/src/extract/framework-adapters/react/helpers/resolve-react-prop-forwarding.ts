@@ -8,9 +8,7 @@ type ComponentWithIdentity = RawComponentDefinition & {
 
 export function resolveReactPropForwarding(components: ComponentWithIdentity[]): void {
   const componentsByIdentity = new Map(
-    components
-      .filter((c) => c._componentIdentity)
-      .map((c) => [c._componentIdentity!, c]),
+    components.filter((c) => c._componentIdentity).map((c) => [c._componentIdentity!, c]),
   );
 
   let changed = true;

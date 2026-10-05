@@ -1,9 +1,6 @@
 import { Node } from 'ts-morph';
 import type { RawPropDefinition } from '../../../types/component.js';
-import {
-  getDomAttributeSurface,
-  DOM_ATTRIBUTE_WRAPPERS_WITH_SYNTHETIC_CHILDREN,
-} from './dom-attribute-surfaces.js';
+import { getDomAttributeSurface, DOM_ATTRIBUTE_WRAPPERS_WITH_SYNTHETIC_CHILDREN } from './dom-attribute-surfaces.js';
 import { collectExpandableDomAttributeWrapperContexts } from './collect-dom-wrapper-contexts.js';
 
 export { isPureExpandableDomAttributeWrapperType } from './detect-dom-is-pure-wrapper.js';
@@ -13,7 +10,10 @@ export {
   containsAnyPickType,
   shouldMergeDomSyntaxExtraction,
 } from './detect-pick-type-patterns.js';
-export { collectExpandableDomAttributeWrapperContexts, getStringLiteralTypeValues } from './collect-dom-wrapper-contexts.js';
+export {
+  collectExpandableDomAttributeWrapperContexts,
+  getStringLiteralTypeValues,
+} from './collect-dom-wrapper-contexts.js';
 
 export function getSyntheticDomAttributeProps(typeNode: Node | undefined): RawPropDefinition[] {
   if (!typeNode) return [];

@@ -19,8 +19,12 @@ describe('extractEndpoint', () => {
       sourcePath,
       'export function Button({ label }: { label: string }) { return <button>{label}</button>; }',
     );
-    const progress: Array<{ phase: 'extract'; filesProcessed: number; totalFiles: number; componentsFound: number }> =
-      [];
+    const progress: Array<{
+      phase: 'extract';
+      filesProcessed: number;
+      totalFiles: number;
+      componentsFound: number;
+    }> = [];
 
     const result = await extractEndpoint({
       filePaths: [sourcePath],
@@ -30,7 +34,11 @@ describe('extractEndpoint', () => {
 
     expect(result.warnings).toEqual([]);
     expect(result.components).toHaveLength(1);
-    expect(result.components[0]).toMatchObject({ name: 'Button', source: sourcePath, validationIssues: [] });
+    expect(result.components[0]).toMatchObject({
+      name: 'Button',
+      source: sourcePath,
+      validationIssues: [],
+    });
     expect(progress.at(-1)).toEqual({
       phase: 'extract',
       filesProcessed: 1,
@@ -50,7 +58,10 @@ describe('extractEndpoint', () => {
       }`,
     );
 
-    const result = await extractEndpoint({ filePaths: [sourcePath], projectRoot });
+    const result = await extractEndpoint({
+      filePaths: [sourcePath],
+      projectRoot,
+    });
     const card = result.components[0];
 
     expect(card?.props.map((prop) => prop.name)).toEqual(['label', 'payload', 'variant']);
@@ -80,7 +91,10 @@ describe('extractEndpoint', () => {
       'export function AnalyticsBridge({ onTrack }: { onTrack: () => void }) { return null; }',
     );
 
-    const result = await extractEndpoint({ filePaths: [sourcePath], projectRoot });
+    const result = await extractEndpoint({
+      filePaths: [sourcePath],
+      projectRoot,
+    });
 
     expect(result.components).toHaveLength(1);
     expect(result.components[0]?.needsReview).toBe(true);
@@ -99,7 +113,10 @@ describe('extractEndpoint', () => {
     const sourcePath = join(projectRoot, 'NoScript.svelte');
     await writeFile(sourcePath, '<h1>Visible content</h1>');
 
-    const result = await extractEndpoint({ filePaths: [sourcePath], projectRoot });
+    const result = await extractEndpoint({
+      filePaths: [sourcePath],
+      projectRoot,
+    });
 
     expect(result.warnings).toContainEqual(expect.stringContaining('no instance script block'));
   });
@@ -111,9 +128,12 @@ describe('extractEndpoint', () => {
   });
 
   it('rejects invalid endpoint options before invoking extraction', async () => {
-    await expect(extractEndpoint({ filePaths: [], resolveUnreachable: 'invalid' as never })).rejects.toThrow(
-      "extractEndpoint requires resolveUnreachable to be 'auto', 'always', or 'never'",
-    );
+    await expect(
+      extractEndpoint({
+        filePaths: [],
+        resolveUnreachable: 'invalid' as never,
+      }),
+    ).rejects.toThrow("extractEndpoint requires resolveUnreachable to be 'auto', 'always', or 'never'");
     await expect(extractEndpoint({ filePaths: [], onProgress: 'invalid' as never })).rejects.toThrow(
       'extractEndpoint requires onProgress to be a function when provided',
     );

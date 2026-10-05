@@ -30,7 +30,10 @@ describe('parseAllowedValues', () => {
 
 describe('parseStencilSlot', () => {
   it('returns a default slot for undefined name', () => {
-    expect(parseStencilSlot(undefined)).toEqual({ name: 'default', isDefault: true });
+    expect(parseStencilSlot(undefined)).toEqual({
+      name: 'default',
+      isDefault: true,
+    });
   });
 
   it('returns a default slot for empty string name', () => {
@@ -38,10 +41,16 @@ describe('parseStencilSlot', () => {
   });
 
   it('returns a named slot for a non-empty name', () => {
-    expect(parseStencilSlot('header')).toEqual({ name: 'header', isDefault: false });
+    expect(parseStencilSlot('header')).toEqual({
+      name: 'header',
+      isDefault: false,
+    });
   });
 
   it('marks slot as default when name is "default"', () => {
-    expect(parseStencilSlot('default')).toEqual({ name: 'default', isDefault: true });
+    expect(parseStencilSlot('default')).toEqual({
+      name: 'default',
+      isDefault: true,
+    });
   });
 });

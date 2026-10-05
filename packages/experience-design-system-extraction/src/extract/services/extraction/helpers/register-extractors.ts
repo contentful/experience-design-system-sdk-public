@@ -75,6 +75,9 @@ export function routeFilesToExtractors(
   }
 
   return extractors
-    .map((extractor) => ({ extractor, filePaths: filesByExtractor.get(extractor) ?? [] }))
+    .map((extractor) => ({
+      extractor,
+      filePaths: filesByExtractor.get(extractor) ?? [],
+    }))
     .filter(({ filePaths: groupedFilePaths }) => groupedFilePaths.length > 0);
 }

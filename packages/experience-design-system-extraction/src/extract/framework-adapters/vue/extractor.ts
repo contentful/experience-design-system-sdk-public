@@ -4,11 +4,7 @@ import { runFileExtractionWorkers } from '../shared/helpers/file-processing/file
 import { createSortedExtractionResult } from '../shared/helpers/file-processing/result-normalizer.js';
 import { parse as parseSFC } from '@vue/compiler-sfc';
 import { resolveVueComponentName } from './helpers/resolve-vue-component-name.js';
-import {
-  extractSlotsFromVueTemplate,
-  collectRuntimeAccessSlots,
-  mergeVueSlots,
-} from './helpers/extract-vue-slots.js';
+import { extractSlotsFromVueTemplate, collectRuntimeAccessSlots, mergeVueSlots } from './helpers/extract-vue-slots.js';
 import { extractVueSetupProps } from './helpers/extract-vue-setup-props.js';
 import { extractVueOptionsProps } from './helpers/extract-vue-options-props.js';
 
@@ -50,16 +46,28 @@ async function extractFromVueSFC(
   if (setupProps !== null) {
     props = setupProps;
   } else if (descriptor.script) {
-    return extractOptionsApiComponent(filePath, descriptor.script.content, fileWarnings, name, descriptor.template?.ast, source);
+    return extractOptionsApiComponent(
+      filePath,
+      descriptor.script.content,
+      fileWarnings,
+      name,
+      descriptor.template?.ast,
+      source,
+    );
   }
 
-  const templateSlots = descriptor.template?.ast
-    ? extractSlotsFromVueTemplate(descriptor.template.ast as never)
-    : [];
+  const templateSlots = descriptor.template?.ast ? extractSlotsFromVueTemplate(descriptor.template.ast as never) : [];
   const slots = mergeVueSlots(templateSlots, collectRuntimeAccessSlots(source));
 
   return {
-    component: { name, source: filePath, sourcePath: filePath, framework: 'vue', props, slots },
+    component: {
+      name,
+      source: filePath,
+      sourcePath: filePath,
+      framework: 'vue',
+      props,
+      slots,
+    },
     warnings: fileWarnings,
   };
 }
@@ -78,7 +86,14 @@ async function extractOptionsApiComponent(
   const slots = mergeVueSlots(templateSlots, runtimeSlots);
 
   return {
-    component: { name, source: filePath, sourcePath: filePath, framework: 'vue', props, slots },
+    component: {
+      name,
+      source: filePath,
+      sourcePath: filePath,
+      framework: 'vue',
+      props,
+      slots,
+    },
     warnings: fileWarnings,
   };
 }

@@ -53,7 +53,10 @@ export function typeRefersToSnippet(propType: import('ts-morph').Type): boolean 
     }
     if (cursor.isUnion()) {
       const nonUndef: TsMorphType[] = cursor.getUnionTypes().filter((t) => !t.isUndefined() && !t.isNull());
-      if (nonUndef.length === 1) { cursor = nonUndef[0]; continue; }
+      if (nonUndef.length === 1) {
+        cursor = nonUndef[0];
+        continue;
+      }
     }
     break;
   }

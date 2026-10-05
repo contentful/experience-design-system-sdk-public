@@ -10,7 +10,9 @@ import type { Project } from 'ts-morph';
 import { buildComponentLookupMaps } from '../../shared/helpers/build-component-lookup-maps.js';
 
 type RawSlotDefinitionInternal = RawSlotDefinition & { _rawTypeText?: string };
-type ComponentWithFuncNode = RawComponentDefinition & { _funcNode?: FunctionLike };
+type ComponentWithFuncNode = RawComponentDefinition & {
+  _funcNode?: FunctionLike;
+};
 
 export function synthesizeReactStructuralSlots(
   components: ComponentWithFuncNode[],
@@ -50,8 +52,7 @@ export function synthesizeReactStructuralSlots(
 
     for (const slot of c.slots as RawSlotDefinitionInternal[]) {
       if (slot.allowedComponents && slot.allowedComponents.length > 0) continue;
-      slot.structuralAllowedComponents =
-        slot === synthesisedSlot ? [...fromArrayMap].sort() : [...structural].sort();
+      slot.structuralAllowedComponents = slot === synthesisedSlot ? [...fromArrayMap].sort() : [...structural].sort();
     }
   }
 

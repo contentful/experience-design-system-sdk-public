@@ -3,10 +3,7 @@ import type { AstNode } from '../types/svelte-ast-node.js';
 import { resolveTypeMembers } from './resolve-svelte-type-members.js';
 import { extractFromDestructure } from './extract-svelte-from-destructure.js';
 import { extractFromTypeMembersOnly } from './extract-svelte-type-member-props.js';
-import {
-  formatAnnotation,
-  classifyUnresolved,
-} from './classify-svelte-props-annotation.js';
+import { formatAnnotation, classifyUnresolved } from './classify-svelte-props-annotation.js';
 
 export { extractFromTypeMembersOnly };
 export { getPropsTypeName, getRetryAnnotation } from './classify-svelte-props-annotation.js';
@@ -59,16 +56,32 @@ export async function extractPropsFromCall(ctx: PropsCallContext): Promise<Props
 
   if (idType === 'Identifier') {
     if (typeMembers && typeMembers.length > 0) {
-      return { ...extractFromTypeMembersOnly(typeMembers), warnings, additionalReasons };
+      return {
+        ...extractFromTypeMembersOnly(typeMembers),
+        warnings,
+        additionalReasons,
+      };
     }
     if (!unresolved) {
       warnings.push(
         `${ctx.componentName}: $props() called without destructuring (${ctx.filePath}); cannot extract individual props`,
       );
     }
-    return { props: [], snippetNames: new Set(), snippetSlots: [], warnings, additionalReasons };
+    return {
+      props: [],
+      snippetNames: new Set(),
+      snippetSlots: [],
+      warnings,
+      additionalReasons,
+    };
   }
 
   warnings.push(`${ctx.componentName}: unrecognized $props() binding pattern '${idType}' (${ctx.filePath})`);
-  return { props: [], snippetNames: new Set(), snippetSlots: [], warnings, additionalReasons };
+  return {
+    props: [],
+    snippetNames: new Set(),
+    snippetSlots: [],
+    warnings,
+    additionalReasons,
+  };
 }

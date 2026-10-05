@@ -39,5 +39,8 @@ export function resolveImportSpecifierSource(
   if (!resolvedImportPath) return undefined;
   const importedFile = loadSourceFile(project, resolvedImportPath);
   if (!importedFile) return undefined;
-  return { sourceFile: importedFile, importedName: declarationNode.getNameNode().getText() };
+  return {
+    sourceFile: importedFile,
+    importedName: declarationNode.getNameNode().getText(),
+  };
 }

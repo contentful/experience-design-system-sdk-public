@@ -26,7 +26,11 @@ export async function inspectComponentSource(component: RawComponentDefinition):
   try {
     sourceText = await readFile(component.source, 'utf8');
   } catch {
-    return { wrapperConfidence: 0, reviewReasons: [], keepDespiteZeroSurface: false };
+    return {
+      wrapperConfidence: 0,
+      reviewReasons: [],
+      keepDespiteZeroSurface: false,
+    };
   }
 
   const reviewReasons: string[] = [];

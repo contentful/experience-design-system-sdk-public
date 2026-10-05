@@ -55,7 +55,12 @@ export function extractTsxComponents<T>(
   filePaths: string[],
   componentFilePattern: RegExp,
   extract: (sourceFile: SourceFile, exclusions: ExtractionExclusion[]) => T[],
-): { components: T[]; warnings: string[]; exclusions: ExtractionExclusion[]; project?: Project } {
+): {
+  components: T[];
+  warnings: string[];
+  exclusions: ExtractionExclusion[];
+  project?: Project;
+} {
   const extractionContext = getTsxExtractionContext(filePaths, componentFilePattern);
   if (!extractionContext) {
     return { components: [], warnings: [], exclusions: [] };

@@ -3,7 +3,10 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { RawComponentDefinition, RawPropDefinition } from '../../../src/extract/types/component.js';
-import { preClassifyComponent, preClassifyProp } from '../../../src/extract/services/classification/classify-component-props.js';
+import {
+  preClassifyComponent,
+  preClassifyProp,
+} from '../../../src/extract/services/classification/classify-component-props.js';
 import { evaluateExtractionQuality } from '../../../src/extract/services/quality/evaluate-extraction-quality.js';
 
 const tempDirs: string[] = [];
@@ -61,7 +64,12 @@ describe('quality service', () => {
 
     const result = await evaluateExtractionQuality([component({ source })], []);
 
-    expect(result.components[0]).toEqual(expect.objectContaining({ extractionConfidence: 5, validationIssues: [] }));
+    expect(result.components[0]).toEqual(
+      expect.objectContaining({
+        extractionConfidence: 5,
+        validationIssues: [],
+      }),
+    );
     expect(result.warnings).toEqual([]);
   });
 

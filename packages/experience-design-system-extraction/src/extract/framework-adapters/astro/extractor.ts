@@ -39,7 +39,14 @@ function extractFromAstroFile(filePath: string, source: string): RawComponentDef
 
   const slots = mergeSlots(extractSlotsFromTemplate(template), extractSlotsFromFrontmatter(frontmatter));
 
-  return { name, source: filePath, sourcePath: filePath, framework: 'astro', props: propsWithDefaults, slots };
+  return {
+    name,
+    source: filePath,
+    sourcePath: filePath,
+    framework: 'astro',
+    props: propsWithDefaults,
+    slots,
+  };
 }
 
 export async function extractAstroComponents(
@@ -50,7 +57,9 @@ export async function extractAstroComponents(
   const { items: components, warnings } = await runFileExtractionWorkers(
     astroFiles,
     os.cpus().length,
-    async (filePath, source) => ({ item: extractFromAstroFile(filePath, source) }),
+    async (filePath, source) => ({
+      item: extractFromAstroFile(filePath, source),
+    }),
     (filePath, error) =>
       `Failed to extract from ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
     onProgress,

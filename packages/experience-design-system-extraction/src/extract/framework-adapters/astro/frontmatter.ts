@@ -20,7 +20,11 @@ export function extractFallbackPropsFromFrontmatter(frontmatter: string): RawPro
   for (const element of collectAstroPropsBindings(frontmatter)) {
     const propName = extractBindingPropName(element);
     if (!propName) continue;
-    props.set(propName, { name: propName, type: 'any', required: !element.getInitializer() });
+    props.set(propName, {
+      name: propName,
+      type: 'any',
+      required: !element.getInitializer(),
+    });
   }
   return [...props.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -89,7 +93,13 @@ export function mergeProps(...propGroups: RawPropDefinition[][]): RawPropDefinit
       const existing = merged.get(prop.name);
       merged.set(
         prop.name,
-        existing ? { ...existing, ...prop, required: existing.required && prop.required } : prop,
+        existing
+          ? {
+              ...existing,
+              ...prop,
+              required: existing.required && prop.required,
+            }
+          : prop,
       );
     }
   }

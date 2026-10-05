@@ -1,6 +1,9 @@
 import { parse as parseSvelte } from 'svelte/compiler';
 import type { RawComponentDefinition, RawPropDefinition, RawSlotDefinition } from '../../../types/component.js';
-import { computeExtractionScore, deriveNeedsReview } from '../../../services/quality/helpers/scoring/compute-extraction-score.js';
+import {
+  computeExtractionScore,
+  deriveNeedsReview,
+} from '../../../services/quality/helpers/scoring/compute-extraction-score.js';
 import type { AstNode } from '../types/svelte-ast-node.js';
 import { getSvelteComponentName } from './get-svelte-component-name.js';
 import { extractTemplateSlots, mergeSlots } from './extract-svelte-template-slots.js';
@@ -11,7 +14,11 @@ import type { RetryContext } from './resolve-svelte-unresolved-retry.js';
 export async function extractFromSvelteFile(
   filePath: string,
   source: string,
-): Promise<{ component: RawComponentDefinition | null; warnings: string[]; retryContext?: RetryContext }> {
+): Promise<{
+  component: RawComponentDefinition | null;
+  warnings: string[];
+  retryContext?: RetryContext;
+}> {
   const warnings: string[] = [];
   const name = getSvelteComponentName(filePath);
 

@@ -1,12 +1,17 @@
 import type { RawComponentDefinition, RawSlotDefinition } from '../../../types/component.js';
-import { extractAllowedComponentsFromTypeText, extractAllowedComponentsFromJsdoc } from '../../../helpers/evidence/collect-allowed-component-names.js';
+import {
+  extractAllowedComponentsFromTypeText,
+  extractAllowedComponentsFromJsdoc,
+} from '../../../helpers/evidence/collect-allowed-component-names.js';
 import { buildComponentLookupMaps } from '../../shared/helpers/build-component-lookup-maps.js';
 
 type RawSlotDefinitionInternal = RawSlotDefinition & {
   _rawTypeText?: string;
   _rawJsdoc?: string;
 };
-type ComponentWithInternalProps = RawComponentDefinition & { _propsTypeName?: string };
+type ComponentWithInternalProps = RawComponentDefinition & {
+  _propsTypeName?: string;
+};
 
 export function resolveReactAllowedComponents(components: RawComponentDefinition[]): void {
   const { propsToComponent, componentNames } = buildComponentLookupMaps(components);

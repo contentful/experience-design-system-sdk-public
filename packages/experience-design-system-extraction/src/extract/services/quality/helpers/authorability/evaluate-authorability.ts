@@ -64,20 +64,27 @@ export function hasOnlyEventHandlers(props: RawPropDefinition[]): boolean {
 export function hasNoAuthoringSurface(component: RawComponentDefinition): AuthoringSurfaceCheck {
   const { props, slots, usesCreateContext } = component;
 
-  if (hasNoPropsAndNoSlots(props, slots))
-    return { skip: true, reason: 'component has no props and no slots' };
+  if (hasNoPropsAndNoSlots(props, slots)) return { skip: true, reason: 'component has no props and no slots' };
 
   if (isContextProviderWithValueProp(props, usesCreateContext))
-    return { skip: true, reason: 'source uses createContext and component exposes a Context.Provider value prop' };
+    return {
+      skip: true,
+      reason: 'source uses createContext and component exposes a Context.Provider value prop',
+    };
 
   if (isHardwiredContextProvider(props, usesCreateContext))
-    return { skip: true, reason: 'source uses createContext and component has no props' };
+    return {
+      skip: true,
+      reason: 'source uses createContext and component has no props',
+    };
 
   if (isSingleDataPropContextWrapper(props, usesCreateContext))
-    return { skip: true, reason: 'source uses createContext and component has a single non-handler prop' };
+    return {
+      skip: true,
+      reason: 'source uses createContext and component has a single non-handler prop',
+    };
 
-  if (hasOnlyEventHandlers(props))
-    return { skip: true, reason: 'every prop is a handler or ref' };
+  if (hasOnlyEventHandlers(props)) return { skip: true, reason: 'every prop is a handler or ref' };
 
   return { skip: false };
 }

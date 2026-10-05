@@ -76,9 +76,7 @@ export function isRepoLocalTransparentPolymorphicWrapperDeclaration(declaration:
     const hasExactPropsWithHTMLElementDeclaration = getTypeTargetDeclarations(
       propsWithHTMLElementTargetNode,
       true,
-    ).some((declaration) =>
-      isRepoLocalTransparentPolymorphicWrapperDeclaration(declaration, 'PropsWithHTMLElement'),
-    );
+    ).some((declaration) => isRepoLocalTransparentPolymorphicWrapperDeclaration(declaration, 'PropsWithHTMLElement'));
 
     return (
       hasExactPropsWithAsDeclaration &&

@@ -55,7 +55,10 @@ describe('findPropsCall', () => {
           {
             type: 'VariableDeclarator',
             id: { type: 'ObjectPattern', properties: [] },
-            init: { type: 'CallExpression', callee: { type: 'Identifier', name: '$props' } },
+            init: {
+              type: 'CallExpression',
+              callee: { type: 'Identifier', name: '$props' },
+            },
           },
         ],
       },
@@ -110,7 +113,13 @@ describe('collectSnippetImportLocals', () => {
       {
         type: 'ImportDeclaration',
         source: { value: 'react' },
-        specifiers: [{ type: 'ImportSpecifier', imported: { name: 'Snippet' }, local: { name: 'Snippet' } }],
+        specifiers: [
+          {
+            type: 'ImportSpecifier',
+            imported: { name: 'Snippet' },
+            local: { name: 'Snippet' },
+          },
+        ],
       },
     ]);
     expect(collectSnippetImportLocals(instance)).toEqual(new Set());
@@ -119,9 +128,7 @@ describe('collectSnippetImportLocals', () => {
 
 describe('findLocalTypeDeclaration', () => {
   it('finds a TSInterfaceDeclaration by name', () => {
-    const instance = makeBody([
-      { type: 'TSInterfaceDeclaration', id: { name: 'Props' } },
-    ]);
+    const instance = makeBody([{ type: 'TSInterfaceDeclaration', id: { name: 'Props' } }]);
     const result = findLocalTypeDeclaration(instance, 'Props');
     expect(result).not.toBeNull();
     expect(result?.type).toBe('TSInterfaceDeclaration');
@@ -143,7 +150,10 @@ describe('declarationHasHeritage', () => {
   });
 
   it('returns false for interface with empty extends', () => {
-    const decl = { type: 'TSInterfaceDeclaration', extends: [] } as unknown as AstNode;
+    const decl = {
+      type: 'TSInterfaceDeclaration',
+      extends: [],
+    } as unknown as AstNode;
     expect(declarationHasHeritage(decl)).toBe(false);
   });
 });
@@ -185,7 +195,12 @@ describe('renderType', () => {
   });
 
   it('renders TSArrayType', () => {
-    expect(renderType({ type: 'TSArrayType', elementType: { type: 'TSNumberKeyword' } } as unknown as AstNode)).toBe('number[]');
+    expect(
+      renderType({
+        type: 'TSArrayType',
+        elementType: { type: 'TSNumberKeyword' },
+      } as unknown as AstNode),
+    ).toBe('number[]');
   });
 
   it('returns "unknown" for undefined', () => {
@@ -211,7 +226,12 @@ describe('renderLiteral', () => {
   });
 
   it('renders an identifier', () => {
-    expect(renderLiteral({ type: 'Identifier', name: 'undefined' } as unknown as AstNode)).toBe('undefined');
+    expect(
+      renderLiteral({
+        type: 'Identifier',
+        name: 'undefined',
+      } as unknown as AstNode),
+    ).toBe('undefined');
   });
 
   it('returns undefined for unrecognized node type', () => {

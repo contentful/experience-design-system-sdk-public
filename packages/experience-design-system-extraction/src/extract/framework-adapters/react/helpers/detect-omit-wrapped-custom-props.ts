@@ -28,23 +28,17 @@ export function containsImportedOmitWrappedCustomProps(
 
     if (typeName === 'PropsWithChildren') {
       const wrappedType = typeNode.getTypeArguments()[0];
-      return wrappedType
-        ? containsImportedOmitWrappedCustomProps(wrappedType, seen, originSourceFile, sawOmit)
-        : false;
+      return wrappedType ? containsImportedOmitWrappedCustomProps(wrappedType, seen, originSourceFile, sawOmit) : false;
     }
 
     if (typeName === 'Omit') {
       const wrappedType = typeNode.getTypeArguments()[0];
-      return wrappedType
-        ? containsImportedOmitWrappedCustomProps(wrappedType, seen, originSourceFile, true)
-        : false;
+      return wrappedType ? containsImportedOmitWrappedCustomProps(wrappedType, seen, originSourceFile, true) : false;
     }
 
     if (typeName === 'Partial' || typeName === 'Readonly' || typeName === 'Required' || typeName === 'NonNullable') {
       const wrappedType = typeNode.getTypeArguments()[0];
-      return wrappedType
-        ? containsImportedOmitWrappedCustomProps(wrappedType, seen, originSourceFile, sawOmit)
-        : false;
+      return wrappedType ? containsImportedOmitWrappedCustomProps(wrappedType, seen, originSourceFile, sawOmit) : false;
     }
 
     const targetNode = getTypeReferenceTargetNode(typeNode)!;
@@ -79,7 +73,10 @@ export function containsImportedOmitWrappedCustomProps(
 
       if (Node.isTypeAliasDeclaration(declaration)) {
         const aliasedTypeNode = declaration.getTypeNode();
-        if (aliasedTypeNode && containsImportedOmitWrappedCustomProps(aliasedTypeNode, seen, originSourceFile, sawOmit)) {
+        if (
+          aliasedTypeNode &&
+          containsImportedOmitWrappedCustomProps(aliasedTypeNode, seen, originSourceFile, sawOmit)
+        ) {
           return true;
         }
       }

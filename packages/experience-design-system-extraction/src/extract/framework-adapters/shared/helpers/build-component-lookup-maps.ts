@@ -1,6 +1,8 @@
 import type { RawComponentDefinition } from '../../../types/component.js';
 
-type ComponentWithInternalProps = RawComponentDefinition & { _propsTypeName?: string };
+type ComponentWithInternalProps = RawComponentDefinition & {
+  _propsTypeName?: string;
+};
 
 export function buildComponentLookupMaps(components: RawComponentDefinition[]): {
   propsToComponent: Map<string, string>;

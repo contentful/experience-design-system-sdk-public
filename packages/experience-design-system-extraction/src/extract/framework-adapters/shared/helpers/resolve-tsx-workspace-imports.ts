@@ -16,8 +16,15 @@ export function isBareModuleSpecifier(moduleSpecifier: string): boolean {
 
 function findProjectSourceFileByImportPath(project: Project, resolvedPath: string): SourceFile | undefined {
   const candidatePaths = [
-    resolvedPath, `${resolvedPath}.ts`, `${resolvedPath}.tsx`, `${resolvedPath}.js`, `${resolvedPath}.jsx`,
-    join(resolvedPath, 'index.ts'), join(resolvedPath, 'index.tsx'), join(resolvedPath, 'index.js'), join(resolvedPath, 'index.jsx'),
+    resolvedPath,
+    `${resolvedPath}.ts`,
+    `${resolvedPath}.tsx`,
+    `${resolvedPath}.js`,
+    `${resolvedPath}.jsx`,
+    join(resolvedPath, 'index.ts'),
+    join(resolvedPath, 'index.tsx'),
+    join(resolvedPath, 'index.js'),
+    join(resolvedPath, 'index.jsx'),
   ];
   for (const candidatePath of candidatePaths) {
     const sourceFile = project.getSourceFile(candidatePath);
@@ -42,11 +49,13 @@ export function resolveWorkspaceImportSpecifierDeclarations(importSpecifier: Nod
   if (!Node.isImportSpecifier(importSpecifier)) return [];
   const importDeclaration = importSpecifier.getImportDeclaration();
   const moduleSpecifierSourceFile = importDeclaration.getModuleSpecifierSourceFile();
-  if (moduleSpecifierSourceFile) return getExportedDeclarationsForImportSpecifier(importSpecifier, moduleSpecifierSourceFile);
+  if (moduleSpecifierSourceFile)
+    return getExportedDeclarationsForImportSpecifier(importSpecifier, moduleSpecifierSourceFile);
   const moduleSpecifier = importDeclaration.getModuleSpecifierValue();
   if (!isBareModuleSpecifier(moduleSpecifier)) return [];
   const workspaceEntrySourceFile = findWorkspacePackageEntrySourceFile(referenceNode.getSourceFile(), moduleSpecifier);
-  if (workspaceEntrySourceFile) return getExportedDeclarationsForImportSpecifier(importSpecifier, workspaceEntrySourceFile);
+  if (workspaceEntrySourceFile)
+    return getExportedDeclarationsForImportSpecifier(importSpecifier, workspaceEntrySourceFile);
   const aliasedSourceFile = findRepoLocalAliasSourceFile(referenceNode.getSourceFile(), moduleSpecifier);
   if (!aliasedSourceFile) return [];
   return getExportedDeclarationsForImportSpecifier(importSpecifier, aliasedSourceFile);

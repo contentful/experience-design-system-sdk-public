@@ -1,9 +1,4 @@
-import {
-  Node,
-  type ArrowFunction,
-  type FunctionExpression,
-  type SourceFile,
-} from 'ts-morph';
+import { Node, type ArrowFunction, type FunctionExpression, type SourceFile } from 'ts-morph';
 
 /** Collects all names bound in the file via imports or top-level declarations. */
 export function collectLocallyBoundNames(sourceFile: SourceFile): Set<string> {

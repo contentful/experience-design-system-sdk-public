@@ -92,7 +92,10 @@ export function shouldExcludeDueToValidation(component: RawComponentDefinition):
  * the bare counts.
  */
 export function formatExclusionWarning(
-  rejected: Array<{ name: string; validationIssues?: ExtractionValidationIssue[] }>,
+  rejected: Array<{
+    name: string;
+    validationIssues?: ExtractionValidationIssue[];
+  }>,
 ): string {
   if (rejected.length === 0) return '';
   const lines = [
@@ -103,7 +106,10 @@ export function formatExclusionWarning(
 }
 
 export function formatExcludedComponentLines(
-  rejected: Array<{ name: string; validationIssues?: ExtractionValidationIssue[] }>,
+  rejected: Array<{
+    name: string;
+    validationIssues?: ExtractionValidationIssue[];
+  }>,
 ): string[] {
   return rejected.map((comp) => {
     const codes = (comp.validationIssues ?? [])

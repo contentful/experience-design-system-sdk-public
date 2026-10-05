@@ -8,7 +8,12 @@ import {
   getElementTagNameFromFastDefinition,
 } from './resolve-wc-sibling-definition.js';
 
-export { buildTagNameMap, getElementTagNameFromDecorator, getElementTagNameFromSiblingDefine, getElementTagNameFromFastDefinition };
+export {
+  buildTagNameMap,
+  getElementTagNameFromDecorator,
+  getElementTagNameFromSiblingDefine,
+  getElementTagNameFromFastDefinition,
+};
 
 function normalizeComponentName(input: string): string {
   return input.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
@@ -23,11 +28,17 @@ function shouldPreferTagName(className: string, tagName: string): boolean {
 }
 
 function getFileDerivedComponentName(sourceFile: SourceFile): string {
-  const baseName = basename(sourceFile.getFilePath()).replace(/\.[^.]+$/, '').replace(/\.component$/, '');
+  const baseName = basename(sourceFile.getFilePath())
+    .replace(/\.[^.]+$/, '')
+    .replace(/\.component$/, '');
   return kebabToPascal(baseName);
 }
 
-export function chooseComponentName(classDecl: ClassDeclaration, className: string, tagName: string | undefined): string {
+export function chooseComponentName(
+  classDecl: ClassDeclaration,
+  className: string,
+  tagName: string | undefined,
+): string {
   if (!tagName) return className;
   const tagDerivedName = kebabToPascal(tagName);
   const fileDerivedName = getFileDerivedComponentName(classDecl.getSourceFile());

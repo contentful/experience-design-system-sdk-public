@@ -23,7 +23,11 @@ export async function extractSvelteComponents(
     os.cpus().length,
     async (filePath, source) => {
       const { component, warnings: fileWarnings, retryContext } = await extractFromSvelteFile(filePath, source);
-      return { item: component, warnings: fileWarnings, metadata: retryContext };
+      return {
+        item: component,
+        warnings: fileWarnings,
+        metadata: retryContext,
+      };
     },
     (filePath, error) =>
       `${getSvelteComponentName(filePath)}: failed to extract from ${filePath} — ${error instanceof Error ? error.message : String(error)}`,

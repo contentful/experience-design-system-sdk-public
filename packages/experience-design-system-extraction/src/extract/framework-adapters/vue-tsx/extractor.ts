@@ -43,15 +43,24 @@ function extractVueTsxComponent(
     const props = extractVueTsxComponentProps(resolved.options);
     const slots = extractVueTsxComponentSlots(resolved.options, resolved.slotsTypeNode);
 
-    return { name, source: sourceFile.getFilePath(), framework: 'vue', props, slots };
+    return {
+      name,
+      source: sourceFile.getFilePath(),
+      framework: 'vue',
+      props,
+      slots,
+    };
   }
 
   return undefined;
 }
 
-function resolveDefineComponentCall(
-  node: Node | undefined,
-): { options: import('ts-morph').ObjectLiteralExpression; slotsTypeNode?: Node } | undefined {
+function resolveDefineComponentCall(node: Node | undefined):
+  | {
+      options: import('ts-morph').ObjectLiteralExpression;
+      slotsTypeNode?: Node;
+    }
+  | undefined {
   if (!node || !Node.isCallExpression(node)) return undefined;
 
   const directExpressionText = node.getExpression().getText();
@@ -72,7 +81,10 @@ function resolveDefineComponentCall(
   if (!Node.isCallExpression(innerCall)) return undefined;
   if (!/(^|\.)genericComponent$/.test(innerCall.getExpression().getText())) return undefined;
 
-  return { options: optionsArg, slotsTypeNode: innerCall.getTypeArguments()[0] };
+  return {
+    options: optionsArg,
+    slotsTypeNode: innerCall.getTypeArguments()[0],
+  };
 }
 
 function readComponentName(options: import('ts-morph').ObjectLiteralExpression): string | undefined {

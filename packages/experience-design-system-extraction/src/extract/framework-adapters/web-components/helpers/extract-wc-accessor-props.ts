@@ -1,10 +1,6 @@
 import { type ClassDeclaration } from 'ts-morph';
 import type { RawPropDefinition } from '../../../types/component.js';
-import {
-  hasInternalJsDocTag,
-  isNonPublicLitMember,
-  isInternalRuntimeField,
-} from './detect-wc-non-public-members.js';
+import { hasInternalJsDocTag, isNonPublicLitMember, isInternalRuntimeField } from './detect-wc-non-public-members.js';
 
 export function extractAccessorProperties(
   classDecl: ClassDeclaration,

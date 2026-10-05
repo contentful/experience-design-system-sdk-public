@@ -57,6 +57,9 @@ describe('extractComponents pipeline contract', () => {
     tempDirs.push(projectRoot);
     const sourcePath = await writeFixture(join(projectRoot, 'notes.md'), 'not a component');
 
-    await expect(extractComponents([sourcePath])).resolves.toEqual({ components: [], warnings: [] });
+    await expect(extractComponents([sourcePath])).resolves.toEqual({
+      components: [],
+      warnings: [],
+    });
   });
 });

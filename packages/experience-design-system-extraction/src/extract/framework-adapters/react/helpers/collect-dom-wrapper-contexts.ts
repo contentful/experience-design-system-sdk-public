@@ -1,7 +1,10 @@
 import { Node } from 'ts-morph';
 import { getTypeReferenceName, getNodeDefinitions } from '../../shared/helpers/tsx-shared.js';
 import { getTypeReferenceTargetNode, getTypeReferenceArguments } from '../../shared/helpers/tsx-node-utils.js';
-import { isExpandableDomAttributeWrapperName, type ExpandableDomAttributeWrapperContext } from './dom-attribute-surfaces.js';
+import {
+  isExpandableDomAttributeWrapperName,
+  type ExpandableDomAttributeWrapperContext,
+} from './dom-attribute-surfaces.js';
 
 export function getStringLiteralTypeValues(typeNode: Node): string[] {
   if (Node.isLiteralTypeNode(typeNode)) {

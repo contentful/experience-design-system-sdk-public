@@ -4,7 +4,10 @@ import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { RawComponentDefinition, RawPropDefinition } from '../../../src/extract/types/component.js';
 import { hasNoAuthoringSurface } from '../../../src/extract/services/quality/helpers/authorability/evaluate-authorability.js';
-import { computeExtractionScore, deriveNeedsReview } from '../../../src/extract/services/quality/helpers/scoring/compute-extraction-score.js';
+import {
+  computeExtractionScore,
+  deriveNeedsReview,
+} from '../../../src/extract/services/quality/helpers/scoring/compute-extraction-score.js';
 import { inspectComponentSource } from '../../../src/extract/services/quality/helpers/inspection/inspect-component-source.js';
 import { validateExtractedComponents } from '../../../src/extract/services/quality/helpers/inspection/validate-extracted-components.js';
 
@@ -60,9 +63,15 @@ describe('quality policy boundaries', () => {
     expect(validated[0]).toMatchObject(extracted);
     expect(validated[0]?.validationIssues).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ code: 'EMPTY_COMPONENT_NAME', severity: 'error' }),
+        expect.objectContaining({
+          code: 'EMPTY_COMPONENT_NAME',
+          severity: 'error',
+        }),
         expect.objectContaining({ code: 'EMPTY_PROP_NAME', severity: 'error' }),
-        expect.objectContaining({ code: 'PROP_SLOT_NAME_COLLISION', severity: 'error' }),
+        expect.objectContaining({
+          code: 'PROP_SLOT_NAME_COLLISION',
+          severity: 'error',
+        }),
       ]),
     );
   });
