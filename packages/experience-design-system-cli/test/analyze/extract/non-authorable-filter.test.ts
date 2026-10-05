@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isNonAuthorableComponent } from '@contentful/experience-design-system-extraction';
+import { hasNoAuthoringSurface } from '@contentful/experience-design-system-extraction';
 import type { RawComponentDefinition } from '../../../src/types.js';
 
 function makeComponent(partial: Partial<RawComponentDefinition>): RawComponentDefinition {
@@ -13,16 +13,16 @@ function makeComponent(partial: Partial<RawComponentDefinition>): RawComponentDe
   };
 }
 
-describe('isNonAuthorableComponent', () => {
+describe('hasNoAuthoringSurface — authoring surface checks', () => {
   describe('R1: zero props and zero slots', () => {
     it('flags components with no props and no slots', () => {
-      const result = isNonAuthorableComponent(makeComponent({ name: 'GtmHeadScript', props: [], slots: [] }));
+      const result = hasNoAuthoringSurface(makeComponent({ name: 'GtmHeadScript', props: [], slots: [] }));
       expect(result.skip).toBe(true);
       expect(result.reason).toMatch(/no props and no slots/i);
     });
 
     it('does NOT flag a layout component with zero props but a children slot', () => {
-      const result = isNonAuthorableComponent(
+      const result = hasNoAuthoringSurface(
         makeComponent({ name: 'Stack', props: [], slots: [{ name: 'children', isDefault: true }] }),
       );
       expect(result.skip).toBe(false);
@@ -31,7 +31,7 @@ describe('isNonAuthorableComponent', () => {
 
   describe('R2: createContext + value prop', () => {
     it('flags components with a literal value prop in a createContext source', () => {
-      const result = isNonAuthorableComponent(
+      const result = hasNoAuthoringSurface(
         makeComponent({
           name: 'AbmProvider',
           usesCreateContext: true,
@@ -43,7 +43,7 @@ describe('isNonAuthorableComponent', () => {
     });
 
     it('does NOT flag a value prop when source does not use createContext', () => {
-      const result = isNonAuthorableComponent(
+      const result = hasNoAuthoringSurface(
         makeComponent({
           name: 'Slider',
           usesCreateContext: false,
@@ -56,7 +56,7 @@ describe('isNonAuthorableComponent', () => {
 
   describe('R3: createContext + zero props', () => {
     it('flags zero-prop components in a createContext source', () => {
-      const result = isNonAuthorableComponent(
+      const result = hasNoAuthoringSurface(
         makeComponent({
           name: 'FontProvider',
           usesCreateContext: true,
@@ -69,7 +69,7 @@ describe('isNonAuthorableComponent', () => {
     });
 
     it('does NOT flag zero-prop components when source does not use createContext', () => {
-      const result = isNonAuthorableComponent(
+      const result = hasNoAuthoringSurface(
         makeComponent({ name: 'Container', usesCreateContext: false, props: [] }),
       );
       expect(result.skip).toBe(false);
@@ -78,7 +78,7 @@ describe('isNonAuthorableComponent', () => {
 
   describe('R4: createContext + single non-handler prop', () => {
     it('flags createContext components with one named-type data prop', () => {
-      const result = isNonAuthorableComponent(
+      const result = hasNoAuthoringSurface(
         makeComponent({
           name: 'LocaleProvider',
           usesCreateContext: true,
@@ -90,7 +90,7 @@ describe('isNonAuthorableComponent', () => {
     });
 
     it('flags createContext components with one array data prop', () => {
-      const result = isNonAuthorableComponent(
+      const result = hasNoAuthoringSurface(
         makeComponent({
           name: 'NavigationProvider',
           usesCreateContext: true,
@@ -101,7 +101,7 @@ describe('isNonAuthorableComponent', () => {
     });
 
     it('does NOT flag createContext components when the single prop is a handler', () => {
-      const result = isNonAuthorableComponent(
+      const result = hasNoAuthoringSurface(
         makeComponent({
           name: 'CounterSetterProvider',
           usesCreateContext: true,
@@ -113,7 +113,7 @@ describe('isNonAuthorableComponent', () => {
     });
 
     it('does NOT flag a single-prop content component without createContext', () => {
-      const result = isNonAuthorableComponent(
+      const result = hasNoAuthoringSurface(
         makeComponent({
           name: 'RichTextComponent',
           usesCreateContext: false,
@@ -124,7 +124,7 @@ describe('isNonAuthorableComponent', () => {
     });
 
     it('does NOT fire R4 when there are 2+ props (lets R5 or keep handle it)', () => {
-      const result = isNonAuthorableComponent(
+      const result = hasNoAuthoringSurface(
         makeComponent({
           name: 'TwoPropProvider',
           usesCreateContext: true,
@@ -140,7 +140,7 @@ describe('isNonAuthorableComponent', () => {
 
   describe('R5: every prop is a handler or ref', () => {
     it('flags components where every prop is a function-typed handler', () => {
-      const result = isNonAuthorableComponent(
+      const result = hasNoAuthoringSurface(
         makeComponent({
           name: 'OsanoCookiePlaceholder',
           props: [{ name: 'onBannerLoaded', type: '() => void', required: true }],
@@ -151,7 +151,7 @@ describe('isNonAuthorableComponent', () => {
     });
 
     it('flags components with mixed handler + setter + ref props', () => {
-      const result = isNonAuthorableComponent(
+      const result = hasNoAuthoringSurface(
         makeComponent({
           name: 'FeedbackCard',
           props: [
@@ -164,7 +164,7 @@ describe('isNonAuthorableComponent', () => {
     });
 
     it('does NOT flag components with at least one non-handler prop', () => {
-      const result = isNonAuthorableComponent(
+      const result = hasNoAuthoringSurface(
         makeComponent({
           name: 'NavigationPanelMobile',
           props: [
@@ -180,7 +180,7 @@ describe('isNonAuthorableComponent', () => {
 
   describe('Control: ordinary authoring components are kept', () => {
     it('keeps a component with content/design/state props', () => {
-      const result = isNonAuthorableComponent(
+      const result = hasNoAuthoringSurface(
         makeComponent({
           name: 'Accordion',
           props: [
@@ -193,7 +193,7 @@ describe('isNonAuthorableComponent', () => {
     });
 
     it('keeps a CMS-driven wrapper with any-typed content props', () => {
-      const result = isNonAuthorableComponent(
+      const result = hasNoAuthoringSurface(
         makeComponent({
           name: 'BasicCardWrapper',
           props: [
@@ -207,7 +207,7 @@ describe('isNonAuthorableComponent', () => {
     });
 
     it('handles undefined usesCreateContext as falsy without throwing', () => {
-      const result = isNonAuthorableComponent(
+      const result = hasNoAuthoringSurface(
         makeComponent({
           name: 'AbmProvider',
           usesCreateContext: undefined,

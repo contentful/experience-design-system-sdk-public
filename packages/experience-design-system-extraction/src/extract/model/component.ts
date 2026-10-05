@@ -91,12 +91,3 @@ export type ExtractorProgress = {
   componentsFound: number;
 };
 
-/** Strip internal scoring fields before serialising a RawComponentDefinition for display or editing. */
-export function stripScoringFields({
-  extractionConfidence: _c,
-  reviewReasons: _r,
-  needsReview: _n,
-  ...rest
-}: RawComponentDefinition): Omit<RawComponentDefinition, 'extractionConfidence' | 'reviewReasons' | 'needsReview'> {
-  return rest;
-}

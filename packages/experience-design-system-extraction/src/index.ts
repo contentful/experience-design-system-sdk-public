@@ -9,7 +9,7 @@ export type {
   ExtractionValidationIssue,
   ExtractionValidationIssueCode,
 } from './extract/model/component.js';
-export { stripScoringFields } from './extract/model/component.js';
+export { stripScoringFields } from './extract/model/display.js';
 export type { ExtractorOptions } from './extract/model/options.js';
 export type { ComponentExtractor } from './extract/services/ports/component-extractor.js';
 
@@ -36,7 +36,7 @@ export {
 } from './extract/evidence/allowed-components.js';
 
 // Post-extraction filtering and scoring
-export { isNonAuthorableComponent } from './extract/policies/quality/authorability.js';
+export { hasNoAuthoringSurface } from './extract/policies/quality/authorability.js';
 export { computeExtractionScore, deriveNeedsReview } from './extract/policies/quality/scoring.js';
 export type { ExtractionScore, ExtractionScoreOptions, ExtractionConfidence } from './extract/model/scoring.js';
 export {

@@ -1,6 +1,6 @@
 import type { RawComponentDefinition } from '../model/component.js';
 import type { ExtractionEndpointResponse } from '../model/contract.js';
-import { isNonAuthorableComponent } from '../policies/quality/authorability.js';
+import { hasNoAuthoringSurface } from '../policies/quality/authorability.js';
 import { computeExtractionScore, deriveNeedsReview } from '../policies/quality/scoring.js';
 import { inspectComponentSource, describeReviewReasons } from '../policies/quality/source-inspection.js';
 import { validateExtractedComponents } from '../policies/quality/validation.js';
@@ -27,7 +27,7 @@ export async function evaluateExtractionQuality(
   const warnings: string[] = [...initialWarnings];
 
   for (const { component, inspection } of inspectedComponents) {
-    const verdict = isNonAuthorableComponent(component);
+    const verdict = hasNoAuthoringSurface(component);
     const keepDespiteZeroSurface =
       verdict.skip && verdict.reason === 'component has no props and no slots' && inspection.keepDespiteZeroSurface;
     const retainedForReview = verdict.skip && !keepDespiteZeroSurface;

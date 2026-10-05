@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { stripScoringFields } from '../src/extract/model/component.js';
+import { stripScoringFields } from '../src/extract/model/display.js';
 import type { ComponentExtractionResult, RawComponentDefinition } from '../src/extract/model/component.js';
 import type { ExtractionEndpointRequest, ExtractionEndpointResponse } from '../src/extract/model/contract.js';
 import type { ExtractorOptions } from '../src/extract/model/options.js';

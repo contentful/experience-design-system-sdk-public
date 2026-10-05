@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { preClassifyComponent } from '@contentful/experience-design-system-extraction';
-import { isNonAuthorableComponent } from '@contentful/experience-design-system-extraction';
+import { hasNoAuthoringSurface } from '@contentful/experience-design-system-extraction';
 import type { RawComponentDefinition } from '../../src/types.js';
 
 function runPipeline(components: RawComponentDefinition[]) {
@@ -8,7 +8,7 @@ function runPipeline(components: RawComponentDefinition[]) {
   const kept: RawComponentDefinition[] = [];
   const reviewWarnings: string[] = [];
   for (const c of classified) {
-    const verdict = isNonAuthorableComponent(c);
+    const verdict = hasNoAuthoringSurface(c);
     if (verdict.skip) {
       reviewWarnings.push(`${c.name}: requires operator review (${verdict.reason})`);
       kept.push({

@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { RawComponentDefinition, RawPropDefinition } from '../src/extract/model/component.js';
-import { isNonAuthorableComponent } from '../src/extract/policies/quality/authorability.js';
+import { hasNoAuthoringSurface } from '../src/extract/policies/quality/authorability.js';
 import { computeExtractionScore, deriveNeedsReview } from '../src/extract/policies/quality/scoring.js';
 import { inspectComponentSource } from '../src/extract/policies/quality/source-inspection.js';
 import { validateExtractedComponents } from '../src/extract/policies/quality/validation.js';
@@ -32,7 +32,7 @@ function component(overrides: Partial<RawComponentDefinition> = {}): RawComponen
 describe('quality policy boundaries', () => {
   it('filters components whose entire prop surface is handler or ref plumbing', () => {
     expect(
-      isNonAuthorableComponent(
+      hasNoAuthoringSurface(
         component({
           props: [prop({ name: 'onReady', type: '() => void' })],
         }),

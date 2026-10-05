@@ -14,7 +14,7 @@ const existingRuntimeExports = [
   'extractSvelteComponents',
   'extractAllowedComponentsFromTypeText',
   'extractAllowedComponentsFromJsdoc',
-  'isNonAuthorableComponent',
+  'hasNoAuthoringSurface',
   'computeExtractionScore',
   'deriveNeedsReview',
   'inspectComponentSource',
