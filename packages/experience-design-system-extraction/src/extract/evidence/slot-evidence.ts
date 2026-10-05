@@ -1,13 +1,5 @@
-/**
- * Slot detection utilities for ReactNode-typed props.
- *
- * Props whose type resolves to ReactNode/ReactElement/JSX.Element are treated
- * as slots rather than plain props — unless their name is in the content-name
- * exception list (label, title, description, etc.).
- *
- * Array ReactNode types (e.g. ReactNode[]) ALWAYS become slots, even if the
- * prop name is in the exception list.
- */
+export { isReactNodeType, isArrayReactNodeType } from './helpers/react-node-type-detectors.js';
+import { isReactNodeType, isArrayReactNodeType } from './helpers/react-node-type-detectors.js';
 
 /**
  * Prop names that should remain as props even when typed as ReactNode.
@@ -29,62 +21,6 @@ export const CONTENT_NAME_EXCEPTIONS = new Set([
   'excerpt',
 ]);
 
-const REACT_NODE_EXACT_PATTERNS = ['ReactNode', 'React.ReactNode', 'ReactElement', 'React.ReactElement', 'JSX.Element'];
-
-function normalizeReactNodeType(typeText: string): string {
-  return typeText
-    .replace(/\s+/g, ' ')
-    .trim()
-    .split('|')
-    .map((part) => part.trim())
-    .filter((part) => part !== 'null' && part !== 'undefined')
-    .join(' | ');
-}
-
-/**
- * Checks if a type string represents a ReactNode/ReactElement/JSX.Element type,
- * including unions with null/undefined.
- */
-export function isReactNodeType(typeText: string): boolean {
-  const stripped = normalizeReactNodeType(typeText);
-
-  // Check exact match (after stripping null/undefined union members)
-  if (REACT_NODE_EXACT_PATTERNS.includes(stripped)) {
-    return true;
-  }
-
-  // Check array patterns
-  if (isArrayReactNodeType(typeText)) {
-    return true;
-  }
-
-  return false;
-}
-
-/**
- * Checks if a type string represents an array of ReactNode.
- * Examples: ReactNode[], React.ReactNode[], Array<ReactNode>
- */
-export function isArrayReactNodeType(typeText: string): boolean {
-  const stripped = normalizeReactNodeType(typeText);
-
-  // Pattern: ReactNode[] or React.ReactNode[] etc.
-  for (const pattern of REACT_NODE_EXACT_PATTERNS) {
-    if (stripped === `${pattern}[]`) {
-      return true;
-    }
-  }
-
-  // Pattern: Array<ReactNode> or Array<React.ReactNode> etc.
-  for (const pattern of REACT_NODE_EXACT_PATTERNS) {
-    if (stripped === `Array<${pattern}>`) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
 /**
  * Determines whether a prop should be converted to a slot based on its name and type.
  *
@@ -95,19 +31,8 @@ export function isArrayReactNodeType(typeText: string): boolean {
  * 4. Otherwise → true
  */
 export function shouldBeSlot(propName: string, typeText: string): boolean {
-  if (!isReactNodeType(typeText)) {
-    return false;
-  }
-
-  // Array ReactNode always becomes a slot, even for exception names
-  if (isArrayReactNodeType(typeText)) {
-    return true;
-  }
-
-  // Check exception list
-  if (CONTENT_NAME_EXCEPTIONS.has(propName)) {
-    return false;
-  }
-
+  if (!isReactNodeType(typeText)) return false;
+  if (isArrayReactNodeType(typeText)) return true;
+  if (CONTENT_NAME_EXCEPTIONS.has(propName)) return false;
   return true;
 }

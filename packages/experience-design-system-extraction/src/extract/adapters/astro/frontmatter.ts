@@ -1,56 +1,17 @@
-import { Node, Project } from 'ts-morph';
 import type { RawPropDefinition } from '../../model/component.js';
 import { resolveTypeProperty } from '../support/resolution/type-property.js';
 import { getSourceLineMetadata } from '../support/resolution/source-location.js';
+import {
+  createAstroFrontmatterProject,
+  forEachAstroPropsBinding,
+  extractBindingPropName,
+} from './helpers/frontmatter-binding-walker.js';
 
 /** Returns the string literals from a union type like `'a' | 'b' | 'c'`, or undefined if fewer than two are found. */
 export function extractAllowedValues(typeText: string): string[] | undefined {
   const parts = typeText.split('|').map((p) => p.trim());
   const literals = parts.filter((p) => /^['"]/.test(p)).map((p) => p.replace(/^['"]|['"]$/g, ''));
   return literals.length >= 2 ? literals.sort() : undefined;
-}
-
-function createAstroFrontmatterProject(): Project {
-  return new Project({
-    compilerOptions: { strict: false, target: 99, module: 99, allowJs: true },
-    useInMemoryFileSystem: true,
-    skipAddingFilesFromTsConfig: true,
-  });
-}
-
-function usesAstroProps(initializer: Node | undefined): boolean {
-  if (!initializer) return false;
-  if (initializer.getText() === 'Astro.props') return true;
-  let found = false;
-  initializer.forEachDescendant((node) => {
-    if (found) return false;
-    if (Node.isPropertyAccessExpression(node) && node.getText() === 'Astro.props') {
-      found = true;
-      return false;
-    }
-    return undefined;
-  });
-  return found;
-}
-
-function extractBindingPropName(element: import('ts-morph').BindingElement): string | null {
-  if (element.getText().startsWith('...')) return null;
-  return element.getPropertyNameNode()?.getText() ?? element.getNameNode().getText();
-}
-
-function forEachAstroPropsBinding(
-  frontmatter: string,
-  visit: (element: import('ts-morph').BindingElement) => void,
-): void {
-  const sf = createAstroFrontmatterProject().createSourceFile('__frontmatter__.ts', frontmatter);
-  sf.forEachDescendant((node) => {
-    if (!Node.isVariableDeclaration(node)) return;
-    const initializer = node.getInitializer();
-    if (!initializer || !usesAstroProps(initializer)) return;
-    const nameNode = node.getNameNode();
-    if (!Node.isObjectBindingPattern(nameNode)) return;
-    for (const element of nameNode.getElements()) visit(element);
-  });
 }
 
 /** Reads prop names and requiredness from destructured `Astro.props` bindings when no typed Props interface exists. */

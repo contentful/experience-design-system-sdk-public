@@ -1,6 +1,18 @@
-import { Node, Project, SyntaxKind, type SourceFile, type Type } from 'ts-morph';
+import { Project, type SourceFile } from 'ts-morph';
 import type { ExtractionExclusion } from '../../model/component.js';
-import { resolveWorkspaceImportSpecifierDeclarations } from './helpers/resolve-tsx-workspace-imports.js';
+
+export {
+  kebabToPascal,
+  extractAllowedValues,
+  isIntrinsicJsxElement,
+  getJsxTagNameNode,
+  getNodeDefinitions,
+  getTypeTargetDeclarations,
+  getValueTargetDeclarations,
+  getTypeReferenceName,
+} from './helpers/tsx-node-utils.js';
+
+export { resolveDefaultExportName, getRenderableExports } from './tsx-renderable-exports.js';
 
 function createTsxProject(filePaths: string[]): Project {
   const project = new Project({
@@ -66,131 +78,3 @@ export function extractTsxComponents<T>(
 
   return { components, warnings, exclusions, project };
 }
-
-export function resolveDefaultExportName(
-  declarations: Node[],
-  exported: { has(name: string): boolean },
-  allowVariableDeclaration = false,
-): string | undefined {
-  const declaration = declarations[0];
-  const name = Node.isFunctionDeclaration(declaration)
-    ? declaration.getName()
-    : allowVariableDeclaration && Node.isVariableDeclaration(declaration)
-      ? declaration.getName()
-      : undefined;
-
-  if (!name || !/^[A-Z]/.test(name) || exported.has(name)) return undefined;
-  return name;
-}
-
-export function getRenderableExports(
-  sourceFile: SourceFile,
-  exclusions: ExtractionExclusion[],
-  options: { allowVariableDeclaration?: boolean; hookReason: string },
-): Array<{ name: string; declarations: Node[] }> {
-  const renderable: Array<{ name: string; declarations: Node[] }> = [];
-  const exported = sourceFile.getExportedDeclarations();
-
-  for (const [exportKey, declarations] of exported) {
-    const name =
-      exportKey === 'default'
-        ? resolveDefaultExportName(declarations, exported, options.allowVariableDeclaration)
-        : exportKey;
-    if (!name || !/^[A-Z]/.test(name)) continue;
-    if (name.startsWith('use')) {
-      exclusions.push({
-        itemType: 'component',
-        name,
-        source: sourceFile.getFilePath(),
-        reason: options.hookReason,
-        stage: 'component-filter',
-      });
-      continue;
-    }
-    renderable.push({ name, declarations });
-  }
-
-  return renderable;
-}
-
-export function kebabToPascal(input: string): string {
-  return input
-    .split('-')
-    .filter(Boolean)
-    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
-    .join('');
-}
-
-export function extractAllowedValues(type: Type): string[] | undefined {
-  if (!type.isUnion()) return undefined;
-
-  const literals = type
-    .getUnionTypes()
-    .filter((t) => t.isStringLiteral())
-    .map((t) => t.getLiteralValueOrThrow() as string);
-
-  return literals.length >= 2 ? literals.sort() : undefined;
-}
-
-/**
- * Custom elements include a hyphen. Lowercase, unqualified tags are therefore
- * the conservative syntactic form for intrinsic JSX elements.
- */
-export function isIntrinsicJsxElement(tagName: string): boolean {
-  return /^[a-z][A-Za-z0-9]*$/.test(tagName);
-}
-
-/** The tag name of the JSX element that owns an attribute or spread. */
-export function getJsxTagNameNode(node: Node): Node | undefined {
-  const openingElement = node.getFirstAncestorByKind(SyntaxKind.JsxOpeningElement);
-  const selfClosingElement = node.getFirstAncestorByKind(SyntaxKind.JsxSelfClosingElement);
-  return openingElement?.getTagNameNode() ?? selfClosingElement?.getTagNameNode();
-}
-
-export function getNodeDefinitions(node: Node): { getDeclarationNode(): Node | undefined }[] {
-  const anyNode = node as unknown as {
-    getDefinitions?: () => { getDeclarationNode(): Node | undefined }[];
-  };
-  return anyNode.getDefinitions?.() ?? [];
-}
-
-export function getTypeTargetDeclarations(targetNode: Node, allowWorkspaceImportFallback = false): Node[] {
-  return getNodeDefinitions(targetNode).flatMap((definition) => {
-    const declaration = definition.getDeclarationNode();
-    if (!declaration) return [];
-
-    if (!allowWorkspaceImportFallback || !Node.isImportSpecifier(declaration)) {
-      return [declaration];
-    }
-
-    const resolvedDeclarations = resolveWorkspaceImportSpecifierDeclarations(declaration, targetNode);
-    return resolvedDeclarations.length > 0 ? resolvedDeclarations : [declaration];
-  });
-}
-
-export function getValueTargetDeclarations(targetNode: Node): Node[] {
-  return getNodeDefinitions(targetNode).flatMap((definition) => {
-    const declaration = definition.getDeclarationNode();
-    if (!declaration) return [];
-
-    if (!Node.isImportSpecifier(declaration)) {
-      return [declaration];
-    }
-
-    const resolvedDeclarations = resolveWorkspaceImportSpecifierDeclarations(declaration, targetNode);
-    return resolvedDeclarations.length > 0 ? resolvedDeclarations : [declaration];
-  });
-}
-
-export function getTypeReferenceName(typeNode: Node): string | undefined {
-  if (Node.isTypeReference(typeNode)) {
-    return typeNode.getTypeName().getText().split('.').pop();
-  }
-
-  if (Node.isExpressionWithTypeArguments(typeNode)) {
-    return typeNode.getExpression().getText().split('.').pop();
-  }
-
-  return undefined;
-}
-
