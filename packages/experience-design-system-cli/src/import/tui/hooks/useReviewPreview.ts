@@ -17,7 +17,6 @@ export type UseReviewPreviewOptions = {
   cmaToken: string;
   host: string;
   deleteAllComponents?: boolean;
-  allowDeletions?: boolean;
   onResult?: (response: ServerPreviewResponse) => void;
 };
 
@@ -39,7 +38,6 @@ export function useReviewPreview({
   cmaToken,
   host,
   deleteAllComponents,
-  allowDeletions,
   onResult,
 }: UseReviewPreviewOptions): UseReviewPreviewResult {
   const [previewAnnotations, setPreviewAnnotations] = useState<Map<string, PreviewAnnotation>>(new Map());
@@ -70,7 +68,6 @@ export function useReviewPreview({
     host,
     onResult: handleResult,
     deleteAllComponents,
-    allowDeletions,
   });
 
   const [spinnerTick, setSpinnerTick] = useState(0);

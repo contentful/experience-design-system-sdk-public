@@ -1,5 +1,7 @@
 # Experience Design System SDK
 
+> ⚠️ This feature is in Beta, APIs may be unstable
+
 Contentful Experiences lets you compose pages and layouts from your own design system components. The `@contentful/experience-design-system-cli` imports your design system into Contentful. It extracts Component Type definitions from your local codebase, invokes an AI agent to generate Component Definition Format (CDF) definitions, and pushes them to your Contentful space.
 
 Your codebase remains the single source of truth. The CLI analyzes your source files (`.tsx`, `.ts`, `.jsx`, `.js`, `.vue`, `.astro`) using static analysis, then delegates property classification and CDF generation to a coding agent.
@@ -8,7 +10,7 @@ Your codebase remains the single source of truth. The CLI analyzes your source f
 
 - **Node.js 24**
 - **pnpm 10.27.0+**
-- **A coding agent** in `$PATH` — Claude Code, Codex, OpenCode, or Cursor
+- **A coding agent** in `$PATH` — Claude Code, Codex, OpenCode, Cursor, or GitHub Copilot
 - **A Contentful CMA token** — set `CONTENTFUL_MANAGEMENT_TOKEN`
 
 ## Quick Start
@@ -43,18 +45,12 @@ The primary entry point is the import wizard:
 experiences import
 ```
 
-In an interactive terminal this launches a full-screen TUI that walks you through extraction, AI selection, manual scope review, generation, final review, and push. Credentials and project path are pre-filled from `experiences setup`. Component generation runs in parallel with credentials entry so the wizard does not block on the agent.
+In an interactive terminal this launches a full-screen TUI that walks you through the project path, an optional token file, credentials, extraction and AI selection, a manual scope review, generation, final review, and push. Credentials are pre-filled from `experiences setup`.
 
-For scripted or CI use, pass `--auto-accept-scope` plus credentials:
+Pass `--project` to skip the welcome screen, and `--tokens` to import a token file alongside your components:
 
 ```bash
-experiences import \
-  --project /path/to/your/component-library \
-  --space-id $CONTENTFUL_SPACE_ID \
-  --environment-id master \
-  --cma-token $CONTENTFUL_MANAGEMENT_TOKEN \
-  --auto-accept-scope \
-  --yes
+experiences import --project /path/to/your/component-library --tokens ./tokens.scss
 ```
 
 ## How it works
@@ -63,44 +59,31 @@ The CLI runs your component library through four stages:
 
 **1. Analyze** — Reads your source files and extracts every component: its name, props, types, and source location.
 
-**2. Select** — An AI agent reviews the extracted components and decides which ones make sense to expose in Contentful Experiences (buttons, cards, layouts) and which to skip (hooks, context providers, utilities). The wizard then opens a single **scope-gate** for you to confirm or override that list. The AI auto-filter can be turned off with `--no-auto-filter`.
+**2. Select** — An AI agent reviews the extracted components and decides which ones make sense to expose in Contentful Experiences (buttons, cards, layouts) and which to skip (hooks, context providers, utilities). The wizard then opens a single **scope-gate** for you to confirm or override that list.
 
 **3. Generate** — An AI agent takes the selected components and produces structured definitions that tell Contentful what each prop is for — whether it holds content, a design token, or interactive state. The wizard then opens a **final-review** field editor where you can edit names, descriptions, defaults, allowed values, and slot constraints inline.
 
-**4. Apply** — Shows a diff of what will change in your Contentful space, then pushes (and by default also saves `components.json` / `tokens.json` to disk for source control).
+**4. Apply** — Saves a combined `components.json` to disk for source control, shows a diff of what will change in your Contentful space, then pushes.
 
-The wizard saves a run record after each session. Use `experiences runs` to list prior sessions (or `experiences runs <id-or-path>` for a single-run detail view), `experiences import --modify <id-or-path>` to re-open the wizard pre-populated, or `experiences import --push-from-run <id-or-path>` to re-push without re-opening the wizard.
-
-When prior runs exist and the wizard is launched without `--push-from-run`, `--modify`, or `--project`, the TUI opens with an interactive **run picker** so the operator can pick "push", "modify", or "start a new run" up front. Pass `--project` to skip the picker and go straight into a fresh extraction.
-
-For headless operation alongside an existing checked-in `components.json`, pass `--on-conflict <overwrite|skip|fail>` to bypass the interactive save-conflict gate. Use `--print-prompt` to inspect the generate prompt without invoking the agent (replaces the deprecated `--dry-run`).
+To apply a checked-in CDF file without the wizard, use `experiences apply <file>`.
 
 ## Packages
 
-| Package                                                                                  | Description                                                                                     |
-| ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| [`@contentful/experience-design-system-cli`](packages/experience-design-system-cli/)     | The CLI + interactive wizard — analyze, review, generate, validate, and push component definitions |
-| [`@contentful/experience-design-system-types`](packages/experience-design-system-types/) | Shared types and schemas for the CDF and DTCG data formats                                      |
+| Package                                                                                    | Description                                                                               |
+| ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| [`@contentful/experience-design-system-cli`](packages/experience-design-system-cli/)       | The CLI + interactive wizard — review, generate, validate, and push component definitions |
+| [`@contentful/experience-design-system-cli-v2`](packages/experience-design-system-cli-v2/) | The newer Ink TUI, launched with `experiences importv2`                                   |
+| [`@contentful/experience-design-system-types`](packages/experience-design-system-types/)   | Shared types and schemas for the CDF and DTCG data formats                                |
 
 ## Command Reference
 
 Full documentation for every flag and every subcommand lives in [`packages/experience-design-system-cli/README.md`](packages/experience-design-system-cli/README.md).
 
-| Command                            | What it does                                                                       |
-| ---------------------------------- | ---------------------------------------------------------------------------------- |
-| `experiences setup`                | Interactive setup — installs prerequisites and saves credentials + agent           |
-| `experiences doctor`               | Health check — verify Node version, credentials, and agent binaries                |
-| `experiences import`               | Run the full wizard or a headless pipeline (extract → select → generate → push)    |
-| `experiences runs`                 | List prior wizard runs, or pass `<id-or-path>` for a single-run detail view (supports `--json`, `--pushed`, `--not-pushed`) |
-| `experiences analyze extract`      | Scan source files and extract raw component definitions                            |
-| `experiences analyze select`       | Interactively pick which components to include (standalone JsonEditor TUI)         |
-| `experiences analyze select-agent` | AI agent picks which components belong in Experiences; pass `--show-rationale [--json]` for read-only rationale output |
-| `experiences generate components`  | AI agent generates CDF definitions from raw analysis                               |
-| `experiences generate tokens`      | AI agent generates DTCG design tokens from raw token data                          |
-| `experiences apply preview`        | Read-only diff — what would change in Contentful                                   |
-| `experiences apply select`         | Checkbox TUI to pick a subset of entities to push                                  |
-| `experiences apply push`           | Write component types and design tokens to Contentful; emits webapp view URL       |
-| `experiences print components`     | Export generated components to `components.json`                                   |
-| `experiences print tokens`         | Export generated tokens to `tokens.json`                                           |
-| `experiences print validate`       | Validate CDF or DTCG files against their schemas                                   |
-| `experiences session list`         | List pipeline sessions (lower-level than `runs`)                                   |
+| Command                    | What it does                                                             |
+| -------------------------- | ------------------------------------------------------------------------ |
+| `experiences setup`        | Interactive setup — installs prerequisites and saves credentials + agent |
+| `experiences doctor`       | Health check — verify Node version, credentials, and agent binaries      |
+| `experiences import`       | Run the interactive wizard (extract → select → generate → review → push) |
+| `experiences apply <file>` | Write component types and design tokens from one CDF file to Contentful  |
+| `experiences build`        | Rebuild a local checkout and re-link the binaries                        |
+| `experiences importv2`     | Launch the v2 TUI                                                        |

@@ -1,22 +1,145 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
-import { Box, Text, useStdout } from 'ink';
+import { Box, Text } from 'ink';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
+import { useTerminalSize } from '../../../tui/use-terminal-size.js';
 import type {
   ChangeClassification,
   ServerPreviewResponse,
   DesignTokenSummary,
 } from '@contentful/experience-design-system-types';
-import { hasBreakingChangesWithImpact } from '../../../apply/manifest.js';
+import { hasBreakingChangesWithImpact } from '../../../apply/tokens.js';
 import { computeComponentDiffLines } from './preview-diff.js';
 import { StepHeader } from '../components/StepHeader.js';
 import { SpaceEnvironment } from '../components/SpaceEnvironment.js';
 import { usePreviewConfirmationInput } from '../preview-confirmation-input.js';
+import { WindowedPanel, terminalPanelHeight } from '../../../tui/windowed-panel.js';
 
 export interface PreviewDiffLine {
   key: string;
   color: string;
   text: string;
+}
+
+export function buildPreviewSummaryLines(preview: ServerPreviewResponse): PreviewDiffLine[] {
+  const lines: PreviewDiffLine[] = [];
+  const { components, tokens } = preview;
+
+  if (components.new.length > 0) {
+    lines.push({
+      key: 'summary-components-new',
+      color: PALETTE.success,
+      text: ` ＋ ${components.new.length} will be created`,
+    });
+    for (const [index, item] of (components.new as unknown as Array<Record<string, unknown>>).entries()) {
+      const name = (item.key as string) ?? (item.$name as string) ?? 'unknown';
+      lines.push({ key: `summary-components-new-${index}`, color: PALETTE.success, text: `  + ${name}` });
+    }
+  }
+
+  if (components.changed.length > 0) {
+    lines.push({
+      key: 'summary-components-changed',
+      color: PALETTE.warning,
+      text: ` ～ ${components.changed.length} will be updated`,
+    });
+    for (const [index, item] of components.changed.entries()) {
+      const isBreaking = item.changeClassification?.classification === 'breaking';
+      lines.push({
+        key: `summary-components-changed-${index}`,
+        color: isBreaking ? PALETTE.error : PALETTE.warning,
+        text: ` ${isBreaking ? '⚠' : '~'} ${item.current.name}`,
+      });
+    }
+  }
+
+  if (components.removed.length > 0) {
+    lines.push({
+      key: 'summary-components-removed',
+      color: PALETTE.warning,
+      text: ` ⊘ ${components.removed.length} will be skipped`,
+    });
+    for (const [index, item] of components.removed.entries()) {
+      lines.push({ key: `summary-components-removed-${index}`, color: PALETTE.warning, text: ` ⊘ ${item.name}` });
+    }
+  }
+
+  if (components.unchanged.length > 0) {
+    lines.push({
+      key: 'summary-components-unchanged',
+      color: 'gray',
+      text: ` · ${components.unchanged.length} unchanged`,
+    });
+  }
+
+  if (tokens.new.length > 0) {
+    lines.push({
+      key: 'summary-tokens-new',
+      color: PALETTE.success,
+      text: ` ＋ ${tokens.new.length} design tokens will be created`,
+    });
+  }
+  if (tokens.changed.length > 0) {
+    lines.push({
+      key: 'summary-tokens-changed',
+      color: PALETTE.warning,
+      text: ` ～ ${tokens.changed.length} design tokens will be updated`,
+    });
+  }
+  if (tokens.removed.length > 0) {
+    lines.push({
+      key: 'summary-tokens-removed',
+      color: PALETTE.warning,
+      text: ` ⊘ ${tokens.removed.length} design tokens will be skipped`,
+    });
+  }
+  if (tokens.unchanged.length > 0) {
+    lines.push({
+      key: 'summary-tokens-unchanged',
+      color: 'gray',
+      text: ` · ${tokens.unchanged.length} design tokens unchanged`,
+    });
+  }
+
+  return lines;
+}
+
+function formatPreviewScrollIndicator(totalLines: number, offset: number, viewportHeight: number): string {
+  const maxScroll = Math.max(0, totalLines - viewportHeight);
+  const above = offset > 0 ? `↑ ${offset} above` : '';
+  const below = maxScroll > offset ? `↓ ${totalLines - offset - viewportHeight} below` : '';
+  const parts = [above, below].filter(Boolean);
+  return parts.length > 0 ? ` ${parts.join(' · ')}` : ' ';
+}
+
+function getPreviewScrollOffset(
+  input: string,
+  downArrow: boolean,
+  upArrow: boolean,
+  diffExpanded: boolean,
+  currentOffset: number,
+  viewportHeight: number,
+  maxScroll: number,
+): number | undefined {
+  if ((diffExpanded && (input === 'j' || downArrow)) || (!diffExpanded && downArrow)) {
+    return Math.min(currentOffset + 1, maxScroll);
+  }
+  if ((diffExpanded && (input === 'k' || upArrow)) || (!diffExpanded && upArrow)) {
+    return Math.max(currentOffset - 1, 0);
+  }
+  if (diffExpanded && input === 'f') {
+    return Math.min(currentOffset + viewportHeight, maxScroll);
+  }
+  if (diffExpanded && input === 'b') {
+    return Math.max(currentOffset - viewportHeight, 0);
+  }
+  if (!diffExpanded && input === 'f') {
+    return Math.min(currentOffset + viewportHeight, maxScroll);
+  }
+  if (!diffExpanded && input === 'b') {
+    return Math.max(currentOffset - viewportHeight, 0);
+  }
+  return undefined;
 }
 
 function appendChangedPreviewLine(
@@ -122,13 +245,8 @@ type WizardPreviewStepProps = {
   environmentId: string;
   stepNumber: number;
   totalSteps: number;
-  /** The value the preview was actually fetched with — not a hint. When
-   *  `false`, the server never returned removed entities, so there is
-   *  nothing to render item-by-item or toggle over. */
-  allowDeletions?: boolean;
-  onConfirm: (acknowledge: boolean, allowDeletions: boolean) => void;
+  onConfirm: (acknowledge: boolean) => void;
   onEdit?: () => void;
-  onSaveFiles?: () => void;
   onQuit: () => void;
 };
 
@@ -138,45 +256,33 @@ export function WizardPreviewStep({
   environmentId,
   stepNumber,
   totalSteps,
-  allowDeletions: fetchedAllowDeletions = false,
   onConfirm,
   onEdit,
-  onSaveFiles,
   onQuit,
 }: WizardPreviewStepProps): React.ReactElement {
   const breakingWithImpact = hasBreakingChangesWithImpact(preview);
   const [diffExpanded, setDiffExpanded] = useState(false);
   const [scrollOffset, setScrollOffset] = useState(0);
-  // Local state exists only to let the user opt OUT of a deletion the fetch
-  // already surfaced — it can never turn true when the fetch used false,
-  // because there's nothing in `preview` to reveal in that case.
-  const [allowDeletions, setAllowDeletions] = useState(fetchedAllowDeletions);
-  const { stdout } = useStdout();
-  const terminalRows = stdout?.rows ?? 40;
-  const viewportHeight = Math.max(terminalRows - 14, 10);
+  const { columns: terminalColumns, rows: terminalRows } = useTerminalSize();
+  const summaryLines = useMemo(() => buildPreviewSummaryLines(preview), [preview]);
+  const diffLines = useMemo(() => buildPreviewDiffLines(preview), [preview]);
+  const handlePreviewInput = usePreviewConfirmationInput(breakingWithImpact, onConfirm);
 
-  const allDiffLines = useMemo(() => {
-    if (!diffExpanded) return [];
-    return buildPreviewDiffLines(preview).map((line) => ({
-      key: line.key,
-      element: (
-        <Text color={line.color === 'gray' ? undefined : line.color} dimColor={line.color === 'gray'}>
-          {line.text}
-        </Text>
-      ),
-    }));
-  }, [diffExpanded, preview]);
+  const { components, tokens } = preview;
+  const hasComponents = components.new.length + components.changed.length + components.removed.length > 0;
+  const hasTokens = tokens.new.length + tokens.changed.length + tokens.removed.length > 0;
+  const hasAnything = hasComponents || hasTokens;
+  // WizardApp renders the one-line global TopBar above this step.
+  const panelHeight = terminalPanelHeight(terminalRows, 19 + (breakingWithImpact ? 2 : 0));
+  const panelContentHeight = Math.max(1, panelHeight - 4);
+  const viewportHeight = Math.max(1, panelContentHeight - 1);
+  const activeLines = diffExpanded ? diffLines : summaryLines;
+  const maxScroll = Math.max(0, activeLines.length - viewportHeight);
+  const boundedScrollOffset = Math.min(scrollOffset, maxScroll);
 
-  const maxScroll = Math.max(0, allDiffLines.length - viewportHeight);
-  const removedCount = preview.components.removed.length + preview.tokens.removed.length;
-  const handlePreviewInput = usePreviewConfirmationInput(
-    breakingWithImpact,
-    allowDeletions,
-    fetchedAllowDeletions,
-    removedCount,
-    onConfirm,
-    setAllowDeletions,
-  );
+  useEffect(() => {
+    setScrollOffset((previous) => Math.min(previous, maxScroll));
+  }, [maxScroll]);
 
   useImmediateInput((input, key) => {
     if (handlePreviewInput(input, key)) {
@@ -187,30 +293,32 @@ export function WizardPreviewStep({
       setScrollOffset(0);
       return;
     }
-    if (diffExpanded) {
-      if (input === 'j' || key.downArrow) {
-        setScrollOffset((prev) => Math.min(prev + 1, maxScroll));
-        return;
-      }
-      if (input === 'k' || key.upArrow) {
-        setScrollOffset((prev) => Math.max(prev - 1, 0));
-        return;
-      }
-      if (input === 'f') {
-        setScrollOffset((prev) => Math.min(prev + viewportHeight, maxScroll));
-        return;
-      }
-      if (input === 'b') {
-        setScrollOffset((prev) => Math.max(prev - viewportHeight, 0));
-        return;
-      }
+    const nextScrollOffset = getPreviewScrollOffset(
+      input,
+      key.downArrow,
+      key.upArrow,
+      diffExpanded,
+      scrollOffset,
+      viewportHeight,
+      maxScroll,
+    );
+    if (nextScrollOffset !== undefined) {
+      setScrollOffset(
+        (previous) =>
+          getPreviewScrollOffset(
+            input,
+            key.downArrow,
+            key.upArrow,
+            diffExpanded,
+            previous,
+            viewportHeight,
+            maxScroll,
+          ) ?? previous,
+      );
+      return;
     }
     if ((input === 'e' || input === 'E') && onEdit) {
       onEdit();
-      return;
-    }
-    if (input === 's' && onSaveFiles) {
-      onSaveFiles();
       return;
     }
     if (input === 'q' || key.escape) {
@@ -219,153 +327,37 @@ export function WizardPreviewStep({
     }
   });
 
-  const { components, tokens } = preview;
-  const hasComponents = components.new.length + components.changed.length + components.removed.length > 0;
-  const hasTokens = tokens.new.length + tokens.changed.length + tokens.removed.length > 0;
-  const hasAnything = hasComponents || hasTokens;
-
   return (
-    <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
+    <Box flexDirection="column" gap={1} paddingX={2} paddingY={2}>
       <StepHeader stepNumber={stepNumber} totalSteps={totalSteps} title="Push to Contentful" />
 
       {hasAnything ? (
         <>
           <Text>Here&apos;s what will happen in your space:</Text>
-
-          {hasComponents && (
-            <Box flexDirection="column" gap={0}>
-              <Box gap={1} marginTop={1}>
-                <Text bold dimColor>
-                  ComponentTypes
-                </Text>
-              </Box>
-              {components.new.length > 0 && (
-                <Box flexDirection="column">
-                  <Box gap={1}>
-                    <Text color={PALETTE.success}> ＋</Text>
-                    <Text>{components.new.length} will be created</Text>
-                  </Box>
-                  {(components.new as unknown as Array<Record<string, unknown>>).map((item, i) => {
-                    const name = (item.key as string) ?? (item.$name as string) ?? 'unknown';
-                    return (
-                      <Text key={`new-${i}`} color={PALETTE.success}>
-                        {' '}
-                        + {name}
-                      </Text>
-                    );
-                  })}
-                </Box>
-              )}
-              {components.changed.length > 0 && (
-                <Box flexDirection="column">
-                  <Box gap={1}>
-                    <Text color={PALETTE.warning}> ～</Text>
-                    <Text>{components.changed.length} will be updated</Text>
-                  </Box>
-                  {components.changed.map((item, i) => {
-                    const isBreaking = item.changeClassification?.classification === 'breaking';
-                    return (
-                      <Text key={`chg-${i}`} color={isBreaking ? PALETTE.error : PALETTE.warning}>
-                        {' '}
-                        {isBreaking ? '⚠' : '~'} {item.current.name}
-                      </Text>
-                    );
-                  })}
-                </Box>
-              )}
-              {components.removed.length > 0 && (
-                <Box flexDirection="column">
-                  <Box gap={1}>
-                    <Text color={allowDeletions ? PALETTE.error : PALETTE.warning}>{allowDeletions ? ' ✗' : ' ⊘'}</Text>
-                    <Text>
-                      {components.removed.length} will be {allowDeletions ? 'deleted' : 'skipped'}
-                    </Text>
-                  </Box>
-                  {components.removed.map((item, i) => (
-                    <Text
-                      key={`rm-${i}`}
-                      color={allowDeletions ? PALETTE.error : PALETTE.warning}
-                      dimColor={!allowDeletions}
-                    >
-                      {' '}
-                      {allowDeletions ? '✗' : '⊘'} {item.name}
-                    </Text>
-                  ))}
-                </Box>
-              )}
-              {components.unchanged.length > 0 && (
-                <Box gap={1}>
-                  <Text dimColor> ·</Text>
-                  <Text dimColor>{components.unchanged.length} unchanged</Text>
-                </Box>
-              )}
-            </Box>
-          )}
-
-          {hasTokens && (
-            <Box flexDirection="column" gap={0}>
-              <Box gap={1} marginTop={1}>
-                <Text bold dimColor>
-                  Design Tokens
-                </Text>
-              </Box>
-              {tokens.new.length > 0 && (
-                <Box gap={1}>
-                  <Text color={PALETTE.success}> ＋</Text>
-                  <Text>{tokens.new.length} will be created</Text>
-                </Box>
-              )}
-              {tokens.changed.length > 0 && (
-                <Box gap={1}>
-                  <Text color={PALETTE.warning}> ～</Text>
-                  <Text>{tokens.changed.length} will be updated</Text>
-                </Box>
-              )}
-              {tokens.removed.length > 0 && (
-                <Box gap={1}>
-                  <Text color={allowDeletions ? PALETTE.error : PALETTE.warning}>{allowDeletions ? ' ✗' : ' ⊘'}</Text>
-                  <Text>
-                    {tokens.removed.length} will be {allowDeletions ? 'deleted' : 'skipped'}
-                  </Text>
-                </Box>
-              )}
-              {tokens.unchanged.length > 0 && (
-                <Box gap={1}>
-                  <Text dimColor> ·</Text>
-                  <Text dimColor>{tokens.unchanged.length} unchanged</Text>
-                </Box>
-              )}
-            </Box>
-          )}
-
-          {diffExpanded && allDiffLines.length > 0 && (
-            <Box flexDirection="column" marginTop={1}>
-              <Text dimColor>{'─'.repeat(40)}</Text>
-              <Text dimColor>
-                {' '}
-                Diff ({allDiffLines.length} lines) — line {scrollOffset + 1}–
-                {Math.min(scrollOffset + viewportHeight, allDiffLines.length)} of {allDiffLines.length}
+          <WindowedPanel
+            width={Math.max(20, terminalColumns - 4)}
+            height={panelHeight}
+            title={diffExpanded ? `Diff (${diffLines.length} lines)` : 'Component types'}
+            focused={false}
+          >
+            {activeLines.slice(boundedScrollOffset, boundedScrollOffset + viewportHeight).map((line) => (
+              <Text
+                key={line.key}
+                color={line.color === 'gray' ? undefined : line.color}
+                dimColor={line.color === 'gray'}
+                wrap="truncate-end"
+              >
+                {line.text}
               </Text>
-              <Box flexDirection="column">
-                {allDiffLines.slice(scrollOffset, scrollOffset + viewportHeight).map((line) => (
-                  <Box key={line.key}>{line.element}</Box>
-                ))}
-              </Box>
-              {maxScroll > 0 && <Text dimColor> ↕ j/k to scroll, f/b to page</Text>}
-            </Box>
-          )}
+            ))}
+            <Text dimColor wrap="truncate-end">
+              {formatPreviewScrollIndicator(activeLines.length, boundedScrollOffset, viewportHeight)}
+            </Text>
+          </WindowedPanel>
         </>
       ) : (
         <Text dimColor>Nothing to push — everything is already up to date.</Text>
       )}
-
-      <Box gap={1} marginTop={1}>
-        <Text dimColor>Space:</Text>
-        <Text>{spaceId}</Text>
-        <Text dimColor>/</Text>
-        <Text dimColor>Environment:</Text>
-        <Text>{environmentId}</Text>
-      </Box>
 
       {breakingWithImpact && (
         <Box marginTop={1}>
@@ -375,26 +367,13 @@ export function WizardPreviewStep({
         </Box>
       )}
 
-      {allowDeletions && removedCount > 0 && (
-        <Box marginTop={1}>
-          <Text color={PALETTE.error} bold>
-            ⚠ {removedCount} missing {removedCount === 1 ? 'entity' : 'entities'} will be permanently deleted. Press
-            Enter to confirm.
-          </Text>
-        </Box>
-      )}
-
       <SpaceEnvironment spaceId={spaceId} environmentId={environmentId} />
 
       <Box gap={3} marginTop={1}>
         <Text dimColor>[Enter] Push to Contentful</Text>
         <Text dimColor>[d] {diffExpanded ? 'Hide' : 'Show'} diff</Text>
-        {diffExpanded && <Text dimColor>[j/k] Scroll [f/b] Page</Text>}
+        {diffExpanded && <Text dimColor>[↑↓] Scroll [f/b] Page</Text>}
         {onEdit && <Text dimColor>[e] Edit definitions</Text>}
-        {onSaveFiles && <Text dimColor>[s] Save files instead</Text>}
-        {fetchedAllowDeletions && removedCount > 0 && (
-          <Text dimColor>[x] {allowDeletions ? '[✓]' : '[ ]'} Allow deletions</Text>
-        )}
         <Text dimColor>[q] Cancel</Text>
       </Box>
     </Box>

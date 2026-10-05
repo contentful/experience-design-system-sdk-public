@@ -2,15 +2,16 @@
 
 ## Overview
 
-The Experience Design System SDK is an Nx monorepo that ships five packages:
+The Experience Design System SDK is an Nx monorepo that ships six packages:
 
-| Package | Purpose |
-|---|---|
-| `@contentful/experience-design-system-cli` | CLI + TUI for extracting, reviewing, generating, validating, and pushing design system component definitions |
-| `@contentful/experience-design-system-extraction` | Component extraction engine (ts-morph, per-framework parsers); a runtime dependency of the CLI |
-| `@contentful/experience-design-system-generation` | Agent-invocation and skill-prompt engine; a runtime dependency of the CLI's `generate` command |
-| `@contentful/experience-design-system-client` | Generated API client for the Experience Design System Integrations API (from `openapi.json`); a runtime dependency of the CLI's `apply` command |
-| `@contentful/experience-design-system-types` | Shared TypeScript types, Zod schemas, and validation logic for CDF and DTCG formats |
+| Package                                           | Purpose                                                                                                                                         |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@contentful/experience-design-system-cli`        | CLI + TUI for extracting, reviewing, generating, validating, and pushing design system component definitions                                    |
+| `@contentful/experience-design-system-cli-v2`     | Newer Ink TUI, launched with `experiences importv2`; v1 depends on it                                                                           |
+| `@contentful/experience-design-system-extraction` | Component extraction engine (ts-morph, per-framework parsers); a runtime dependency of the CLI                                                  |
+| `@contentful/experience-design-system-generation` | Agent-invocation and skill-prompt engine used internally by the import wizard                                                                   |
+| `@contentful/experience-design-system-client`     | Generated API client for the Experience Design System Integrations API (from `openapi.json`); a runtime dependency of the CLI's `apply` command |
+| `@contentful/experience-design-system-types`      | Shared TypeScript types, Zod schemas, and validation logic for CDF and DTCG formats                                                             |
 
 The CLI is the developer-facing ingestion tool in the design system import pipeline. A developer runs it against their component library to produce curated, validated artifacts, then pushes them directly into Contentful Experience Orchestration (ExO) from their terminal.
 
@@ -25,34 +26,23 @@ Design system codebase
         ▼
   experience-design-system-cli  (binaries: experiences | exo | experience-design-system-cli)
     ├── import (wizard)         → interactive TUI; drives the full pipeline + scope-gate + final-review + save/push
-    ├── import (headless)       → orchestrator that shells out to the subcommands below
-    ├── runs                    → list/detail/replay prior wizard runs from ~/.config/experiences/runs.json
-    │                              (positional <id-or-path>, --json, --pushed, --not-pushed)
-    ├── generate tokens (optional) → session DB (DTCG artifact via coding agent; before component generation)
-    ├── analyze extract         → session DB (raw components)
-    ├── analyze select          → session DB (accepted/rejected decisions, standalone JsonEditor TUI)
-    ├── analyze select-agent    → session DB (agentic accept/reject + per-component rationale)
-    ├── generate components     → session DB (CDF artifact via coding agent; can consume tokens.json)
-    ├── map tokens (standalone)  → deterministic default paths, then optional agentic $token.allowed inference
-    ├── print validate          → validates CDF / DTCG files, exits 0/1
-    ├── print components|tokens → write artifacts from the session DB
-    ├── apply preview           → manifest preview (no writes)
-    ├── apply select            → select manifest entries, then preview/apply
-    ├── apply push              → manifest preview, apply operation, and operation polling
-    ├── session list|show|...   → lower-level pipeline-session management
+    ├── apply <file>            → manifest preview, apply operation, and operation polling
     ├── setup                   → interactive prereq + credentials wizard
-    └── doctor                  → prereq health check
+    ├── doctor                  → prereq health check
+    ├── build                   → rebuild a local checkout and re-link the binaries
+    ├── importv2                → launches the v2 TUI (experience-design-system-cli-v2)
+    └── hidden: __extract, __generate, map tokens, print → subprocesses the wizard spawns
                               │
                               ▼
                       Contentful ExO
                 (component types + design tokens)
 ```
 
-Component-analysis data between pipeline steps flows through a local SQLite session database (`~/.contentful/experience-design-system-cli/pipeline.db`). Optional token preparation writes the explicit `tokens.json` sidecar for component generation or apply. The standalone `map tokens` command enriches its session before `print components` / `print tokens` write artifacts on demand; `experiences import` does not invoke it. The `apply` subcommands read those files (or read directly from the session DB via `--session`) and build a manifest for the sources API.
+Component-analysis data between pipeline steps flows through a local SQLite session database (`~/.contentful/experience-design-system-cli/pipeline.db`). The wizard runs token mapping after generation when a token file was supplied. `experiences apply <file>` reads one CDF file containing both component and design-token definitions and builds the request for the sources API.
 
-A separate JSON file at `~/.config/experiences/runs.json` records each successful wizard session (id, project path, save path, push target, component count) so it can be replayed with `experiences import --push-from-run` or `experiences import --modify`.
+A separate JSON file at `~/.config/experiences/runs.json` records each successful wizard session (id, project path, save path, push target, component count). No command lists these records.
 
-When a raw token source is supplied, the wizard runs `generate tokens` and writes `tokens.json` before it extracts and generates components; `generate components --tokens tokens.json` consumes that file. For standalone `map tokens`, the generated CDF and DTCG artifacts must be present in the same pipeline session before mapping.
+When a token file is supplied (`--tokens` or the token-input step), the wizard performs token generation internally before it extracts and generates components. Token mapping needs the generated CDF and DTCG data in the same pipeline session.
 
 ---
 
@@ -61,22 +51,35 @@ When a raw token source is supplied, the wizard runs `generate tokens` and write
 ### `experience-design-system-cli`
 
 **Key dependencies:**
+
 - `typescript` — runtime dependency; the CLI compiles customer source files at analysis time.
 - `ts-morph` — TypeScript compiler API wrapper; all static analysis goes through this
 - `ink` — React for the terminal; all TUI components are standard React functional components
 - `commander` — CLI argument parsing and help text
 - `node:sqlite` (`DatabaseSync`) — built-in Node.js synchronous SQLite for pipeline session state
 - `@contentful/experience-design-system-extraction` — component extraction engine
-- `@contentful/experience-design-system-generation` — agent-invocation and skill-prompt engine used by `generate`
+- `@contentful/experience-design-system-generation` — agent-invocation and skill-prompt engine used by the import wizard
 - `@contentful/experience-design-system-client` — generated API client used by `apply`
+
+### `experience-design-system-cli-v2`
+
+The newer Ink TUI, launched with `experiences importv2` (and its own `experiences-v2` bin). Each menu item (Import, Settings, Upgrade, Help) is an independent flow under `src/tui/`. The Import flow currently spawns `experiences import` from v1 (`src/tui/import/spawn-v1-import.ts`) instead of reimplementing the wizard. v1 depends on v2 (`workspace:*`); v2 must never import v1 code.
+
+**See `packages/experience-design-system-cli-v2/DSI_TUI_ARCHITECTURE.md` for v2-specific architecture and component guidelines.**
+
+**Key dependencies:**
+
+- `ink` 5 and `react` 18 — React renderer for terminals, shared with v1
+- `commander` — argument parsing
+- `semver` — version checks for the Upgrade flow
 
 ### `experience-design-system-extraction`
 
-Component extraction engine: per-framework parsers (React, Vue, Astro, Stencil, Web Components) built on ts-morph, plus prop pre-classification. Consumed by the CLI's `analyze extract` command.
+Component extraction engine: per-framework parsers (React, Vue, Astro, Stencil, Web Components) built on ts-morph, plus prop pre-classification. Consumed by the CLI's internal `__extract` command.
 
 ### `experience-design-system-generation`
 
-Agent-invocation (`agent-invoker.ts`, `agent-runner.ts`), skill-prompt building (`prompt-builder.ts`), and progress reporting for coding-agent subprocesses. Consumed by the CLI's `generate components` and `generate tokens` commands — this is where the sentinel-marker-vs-tool-call-line output protocol described under "The Generate Command" below actually lives now.
+Agent-invocation (`agent-invoker.ts`, `agent-runner.ts`), skill-prompt building (`prompt-builder.ts`), and progress reporting for coding-agent subprocesses. Consumed by the import wizard's internal generation step.
 
 ### `experience-design-system-client`
 
@@ -92,31 +95,31 @@ CDF and DTCG type definitions, JSON schemas, and validation utilities. Published
 
 ### RawComponentDefinition (extraction output)
 
-Produced by `analyze extract`, stored in the pipeline session database, consumed by `analyze edit` and `generate components`:
+Produced by extraction, stored in the pipeline session database, consumed by the wizard's scope-gate and internal generation:
 
 ```typescript
 interface RawComponentDefinition {
-  name: string;                           // PascalCase component name
-  source: string;                         // absolute path to source file
-  framework: 'react' | 'next' | 'vue' | 'astro' | 'web-component' | 'stencil';
+  name: string; // PascalCase component name
+  source: string; // absolute path to source file
+  framework: "react" | "next" | "vue" | "astro" | "web-component" | "stencil";
   props: RawPropDefinition[];
   slots: RawSlotDefinition[];
 }
 
 interface RawPropDefinition {
   name: string;
-  type: string;                           // TypeScript type string
+  type: string; // TypeScript type string
   required: boolean;
-  category?: 'content' | 'design' | 'state';
+  category?: "content" | "design" | "state";
   defaultValue?: string;
-  allowedValues?: string[];               // for enum / union types
+  allowedValues?: string[]; // for enum / union types
   description?: string;
-  tokenReference?: string;                // e.g. "color.brand.primary"
+  tokenReference?: string; // e.g. "color.brand.primary"
 }
 
 interface RawSlotDefinition {
   name: string;
-  isDefault: boolean;                     // true = children slot
+  isDefault: boolean; // true = children slot
   description?: string;
   allowedComponents?: string[];
 }
@@ -124,7 +127,7 @@ interface RawSlotDefinition {
 
 ### CDF (Component Definition Format)
 
-The finalized format for Contentful ExO import. Produced by `generate components`, consumed by `apply preview/select/push`:
+The finalized format for Contentful ExO import. Produced by the import wizard's internal generation step, consumed by `apply`:
 
 ```typescript
 interface CDFFile {
@@ -133,21 +136,21 @@ interface CDFFile {
 }
 
 interface CDFComponentEntry {
-  $type: 'component';
+  $type: "component";
   $description?: string;
   $properties: Record<string, CDFPropertyDefinition>;
   $slots?: Record<string, CDFSlotDefinition>;
 }
 
 interface CDFPropertyDefinition {
-  $type: CDFPropertyType;   // 'string' | 'richtext' | 'number' | 'media' | 'link' | 'enum' | 'token' | 'boolean'
-  $category: CDFPropertyCategory;  // 'content' | 'design' | 'state'
+  $type: CDFPropertyType; // 'string' | 'richtext' | 'number' | 'media' | 'link' | 'enum' | 'token' | 'boolean'
+  $category: CDFPropertyCategory; // 'content' | 'design' | 'state'
   $description?: string;
   $required?: boolean;
   $default?: unknown;
   $values?: string[];
-  '$token.kind'?: string;
-  '$token.allowed'?: string[];             // restricted DTCG paths; omitted for unrestricted token props
+  "$token.kind"?: string;
+  "$token.allowed"?: string[]; // restricted DTCG paths; omitted for unrestricted token props
 }
 ```
 
@@ -155,7 +158,7 @@ For design-category token properties, extraction stores the raw default in `raw_
 
 ### DTCG (W3C Design Token Format)
 
-Design token files following the W3C DTCG spec. Produced by `generate tokens`, consumed by `apply preview/select/push`:
+Design token files following the W3C DTCG spec. Produced by the import wizard's internal generation step, consumed by `apply`:
 
 ```typescript
 interface DTCGTokenLeaf {
@@ -178,7 +181,7 @@ All commands share a single SQLite database at `~/.contentful/experience-design-
 
 `DatabaseSync` (Node.js built-in) is used throughout. Synchronous writes are safe from SIGINT and uncaught exceptions without async ceremony — the database is always consistent at the moment of a signal.
 
-Sessions are created by `analyze extract` and auto-resolved by downstream commands: if `--session` is omitted, each command picks up the most recent completed `analyze extract` session.
+Sessions are created by extraction and passed to the wizard's internal subprocesses as `--session <id>`.
 
 ### pipeline.db — Entity Relationship Diagram
 
@@ -288,7 +291,7 @@ erDiagram
     raw_slots ||--o{ raw_slot_allowed_components : "has"
 ```
 
-`raw_components.status` progresses from `'extracted'` (written by `analyze extract`) to `'generated'` (updated by `generate components` after AI processing). The `cdf_*` columns on `raw_props` and the `description` column on `raw_components` are null until `generate components` runs.
+`raw_components.status` progresses from `'extracted'` (written by extraction) to `'generated'` (updated by the import wizard's internal generation stage after AI processing). The `cdf_*` columns on `raw_props` and the `description` column on `raw_components` are null until internal generation runs.
 
 `raw_prop_token_paths` is the ordered session sidecar for token-property path lists used for `$token.allowed`. Its `source` is `agent` or `review`; review decisions take precedence over later agent suggestions. The separate `raw_token_name_paths` sidecar stores automatic or manual mappings from an extracted source reference to a canonical DTCG path. These sidecars preserve raw extraction while supporting the CDF projection described above.
 
@@ -297,42 +300,38 @@ erDiagram
 ```mermaid
 sequenceDiagram
     actor Dev as Developer
-    participant GT as generate tokens<br/>(optional)
-    participant AE as analyze extract
+    participant W as import wizard
+    participant GT as internal token generation<br/>(optional)
+    participant AE as __extract
     participant DB as pipeline.db
-    participant AnEdit as analyze edit
-    participant GC as generate components
+    participant Sel as selection agent
+    participant GC as internal component generation
     participant Agent as Coding agent<br/>(subprocess)
     participant MT as map tokens
-    participant Print as print components|tokens
-    participant Val as print validate
-    participant AP as apply preview/push
     participant CMS as Contentful ExO
 
-    opt raw token source supplied
-        Dev->>GT: experiences generate tokens --raw-tokens <path>
+    Dev->>W: experiences import [--project ./src] [--tokens <path>]
+    opt token file supplied
+        W->>GT: classify tokens
         GT->>DB: Store DTCG token groups and leaves
-        GT-->>Dev: stdout: session=<id>
-        Dev->>Print: experiences print tokens --session <id>
-        Print->>DB: Read generated DTCG data
-        Print-->>Dev: Write tokens.json
     end
 
-    Dev->>AE: experiences analyze extract --project ./src
-    AE->>DB: INSERT sessions (id, ...)
-    AE->>DB: INSERT steps (command='analyze extract', status='pending')
+    W->>AE: extract components
+    AE->>DB: INSERT sessions, steps
     AE->>AE: Walk source files, run extractors
     AE->>DB: INSERT raw_components, raw_props, raw_slots
-    AE->>DB: UPDATE steps SET status='complete'
-    AE-->>Dev: stdout: session=<id>
+    AE-->>W: session=<id>
 
-    Dev->>AnEdit: experiences analyze edit [--session <id>]
-    AnEdit->>DB: SELECT raw_components WHERE session_id=?
-    AnEdit-->>Dev: Launch TUI (accept / reject / edit props)
-    Dev-->>AnEdit: Finalize decisions
-    AnEdit->>DB: UPDATE raw_components SET status='accepted'/'rejected'
+    W->>Sel: one agent call per component
+    Sel->>Agent: spawn subprocess
+    Agent-->>Sel: select_component / reject_component
+    Sel->>DB: Store decisions and rationale
 
-    Dev->>GC: experiences generate components --agent claude [--tokens tokens.json] [--session <id>]
+    W-->>Dev: scope-gate (confirm or change the selection)
+    Dev-->>W: accepted components
+    W->>DB: UPDATE raw_components SET status='accepted'/'rejected'
+
+    W->>GC: generate accepted components
     GC->>DB: SELECT raw_components WHERE status='accepted'
     GC->>GC: Build prompt (inline JSON)
     GC->>Agent: spawn subprocess (stdin closed)
@@ -340,74 +339,34 @@ sequenceDiagram
     GC->>GC: validateCDF(output)
     GC->>DB: UPDATE raw_components SET status='generated', description=?
     GC->>DB: UPDATE raw_props SET cdf_type=?, cdf_category=?
-    GC->>DB: Store generated CDF data and raw defaults
-    GC-->>Dev: generation complete
 
-    opt CDF and DTCG data are in the same session
-        Dev->>MT: experiences map tokens [--skip-agent] --session <id>
+    opt token file supplied
+        W->>MT: map tokens
         MT->>DB: Resolve deterministic defaults into raw_token_name_paths
-        opt agent enabled
-            MT->>Agent: infer compatible $token.allowed paths
-            Agent-->>MT: map_token_prop tool calls
-            MT->>DB: Store agent suggestions in raw_prop_token_paths
-        end
+        MT->>Agent: infer compatible $token.allowed paths
+        MT->>DB: Store agent suggestions in raw_prop_token_paths
     end
 
-    Dev->>Print: experiences print components|tokens --session <id>
-    Print->>DB: Project resolved CDF defaults and allowed paths
-    Print-->>Dev: Write components.json / tokens.json
+    W-->>Dev: final-review (edit definitions)
+    Dev-->>W: finalize
+    W->>W: Save components.json (CDF, components and tokens)
 
-    Dev->>Val: experiences print validate --components components.json
-    Val-->>Dev: Exit 0 (valid) or exit 1 + errors
-
-    Dev->>AP: experiences apply push --components components.json --space-id ... --yes
-    AP->>AP: Build ManifestPayload with componentsManifest and tokensManifest
-    AP->>CMS: POST manifest preview
-    AP-->>Dev: Preview summary and confirmation (skipped with --yes)
-    AP->>CMS: POST manifest apply
-    CMS-->>AP: Apply operation
-    AP->>CMS: Poll operation
-    AP-->>Dev: Operation summary
-```
-
-### Autonomous import — Sequence Diagram
-
-The `import` command orchestrates the full pipeline in a single invocation, shelling out to the individual CLI commands:
-
-```mermaid
-sequenceDiagram
-    actor Dev as Developer
-    participant Orch as import orchestrator
-    participant AE as analyze extract<br/>(subprocess)
-    participant AnEdit as analyze edit<br/>(subprocess)
-    participant GC as generate components<br/>(subprocess)
-    participant AP as apply push<br/>(subprocess)
-
-    Dev->>Orch: experiences import --project ./src --agent claude --space-id ...
-
-    Orch->>AE: execFile experiences analyze extract --project ./src
-    AE-->>Orch: stdout: session=<id>
-    Orch->>Orch: Parse session=<id> from stdout
-
-    alt edit flags present (--accept-all / --reject / --patch)
-        Orch->>AnEdit: execFile experiences analyze edit --session <id> [flags]
-        AnEdit-->>Orch: exit 0
+    opt credentials provided
+        W->>CMS: POST manifest preview
+        W-->>Dev: preview-gate (diff and confirmation)
+        W->>CMS: POST manifest apply
+        W->>CMS: Poll operation
+        W-->>Dev: done (view URL)
     end
-
-    Orch->>GC: execFile experiences generate components --agent claude --session <id> --out .contentful/
-    GC-->>Orch: exit 0
-
-    Orch->>AP: execFile experiences apply push --components .contentful/components.json --yes ...
-    AP-->>Orch: exit 0
-
-    Orch-->>Dev: Pipeline complete
 ```
+
+`experiences apply <file>` is the non-wizard route to the same preview and apply steps: it reads one CDF file, builds the manifest, previews it, submits it and polls the operation.
 
 ---
 
 ## React Extractor Architecture
 
-The React extractor (`analyze/extract/react.ts`) is the most complex component (~2500 lines). It uses ts-morph to walk the TypeScript AST of each `.tsx`/`.jsx` file.
+The React extractor (`packages/experience-design-system-extraction/src/extract/react.ts`) is the most complex component (~2500 lines). It uses ts-morph to walk the TypeScript AST of each `.tsx`/`.jsx` file.
 
 ### Extraction pipeline per file
 
@@ -445,124 +404,88 @@ React components commonly extend `HTMLAttributes<T>`, `ButtonHTMLAttributes<T>`,
 
 ### Deduplication
 
-`pipeline.ts` runs all extractors in parallel, then deduplicates. When the same logical component is found by multiple extractors (e.g., a Vue component also has a `.tsx` wrapper), it picks the preferred source using path heuristics:
+`pipeline.ts` (in the same directory) runs all extractors in parallel, then deduplicates. When the same logical component is found by multiple extractors (e.g., a Vue component also has a `.tsx` wrapper), it picks the preferred source using path heuristics:
+
 1. Index files (`Button/index.tsx`) preferred over named files
 2. Shorter paths preferred
 3. Canonical `src/components/X/` structure preferred
 
 ---
 
-## The Generate Command
+## Internal Generation
 
-`generate components` and `generate tokens` build a prompt by combining a skill file (markdown instructions) with a runtime preamble:
+The import wizard's component and token generation stages build prompts by combining a skill file (markdown instructions) with a runtime preamble:
 
-- **Skill file** — `skills/generate-components.md` or `skills/generate-tokens.md`; shipped with the package and located at runtime by walking up from the compiled output
+- **Skill file** — `skills/generate-components.md`, `skills/generate-tokens.md`, `skills/select-components.md` or `skills/map-tokens.md` in the generation package; shipped with the package and located at runtime by walking up from the compiled output
 - **Runtime preamble** — sets mode (autonomous/interactive), embeds raw component data inline as JSON, lists optional file paths, and instructs the agent on the output protocol
 
 **Output protocol:** the agent emits one JSON tool-call object per line to stdout (no sentinel markers). `parseToolCallLines()` in `agent-runner.ts` handles line-by-line parsing. (An earlier sentinel-block protocol, `extractSentinelOutput()`, still exists in the codebase but is dead code — nothing in the live pipeline calls it.)
 
-**Raw components are passed inline, not as a file path.** The session database is read before the prompt is built, and the JSON array is embedded directly in the prompt text. This removes any file system coupling between `analyze extract` and `generate components`.
+**Raw components are passed inline, not as a file path.** The session database is read before the prompt is built, and the JSON array is embedded directly in the prompt text. This removes any file system coupling between extraction and internal generation.
 
-Do not use agent SDKs or APIs — the generate command invokes agents as subprocesses only. This is a firm constraint.
+Do not use agent SDKs or APIs — the import wizard invokes agents as subprocesses only. This is a firm constraint.
 
 ---
 
 ## The Apply Command
 
-`apply` has three subcommands that use the sources API manifest contract:
+`apply` is the only command that uses the sources API manifest contract. It builds a complete manifest, previews it, optionally confirms, submits the apply operation, and polls it to completion.
 
-- `apply preview` — validates the target and submits a `ManifestPayload` for a read-only server preview
-- `apply select` — previews the full manifest, interactively selects component keys and token paths, then applies the filtered selection
-- `apply push` — builds a complete manifest, previews it, optionally confirms, submits the apply operation, and polls it to completion
-
-`src/apply/command.ts` owns input resolution, slot-cycle checks, selection, and the preview/apply orchestration. It calls `buildManifest` and `buildFilteredManifest` from `experience-design-system-types` to construct `componentsManifest` from CDF component entries and `tokensManifest` from DTCG token entries. `src/apply/manifest.ts` only re-exports apply input helpers. `src/apply/api-client.ts` uses the generated client for token validation, manifest preview, manifest apply, and operation polling; `preview-utils.ts` and `tui/` provide response helpers and views.
+`src/apply/command.ts` owns input resolution, slot-cycle checks, selection, and the preview/apply orchestration. It calls `buildManifest` and `buildFilteredManifest` from `experience-design-system-types` to construct `componentsManifest` from CDF component entries and `tokensManifest` from DTCG token entries. `src/apply/api-client.ts` uses the generated client for token validation, manifest preview, manifest apply, and operation polling; `preview-utils.ts` and `tui/` provide response helpers and views.
 
 ---
 
-## The Import Command — Wizard and Orchestrator
+## The Import Command — Wizard
 
-`experiences import` has two modes:
-
-### Interactive wizard (TTY default)
+`experiences import` requires an interactive terminal and has no headless mode. Its options are `--project`, `--tokens`, `--agent`, `--prompt <stage=value>` and `--no-cache`; `--model`, `--composition-map`, `--skip-map-tokens` and `--raw-tokens` were removed.
 
 `src/import/tui/WizardApp.tsx` renders a full-screen Ink TUI driven by an explicit step machine:
 
 ```
-welcome → extracting → [auto-filter (select-agent)] → scope-gate
-        → credentials (generate runs in parallel) → final-review
-        → preview → push-decision-gate → pushing → done
+welcome → token-input → path-validation → credentials → extracting (selection agent runs here)
+        → scope-gate → generating → final-review → path-prompt
+        → previewing → preview-gate → pushing → done
 ```
 
-A single human review gate (`scope-gate`) replaces the older two-step extract + generate-edit gates. The final-review step is a minimum-viable port of the standalone `JsonEditor` with lifted rationale + source panels, inline `$default` and `$allowedComponents` editing, and live preview re-runs after each save (`--no-live-preview` to disable). Generate runs in parallel with the credentials step (`spawn-generate.ts`) so the operator does not wait on the agent. The push-decision-gate defaults to save AND push; `--no-save` and `--no-push` carve out the alternatives. `--out-dir <path>` short-circuits the save-path prompt.
+`--project` starts at `token-input`; `--tokens` starts at `path-validation` (with `--project`) or `credentials` (without it). Choosing skip on `credentials` saves files only: the preview is bypassed and push is refused.
 
-The wizard's AI auto-filter (auto-invocation of `analyze select-agent` before scope-gate) is configurable per run via `--auto-filter` / `--no-auto-filter` and persisted to `~/.config/experiences/credentials.json`.
+A single human review gate (`scope-gate`) precedes generation. The final-review step edits names, `$description`, `$default`, `$allowedComponents` and `$values` inline with rationale and source panels, and re-runs the live preview after each save. After final-review the wizard always saves one combined `components.json` CDF, then previews and pushes it unless credentials were skipped.
 
-### Headless orchestrator
+`--no-cache` bypasses the extract, selection and generation caches and is forwarded to the internal stages.
 
-`src/import/orchestrator.ts` is the non-interactive sibling. It shells out to the individual CLI subcommands in sequence via `child_process.execFile`:
+### Run records
 
-1. `analyze extract --project <path>` → captures `session=<id>` from stdout
-2. Optionally `analyze select --session <id>` (with `--select-all`, `--select`, `--deselect`, or `--reject`) — or `analyze select-agent` by default
-3. `generate components --agent <name> --session <id>`
-4. `map tokens --session <id> --agent <name>` — suggests `$token.allowed` for generated design-token props; skippable via `--skip-map-tokens`
-5. `apply push --components <components.json> --space-id ... --environment-id ... --yes`
+After every successful wizard session, the CLI appends a record to `~/.config/experiences/runs.json`.
 
-Headless mode is entered when any of `--auto-accept-scope`, `--skip-analyze`, `--skip-generate`, `--skip-apply`, `--yes`, `--dry-run`, or a credential flag is set. In non-TTY without one of those flags, the command exits 1 with a fail-loud message.
+### Agent and model
 
-`--skip-analyze` and `--skip-generate` reuse the most recent session for the respective step. `--no-cache` bypasses extract/select/generate fine-grained caches and is forwarded to `analyze select-agent`, `generate components`, and `map tokens`.
+`--agent <name>` accepts `claude`, `codex`, `opencode`, `cursor` or `copilot`, optionally with a model (`--agent claude:sonnet`). Resolution order is flag → `credentials.json` → built-in default; `EDS_AGENT_MODEL_<AGENT>` sets a per-agent model.
 
-### Replay
+### Selection rationale
 
-After every successful wizard session, the CLI appends a record to `~/.config/experiences/runs.json`. The replay helpers in `src/runs/replay-helpers.ts` power two `import` flags:
-
-- `--push-from-run <id-or-path>` — re-push the recorded session without re-opening the wizard. Never writes to disk. Mutually exclusive with `--modify`, `--project`, `--no-save`, `--no-push`.
-- `--modify <id-or-path>` — fully wired re-open: loads the recorded session from `pipeline.db` (skipping extract and generate), pre-fills credentials from the run record's `pushedTo` target, and lands directly on `final-review` (or `scope-gate` if the run record sets `entryStep`). Pair with `--overwrite` (save back to recorded `savePath`) or `--save-as-new` (prompt for new path).
-
-`experiences runs` (alias `ls`) lists the contents of `runs.json` for use with either flag. A positional `<id-or-path>` argument switches it into single-run detail mode; `--json`, `--pushed`, and `--not-pushed` filter the output. Table columns auto-expand to fit long project / save paths; a copy-friendly footer prints command hints for the newest run.
-
-### Run-picker
-
-When `runs.json` is non-empty, stdin is a TTY, and none of `--push-from-run`, `--modify`, or `--project` was passed, the wizard mounts an interactive **run-picker** (`src/runs/tui/RunPicker.tsx`) before the `welcome` step. The picker lets the operator push or modify a recent run, expand to "show all", or start a new run; selecting an existing run routes through the `--push-from-run` or `--modify` code path. Mount-decision logic lives in `src/runs/run-picker-mount.ts`.
-
-### Headless save-conflict resolution
-
-`--on-conflict <overwrite|skip|fail>` bypasses the wizard's interactive `<SaveConflictGate>` when a file already exists at the save path — required for non-TTY runs that still write `components.json` to disk. Mutex with `--no-save`.
-
-### Prompt-print and model / agent overrides
-
-- `--print-prompt` prints the generate prompt to stdout and exits. It supersedes the prompt-print semantics of `--dry-run`, which is now deprecated and emits a stderr deprecation notice.
-- `--model <name>` overrides the stored model; resolution order is flag → `credentials.json` → built-in default.
-- `--agent <name>` is a functional wizard override (earlier releases plumbed it but the commander default shadowed it).
-
-### Read-only rationale view
-
-`experiences analyze select-agent --show-rationale [--json] [--session <id>]` reads `raw_components.reject_reason` from `pipeline.db` and prints the recorded accept / reject rationale for every component in the session. No LLM call, no schema change — it is purely a session-DB reader, safe to run against any completed session.
+The selection agent's accept and reject rationale is stored in `raw_components.reject_reason` in `pipeline.db` and shown in the scope-gate and final-review panels.
 
 ---
 
 ## TUI Architecture
 
-All commands have two output modes:
+The wizard and `apply` render Ink (React) component trees in a TTY. `experiences import` has no non-interactive mode.
 
-| Mode | Trigger | Implementation |
-|---|---|---|
-| Non-interactive | `!process.stdout.isTTY` | Plain text to stdout/stderr |
-| Interactive TUI | TTY detected | Ink (React) component tree |
-
-| Command | TUI components |
-|---|---|
-| `analyze extract` | `AnalyzeView` |
-| `analyze select` (alias `analyze edit`) | Standalone JsonEditor: `App`, `Sidebar`, `ComponentDetail`, `JsonEditor`, `SourcePanel`, dialogs (untouched by wizard rebuild; pinned by snapshot test) |
-| `generate components/tokens` | `GenerateView` |
-| `print validate` | `ValidateView` |
-| `apply preview` | `SummaryView` + `EntityDiffView` |
-| `apply select` | `SelectView` (checkbox picker) + `ApplyView` (progress + result) |
-| `apply push` | `ApplyView` (confirmation + progress + result), `SummaryView`, `EntityDiffView` |
-| `import` (wizard) | `WizardApp` + step components in `src/import/tui/steps/` (`WelcomeStep`, `CredentialsStep`, `ScopeGateStep`, `GenerateReviewStep`, `WizardPreviewStep`, `PushDecisionGateStep`, `PushingStep`, `DoneStep`, `ErrorStep`, `PreviewValidationErrorStep`), plus hosts (`scope-gate-host`, `final-review-host`) |
+| Command           | TUI components                                                                                                                                                                                                                                                                                   |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `apply`           | `ServerPreviewView`, `ServerApplyView`                                                                                                                                                                                                                                                           |
+| `import` (wizard) | `WizardApp` + step components in `src/import/tui/steps/` (`WelcomeStep`, `TokenInputStep`, `PathValidationStep`, `CredentialsStep`, `ScopeGateStep`, `GenerateReviewStep`, `WizardPreviewStep`, `PreviewValidationErrorStep`, `PushingStep`, `DoneStep`, `ErrorStep`, `GateStep`, `RunningStep`) |
 
 The TUI uses React hooks for state (`useState`, `useReducer`), Ink's `useInput` for keyboard, and a custom `useUndo` hook for the JSON editor.
 
-Terminal width thresholds:
-- 60 columns — minimum for the wizard and `analyze select` TUI
-- 80 columns — sidebar + detail view
-- 120 columns — source panel in `analyze select`
+The scope-gate step shows two columns at 100 or more terminal columns and one column below that. `NO_COLOR=1` suppresses ANSI color.
+
+---
+
+## V2 TUI Resources
+
+Design patterns and detailed guidelines for building v2 TUI screens are documented in:
+
+- **`packages/experience-design-system-cli-v2/DSI_TUI_ARCHITECTURE.md`** — v2 architecture and screen guidelines
+- **`packages/experience-design-system-cli-v2/.claude/skills/ink-api/SKILL.md`** — Ink core API (Box, Text, colors, hooks)
+- **`packages/experience-design-system-cli-v2/.claude/skills/ink-ui/SKILL.md`** — Ink UI component reference

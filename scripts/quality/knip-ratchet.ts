@@ -20,8 +20,6 @@ const SCOPE_OPTIONS: Record<Scope, string[]> = {
     'packages/*',
     '--workspace',
     '!packages/experience-design-system-cli-v2',
-    '--workspace',
-    'tools/*',
   ],
   'cli-v2': ['--workspace', 'packages/experience-design-system-cli-v2'],
 };

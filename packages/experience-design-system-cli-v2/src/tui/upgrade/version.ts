@@ -1,34 +1,13 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import semver from 'semver';
+import { findPackageRoot } from '../package-root.js';
 
 const PACKAGE_NAME = '@contentful/experience-design-system-cli-v2';
 const TAGS_URL = 'https://api.github.com/repos/contentful/experience-design-system-sdk-public/tags?per_page=10';
 
-// version.js is nested a few directories below the package root (e.g. dist/src/tui/upgrade/),
-// so this has to walk up until it finds the manifest, not just check the immediate parent.
-function findPackageRoot(): string | undefined {
-  let dir = dirname(fileURLToPath(import.meta.url));
-
-  while (true) {
-    const manifestPath = join(dir, 'package.json');
-    if (existsSync(manifestPath)) {
-      const pkg = JSON.parse(readFileSync(manifestPath, 'utf8')) as { name?: string; version?: string };
-      // Skip nested or unrelated manifests found on the way up.
-      if (pkg.name === PACKAGE_NAME && pkg.version) return dir;
-    }
-
-    const parent = dirname(dir);
-    if (parent === dir) return undefined;
-    dir = parent;
-  }
-}
-
 export function readPackageVersion(): string {
-  const root = findPackageRoot();
-  if (!root) return 'unknown';
-
+  const root = findPackageRoot(import.meta.url, PACKAGE_NAME);
   const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { version?: string };
   return pkg.version ?? 'unknown';
 }

@@ -7,30 +7,31 @@ const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const baseRef = process.env.GITHUB_BASE_REF || 'main';
 const baselineRef = `origin/${baseRef}`;
-type Scope = 'v1' | 'cli-v2';
+type Scope = 'v1';
 
 function parseScope(value: string | undefined): Scope {
-  if (value === 'v1' || value === 'cli-v2') return value;
-  throw new Error('Scope must be one of: v1, cli-v2');
+  if (value === 'v1') return value;
+  throw new Error('Scope must be: v1');
 }
 
-const COMMON_IGNORES = ['**/node_modules/**', '**/dist/**', '**/coverage/**', '**/.nx/**'];
+// cli-v2 is deliberately not scanned: its screens keep their logic separate even where two are identical.
+const IGNORES = [
+  '**/node_modules/**',
+  '**/dist/**',
+  '**/coverage/**',
+  '**/.nx/**',
+  '**/experience-design-system-cli-v2/**',
+];
 
-function scanArgs(scope: Scope): string[] {
-  const paths = scope === 'v1' ? ['packages', 'tools'] : ['packages/experience-design-system-cli-v2'];
-  const ignores =
-    scope === 'v1'
-      ? [...COMMON_IGNORES, '**/experience-design-system-cli-v2/**']
-      : COMMON_IGNORES;
-
+function scanArgs(): string[] {
   return [
-    ...paths,
+    'packages',
     '--pattern',
     '**/src/**/*.{ts,tsx,js,jsx,mjs,cjs}',
     '--format',
     'typescript,tsx,javascript',
     '--ignore',
-    ignores.join(','),
+    IGNORES.join(','),
     '--reporters',
     'console',
     '--no-colors',
@@ -65,7 +66,7 @@ async function main(scope: Scope, reportOnly: boolean): Promise<void> {
       'exec',
       'jscpd',
       ...(reportOnly ? [] : ['--baseline-from-ref', baselineRef, '--fail-on-new-clones=0']),
-      ...scanArgs(scope),
+      ...scanArgs(),
     ],
     { cwd: repoRoot, maxBuffer: 1024 * 1024 * 64 },
   );
@@ -84,7 +85,7 @@ try {
 } catch (error) {
   console.error(
     `${error instanceof Error ? error.message : String(error)}\n` +
-      'Usage: tsx scripts/quality/jscpd-ratchet.ts <check|report> <v1|cli-v2>',
+      'Usage: tsx scripts/quality/jscpd-ratchet.ts <check|report> v1',
   );
   process.exitCode = 1;
 }

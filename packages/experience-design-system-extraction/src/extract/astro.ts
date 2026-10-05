@@ -1,5 +1,5 @@
-import { basename } from 'node:path';
 import os from 'node:os';
+import { basename } from 'node:path';
 import { Project, Node } from 'ts-morph';
 import type {
   RawComponentDefinition,
@@ -262,8 +262,6 @@ function extractFromAstroFile(filePath: string, source: string): RawComponentDef
   };
 }
 
-const ASTRO_EXTRACT_CONCURRENCY = Number(process.env['EDS_EXTRACT_CONCURRENCY'] ?? 0) || os.cpus().length;
-
 export async function extractAstroComponents(
   filePaths: string[],
   onProgress?: (p: { filesProcessed: number; componentsFound: number }) => void,
@@ -271,7 +269,7 @@ export async function extractAstroComponents(
   const astroFiles = filePaths.filter((f) => f.endsWith('.astro'));
   const { items: components, warnings } = await runFileExtractionWorkers(
     astroFiles,
-    ASTRO_EXTRACT_CONCURRENCY,
+    os.cpus().length,
     async (filePath, source) => ({
       item: extractFromAstroFile(filePath, source),
     }),

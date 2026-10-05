@@ -1,4 +1,5 @@
 import React from 'react';
+import figures from 'figures';
 import { Box, Text } from 'ink';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 import {
@@ -12,6 +13,7 @@ import type { RenderStatus } from '../../../issue-inheritance.js';
 import { PreviewBadge, previewBadge } from './Sidebar.js';
 import { PALETTE } from '../theme.js';
 import type { PreviewAnnotation } from '../../types.js';
+import { WindowIndicator, WindowedPanel } from '../../../../tui/windowed-panel.js';
 
 export interface GroupedSidebarItem {
   key: string;
@@ -28,6 +30,9 @@ export interface GroupedSidebarProps {
   expandedGroups: Set<string>;
   onToggleExpanded: (rootName: string) => void;
   width: number;
+  height?: number;
+  title?: string;
+  wrapLabels?: boolean;
   focused: boolean;
   renderStatusByKey?: Map<string, RenderStatus>;
   previewAnnotationByKey?: Map<string, PreviewAnnotation>;
@@ -216,8 +221,17 @@ export function buildVisibleRows(props: {
     });
     if (!expanded) continue;
     const subtree = computeCycleMemberSubtree(key);
+    const isLastAtDepthSubtree = (idx: number): boolean => {
+      const own = subtree[idx].depth;
+      for (let j = idx + 1; j < subtree.length; j++) {
+        const d = subtree[j].depth;
+        if (d < own) return true;
+        if (d === own) return false;
+      }
+      return true;
+    };
     subtree.forEach((child, i) => {
-      const isLast = i === subtree.length - 1;
+      const isLast = isLastAtDepthSubtree(i);
       const glyph = isLast ? GLYPH_TREE_LAST : GLYPH_TREE_MID;
       let sharedSuffix = false;
       if (seenCycleTierChildOccurrence.has(child.name)) sharedSuffix = true;
@@ -342,8 +356,22 @@ export function buildVisibleRows(props: {
       emitCycleChildrenOf(c.name, c.depth);
     }
 
+    // A child is "last at its depth" when no later child in the flat list
+    // sits at a >= depth without an intermediate row that climbs back to a
+    // shallower depth. Equivalently: scan forward until we see any row with
+    // depth < child.depth (climbed up) — if between here and there we never
+    // hit another sibling at the same depth, this row is the last sibling.
+    const isLastAtDepth = (idx: number): boolean => {
+      const own = injectedChildren[idx].depth;
+      for (let j = idx + 1; j < injectedChildren.length; j++) {
+        const d = injectedChildren[j].depth;
+        if (d < own) return true;
+        if (d === own) return false;
+      }
+      return true;
+    };
     injectedChildren.forEach((child, i) => {
-      const isLast = i === injectedChildren.length - 1;
+      const isLast = isLastAtDepth(i);
       const glyph = isLast ? GLYPH_TREE_LAST : GLYPH_TREE_MID;
       let sharedSuffix = false;
       if (child.isCycleChild) {
@@ -512,6 +540,8 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
     expandedGroups,
     focused,
     width,
+    title,
+    wrapLabels = false,
     selectedIdx,
     selectedRowIdx,
     renderStatusByKey,
@@ -545,18 +575,10 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
   const start = windowed ? Math.max(0, scrollOffset ?? 0) : 0;
   const end = windowed ? start + (visibleCount ?? allRows.length) : allRows.length;
   const rows = windowed ? allRows.slice(start, end) : allRows;
-  const showScrollUp = windowed && start > 0;
-  const showScrollDown = windowed && end < allRows.length;
 
   return (
-    <Box
-      flexDirection="column"
-      width={width}
-      flexShrink={0}
-      borderStyle="single"
-      borderColor={focused ? 'white' : undefined}
-    >
-      {showScrollUp && <Text dimColor>▲</Text>}
+    <WindowedPanel width={width} height={props.height} title={title} focused={focused}>
+      {windowed && <WindowIndicator direction="up" count={start} />}
       {rows.map((row, i) => {
         const absoluteRowIdx = start + i;
         const isSelected =
@@ -599,7 +621,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
           dimPredicate(itemName);
 
         const isSynthetic = row.kind === 'flat-header';
-        const isCursor = isSelected && focused;
+        const isCursor = isSelected;
         const wouldDim = row.kind === 'flat-header' || row.sharedSuffix === true || canDim;
         const labelStyle = labelStyleFor({ row, isCursor, wouldDim });
         const inheritanceStyle = inheritanceGlyphStyleFor({
@@ -612,15 +634,15 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
           <Box key={row.key}>
             {isCursor ? (
               <Text color={PALETTE.info} bold>
-                {'▶'}
+                {figures.pointer}
               </Text>
             ) : (
-              <Text>{'  '}</Text>
+              <Text> </Text>
             )}
-            <PreviewBadge badge={badge} />
+            <PreviewBadge badge={badge} highlighted={isSelected} />
             {selectionStateByKey !== undefined &&
               (selGlyph && !isSynthetic ? (
-                <Text color={selColor} dimColor={selDim} bold={selBold}>
+                <Text color={selColor} dimColor={isSelected ? false : selDim} bold={selBold}>
                   {' ' + selGlyph}
                 </Text>
               ) : (
@@ -635,12 +657,12 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
                 <Text>{'    '}</Text>
               ))}
             <Text
-              color={labelStyle.color}
-              bold={labelStyle.bold}
-              inverse={isSelected && focused}
+              color={isSelected ? PALETTE.info : labelStyle.color}
+              bold={isSelected || labelStyle.bold}
+              inverse={false}
               underline={isSelected && !focused}
-              dimColor={labelStyle.dim}
-              wrap="truncate"
+              dimColor={isSelected ? false : labelStyle.dim}
+              wrap={wrapLabels ? 'wrap' : 'truncate'}
             >
               {' '}
               {row.label}
@@ -653,7 +675,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
           </Box>
         );
       })}
-      {showScrollDown && <Text dimColor>▼</Text>}
-    </Box>
+      {windowed && <WindowIndicator direction="down" count={allRows.length - end} />}
+    </WindowedPanel>
   );
 }

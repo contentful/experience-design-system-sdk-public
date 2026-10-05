@@ -1,15 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_AGENT, resolveAgent, resolveModel } from '../../src/import/agent-model-resolve.js';
-import { buildGenerateComponentsArgs, buildSelectAgentArgs } from '../../src/import/tui/WizardApp.js';
+import { DEFAULT_AGENT, parseAgentModel, resolveAgent, resolveModel } from '../../src/import/agent-model-resolve.js';
+import { buildGenerateComponentsArgs } from '../../src/import/tui/WizardApp.js';
 
 /**
- * Parity-audit Q4: `experiences import --agent <name>` and `--model <name>`
- * must actually override the stored `credentials.json` value for the wizard
- * path, and the wizard must thread the resolved model into the spawned
- * subprocesses.
+ * `experiences import --agent <name[:model]>` must override stored credentials
+ * and thread the resolved model into spawned subprocesses.
  */
 
 describe('agent/model resolution chain', () => {
+  it('parses a colon-delimited agent and model', () => {
+    expect(parseAgentModel('codex:gpt-5')).toEqual({ agent: 'codex', model: 'gpt-5' });
+  });
+
+  it('parses a whitespace-delimited agent and model', () => {
+    expect(parseAgentModel('codex gpt-5')).toEqual({ agent: 'codex', model: 'gpt-5' });
+  });
+
+  it('leaves the model unset when only an agent is provided', () => {
+    expect(parseAgentModel('codex')).toEqual({ agent: 'codex' });
+  });
+
   it('flag wins over stored value (--agent)', () => {
     expect(resolveAgent('codex', 'claude')).toBe('codex');
   });
@@ -41,24 +51,6 @@ describe('agent/model resolution chain', () => {
 });
 
 describe('wizard subprocess arg builders thread --model through', () => {
-  it('buildSelectAgentArgs appends --model when provided', () => {
-    const args = buildSelectAgentArgs({
-      sessionId: 's1',
-      agent: 'codex',
-      model: 'gpt-5',
-    });
-    expect(args).toContain('--model');
-    const idx = args.indexOf('--model');
-    expect(args[idx + 1]).toBe('gpt-5');
-    expect(args).toContain('--agent');
-    expect(args).toContain('codex');
-  });
-
-  it('buildSelectAgentArgs omits --model when not provided', () => {
-    const args = buildSelectAgentArgs({ sessionId: 's1', agent: 'claude' });
-    expect(args).not.toContain('--model');
-  });
-
   it('buildGenerateComponentsArgs appends --model when provided', () => {
     const args = buildGenerateComponentsArgs({
       sessionId: 's1',
@@ -73,11 +65,6 @@ describe('wizard subprocess arg builders thread --model through', () => {
   it('buildGenerateComponentsArgs omits --model when not provided', () => {
     const args = buildGenerateComponentsArgs({ sessionId: 's1', agent: 'claude' });
     expect(args).not.toContain('--model');
-  });
-
-  it('threads --bedrock through buildSelectAgentArgs', () => {
-    expect(buildSelectAgentArgs({ sessionId: 's1', agent: 'claude', bedrock: true })).toContain('--bedrock');
-    expect(buildSelectAgentArgs({ sessionId: 's1', agent: 'claude' })).not.toContain('--bedrock');
   });
 
   it('threads --bedrock through buildGenerateComponentsArgs', () => {

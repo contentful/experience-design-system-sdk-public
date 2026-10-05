@@ -222,24 +222,14 @@ export function __resetDebugLoggerForTest(): void {
   delete process.env[DEBUG_LOG_ENV];
 }
 
-// ── Resolver ────────────────────────────────────────────────────────────────
-
-/**
- * Resolve effective debug-mode setting from three sources.
- *
- * Precedence (highest first):
- *   1. `--debug` / `--no-debug` CLI flag
- *   2. `EDSI_DEBUG` env var (truthy: 1, true, yes, on)
- *   3. Persisted `debug` field in credentials.json
- *   4. Default: OFF
- */
+/** Resolve debug mode from an explicit option, environment, or saved settings. */
 export function resolveDebugMode(opts: { debug?: boolean }, configDebug?: boolean): boolean {
   if (opts.debug !== undefined) return opts.debug;
   const env = process.env['EDSI_DEBUG'];
   if (env !== undefined && env !== '') {
-    const v = env.toLowerCase();
-    if (v === '1' || v === 'true' || v === 'yes' || v === 'on') return true;
-    if (v === '0' || v === 'false' || v === 'no' || v === 'off') return false;
+    const value = env.toLowerCase();
+    if (value === '1' || value === 'true' || value === 'yes' || value === 'on') return true;
+    if (value === '0' || value === 'false' || value === 'no' || value === 'off') return false;
   }
   if (configDebug !== undefined) return configDebug;
   return false;
@@ -268,11 +258,4 @@ export function printDebugBanner(logger: DebugLogger, phase: 'start' | 'end'): v
 /** Directory that contains the current process's debug log, if any. */
 export function debugLogPath(): string | null {
   return singleton?.path ?? process.env[DEBUG_LOG_ENV] ?? null;
-}
-
-/** Ensure spawned children join the same debug log by including EDSI_DEBUG_LOG in their env. */
-export function debugEnvForSubprocess(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  const path = debugLogPath();
-  if (!path) return env;
-  return { ...env, [DEBUG_LOG_ENV]: path };
 }

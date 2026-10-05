@@ -91,7 +91,7 @@ describe('print components', () => {
     expect(stdout).toContain('1 component');
 
     const written = JSON.parse(await readFile(outPath, 'utf8')) as Record<string, unknown>;
-    expect(written['$schema']).toBe('https://contentful.com/schemas/cdf/v1');
+    expect(written['$schema']).toBe('https://contentful.com/schemas/cdf');
     expect(written['Button']).toBeDefined();
     const button = written['Button'] as CDFComponentEntry;
     expect(button.$description).toBe('A button');

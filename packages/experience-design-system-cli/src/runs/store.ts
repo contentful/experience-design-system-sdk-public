@@ -2,7 +2,6 @@ import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { randomBytes } from 'node:crypto';
-import type { CompositionMode } from '../lib/composition-mode.js';
 
 export const RUNS_FILE_VERSION = 3 as const;
 const RUNS_FILE_CAP = 200;
@@ -23,13 +22,6 @@ type SourceFingerprint = {
   rawTokensContentHash: string | null;
 };
 
-/** SHA-256 hashes of the JSON artifacts the wizard wrote to disk. Used on
- *  replay to detect manual edits to components.json / tokens.json. */
-type SavedFingerprint = {
-  componentsJsonHash: string | null;
-  tokensJsonHash: string | null;
-};
-
 export type RunRecord = {
   id: string;
   createdAt: string;
@@ -41,8 +33,8 @@ export type RunRecord = {
    *  generated for the run. Added in runs.json v2. */
   tokensPath: string | null;
   /** Pipeline.db session id for the generated tokens. Null when no tokens
-   *  step ran. Added in runs.json v2 so replay/push and modify can re-emit
-   *  or re-push tokens. */
+   *  step ran. Added in runs.json v2 so replay and push can re-emit or
+   *  re-push tokens. */
   tokenSessionId: string | null;
   agent: string;
   pushedTo: { spaceId: string; environmentId: string; host: string } | null;
@@ -54,14 +46,6 @@ export type RunRecord = {
    *  satisfy `RunRecord`; `appendRun` always normalizes a missing value to
    *  null on the way to disk. */
   sourceFingerprint?: SourceFingerprint | null;
-  /** Saved-artifact fingerprint. Null on v1/v2 records read from disk; v3
-   *  writers always populate. Added in runs.json v3. Optional for the same
-   *  reason as `sourceFingerprint`. */
-  savedFingerprint?: SavedFingerprint | null;
-  /** Composition mode the run was produced in, so modify/replay resumes in the
-   *  same mode (`composite` vs `atomic`). Absent on records written before this
-   *  field existed; callers treat a missing value as `atomic` (the default). */
-  compositionMode?: CompositionMode;
   notes?: string;
 };
 
@@ -109,8 +93,8 @@ function generateUlid(now: number = Date.now()): string {
   return (ts + rand).toUpperCase();
 }
 
-type RunRecordV1 = Omit<RunRecord, 'tokensPath' | 'tokenSessionId' | 'sourceFingerprint' | 'savedFingerprint'>;
-type RunRecordV2 = Omit<RunRecord, 'sourceFingerprint' | 'savedFingerprint'>;
+type RunRecordV1 = Omit<RunRecord, 'tokensPath' | 'tokenSessionId' | 'sourceFingerprint'>;
+type RunRecordV2 = Omit<RunRecord, 'sourceFingerprint'>;
 type RunsFileV1 = { version: 1; runs: RunRecordV1[] };
 type RunsFileV2 = { version: 2; runs: RunRecordV2[] };
 
@@ -120,7 +104,6 @@ function migrateRecord(rec: RunRecord | RunRecordV1 | RunRecordV2): RunRecord {
     tokensPath: (rec as RunRecord).tokensPath ?? null,
     tokenSessionId: (rec as RunRecord).tokenSessionId ?? null,
     sourceFingerprint: (rec as RunRecord).sourceFingerprint ?? null,
-    savedFingerprint: (rec as RunRecord).savedFingerprint ?? null,
   };
 }
 
@@ -160,7 +143,6 @@ export async function appendRun(input: AppendInput): Promise<RunRecord> {
     id: input.id ?? generateUlid(),
     createdAt: input.createdAt ?? new Date().toISOString(),
     sourceFingerprint: input.sourceFingerprint ?? null,
-    savedFingerprint: input.savedFingerprint ?? null,
   };
   const runs = existing ? [record, ...existing.runs] : [record];
   if (runs.length > RUNS_FILE_CAP) {
@@ -208,9 +190,4 @@ export async function updateRun(id: string, patch: Partial<Omit<RunRecord, 'id'>
   file.runs[idx] = updated;
   await writeAtomic(file);
   return updated;
-}
-
-export async function findAllRunsBySavePath(savePath: string): Promise<RunRecord[]> {
-  const file = await readFileMaybe();
-  return file?.runs.filter((r) => r.savePath === savePath) ?? [];
 }

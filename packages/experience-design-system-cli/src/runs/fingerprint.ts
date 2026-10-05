@@ -11,11 +11,6 @@ export type SourceFingerprint = {
   rawTokensContentHash: string | null;
 };
 
-export type SavedFingerprint = {
-  componentsJsonHash: string | null;
-  tokensJsonHash: string | null;
-};
-
 /**
  * Minimal duck-typed sqlite interface; we don't depend on better-sqlite3
  * directly from this module (the wizard already opens the DB and passes it
@@ -90,18 +85,4 @@ export async function buildSourceFingerprint(opts: {
   }
 
   return { files, rawTokensPath, rawTokensMtime, rawTokensContentHash };
-}
-
-/**
- * Hash the saved JSON contents the wizard just wrote. Caller passes the raw
- * bytes (or strings) so we hash exactly what landed on disk.
- */
-export function buildSavedFingerprint(input: {
-  componentsJson: string | Buffer | null;
-  tokensJson: string | Buffer | null;
-}): SavedFingerprint {
-  return {
-    componentsJsonHash: input.componentsJson != null ? sha256Hex(input.componentsJson) : null,
-    tokensJsonHash: input.tokensJson != null ? sha256Hex(input.tokensJson) : null,
-  };
 }

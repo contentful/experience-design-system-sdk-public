@@ -24,23 +24,17 @@ import { getOrCreateSessionForCommand, type SessionResolution } from './services
 import { getRawTokenNamePaths, type RawTokenNamePathSource } from './repositories/tokens/read.js';
 import { type RawPropTokenPathSource } from './repositories/tokens/write.js';
 
-export { deriveComponentId } from './core/components/derive-component-id.js';
 export { hashComponentShape as computeComponentInputHash } from './core/components/hash-component-shape.js';
 export { hashTokenContent as computeTokenInputHash } from './core/tokens/hash-token-content.js';
-export { mapContentfulTypeToCdfType, resolveCdfCategory } from './core/cdf/cdf-mappers.js';
 
 // Tokens — repositories/tokens/{read,write}.ts and services/tokens/*
 export {
   getDtcgTokensForSession as loadDTCGTokens,
   getRawTokenNamePaths as loadRawTokenNamePaths,
   getRawTokenNamePathRows as loadRawTokenNamePathRows,
-  type RawTokenNamePaths,
-  type RawTokenNamePathSource,
-  type RawTokenNamePath,
 } from './repositories/tokens/read.js';
-export { type RawPropTokenPathSource } from './repositories/tokens/write.js';
 export { storeDtcgTokens as storeDTCGTokens } from './services/tokens/store-dtcg-tokens.js';
-export { applyTokenToolCalls, type ApplyTokenToolCallsResult } from './services/tokens/apply-tool-calls.js';
+export { applyTokenToolCalls } from './services/tokens/apply-tool-calls.js';
 export { replaceRawTokenNamePaths } from './services/tokens/replace-raw-token-name-paths.js';
 export { replaceRawPropTokenPaths } from './services/tokens/replace-raw-prop-token-paths.js';
 
@@ -49,10 +43,7 @@ export type CommandName =
   | 'analyze select'
   | 'generate components'
   | 'generate tokens'
-  | 'generate edit'
-  | 'apply preview'
-  | 'apply select'
-  | 'apply push'
+  | 'apply'
   | 'print components'
   | 'print tokens'
   | 'map tokens'
@@ -539,10 +530,22 @@ export interface ApplyToolCallsResult {
   warnings: string[];
 }
 
+export interface ApplyToolCallsOptions {
+  /** Component names that may appear in generated slot allowed-components lists. */
+  allowedComponentNames?: ReadonlySet<string>;
+}
+
 export interface ComponentReviewMetadata {
   sourcePath: string | null;
   componentSource: string | null;
-  props: Record<string, { rationale: string | null; sourceStartLine: number | null; sourceEndLine: number | null }>;
+  props: Record<
+    string,
+    {
+      rationale: string | null;
+      sourceStartLine: number | null;
+      sourceEndLine: number | null;
+    }
+  >;
 }
 
 export function loadComponentReviewMetadata(
@@ -601,8 +604,17 @@ export interface ComponentRationale {
   descriptionRationale: string | null;
   propsRationale: string | null;
   slotsRationale: string | null;
-  props: Array<{ name: string; category: string | null; description: string | null; rationale: string | null }>;
-  slots: Array<{ name: string; description: string | null; rationale: string | null }>;
+  props: Array<{
+    name: string;
+    category: string | null;
+    description: string | null;
+    rationale: string | null;
+  }>;
+  slots: Array<{
+    name: string;
+    description: string | null;
+    rationale: string | null;
+  }>;
 }
 
 export function loadComponentRationale(
@@ -678,6 +690,7 @@ export function applyToolCalls(
   componentName: string,
   calls: ToolCall[],
   incomingWarnings: string[],
+  options: ApplyToolCallsOptions = {},
 ): ApplyToolCallsResult {
   const now = new Date().toISOString();
   const warnings = [...incomingWarnings];
@@ -820,9 +833,20 @@ export function applyToolCalls(
         }
         if (call.allowed_components !== undefined) {
           deleteAllowedComponents.run(sessionId, componentId, call.slot);
-          call.allowed_components.forEach((ac, i) =>
-            insertAllowedComponent.run(sessionId, componentId, call.slot, ac, i),
-          );
+          const allowedComponents = options.allowedComponentNames
+            ? call.allowed_components.filter((allowedComponent) => options.allowedComponentNames!.has(allowedComponent))
+            : call.allowed_components;
+          if (options.allowedComponentNames) {
+            const dropped = [
+              ...new Set(call.allowed_components.filter((ac) => !options.allowedComponentNames!.has(ac))),
+            ];
+            for (const allowedComponent of dropped) {
+              warnings.push(
+                `${componentName}: classify_slot '${call.slot}' — dropped unknown allowed component '${allowedComponent}'`,
+              );
+            }
+          }
+          allowedComponents.forEach((ac, i) => insertAllowedComponent.run(sessionId, componentId, call.slot, ac, i));
         }
         slots++;
       }
@@ -900,7 +924,11 @@ export function storeRawComponents(
   db: DatabaseSync,
   sessionId: string,
   components: RawComponentDefinition[],
-  options?: { status?: string; preserveCDF?: boolean },
+  options?: {
+    status?: string;
+    preserveCDF?: boolean;
+    preserveStatus?: boolean;
+  },
 ): void {
   const now = new Date().toISOString();
 
@@ -937,11 +965,22 @@ export function storeRawComponents(
       cdf_token_kind: string | null;
     };
     type DescSnapshot = { component_id: string; description: string };
-    type AVSnapshot = { component_id: string; prop_name: string; position: number; value: string };
+    type AVSnapshot = {
+      component_id: string;
+      prop_name: string;
+      position: number;
+      value: string;
+    };
+    type StatusSnapshot = {
+      component_id: string;
+      status: string;
+      reject_reason: string | null;
+    };
 
     let cdfSnapshot: CDFSnapshot[] = [];
     let descSnapshot: DescSnapshot[] = [];
     let avSnapshot: AVSnapshot[] = [];
+    let statusSnapshot: StatusSnapshot[] = [];
 
     if (options?.preserveCDF) {
       cdfSnapshot = db
@@ -966,6 +1005,15 @@ export function storeRawComponents(
           )
           .all(sessionId) as AVSnapshot[];
       }
+    }
+
+    if (options?.preserveStatus) {
+      statusSnapshot = db
+        .prepare(
+          `SELECT component_id, status, reject_reason
+           FROM raw_components WHERE session_id = ?`,
+        )
+        .all(sessionId) as StatusSnapshot[];
     }
 
     db.prepare('DELETE FROM raw_components WHERE session_id = ?').run(sessionId);
@@ -1087,6 +1135,16 @@ export function storeRawComponents(
           }
           insertAV.run(sessionId, av.component_id, av.prop_name, av.position, av.value);
         }
+      }
+    }
+
+    if (options?.preserveStatus && statusSnapshot.length > 0) {
+      const restoreStatus = db.prepare(
+        `UPDATE raw_components SET status = ?, reject_reason = ?
+         WHERE session_id = ? AND component_id = ?`,
+      );
+      for (const snapshot of statusSnapshot) {
+        restoreStatus.run(snapshot.status, snapshot.reject_reason, sessionId, snapshot.component_id);
       }
     }
 
@@ -1232,13 +1290,13 @@ export function loadRawComponents(
   );
 }
 
-// Mirrors analyze/select-agent/context-builder.ts's MAX_COMPONENT_SOURCE_CHARS
+// Maximum source excerpt size used when building persisted agent context.
 // convention for bounding inlined source in an agent prompt.
 const MAX_COMPONENT_SOURCE_CHARS = 8_000;
-// Mirrors analyze/select-agent/context-builder.ts's MAX_SIBLING_FILES /
+// Maximum sibling-file count used when building persisted agent context.
 // MAX_SIBLING_SNIPPET_CHARS conventions — small, purpose-built duplicate
 // rather than importing that module's SelectionContext machinery, which is
-// built for a different command (analyze select-agent).
+// built for the internal generation context.
 const MAX_SIBLING_FILES = 5;
 const MAX_SIBLING_SNIPPET_CHARS = 1_200;
 // A type-declaring sibling (e.g. `*.types.ts`) needs a bigger budget than a
@@ -1482,14 +1540,22 @@ export async function loadComponentSourceRefs(db: DatabaseSync, sessionId: strin
     .prepare(
       `SELECT component_id, name, source, source_path FROM raw_components WHERE session_id = ? AND status = 'generated' ORDER BY rowid`,
     )
-    .all(sessionId) as Array<{ component_id: string; name: string; source: string; source_path: string | null }>;
+    .all(sessionId) as Array<{
+    component_id: string;
+    name: string;
+    source: string;
+    source_path: string | null;
+  }>;
   const propsFor = db.prepare(
     `SELECT name, type FROM raw_props WHERE session_id = ? AND component_id = ? ORDER BY position`,
   );
 
   return Promise.all(
     rows.map((r) => {
-      const props = propsFor.all(sessionId, r.component_id) as Array<{ name: string; type: string }>;
+      const props = propsFor.all(sessionId, r.component_id) as Array<{
+        name: string;
+        type: string;
+      }>;
       return loadComponentSourceRef(
         r.name,
         r.source_path ?? r.source,
@@ -1506,7 +1572,10 @@ export function renameEmptySlots(
   componentId: string,
   componentName: string,
   slotCount: number,
-): { renames: Array<{ oldName: string; newName: string }>; warnings: string[] } {
+): {
+  renames: Array<{ oldName: string; newName: string }>;
+  warnings: string[];
+} {
   const emptySlots = db
     .prepare(
       `SELECT name, position FROM raw_slots
@@ -1634,9 +1703,12 @@ export function storeCDFComponents(
         }
 
         const existingDefaults = new Map<string, number>(
-          (readExistingSlotDefaults.all(sessionId, componentId) as Array<{ name: string; is_default: number }>).map(
-            (r) => [r.name, r.is_default],
-          ),
+          (
+            readExistingSlotDefaults.all(sessionId, componentId) as Array<{
+              name: string;
+              is_default: number;
+            }>
+          ).map((r) => [r.name, r.is_default]),
         );
         deleteSlotAllowedComponents.run(sessionId, componentId);
         deleteSlots.run(sessionId, componentId);
@@ -1909,7 +1981,11 @@ export function loadScopeComponents(db: DatabaseSync, sessionId: string): ScopeC
       `SELECT component_id, name, position
        FROM raw_slots WHERE session_id = ? ORDER BY component_id, position`,
     )
-    .all(sessionId) as Array<{ component_id: string; name: string; position: number }>;
+    .all(sessionId) as Array<{
+    component_id: string;
+    name: string;
+    position: number;
+  }>;
   const allowedRows = db
     .prepare(
       `SELECT component_id, slot_name, position, allowed_component
@@ -2189,7 +2265,11 @@ export function computeMapTokensInputHash(
 
   const defaultMappings = db
     .prepare('SELECT raw_name, path, source FROM raw_token_name_paths WHERE session_id = ? ORDER BY raw_name')
-    .all(sessionId) as Array<{ raw_name: string; path: string; source: RawTokenNamePathSource }>;
+    .all(sessionId) as Array<{
+    raw_name: string;
+    path: string;
+    source: RawTokenNamePathSource;
+  }>;
 
   const payload = {
     props: props.map((p) => ({
@@ -2301,15 +2381,49 @@ export function storeCache(
   humanEdited: boolean,
   promptHash: string = '',
 ): void {
+  storeCaches(db, [{ inputHash, entityType, entityId, sourceSessionId, humanEdited, promptHash }]);
+}
+
+export function storeCaches(
+  db: DatabaseSync,
+  entries: Array<{
+    inputHash: string;
+    entityType: CacheEntityType;
+    entityId: string;
+    sourceSessionId: string;
+    humanEdited: boolean;
+    promptHash?: string;
+  }>,
+): void {
+  if (entries.length === 0) return;
   const now = new Date().toISOString();
-  db.prepare(
+  const insert = db.prepare(
     `INSERT INTO generation_cache (input_hash, entity_type, entity_id, source_session_id, human_edited, created_at, updated_at, prompt_hash)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(input_hash, prompt_hash, entity_type, entity_id) DO UPDATE SET
        source_session_id = excluded.source_session_id,
        human_edited = CASE WHEN generation_cache.human_edited = 1 THEN 1 ELSE excluded.human_edited END,
        updated_at = excluded.updated_at`,
-  ).run(inputHash, entityType, entityId, sourceSessionId, humanEdited ? 1 : 0, now, now, promptHash);
+  );
+  db.exec('BEGIN');
+  try {
+    for (const entry of entries) {
+      insert.run(
+        entry.inputHash,
+        entry.entityType,
+        entry.entityId,
+        entry.sourceSessionId,
+        entry.humanEdited ? 1 : 0,
+        now,
+        now,
+        entry.promptHash ?? '',
+      );
+    }
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
 }
 
 export function storeScannedFiles(db: DatabaseSync, sessionId: string, filePaths: string[]): void {
@@ -2396,28 +2510,120 @@ export function markCacheHumanEdited(db: DatabaseSync, entityType: 'component' |
   ).run(now, entityType, entityId);
 }
 
+export interface UnknownSlotAllowedComponent {
+  componentId: string;
+  componentName: string;
+  slotName: string;
+  allowedComponent: string;
+}
+
+export function findUnknownSlotAllowedComponents(
+  db: DatabaseSync,
+  sessionId: string,
+  allowedComponentNames: ReadonlySet<string>,
+  componentId?: string,
+): UnknownSlotAllowedComponent[] {
+  const rows = db
+    .prepare(
+      `SELECT a.component_id, c.name AS component_name, a.slot_name, a.allowed_component
+       FROM raw_slot_allowed_components a
+       JOIN raw_components c ON c.session_id = a.session_id AND c.component_id = a.component_id
+       WHERE a.session_id = ? AND (? IS NULL OR a.component_id = ?)
+       ORDER BY a.component_id, a.slot_name, a.position`,
+    )
+    .all(sessionId, componentId ?? null, componentId ?? null) as Array<{
+    component_id: string;
+    component_name: string;
+    slot_name: string;
+    allowed_component: string;
+  }>;
+
+  return rows
+    .filter((row) => !allowedComponentNames.has(row.allowed_component))
+    .map((row) => ({
+      componentId: row.component_id,
+      componentName: row.component_name,
+      slotName: row.slot_name,
+      allowedComponent: row.allowed_component,
+    }));
+}
+
+/** Remove slot references that cannot resolve in the current manifest or target space. */
+export function filterUnknownSlotAllowedComponents(
+  db: DatabaseSync,
+  sessionId: string,
+  allowedComponentNames: ReadonlySet<string>,
+): UnknownSlotAllowedComponent[] {
+  const unknown = findUnknownSlotAllowedComponents(db, sessionId, allowedComponentNames);
+  if (unknown.length === 0) return unknown;
+
+  db.exec('BEGIN');
+  try {
+    const remove = db.prepare(
+      `DELETE FROM raw_slot_allowed_components
+       WHERE session_id = ? AND component_id = ? AND slot_name = ? AND allowed_component = ?`,
+    );
+    for (const row of unknown) {
+      remove.run(sessionId, row.componentId, row.slotName, row.allowedComponent);
+    }
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+  return unknown;
+}
+
+export interface CopyComponentFromCacheOptions {
+  allowedComponentNames?: ReadonlySet<string>;
+}
+
 export function copyComponentFromCache(
   db: DatabaseSync,
   sourceSessionId: string,
   targetSessionId: string,
   componentId: string,
+  manageTransaction = true,
+  options: CopyComponentFromCacheOptions = {},
 ): void {
   const now = new Date().toISOString();
-  db.exec('BEGIN');
+  if (manageTransaction) db.exec('BEGIN');
   try {
     const srcComp = db
-      .prepare(`SELECT description, status FROM raw_components WHERE session_id = ? AND component_id = ?`)
-      .get(sourceSessionId, componentId) as { description: string | null; status: string } | undefined;
+      .prepare(
+        `SELECT description, status, component_description_rationale, props_rationale, slots_rationale
+         FROM raw_components WHERE session_id = ? AND component_id = ?`,
+      )
+      .get(sourceSessionId, componentId) as
+      | {
+          description: string | null;
+          status: string;
+          component_description_rationale: string | null;
+          props_rationale: string | null;
+          slots_rationale: string | null;
+        }
+      | undefined;
 
     if (srcComp) {
       db.prepare(
-        `UPDATE raw_components SET description = ?, status = ?, extracted_at = ? WHERE session_id = ? AND component_id = ?`,
-      ).run(srcComp.description, srcComp.status, now, targetSessionId, componentId);
+        `UPDATE raw_components
+         SET description = ?, status = ?, component_description_rationale = ?, props_rationale = ?, slots_rationale = ?, extracted_at = ?
+         WHERE session_id = ? AND component_id = ?`,
+      ).run(
+        srcComp.description,
+        srcComp.status,
+        srcComp.component_description_rationale,
+        srcComp.props_rationale,
+        srcComp.slots_rationale,
+        now,
+        targetSessionId,
+        componentId,
+      );
     }
 
     const srcProps = db
       .prepare(
-        `SELECT name, cdf_type, cdf_category, cdf_token_kind, required, description, default_value
+        `SELECT name, cdf_type, cdf_category, cdf_token_kind, required, description, default_value, rationale
          FROM raw_props WHERE session_id = ? AND component_id = ?`,
       )
       .all(sourceSessionId, componentId) as Array<{
@@ -2428,11 +2634,12 @@ export function copyComponentFromCache(
       required: number;
       description: string | null;
       default_value: string | null;
+      rationale: string | null;
     }>;
 
     for (const p of srcProps) {
       db.prepare(
-        `UPDATE raw_props SET cdf_type = ?, cdf_category = ?, cdf_token_kind = ?, required = ?, description = ?, default_value = ?
+        `UPDATE raw_props SET cdf_type = ?, cdf_category = ?, cdf_token_kind = ?, required = ?, description = ?, default_value = ?, rationale = ?
          WHERE session_id = ? AND component_id = ? AND name = ?`,
       ).run(
         p.cdf_type,
@@ -2441,6 +2648,7 @@ export function copyComponentFromCache(
         p.required,
         p.description,
         p.default_value,
+        p.rationale,
         targetSessionId,
         componentId,
         p.name,
@@ -2468,16 +2676,17 @@ export function copyComponentFromCache(
     }
 
     const srcSlots = db
-      .prepare(`SELECT name, required, description FROM raw_slots WHERE session_id = ? AND component_id = ?`)
+      .prepare(`SELECT name, required, description, rationale FROM raw_slots WHERE session_id = ? AND component_id = ?`)
       .all(sourceSessionId, componentId) as Array<{
       name: string;
       required: number;
       description: string | null;
+      rationale: string | null;
     }>;
     for (const s of srcSlots) {
       db.prepare(
-        `UPDATE raw_slots SET required = ?, description = ? WHERE session_id = ? AND component_id = ? AND name = ?`,
-      ).run(s.required, s.description, targetSessionId, componentId, s.name);
+        `UPDATE raw_slots SET required = ?, description = ?, rationale = ? WHERE session_id = ? AND component_id = ? AND name = ?`,
+      ).run(s.required, s.description, s.rationale, targetSessionId, componentId, s.name);
     }
 
     db.prepare(`DELETE FROM raw_slot_allowed_components WHERE session_id = ? AND component_id = ?`).run(
@@ -2496,11 +2705,36 @@ export function copyComponentFromCache(
     const insertSAC = db.prepare(
       `INSERT INTO raw_slot_allowed_components (session_id, component_id, slot_name, allowed_component, position) VALUES (?, ?, ?, ?, ?)`,
     );
-    for (const sac of srcSAC) {
+    const allowedSAC = options.allowedComponentNames
+      ? srcSAC.filter((sac) => options.allowedComponentNames!.has(sac.allowed_component))
+      : srcSAC;
+    for (const sac of allowedSAC) {
       insertSAC.run(targetSessionId, componentId, sac.slot_name, sac.allowed_component, sac.position);
     }
 
     db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, targetSessionId);
+    if (manageTransaction) db.exec('COMMIT');
+  } catch (e) {
+    if (manageTransaction) db.exec('ROLLBACK');
+    throw e;
+  }
+}
+
+export function copyComponentsFromCache(
+  db: DatabaseSync,
+  entries: Array<{
+    sourceSessionId: string;
+    targetSessionId: string;
+    componentId: string;
+  }>,
+  options: CopyComponentFromCacheOptions = {},
+): void {
+  if (entries.length === 0) return;
+  db.exec('BEGIN');
+  try {
+    for (const entry of entries) {
+      copyComponentFromCache(db, entry.sourceSessionId, entry.targetSessionId, entry.componentId, false, options);
+    }
     db.exec('COMMIT');
   } catch (e) {
     db.exec('ROLLBACK');

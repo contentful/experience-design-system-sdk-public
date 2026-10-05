@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm, writeFile, stat, utimes } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { buildSourceFingerprint, buildSavedFingerprint, sha256Hex } from '../../src/runs/fingerprint.js';
+import { buildSourceFingerprint, sha256Hex } from '../../src/runs/fingerprint.js';
 
 function fakeDb(rows: Array<{ name: string | null; source_path: string | null }>) {
   return {
@@ -69,22 +69,6 @@ describe('buildSourceFingerprint', () => {
     const db = fakeDb([{ name: 'X', source_path: null }]);
     const fp = await buildSourceFingerprint({ db, extractSessionId: 'e1' });
     expect(fp.files).toEqual({});
-  });
-});
-
-describe('buildSavedFingerprint', () => {
-  it('returns SHA-256 hashes of each provided artifact', () => {
-    const comps = '{"a":1}';
-    const tokens = '{"b":2}';
-    const fp = buildSavedFingerprint({ componentsJson: comps, tokensJson: tokens });
-    expect(fp.componentsJsonHash).toBe(sha256Hex(comps));
-    expect(fp.tokensJsonHash).toBe(sha256Hex(tokens));
-  });
-
-  it('returns null for missing artifacts', () => {
-    const fp = buildSavedFingerprint({ componentsJson: '{}', tokensJson: null });
-    expect(fp.componentsJsonHash).toBe(sha256Hex('{}'));
-    expect(fp.tokensJsonHash).toBeNull();
   });
 });
 

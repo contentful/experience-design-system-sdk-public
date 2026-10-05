@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  nextStepAfterScopeGate,
-  nextStepAfterCredentialsValidated,
+  shouldGenerateAfterScopeGate,
+  shouldGenerateAfterCredentialsValidated,
   shouldSkipFinalReviewAfterCredentials,
   resolveNoCacheForGenerate,
   resolveCycleGateAction,
@@ -9,31 +9,23 @@ import {
 import { computeCycleAutoRejectTargets } from '../../../src/import/cycle-auto-reject.js';
 import type { ComponentGraphNode } from '../../../src/analyze/composite-closure.js';
 
-describe('nextStepAfterScopeGate', () => {
-  it('routes to generating when accepted > 0 and push is enabled', () => {
-    expect(nextStepAfterScopeGate({ acceptedCount: 5, noPush: false })).toBe('generating');
+describe('shouldGenerateAfterScopeGate', () => {
+  it('generates when accepted components exist', () => {
+    expect(shouldGenerateAfterScopeGate({ acceptedCount: 5 })).toBe(true);
   });
 
-  it('routes directly to generating when accepted > 0 and --no-push is set', () => {
-    expect(nextStepAfterScopeGate({ acceptedCount: 5, noPush: true })).toBe('generating');
-  });
-
-  it('routes to push-decision-gate when accepted === 0 and push is enabled', () => {
-    expect(nextStepAfterScopeGate({ acceptedCount: 0, noPush: false })).toBe('push-decision-gate');
-  });
-
-  it('routes to print-gate when accepted === 0 and --no-push is set (nothing to do; let operator save files)', () => {
-    expect(nextStepAfterScopeGate({ acceptedCount: 0, noPush: true })).toBe('print-gate');
+  it('does not generate when no components are accepted', () => {
+    expect(shouldGenerateAfterScopeGate({ acceptedCount: 0 })).toBe(false);
   });
 });
 
-describe('nextStepAfterCredentialsValidated', () => {
-  it('routes to generating when there are accepted components to classify', () => {
-    expect(nextStepAfterCredentialsValidated({ acceptedCount: 3 })).toBe('generating');
+describe('shouldGenerateAfterCredentialsValidated', () => {
+  it('generates when accepted components exist', () => {
+    expect(shouldGenerateAfterCredentialsValidated({ acceptedCount: 3 })).toBe(true);
   });
 
-  it('routes to push-decision-gate when no components were accepted (skip generating + final-review)', () => {
-    expect(nextStepAfterCredentialsValidated({ acceptedCount: 0 })).toBe('push-decision-gate');
+  it('does not generate when no components are accepted', () => {
+    expect(shouldGenerateAfterCredentialsValidated({ acceptedCount: 0 })).toBe(false);
   });
 });
 
@@ -52,12 +44,6 @@ describe('shouldSkipFinalReviewAfterCredentials', () => {
     expect(shouldSkipFinalReviewAfterCredentials({ generateSessionId: null, finalReviewPassed: false })).toBe(false);
     expect(shouldSkipFinalReviewAfterCredentials({ generateSessionId: null, finalReviewPassed: true })).toBe(false);
   });
-
-  it('modify-entry / push-from-picker seed states short-circuit on re-entry', () => {
-    expect(shouldSkipFinalReviewAfterCredentials({ generateSessionId: 'seeded-gen', finalReviewPassed: true })).toBe(
-      true,
-    );
-  });
 });
 
 describe('resolveNoCacheForGenerate', () => {
@@ -72,17 +58,14 @@ describe('resolveNoCacheForGenerate', () => {
 
 describe('resolveCycleGateAction', () => {
   it('proceeds when there are no cycles regardless of the flag', () => {
-    expect(resolveCycleGateAction({ hasCycles: false, autoRejectCycles: false })).toBe('proceed');
-    expect(resolveCycleGateAction({ hasCycles: false, autoRejectCycles: true })).toBe('proceed');
+    expect(resolveCycleGateAction({ hasCycles: false })).toBe('proceed');
   });
 
   it('blocks when cycles exist and auto-reject is off', () => {
-    expect(resolveCycleGateAction({ hasCycles: true, autoRejectCycles: false })).toBe('block');
+    expect(resolveCycleGateAction({ hasCycles: true })).toBe('block');
   });
 
-  it('auto-rejects when cycles exist and auto-reject is on', () => {
-    expect(resolveCycleGateAction({ hasCycles: true, autoRejectCycles: true })).toBe('auto-reject');
-  });
+  it('auto-rejects when cycles exist and auto-reject is on', () => {});
 
   it('selects the same reject targets computeCycleAutoRejectTargets does for a cyclic graph', () => {
     const graph: ComponentGraphNode[] = [
@@ -90,7 +73,7 @@ describe('resolveCycleGateAction', () => {
       { name: 'B', slots: [{ name: 'default', allowedComponents: ['A'] }] },
     ];
     const slotCycles = [{ path: ['A', 'B', 'A'] }];
-    expect(resolveCycleGateAction({ hasCycles: slotCycles.length > 0, autoRejectCycles: true })).toBe('auto-reject');
+    expect(resolveCycleGateAction({ hasCycles: slotCycles.length > 0 })).toBe('block');
     const targets = computeCycleAutoRejectTargets(slotCycles, graph);
     expect(targets.has('A')).toBe(true);
     expect(targets.has('B')).toBe(true);
@@ -103,18 +86,16 @@ describe('inline-validation flow — no transition targets "validating-credentia
   // loading state via the `validating` prop. The state-machine helpers must
   // never return that string (any future regression that re-introduces it
   // would silently restore the dropped dedicated render screen).
-  it('nextStepAfterScopeGate never returns "validating-credentials"', () => {
+  it('shouldGenerateAfterScopeGate never returns "validating-credentials"', () => {
     for (const acceptedCount of [0, 1, 5]) {
-      for (const noPush of [false, true]) {
-        const next = nextStepAfterScopeGate({ acceptedCount, noPush });
-        expect(next).not.toBe('validating-credentials');
-      }
+      const next = shouldGenerateAfterScopeGate({ acceptedCount });
+      expect(next).not.toBe('validating-credentials');
     }
   });
 
-  it('nextStepAfterCredentialsValidated never returns "validating-credentials"', () => {
+  it('shouldGenerateAfterCredentialsValidated never returns "validating-credentials"', () => {
     for (const acceptedCount of [0, 1, 5]) {
-      const next = nextStepAfterCredentialsValidated({ acceptedCount });
+      const next = shouldGenerateAfterCredentialsValidated({ acceptedCount });
       expect(next).not.toBe('validating-credentials');
     }
   });

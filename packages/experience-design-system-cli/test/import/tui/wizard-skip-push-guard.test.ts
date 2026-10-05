@@ -4,8 +4,8 @@ import { shouldRefusePush, buildSkippedPushTransition } from '../../../src/impor
 /**
  * Skip-credentials spec — Task 4. Defensive guard: even if the wizard's
  * state-machine bug-routed an operator into `runPush` after skipping
- * credentials (which should be unreachable via the push-decision-gate
- * disabling), the function refuses to issue the API call. Pins the helper
+ * credentials (which should be unreachable via the normal push flow), the
+ * function refuses to issue the API call. Pins the helper
  * contract.
  */
 

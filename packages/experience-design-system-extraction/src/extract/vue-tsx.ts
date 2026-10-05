@@ -4,59 +4,33 @@ import type {
   RawPropDefinition,
   RawSlotDefinition,
   ComponentExtractionResult,
+  ExtractionExclusion,
 } from '../types.js';
 import {
   extractAllowedValues,
+  extractTsxComponents,
   getTypeReferenceName,
   getTypeTargetDeclarations,
-  getTsxExtractionContext,
   getValueTargetDeclarations,
-  resolveDefaultExportName,
+  getRenderableExports,
 } from './tsx-shared.js';
 
 export async function extractVueTsxComponents(filePaths: string[]): Promise<ComponentExtractionResult> {
-  const extractionContext = getTsxExtractionContext(filePaths, /\.tsx$/);
-  if (!extractionContext) {
-    return { components: [], warnings: [] };
-  }
-
-  const { componentFiles, project } = extractionContext;
-
-  const warnings: string[] = [];
-  const components: RawComponentDefinition[] = [];
-
-  for (const filePath of componentFiles) {
-    try {
-      const sourceFile = project.getSourceFile(filePath);
-      if (!sourceFile) continue;
-      components.push(...extractFromSourceFile(sourceFile));
-    } catch (e) {
-      warnings.push(`Failed to extract from ${filePath}: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
+  const { components, warnings, exclusions } = extractTsxComponents(filePaths, /\.tsx$/, extractFromSourceFile);
 
   return {
     components: components.sort((a, b) => a.name.localeCompare(b.name)),
     warnings,
+    exclusions,
   };
 }
 
-function extractFromSourceFile(sourceFile: SourceFile): RawComponentDefinition[] {
+function extractFromSourceFile(sourceFile: SourceFile, exclusions: ExtractionExclusion[]): RawComponentDefinition[] {
   const components: RawComponentDefinition[] = [];
-  const exported = sourceFile.getExportedDeclarations();
 
-  for (const [exportKey, declarations] of exported) {
-    let name = exportKey;
-
-    if (exportKey === 'default') {
-      const defaultExportName = resolveDefaultExportName(declarations, exported);
-      if (!defaultExportName) continue;
-      name = defaultExportName;
-    }
-
-    if (!/^[A-Z]/.test(name)) continue;
-    if (name.startsWith('use')) continue;
-
+  for (const { name, declarations } of getRenderableExports(sourceFile, exclusions, {
+    hookReason: 'Vue composition hook names are not renderable components',
+  })) {
     const component = extractVueTsxComponent(declarations, name, sourceFile);
     if (component) {
       components.push(component);

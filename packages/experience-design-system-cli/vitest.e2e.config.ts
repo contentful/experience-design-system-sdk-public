@@ -13,7 +13,7 @@ export default defineConfig({
       'test/generate/**/*.test.ts',
       'test/session/**/*.test.ts',
     ],
-    globalSetup: ['test/setup/build.ts'],
+    globalSetup: ['test/helpers/build.ts'],
     testTimeout: 60000,
   },
 });

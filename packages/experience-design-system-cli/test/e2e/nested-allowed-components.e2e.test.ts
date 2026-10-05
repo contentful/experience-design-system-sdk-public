@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { join } from 'node:path';
 import { extractReactComponents } from '@contentful/experience-design-system-extraction';
-import { buildManifest } from '@contentful/experience-design-system-types';
+import { buildCDF } from '@contentful/experience-design-system-types';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 
-describe('nested-component CDF manifest', () => {
+describe('nested-component CDF document', () => {
   it('emits populated $allowedComponents for each typed slot', async () => {
     const fixture = join(process.cwd(), 'test/analyze/extract/fixtures/nested-layout.tsx');
     const result = await extractReactComponents([fixture]);
@@ -28,8 +28,8 @@ describe('nested-component CDF manifest', () => {
       ),
     };
 
-    const manifest = buildManifest([{ key: 'Layout', entry }], []);
-    const layoutOut = manifest.componentsManifest?.['Layout'] as CDFComponentEntry;
+    const cdf = buildCDF([{ key: 'Layout', entry }], [])!;
+    const layoutOut = cdf['Layout'] as CDFComponentEntry;
     expect(layoutOut).toBeDefined();
     expect(layoutOut.$slots?.header?.$allowedComponents).toEqual(['Header']);
     expect(layoutOut.$slots?.sidebar?.$allowedComponents).toEqual(['Sidebar']);

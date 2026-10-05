@@ -3,7 +3,6 @@ import type { HelpSection } from '../../analyze/select/tui/components/HelpOverla
 export function createSidebarViewsHelpSection(includeBreaking: boolean): HelpSection {
   const entries: HelpSection['entries'] = [
     { keys: 'L', label: 'Flat view' },
-    { keys: 'l', label: 'Lineage' },
     { keys: 'i', label: 'Focus lineage' },
   ];
   if (includeBreaking) entries.push({ keys: 'w', label: 'Only breaking' });

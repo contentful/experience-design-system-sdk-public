@@ -7,8 +7,6 @@ import {
   getDebugLogger,
   resolveDebugMode,
   redactForDebug,
-  debugEnvForSubprocess,
-  debugLogPath,
   __resetDebugLoggerForTest,
 } from '../../src/lib/debug-logger.js';
 
@@ -36,25 +34,25 @@ function readLines(path: string): Array<Record<string, unknown>> {
 }
 
 describe('resolveDebugMode', () => {
-  it('prefers the CLI flag over env and config', () => {
+  it('prefers the explicit option over env and config', () => {
     process.env['EDSI_DEBUG'] = '1';
     expect(resolveDebugMode({ debug: false }, true)).toBe(false);
     expect(resolveDebugMode({ debug: true }, false)).toBe(true);
   });
 
-  it('falls through to env when flag is undefined', () => {
+  it('falls through to env when the option is undefined', () => {
     process.env['EDSI_DEBUG'] = 'yes';
     expect(resolveDebugMode({}, false)).toBe(true);
     process.env['EDSI_DEBUG'] = 'off';
     expect(resolveDebugMode({}, true)).toBe(false);
   });
 
-  it('uses persisted config when flag and env are absent', () => {
+  it('uses persisted config when the option and env are absent', () => {
     expect(resolveDebugMode({}, true)).toBe(true);
     expect(resolveDebugMode({}, false)).toBe(false);
   });
 
-  it('defaults to OFF when no source is set', () => {
+  it('defaults to disabled when no source is set', () => {
     expect(resolveDebugMode({})).toBe(false);
   });
 });
@@ -142,22 +140,6 @@ describe('initDebugLogger', () => {
     const a = initDebugLogger({ enabled: true, command: 'a', root });
     const b = initDebugLogger({ enabled: true, command: 'b', root });
     expect(a).toBe(b);
-  });
-});
-
-describe('debugEnvForSubprocess', () => {
-  it('injects EDSI_DEBUG_LOG when the logger is active', () => {
-    process.env['EDSI_DEBUG_TS'] = '20260706T120004Z';
-    initDebugLogger({ enabled: true, command: 'parent', root });
-    const env = debugEnvForSubprocess({ FOO: 'bar' });
-    expect(env['EDSI_DEBUG_LOG']).toBe(debugLogPath());
-    expect(env['FOO']).toBe('bar');
-  });
-
-  it('leaves the env untouched when the logger is disabled', () => {
-    initDebugLogger({ enabled: false });
-    const env = debugEnvForSubprocess({ FOO: 'bar' });
-    expect(env['EDSI_DEBUG_LOG']).toBeUndefined();
   });
 });
 

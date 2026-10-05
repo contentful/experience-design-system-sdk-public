@@ -1,25 +1,27 @@
 import React from 'react';
 import { Box, Text, useInput } from 'ink';
+import { PALETTE } from '../home/home.theme.js';
 
-export function ImportScreen({ onDone }: { onDone: () => void }): React.ReactElement {
+export function ImportScreen({ exitCode, onDone }: { exitCode?: number; onDone: () => void }): React.ReactElement {
   useInput((input, key) => {
-    if (key.return) {
+    if (key.return || key.escape || input === 'q') {
       onDone();
-      return;
-    }
-    if (key.escape || input === 'q') {
-      onDone();
-      return;
     }
   });
+
+  const isSuccess = exitCode === 0;
 
   return (
     <Box flexDirection="column" paddingX={2} paddingY={1}>
       <Text bold>Import</Text>
       <Text> </Text>
-      <Text>This is a placeholder screen for the v2 import flow.</Text>
+      {isSuccess ? (
+        <Text color={PALETTE.success}>✓ Import complete</Text>
+      ) : (
+        <Text color={PALETTE.error}>✗ Import failed: process exited with code {exitCode ?? 'unknown'}</Text>
+      )}
       <Text> </Text>
-      <Text dimColor>[Enter] Complete [Esc/q] Exit — both return to Start</Text>
+      <Text dimColor>[Enter] Back to Start</Text>
     </Box>
   );
 }

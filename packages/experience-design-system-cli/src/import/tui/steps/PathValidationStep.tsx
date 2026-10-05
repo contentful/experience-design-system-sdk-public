@@ -17,6 +17,11 @@ type FileCounts = {
   total: number;
 };
 
+// Keep the confirmation screen stable when the wizard briefly revisits this
+// step during a cached run. The counts are only display data; extraction still
+// performs its own source scan and cache validation.
+const fileCountsCache = new Map<string, FileCounts>();
+
 const IGNORE_DIRS = new Set([
   'node_modules',
   'dist',
@@ -96,7 +101,7 @@ export function PathValidationStep({
   onChangePath,
   onQuit,
 }: PathValidationStepProps): React.ReactElement {
-  const [counts, setCounts] = useState<FileCounts | null>(null);
+  const [counts, setCounts] = useState<FileCounts | null>(() => fileCountsCache.get(projectPath) ?? null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -114,6 +119,7 @@ export function PathValidationStep({
           return;
         }
         const result = await countFiles(projectPath);
+        fileCountsCache.set(projectPath, result);
         setCounts(result);
       } catch (e: unknown) {
         const code = (e as NodeJS.ErrnoException).code;

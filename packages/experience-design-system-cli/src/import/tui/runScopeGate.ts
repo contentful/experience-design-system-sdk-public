@@ -1,28 +1,19 @@
 import { writeScopeDecisionsSnapshot } from '../../analyze/select/persistence.js';
+import { getDebugLogger } from '../../lib/debug-logger.js';
 import { applyScopeDecisions, openPipelineDb } from '../../session/db.js';
 
 export async function runScopeGate(opts: {
   sessionId: string;
   decisions: { accepted: string[]; rejected: string[] };
-  /**
-   * Optional cancellation hook for the auto-filter (`select-agent`) subprocess.
-   * If supplied, it will be awaited BEFORE the review-state snapshot is written
-   * so the operator's full decision set is the last writer to the snapshot
-   * file. Without this gate the subprocess can race the operator's confirm
-   * (see PR #43): if select-agent finishes a batch after the operator presses
-   * `f`, it overwrites the snapshot with a partial view and components silently
-   * disappear from final-review. Resolves when the subprocess has exited.
-   */
-  cancelAutoFilter?: () => Promise<void> | void;
   onAdvanceToGenerate: (info: { sessionId: string; acceptedCount: number }) => Promise<void> | void;
   onAdvanceToPushFlow: (acceptedCount: number) => Promise<void> | void;
 }): Promise<void> {
-  // Cancel-and-await BEFORE any DB / snapshot write. The subprocess's
-  // in-flight write may complete before SIGTERM lands; that's fine — we wait
-  // for it to fully exit, then our authoritative write goes last.
-  if (opts.cancelAutoFilter) {
-    await opts.cancelAutoFilter();
-  }
+  const startedAt = Date.now();
+  getDebugLogger().event('wizard', 'scope-decision-persistence.start', {
+    sessionId: opts.sessionId,
+    acceptedCount: opts.decisions.accepted.length,
+    rejectedCount: opts.decisions.rejected.length,
+  });
   const db = openPipelineDb();
   try {
     applyScopeDecisions(db, opts.sessionId, opts.decisions);
@@ -31,6 +22,21 @@ export async function runScopeGate(opts: {
     // scope-gate decisions never reach the generator and rejected components
     // get processed by the LLM anyway.
     await writeScopeDecisionsSnapshot(db, opts.sessionId, opts.decisions);
+    getDebugLogger().event('wizard', 'scope-decision-persistence.complete', {
+      sessionId: opts.sessionId,
+      acceptedCount: opts.decisions.accepted.length,
+      rejectedCount: opts.decisions.rejected.length,
+      durationMs: Date.now() - startedAt,
+    });
+  } catch (error) {
+    getDebugLogger().event('wizard', 'scope-decision-persistence.error', {
+      sessionId: opts.sessionId,
+      acceptedCount: opts.decisions.accepted.length,
+      rejectedCount: opts.decisions.rejected.length,
+      durationMs: Date.now() - startedAt,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
   } finally {
     db.close();
   }

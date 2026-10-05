@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import figures from 'figures';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { getReviewJsonPanelValue } from './review-json-panel.js';
-import { Box, Text, useStdout } from 'ink';
+import { Box, Text } from 'ink';
 import type {
   BreakingChange,
   CDFComponentEntry,
@@ -33,35 +34,32 @@ import {
 import { formatCyclePathSegments, findSlotCycles, suggestCycleBreakEdge } from '../../../analyze/cycle-detection.js';
 import { followCycleScroll } from '../cycle-panel-scroll.js';
 import type { ReviewComponentStatus } from '../../../analyze/select/types.js';
-import { useReviewFinalizePreview } from '../useFinalizePreview.js';
 import { fuzzyMatches } from '../../../analyze/fuzzy-search.js';
 import {
   computeDirectNeighborhood,
   findAllAncestors as findAllAncestorsInclusive,
 } from '../../../analyze/search-neighborhood.js';
 import { computeSidebarWidth } from '../sidebar-width.js';
+import { useTerminalSize } from '../../../tui/use-terminal-size.js';
 import { computeAcceptCascade, computeRejectCascade } from '../../../analyze/selection-cascade.js';
-import { useLineage } from '../hooks/useLineage.js';
 import { computeCycleAutoRejectTargets } from '../../cycle-auto-reject.js';
 import { useOverlayPanel } from '../hooks/useOverlayPanel.js';
-import { LineagePanel } from '../../../analyze/select/tui/components/LineagePanel.js';
 import { GotoBanner } from '../../../analyze/select/tui/components/GotoBanner.js';
 import { computeSidebarBudget, FALLBACK_ROWS } from '../lineage-layout.js';
 import { HelpOverlay, type HelpSection } from '../../../analyze/select/tui/components/HelpOverlay.js';
-import { legendEntry } from '../components/LegendEntry.js';
+import { CompactControlBar } from '../components/CompactControlBar.js';
 import { computeAutoRejectDecision } from './auto-reject-decision.js';
 import { formatBreakingChange } from './breaking-change-format.js';
-import { enumerateCycleBreaks, shouldBreakOverlayGoFullScreen, type BreakEdge } from './enumerate-cycle-breaks.js';
+import { enumerateCycleBreaks, type BreakEdge } from './enumerate-cycle-breaks.js';
 import type { HistorySnapshot } from '../history.js';
 import { resolveGroupRoot } from '../group-collapse.js';
 import { buildFlatDimPredicate, computeFilterKeys, intersectFilterKeys, type FilterCategory } from '../step-filters.js';
 import { createSidebarViewsHelpSection } from '../sidebar-help.js';
 import { handleSidebarSearchInput } from '../sidebar-input.js';
 import { collectExpandedGroupRoots, computeSidebarViewToggle } from '../sidebar-navigation.js';
-import { handleLineageNavigation } from '../lineage-input.js';
 import { useSidebarSearchState } from '../hooks/sidebar-search-state.js';
 import { SearchMatchSummary } from '../components/SearchMatchSummary.js';
-import type { ReviewStepProps } from '../review-step-props.js';
+import { FixedPanel } from '../../../tui/windowed-panel.js';
 import {
   buildReviewFieldEditor,
   getReviewSelectionState,
@@ -70,11 +68,11 @@ import {
   ReviewFinalizeError,
   ReviewNoSelection,
 } from '../components/ReviewComponentPanel.js';
-import { ReviewLoadError, ReviewLoadingState, ReviewStatusBar } from '../components/ReviewStatus.js';
+import { ReviewLoadError, ReviewLoadingState } from '../components/ReviewStatus.js';
 import {
   createReviewHistorySnapshot,
-  finalizeReviewSession,
   loadReviewSessionState,
+  useReviewFinalize,
   useReviewHistory,
   useReviewMetadata,
   useReviewSession,
@@ -93,7 +91,19 @@ import {
 import { useReviewPreview } from '../hooks/useReviewPreview.js';
 import { LivePreviewSummary } from '../components/LivePreviewSummary.js';
 
-type GenerateReviewStepProps = ReviewStepProps;
+type GenerateReviewStepProps = {
+  extractSessionId: string | null;
+  tokenSessionId?: string | null;
+  onFinalize: (accepted: number, rejected: number, unresolved: number) => void;
+  onQuit: () => void;
+  livePreview?: boolean;
+  spaceId?: string;
+  environmentId?: string;
+  cmaToken?: string;
+  host?: string;
+  tokensPath?: string;
+  initialFinalizeError?: string | null;
+};
 
 export function sortComponentsForSidebar<T extends { key: string; entry: CDFComponentEntry }>(
   components: T[],
@@ -113,8 +123,6 @@ export function sortComponentsForSidebar<T extends { key: string; entry: CDFComp
     return a.key.localeCompare(b.key);
   });
 }
-
-const PANEL_HEIGHT = 22;
 
 type CursorMoveDirection = 'up' | 'down';
 
@@ -193,11 +201,108 @@ function CyclePathLine({
   );
 }
 
+function CycleDetailPanel({
+  cycles,
+  cursor,
+  scrollOffset,
+  width,
+  height,
+}: {
+  cycles: StoredSlotCycle[];
+  cursor: number;
+  scrollOffset: number;
+  width: number;
+  height: number;
+}): React.ReactElement {
+  const lines: React.ReactElement[] = [
+    <Text key="cyc-title" bold color={PALETTE.warning}>
+      {`SLOT DEPENDENCY CYCLES (${cycles.length})`}
+    </Text>,
+    <Text key="cyc-sub" dimColor>
+      {'push will fail until these are resolved'}
+    </Text>,
+    <Text key="cyc-guidance" dimColor>
+      {'Reject a cycle member or remove a slot edge to break the cycle.'}
+    </Text>,
+    <Text key="cyc-space"> </Text>,
+  ];
+  cycles.forEach((cycle, index) => {
+    const nodeCount = new Set(cycle.path).size;
+    const isCursor = index === cursor;
+    lines.push(
+      <Text key={`cyc-h-${index}`} bold inverse={isCursor}>
+        {`${isCursor ? figures.pointer : ' '} Cycle ${index + 1} (${nodeCount} component${nodeCount === 1 ? '' : 's'}):`}
+      </Text>,
+      <CyclePathLine key={`cyc-p-${index}`} segments={formatCyclePathSegments(cycle, 16)} prefix="    " />,
+    );
+    if (cycle.suggestedBreak) {
+      lines.push(
+        <Text key={`cyc-fix-${index}`} dimColor>
+          {`    Suggested fix: remove [${cycle.suggestedBreak.slotName}] from ${cycle.suggestedBreak.fromComponent}`}
+        </Text>,
+      );
+    }
+    lines.push(<Text key={`cyc-s-${index}`}> </Text>);
+  });
+
+  const footer = '[↑↓] move  [Enter] fix cycle  [c/q/Esc] close';
+  const viewportHeight = Math.max(1, height - 3);
+  const visible = lines.slice(scrollOffset, scrollOffset + viewportHeight - 1);
+  return (
+    <FixedPanel width={width} height={height} borderStyle="round" borderColor={PALETTE.warning} paddingLeft={1}>
+      {visible}
+      <Text dimColor>{footer}</Text>
+    </FixedPanel>
+  );
+}
+
+function BreakCyclePanel({
+  cycle,
+  edges,
+  cursor,
+  confirming,
+  width,
+  height,
+}: {
+  cycle: StoredSlotCycle | undefined;
+  edges: BreakEdge[];
+  cursor: number;
+  confirming: boolean;
+  width: number;
+  height: number;
+}): React.ReactElement {
+  return (
+    <FixedPanel width={width} height={height} borderStyle="round" borderColor={PALETTE.warning} paddingLeft={1}>
+      <Text bold color={PALETTE.warning}>
+        {'BREAK CYCLE — remove a slot edge'}
+      </Text>
+      {cycle && <CyclePathLine segments={formatCyclePathSegments(cycle)} prefix="  " highlightComponents />}
+      <Text dimColor>
+        {cycle ? 'Deleting an edge removes it from $allowedComponents (undo with Ctrl+Z).' : 'No cycle highlighted.'}
+      </Text>
+      <Text> </Text>
+      {edges.length > 0 && <Text dimColor>{'remove slot edge:'}</Text>}
+      {edges.map((edge, index) => (
+        <Text key={`${edge.fromComponent}-${edge.slotName}-${edge.toComponent}`} inverse={index === cursor}>
+          {`${index === cursor ? figures.pointer : ' '} remove '${edge.toComponent}' from ${edge.fromComponent}.$slots.${edge.slotName}.$allowedComponents`}
+        </Text>
+      ))}
+      {confirming ? (
+        <Text bold color={PALETTE.warning}>
+          {'Delete this slot edge? [y] confirm  [n] cancel'}
+        </Text>
+      ) : (
+        <Text dimColor>{'[↑↓] move  [Enter] delete  [x/Esc] close'}</Text>
+      )}
+    </FixedPanel>
+  );
+}
+
 const HELP_SECTIONS: HelpSection[] = [
   {
     title: 'Navigation',
     entries: [
-      { keys: 'j / k / ↑ / ↓', label: 'Move cursor' },
+      { keys: '↑ / ↓', label: 'Move cursor' },
       { keys: 'Tab', label: 'Toggle sidebar/panel' },
       { keys: 'Enter', label: 'Drill to source' },
     ],
@@ -216,19 +321,14 @@ const HELP_SECTIONS: HelpSection[] = [
     title: 'Panels',
     entries: [
       { keys: 'c', label: 'Cycle list' },
+      { keys: 'b', label: 'Breaking changes' },
+      { keys: 'w', label: 'Only breaking' },
+      { keys: 'o', label: 'Only cycles' },
       { keys: 'p', label: 'Prop rationale' },
       { keys: 'P', label: 'Component rationale' },
       { keys: 's', label: 'Source' },
       { keys: 'J', label: 'Toggle JSON' },
-    ],
-  },
-  {
-    title: 'Resolving cycles',
-    entries: [
-      { keys: 'r', label: 'Reject a cycle member (drops it from the push), or' },
-      { keys: '', label: "break the cycle by removing a slot's" },
-      { keys: '', label: '$allowedComponents edge (see [c] suggested fix).' },
-      { keys: 'x', label: 'Break cycle (from [c]): delete a slot edge.' },
+      { keys: 't', label: 'Token review' },
     ],
   },
   {
@@ -244,9 +344,16 @@ const HELP_SECTIONS: HelpSection[] = [
     ],
   },
   {
+    title: 'Review',
+    entries: [
+      { keys: 'Tab', label: 'Focus panel' },
+      { keys: 'Enter', label: 'Edit selected field' },
+    ],
+  },
+  {
     title: 'General',
     entries: [
-      { keys: '?', label: 'Close help' },
+      { keys: 'h', label: 'Close help' },
       { keys: 'q', label: 'Quit' },
     ],
   },
@@ -310,7 +417,19 @@ export function deriveBreakingChanges(response: ServerPreviewResponse): Breaking
   return out;
 }
 
-export function GenerateReviewStep({
+export function GenerateReviewStep(props: GenerateReviewStepProps): React.ReactElement {
+  if (!props.extractSessionId) {
+    return (
+      <Box paddingX={2} paddingY={1}>
+        <Text color={PALETTE.error}>Error: no session ID — cannot load generated definitions.</Text>
+      </Box>
+    );
+  }
+
+  return <GenerateReviewStepView {...props} extractSessionId={props.extractSessionId} />;
+}
+
+function GenerateReviewStepView({
   extractSessionId,
   tokenSessionId,
   onFinalize,
@@ -322,10 +441,8 @@ export function GenerateReviewStep({
   host = '',
   tokensPath = '',
   initialFinalizeError = null,
-  allowDeletions = false,
-}: GenerateReviewStepProps): React.ReactElement {
-  const { stdout } = useStdout();
-  const terminalWidth = stdout?.columns ?? 80;
+}: Omit<GenerateReviewStepProps, 'extractSessionId'> & { extractSessionId: string }): React.ReactElement {
+  const { columns: terminalWidth, rows: terminalRows } = useTerminalSize();
 
   const [slotCycles, setSlotCycles] = useState<StoredSlotCycle[]>([]);
   const setLoadedSlotCycles = useCallback((cycles: StoredSlotCycle[] | undefined): void => {
@@ -415,8 +532,6 @@ export function GenerateReviewStep({
     showHelp,
     setShowHelp,
   } = useSidebarSearchState();
-  const lineagePanel = useOverlayPanel({ toggleKey: 'l' });
-  const [lineageCursor, setLineageCursor] = useState(0);
   const breakingPanel = useOverlayPanel({ toggleKey: 'b', onClose: () => setBreakingDetailOpen(false) });
   const [breakingChanges, setBreakingChanges] = useState<BreakingComponent[]>([]);
   const [breakingCursor, setBreakingCursor] = useState(0);
@@ -428,11 +543,6 @@ export function GenerateReviewStep({
   const [autoRejected, setAutoRejected] = useState<string[]>([]);
   const [undoSnapshot, setUndoSnapshot] = useState<Map<string, ReviewComponentStatus> | null>(null);
   const autoRejectFiredRef = useRef<boolean>(false);
-
-  const [editorDirty, setEditorDirty] = useState(false);
-  const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
-  const [pendingFocusAway, setPendingFocusAway] = useState<null | 'tab-to-sidebar'>(null);
-  const [discardTrigger, setDiscardTrigger] = useState(0);
 
   const [showReloadDialog, setShowReloadDialog] = useState(false);
 
@@ -448,7 +558,6 @@ export function GenerateReviewStep({
     cmaToken,
     host,
     deleteAllComponents: acceptedCountForPreview === 0,
-    allowDeletions,
     onResult: (response) => {
       const nextRemoved = response.components.removed ?? [];
       if (!removedBannerDefaultedRef.current && nextRemoved.length > 0) {
@@ -459,8 +568,8 @@ export function GenerateReviewStep({
     },
   });
 
-  const finalizePreview = useReviewFinalizePreview({
-    open: showFinalize,
+  const { finalizePreview, handleFinalizeConfirm } = useReviewFinalize({
+    showFinalize,
     extractSessionId,
     tokensPath,
     spaceId,
@@ -468,13 +577,8 @@ export function GenerateReviewStep({
     cmaToken,
     host,
     components,
-    allowDeletions,
+    onFinalize,
   });
-
-  const handleFinalizeConfirm = () => {
-    const counts = finalizeReviewSession(extractSessionId, components);
-    onFinalize(counts.accepted, counts.rejected, counts.unresolved);
-  };
 
   const recomputeCycles = (currentComponents: CdfReviewEntry[]): void => {
     try {
@@ -526,6 +630,14 @@ export function GenerateReviewStep({
     return m;
   }, [components]);
   const cycleView = useMemo<CycleView>(() => computeCycleView(components), [components]);
+  const cycleRows = useMemo<StoredSlotCycle[]>(() => {
+    if (slotCycles.length > 0) return slotCycles;
+    return cycleView.pushBlocking.map((cycle) => ({
+      path: cycle.path,
+      edges: cycle.edges,
+      suggestedBreak: cycle.edges.length > 0 ? suggestCycleBreakEdge(cycle, cycleView.pushBlocking) : null,
+    }));
+  }, [slotCycles, cycleView]);
 
   useEffect(() => {
     const decision = computeAutoRejectDecision({
@@ -656,13 +768,18 @@ export function GenerateReviewStep({
   }, [visibleRowsMemo]);
   const selectedIdx = visibleRowsMemo[cursorRowIdx]?.itemIdx ?? -1;
   const focusedComponentKey: string | null = components[selectedIdx]?.key ?? null;
-  const { entries: lineageEntries, jumpables: lineageJumpables } = useLineage(focusedComponentKey, componentGraph);
-
   const { sidebarVisibleCount: visibleCount, panelMaxRows } = computeSidebarBudget({
-    rows: stdout?.rows ?? FALLBACK_ROWS,
-    panelOpen: lineagePanel.isOpen,
-    entryCount: lineageEntries.length,
+    rows: terminalRows || FALLBACK_ROWS,
+    panelOpen: false,
+    entryCount: 0,
   });
+  // GroupedSidebar has two border rows and always renders its two window
+  // indicators, so this is the exact height of the left panel. The review
+  // panel uses the same terminal-derived height and never sizes from content.
+  const leftPanelHeight = visibleCount + 4;
+  const panelHeight = leftPanelHeight + 2;
+  const panelContentHeight = Math.max(1, panelHeight - 3);
+  const cycleViewportHeight = Math.max(1, panelHeight - 4);
   useEffect(() => {
     if (selectableRowPositions.length === 0) return;
     const cursorInRange = selectableRowPositions.includes(cursorRowIdx);
@@ -760,7 +877,7 @@ export function GenerateReviewStep({
       return { cursorRowIdx: rowIdx, sidebarScrollOffset: nextOff };
     });
     reviewEditor.setJsonScrollOffset(0);
-    reviewEditor.setDraftValue('');
+    reviewEditor.handleEditSave();
     reviewEditor.setSaveError(null);
     setPendingEditorFocus(null);
   };
@@ -776,26 +893,27 @@ export function GenerateReviewStep({
   };
 
   const breakEdges = useMemo<BreakEdge[]>(() => {
-    const cycle = slotCycles[cyclesCursor];
-    if (!cycle) return [];
-    return enumerateCycleBreaks(cycle, components);
-  }, [slotCycles, cyclesCursor, components]);
+    const cycle = cycleRows[cyclesCursor];
+    return cycle ? enumerateCycleBreaks(cycle, components) : [];
+  }, [cycleRows, cyclesCursor, components]);
 
   const handleBreakEdge = (edge: BreakEdge): void => {
-    const idx = components.findIndex((c) => c.key === edge.fromComponent);
-    if (idx < 0) return;
-    const target = components[idx];
-    const slot = target.entry.$slots?.[edge.slotName];
-    if (!slot || !Array.isArray(slot.$allowedComponents)) return;
-    const nextAllowed = slot.$allowedComponents.filter((v) => v !== edge.toComponent);
+    const target = components.find((component) => component.key === edge.fromComponent);
+    const slot = target?.entry.$slots?.[edge.slotName];
+    if (!target || !slot || !Array.isArray(slot.$allowedComponents)) return;
     const nextEntry: CDFComponentEntry = {
       ...target.entry,
       $slots: {
         ...target.entry.$slots,
-        [edge.slotName]: { ...slot, $allowedComponents: nextAllowed },
+        [edge.slotName]: {
+          ...slot,
+          $allowedComponents: slot.$allowedComponents.filter((value) => value !== edge.toComponent),
+        },
       },
     };
-    const next = components.map((c, i) => (i === idx ? { ...c, entry: nextEntry } : c));
+    const next = components.map((component) =>
+      component.key === target.key ? { ...component, entry: nextEntry } : component,
+    );
     setComponents(next);
     const db = openPipelineDb();
     try {
@@ -828,6 +946,17 @@ export function GenerateReviewStep({
   const dialogOpen = showFinalize || showQuit;
 
   useImmediateInput((input, key) => {
+    if (showHelp) {
+      if (input === 'h') {
+        // Use the functional form so a rapid h → h sequence cannot apply the
+        // first render's stale `showHelp` value twice.
+        setShowHelp((open) => !open);
+      } else if (key.escape) {
+        setShowHelp(false);
+      }
+      return;
+    }
+
     if (
       handleReviewOverlayInput(input, key, {
         loading,
@@ -845,26 +974,6 @@ export function GenerateReviewStep({
       })
     )
       return;
-
-    if (showUnsavedWarning) {
-      if (key.return) {
-        reviewEditor.handleEditSave();
-        setShowUnsavedWarning(false);
-        if (pendingFocusAway === 'tab-to-sidebar') setSidebarFocused(true);
-        setPendingFocusAway(null);
-        return;
-      }
-      if (key.escape) {
-        setDiscardTrigger((n) => n + 1);
-        setShowUnsavedWarning(false);
-        if (pendingFocusAway === 'tab-to-sidebar') setSidebarFocused(true);
-        setPendingFocusAway(null);
-        return;
-      }
-      setShowUnsavedWarning(false);
-      setPendingFocusAway(null);
-      return;
-    }
 
     if (searchOpen) {
       if (key.escape) {
@@ -939,23 +1048,6 @@ export function GenerateReviewStep({
       }
       return;
     }
-    if (lineagePanel.isOpen) {
-      if (lineagePanel.handleInput(input, key)) return;
-      if (
-        handleLineageNavigation({
-          input,
-          key,
-          cursor: lineageCursor,
-          jumpables: lineageJumpables,
-          onCursorChange: setLineageCursor,
-          onJump: jumpCursorToName,
-          onClose: lineagePanel.close,
-          allowTab: true,
-        })
-      )
-        return;
-      return;
-    }
     if (breakPanel.isOpen) {
       if (breakConfirm) {
         if (input === 'y') {
@@ -963,6 +1055,7 @@ export function GenerateReviewStep({
           if (edge) handleBreakEdge(edge);
           setBreakConfirm(false);
           breakPanel.close();
+          cyclePanel.close();
           return;
         }
         if (input === 'n' || key.escape) {
@@ -972,12 +1065,12 @@ export function GenerateReviewStep({
         return;
       }
       if (breakPanel.handleInput(input, key)) return;
-      if (key.upArrow || input === 'k') {
-        setBreakCursor((c) => Math.max(0, c - 1));
+      if (key.upArrow) {
+        setBreakCursor((cursor) => Math.max(0, cursor - 1));
         return;
       }
-      if (key.downArrow || input === 'j') {
-        setBreakCursor((c) => Math.min(Math.max(0, breakEdges.length - 1), c + 1));
+      if (key.downArrow) {
+        setBreakCursor((cursor) => Math.min(Math.max(0, breakEdges.length - 1), cursor + 1));
         return;
       }
       if (key.return) {
@@ -1001,36 +1094,33 @@ export function GenerateReviewStep({
       if (key.upArrow || input === 'k') {
         setCyclesCursor((c) => {
           const next = Math.max(0, c - 1);
-          setCyclePanelScroll((scroll) => followCycleScroll(scroll, next, slotCycles, 20));
+          setCyclePanelScroll((scroll) => followCycleScroll(scroll, next, cycleRows, cycleViewportHeight));
           return next;
         });
         return;
       }
       if (key.downArrow || input === 'j') {
         setCyclesCursor((c) => {
-          const next = Math.min(Math.max(0, slotCycles.length - 1), c + 1);
-          setCyclePanelScroll((scroll) => followCycleScroll(scroll, next, slotCycles, 20));
+          const next = Math.min(Math.max(0, cycleRows.length - 1), c + 1);
+          setCyclePanelScroll((scroll) => followCycleScroll(scroll, next, cycleRows, cycleViewportHeight));
           return next;
         });
         return;
       }
       if (key.return) {
-        const target = slotCycles[cyclesCursor];
-        if (target && target.path.length > 0) jumpCursorToName(target.path[0]);
-        cyclePanel.close();
+        if (breakEdges.length > 0) {
+          breakPanel.open();
+          setBreakCursor(0);
+          setBreakConfirm(false);
+        }
         return;
       }
       return;
     }
-    if (input === 'c' && sidebarFocused && slotCycles.length > 0) {
+    if (input === 'c' && !key.ctrl && !key.meta && cycleRows.length > 0) {
       cyclePanel.open();
       setCyclePanelScroll(0);
       setCyclesCursor(0);
-      return;
-    }
-    if (input === 'l' && sidebarFocused && focusedComponentKey) {
-      lineagePanel.open();
-      setLineageCursor(0);
       return;
     }
     if (input === 'b' && sidebarFocused && breakingChanges.length > 0) {
@@ -1038,11 +1128,7 @@ export function GenerateReviewStep({
       setBreakingCursor(0);
       return;
     }
-    if (input === 'd' && sidebarFocused && removedComponents.length > 0) {
-      setRemovedBannerCollapsed((prev) => !prev);
-      return;
-    }
-    if (sidebarFocused && (input === 'o' || input === 'w')) {
+    if (input === 'o' || input === 'w') {
       const category: FilterCategory = input === 'o' ? 'cycles' : 'broken';
       setActiveFilters((prev) => {
         const next = new Set(prev);
@@ -1061,9 +1147,9 @@ export function GenerateReviewStep({
     if (handleReviewPanelShortcuts(input, key, { ...reviewEditor, propKey: 'p', componentKey: 'P' })) return;
 
     if (key.tab) {
-      if (!sidebarFocused && editorDirty) {
-        setPendingFocusAway('tab-to-sidebar');
-        setShowUnsavedWarning(true);
+      if (!sidebarFocused) {
+        reviewEditor.handleEditSave();
+        setSidebarFocused(true);
         return;
       }
       setSidebarFocused((prev) => !prev);
@@ -1089,10 +1175,27 @@ export function GenerateReviewStep({
         sidebarFocused,
         showJson: reviewEditor.showJson,
         jsonValue: getReviewJsonPanelValue(components[selectedIdx] ?? null, reviewEditor.showHiddenProps),
-        height: PANEL_HEIGHT,
+        height: panelContentHeight,
       })
     )
       return;
+
+    if (sidebarFocused && (input === 'j' || input === 'k')) {
+      setNav(({ cursorRowIdx: previousRow, sidebarScrollOffset: previousScroll }) =>
+        moveSelectableCursor({
+          direction: input === 'j' ? 'down' : 'up',
+          previousRow,
+          previousScroll,
+          positions: selectableRowPositions,
+          visibleCount,
+        }),
+      );
+      reviewEditor.setJsonScrollOffset(0);
+      reviewEditor.handleEditSave();
+      reviewEditor.setSaveError(null);
+      setPendingEditorFocus(null);
+      return;
+    }
 
     if (!sidebarFocused) return;
 
@@ -1109,7 +1212,7 @@ export function GenerateReviewStep({
       setAutocompleteCandidates([]);
       return;
     }
-    if (input === '?') {
+    if (input === 'h') {
       setShowHelp(true);
       return;
     }
@@ -1211,7 +1314,7 @@ export function GenerateReviewStep({
       return;
     }
 
-    if (key.upArrow || input === 'k') {
+    if (key.upArrow) {
       setNav(({ cursorRowIdx: previousRow, sidebarScrollOffset: previousScroll }) =>
         moveSelectableCursor({
           direction: 'up',
@@ -1222,10 +1325,10 @@ export function GenerateReviewStep({
         }),
       );
       reviewEditor.setJsonScrollOffset(0);
-      reviewEditor.setDraftValue('');
+      reviewEditor.handleEditSave();
       reviewEditor.setSaveError(null);
       setPendingEditorFocus(null);
-    } else if (key.downArrow || input === 'j') {
+    } else if (key.downArrow) {
       setNav(({ cursorRowIdx: previousRow, sidebarScrollOffset: previousScroll }) =>
         moveSelectableCursor({
           direction: 'down',
@@ -1236,7 +1339,7 @@ export function GenerateReviewStep({
         }),
       );
       reviewEditor.setJsonScrollOffset(0);
-      reviewEditor.setDraftValue('');
+      reviewEditor.handleEditSave();
       reviewEditor.setSaveError(null);
       setPendingEditorFocus(null);
     }
@@ -1251,55 +1354,7 @@ export function GenerateReviewStep({
   }
 
   if (showHelp) {
-    return <HelpOverlay sections={HELP_SECTIONS} onClose={() => setShowHelp(false)} />;
-  }
-
-  const renderBreakOverlay = (width?: number): React.ReactElement => {
-    const highlightedCycle = slotCycles[cyclesCursor];
-    return (
-      <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.warning} paddingX={1} width={width}>
-        <Text bold color={PALETTE.warning}>
-          {`BREAK CYCLE ${cyclesCursor + 1} — remove a slot edge or reject a member`}
-        </Text>
-        {highlightedCycle && (
-          <CyclePathLine segments={formatCyclePathSegments(highlightedCycle)} prefix="  " highlightComponents />
-        )}
-        <Text dimColor>
-          {highlightedCycle
-            ? 'Deleting an edge removes it from $allowedComponents (undo with Ctrl+Z).'
-            : 'No cycle highlighted.'}
-        </Text>
-        <Text> </Text>
-        {breakEdges.length > 0 && <Text dimColor>{'remove slot edge:'}</Text>}
-        {breakEdges.map((edge, idx) => {
-          const isCursor = idx === breakCursor;
-          return (
-            <Text key={`break-${idx}`} inverse={isCursor}>
-              {`${isCursor ? '▶' : ' '} remove '${edge.toComponent}' from ${edge.fromComponent}.$slots.${edge.slotName}.$allowedComponents`}
-            </Text>
-          );
-        })}
-        {breakConfirm ? (
-          <>
-            <Text> </Text>
-            <Text bold color={PALETTE.warning}>
-              {'Delete this slot edge? [y] confirm  [n] cancel'}
-            </Text>
-          </>
-        ) : (
-          <Text dimColor>{'[↑↓/j/k] move  [Enter] delete  [x/Esc] close'}</Text>
-        )}
-      </Box>
-    );
-  };
-  const breakOverlayFullScreen =
-    breakPanel.isOpen &&
-    shouldBreakOverlayGoFullScreen({
-      rows: stdout?.rows ?? FALLBACK_ROWS,
-      edgeCount: breakEdges.length,
-    });
-  if (breakOverlayFullScreen) {
-    return renderBreakOverlay();
+    return <HelpOverlay sections={HELP_SECTIONS} handleInput={false} onClose={() => setShowHelp(false)} />;
   }
 
   const { selected, selectedJson, visibleJsonPanelValue } = getReviewSelectionState(
@@ -1329,9 +1384,13 @@ export function GenerateReviewStep({
     const groupOverhead = 12; // "▸  (99 deps) ✗"
     return Math.max(m, c.key.length + Math.max(suffixLen, groupOverhead));
   }, 0);
-  const sidebarWidthCap = computeSidebarWidth(terminalWidth);
+  const minimumPanelWidth = Math.min(24, Math.max(10, terminalWidth - 16));
+  const sidebarWidthCap = Math.min(
+    computeSidebarWidth(terminalWidth),
+    Math.max(10, terminalWidth - minimumPanelWidth - 4),
+  );
   const sidebarWidth = Math.min(Math.max(longestName + 9, 18), sidebarWidthCap);
-  const panelWidth = Math.max(10, terminalWidth - sidebarWidth - 4);
+  const panelWidth = Math.max(minimumPanelWidth, terminalWidth - sidebarWidth - 4);
 
   const projectSlotGraph = components.map((c) => ({
     name: c.key,
@@ -1357,18 +1416,6 @@ export function GenerateReviewStep({
         onFinalize={handleFinalizeConfirm}
         onQuit={onQuit}
       />
-      {showUnsavedWarning && !dialogOpen && (
-        <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.warning} paddingX={1}>
-          <Text bold color={PALETTE.warning}>
-            Unsaved changes
-          </Text>
-          <Text>You have unsaved edits in the current field editor.</Text>
-          <Text> </Text>
-          <Text>{'  [Enter]  Save and continue'}</Text>
-          <Text>{'  [Esc]    Discard changes and continue'}</Text>
-          <Text>{'  [Tab]    Stay in the panel'}</Text>
-        </Box>
-      )}
       <ReviewReloadDialog open={showReloadDialog && !dialogOpen} />
       {removedComponents.length > 0 && !dialogOpen && (
         <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.error} paddingX={1}>
@@ -1418,58 +1465,6 @@ export function GenerateReviewStep({
             </Box>
           );
         })()}
-      {cyclePanel.isOpen &&
-        !dialogOpen &&
-        (() => {
-          const PANEL_H = 20;
-          const lines: React.ReactElement[] = [];
-          lines.push(
-            <Text key="cyc-title" bold color={PALETTE.warning}>
-              {`SLOT DEPENDENCY CYCLES (${slotCycles.length})`}
-            </Text>,
-          );
-          lines.push(
-            <Text key="cyc-sub" dimColor>
-              {'push will fail until these are resolved'}
-            </Text>,
-          );
-          lines.push(
-            <Text key="cyc-guide" dimColor>
-              {'To fix: reject a cycle member, or break the cycle by removing a slot edge.'}
-            </Text>,
-          );
-          lines.push(<Text key="cyc-space"> </Text>);
-          slotCycles.forEach((cycle, idx) => {
-            const nodeCount = new Set(cycle.path).size;
-            const isCursor = idx === cyclesCursor;
-            lines.push(
-              <Text
-                key={`cyc-h-${idx}`}
-                bold
-                inverse={isCursor}
-              >{`${isCursor ? '▶' : ' '} Cycle ${idx + 1} (${nodeCount} component${nodeCount === 1 ? '' : 's'}):`}</Text>,
-            );
-            lines.push(
-              <CyclePathLine key={`cyc-p-${idx}`} segments={formatCyclePathSegments(cycle, 16)} prefix="    " />,
-            );
-            if (cycle.suggestedBreak) {
-              const b = cycle.suggestedBreak;
-              lines.push(
-                <Text key={`cyc-f-${idx}`} dimColor>
-                  {`    Suggested fix: remove '${b.toComponent}' from ${b.fromComponent}.$slots.${b.slotName}.$allowedComponents`}
-                </Text>,
-              );
-            }
-            lines.push(<Text key={`cyc-s-${idx}`}> </Text>);
-          });
-          const visible = lines.slice(cyclePanelScroll, cyclePanelScroll + PANEL_H);
-          return (
-            <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.warning} paddingX={1}>
-              {visible}
-              <Text dimColor>{'[↑↓/j/k] move  [Enter] jump  [x] break cycle  [c/q/Esc] close'}</Text>
-            </Box>
-          );
-        })()}
       {!dialogOpen && (
         <LivePreviewSummary
           enabled={livePreview}
@@ -1493,7 +1488,7 @@ export function GenerateReviewStep({
           return (
             <Box flexDirection="column" borderStyle="single" borderColor={PALETTE.error} paddingX={1}>
               <Text color={PALETTE.error} bold>
-                {`Cyclic manifest — auto-rejected ${stillRejected.length} component${stillRejected.length === 1 ? '' : 's'}:`}
+                {`Cyclic component graph — auto-rejected ${stillRejected.length} component${stillRejected.length === 1 ? '' : 's'}:`}
               </Text>
               {members.length > 0 && <Text color={PALETTE.error}>{`  Cycle members: ${members.join(', ')}`}</Text>}
               {ancestors.length > 0 && <Text color={PALETTE.error}>{`  Ancestors: ${ancestors.join(', ')}`}</Text>}
@@ -1507,11 +1502,30 @@ export function GenerateReviewStep({
         })()}
       <ReviewEmptyComponentsWarning count={emptyCount} hidden={dialogOpen} />
       <ReviewFinalizeError message={finalizeError} hidden={dialogOpen} />
-      {!dialogOpen && (
+      {!dialogOpen && breakPanel.isOpen && (
+        <BreakCyclePanel
+          cycle={cycleRows[cyclesCursor]}
+          edges={breakEdges}
+          cursor={breakCursor}
+          confirming={breakConfirm}
+          width={Math.max(20, terminalWidth - 2)}
+          height={panelHeight}
+        />
+      )}
+      {!dialogOpen && cyclePanel.isOpen && !breakPanel.isOpen && (
+        <CycleDetailPanel
+          cycles={cycleRows}
+          cursor={cyclesCursor}
+          scrollOffset={cyclePanelScroll}
+          width={Math.max(20, terminalWidth - 2)}
+          height={panelHeight}
+        />
+      )}
+      {!dialogOpen && !cyclePanel.isOpen && !breakPanel.isOpen && (
         <Box>
           {breakingPanel.isOpen ? (
             <GotoBanner
-              title="Breaking changes"
+              title={`Breaking changes — ${breakingRows[breakingCursor]?.componentName ?? 'unknown component'}`}
               rows={breakingRows.map((r) => ({
                 label: r.label,
                 jumpTarget: r.componentName,
@@ -1520,15 +1534,6 @@ export function GenerateReviewStep({
               maxRows={panelMaxRows}
               width={sidebarWidth}
               footerHint="[↑/↓] move · [Enter] jump · [D] detail · [Esc] close"
-            />
-          ) : lineagePanel.isOpen && focusedComponentKey ? (
-            <LineagePanel
-              focusedComponentKey={focusedComponentKey}
-              entries={lineageEntries}
-              cursor={lineageCursor}
-              jumpables={lineageJumpables}
-              maxRows={panelMaxRows}
-              width={sidebarWidth}
             />
           ) : (
             <GroupedSidebar
@@ -1555,6 +1560,8 @@ export function GenerateReviewStep({
                 });
               }}
               width={sidebarWidth}
+              height={leftPanelHeight}
+              wrapLabels
               focused={sidebarFocused}
               renderStatusByKey={renderStatusByKey}
               previewAnnotationByKey={previewAnnotationByKey}
@@ -1575,25 +1582,31 @@ export function GenerateReviewStep({
               reviewMetadata={reviewMetadata}
               reviewEditor={reviewEditor}
               width={panelWidth}
-              height={PANEL_HEIGHT}
+              height={panelHeight}
               jsonValue={visibleJsonPanelValue}
               sidebarFocused={sidebarFocused}
-              fieldEditor={buildReviewFieldEditor(reviewEditor, selectedJson, () => setSidebarFocused(true), {
-                key:
-                  pendingEditorFocus && pendingEditorFocus.componentName === selected.key
-                    ? `${selected.key}::${pendingEditorFocus.target.kind}:${pendingEditorFocus.target.name}`
-                    : selected.key,
-                propRationaleKey: 'p',
-                componentRationaleKey: 'P',
-                projectSlotGraph,
-                currentComponentName: selected.key,
-                onDirtyChange: setEditorDirty,
-                discardTrigger,
-                initialFocusTarget:
-                  pendingEditorFocus && pendingEditorFocus.componentName === selected.key
-                    ? pendingEditorFocus.target
-                    : { kind: 'description' },
-              })}
+              fieldEditor={buildReviewFieldEditor(
+                reviewEditor,
+                selectedJson,
+                () => {
+                  reviewEditor.handleEditSave();
+                  setSidebarFocused(true);
+                },
+                {
+                  key:
+                    pendingEditorFocus && pendingEditorFocus.componentName === selected.key
+                      ? `${selected.key}::${pendingEditorFocus.target.kind}:${pendingEditorFocus.target.name}`
+                      : selected.key,
+                  propRationaleKey: 'p',
+                  componentRationaleKey: 'P',
+                  projectSlotGraph,
+                  currentComponentName: selected.key,
+                  initialFocusTarget:
+                    pendingEditorFocus && pendingEditorFocus.componentName === selected.key
+                      ? pendingEditorFocus.target
+                      : { kind: 'description' },
+                },
+              )}
               saveError={reviewEditor.saveError}
               sidebarFooter={hasGroupRoots ? '  [Space] expand/collapse group  [E/C] expand/collapse all' : ''}
               livePreview={livePreviewHook}
@@ -1604,13 +1617,12 @@ export function GenerateReviewStep({
           )}
         </Box>
       )}
-      {breakPanel.isOpen && !breakOverlayFullScreen && !dialogOpen && renderBreakOverlay()}
-      {!dialogOpen && slotCycles.length > 0 && !cyclePanel.isOpen && !breakPanel.isOpen && (
+      {!dialogOpen && cycleRows.length > 0 && !cyclePanel.isOpen && !breakPanel.isOpen && (
         <Box flexDirection="column">
           <Text color={PALETTE.warning}>
-            {`⚠ ${slotCycles.length} slot dependency cycle${slotCycles.length === 1 ? '' : 's'} detected — push will fail`}
+            {`⚠ ${cycleRows.length} slot dependency cycle${cycleRows.length === 1 ? '' : 's'} detected — push will fail`}
           </Text>
-          {slotCycles.slice(0, 3).map((cycle, idx) => {
+          {cycleRows.slice(0, 3).map((cycle, idx) => {
             return (
               <CyclePathLine
                 key={`cyc-banner-${idx}`}
@@ -1621,7 +1633,7 @@ export function GenerateReviewStep({
               />
             );
           })}
-          {slotCycles.length > 3 && <Text color={PALETTE.warning}>{`  …${slotCycles.length - 3} more`}</Text>}
+          {cycleRows.length > 3 && <Text color={PALETTE.warning}>{`  …${cycleRows.length - 3} more`}</Text>}
           <Text dimColor>{'  press [c] for detail'}</Text>
         </Box>
       )}
@@ -1634,58 +1646,7 @@ export function GenerateReviewStep({
         hidden={dialogOpen}
       />
       {!dialogOpen && sidebarFocused && (
-        <Box columnGap={2} flexWrap="wrap">
-          {reviewEditor.panelOpen === 'token-review' ? (
-            <>
-              {legendEntry('[↑/↓]', 'move')}
-              {legendEntry('[Enter]', 'edit allowed')}
-              {legendEntry('[Esc]', 'close')}
-            </>
-          ) : (
-            <>
-              {legendEntry('[j/k]', 'move')}
-              {legendEntry('[a]', 'accept')}
-              {legendEntry('[r]', 'reject')}
-              {legendEntry('[A]', 'accept all')}
-              {legendEntry('[F]', 'finalize')}
-              {legendEntry('[L]', 'flat', columnOneView === 'flat')}
-              {legendEntry('[l]', 'lineage', lineagePanel.isOpen)}
-              {legendEntry('[i]', 'focus lineage', jumpFilterTarget !== null)}
-              {legendEntry('[w]', 'only breaking', activeFilters.has('broken'))}
-              {slotCycles.length > 0 && legendEntry('[o]', 'only cycles', activeFilters.has('cycles'))}
-              {slotCycles.length > 0 && legendEntry('[c]', 'cycle list', cyclePanel.isOpen)}
-              {legendEntry('[p]', 'prop rationale', reviewEditor.panelOpen === 'prop-rationale')}
-              {legendEntry('[P]', 'component rationale', reviewEditor.panelOpen === 'component-rationale')}
-              {legendEntry('[s]', 'source', reviewEditor.panelOpen === 'source')}
-              {reviewEditor.currentTokenSuggestions().length > 0 && legendEntry('[t]', 'token review')}
-              {legendEntry('[J]', reviewEditor.showJson ? 'hide JSON' : 'show JSON', reviewEditor.showJson)}
-              {legendEntry(
-                '[H]',
-                reviewEditor.showHiddenProps ? 'hide state/unattached' : 'show state/unattached',
-                reviewEditor.showHiddenProps,
-              )}
-              {breakingChanges.length > 0 && legendEntry('[b]', 'see breaking changes', breakingPanel.isOpen)}
-              {removedComponents.length > 0 &&
-                legendEntry('[d]', removedBannerCollapsed ? 'show removed' : 'hide removed', !removedBannerCollapsed)}
-              {legendEntry('[/]', 'search', searchOpen || searchQuery.length > 0)}
-              {legendEntry('[Tab]', 'focus panel')}
-              {legendEntry('[Ctrl+Z]', 'undo')}
-              {legendEntry('[Ctrl+Y]', 'redo')}
-              {legendEntry('[Ctrl+R]', 'reload')}
-              {legendEntry('[?]', 'help')}
-              {legendEntry('[q]', 'quit')}
-            </>
-          )}
-        </Box>
-      )}
-      {!dialogOpen && (
-        <ReviewStatusBar
-          entries={components}
-          onApproveAll={() => {
-            setComponents((prev) => prev.map((c) => (c.status === 'needs-review' ? { ...c, status: 'accepted' } : c)));
-          }}
-          onFinalize={() => setShowFinalize(true)}
-        />
+        <CompactControlBar hasGroupRoots={hasGroupRoots} searchActive={searchOpen || searchQuery.length > 0} />
       )}
     </Box>
   );

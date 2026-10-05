@@ -16,21 +16,21 @@ vi.mock('../../../src/import/tui/runScopeGate.js', () => ({
   },
 }));
 
-vi.mock('../../../src/import/tui/scope-gate-host.js', () => ({
-  ScopeGateHost: ({ onConfirm }: { onConfirm: (decisions: Record<string, unknown>) => void }) => {
+vi.mock('../../../src/import/tui/steps/ScopeGateStep.js', () => ({
+  ScopeGateStep: ({ onConfirm }: { onConfirm: (decisions: Record<string, unknown>) => void }) => {
     const confirmed = useRef(false);
     useEffect(() => {
       if (!confirmed.current) {
         confirmed.current = true;
-        onConfirm({});
+        onConfirm({ accepted: ['Card'], rejected: [] });
       }
     }, [onConfirm]);
     return <></>;
   },
 }));
 
-vi.mock('../../../src/import/tui/final-review-host.js', () => ({
-  FinalReviewHost: () => <Text>FINAL_REVIEW</Text>,
+vi.mock('../../../src/import/tui/steps/GenerateReviewStep.js', () => ({
+  GenerateReviewStep: () => <Text>FINAL_REVIEW</Text>,
 }));
 
 vi.mock('../../../src/import/tui/spawn-generate.js', () => ({
@@ -45,6 +45,10 @@ vi.mock('../../../src/import/tui/spawn-generate.js', () => ({
   }),
 }));
 
+vi.mock('../../../src/import/tui/run-selection-agent.js', () => ({
+  runSelectionAgent: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>();
   return {
@@ -57,13 +61,13 @@ vi.mock('node:child_process', async (importOriginal) => {
     spawn: vi.fn((_command, args) => {
       const stdout = {
         on: (event: string, callback: (chunk: Buffer) => void) => {
-          if (event === 'data' && (args as string[]).includes('extract'))
+          if (event === 'data' && (args as string[]).includes('__extract'))
             callback(Buffer.from('session=extract-session\n'));
         },
       };
       const stderr = {
         on: (event: string, callback: (chunk: Buffer) => void) => {
-          if (event === 'data' && (args as string[]).includes('extract'))
+          if (event === 'data' && (args as string[]).includes('__extract'))
             callback(Buffer.from('Extracted 1 component\n'));
         },
       };
@@ -153,7 +157,7 @@ describe('WizardApp reused token catalog', () => {
 
     const { WizardApp } = await import('../../../src/import/tui/WizardApp.js');
     const app = render(
-      <WizardApp initialProjectPath={projectPath} initialRawTokensPath={join(dir, 'raw-tokens.json')} noPush />,
+      <WizardApp initialProjectPath={projectPath} initialRawTokensPath={join(dir, 'raw-tokens.json')} />,
     );
     await new Promise((resolve) => setTimeout(resolve, 100));
     // Frame 1: token-reuse-gate — press Enter to reuse the pre-generated tokens.

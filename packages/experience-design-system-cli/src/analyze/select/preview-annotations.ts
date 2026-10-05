@@ -9,15 +9,15 @@ import type { PreviewAnnotation } from './types.js';
  *
  * The `new` bucket of `ServerPreviewResponse.components` is `CDFComponentEntry[]`
  * — those entries do NOT carry a `name` field on the wire (the name is the
- * KEY in the parent manifest). So instead of trying to read names off entries,
- * we derive the "new" set as:
+ * KEY in the parent CDF document). So instead of trying to read names off
+ * entries, we derive the "new" set as:
  *
  *   new = localNames \ (unchangedNames ∪ changedNames ∪ removedNames)
  *
- * Callers must pass the local manifest's component keys as `localNames` so
- * we can perform the set difference. Removed components from the server that
- * aren't in the local manifest are still annotated as `'removed'` (so the
- * detail panel can list them).
+ * Callers must pass the local CDF document's component keys as `localNames`
+ * so we can perform the set difference. Removed components from the server
+ * that aren't in the local document are still annotated as `'removed'` (so
+ * the detail panel can list them).
  *
  * Precedence: `breaking` > `changed` > `removed` > `new`.
  *

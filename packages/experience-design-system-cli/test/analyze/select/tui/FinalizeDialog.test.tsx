@@ -83,7 +83,7 @@ describe('FinalizeDialog', () => {
     expect(frame).toContain('Hero');
   });
 
-  it('omits the removed section when removed is empty (e.g. --no-push, no live preview)', () => {
+  it('omits the removed section when removed is empty', () => {
     const { lastFrame } = render(
       <FinalizeDialog accepted={3} rejected={0} needsReview={0} removed={[]} onConfirm={vi.fn()} onCancel={vi.fn()} />,
     );
@@ -107,7 +107,28 @@ describe('FinalizeDialog', () => {
     expect(frame).not.toMatch(/Removed components/);
   });
 
-  it('windows a long removed list and advertises [j/k] scroll', () => {
+  it('keeps a stable height while the deletion preview changes status', () => {
+    const renderHeight = (previewStatus: 'idle' | 'running' | 'done'): number => {
+      const view = render(
+        <FinalizeDialog
+          accepted={3}
+          rejected={0}
+          needsReview={0}
+          previewStatus={previewStatus}
+          onConfirm={vi.fn()}
+          onCancel={vi.fn()}
+        />,
+      );
+      const height = (view.lastFrame() ?? '').split('\n').length;
+      view.unmount();
+      return height;
+    };
+
+    expect(renderHeight('running')).toBe(renderHeight('idle'));
+    expect(renderHeight('done')).toBe(renderHeight('idle'));
+  });
+
+  it('windows a long removed list and advertises arrow scrolling', () => {
     const removed = Array.from({ length: 10 }, (_, i) => summary(`c${i}`, `Comp${i}`));
     const { lastFrame } = render(
       <FinalizeDialog
@@ -123,7 +144,7 @@ describe('FinalizeDialog', () => {
     );
     const frame = lastFrame() ?? '';
     expect(frame).toMatch(/Removed components \(10\)/);
-    expect(frame).toMatch(/\[j\/k\] scroll/);
+    expect(frame).toMatch(/\[↑↓\] scroll deletions/);
     expect(frame).toMatch(/more below/);
     // Only the first window is shown; a later one is scrolled off.
     expect(frame).toContain('Comp0');

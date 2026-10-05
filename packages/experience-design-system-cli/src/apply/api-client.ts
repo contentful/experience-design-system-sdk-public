@@ -1,5 +1,6 @@
+import { parseCDFComponents } from '@contentful/experience-design-system-types';
 import type {
-  ManifestPayload,
+  CDFDocument,
   ServerPreviewResponse,
   ApplyOperationResponse,
   BreakingChange,
@@ -15,15 +16,6 @@ import { buildUserAgent } from '../lib/user-agent.js';
 
 export const PREVIEW_ERROR_PREFIX = 'preview failed:';
 export const APPLY_ERROR_PREFIX = 'apply failed:';
-
-// Substring match the orchestrator uses to distinguish a parseable
-// component-level validation failure from generic 422s. Quoted because the
-// match runs against the raw JSON body (which contains `"code":"ValidationFailed"`).
-// If the server ever changes the casing or naming, isPreviewValidationError
-// silently returns false and the retry loop never fires — so this lives next
-// to the prefixes as a deliberate, named contract rather than an inline
-// magic string in the orchestrator.
-export const VALIDATION_FAILED_CODE = '"ValidationFailed"';
 
 export interface ApiClientOptions {
   host?: string;
@@ -82,7 +74,7 @@ function stringifyError(error: unknown): string {
 // 16384 so realistic 422 ValidationFailed reports (which list every
 // offending component, ~100 chars per error, easily exceeds 1KB once you
 // cross ~10 components) survive intact through subprocess stderr. The
-// orchestrator's parseOffendingComponentNames does JSON.parse on this slice
+// validation parsers do JSON.parse on this slice
 // and silently fails to recover any offenders if the JSON is mid-truncated.
 // The cap stays in place to keep a runaway server response from blowing up
 // log output.
@@ -119,7 +111,7 @@ const COMPONENT_PATH_PREFIX = 'manifest:components/';
  * Path shape: `manifest:components/<Name>/$slots/<key>` or
  * `manifest:components/<Name>/$properties/<key>`. Only the component
  * name is extracted today; `path` and `message` are kept verbatim so
- * future surfaces (debug logging, headless retry in SP-4) can render
+ * future diagnostic surfaces can render
  * the field-level detail.
  */
 export function parsePreviewValidationErrors(body: string): PreviewValidationError[] {
@@ -377,21 +369,24 @@ export class ImportApiClient {
     throw new ApiError(`preflight failed: ${res.status}`, res.status, body);
   }
 
-  async previewImport(manifest: ManifestPayload, allowDeletions = false): Promise<ServerPreviewResponse> {
+  async previewImport(cdf: CDFDocument): Promise<ServerPreviewResponse> {
     const debug = getDebugLogger();
     const startedAt = Date.now();
+    const { components, tokens } = parseCDFComponents(cdf);
     debug.event('apply', 'preview.request', {
       url: `${this.base()}/design_systems/imports/preview`,
-      componentCount: (manifest as { components?: unknown[] }).components?.length ?? 0,
-      tokenCount: (manifest as { designTokens?: unknown[] }).designTokens?.length ?? 0,
-      allowDeletions,
+      componentCount: components.length,
+      tokenCount: tokens.length,
     });
     const result = await this.requestWithRetry('preview', PREVIEW_ERROR_PREFIX, () =>
       designSystemImportSourcelessPreview({
         baseUrl: this.host,
         headers: this.headers(),
         path: { spaceId: this.spaceId, environmentId: this.environmentId },
-        body: { ...manifest, allowDeletions },
+        // The generated request type still expects the old componentsManifest/
+        // tokensManifest envelope, pending the server-side merge; we send the
+        // single CDF document ahead of that.
+        body: cdf as never,
         parseAs: 'json',
       }),
     );
@@ -410,16 +405,15 @@ export class ImportApiClient {
   }
 
   async applyImport(
-    manifest: ManifestPayload,
-    options: { acknowledgeBreakingChanges: boolean; allowDeletions?: boolean },
+    cdf: CDFDocument,
+    options: { acknowledgeBreakingChanges: boolean },
   ): Promise<ApplyOperationResponse> {
-    const { acknowledgeBreakingChanges, allowDeletions = false } = options;
+    const { acknowledgeBreakingChanges } = options;
     const debug = getDebugLogger();
     const startedAt = Date.now();
     debug.event('apply', 'apply.request', {
       url: `${this.base()}/design_systems/imports/apply`,
       acknowledgeBreakingChanges,
-      allowDeletions,
     });
     let result: Awaited<ReturnType<typeof designSystemImportApply<false>>>;
     try {
@@ -427,7 +421,8 @@ export class ImportApiClient {
         baseUrl: this.host,
         headers: this.headers(),
         path: { spaceId: this.spaceId, environmentId: this.environmentId },
-        body: { ...manifest, acknowledgeBreakingChanges, allowDeletions },
+        // Same pre-server-migration note as previewImport above.
+        body: { ...cdf, acknowledgeBreakingChanges } as never,
         parseAs: 'json',
       });
     } catch (error) {

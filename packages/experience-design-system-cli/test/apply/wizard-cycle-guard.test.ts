@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { buildManifest } from '@contentful/experience-design-system-types';
+import { buildCDF } from '@contentful/experience-design-system-types';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
-import { detectSlotCycles, extractComponentsFromManifest } from '../../src/apply/command.js';
+import { detectSlotCycles, extractComponents } from '../../src/apply/command.js';
 
-describe('wizard push guard — detectSlotCycles ∘ extractComponentsFromManifest', () => {
-  it('surfaces a 2-cycle built into a real ManifestPayload', () => {
+describe('wizard push guard — detectSlotCycles ∘ extractComponents', () => {
+  it('surfaces a 2-cycle built into a real CDF document', () => {
     const components: Array<{ key: string; entry: CDFComponentEntry }> = [
       {
         key: 'CycleA',
@@ -23,8 +23,8 @@ describe('wizard push guard — detectSlotCycles ∘ extractComponentsFromManife
         },
       },
     ];
-    const manifest = buildManifest(components, []);
-    const extracted = extractComponentsFromManifest(manifest);
+    const cdf = buildCDF(components, [])!;
+    const extracted = extractComponents(cdf);
     const cycles = detectSlotCycles(extracted);
 
     expect(extracted.map((c) => c.key).sort()).toEqual(['CycleA', 'CycleB']);
@@ -34,7 +34,7 @@ describe('wizard push guard — detectSlotCycles ∘ extractComponentsFromManife
     expect(names.has('CycleB')).toBe(true);
   });
 
-  it('returns no cycles for an acyclic manifest', () => {
+  it('returns no cycles for an acyclic document', () => {
     const components: Array<{ key: string; entry: CDFComponentEntry }> = [
       {
         key: 'Card',
@@ -46,13 +46,13 @@ describe('wizard push guard — detectSlotCycles ∘ extractComponentsFromManife
       },
       { key: 'Heading', entry: { $type: 'component', $properties: {} } },
     ];
-    const manifest = buildManifest(components, []);
-    const cycles = detectSlotCycles(extractComponentsFromManifest(manifest));
+    const cdf = buildCDF(components, [])!;
+    const cycles = detectSlotCycles(extractComponents(cdf));
     expect(cycles).toEqual([]);
   });
 
-  it('skips the $schema sentinel when extracting from a manifest', () => {
-    const manifest = buildManifest(
+  it('skips the $schema sentinel when extracting from a document', () => {
+    const cdf = buildCDF(
       [
         {
           key: 'Foo',
@@ -60,15 +60,15 @@ describe('wizard push guard — detectSlotCycles ∘ extractComponentsFromManife
         },
       ],
       [],
-    );
-    const extracted = extractComponentsFromManifest(manifest);
+    )!;
+    const extracted = extractComponents(cdf);
     expect(extracted.map((c) => c.key)).toEqual(['Foo']);
   });
 
-  it('is safe on empty / undefined manifests', () => {
-    expect(extractComponentsFromManifest(null)).toEqual([]);
-    expect(extractComponentsFromManifest(undefined)).toEqual([]);
-    expect(extractComponentsFromManifest({})).toEqual([]);
-    expect(extractComponentsFromManifest({ componentsManifest: {} })).toEqual([]);
+  it('is safe on empty / undefined documents', () => {
+    expect(extractComponents(null)).toEqual([]);
+    expect(extractComponents(undefined)).toEqual([]);
+    expect(extractComponents({})).toEqual([]);
+    expect(extractComponents({ $schema: 'https://contentful.com/schemas/cdf' })).toEqual([]);
   });
 });

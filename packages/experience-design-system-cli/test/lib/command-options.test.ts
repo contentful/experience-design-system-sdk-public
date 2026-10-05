@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Command } from 'commander';
-import {
-  addArtifactInputOptions,
-  addCompositionOptions,
-  addContentfulTargetOptions,
-  addSelectionOptions,
-} from '../../src/lib/command-options.js';
+import { addArtifactInputOptions, addContentfulTargetOptions } from '../../src/lib/command-options.js';
 
 function options(command: Command) {
   return command.options.map((option) => ({
@@ -43,50 +38,6 @@ describe('command option builders', () => {
         defaultValue: undefined,
       },
       { flag: '--host', description: 'Override API base URL', mandatory: false, defaultValue: undefined },
-    ]);
-  });
-
-  it('registers composition flags with their existing help text', () => {
-    const command = addCompositionOptions(new Command());
-    expect(options(command)).toEqual([
-      {
-        flag: '--composite',
-        description: 'Import embedded-component hierarchy (opt in; default is atomic)',
-        mandatory: false,
-        defaultValue: undefined,
-      },
-      {
-        flag: '--atomic',
-        description: 'Import flat components with no embedded-component hierarchy (default)',
-        mandatory: false,
-        defaultValue: undefined,
-      },
-    ]);
-  });
-
-  it('collects repeated selection patterns with existing defaults', () => {
-    const command = addSelectionOptions(new Command());
-    command.parse(['node', 'test', '--select', 'Button', '--select', 'Card', '--deselect', 'Icon']);
-    expect(command.opts()).toMatchObject({ select: ['Button', 'Card'], deselect: ['Icon'] });
-    expect(options(command)).toEqual([
-      {
-        flag: '--select-all',
-        description: 'Select all entities without launching TUI',
-        mandatory: false,
-        defaultValue: undefined,
-      },
-      {
-        flag: '--select',
-        description: 'Select entities by ID pattern (repeatable)',
-        mandatory: false,
-        defaultValue: [],
-      },
-      {
-        flag: '--deselect',
-        description: 'Deselect entities by ID pattern (repeatable)',
-        mandatory: false,
-        defaultValue: [],
-      },
     ]);
   });
 });

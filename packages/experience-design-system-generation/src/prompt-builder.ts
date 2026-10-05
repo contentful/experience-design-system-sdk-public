@@ -80,10 +80,14 @@ export interface PromptOptions {
    * appropriate warning banner.
    */
   skillPathOverride?: string;
+  /** Inline prompt instructions, taking precedence over the bundled skill or path override. */
+  skillContentOverride?: string;
   /** JSON-serialized summary of existing space Components. Callers pre-project the shape per skill. */
   existingComponentsInline?: string;
   /** JSON-serialized summary of existing space DesignTokens. Callers pre-project the shape per skill. */
   existingTokensInline?: string;
+  /** JSON-serialized hard allowlist for generated slot allowed-components references. */
+  componentAllowlistInline?: string;
 }
 
 const SKILL_FILES: Record<Skill, string> = {
@@ -94,7 +98,7 @@ const SKILL_FILES: Record<Skill, string> = {
 };
 
 export async function buildPrompt(options: PromptOptions): Promise<string> {
-  const skillContent = await readSkillFile(options.skill, options.skillPathOverride);
+  const skillContent = options.skillContentOverride ?? (await readSkillFile(options.skill, options.skillPathOverride));
   const preamble = buildPreamble(options);
   return `${preamble}\n\nSkill instructions follow:\n---\n${skillContent}`;
 }
@@ -219,6 +223,7 @@ function buildPreamble(options: PromptOptions): string {
     componentSourceRefs,
     existingComponentsInline,
     existingTokensInline,
+    componentAllowlistInline,
   } = options;
 
   const sections: string[] = [];
@@ -231,6 +236,11 @@ function buildPreamble(options: PromptOptions): string {
   if (existingTokensInline) {
     sections.push(
       `Existing design tokens in the target Contentful space (JSON) — prefer binding to these paths over inventing new ones:\n\`\`\`json\n${existingTokensInline}\n\`\`\``,
+    );
+  }
+  if (componentAllowlistInline) {
+    sections.push(
+      `Known component names for slot allowed_components (hard allowlist; never use any other name):\n\`\`\`json\n${componentAllowlistInline}\n\`\`\``,
     );
   }
   if (rawComponentsInline) {
@@ -360,6 +370,7 @@ Rules:
 - Q2: is the value written straight into a style or attribute (\`rx={radius}\`, \`padding: \${padding}\`)? no → not \`token\`, apply the type rules.
 - Q3: is there a design-token reference at that use — a \`tokens.*\` parameter default, a \`tokenReference\`, an inline \`tokens.*\` / \`var(--*)\`? yes → \`token\` (cite both lines in "reason"); no → \`string\`. "Ambiguity resolves to \`enum\`" applies only when Q1–Q3 cannot be answered from the source shown.
 - CSS design props (className, style, styles, positional/geometric props: top, bottom, left, right, rotation, offset, etc.) → classify_prop, cdf_type: "string", cdf_category: "design".
+- For \`classify_slot.allowed_components\`, use only exact names from the hard allowlist provided below. Never invent a child from an import, JSX element, type name, icon name, or implementation helper; if a child is not listed, omit it.
 - On classify_component, "rationale" fields are operator-facing (read-only) but may surface in customer-facing exports. The "rationale.description" field is subject to the description content rules in the skill prompt (no internal initiative names). "rationale.props" and "rationale.slots" describe your reasoning about scope; "classify_slot.rationale" explains why each slot was kept.
 - On classify_prop, "reason" is REQUIRED and is the LLM's internal rationale — shown to the developer reviewing the import, never to end-users. "description" is the customer-facing copy and is subject to the description content rules in the skill prompt. Keep them distinct: "description" is short and customer-facing; "reason" explains your reasoning in detail.
 - You may emit prose lines (not starting with {) anywhere — they are ignored by the parser and serve as your reasoning log.`;

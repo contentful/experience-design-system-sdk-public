@@ -29,17 +29,14 @@
     "quality:knip:cli-v2:report": "tsx scripts/quality/knip-ratchet.ts report cli-v2",
     "quality:knip:baseline": "pnpm quality:baseline",
     "quality:knip:report": "pnpm quality:knip:v1:report && pnpm quality:knip:cli-v2:report",
-    "quality:jscpd": "pnpm quality:jscpd:v1 && pnpm quality:jscpd:cli-v2",
+    "quality:jscpd": "pnpm quality:jscpd:v1",
     "quality:jscpd:v1": "tsx scripts/quality/jscpd-ratchet.ts check v1",
     "quality:jscpd:v1:report": "tsx scripts/quality/jscpd-ratchet.ts report v1",
-    "quality:jscpd:cli-v2": "tsx scripts/quality/jscpd-ratchet.ts check cli-v2",
-    "quality:jscpd:cli-v2:report": "tsx scripts/quality/jscpd-ratchet.ts report cli-v2",
-    "quality:jscpd:report": "pnpm quality:jscpd:v1:report && pnpm quality:jscpd:cli-v2:report",
+    "quality:jscpd:report": "pnpm quality:jscpd:v1:report",
     "quality:baseline": "pnpm quality:knip:v1:baseline && pnpm quality:knip:cli-v2:baseline",
     "release": "node ./scripts/release.js",
     "prepare": "[ -n \"$CI\" ] || husky",
-    "postbuild": "[ -n \"$CI\" ] || node scripts/link-cli.js",
-    "postinstall": "node tools/dsi-pty-harness/scripts/fix-spawn-helper.mjs"
+    "postbuild": "[ -n \"$CI\" ] || node scripts/link-cli.js"
   },
   "commitlint": {
     "extends": [
@@ -72,9 +69,6 @@
     "tsx": "^4.22.4"
   },
   "pnpm": {
-    "onlyBuiltDependencies": [
-      "node-pty"
-    ],
     "overrides": {
       "picomatch@<4.0.4": ">=4.0.4",
       "brace-expansion@<5.0.9": ">=5.0.9",

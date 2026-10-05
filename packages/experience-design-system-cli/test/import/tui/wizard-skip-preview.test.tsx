@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 /**
  * Skip-credentials spec — Task 2: when `credentialsSkipped` is true, the
  * wizard must bypass the `previewImport` API call entirely and transition
- * directly to `push-decision-gate` with `serverPreview: null`.
+ * directly to the completed state with `serverPreview: null`.
  *
  * The actual bypass lives inside `WizardApp.runPreview`. Rather than spin up
  * the whole wizard, we factor the short-circuit decision into a pure helper
@@ -27,9 +27,9 @@ describe('shouldBypassPreview', () => {
 });
 
 describe('buildSkippedPreviewTransition', () => {
-  it('transitions to push-decision-gate with serverPreview cleared', () => {
+  it('transitions to done with serverPreview cleared', () => {
     expect(buildSkippedPreviewTransition()).toEqual({
-      step: 'push-decision-gate',
+      step: 'done',
       serverPreview: null,
     });
   });

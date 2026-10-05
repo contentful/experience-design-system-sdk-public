@@ -11,56 +11,13 @@ function help(args: string[]): Promise<string> {
 }
 
 describe('backwards-compat: standalone subcommand flags', () => {
-  it('analyze select flags are stable', async () => {
-    const out = await help(['analyze', 'select']);
-    for (const flag of [
-      '--session',
-      '--project-root',
-      '--select-all',
-      '--select',
-      '--deselect',
-      '--accept-all',
-      '--reject',
-      '--patch',
-      '--exclude-invalid',
-      '--exclude-components',
-    ]) {
-      expect(out).toContain(flag);
-    }
+  it('standalone analyze command is removed', async () => {
+    const out = await help([]);
+    expect(out).not.toMatch(/\n\s+analyze(?:\s|$)/);
   });
 
-  it('generate components flags are stable', async () => {
-    const out = await help(['generate', 'components']);
-    for (const flag of [
-      '--session',
-      '--tokens',
-      '--token-map',
-      '--agent',
-      '--model',
-      '--verbose',
-      '--dry-run',
-      '--no-cache',
-    ]) {
-      expect(out).toContain(flag);
-    }
-  });
-
-  it('apply push flags are stable', async () => {
-    const out = await help(['apply', 'push']);
-    for (const flag of [
-      '--components',
-      '--tokens',
-      '--session',
-      '--space-id',
-      '--environment-id',
-      '--cma-token',
-      '--host',
-      '--yes',
-      '--verbose',
-      '--force',
-      '--dry-run',
-    ]) {
-      expect(out).toContain(flag);
-    }
+  it('standalone generate command is removed', async () => {
+    const out = await help([]);
+    expect(out).not.toMatch(/\n\s+generate(?:\s|$)/);
   });
 });

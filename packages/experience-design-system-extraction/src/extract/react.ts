@@ -15,17 +15,18 @@ import type {
   RawPropDefinition,
   RawSlotDefinition,
   ComponentExtractionResult,
+  ExtractionExclusion,
 } from '../types.js';
 import {
   extractAllowedValues,
   getNodeDefinitions,
   getTypeReferenceName,
   getTypeTargetDeclarations,
-  getTsxExtractionContext,
   getValueTargetDeclarations,
   getJsxTagNameNode,
+  extractTsxComponents,
+  getRenderableExports,
   isIntrinsicJsxElement,
-  resolveDefaultExportName,
 } from './tsx-shared.js';
 import { shouldBeSlot } from './slot-detection.js';
 import { extractAllowedComponentsFromTypeText, extractAllowedComponentsFromJsdoc } from './slot-allowed-components.js';
@@ -34,6 +35,7 @@ import {
   collectTypePredicateComponentReferences,
   collectRuntimeTypeCheckComponentReferences,
   collectRenderedComponentReferences,
+  collectArrayMapRenderComponentReferences,
 } from './structural-slot-evidence.js';
 
 const REACT_ELEMENT_GENERIC_TEST = /(?:React\.)?ReactElement\s*<\s*[A-Za-z_$][\w$.]*/;
@@ -2054,29 +2056,16 @@ function hasImplementationChildrenHint(funcNode: FunctionLike, param: ParameterD
 }
 
 export async function extractReactComponents(filePaths: string[]): Promise<ComponentExtractionResult> {
-  const extractionContext = getTsxExtractionContext(filePaths, /\.[jt]sx$/);
-  if (!extractionContext) {
-    return { components: [], warnings: [] };
-  }
-
-  const { componentFiles, project } = extractionContext;
-
-  const warnings: string[] = [];
-  const components: RawComponentDefinitionInternal[] = [];
-
-  for (const filePath of componentFiles) {
-    try {
-      const sourceFile = project.getSourceFile(filePath);
-      if (!sourceFile) continue;
-      if (isStencilFile(sourceFile)) continue;
+  const { components, warnings, exclusions, project } = extractTsxComponents(
+    filePaths,
+    /\.[jt]sx$/,
+    (sourceFile, exclusions) => {
+      if (isStencilFile(sourceFile)) return [];
       const fileExports = [...sourceFile.getExportedDeclarations().keys()];
       const isNext = isNextJsComponent(sourceFile.getFilePath(), fileExports);
-      const extracted = extractFromSourceFile(sourceFile, isNext);
-      components.push(...extracted);
-    } catch (e) {
-      warnings.push(`Failed to extract from ${filePath}: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
+      return extractFromSourceFile(sourceFile, isNext, exclusions);
+    },
+  );
 
   const propsToComponent = new Map<string, string>();
   const componentNames = new Set<string>();
@@ -2119,7 +2108,7 @@ export async function extractReactComponents(filePaths: string[]): Promise<Compo
   const structuralNamesForFile = (filePath: string): string[] => {
     const cached = structuralByFile.get(filePath);
     if (cached) return cached;
-    const sourceFile = project.getSourceFile(filePath);
+    const sourceFile = project?.getSourceFile(filePath);
     if (!sourceFile) return [];
     const ctx = { propsToComponent, componentNames };
     const found = new Set<string>([
@@ -2134,12 +2123,33 @@ export async function extractReactComponents(filePaths: string[]): Promise<Compo
   for (const c of components) {
     const fromFile = structuralNamesForFile(c.source);
     const fromRender = c._funcNode ? collectRenderedComponentReferences(c._funcNode, componentNames, c.name) : [];
-    const structural = new Set([...fromFile, ...fromRender]);
+    const propTypesByName = new Map(c.props.map((p) => [p.name, p.type]));
+    const fromArrayMap = c._funcNode
+      ? collectArrayMapRenderComponentReferences(c._funcNode, componentNames, c.name, propTypesByName)
+      : [];
+    const structural = new Set([...fromFile, ...fromRender, ...fromArrayMap]);
     if (structural.size === 0) continue;
+
+    // Signal D — array-map render — is the only signal that can imply an
+    // authorable compositional slot the parent didn't declare. When it fires
+    // and the parent has no declared slots at all, synthesise a default
+    // `children` slot so the evidence has somewhere to land. Signals A/B/C
+    // still only decorate existing slots to keep the current provenance
+    // guarantees intact.
+    const synthesisedSlot: RawSlotDefinitionInternal | undefined =
+      fromArrayMap.length > 0 && c.slots.length === 0 ? { name: 'children', isDefault: true } : undefined;
+    if (synthesisedSlot) {
+      (c.slots as RawSlotDefinitionInternal[]).push(synthesisedSlot);
+    }
 
     for (const slot of c.slots as RawSlotDefinitionInternal[]) {
       if (slot.allowedComponents && slot.allowedComponents.length > 0) continue;
-      slot.structuralAllowedComponents = [...structural].sort();
+      // Synthesised slots carry ONLY Signal D's mapped children — the strict
+      // signal is what earned the slot; unioning in Signal C's render-body
+      // hits would smuggle private structural pieces (icons, headings) into
+      // an authorable slot the caller can't actually compose against.
+      // Declared slots keep the existing union so A/B/C still enrich them.
+      slot.structuralAllowedComponents = slot === synthesisedSlot ? [...fromArrayMap].sort() : [...structural].sort();
     }
   }
 
@@ -2178,26 +2188,22 @@ export async function extractReactComponents(filePaths: string[]): Promise<Compo
   return {
     components: components.sort((a, b) => a.name.localeCompare(b.name)),
     warnings,
+    exclusions,
   };
 }
 
-function extractFromSourceFile(sourceFile: SourceFile, isNext: boolean): RawComponentDefinitionInternal[] {
+function extractFromSourceFile(
+  sourceFile: SourceFile,
+  isNext: boolean,
+  exclusions: ExtractionExclusion[],
+): RawComponentDefinitionInternal[] {
   const components: RawComponentDefinitionInternal[] = [];
-  const exported = sourceFile.getExportedDeclarations();
   const usesCreateContext = sourceFileUsesCreateContext(sourceFile);
 
-  for (const [exportKey, declarations] of exported) {
-    let name = exportKey;
-
-    if (exportKey === 'default') {
-      const defaultExportName = resolveDefaultExportName(declarations, exported, true);
-      if (!defaultExportName) continue;
-      name = defaultExportName;
-    }
-
-    if (!/^[A-Z]/.test(name)) continue;
-    if (name.startsWith('use')) continue;
-
+  for (const { name, declarations } of getRenderableExports(sourceFile, exclusions, {
+    allowVariableDeclaration: true,
+    hookReason: 'React hook names are not renderable components',
+  })) {
     const funcNode = resolveBestFunctionNode(declarations);
     if (!funcNode) continue;
     if (funcNode.getSourceFile().getFilePath() !== sourceFile.getFilePath()) continue;
