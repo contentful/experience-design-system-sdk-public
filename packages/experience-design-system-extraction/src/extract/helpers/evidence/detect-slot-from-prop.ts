@@ -1,5 +1,5 @@
-export { isReactNodeType, isArrayReactNodeType } from './helpers/detect-react-node-types.js';
-import { isReactNodeType, isArrayReactNodeType } from './helpers/detect-react-node-types.js';
+export { isReactNodeType, isArrayReactNodeType } from './ast/detect-react-node-types.js';
+import { isReactNodeType, isArrayReactNodeType } from './ast/detect-react-node-types.js';
 
 /**
  * Prop names that should remain as props even when typed as ReactNode.

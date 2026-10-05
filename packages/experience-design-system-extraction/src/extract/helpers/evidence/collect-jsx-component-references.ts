@@ -7,9 +7,9 @@ import {
   type SourceFile,
 } from 'ts-morph';
 import { extractAllowedComponentsFromTypeText, type AllowedComponentsContext } from './collect-allowed-component-names.js';
-import { collectLocallyBoundNames } from './helpers/get-jsx-ast-data.js';
+import { collectLocallyBoundNames } from './ast/get-jsx-ast-data.js';
 
-export { collectRenderedComponentReferences, collectArrayMapRenderComponentReferences } from './helpers/collect-structural-jsx-evidence.js';
+export { collectRenderedComponentReferences, collectArrayMapRenderComponentReferences } from './ast/collect-structural-jsx-evidence.js';
 
 type FunctionLike = FunctionDeclaration | ArrowFunction | FunctionExpression;
 
