@@ -19,7 +19,7 @@ The generation package is organized into four explicit layers:
 - `services` owns prompt assembly, skill loading, stage policies, protocol parsing, configuration, authentication, diagnostics, and progress serialization.
 - `adapters/local` implements the `AgentInvoker` port with a local subprocess.
 
-`createGenerateEndpoint()` is the package boundary for generation. It validates the stage and prompt relationship, builds the prompt, optionally invokes an adapter, parses the stage output, and returns typed calls, warnings, run metadata, or a curated failure. A dry run returns the prompt without invoking an agent.
+`createGenerateEndpoint()` is the package boundary for generation. The stage is derived from the prompt's skill rather than supplied separately, so the request cannot contradict itself and the response carries calls typed for that stage. `execute()` builds the prompt, invokes an adapter once, parses the stage output, and returns typed calls, warnings, run metadata, and a curated failure when the run did not succeed. `preview()` returns the prompt without invoking an agent. An unsupported stage raises `GenerateRequestError`.
 
 The CLI remains responsible for workflow policy: session resolution, cache reads and writes, concurrency, retries, SQLite persistence, parsed-call application, progress presentation, and terminal error handling. The endpoint represents one attempt and does not own those policies.
 
@@ -46,3 +46,5 @@ Tradeoffs:
 - Raw component and token context is delivered inline in prompts; generation does not create an intermediary JSON handoff.
 - No agent SDK, HTTP server, database, or CLI persistence is introduced into the generation package.
 - Meaningful parser warnings and structured run metadata cross the endpoint boundary unchanged.
+- The endpoint is the single authority for parsing agent output and deciding whether a run failed; callers do not re-parse `run.stdout` or re-derive the failure.
+- A run with zero parsed calls is a failure for every stage except `map-tokens`, where an empty result is valid.

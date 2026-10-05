@@ -1,6 +1,8 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { createGenerateEndpoint } from '../../src/generate/controller/generate-endpoint.js';
+import { GenerateRequestError } from '../../src/generate/model/errors.js';
 import type { GenerateEndpointRequest } from '../../src/generate/model/endpoint.js';
+import type { ToolCall } from '../../src/generate/model/protocol.js';
 import type { AgentInvoker } from '../../src/generate/services/ports/agent-invoker.js';
 
 function createInvoker(stdout: string, overrides: Partial<Awaited<ReturnType<AgentInvoker['invoke']>>> = {}) {
@@ -16,12 +18,10 @@ function createInvoker(stdout: string, overrides: Partial<Awaited<ReturnType<Age
   } satisfies AgentInvoker;
 }
 
-function componentsRequest(overrides: { dryRun?: boolean } = {}): GenerateEndpointRequest {
+function componentsRequest(): GenerateEndpointRequest<'components'> {
   return {
-    stage: 'components',
     prompt: { skill: 'components', mode: 'autonomous', outDir: '/unused' },
     invocation: { agent: 'claude', timeoutMs: 1000 },
-    ...overrides,
   };
 }
 
@@ -37,24 +37,31 @@ describe('generate endpoint', () => {
     expect(invoker.invoke).toHaveBeenCalledWith({ agent: 'claude', timeoutMs: 1000, prompt: 'PROMPT' });
     expect(response).toMatchObject({
       stage: 'components',
-      dryRun: false,
       prompt: 'PROMPT',
       calls: [{ tool: 'classify_component', description: 'Card' }],
       warnings: [],
     });
-    if (response.dryRun) throw new Error('expected an executed response');
     expect(response.failure).toBeUndefined();
     expect(response.run.exitCode).toBe(0);
   });
 
-  it('returns the prompt without invoking an agent for dry-run requests', async () => {
+  it('previews the prompt without invoking an agent', async () => {
     const invoker = createInvoker('should not be read');
     const buildPrompt = vi.fn().mockResolvedValue('PROMPT ONLY');
     const endpoint = createGenerateEndpoint({ invoker, promptService: { buildPrompt } });
 
-    const response = await endpoint.execute({ ...componentsRequest(), dryRun: true });
+    const response = await endpoint.preview({ prompt: componentsRequest().prompt });
 
-    expect(response).toEqual({ stage: 'components', dryRun: true, prompt: 'PROMPT ONLY' });
+    expect(response).toEqual({ stage: 'components', prompt: 'PROMPT ONLY' });
+    expect(invoker.invoke).not.toHaveBeenCalled();
+  });
+
+  it('propagates prompt failures from a preview without invoking the agent', async () => {
+    const invoker = createInvoker('');
+    const buildPrompt = vi.fn().mockRejectedValue(new Error('prompt failed'));
+    const endpoint = createGenerateEndpoint({ invoker, promptService: { buildPrompt } });
+
+    await expect(endpoint.preview({ prompt: componentsRequest().prompt })).rejects.toThrow('prompt failed');
     expect(invoker.invoke).not.toHaveBeenCalled();
   });
 
@@ -71,11 +78,9 @@ describe('generate endpoint', () => {
     const response = await endpoint.execute(componentsRequest());
 
     expect(response).toMatchObject({
-      dryRun: false,
       calls: [{ tool: 'classify_component' }],
       failure: 'agent exited with code 2 — agent failed',
     });
-    if (response.dryRun) throw new Error('expected an executed response');
     expect(response.run).toMatchObject({ exitCode: 2, stderr: 'agent failed' });
   });
 
@@ -91,8 +96,7 @@ describe('generate endpoint', () => {
 
     const response = await endpoint.execute(componentsRequest());
 
-    expect(response).toMatchObject({ dryRun: false, failure: 'agent timed out' });
-    if (response.dryRun) throw new Error('expected an executed response');
+    expect(response).toMatchObject({ failure: 'agent timed out' });
     expect(response.run.timedOut).toBe(true);
   });
 
@@ -105,21 +109,46 @@ describe('generate endpoint', () => {
 
     const response = await endpoint.execute(componentsRequest());
 
-    expect(response).toMatchObject({ dryRun: false, calls: [], failure: 'agent produced no tool calls — prose only' });
+    expect(response).toMatchObject({ calls: [], failure: 'agent produced no tool calls — prose only' });
   });
 
-  it('validates the stage before building a prompt or invoking an agent', async () => {
+  it('derives the stage from the prompt skill and types the result for that stage', async () => {
+    const endpoint = createGenerateEndpoint({
+      invoker: createInvoker('{"tool":"classify_component"}'),
+      promptService: { buildPrompt: vi.fn().mockResolvedValue('PROMPT') },
+    });
+
+    const response = await endpoint.execute(componentsRequest());
+
+    expect(response.stage).toBe('components');
+    expectTypeOf(response.stage).toEqualTypeOf<'components'>();
+    expectTypeOf(response.calls).toEqualTypeOf<ToolCall[]>();
+    expectTypeOf(response.run.exitCode).toEqualTypeOf<number>();
+  });
+
+  it('does not accept a stage that can disagree with the prompt skill', () => {
+    const request: GenerateEndpointRequest<'components'> = {
+      // @ts-expect-error the stage is derived from prompt.skill and is not part of the request
+      stage: 'tokens',
+      prompt: { skill: 'components', mode: 'autonomous', outDir: '/unused' },
+      invocation: { agent: 'claude', timeoutMs: 1000 },
+    };
+    expect(request.prompt.skill).toBe('components');
+  });
+
+  it('rejects an unknown stage with a typed error before building a prompt or invoking an agent', async () => {
     const invoker = createInvoker('');
     const buildPrompt = vi.fn().mockResolvedValue('PROMPT');
     const endpoint = createGenerateEndpoint({ invoker, promptService: { buildPrompt } });
+    const request = {
+      prompt: { skill: 'bogus', mode: 'autonomous', outDir: '/unused', skillContentOverride: 'x' },
+      invocation: { agent: 'claude', timeoutMs: 1000 },
+    } as unknown as GenerateEndpointRequest;
 
-    await expect(
-      endpoint.execute({
-        stage: 'tokens',
-        prompt: { skill: 'components', mode: 'autonomous', outDir: '/unused' },
-        invocation: { agent: 'claude', timeoutMs: 1000 },
-      } as unknown as GenerateEndpointRequest),
-    ).rejects.toThrow('does not match prompt skill');
+    const error = await endpoint.execute(request).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(GenerateRequestError);
+    expect(error).toMatchObject({ reason: 'unknown-stage', stage: 'bogus' });
+    await expect(endpoint.preview(request)).rejects.toBeInstanceOf(GenerateRequestError);
     expect(buildPrompt).not.toHaveBeenCalled();
     expect(invoker.invoke).not.toHaveBeenCalled();
   });

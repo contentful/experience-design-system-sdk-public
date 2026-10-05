@@ -66,4 +66,12 @@ export type {
   GeneratePromptService,
   GenerateProtocolParser,
 } from './generate/controller/generate-endpoint.js';
-export type { GenerateEndpointRequest, GenerateEndpointResponse } from './generate/model/endpoint.js';
+export { GenerateRequestError } from './generate/model/errors.js';
+export type { GenerateRequestErrorReason } from './generate/model/errors.js';
+export type {
+  GenerateEndpointRequest,
+  GenerateEndpointResponse,
+  GeneratePreviewRequest,
+  GeneratePreviewResponse,
+  StageToolCalls,
+} from './generate/model/endpoint.js';

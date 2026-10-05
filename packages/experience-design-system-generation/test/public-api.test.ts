@@ -14,6 +14,7 @@ const CURRENT_RUNTIME_EXPORTS = [
   'describeAgentFailure',
   'extractSentinelOutput',
   'formatCustomPromptBanner',
+  'GenerateRequestError',
   'formatGenerateProgressLine',
   'isAgentName',
   'parseMapTokenPropToolCallLines',

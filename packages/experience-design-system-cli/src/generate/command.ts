@@ -9,22 +9,17 @@ import {
   agentSupportsBedrock,
   createGenerateEndpoint,
   createLocalCliAgentInvoker,
-  describeAgentFailure,
   formatCustomPromptBanner,
   formatGenerateProgressLine,
   isAgentName,
-  parseToolCallLines,
-  parseTokenToolCallLines,
   resolveBinary,
   resolveSkillPath,
-  type AgentInvoker,
-  type InvokeAgentOptions,
   type PromptOptions,
   type Skill,
 } from '@contentful/experience-design-system-generation';
 import { c } from '../output/format.js';
 import { getDebugLogger } from '../lib/debug-logger.js';
-import { invokeAgentWithOutput } from '../lib/agent-output.js';
+import { createAgentOutputCapture } from '../lib/agent-output.js';
 import { GenerateView } from './tui/GenerateView.js';
 import type { GenerateViewResult } from './tui/GenerateView.js';
 import {
@@ -406,38 +401,25 @@ async function runOneComponent(
     componentAllowlistInline: JSON.stringify([...allowedComponentNames].sort()),
   };
 
-  let outputBuf = '';
-  const outputInvoker: AgentInvoker = {
-    async invoke({ onOutput: _onOutput, ...invokeOptions }: InvokeAgentOptions) {
-      const result = await invokeAgentWithOutput(invoker, invokeOptions, verbose);
-      outputBuf = result.output;
-      return result.result;
-    },
-    checkAuth(agentName) {
-      return invoker.checkAuth(agentName);
-    },
-  };
-  const endpoint = createGenerateEndpoint({ invoker: outputInvoker });
+  const endpoint = createGenerateEndpoint({ invoker });
 
   const maxAttempts = 2;
   let lastError = '';
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     if (attempt > 1) await new Promise((res) => setTimeout(res, RETRY_BACKOFF_MS));
-    outputBuf = '';
+    const outputCapture = createAgentOutputCapture(verbose);
     const response = await endpoint.execute({
-      stage: 'components',
       prompt: promptOptions,
-      invocation: { agent, model, timeoutMs: DEFAULT_TIMEOUT_MS },
+      invocation: { agent, model, timeoutMs: DEFAULT_TIMEOUT_MS, onOutput: outputCapture.onOutput },
     });
-    if (response.dryRun) throw new Error('expected an executed generation response');
-    const result = response.run;
+    const outputBuf = outputCapture.finish();
 
     // Write header + all tool-call output as one block so concurrent workers don't interleave.
     const retryNote = attempt > 1 ? `  ${c.yellow(`retrying (${attempt}/${maxAttempts})`)}` : '';
     process.stderr.write(`  ${pos}  ${c.bold(component.name)}${retryNote}\n${outputBuf}`);
 
-    if (result.timedOut) {
+    if (response.run.timedOut) {
       // Don't retry timeouts — same timeout will hit again
       return {
         componentName: component.name,
@@ -451,21 +433,20 @@ async function runOneComponent(
       };
     }
 
-    if (result.exitCode !== 0) {
-      lastError = describeAgentFailure(result);
+    if (response.failure) {
+      lastError = response.failure;
       continue;
     }
 
-    const { calls, warnings } = parseToolCallLines(result.stdout);
-
-    if (calls.length === 0) {
-      lastError = describeAgentFailure(result);
-      continue;
-    }
-
-    const applied = applyToolCalls(db, sessionId, component.component_id, component.name, calls, warnings, {
-      allowedComponentNames,
-    });
+    const applied = applyToolCalls(
+      db,
+      sessionId,
+      component.component_id,
+      component.name,
+      response.calls,
+      response.warnings,
+      { allowedComponentNames },
+    );
     if (!noCache) {
       const inputHash = computeComponentInputHash(cacheComponent);
       storeCache(db, inputHash, 'component', component.component_id, sessionId, false, promptHash);
@@ -735,22 +716,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
       componentAllowlistInline:
         skill === 'components' && allowedComponentNames ? JSON.stringify([...allowedComponentNames].sort()) : undefined,
     };
-    const promptEndpoint = createGenerateEndpoint({ invoker });
-    const promptResponse =
-      skill === 'components'
-        ? await promptEndpoint.execute({
-            stage: 'components',
-            prompt: { ...promptOptions, skill: 'components' },
-            invocation: { agent, model, timeoutMs: DEFAULT_TIMEOUT_MS },
-            dryRun: true,
-          })
-        : await promptEndpoint.execute({
-            stage: 'tokens',
-            prompt: { ...promptOptions, skill: 'tokens' },
-            invocation: { agent, model, timeoutMs: DEFAULT_TIMEOUT_MS },
-            dryRun: true,
-          });
-    if (!promptResponse.dryRun) throw new Error('expected prompt-only generation response');
+    const promptResponse = await createGenerateEndpoint({ invoker }).preview({ prompt: promptOptions });
     process.stdout.write(promptResponse.prompt + '\n');
     await exitWithAnalytics(0);
   }
@@ -952,7 +918,6 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
       // Cache miss — invoke agent
       const endpoint = createGenerateEndpoint({ invoker });
       const response = await endpoint.execute({
-        stage: 'tokens',
         prompt: {
           skill,
           mode: 'autonomous',
@@ -964,7 +929,6 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
         },
         invocation: { agent, model, timeoutMs: DEFAULT_TIMEOUT_MS * 5 },
       });
-      if (response.dryRun) throw new Error('expected an executed generation response');
       const result = response.run;
 
       if (result.timedOut) {
@@ -975,7 +939,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
         die(`Error: agent exited with code ${result.exitCode}`);
       }
 
-      const { calls: tokenCalls, warnings: tokenWarnings } = parseTokenToolCallLines(result.stdout);
+      const { calls: tokenCalls, warnings: tokenWarnings } = response;
       const tokenCount = tokenCalls.filter((tc) => tc.tool === 'set_token').length;
 
       if (tokenCount === 0) {

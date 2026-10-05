@@ -6,9 +6,7 @@ import {
   AGENT_NAMES,
   createGenerateEndpoint,
   createLocalCliAgentInvoker,
-  describeAgentFailure,
   isAgentName,
-  parseMapTokenPropToolCallLines,
   resolveBinary,
   resolveSkillPath,
   type PromptOptions,
@@ -236,13 +234,7 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
 
     if (opts.printPrompt) {
       const promptEndpoint = createGenerateEndpoint({ invoker: createLocalCliAgentInvoker() });
-      const promptResponse = await promptEndpoint.execute({
-        stage: 'map-tokens',
-        prompt: mapTokensPrompt,
-        invocation: { agent: configuredAgent ?? 'claude', model, timeoutMs: DEFAULT_TIMEOUT_MS },
-        dryRun: true,
-      });
-      if (!promptResponse.dryRun) throw new Error('expected prompt-only generation response');
+      const promptResponse = await promptEndpoint.preview({ prompt: mapTokensPrompt });
       process.stdout.write(promptResponse.prompt + '\n');
       await exitWithAnalytics(0);
       return;
@@ -297,23 +289,17 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
     const invoker = createLocalCliAgentInvoker();
     const endpoint = createGenerateEndpoint({ invoker });
     const response = await endpoint.execute({
-      stage: 'map-tokens',
       prompt: mapTokensPrompt,
       invocation: { agent, model, timeoutMs: DEFAULT_TIMEOUT_MS },
     });
-    if (response.dryRun) throw new Error('expected an executed generation response');
-    const result = response.run;
 
-    if (result.timedOut || result.exitCode !== 0) {
-      const error = result.timedOut
-        ? `timed out after ${DEFAULT_TIMEOUT_MS / 60000} minutes`
-        : describeAgentFailure(result);
+    if (response.failure) {
+      const error = response.run.timedOut ? `timed out after ${DEFAULT_TIMEOUT_MS / 60000} minutes` : response.failure;
       updateStep(db, stepId, 'failed', {}, error);
       die(`Error: map tokens agent failed — ${error}`);
     }
 
-    const { calls, warnings: parseWarnings } = parseMapTokenPropToolCallLines(result.stdout);
-    const { applied, warnings } = applyMapTokenPropCalls(db, sessionId, calls, parseWarnings);
+    const { applied, warnings } = applyMapTokenPropCalls(db, sessionId, response.calls, response.warnings);
 
     if (!noCache) {
       storeCache(db, inputHash, 'token_mapping', '__map_tokens__', sessionId, false, promptHash);

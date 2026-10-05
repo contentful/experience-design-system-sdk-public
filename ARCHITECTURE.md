@@ -470,7 +470,7 @@ Do not use agent SDKs or APIs — the import wizard invokes agents as subprocess
 
 ### Endpoint ownership
 
-`GenerateEndpointRequest` is a discriminated union for `components`, `tokens`, `select`, and `map-tokens`, with a prompt whose skill must match the stage. A single endpoint execution builds one prompt, performs at most one invocation, parses the corresponding protocol, and returns raw run metadata, typed calls, warnings, and an optional curated failure description. Dry runs stop after prompt construction.
+The stage is the request prompt's `skill` (`components`, `tokens`, `select`, or `map-tokens`), so a request cannot name a stage that disagrees with its prompt, and the response's `calls` are typed for that stage. `execute()` builds one prompt, performs one invocation, parses the stage's protocol, and returns raw run metadata, typed calls, warnings, and an optional curated `failure`; callers consume `calls`, `warnings`, and `failure` rather than re-parsing `run.stdout`. `preview()` builds the prompt without invoking an agent. An unsupported stage is rejected with `GenerateRequestError` before any prompt is built. A run with zero calls is a failure for every stage except `map-tokens`, where no suggestions is a valid result.
 
 Retries, concurrency, cache policy, SQLite writes, and application of parsed calls remain outside the endpoint so they stay explicit in the CLI workflow.
 
