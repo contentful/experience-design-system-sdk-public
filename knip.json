@@ -1,8 +1,24 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "ignoreFiles": ["**/fixtures/**", "**/vitest.e2e.config.ts"],
-  "ignoreDependencies": ["@hey-api/client-fetch", "@vue/compiler-sfc", "svelte", "ts-morph"],
+  "ignoreDependencies": [
+    "@hey-api/client-fetch",
+    "@vue/compiler-sfc",
+    "svelte",
+    "ts-morph"
+  ],
   "ignoreIssues": {
-    "packages/experience-design-system-cli-v2/**": ["files"]
+    "packages/experience-design-system-cli/**": ["files"]
+  },
+  "workspaces": {
+    "packages/experience-design-system-cli": {
+      "ignoreDependencies": [
+        "@contentful/experience-design-system-types",
+        "@inkjs/ui",
+        "@segment/analytics-node",
+        "contentful-management",
+        "figures"
+      ]
+    }
   }
 }
