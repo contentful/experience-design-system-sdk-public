@@ -7,6 +7,11 @@ import { resolveMapping } from '../composition/resolve-mapping.js';
 import { selectCandidateFiles, capCandidatesToPromptBudget } from '../composition/candidate-files.js';
 import { buildCompositionInputHash } from '../composition/composition-cache-key.js';
 import { collectManifestDocEdges } from '../composition/manifest-doc-evidence.js';
+import {
+  collectSourceCallSiteEvidence,
+  type SourceCallSiteEvidence,
+  type SourceCallSiteRejection,
+} from '../composition/source-call-site-evidence.js';
 import { getDebugLogger } from '../../lib/debug-logger.js';
 
 export interface CompositionMappingOptions {
@@ -24,6 +29,8 @@ export interface CompositionMappingOptions {
 export interface CompositionMappingResult {
   components: RawComponentDefinition[];
   warnings: string[];
+  sourceCallSiteEvidence: SourceCallSiteEvidence[];
+  sourceCallSiteRejections: SourceCallSiteRejection[];
 }
 
 export async function resolveCompositionMapping(options: CompositionMappingOptions): Promise<CompositionMappingResult> {
@@ -42,6 +49,7 @@ export async function resolveCompositionMapping(options: CompositionMappingOptio
   const componentNameSet = new Set(components.map((c) => c.name));
   const runtimeFiles = allFiles.map((c) => ({ path: c.path, content: c.content }));
   const manifestDocEdges = collectManifestDocEdges(runtimeFiles, components, componentNameSet);
+  const sourceCallSites = collectSourceCallSiteEvidence(runtimeFiles, components);
   const agentCacheKey = buildCompositionInputHash({ files: promptFiles, agent });
 
   let lastAgentExitCode = 0;
@@ -64,6 +72,8 @@ export async function resolveCompositionMapping(options: CompositionMappingOptio
   const result = await resolveMapping({
     components,
     ...(manifestDocEdges.length > 0 ? { extraEdges: manifestDocEdges } : {}),
+    sourceCallSiteEvidence: sourceCallSites.accepted,
+    sourceCallSiteRejections: sourceCallSites.rejected,
     forceAgent,
     files: promptFiles,
     ...(options.promptOverride ? { promptOverride: options.promptOverride } : {}),
@@ -92,5 +102,10 @@ export async function resolveCompositionMapping(options: CompositionMappingOptio
     );
   }
 
-  return { components: result.components as RawComponentDefinition[], warnings: result.warnings };
+  return {
+    components: result.components as RawComponentDefinition[],
+    warnings: result.warnings,
+    sourceCallSiteEvidence: sourceCallSites.accepted,
+    sourceCallSiteRejections: sourceCallSites.rejected,
+  };
 }

@@ -2,6 +2,7 @@ import { relative } from 'node:path';
 import type { RawComponentDefinition } from '../../types.js';
 import { storeRawComponents, storeSlotCycles, storeScannedFiles, updateStep } from '../../session/db.js';
 import type { openPipelineDb } from '../../session/db.js';
+import type { SourceCallSiteEvidence, SourceCallSiteRejection } from '../composition/source-call-site-evidence.js';
 import { findSlotCycles, suggestCycleBreakEdge } from '../cycle-detection.js';
 import { retryDatabaseWrite } from '../helpers/retry-db-write.js';
 
@@ -12,10 +13,12 @@ export interface PersistExtractResultsOptions {
   projectRoot: string;
   sourceFiles: string[];
   components: RawComponentDefinition[];
+  sourceCallSiteEvidence: SourceCallSiteEvidence[];
+  sourceCallSiteRejections: SourceCallSiteRejection[];
 }
 
 export async function persistExtractResults(options: PersistExtractResultsOptions): Promise<void> {
-  const { db, sessionId, stepId, projectRoot, sourceFiles, components } = options;
+  const { db, sessionId, stepId, projectRoot, sourceFiles, components, sourceCallSiteEvidence, sourceCallSiteRejections } = options;
 
   await retryDatabaseWrite(() => storeRawComponents(db, sessionId, components, { preserveStatus: true }));
 
@@ -36,5 +39,11 @@ export async function persistExtractResults(options: PersistExtractResultsOption
     sourceFiles.map((f) => relative(projectRoot, f)),
   );
 
-  await retryDatabaseWrite(() => updateStep(db, stepId, 'complete', { sessionId }));
+  await retryDatabaseWrite(() =>
+    updateStep(db, stepId, 'complete', {
+      sessionId,
+      compositionEvidence: JSON.stringify(sourceCallSiteEvidence),
+      compositionRejections: JSON.stringify(sourceCallSiteRejections),
+    }),
+  );
 }

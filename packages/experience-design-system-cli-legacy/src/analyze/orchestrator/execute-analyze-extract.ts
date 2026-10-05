@@ -90,6 +90,8 @@ export async function executeAnalyzeExtractOrchestrator(
       projectRoot: request.projectRoot,
       sourceFiles,
       components: composition.components,
+      sourceCallSiteEvidence: composition.sourceCallSiteEvidence,
+      sourceCallSiteRejections: composition.sourceCallSiteRejections,
     });
 
     enrichCommandResult({ extracted_component_count: composition.components.length });
