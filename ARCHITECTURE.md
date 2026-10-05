@@ -93,7 +93,7 @@ Typed in-process generation endpoint consumed by the import wizard. The package 
 - `src/generate/controller/` coordinates one stage attempt: prompt construction, local or future adapter invocation, stage-specific parsing, and failure diagnostics.
 - `src/generate/services/` contains skill loading, prompt context rendering, stage preambles, protocol parsing, agent configuration/authentication, failure diagnostics, and progress formatting.
 - `src/generate/adapters/local/` contains the local subprocess process and its `AgentInvoker` adapter.
-- `src/index.ts` exposes the canonical package surface; root modules such as `agent-runner.ts` and `prompt-builder.ts` remain compatibility facades for existing consumers.
+- `src/index.ts` is the only public entry point and re-exports the canonical implementations directly; the package has no other published subpaths.
 
 The generation package does not own HTTP, session storage, caching, batching, retries, parsed-call persistence, or terminal presentation. Those concerns remain in the CLI.
 

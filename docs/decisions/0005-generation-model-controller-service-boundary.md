@@ -23,7 +23,7 @@ The generation package is organized into four explicit layers:
 
 The CLI remains responsible for workflow policy: session resolution, cache reads and writes, concurrency, retries, SQLite persistence, parsed-call application, progress presentation, and terminal error handling. The endpoint represents one attempt and does not own those policies.
 
-Root modules that have supported consumers remain compatibility facades, while the package barrel points directly at canonical implementations. The legacy sentinel parser remains exported for compatibility but is not part of the active generation protocol.
+The package barrel (`src/index.ts`) is the only public entry point and points directly at canonical implementations; the former root modules (`agent-runner.ts`, `prompt-builder.ts`, and similar) were removed because `package.json` publishes no subpath exports. The legacy sentinel parser remains exported for compatibility but is not part of the active generation protocol.
 
 ## Consequences
 
@@ -36,7 +36,7 @@ Positive consequences:
 
 Tradeoffs:
 
-- Compatibility facades remain until a separate public API decision permits their removal.
+- Consumers that deep-imported the former root modules must switch to the package root.
 - The endpoint intentionally handles one attempt, so callers must implement broader workflow policies.
 - The package still ships Markdown skill assets and must preserve their runtime discovery and packaging behavior.
 

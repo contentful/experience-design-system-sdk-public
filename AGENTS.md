@@ -119,7 +119,7 @@ The generation package exposes a typed in-process endpoint while keeping the loc
 - `src/generate/model/` — owns transport-neutral agent, prompt, protocol, progress, and endpoint contracts
 - `src/generate/services/` — owns prompt assembly, skill loading, stage preambles, protocol parsing, agent configuration, authentication, diagnostics, and progress formatting
 - `src/generate/adapters/local/` — owns local subprocess execution and the `AgentInvoker` implementation
-- `src/index.ts` — publishes the canonical endpoint and contracts; root files such as `agent-runner.ts` and `prompt-builder.ts` remain compatibility facades for supported imports
+- `src/index.ts` — the only public entry point; publishes the canonical endpoint and contracts and re-exports the implementations directly
 - `skills/generate-components.md`, `skills/generate-tokens.md`, `skills/select-components.md`, and `skills/map-tokens.md` — skill instructions shipped as package assets
 
 The CLI owns session resolution, caching, concurrency, retries, SQLite persistence, parsed-call application, and terminal presentation. It calls `createGenerateEndpoint()` for one generation attempt rather than composing prompt, process, and parser details itself.
@@ -144,7 +144,7 @@ The output protocol for `analyze select-agent`: the agent emits exactly one JSON
 
 **Selection criteria**: accept any component that renders visible UI — atoms, molecules, and organisms are all valid Component Types in ExO. Reject only: React hooks, pure context providers, A/B testing or variant-routing wrappers (whose *entire* purpose is routing), analytics trackers, security utilities. A component is not rejected merely because it has few props, is low-level, or contains some personalization-related props.
 
-The skill file `skills/select-components.md` provides detailed instructions and examples. The preamble is built by `buildSelectAutonomousPreamble()` in `prompt-builder.ts`.
+The skill file `skills/select-components.md` provides detailed instructions and examples. The preamble is built by `buildSelectAutonomousPreamble()` in `src/generate/services/preambles/select.ts`.
 
 ## The Apply Command
 
