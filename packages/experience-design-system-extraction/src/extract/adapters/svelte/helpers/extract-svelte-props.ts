@@ -1,17 +1,15 @@
 import type { RawSlotDefinition } from '../../../model/component.js';
 import type { AstNode } from '../ast.js';
-import { type ResolvedTypeMember, resolveTypeMembers } from './resolve-svelte-type-members.js';
+import { resolveTypeMembers } from './resolve-svelte-type-members.js';
 import { extractFromDestructure } from './extract-svelte-from-destructure.js';
 import { extractFromTypeMembersOnly } from './extract-svelte-type-member-props.js';
 import {
-  describeAnnotationForUser,
+  formatAnnotation,
   classifyUnresolved,
-  capturePropsTypeName,
-  buildRetryAnnotation,
-} from './svelte-props-call-utils.js';
+} from './classify-svelte-props-annotation.js';
 
 export { extractFromTypeMembersOnly };
-export { capturePropsTypeName, buildRetryAnnotation } from './svelte-props-call-utils.js';
+export { getPropsTypeName, getRetryAnnotation } from './classify-svelte-props-annotation.js';
 
 export interface PropsCallContext {
   propsCall: AstNode;
@@ -46,7 +44,7 @@ export async function extractPropsFromCall(ctx: PropsCallContext): Promise<Props
   const unresolved = classifyUnresolved(annotation, typeMembers, ctx.instance, ctx.moduleScript);
   const additionalReasons: string[] = [];
   if (unresolved) {
-    const refLabel = describeAnnotationForUser(annotation);
+    const refLabel = formatAnnotation(annotation);
     const heritageNote = unresolved === 'partial-heritage' ? ' (heritage clauses extending unreachable types)' : '';
     warnings.push(
       `${ctx.componentName}: declared Props type ${refLabel} resolved to ${unresolved === 'empty' ? '0' : 'only Snippet-typed'} properties${heritageNote} (${ctx.filePath}) — possible cross-package extends or unreachable type. ` +

@@ -3,9 +3,9 @@ import { resolveTypeProperty } from '../support/resolution/type-property.js';
 import { getSourceLineMetadata } from '../support/resolution/source-location.js';
 import {
   createAstroFrontmatterProject,
-  forEachAstroPropsBinding,
+  collectAstroPropsBindings,
   extractBindingPropName,
-} from './helpers/frontmatter-binding-walker.js';
+} from './helpers/collect-astro-props-bindings.js';
 
 /** Returns the string literals from a union type like `'a' | 'b' | 'c'`, or undefined if fewer than two are found. */
 export function extractAllowedValues(typeText: string): string[] | undefined {
@@ -17,11 +17,11 @@ export function extractAllowedValues(typeText: string): string[] | undefined {
 /** Reads prop names and requiredness from destructured `Astro.props` bindings when no typed Props interface exists. */
 export function extractFallbackPropsFromFrontmatter(frontmatter: string): RawPropDefinition[] {
   const props = new Map<string, RawPropDefinition>();
-  forEachAstroPropsBinding(frontmatter, (element) => {
+  for (const element of collectAstroPropsBindings(frontmatter)) {
     const propName = extractBindingPropName(element);
-    if (!propName) return;
+    if (!propName) continue;
     props.set(propName, { name: propName, type: 'any', required: !element.getInitializer() });
-  });
+  }
   return [...props.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -71,13 +71,13 @@ export function extractPropsFromFrontmatter(frontmatter: string): RawPropDefinit
 /** Reads default values from destructuring initializers in `const { foo = 'bar' } = Astro.props`. */
 export function extractDefaultsFromFrontmatter(frontmatter: string): Map<string, string> {
   const defaults = new Map<string, string>();
-  forEachAstroPropsBinding(frontmatter, (element) => {
+  for (const element of collectAstroPropsBindings(frontmatter)) {
     const propName = extractBindingPropName(element);
-    if (!propName) return;
+    if (!propName) continue;
     const elementInitializer = element.getInitializer();
-    if (!elementInitializer) return;
+    if (!elementInitializer) continue;
     defaults.set(propName, elementInitializer.getText().replace(/^['"]|['"]$/g, ''));
-  });
+  }
   return defaults;
 }
 

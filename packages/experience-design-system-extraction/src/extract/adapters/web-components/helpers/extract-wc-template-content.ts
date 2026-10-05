@@ -2,10 +2,7 @@ import { Node, type ClassDeclaration, type Project } from 'ts-morph';
 import type { RawSlotDefinition } from '../../../model/component.js';
 import { loadSourceFile } from './resolve-wc-import.js';
 import { extractSlotsFromTemplate } from './extract-wc-slots.js';
-import {
-  collectHtmlTaggedTemplates,
-  collectHtmlTaggedTemplatesWithHelpers,
-} from './extract-wc-template-helpers.js';
+import { collectHtmlTaggedTemplatesWithHelpers } from './collect-wc-html-templates.js';
 
 export function extractTemplateContent(classDecl: ClassDeclaration, project: Project): string {
   const templates: string[] = [];

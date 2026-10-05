@@ -1,8 +1,8 @@
 import type { AstNode } from '../ast.js';
-import { findLocalTypeDeclaration, declarationHasHeritage } from './traverse-svelte-ast.js';
+import { findLocalTypeDeclaration, declarationHasHeritage } from './find-svelte-script-declarations.js';
 import type { ResolvedTypeMember } from './resolve-svelte-type-members.js';
 
-export function describeAnnotationForUser(annotation: AstNode | undefined): string {
+export function formatAnnotation(annotation: AstNode | undefined): string {
   if (!annotation) return '<unknown>';
   if (annotation.type === 'TSTypeReference') {
     const name = ((annotation['typeName'] as AstNode | undefined)?.['name'] as string | undefined) ?? null;
@@ -39,7 +39,7 @@ export function classifyUnresolved(
   return null;
 }
 
-export function capturePropsTypeName(propsCall: AstNode): string | undefined {
+export function getPropsTypeName(propsCall: AstNode): string | undefined {
   const id = propsCall['id'] as AstNode | undefined;
   const annotation = (id?.['typeAnnotation'] as AstNode | undefined)?.['typeAnnotation'] as AstNode | undefined;
   if (annotation?.type === 'TSTypeReference') {
@@ -49,7 +49,7 @@ export function capturePropsTypeName(propsCall: AstNode): string | undefined {
   return undefined;
 }
 
-export function buildRetryAnnotation(propsCall: AstNode): AstNode | undefined {
+export function getRetryAnnotation(propsCall: AstNode): AstNode | undefined {
   const id = propsCall['id'] as AstNode | undefined;
   return (id?.['typeAnnotation'] as AstNode | undefined)?.['typeAnnotation'] as AstNode | undefined;
 }

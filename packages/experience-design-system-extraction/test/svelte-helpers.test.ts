@@ -6,7 +6,7 @@ import {
   findLocalTypeDeclaration,
   declarationHasHeritage,
   mergeSets,
-} from '../src/extract/adapters/svelte/helpers/traverse-svelte-ast.js';
+} from '../src/extract/adapters/svelte/helpers/find-svelte-script-declarations.js';
 import {
   isSnippetTypeText,
   renderType,

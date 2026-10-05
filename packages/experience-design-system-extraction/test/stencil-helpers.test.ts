@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseAllowedValues } from '../src/extract/adapters/stencil/helpers/extract-stencil-props.js';
-import { normalizeStencilSlot } from '../src/extract/adapters/stencil/helpers/extract-stencil-slots.js';
+import { parseStencilSlot } from '../src/extract/adapters/stencil/helpers/extract-stencil-slots.js';
 
 describe('parseAllowedValues', () => {
   it('parses a two-value string literal union', () => {
@@ -28,20 +28,20 @@ describe('parseAllowedValues', () => {
   });
 });
 
-describe('normalizeStencilSlot', () => {
+describe('parseStencilSlot', () => {
   it('returns a default slot for undefined name', () => {
-    expect(normalizeStencilSlot(undefined)).toEqual({ name: 'default', isDefault: true });
+    expect(parseStencilSlot(undefined)).toEqual({ name: 'default', isDefault: true });
   });
 
   it('returns a default slot for empty string name', () => {
-    expect(normalizeStencilSlot('')).toEqual({ name: 'default', isDefault: true });
+    expect(parseStencilSlot('')).toEqual({ name: 'default', isDefault: true });
   });
 
   it('returns a named slot for a non-empty name', () => {
-    expect(normalizeStencilSlot('header')).toEqual({ name: 'header', isDefault: false });
+    expect(parseStencilSlot('header')).toEqual({ name: 'header', isDefault: false });
   });
 
   it('marks slot as default when name is "default"', () => {
-    expect(normalizeStencilSlot('default')).toEqual({ name: 'default', isDefault: true });
+    expect(parseStencilSlot('default')).toEqual({ name: 'default', isDefault: true });
   });
 });

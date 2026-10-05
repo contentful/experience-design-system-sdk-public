@@ -1,6 +1,6 @@
 import type { AstNode } from '../ast.js';
 
-export { collectReferencedTypeNames, collectImportSpecifiersForNames } from './traverse-svelte-type-ref-utils.js';
+export { collectReferencedTypeNames, collectImportSpecifiersForNames } from './collect-svelte-type-references.js';
 
 export function hasV4ExportLetProps(instance: AstNode): boolean {
   const body = (instance['content'] as AstNode | undefined)?.['body'] as AstNode[] | undefined;

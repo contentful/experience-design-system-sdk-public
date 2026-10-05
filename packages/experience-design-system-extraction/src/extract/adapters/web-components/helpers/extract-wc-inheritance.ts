@@ -6,7 +6,7 @@ import {
   extractJsDocAttributeProps,
   hasShoelaceRuntimeBookkeepingField,
   mergePropLists,
-} from '../properties.js';
+} from '../merge-wc-prop-lists.js';
 import { mergeSlotLists, extractJsDocSlots } from './extract-wc-slots.js';
 import { getImportedBaseClass } from './resolve-wc-base-class.js';
 

@@ -1,18 +1,18 @@
 import { Node } from 'ts-morph';
 import type { AstNode } from '../ast.js';
 
-export function sliceSource(source: string, node: AstNode): string | null {
+export function getSourceText(source: string, node: AstNode): string | null {
   const start = (node['start'] as number | undefined) ?? null;
   const end = (node['end'] as number | undefined) ?? null;
   if (start == null || end == null) return null;
   return source.slice(start, end);
 }
 
-export function sliceScriptContent(source: string, script: AstNode | undefined): string | null {
+export function getScriptText(source: string, script: AstNode | undefined): string | null {
   if (!script) return null;
   const content = script['content'] as AstNode | undefined;
   if (!content) return null;
-  return sliceSource(source, content);
+  return getSourceText(source, content);
 }
 
 export function extractAllowedValuesFromType(type: import('ts-morph').Type): string[] | undefined {

@@ -1,15 +1,15 @@
 import { Project, ScriptTarget, ModuleKind, ts } from 'ts-morph';
 import type { AstNode } from '../ast.js';
 import { isSnippetTypeText } from './render-svelte-type.js';
-import type { ResolvedTypeMember } from './resolve-svelte-ast-member-readers.js';
+import type { ResolvedTypeMember } from './extract-svelte-ast-type-members.js';
 import {
-  sliceSource,
-  sliceScriptContent,
+  getSourceText,
+  getScriptText,
   extractAllowedValuesFromType,
   readJsDocFromDeclaration,
   readDeclaredTypeNodeText,
   typeRefersToSnippet,
-} from './resolve-svelte-type-checker-helpers.js';
+} from './extract-svelte-declaration-data.js';
 
 export async function resolveViaTypeChecker(
   annotation: AstNode,
@@ -20,11 +20,11 @@ export async function resolveViaTypeChecker(
   snippetLocals: Set<string>,
   externalProject?: Project,
 ): Promise<ResolvedTypeMember[] | null> {
-  const annotationText = sliceSource(source, annotation);
+  const annotationText = getSourceText(source, annotation);
   if (!annotationText) return null;
 
-  const moduleText = sliceScriptContent(source, moduleScript);
-  const instanceText = sliceScriptContent(source, instance);
+  const moduleText = getScriptText(source, moduleScript);
+  const instanceText = getScriptText(source, instance);
   const synthetic = [moduleText, instanceText, `type __SveltePropsT__ = ${annotationText};`].filter(Boolean).join('\n');
 
   const project = externalProject ?? new Project({

@@ -4,10 +4,7 @@ import {
   getDomAttributeSurface,
   DOM_ATTRIBUTE_WRAPPERS_WITH_SYNTHETIC_CHILDREN,
 } from './dom-attribute-surfaces.js';
-import {
-  collectExpandableDomAttributeWrapperContexts,
-  getStringLiteralTypeValues,
-} from './collect-dom-wrapper-contexts.js';
+import { collectExpandableDomAttributeWrapperContexts } from './collect-dom-wrapper-contexts.js';
 
 export { isPureExpandableDomAttributeWrapperType } from './detect-dom-is-pure-wrapper.js';
 export { containsImportedOmitWrappedCustomProps } from './detect-omit-wrapped-custom-props.js';

@@ -1,12 +1,12 @@
 import { Node, Project, ScriptTarget, ModuleKind } from 'ts-morph';
 import type { AstNode } from '../ast.js';
 import { resolveLocalModule } from '../../support/resolution/local-module.js';
-import type { ResolvedTypeMember } from './resolve-svelte-ast-member-readers.js';
+import type { ResolvedTypeMember } from './extract-svelte-ast-type-members.js';
 import {
   collectSnippetLocalsFromSourceFile,
   readInterfaceMembers,
   readTypeLiteralMembers,
-} from './resolve-svelte-member-readers.js';
+} from './extract-svelte-external-type-members.js';
 
 function readMembersFromExternalFile(filePath: string, exportName: string): ResolvedTypeMember[] | null {
   const project = new Project({

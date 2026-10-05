@@ -2,7 +2,7 @@ import { Node, type ClassDeclaration } from 'ts-morph';
 import type { RawSlotDefinition } from '../../../model/component.js';
 
 /** Normalises a raw slot name string to a RawSlotDefinition, treating blank/undefined as "default". */
-export function normalizeStencilSlot(name: string | undefined): RawSlotDefinition {
+export function parseStencilSlot(name: string | undefined): RawSlotDefinition {
   const normalizedName = name && name.length > 0 ? name : 'default';
   return { name: normalizedName, isDefault: normalizedName === 'default' };
 }
@@ -35,7 +35,7 @@ export function extractStencilSlots(
       if (comment.startsWith('{')) {
         try {
           const parsed = JSON.parse(comment) as { name?: string; description?: string; isDeprecated?: boolean };
-          const slot = normalizeStencilSlot(parsed.name);
+          const slot = parseStencilSlot(parsed.name);
           let description = parsed.description || undefined;
           if (parsed.isDeprecated && description) {
             description = `[DEPRECATED] ${description}`;
@@ -53,7 +53,7 @@ export function extractStencilSlots(
       const match = comment.match(/^(?:(\S+)\s*-\s*)?(.*)$/s);
       if (!match) continue;
       const [, rawName, rawDescription] = match;
-      const slot = normalizeStencilSlot(rawName);
+      const slot = parseStencilSlot(rawName);
       const description = rawDescription.trim() || undefined;
       upsertSlot({ ...slot, ...(description && { description }) });
     }
@@ -81,7 +81,7 @@ export function extractStencilSlots(
             : initializer && Node.isJsxExpression(initializer)
               ? (initializer.getExpression()?.getText() ?? '')
               : '';
-        upsertSlot({ ...normalizeStencilSlot(name) });
+        upsertSlot({ ...parseStencilSlot(name) });
         return;
       }
 

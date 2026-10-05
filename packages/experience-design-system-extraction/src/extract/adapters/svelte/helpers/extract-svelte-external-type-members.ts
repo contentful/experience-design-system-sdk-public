@@ -1,6 +1,6 @@
 import { Node } from 'ts-morph';
 import { isSnippetTypeText, extractAllowedValuesFromText } from './render-svelte-type.js';
-import type { ResolvedTypeMember } from './resolve-svelte-ast-member-readers.js';
+import type { ResolvedTypeMember } from './extract-svelte-ast-type-members.js';
 
 export function collectSnippetLocalsFromSourceFile(sf: import('ts-morph').SourceFile): Set<string> {
   const locals = new Set<string>();

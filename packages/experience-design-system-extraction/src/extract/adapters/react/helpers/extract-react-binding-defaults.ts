@@ -1,4 +1,4 @@
-import { Node, type ParameterDeclaration } from 'ts-morph';
+import { Node } from 'ts-morph';
 import type { FunctionLike } from '../function-resolution.js';
 
 export { isImplementationOnlyAliasProp, filterImplementationOnlyAliasProps } from './filter-impl-alias-props.js';

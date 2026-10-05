@@ -9,7 +9,7 @@ import {
   extractObservedAttributes,
   mergePropLists,
   mergeProps,
-} from './properties.js';
+} from './merge-wc-prop-lists.js';
 import { buildTagNameMap, chooseComponentName, resolveWcTagName } from './helpers/resolve-wc-tag-name.js';
 import {
   extractSlotsFromTemplate,
