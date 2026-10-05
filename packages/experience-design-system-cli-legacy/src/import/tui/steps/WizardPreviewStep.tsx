@@ -245,6 +245,7 @@ type WizardPreviewStepProps = {
   environmentId: string;
   stepNumber: number;
   totalSteps: number;
+  droppedTokenDefaults?: string[];
   onConfirm: (acknowledge: boolean) => void;
   onEdit?: () => void;
   onQuit: () => void;
@@ -256,6 +257,7 @@ export function WizardPreviewStep({
   environmentId,
   stepNumber,
   totalSteps,
+  droppedTokenDefaults = [],
   onConfirm,
   onEdit,
   onQuit,
@@ -357,6 +359,20 @@ export function WizardPreviewStep({
         </>
       ) : (
         <Text dimColor>Nothing to push — everything is already up to date.</Text>
+      )}
+
+      {droppedTokenDefaults.length > 0 && (
+        <Box flexDirection="column">
+          <Text color={PALETTE.warning} bold>
+            ⚠ Some token defaults will be left out so the push can succeed:
+          </Text>
+          {droppedTokenDefaults.map((line) => (
+            <Text key={line} color={PALETTE.warning} wrap="truncate-end">
+              {'  '}
+              {line}
+            </Text>
+          ))}
+        </Box>
       )}
 
       {breakingWithImpact && (

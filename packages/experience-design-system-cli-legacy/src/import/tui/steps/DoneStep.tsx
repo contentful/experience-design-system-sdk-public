@@ -49,7 +49,7 @@ export function DoneStep({
     designTokens.created +
     designTokens.updated +
     designTokens.removed;
-  const success = totalFailed === 0;
+  const success = totalFailed === 0 && (summary?.failed ?? 0) === 0;
 
   function EntityRows({ entity, label }: { entity: EntityResult; label: string }) {
     return (
@@ -101,8 +101,8 @@ export function DoneStep({
           Done!
         </Text>
       ) : (
-        <Text bold color={PALETTE.warning}>
-          ⚠ Finished with errors
+        <Text bold color={PALETTE.error}>
+          ✗ Push failed — nothing was changed for the items below
         </Text>
       )}
 

@@ -44,6 +44,8 @@ import { handlePreview422, applySkipValidationErrors, clearedValidationErrorStat
 import { parseGenerateStderrChunk, type GenerateProgressState } from './wizard-generate-progress.js';
 import { spawnGenerateChild } from './spawn-generate.js';
 import { readTokensFromPath, hasBreakingChangesWithImpact, toCDFTokens } from '../../apply/tokens.js';
+import { describeDroppedTokenDefaults, dropDanglingTokenDefaults } from '../../apply/dangling-token-defaults.js';
+import { fetchExistingTokenIds } from '../../helpers/fetch-existing-token-ids.js';
 import { isEmptyPreview } from '../../apply/preview-utils.js';
 import { buildCDF, validateCDF, validateSlotReferences } from '@contentful/experience-design-system-types';
 import type {
@@ -183,6 +185,7 @@ type WizardState = {
   existingEntitiesStatus: 'idle' | 'running' | 'complete' | 'failed';
   lastRunId: string | null;
   finalizeErrorBanner: string | null;
+  droppedTokenDefaults: string[];
   finalReviewPassed: boolean;
 };
 
@@ -513,6 +516,7 @@ export function WizardApp({
     existingEntitiesStatus: 'idle',
     lastRunId: null,
     finalizeErrorBanner: null,
+    droppedTokenDefaults: [],
     finalReviewPassed: false,
   });
 
@@ -1753,13 +1757,38 @@ export function WizardApp({
         });
         return;
       }
+      let cdfToPush = cdf;
+      let droppedTokenDefaults: string[] = [];
+      try {
+        const existingTokenIds = await fetchExistingTokenIds({
+          spaceId,
+          environmentId,
+          cmaToken,
+          ...(host ? { host } : {}),
+        });
+        const checked = dropDanglingTokenDefaults(cdf, existingTokenIds);
+        cdfToPush = checked.cdf;
+        droppedTokenDefaults = describeDroppedTokenDefaults(checked.dropped);
+        pushDebug.event('Checked token references', {
+          note:
+            checked.dropped.length === 0
+              ? `every token default exists (${existingTokenIds.size} tokens in this environment)`
+              : `${checked.dropped.length} default(s) point at a token that does not exist and will be left out`,
+          data: { tokens_in_environment: existingTokenIds.size, dropped: checked.dropped },
+        });
+      } catch (tokenCheckError) {
+        pushDebug.event('Could not check token references', {
+          note: tokenCheckError instanceof Error ? tokenCheckError.message : String(tokenCheckError),
+        });
+      }
       pushDebug.event('Waiting for confirmation', {
         note: 'the preview shows changes, so the wizard asks before pushing',
       });
       update({
         step: 'preview-gate',
         serverPreview: preview,
-        cdf,
+        cdf: cdfToPush,
+        droppedTokenDefaults,
         finalizeErrorBanner: null,
         ...clearedValidationErrorState(),
       });
@@ -2768,6 +2797,7 @@ export function WizardApp({
             environmentId={state.environmentId}
             stepNumber={totalSteps}
             totalSteps={totalSteps}
+            droppedTokenDefaults={state.droppedTokenDefaults}
             onConfirm={(acknowledge) => {
               void runPush(
                 state.cdf!,
