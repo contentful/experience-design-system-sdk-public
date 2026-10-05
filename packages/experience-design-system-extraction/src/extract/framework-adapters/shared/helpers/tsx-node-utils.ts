@@ -65,6 +65,19 @@ export function getValueTargetDeclarations(targetNode: Node): Node[] {
   });
 }
 
+export function getTypeReferenceTargetNode(typeNode: Node): Node | undefined {
+  if (Node.isTypeReference(typeNode)) return typeNode.getTypeName();
+  if (Node.isExpressionWithTypeArguments(typeNode)) return typeNode.getExpression();
+  return undefined;
+}
+
+export function getTypeReferenceArguments(typeNode: Node): Node[] {
+  if (Node.isTypeReference(typeNode) || Node.isExpressionWithTypeArguments(typeNode)) {
+    return typeNode.getTypeArguments();
+  }
+  return [];
+}
+
 export function getTypeReferenceName(typeNode: Node): string | undefined {
   if (Node.isTypeReference(typeNode)) {
     return typeNode.getTypeName().getText().split('.').pop();

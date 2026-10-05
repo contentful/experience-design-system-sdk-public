@@ -7,6 +7,7 @@ import {
 } from '../../../helpers/evidence/collect-jsx-component-references.js';
 import type { FunctionLike } from './resolve-component-function.js';
 import type { Project } from 'ts-morph';
+import { buildComponentLookupMaps } from '../../shared/helpers/build-component-lookup-maps.js';
 
 type RawSlotDefinitionInternal = RawSlotDefinition & { _rawTypeText?: string };
 type ComponentWithFuncNode = RawComponentDefinition & { _funcNode?: FunctionLike };
@@ -15,12 +16,7 @@ export function synthesizeReactStructuralSlots(
   components: ComponentWithFuncNode[],
   project: Project | undefined,
 ): void {
-  const propsToComponent = new Map<string, string>();
-  const componentNames = new Set<string>();
-  for (const c of components as Array<RawComponentDefinition & { _propsTypeName?: string }>) {
-    componentNames.add(c.name);
-    if (c._propsTypeName) propsToComponent.set(c._propsTypeName, c.name);
-  }
+  const { propsToComponent, componentNames } = buildComponentLookupMaps(components);
 
   const structuralByFile = new Map<string, string[]>();
   const structuralNamesForFile = (filePath: string): string[] => {

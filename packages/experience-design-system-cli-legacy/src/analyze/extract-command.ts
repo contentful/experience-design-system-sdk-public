@@ -4,14 +4,9 @@ import type { Command } from 'commander';
 import { addAgentModelOptions } from '../lib/agent-model-options.js';
 import {
   extractComponents,
+  evaluateExtractionQuality,
   preClassifyComponent,
   preClassifyProp,
-  isNonAuthorableComponent,
-  computeExtractionScore,
-  deriveNeedsReview,
-  describeReviewReasons,
-  inspectComponentSource,
-  validateExtractedComponents,
 } from '@contentful/experience-design-system-extraction';
 import {
   openPipelineDb,
@@ -152,12 +147,6 @@ async function retryDatabaseWrite<T>(operation: () => T, attempts = 8): Promise<
 
 function resolveFromProjectRoot(projectRoot: string, inputPath: string): string {
   return isAbsolute(inputPath) ? inputPath : resolve(projectRoot, inputPath);
-}
-
-function wrapperConfidenceToIssueCount(confidence: number): number {
-  if (confidence >= 4) return 2;
-  if (confidence === 3) return 1;
-  return 0;
 }
 
 async function pathExists(path: string): Promise<boolean> {
@@ -408,67 +397,8 @@ export function registerInternalExtractCommand(program: Command): void {
         }
       }
     }
-    const inspectedComponents = await Promise.all(
-      classifiedComponents.map(async (component) => ({
-        component,
-        inspection: await inspectComponentSource(component),
-      })),
-    );
-    const filteredComponents: typeof classifiedComponents = [];
-    const filterWarnings: string[] = [];
-    for (const { component, inspection } of inspectedComponents) {
-      const verdict = isNonAuthorableComponent(component);
-      const keepDespiteZeroSurface =
-        verdict.skip && verdict.reason === 'component has no props and no slots' && inspection.keepDespiteZeroSurface;
-      const retainedForReview = verdict.skip && !keepDespiteZeroSurface;
-
-      if (retainedForReview) {
-        filterWarnings.push(`${component.name}: requires operator review (${verdict.reason})`);
-      }
-
-      if (keepDespiteZeroSurface) {
-        filterWarnings.push(
-          `${component.name}: retained despite 0 props/slots because the source renders visible or compositional UI`,
-        );
-      }
-
-      if (inspection.reviewReasons.length > 0) {
-        const reviewNotes = describeReviewReasons(inspection.reviewReasons)
-          .filter((note) => note !== 'high-confidence data-fetch wrapper')
-          .join('; ');
-        if (reviewNotes) {
-          filterWarnings.push(`${component.name}: ${reviewNotes}`);
-        }
-      }
-
-      // Preserve any extractor-level review reasons (e.g. `props-type-unresolved`
-      // from the Svelte parser) by merging them into the post-processing recompute.
-      // Without this, recomputing here clobbers the per-extractor signal.
-      const extractorReasons = component.reviewReasons ?? [];
-      const nonAuthorableReason = retainedForReview ? [`non-authorable:${verdict.reason}`] : [];
-      const { confidence, reasons } = computeExtractionScore(component, {
-        additionalIssueCount:
-          wrapperConfidenceToIssueCount(inspection.wrapperConfidence) +
-          extractorReasons.length +
-          nonAuthorableReason.length,
-        additionalReasons: [...extractorReasons, ...inspection.reviewReasons, ...nonAuthorableReason],
-      });
-      filteredComponents.push({
-        ...component,
-        extractionConfidence: confidence,
-        reviewReasons: reasons,
-        needsReview:
-          deriveNeedsReview(confidence) ||
-          inspection.wrapperConfidence >= 4 ||
-          inspection.keepDespiteZeroSurface ||
-          retainedForReview ||
-          // An extractor-level type-resolution failure is a strong signal regardless
-          // of the otherwise-derived confidence threshold; force review.
-          extractorReasons.includes('props-type-unresolved') ||
-          (component.needsReview ?? false),
-      });
-    }
-    let validatedComponents = validateExtractedComponents(filteredComponents);
+    const { components: initialValidatedComponents, warnings: filterWarnings } = await evaluateExtractionQuality(classifiedComponents);
+    let validatedComponents = initialValidatedComponents;
 
     // Persist the extraction result before composition mapping so downstream
     // stages can start working while the (potentially agent-backed) mapper

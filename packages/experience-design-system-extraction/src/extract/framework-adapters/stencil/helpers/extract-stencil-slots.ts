@@ -1,5 +1,6 @@
 import { Node, type ClassDeclaration } from 'ts-morph';
 import type { RawSlotDefinition } from '../../../types/component.js';
+import { collectJsDocSlotComments } from '../../shared/helpers/collect-jsdoc-slot-comments.js';
 
 /** Normalises a raw slot name string to a RawSlotDefinition, treating blank/undefined as "default". */
 export function parseStencilSlot(name: string | undefined): RawSlotDefinition {
@@ -25,38 +26,31 @@ export function extractStencilSlots(
   };
 
   // JSDoc @slot tags
-  for (const jsDoc of classDecl.getJsDocs()) {
-    for (const tag of jsDoc.getTags()) {
-      if (tag.getTagName() !== 'slot') continue;
-
-      const comment = tag.getCommentText()?.trim();
-      if (!comment) continue;
-
-      if (comment.startsWith('{')) {
-        try {
-          const parsed = JSON.parse(comment) as { name?: string; description?: string; isDeprecated?: boolean };
-          const slot = parseStencilSlot(parsed.name);
-          let description = parsed.description || undefined;
-          if (parsed.isDeprecated && description) {
-            description = `[DEPRECATED] ${description}`;
-          } else if (parsed.isDeprecated) {
-            description = '[DEPRECATED]';
-          }
-          upsertSlot({ ...slot, ...(description && { description }) });
-          continue;
-        } catch {
-          warnings.push(`Failed to parse @slot JSDoc in ${componentName}: invalid JSON "${comment}"`);
-          continue;
+  for (const comment of collectJsDocSlotComments(classDecl)) {
+    if (comment.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(comment) as { name?: string; description?: string; isDeprecated?: boolean };
+        const slot = parseStencilSlot(parsed.name);
+        let description = parsed.description || undefined;
+        if (parsed.isDeprecated && description) {
+          description = `[DEPRECATED] ${description}`;
+        } else if (parsed.isDeprecated) {
+          description = '[DEPRECATED]';
         }
+        upsertSlot({ ...slot, ...(description && { description }) });
+        continue;
+      } catch {
+        warnings.push(`Failed to parse @slot JSDoc in ${componentName}: invalid JSON "${comment}"`);
+        continue;
       }
-
-      const match = comment.match(/^(?:(\S+)\s*-\s*)?(.*)$/s);
-      if (!match) continue;
-      const [, rawName, rawDescription] = match;
-      const slot = parseStencilSlot(rawName);
-      const description = rawDescription.trim() || undefined;
-      upsertSlot({ ...slot, ...(description && { description }) });
     }
+
+    const match = comment.match(/^(?:(\S+)\s*-\s*)?(.*)$/s);
+    if (!match) continue;
+    const [, rawName, rawDescription] = match;
+    const slot = parseStencilSlot(rawName);
+    const description = rawDescription.trim() || undefined;
+    upsertSlot({ ...slot, ...(description && { description }) });
   }
 
   // Template <slot> elements

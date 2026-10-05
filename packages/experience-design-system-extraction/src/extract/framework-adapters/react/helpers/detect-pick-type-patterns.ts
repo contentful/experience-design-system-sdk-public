@@ -1,19 +1,7 @@
 import { Node } from 'ts-morph';
 import { getTypeReferenceName, getTypeTargetDeclarations } from '../../shared/helpers/tsx-shared.js';
+import { getTypeReferenceTargetNode, getTypeReferenceArguments } from '../../shared/helpers/tsx-node-utils.js';
 import { collectExpandableDomAttributeWrapperContexts } from './detect-dom-type-patterns.js';
-
-function getTypeReferenceTargetNode(typeNode: Node): Node | undefined {
-  if (Node.isTypeReference(typeNode)) return typeNode.getTypeName();
-  if (Node.isExpressionWithTypeArguments(typeNode)) return typeNode.getExpression();
-  return undefined;
-}
-
-function getTypeReferenceArguments(typeNode: Node): Node[] {
-  if (Node.isTypeReference(typeNode) || Node.isExpressionWithTypeArguments(typeNode)) {
-    return typeNode.getTypeArguments();
-  }
-  return [];
-}
 
 function containsPickType(typeNode: Node, seen: Set<Node>, mode: 'supported' | 'any'): boolean {
   if (seen.has(typeNode)) return false;

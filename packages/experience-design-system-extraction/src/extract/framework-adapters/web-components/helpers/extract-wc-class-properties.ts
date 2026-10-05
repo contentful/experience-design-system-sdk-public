@@ -1,23 +1,13 @@
 import { Node, type ClassDeclaration } from 'ts-morph';
 import type { RawPropDefinition } from '../../../types/component.js';
+import {
+  hasInternalJsDocTag,
+  isNonPublicLitMember,
+  isInternalRuntimeField,
+} from './detect-wc-non-public-members.js';
 
 function kebabToCamel(input: string): string {
   return input.replace(/-([a-z0-9])/gi, (_, char: string) => char.toUpperCase());
-}
-
-function hasInternalJsDocTag(member: { getJsDocs(): import('ts-morph').JSDoc[] }): boolean {
-  return member.getJsDocs().some((doc) => doc.getTags().some((tag) => tag.getTagName() === 'internal'));
-}
-
-const NON_PUBLIC_LIT_DECORATORS = new Set(['consume', 'provide', 'query', 'queryAsync', 'state']);
-const INTERNAL_RUNTIME_FIELD_NAMES = new Set(['dir', 'initialReflectedProperties', 'lang']);
-
-function isNonPublicLitMember(member: { getDecorators(): import('ts-morph').Decorator[] }): boolean {
-  return member.getDecorators().some((decorator) => NON_PUBLIC_LIT_DECORATORS.has(decorator.getName()));
-}
-
-function isInternalRuntimeField(name: string, applyRuntimeFieldDenylist: boolean): boolean {
-  return applyRuntimeFieldDenylist && INTERNAL_RUNTIME_FIELD_NAMES.has(name);
 }
 
 function getExplicitLitPropertyAttributeName(property: import('ts-morph').PropertyDeclaration): string | null {

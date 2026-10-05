@@ -1,5 +1,6 @@
 import { type ClassDeclaration } from 'ts-morph';
 import type { RawSlotDefinition } from '../../../types/component.js';
+import { collectJsDocSlotComments } from '../../shared/helpers/collect-jsdoc-slot-comments.js';
 
 export { extractTemplateContent, extractFastTemplateSlots } from './extract-wc-template-content.js';
 
@@ -44,32 +45,25 @@ export function mergeSlotLists(...slotLists: RawSlotDefinition[][]): RawSlotDefi
 export function extractJsDocSlots(classDecl: ClassDeclaration): RawSlotDefinition[] {
   const slots: RawSlotDefinition[] = [];
 
-  for (const jsDoc of classDecl.getJsDocs()) {
-    for (const tag of jsDoc.getTags()) {
-      if (tag.getTagName() !== 'slot') continue;
+  for (const comment of collectJsDocSlotComments(classDecl)) {
+    let name = 'default';
+    let description = comment;
 
-      const comment = tag.getCommentText()?.trim();
-      if (!comment) continue;
-
-      let name = 'default';
-      let description = comment;
-
-      if (comment.startsWith('-')) {
-        description = comment.slice(1).trim();
-      } else {
-        const match = comment.match(/^(\S+)\s*-\s*(.*)$/s);
-        if (match) {
-          name = match[1]!;
-          description = match[2]!.trim();
-        }
+    if (comment.startsWith('-')) {
+      description = comment.slice(1).trim();
+    } else {
+      const match = comment.match(/^(\S+)\s*-\s*(.*)$/s);
+      if (match) {
+        name = match[1]!;
+        description = match[2]!.trim();
       }
-
-      slots.push({
-        name,
-        isDefault: name === 'default',
-        ...(description && { description }),
-      });
     }
+
+    slots.push({
+      name,
+      isDefault: name === 'default',
+      ...(description && { description }),
+    });
   }
 
   return mergeSlotLists(slots);

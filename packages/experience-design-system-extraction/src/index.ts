@@ -36,7 +36,10 @@ export {
 } from './extract/helpers/evidence/collect-allowed-component-names.js';
 
 // Post-extraction filtering and scoring
+export { evaluateExtractionQuality } from './extract/services/quality/evaluate-extraction-quality.js';
 export { hasNoAuthoringSurface } from './extract/services/quality/helpers/authorability/evaluate-authorability.js';
+// Backwards-compatible alias for callers that used the pre-refactor name
+export { hasNoAuthoringSurface as isNonAuthorableComponent } from './extract/services/quality/helpers/authorability/evaluate-authorability.js';
 export { computeExtractionScore, deriveNeedsReview } from './extract/services/quality/helpers/scoring/compute-extraction-score.js';
 export type { ExtractionScore, ExtractionScoreOptions, ExtractionConfidence } from './extract/types/scoring.js';
 export {

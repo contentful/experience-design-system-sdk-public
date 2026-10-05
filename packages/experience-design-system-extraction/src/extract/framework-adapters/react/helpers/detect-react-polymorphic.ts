@@ -1,20 +1,8 @@
 import { Node } from 'ts-morph';
 import { getTypeReferenceName, getTypeTargetDeclarations } from '../../shared/helpers/tsx-shared.js';
+import { getTypeReferenceTargetNode, getTypeReferenceArguments } from '../../shared/helpers/tsx-node-utils.js';
 
 export const TRANSPARENT_POLYMORPHIC_TYPE_NAMES = new Set(['PolymorphicProps', 'PropsWithAs', 'PropsWithHTMLElement']);
-
-function getTypeReferenceTargetNode(typeNode: Node): Node | undefined {
-  if (Node.isTypeReference(typeNode)) return typeNode.getTypeName();
-  if (Node.isExpressionWithTypeArguments(typeNode)) return typeNode.getExpression();
-  return undefined;
-}
-
-function getTypeReferenceArguments(typeNode: Node): Node[] {
-  if (Node.isTypeReference(typeNode) || Node.isExpressionWithTypeArguments(typeNode)) {
-    return typeNode.getTypeArguments();
-  }
-  return [];
-}
 
 export function isRepoLocalTransparentPolymorphicWrapperDeclaration(declaration: Node, typeName: string): boolean {
   if (!Node.isTypeAliasDeclaration(declaration)) return false;
