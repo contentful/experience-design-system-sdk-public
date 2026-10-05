@@ -4,6 +4,7 @@ import {
   createLocalCliAgentInvoker,
   formatCustomPromptBanner,
 } from '@contentful/experience-design-system-generation';
+import { bucketComponentProps } from '@contentful/experience-design-system-extraction';
 import {
   openPipelineDb,
   loadRawComponents,
@@ -14,6 +15,7 @@ import {
   copyComponentsFromCache,
   filterUnknownSlotAllowedComponents,
   renameEmptySlots,
+  stripPropProvenance,
 } from '../../session/db.js';
 import { hashContent, hashPromptForSkill } from '../../session/cache-keys.js';
 import { readExistingContentfulEntitiesFromSession } from '../../helpers/read-existing-contentful-entities-from-session.js';
@@ -162,7 +164,7 @@ export async function runGenerateComponents(opts: GenerateSubcommandOptions, ver
               name: sampleComponent.name,
               source: sampleComponent.source,
               framework: sampleComponent.framework,
-              props: sampleComponent.props,
+              props: sampleComponent.props.map(stripPropProvenance),
               slots: sampleComponent.slots,
             },
           ],
@@ -186,6 +188,7 @@ export async function runGenerateComponents(opts: GenerateSubcommandOptions, ver
       skill: 'components',
       mode: 'autonomous',
       rawComponentsInline: sampleInline,
+      propBucketsInline: sampleComponent ? JSON.stringify(bucketComponentProps(sampleComponent)) : undefined,
       tokensInline,
       tokenMapInline,
       outDir: process.cwd(),

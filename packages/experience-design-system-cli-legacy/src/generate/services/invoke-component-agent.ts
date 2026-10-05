@@ -1,5 +1,6 @@
 import { buildPrompt, describeAgentFailure, parseToolCallLines } from '@contentful/experience-design-system-generation';
 import type { AgentInvoker, AgentName } from '@contentful/experience-design-system-generation';
+import { bucketComponentProps } from '@contentful/experience-design-system-extraction';
 import type { RawComponentDefinition } from '../../types.js';
 import {
   applyToolCalls,
@@ -8,6 +9,7 @@ import {
   loadComponentSourceRef,
   renameEmptySlots,
   storeCache,
+  stripPropProvenance,
 } from '../../session/db.js';
 import type { openPipelineDb } from '../../session/db.js';
 import type { ExistingContentfulEntities } from '../../helpers/fetch-existing-contentful-entities.js';
@@ -155,7 +157,7 @@ export async function invokeComponentAgent(
         name: component.name,
         source: component.source,
         framework: component.framework,
-        props: component.props,
+        props: component.props.map(stripPropProvenance),
         slots: effectiveSlots,
       },
     ],
@@ -175,6 +177,7 @@ export async function invokeComponentAgent(
     skill: 'components',
     mode: 'autonomous',
     rawComponentsInline,
+    propBucketsInline: JSON.stringify(bucketComponentProps(component)),
     tokensInline,
     tokenMapInline,
     outDir: process.cwd(),

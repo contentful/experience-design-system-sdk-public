@@ -133,24 +133,15 @@ export function preClassifyComponent(component: RawComponentDefinition): RawComp
       return [];
     }
 
-    // Provenance is extraction-only evidence. Do not add it to the payload
-    // presented to downstream agents.
-    const { domAttribute: _domAttribute, ...authorableProp } = prop;
-
     if (prop.category) {
-      return [authorableProp];
+      return [prop];
     }
 
     if (!result) {
-      return [authorableProp];
+      return [prop];
     }
 
-    return [
-      {
-        ...authorableProp,
-        category: result.category as 'content' | 'design' | 'state',
-      },
-    ];
+    return [{ ...prop, category: result.category as 'content' | 'design' | 'state' }];
   });
 
   return { ...component, props };
