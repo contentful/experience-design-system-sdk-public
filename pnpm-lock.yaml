@@ -129,9 +129,15 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
     devDependencies:
+      '@contentful/experience-design-system-agents':
+        specifier: workspace:*
+        version: link:../experience-design-system-agents
       '@contentful/experience-design-system-extraction':
         specifier: workspace:*
         version: link:../experience-design-system-extraction
+      '@contentful/experience-design-system-generation':
+        specifier: workspace:*
+        version: link:../experience-design-system-generation
       '@tsconfig/node24':
         specifier: ^24.0.4
         version: 24.0.4

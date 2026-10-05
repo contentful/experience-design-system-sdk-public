@@ -53,7 +53,9 @@
     "typescript": "^5.9.3"
   },
   "devDependencies": {
+    "@contentful/experience-design-system-agents": "workspace:*",
     "@contentful/experience-design-system-extraction": "workspace:*",
+    "@contentful/experience-design-system-generation": "workspace:*",
     "@tsconfig/node24": "^24.0.4",
     "@types/node": "^24.0.3",
     "@types/react": "^18.3.24",
