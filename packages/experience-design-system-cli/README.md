@@ -106,7 +106,7 @@ experiences import [flags]
 ```
 welcome
   ↓
-extracting             — runs analyze extract with composite relationships enabled;
+extracting             — calls the in-process extraction endpoint with composite relationships enabled;
                          spawns internal generation in parallel (prefetch)
   ↓
 [auto-filter]          — analyze select-agent runs automatically

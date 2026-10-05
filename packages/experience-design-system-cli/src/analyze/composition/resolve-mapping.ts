@@ -67,7 +67,7 @@ export async function resolveMapping(input: {
   }
 
   // Rank 3 — structural usage evidence (runtime type-predicate, `.type ===`
-  // identity check, or direct JSX nesting — see structural-slot-evidence.ts).
+  // identity check, or direct JSX nesting — see the structural slot evidence pass).
   // Lower trust than a declared slot contract, but still code-derived, so it
   // outranks the agent and suppresses a redundant agent run when it alone
   // covers a parent.

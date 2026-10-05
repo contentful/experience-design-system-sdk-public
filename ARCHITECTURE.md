@@ -44,6 +44,38 @@ Design system codebase
 
 Component-analysis data between pipeline steps flows through a local SQLite session database (`~/.contentful/experience-design-system-cli/pipeline.db`). The standalone `map tokens` command enriches its session before artifacts are written on demand; `experiences import` does not invoke it. `experiences apply <file>` reads one CDF file containing both component and design-token definitions and builds the request for the sources API.
 
+### Extraction boundary
+
+The import wizard uses an in-process endpoint rather than a hidden extraction
+subcommand:
+
+```text
+WizardApp
+  → CLI extractProject()
+      → extraction-package extractEndpoint()
+          → source files → pre-classified, scored, validated components
+      → composition evidence → SQLite session persistence
+```
+
+The extraction package owns source analysis and extraction-time quality signals
+but does not scan directories, invoke composition agents, or persist sessions.
+The CLI `import/extract-project.ts` module is only an orchestration adapter for
+those concerns and returns the existing session contract to scope review and
+downstream generation. The persisted step label `analyze extract` remains for
+session compatibility.
+
+The extraction package is organized by responsibility:
+
+- `src/extract/controller/` owns endpoint validation and public progress mapping.
+- `src/extract/services/` owns extraction orchestration, classification, quality composition, and adapter registration.
+- `src/extract/policies/quality/` owns deterministic authorability, scoring, source inspection, and validation policies.
+- `src/extract/evidence/` owns reusable source, slot, and structural evidence.
+- `src/extract/adapters/<framework>/` owns framework-specific syntax and extraction behavior.
+- `src/extract/adapters/support/` owns shared adapter file processing, module/type resolution, source locations, and TSX mechanics.
+- `src/extract/model/` owns the typed extraction data and endpoint contracts.
+
+Package-root exports import canonical implementations from these boundaries; compatibility re-export files are not part of the supported layout.
+
 A separate JSON file at `~/.config/experiences/runs.json` records each successful wizard session (id, project path, save path, push target, component count) for list and detail views.
 
 When a raw token source is supplied, the wizard performs token generation internally and writes `tokens.json` before it extracts and generates components. For standalone `map tokens`, the generated CDF and DTCG artifacts must be present in the same pipeline session before mapping.
@@ -83,7 +115,35 @@ The next-generation TUI-first import wizard built on React/Ink. Separate from v1
 
 ### `experience-design-system-extraction`
 
-Component extraction engine: per-framework parsers (React, Vue, Astro, Stencil, Web Components) built on ts-morph, plus prop pre-classification. Consumed by the CLI's `analyze extract` command.
+Component extraction engine organized around an in-process controller, typed models, extraction services, evidence helpers, and framework adapters. It supports React, Vue, Vue TSX, Astro, Stencil, Web Components, and Svelte, and is consumed by the CLI's `analyze extract` command and import orchestrator.
+
+### Extraction package boundaries
+
+The extraction package is a library boundary rather than an HTTP application. Its
+public API is the package root (`src/index.ts`); internal source paths are not
+published as consumer contracts.
+
+```text
+src/extract/
+  model/       request, response, component, option, and scoring contracts
+  controller/  public extractEndpoint validation and progress translation
+  services/    orchestration, routing, adapter execution, deduplication,
+               classification, and quality policy
+  evidence/    source, slot, structural-slot, and allowed-component evidence
+  adapters/    framework-specific implementations of the extractor port
+```
+
+`extractEndpoint` is the stable in-process controller contract. It accepts
+already-selected file paths and returns structured extraction results; it does
+not scan directories, invoke agents, or persist sessions. The services compose
+the adapter port, preserve evidence, apply classification and quality policy,
+and return the model. The CLI owns filesystem scanning, composition resolution,
+SQLite persistence, generation, and TUI concerns.
+
+The package also retains the `extractComponents` pipeline function and root
+policy-helper exports for existing consumers. Supporting policy modules such as
+scoring, validation, source inspection, and non-authorable filtering remain
+package-local and are consumed through the extraction services.
 
 ### `experience-design-system-generation`
 
@@ -385,9 +445,9 @@ sequenceDiagram
 
 ## React Extractor Architecture
 
-The React extractor (`analyze/extract/react.ts`) is the most complex component (~2500 lines). It uses ts-morph to walk the TypeScript AST of each `.tsx`/`.jsx` file.
+The React adapter (`packages/experience-design-system-extraction/src/extract/adapters/react/extractor.ts`) is the most complex adapter (~2500 lines). It uses ts-morph to walk the TypeScript AST of each `.tsx`/`.jsx` file.
 
-### Extraction pipeline per file
+### Adapter extraction flow per file
 
 ```
 Source file
@@ -410,11 +470,11 @@ extractPropsFromType()
   └── extractPropsFromTypeSymbols()
         → TypeScript symbol enumeration
   ↓
-classifyProps() — assigns content / design / state categories
-  ↓
 detectSlots() — children, render props (renderHeader etc.)
   ↓
 RawComponentDefinition
+  ↓
+extraction services — classification, inspection, scoring, and validation
 ```
 
 ### DOM attribute prop surfacing
@@ -423,7 +483,11 @@ React components commonly extend `HTMLAttributes<T>`, `ButtonHTMLAttributes<T>`,
 
 ### Deduplication
 
-`pipeline.ts` runs all extractors in parallel, then deduplicates. When the same logical component is found by multiple extractors (e.g., a Vue component also has a `.tsx` wrapper), it picks the preferred source using path heuristics:
+`services/extractor-registry.ts` routes files to the supported adapters and
+`services/extraction-runner.ts` runs adapter batches in parallel.
+`services/component-deduplicator.ts` then deduplicates results. When the same
+logical component is found by multiple extractors (e.g., a Vue component also
+has a `.tsx` wrapper), it picks the preferred source using path heuristics:
 1. Index files (`Button/index.tsx`) preferred over named files
 2. Shorter paths preferred
 3. Canonical `src/components/X/` structure preferred

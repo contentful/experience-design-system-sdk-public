@@ -85,6 +85,7 @@ import { parsePromptOverrides, resolvePromptOverride } from '../../lib/prompt-ov
 import { runSelectionAgent } from './run-selection-agent.js';
 import { useTerminalSize } from '../../tui/use-terminal-size.js';
 import { useScreenTransitionClear } from '../../tui/render-with-goodbye.js';
+import { extractProject } from '../extract-project.js';
 
 const SAVE_CONFIRMATION_DELAY_MS = 1000;
 
@@ -860,12 +861,6 @@ export function WizardApp({
       existingEntitiesStatus: existingEntitiesExpected ? 'running' : 'idle',
     });
     const existingEntitiesPromise = startExistingEntitiesFetch(projectPath, outDir);
-    const extractArgs = [findCliPath(), '__extract', '--project', projectPath];
-    if (effectiveNoCache) extractArgs.push('--composition-refresh', '--no-cache');
-    for (const p of promptOverrides ?? []) extractArgs.push('--prompt', p);
-    // Composition resolution uses the same agent the user picked for the run.
-    if (state.agent) extractArgs.push('--agent', state.agent);
-    if (state.bedrock) extractArgs.push('--bedrock');
     let selectionPromptText: string | undefined;
     let selectionPromptPath: string | undefined;
     try {
@@ -886,139 +881,92 @@ export function WizardApp({
       return;
     }
 
-    let selectionPromise: Promise<void> | null = null;
     let selectionError: unknown;
-    let selectionStarted = false;
-    const startSelection = (sessionId: string): void => {
-      if (selectionStarted || !state.agent) return;
-      selectionStarted = true;
-      selectionPromise = (async () => {
-        if (existingEntitiesPromise) await existingEntitiesPromise;
-        await runSelectionAgent({
-          sessionId,
-          agent: state.agent as AgentName,
-          ...(state.agentModel ? { model: state.agentModel } : {}),
-          ...(selectionPromptText !== undefined ? { promptText: selectionPromptText } : {}),
-          ...(selectionPromptPath ? { promptPath: selectionPromptPath } : {}),
-          noCache: effectiveNoCache,
-        });
-      })()
-        .catch((error: unknown) => {
-          selectionError = error;
-        })
-        .finally(() => update({ selectionAgentStatus: 'complete' }));
-    };
-
-    let stderrBuffer = '';
-    let stdoutBuffer = '';
-    const r = await runSpawnedCli(
-      extractArgs,
-      (chunk) => {
-        stderrBuffer += chunk;
-        const lines = stderrBuffer.split('\n');
-        stderrBuffer = lines.pop() ?? '';
-        for (const line of lines) {
-          const scanMatch = /^progress=scan:(\d+)$/.exec(line.trim());
-          if (scanMatch) {
-            const scanned = Number(scanMatch[1]);
+    try {
+      const result = await extractProject({
+        project: projectPath,
+        compositionRefresh: effectiveNoCache,
+        ...(promptOverrides ? { prompt: promptOverrides } : {}),
+        ...(state.agent ? { agent: state.agent } : {}),
+        ...(state.bedrock ? { bedrock: true } : {}),
+        onProgress: (progress) => {
+          if (progress.phase === 'scan') {
             setState((prev) => ({
               ...prev,
               extractProgress: {
-                scanned,
+                scanned: progress.scanned,
                 filesProcessed: prev.extractProgress?.filesProcessed ?? 0,
                 totalFiles: prev.extractProgress?.totalFiles ?? 0,
                 componentsFound: prev.extractProgress?.componentsFound ?? 0,
               },
             }));
-            continue;
-          }
-          const scanDoneMatch = /^progress=scan-done:(\d+)$/.exec(line.trim());
-          if (scanDoneMatch) {
-            const scanned = Number(scanDoneMatch[1]);
-            setState((prev) => ({
-              ...prev,
-              extractProgress: {
-                scanned,
-                filesProcessed: prev.extractProgress?.filesProcessed ?? 0,
-                totalFiles: scanned,
-                componentsFound: prev.extractProgress?.componentsFound ?? 0,
-              },
-            }));
-            continue;
-          }
-          const extractMatch = /^progress=extract:(\d+)\/(\d+):(\d+)$/.exec(line.trim());
-          if (extractMatch) {
-            const filesProcessed = Number(extractMatch[1]);
-            const totalFiles = Number(extractMatch[2]);
-            const componentsFound = Number(extractMatch[3]);
+          } else if (progress.phase === 'extract') {
             setState((prev) => ({
               ...prev,
               extractProgress: {
                 scanned: prev.extractProgress?.scanned ?? 0,
-                filesProcessed,
-                totalFiles,
-                componentsFound,
+                filesProcessed: progress.filesProcessed,
+                totalFiles: progress.totalFiles,
+                componentsFound: progress.componentsFound,
               },
             }));
-            continue;
+          } else {
+            setState((prev) => ({ ...prev, compositionPhase: progress.status }));
           }
-          const compositionMatch = /^progress=composition:(.+)$/.exec(line.trim());
-          if (compositionMatch) {
-            setState((prev) => ({ ...prev, compositionPhase: compositionMatch[1]!.trim() }));
-          }
+        },
+      });
+
+      if (existingEntitiesPromise) await existingEntitiesPromise;
+      if (state.agent) {
+        try {
+          await runSelectionAgent({
+            sessionId: result.sessionId,
+            agent: state.agent as AgentName,
+            ...(state.agentModel ? { model: state.agentModel } : {}),
+            ...(selectionPromptText !== undefined ? { promptText: selectionPromptText } : {}),
+            ...(selectionPromptPath ? { promptPath: selectionPromptPath } : {}),
+            noCache: effectiveNoCache,
+          });
+        } catch (error: unknown) {
+          selectionError = error;
+        } finally {
+          update({ selectionAgentStatus: 'complete' });
         }
-      },
-      (chunk) => {
-        stdoutBuffer += chunk;
-        const lines = stdoutBuffer.split('\n');
-        stdoutBuffer = lines.pop() ?? '';
-        for (const line of lines) {
-          const sessionMatch = /^session=(.+)$/.exec(line.trim());
-          if (sessionMatch) startSelection(sessionMatch[1]!.trim());
-        }
-      },
-    );
-    const sessionMatch = /^session=(.+)$/m.exec(r.stdout);
-    if (!selectionStarted && sessionMatch) startSelection(sessionMatch[1]!.trim());
-    if (selectionPromise) await selectionPromise;
-    if (!selectionStarted && existingEntitiesPromise) await existingEntitiesPromise;
-    if (r.exitCode !== 0) {
+      }
+
+      if (result.extractedComponentCount === 0) {
+        update({
+          step: 'error',
+          errorStep: 'analyze extract',
+          errorMessage: `No components found in ${projectPath}.\n\nMake sure this path contains TypeScript/React/Vue component files (.tsx, .ts, .vue, etc.).`,
+        });
+        return;
+      }
+      if (selectionError) {
+        update({
+          step: 'error',
+          errorStep: 'selection agent',
+          errorMessage: selectionError instanceof Error ? selectionError.message : String(selectionError),
+        });
+        return;
+      }
+      if (state.rawTokensPath && tokenGenerationPromiseRef.current) {
+        const tokenGenerationSucceeded = await tokenGenerationPromiseRef.current;
+        tokenGenerationPromiseRef.current = null;
+        if (!tokenGenerationSucceeded) return;
+      }
+      update({
+        extractSessionId: result.sessionId,
+        selectionAgentStatus: 'complete',
+        ...(credentialsReadyRef.current ? { step: 'scope-gate' as WizardStep } : {}),
+      });
+    } catch (error) {
       update({
         step: 'error',
         errorStep: 'analyze extract',
-        errorMessage: r.stderr.trim() || 'Unknown error',
+        errorMessage: error instanceof Error ? error.message : String(error),
       });
-      return;
     }
-    const extractSessionId = sessionMatch ? sessionMatch[1]!.trim() : null;
-    const countMatch = /Extracted (\d+) components?/.exec(r.stderr);
-    const extractedCount = countMatch ? Number(countMatch[1]) : 0;
-    if (extractedCount === 0) {
-      update({
-        step: 'error',
-        errorStep: 'analyze extract',
-        errorMessage: `No components found in ${projectPath}.\n\nMake sure this path contains TypeScript/React/Vue component files (.tsx, .ts, .vue, etc.).`,
-      });
-      return;
-    }
-    if (selectionError) {
-      update({
-        step: 'error',
-        errorStep: 'selection agent',
-        errorMessage: selectionError instanceof Error ? selectionError.message : String(selectionError),
-      });
-      return;
-    }
-    if (state.rawTokensPath && tokenGenerationPromiseRef.current) {
-      const tokenGenerationSucceeded = await tokenGenerationPromiseRef.current;
-      tokenGenerationPromiseRef.current = null;
-      if (!tokenGenerationSucceeded) return;
-    }
-    update({
-      extractSessionId,
-      selectionAgentStatus: 'complete',
-      ...(credentialsReadyRef.current ? { step: 'scope-gate' as WizardStep } : {}),
-    });
   };
 
   const startExtract = (projectPath: string, showProgress = true): void => {

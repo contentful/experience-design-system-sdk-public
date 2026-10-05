@@ -2063,6 +2063,7 @@ describe('ReactComponentExtractor', () => {
     const onClickProp = panel.props.find((p) => p.name === 'onClick');
 
     expect(panel.name).toBe('Panel');
+    expect(panel.props.length).toBeLessThan(50);
     expect(classNameProp).toBeDefined();
     expect(idProp).toBeDefined();
     expect(onClickProp).toBeDefined();

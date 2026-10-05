@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Review the extracted React/Next.js component(s) provided below and decide whether each belongs in **Contentful Experience Orchestration** as a Component Type. The input is a JSON array — you may receive 1–N components in a single message. Output one JSON tool call per input component to stdout, named after the component. Tool calls may appear in any order.
+Review the extracted TypeScript component(s) provided below and decide whether each belongs in **Contentful Experience Orchestration** as a Component Type. The input is a JSON array — you may receive 1–N components in a single message. Output one JSON tool call per input component to stdout, named after the component. Tool calls may appear in any order.
 
 ---
 
