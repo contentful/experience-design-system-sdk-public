@@ -1,30 +1,13 @@
-import type { AgentName } from '../../agent-names.js';
-import type { AgentAuthStatus, AgentDebugEvent, AgentRunResult } from '../../types/agent.js';
+import type { AgentInvoker, InvokeAgentOptions, LocalCliAgentInvokerOptions } from '../../types/invoker.js';
 import { runAgent } from './run-agent.js';
 import { checkAgentAuth } from './helpers/check-agent-auth.js';
 
-export interface InvokeAgentOptions {
-  agent: AgentName;
-  model?: string;
-  bedrock?: boolean;
-  prompt: string;
-  timeoutMs: number;
-  onOutput?: (chunk: string) => void;
-}
-
-export interface AgentInvoker {
-  invoke(options: InvokeAgentOptions): Promise<AgentRunResult>;
-  checkAuth(agent: AgentName): Promise<AgentAuthStatus>;
-}
-
-export interface LocalCliAgentInvokerOptions {
-  onDebugEvent?: AgentDebugEvent;
-}
+export type { AgentInvoker, InvokeAgentOptions, LocalCliAgentInvokerOptions };
 
 export function createLocalCliAgentInvoker(options: LocalCliAgentInvokerOptions = {}): AgentInvoker {
   const { onDebugEvent } = options;
   return {
-    invoke(invokeOptions) {
+    invoke(invokeOptions: InvokeAgentOptions) {
       return runAgent({ ...invokeOptions, onDebugEvent });
     },
     checkAuth(agent) {

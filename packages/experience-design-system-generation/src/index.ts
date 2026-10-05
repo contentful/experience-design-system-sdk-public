@@ -1,5 +1,5 @@
 // Agent identity
-export { AGENT_NAMES, DEFAULT_AGENT_NAME, isAgentName } from './agent-names.js';
+export { AGENT_NAMES, AGENT_BINARIES, DEFAULT_AGENT_NAME, isAgentName } from './agent-names.js';
 export type { AgentName } from './agent-names.js';
 
 // Agent types
@@ -69,4 +69,4 @@ export type {
   AgentInvoker,
   InvokeAgentOptions,
   LocalCliAgentInvokerOptions as CreateLocalCliAgentInvokerOptions,
-} from './services/agent/local-cli-agent-invoker.js';
+} from './types/invoker.js';

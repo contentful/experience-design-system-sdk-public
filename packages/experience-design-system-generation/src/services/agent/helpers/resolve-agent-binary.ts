@@ -1,12 +1,4 @@
-import type { AgentName } from '../../../agent-names.js';
-
-const AGENT_BINARIES: Record<AgentName, string> = {
-  claude: 'claude',
-  codex: 'codex',
-  opencode: 'opencode',
-  cursor: 'cursor-agent',
-  copilot: 'copilot',
-};
+import { AGENT_BINARIES, type AgentName } from '../../../agent-names.js';
 
 export function resolveAgentBinary(agent: AgentName): string {
   const envKey = `EDS_AGENT_BINARY_${agent.toUpperCase()}`;
