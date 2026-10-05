@@ -46,6 +46,9 @@ importers:
 
   packages/experience-design-system-agents:
     dependencies:
+      '@contentful/experience-design-system-extraction':
+        specifier: workspace:*
+        version: link:../experience-design-system-extraction
       '@contentful/experience-design-system-generation':
         specifier: workspace:*
         version: link:../experience-design-system-generation
