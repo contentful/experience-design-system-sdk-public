@@ -397,7 +397,8 @@ export function registerInternalExtractCommand(program: Command): void {
         }
       }
     }
-    const { components: initialValidatedComponents, warnings: filterWarnings } = await evaluateExtractionQuality(classifiedComponents);
+    const { components: initialValidatedComponents, warnings: filterWarnings } =
+      await evaluateExtractionQuality(classifiedComponents);
     let validatedComponents = initialValidatedComponents;
 
     // Persist the extraction result before composition mapping so downstream
