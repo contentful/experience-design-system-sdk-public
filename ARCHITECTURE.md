@@ -4,13 +4,13 @@
 
 The Experience Design System SDK is an Nx monorepo that ships six packages:
 
-| Package                                           | Purpose                                                                                                                                         |
-| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@contentful/experience-design-system-cli`        | The published CLI: an Ink TUI (opened by `experiences import` or bare `experiences`) that forwards `apply`, `setup`, `doctor`, `print`, `map` to the bundled legacy CLI                      |
-| `@contentful/experience-design-system-extraction` | Component extraction engine (ts-morph, per-framework parsers); a runtime dependency of the CLI                                                  |
-| `@contentful/experience-design-system-generation` | Agent-invocation and skill-prompt engine used internally by the import wizard                                                                   |
-| `@contentful/experience-design-system-client`     | Generated API client for the Experience Design System Integrations API (from `openapi.json`); a runtime dependency of the CLI's `apply` command |
-| `@contentful/experience-design-system-types`      | Shared TypeScript types, Zod schemas, and validation logic for CDF and DTCG formats                                                             |
+| Package                                           | Purpose                                                                                                                                                                 |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@contentful/experience-design-system-cli`        | The published CLI: an Ink TUI (opened by `experiences import` or bare `experiences`) that forwards `apply`, `setup`, `doctor`, `print`, `map` to the bundled legacy CLI |
+| `@contentful/experience-design-system-extraction` | Component extraction engine (ts-morph, per-framework parsers); a runtime dependency of the CLI                                                                          |
+| `@contentful/experience-design-system-generation` | Agent-invocation and skill-prompt engine used internally by the import wizard                                                                                           |
+| `@contentful/experience-design-system-client`     | Generated API client for the Experience Design System Integrations API (from `openapi.json`); a runtime dependency of the CLI's `apply` command                         |
+| `@contentful/experience-design-system-types`      | Shared TypeScript types, Zod schemas, and validation logic for CDF and DTCG formats                                                                                     |
 
 The CLI is the developer-facing ingestion tool in the design system import pipeline. A developer runs it against their component library to produce curated, validated artifacts, then pushes them directly into Contentful Experience Orchestration (ExO) from their terminal.
 

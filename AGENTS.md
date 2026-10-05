@@ -6,7 +6,7 @@ This file tells AI coding agents what they need to know to be productive in this
 
 Nx monorepo with six packages:
 
-- `packages/experience-design-system-cli` — the published CLI (`@contentful/experience-design-system-cli`, bins `experiences`, `exo`, `experience-design-system-cli`). An Ink TUI; `experiences import` (alias `importv2`) and bare `experiences` open it. It forwards `apply`, `setup`, `doctor`, `print`, `map` and `__*` to the bundled legacy CLI
+- `packages/experience-design-system-cli` — the published CLI (`@contentful/experience-design-system-cli`, bins `experiences`, `exo`, `experience-design-system-cli`). An Ink TUI; `experiences import` and bare `experiences` open it. It forwards `apply`, `setup`, `doctor`, `print`, `map` and `__*` to the bundled legacy CLI
 - `packages/experience-design-system-cli-legacy` — the previous CLI and import wizard (`@contentful/experience-design-system-cli-legacy`). Private and never published; its build output is copied into `packages/experience-design-system-cli/legacy/` and spawned from there. It is being ported into the new CLI and will then be deleted
 - `packages/experience-design-system-extraction` — component extraction engine (ts-morph, framework parsers); a runtime dependency of the CLI
 - `packages/experience-design-system-generation` — agent-invocation and skill-prompt engine; used internally by the import wizard

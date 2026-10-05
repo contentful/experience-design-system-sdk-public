@@ -46,7 +46,6 @@ export function createProgram(): Command {
 
   program
     .command('import', { isDefault: true })
-    .alias('importv2')
     .description('Launch the Experiences CLI')
     .action(async () => {
       const { render } = await import('ink');
