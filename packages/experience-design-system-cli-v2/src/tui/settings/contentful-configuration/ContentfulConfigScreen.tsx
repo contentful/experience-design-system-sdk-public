@@ -67,9 +67,15 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
       return;
     }
 
-    if (key.tab) {
+    if (key.tab || key.downArrow) {
       const idx = FIELD_ORDER.indexOf(activeField);
       setActiveField(FIELD_ORDER[(idx + 1) % FIELD_ORDER.length]!);
+      return;
+    }
+
+    if (key.upArrow) {
+      const idx = FIELD_ORDER.indexOf(activeField);
+      setActiveField(FIELD_ORDER[(idx - 1 + FIELD_ORDER.length) % FIELD_ORDER.length]!);
       return;
     }
 
@@ -143,7 +149,7 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
         </>
       )}
       <Text> </Text>
-      <Text dimColor>[Tab] Switch · [Enter] Save/Next · [Esc/q] Back</Text>
+      <Text dimColor>[↑/↓] Switch field · [Enter] Save/Next · [Esc/q] Back</Text>
     </Box>
   );
 }
