@@ -44,6 +44,7 @@ export async function runAgent(options: LocalAgentRunOptions): Promise<AgentRunR
     let stdout = '';
     let stderr = '';
     let timedOut = false;
+    let spawnError: Error | undefined;
 
     const timer = setTimeout(() => {
       timedOut = true;
@@ -59,12 +60,16 @@ export async function runAgent(options: LocalAgentRunOptions): Promise<AgentRunR
       stderr += chunk.toString();
     });
 
+    child.on('error', (error) => {
+      spawnError = error;
+    });
+
     child.on('close', (code, signal) => {
       clearTimeout(timer);
       const result = {
-        exitCode: signal ? 1 : (code ?? 1),
+        exitCode: spawnError || signal ? 1 : (code ?? 1),
         stdout,
-        stderr,
+        stderr: spawnError ? `${stderr}${spawnError.message}` : stderr,
         timedOut,
       };
       onDebugEvent?.('run.end', {
