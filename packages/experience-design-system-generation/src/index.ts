@@ -62,3 +62,11 @@ export { buildPrompt, formatCustomPromptBanner, resolveSkillPath } from './servi
 
 // Progress reporting
 export { formatGenerateProgressLine } from './progress.js';
+
+// Backward-compat exports — CLI callers still use these; migrate to createGenerationEndpoint
+export { createLocalCliAgentInvoker } from './services/agent/local-cli-agent-invoker.js';
+export type {
+  AgentInvoker,
+  InvokeAgentOptions,
+  LocalCliAgentInvokerOptions as CreateLocalCliAgentInvokerOptions,
+} from './services/agent/local-cli-agent-invoker.js';
