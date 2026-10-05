@@ -19,6 +19,7 @@ import {
   buildPrompt,
   type Skill,
 } from '@contentful/experience-design-system-generation';
+import { bucketComponentProps } from '@contentful/experience-design-system-extraction';
 import { c } from '../output/format.js';
 import { getDebugLogger } from '../lib/debug-logger.js';
 import { invokeAgentWithOutput } from '../lib/agent-output.js';
@@ -43,6 +44,7 @@ import {
   copyTokensFromCache,
   renameEmptySlots,
   type RawComponentWithId,
+  stripPropProvenance,
 } from '../session/db.js';
 import { hashContent, hashPromptForSkill } from '../session/cache-keys.js';
 import { readExistingContentfulEntitiesFromSession } from '../helpers/read-existing-contentful-entities-from-session.js';
@@ -371,7 +373,7 @@ async function runOneComponent(
         name: component.name,
         source: component.source,
         framework: component.framework,
-        props: component.props,
+        props: component.props.map(stripPropProvenance),
         slots: effectiveSlots,
       },
     ],
@@ -391,6 +393,7 @@ async function runOneComponent(
     skill: 'components',
     mode: 'autonomous',
     rawComponentsInline,
+    propBucketsInline: JSON.stringify(bucketComponentProps(component)),
     tokensInline,
     tokenMapInline,
     outDir: process.cwd(),
@@ -679,7 +682,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
               name: sampleComponent.name,
               source: sampleComponent.source,
               framework: sampleComponent.framework,
-              props: sampleComponent.props,
+              props: sampleComponent.props.map(stripPropProvenance),
               slots: sampleComponent.slots,
             },
           ],
@@ -703,6 +706,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
       skill,
       mode: 'autonomous',
       rawComponentsInline: sampleInline ?? rawTokensInline,
+      propBucketsInline: sampleComponent ? JSON.stringify(bucketComponentProps(sampleComponent)) : undefined,
       rawTokensInline: skill === 'tokens' ? rawTokensInline : undefined,
       rawTokensFilename: opts.rawTokens ? resolve(opts.rawTokens).split('/').pop() : undefined,
       tokensInline,

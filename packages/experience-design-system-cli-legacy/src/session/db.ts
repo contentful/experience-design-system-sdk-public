@@ -114,6 +114,7 @@ CREATE TABLE IF NOT EXISTS raw_props (
   rationale         TEXT,
   source_start_line INTEGER,
   source_end_line   INTEGER,
+  dom_attribute     INTEGER CHECK (dom_attribute IN (0, 1)),
   PRIMARY KEY (session_id, component_id, name),
   FOREIGN KEY (session_id, component_id) REFERENCES raw_components(session_id, component_id) ON DELETE CASCADE
 );
@@ -289,6 +290,9 @@ function applyDbMigrations(db: DatabaseSync): void {
   if (!rawPropColNames.has('source_end_line')) {
     db.exec('ALTER TABLE raw_props ADD COLUMN source_end_line INTEGER');
   }
+  if (!rawPropColNames.has('dom_attribute')) {
+    db.exec('ALTER TABLE raw_props ADD COLUMN dom_attribute INTEGER CHECK (dom_attribute IN (0, 1))');
+  }
 
   const rawPropsDdl = db.prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'raw_props'`).get() as
     | { sql: string }
@@ -316,6 +320,7 @@ function applyDbMigrations(db: DatabaseSync): void {
           rationale         TEXT,
           source_start_line INTEGER,
           source_end_line   INTEGER,
+          dom_attribute     INTEGER CHECK (dom_attribute IN (0, 1)),
           PRIMARY KEY (session_id, component_id, name),
           FOREIGN KEY (session_id, component_id) REFERENCES raw_components(session_id, component_id) ON DELETE CASCADE
         );
@@ -323,11 +328,11 @@ function applyDbMigrations(db: DatabaseSync): void {
         INSERT INTO raw_props__new
           (session_id, component_id, name, type, required, category, default_value,
            description, token_reference, position, cdf_type, cdf_category, cdf_token_kind,
-           rationale, source_start_line, source_end_line)
+           rationale, source_start_line, source_end_line, dom_attribute)
         SELECT
           session_id, component_id, name, type, required, category, default_value,
           description, token_reference, position, cdf_type, cdf_category, cdf_token_kind,
-          rationale, source_start_line, source_end_line
+          rationale, source_start_line, source_end_line, dom_attribute
         FROM raw_props;
 
         DROP TABLE raw_props;
@@ -920,6 +925,11 @@ export function updateStep(
   }
 }
 
+export function stripPropProvenance(prop: RawPropDefinition): Omit<RawPropDefinition, 'domAttribute'> {
+  const { domAttribute: _domAttribute, ...authorableProp } = prop;
+  return authorableProp;
+}
+
 export function storeRawComponents(
   db: DatabaseSync,
   sessionId: string,
@@ -938,8 +948,8 @@ export function storeRawComponents(
   );
   const insertProp = db.prepare(
     `INSERT INTO raw_props
-       (session_id, component_id, name, type, required, category, default_value, description, token_reference, position, source_start_line, source_end_line)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (session_id, component_id, name, type, required, category, default_value, description, token_reference, position, source_start_line, source_end_line, dom_attribute)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const insertAllowedValue = db.prepare(
     `INSERT INTO raw_prop_allowed_values (session_id, component_id, prop_name, position, value)
@@ -1048,6 +1058,7 @@ export function storeRawComponents(
           i,
           prop.sourceStartLine ?? null,
           prop.sourceEndLine ?? null,
+          prop.domAttribute === undefined ? null : prop.domAttribute ? 1 : 0,
         );
         if (prop.allowedValues) {
           prop.allowedValues.forEach((v, j) => insertAllowedValue.run(sessionId, componentId, prop.name, j, v));
@@ -1190,7 +1201,7 @@ export function loadRawComponents(
   const props = db
     .prepare(
       `SELECT component_id, name, type, required, category, default_value, description, token_reference, position,
-              rationale, source_start_line, source_end_line
+              rationale, source_start_line, source_end_line, dom_attribute
        FROM raw_props WHERE session_id = ? ORDER BY component_id, position`,
     )
     .all(sessionId) as Array<{
@@ -1206,6 +1217,7 @@ export function loadRawComponents(
     rationale: string | null;
     source_start_line: number | null;
     source_end_line: number | null;
+    dom_attribute: number | null;
   }>;
 
   const allowedValues = db
@@ -1274,6 +1286,7 @@ export function loadRawComponents(
         if (av && av.length > 0) prop.allowedValues = av.map((v) => v.value);
         if (p.source_start_line !== null) prop.sourceStartLine = p.source_start_line;
         if (p.source_end_line !== null) prop.sourceEndLine = p.source_end_line;
+        if (p.dom_attribute !== null) prop.domAttribute = Boolean(p.dom_attribute);
         return prop;
       }),
       slots: (slotsByComponent.get(c.component_id) ?? []).map((s): RawSlotDefinition => {

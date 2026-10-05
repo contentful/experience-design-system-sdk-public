@@ -413,7 +413,7 @@ describe('preClassifyComponent', () => {
     ]);
   });
 
-  it('does not expose extraction provenance in the downstream classification payload', () => {
+  it('retains extraction provenance so it can be persisted with the prop', () => {
     const component: RawComponentDefinition = {
       ...baseComponent,
       props: [makeProp({ name: 'href', type: 'string', domAttribute: true })],
@@ -421,8 +421,7 @@ describe('preClassifyComponent', () => {
 
     const result = preClassifyComponent(component);
 
-    expect(result.props[0]).not.toHaveProperty('domAttribute');
-    expect(result.props).toEqual([expect.objectContaining({ name: 'href', category: 'content' })]);
+    expect(result.props).toEqual([expect.objectContaining({ name: 'href', category: 'content', domAttribute: true })]);
   });
 
   it('returns undefined category for complex types', () => {
