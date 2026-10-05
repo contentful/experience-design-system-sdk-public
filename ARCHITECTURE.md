@@ -6,7 +6,7 @@ The Experience Design System SDK is an Nx monorepo that ships six packages:
 
 | Package                                           | Purpose                                                                                                                                         |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@contentful/experience-design-system-cli`        | The published CLI: an Ink TUI that forwards `import`, `apply`, `setup`, `doctor`, `print`, `map` to the bundled legacy CLI                      |
+| `@contentful/experience-design-system-cli`        | The published CLI: an Ink TUI (opened by `experiences import` or bare `experiences`) that forwards `apply`, `setup`, `doctor`, `print`, `map` to the bundled legacy CLI                      |
 | `@contentful/experience-design-system-extraction` | Component extraction engine (ts-morph, per-framework parsers); a runtime dependency of the CLI                                                  |
 | `@contentful/experience-design-system-generation` | Agent-invocation and skill-prompt engine used internally by the import wizard                                                                   |
 | `@contentful/experience-design-system-client`     | Generated API client for the Experience Design System Integrations API (from `openapi.json`); a runtime dependency of the CLI's `apply` command |
@@ -25,9 +25,9 @@ Design system codebase
         ▼
   experience-design-system-cli  (binaries: experiences | exo | experience-design-system-cli)
     ├── (default)               → Ink TUI: Import, Upgrade, Settings, Help
-    └── import, apply, setup, doctor, print, map, __extract, __generate
+    └── apply, setup, doctor, print, map, __extract, __generate
           → forwarded unchanged to the bundled legacy CLI (experience-design-system-cli-legacy):
-            import (wizard)     → interactive TUI; drives the full pipeline + scope-gate + final-review + save/push
+            import (wizard, run from the TUI's Import menu item) → interactive TUI; drives the full pipeline + scope-gate + final-review + save/push
             apply <file>        → manifest preview, apply operation, and operation polling
             setup, doctor       → prereq + credentials wizard, prereq health check
             hidden commands     → subprocesses the wizard spawns
@@ -49,7 +49,7 @@ When a token file is supplied (`--tokens` or the token-input step), the wizard p
 
 ### `experience-design-system-cli`
 
-The published package and the only one users install. An Ink TUI with the menu items Import, Upgrade, Settings and Help (each an independent flow under `src/tui/`). Commands it does not implement yet (`import`, `apply`, `setup`, `doctor`, `print`, `map`, `__extract`, `__generate`) are forwarded by `src/legacy/run-legacy.ts` to the bundled legacy CLI, and the Import menu item spawns the legacy `import`. The legacy build output is copied to `legacy/` inside this package by the `copy-legacy` Nx target, and its runtime dependencies are declared here.
+The published package and the only one users install. An Ink TUI with the menu items Import, Upgrade, Settings and Help (each an independent flow under `src/tui/`). Commands it does not implement yet (`apply`, `setup`, `doctor`, `print`, `map`, `__extract`, `__generate`) are forwarded by `src/legacy/run-legacy.ts` to the bundled legacy CLI, and the Import menu item spawns the legacy `import`. The legacy build output is copied to `legacy/` inside this package by the `copy-legacy` Nx target, and its runtime dependencies are declared here.
 
 **See `packages/experience-design-system-cli/DSI_TUI_ARCHITECTURE.md` for TUI architecture and component guidelines.**
 

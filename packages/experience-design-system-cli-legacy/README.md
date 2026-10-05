@@ -1,6 +1,6 @@
 # @contentful/experience-design-system-cli-legacy
 
-> **Deprecated and internal.** This package is not published. It is bundled into `@contentful/experience-design-system-cli`, which forwards the `import`, `apply`, `setup`, `doctor`, `print` and `map` commands to it until they are ported. Install and use `@contentful/experience-design-system-cli` instead.
+> **Deprecated and internal.** This package is not published. It is bundled into `@contentful/experience-design-system-cli`, which forwards the `apply`, `setup`, `doctor`, `print` and `map` commands to it until they are ported. Install and use `@contentful/experience-design-system-cli` instead.
 
 CLI for extracting, reviewing, generating, validating, and pushing Contentful Experience Design System component definitions into Experiences.
 

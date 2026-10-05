@@ -7,7 +7,6 @@ const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url),
 };
 
 const FORWARDED_COMMANDS = [
-  { name: 'import', description: 'Run the interactive import wizard' },
   {
     name: 'apply',
     description: 'Apply a CDF file of components and design tokens to Contentful',
@@ -46,8 +45,9 @@ export function createProgram(): Command {
     .version(pkg.version, '--version', 'Print version number');
 
   program
-    .command('importv2', { isDefault: true })
-    .description('Launch the import TUI')
+    .command('import', { isDefault: true })
+    .alias('importv2')
+    .description('Launch the Experiences CLI')
     .action(async () => {
       const { render } = await import('ink');
       const { runApp } = await import('./app.js');
