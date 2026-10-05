@@ -1,12 +1,7 @@
 import { Node } from 'ts-morph';
 import { getTypeReferenceName, getTypeTargetDeclarations } from '../../shared/helpers/tsx-shared.js';
+import { getTypeReferenceTargetNode } from '../../shared/helpers/tsx-node-utils.js';
 import { isPureExpandableDomAttributeWrapperType } from './detect-dom-is-pure-wrapper.js';
-
-function getTypeReferenceTargetNode(typeNode: Node): Node | undefined {
-  if (Node.isTypeReference(typeNode)) return typeNode.getTypeName();
-  if (Node.isExpressionWithTypeArguments(typeNode)) return typeNode.getExpression();
-  return undefined;
-}
 
 export function containsImportedOmitWrappedCustomProps(
   typeNode: Node,
