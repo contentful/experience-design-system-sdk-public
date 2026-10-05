@@ -1,5 +1,5 @@
 import type { ExtractionEndpointRequest, ExtractionEndpointResponse } from '../types/contract.js';
-import { runExtractionService } from '../services/run-extraction-service.js';
+import { runExtractionService } from '../orchestrator/run-extraction-service.js';
 import { validateRequest } from './helpers/validate-endpoint-request.js';
 
 export type {

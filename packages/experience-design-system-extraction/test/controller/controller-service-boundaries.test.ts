@@ -3,13 +3,13 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ExtractionEndpointResponse } from '../../src/extract/types/contract.js';
-import type { ExtractionServiceRequest } from '../../src/extract/services/run-extraction-service.js';
+import type { ExtractionServiceRequest } from '../../src/extract/orchestrator/run-extraction-service.js';
 
 const { runExtractionService } = vi.hoisted(() => ({
   runExtractionService: vi.fn(),
 }));
 
-vi.mock('../../src/extract/services/run-extraction-service.js', () => ({ runExtractionService }));
+vi.mock('../../src/extract/orchestrator/run-extraction-service.js', () => ({ runExtractionService }));
 
 import { extractEndpoint } from '../../src/extract/controller/extract-controller.js';
 
@@ -74,7 +74,7 @@ describe('runExtractionService integration contract', () => {
 
     const { runExtractionService: runRealExtractionService } = await vi.importActual<{
       runExtractionService: (request: ExtractionServiceRequest) => Promise<ExtractionEndpointResponse>;
-    }>('../../src/extract/services/run-extraction-service.js');
+    }>('../../src/extract/orchestrator/run-extraction-service.js');
     const result = await runRealExtractionService({ filePaths: [sourcePath], projectRoot });
 
     expect(result.components[0]).toEqual(
