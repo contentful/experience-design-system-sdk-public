@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { findLegacyCliPath } from '../../legacy/legacy-cli-path.js';
+import { debugSessionDirIfEnabled } from '../debug-store.js';
 
 interface StepResult {
   step: string;
@@ -42,10 +43,12 @@ function buildArgs(options: SpawnV1ImportOptions): string[] {
 export async function spawnV1Import(options: SpawnV1ImportOptions = {}): Promise<SpawnV1ImportResult> {
   const cliPath = findLegacyCliPath();
   const args = buildArgs(options);
+  const debugSessionDir = await debugSessionDirIfEnabled();
 
   return new Promise((resolvePromise) => {
     const child = spawn('node', [cliPath, ...args], {
       stdio: 'inherit',
+      env: debugSessionDir ? { ...process.env, EDS_DEBUG_SESSION_DIR: debugSessionDir } : process.env,
     });
 
     child.on('close', (code) => {

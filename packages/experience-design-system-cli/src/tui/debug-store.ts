@@ -68,6 +68,10 @@ function sessionDebugDir(): string {
   return join(sessionsRootDir(), SESSION_ID);
 }
 
+export async function debugSessionDirIfEnabled(): Promise<string | undefined> {
+  return (await isDebugModeEnabled()) ? sessionDebugDir() : undefined;
+}
+
 // Fire-and-forget so a user who never visits a wired flow still sees an (empty)
 // session directory the moment they boot — matches startDebugRun's fail-open style.
 void isDebugModeEnabled().then((enabled) => {

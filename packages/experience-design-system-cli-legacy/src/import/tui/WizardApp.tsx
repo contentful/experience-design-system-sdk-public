@@ -9,6 +9,7 @@ import { execFile, spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import { buildRunTeaserLine } from './run-teaser.js';
 import { getDebugLogger } from '../../lib/debug-logger.js';
+import { startPushDebugRun } from '../../lib/push-debug-log.js';
 import { readExperiencesCredentials, writeExperiencesCredentials } from '../../credentials-store.js';
 import { PathPrompt } from '../../runs/path-prompt.js';
 import { detectSaveConflict, buildTimestampedSubdir } from '../../runs/save-path-resolver.js';
@@ -1832,6 +1833,30 @@ export function WizardApp({
     }
 
     update({ step: 'pushing', pushProgress: null, errorAllowBreakingChangeAcknowledgment: false });
+    const cdfEntries = Object.entries(cdf).filter(([key]) => !key.startsWith('$') && key !== 'allowDeletions');
+    const pushDebug = startPushDebugRun({
+      space_id: spaceId,
+      environment_id: environmentId,
+      host: resolveWizardHost(host),
+      cma_token: cmaToken,
+      acknowledge_breaking_changes: acknowledgeBreakingChanges,
+      cdf_keys: cdfEntries.map(([key]) => key),
+      cdf_entry_count: cdfEntries.length,
+      preview: preview
+        ? {
+            components: {
+              new: preview.components.new.length,
+              changed: preview.components.changed.length,
+              removed: preview.components.removed.length,
+            },
+            tokens: {
+              new: preview.tokens.new.length,
+              changed: preview.tokens.changed.length,
+              removed: preview.tokens.removed.length,
+            },
+          }
+        : null,
+    });
     try {
       const resolvedHost = resolveWizardHost(host);
       const client = new ImportApiClient({
@@ -1968,6 +1993,27 @@ export function WizardApp({
           );
         }
       }
+      pushDebug.finish(
+        {
+          operation_id: operation.sys.id,
+          operation_status: operation.sys.status,
+          summary: operation.summary,
+          item_count: items.length,
+          items: items.map((item) => ({
+            entityType: item.entityType,
+            id: item.id,
+            action: item.action,
+            status: item.status,
+            ...(item.error ? { error: formatEdsiError(item.error) } : {}),
+          })),
+          push_result: {
+            component_types: pushResult.componentTypes,
+            design_tokens: pushResult.designTokens,
+          },
+          succeeded: pushSucceeded,
+        },
+        pushSucceeded ? 'success' : 'error',
+      );
       update({ step: 'done', pushResult });
     } catch (e) {
       let msg: string;
@@ -1978,6 +2024,13 @@ export function WizardApp({
       } else {
         msg = 'Push failed';
       }
+      pushDebug.finish(
+        {
+          error: msg,
+          ...(e instanceof ApiError ? { status: e.status, body: (e.body ?? '').slice(0, 2000) } : {}),
+        },
+        'error',
+      );
       update({
         step: 'error',
         errorStep: 'apply',
