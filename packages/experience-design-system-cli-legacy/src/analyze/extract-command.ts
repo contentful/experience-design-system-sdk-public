@@ -29,6 +29,11 @@ import { resolveCompositionSources } from './composition/resolve-mapping-cli.js'
 import { selectCandidateFiles, capCandidatesToPromptBudget } from './composition/candidate-files.js';
 import { buildCompositionInputHash } from './composition/composition-cache-key.js';
 import { collectManifestDocEdges } from './composition/manifest-doc-evidence.js';
+import {
+  collectSourceCallSiteEvidence,
+  type SourceCallSiteEvidence,
+  type SourceCallSiteRejection,
+} from './composition/source-call-site-evidence.js';
 import { parsePromptOverrides, resolvePromptOverride } from '../lib/prompt-overrides.js';
 import {
   agentSupportsBedrock,
@@ -408,6 +413,9 @@ export function registerInternalExtractCommand(program: Command): void {
     storeRawComponents(db, sessionId, validatedComponents);
     process.stdout.write(`session=${sessionId}\n`);
 
+    let sourceCallSiteEvidence: SourceCallSiteEvidence[] = [];
+    let sourceCallSiteRejections: SourceCallSiteRejection[] = [];
+
     // Composition mapping resolution is always enabled. Every extracted CDF
     // preserves embedded-component edges.
     {
@@ -499,6 +507,9 @@ export function registerInternalExtractCommand(program: Command): void {
         // and code/design-adjacent rather than agent-derived.
         const manifestDocEdges = collectManifestDocEdges(runtimeFiles, validatedComponents, componentNameSet);
         const extraEdges = manifestDocEdges;
+        const sourceCallSites = collectSourceCallSiteEvidence(runtimeFiles, validatedComponents);
+        sourceCallSiteEvidence = sourceCallSites.accepted;
+        sourceCallSiteRejections = sourceCallSites.rejected;
 
         // Edge-emission cache keyed on prompt files and agent identity.
         const agentCacheKey = buildCompositionInputHash({
@@ -508,6 +519,8 @@ export function registerInternalExtractCommand(program: Command): void {
         const result = await resolveMapping({
           components: validatedComponents,
           ...(extraEdges.length > 0 ? { extraEdges } : {}),
+          sourceCallSiteEvidence,
+          sourceCallSiteRejections,
           forceAgent: sources.forceAgent,
           files: promptFiles,
           ...(compositionPrompt ? { promptOverride: compositionPrompt } : {}),
@@ -558,7 +571,13 @@ export function registerInternalExtractCommand(program: Command): void {
       sessionId,
       sourceFiles.map((f) => relative(projectRoot, f)),
     );
-    await retryDatabaseWrite(() => updateStep(db, stepId, 'complete', { sessionId }));
+    await retryDatabaseWrite(() =>
+      updateStep(db, stepId, 'complete', {
+        sessionId,
+        compositionEvidence: JSON.stringify(sourceCallSiteEvidence),
+        compositionRejections: JSON.stringify(sourceCallSiteRejections),
+      }),
+    );
     enrichCommandResult({ extracted_component_count: validatedComponents.length });
     db.close();
 
