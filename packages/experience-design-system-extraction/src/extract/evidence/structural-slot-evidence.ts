@@ -8,6 +8,11 @@ import {
 } from 'ts-morph';
 import { extractAllowedComponentsFromTypeText, type AllowedComponentsContext } from './allowed-components.js';
 import { isIntrinsicJsxElement } from '../adapters/support/tsx-shared.js';
+import {
+  collectLocallyBoundNames,
+  getReturnedJsxTagName,
+  isJsxCarryingTypeText,
+} from './helpers/jsx-ast-helpers.js';
 
 type FunctionLike = FunctionDeclaration | ArrowFunction | FunctionExpression;
 
@@ -23,8 +28,7 @@ type FunctionLike = FunctionDeclaration | ArrowFunction | FunctionExpression;
 
 /**
  * Signal A — a type-predicate function anywhere in the file asserts a value
- * `is ReactElement<XProps>` (e.g. `function isFooElement(c): c is
- * ReactElement<FooProps>`). Common alongside a runtime `Children.map` /
+ * `is ReactElement<XProps>`. Common alongside a runtime `Children.map` /
  * `cloneElement` narrowing pattern where the slot's own prop type is a bare
  * `ReactNode` and carries no generic for the typed-slot extractor to read.
  */
@@ -56,8 +60,7 @@ export function collectTypePredicateComponentReferences(
  * Signal B — a runtime identity check against a known component, e.g.
  * `isValidElement(child) && child.type === BlueAccordionItem`. `.type` on a
  * React element is the actual component reference, so this is direct
- * evidence the checked value is expected to BE that component — not a name
- * guess, an identity comparison against the real imported binding.
+ * evidence the checked value is expected to BE that component.
  */
 export function collectRuntimeTypeCheckComponentReferences(
   sourceFile: SourceFile,
@@ -93,31 +96,10 @@ export function collectRuntimeTypeCheckComponentReferences(
   return [...found].sort();
 }
 
-/** Names bound in this file by import or local declaration — used to keep signal B from matching an unrelated same-named identifier that was never actually imported here. */
-function collectLocallyBoundNames(sourceFile: SourceFile): Set<string> {
-  const names = new Set<string>();
-  for (const imp of sourceFile.getImportDeclarations()) {
-    const defaultImport = imp.getDefaultImport();
-    if (defaultImport) names.add(defaultImport.getText());
-    const namespaceImport = imp.getNamespaceImport();
-    if (namespaceImport) names.add(namespaceImport.getText());
-    for (const named of imp.getNamedImports()) {
-      names.add((named.getAliasNode() ?? named.getNameNode()).getText());
-    }
-  }
-  for (const decl of sourceFile.getVariableDeclarations()) names.add(decl.getName());
-  for (const decl of sourceFile.getFunctions()) {
-    const declName = decl.getName();
-    if (declName) names.add(declName);
-  }
-  return names;
-}
-
 /**
  * Signal C — a component's own render body literally instantiates another
- * known local component as JSX (e.g. `<CardHeader/>` inside `Card`'s
- * return). Direct structural nesting, not a slot being filled with
- * caller-supplied content — the weakest-trust signal, kept last in the rank.
+ * known local component as JSX. Direct structural nesting, not a slot being
+ * filled with caller-supplied content — the weakest-trust signal.
  */
 export function collectRenderedComponentReferences(
   funcNode: FunctionLike,
@@ -143,29 +125,9 @@ export function collectRenderedComponentReferences(
 
 /**
  * Signal D — data-array render: the component's render body maps an array-
- * typed prop to a known child component (e.g. `{items.map(x => <ItemRow
- * .../>)}` inside a parent whose `items` prop is a plain data array).
- *
- * Fires only when ALL strict-gating conditions hold, to keep false positives
- * off in the common case where mapping over data doesn't imply an authorable
- * compositional slot. Conditions are listed in check order (cheap fails
- * first) so the loop-body labels line up 1-to-1 with this list:
- *
- *   1. The `.map` callee is an identifier that matches a declared prop on
- *      the parent (`propNames`).
- *   2. The prop's declared type text is a plain data array — not
- *      `ReactNode[]` / `ReactElement<...>[]` / `React.ReactNode[]`, etc.
- *      (those cases are already covered by the typed-slot pass, so firing
- *      this signal for them would double-count.)
- *   3. The callback returns a JSX element whose tag is an identifier
- *      resolving to a known component (`componentNames`).
- *   4. That child component is NOT rendered anywhere else in the parent's
- *      body — the map is the only render site.
- *
- * When all four hold, the mapped child is a strong candidate for a
- * synthesised default slot on the parent — the extractor treats it that way
- * only when there's no other slot to hang the evidence on (see the caller in
- * react.ts).
+ * typed prop to a known child component. Fires only when ALL strict-gating
+ * conditions hold to keep false positives off in the common case where
+ * mapping over data doesn't imply an authorable compositional slot.
  */
 export function collectArrayMapRenderComponentReferences(
   funcNode: FunctionLike,
@@ -208,8 +170,7 @@ export function collectArrayMapRenderComponentReferences(
     const propTypeText = propTypesByName.get(propName) ?? '';
     if (isJsxCarryingTypeText(propTypeText)) continue;
 
-    // Condition 3: callback must be a function expression whose return is a
-    // JSX element resolving to a known component.
+    // Condition 3: callback must return a JSX element resolving to a known component.
     const [callbackArg] = callExpr.getArguments();
     if (!callbackArg) continue;
     if (!Node.isArrowFunction(callbackArg) && !Node.isFunctionExpression(callbackArg)) continue;
@@ -219,9 +180,7 @@ export function collectArrayMapRenderComponentReferences(
     if (returnedJsxTag === ownComponentName) continue;
     if (!componentNames.has(returnedJsxTag)) continue;
 
-    // Condition 4: the child must ONLY be rendered inside this map. Any
-    // additional render site elsewhere in the parent means it's a private
-    // implementation detail, not a composable slot child.
+    // Condition 4: the child must ONLY be rendered inside this map.
     const totalRenders = renderCountByComponent.get(returnedJsxTag) ?? 0;
     if (totalRenders !== 1) continue;
 
@@ -229,76 +188,4 @@ export function collectArrayMapRenderComponentReferences(
   }
 
   return [...found].sort();
-}
-
-/**
- * Returns the tag identifier of the JSX element the callback returns, or
- * `undefined` if the callback doesn't return exactly one identifier-tagged
- * JSX element. Accepts both arrow-with-expression bodies and function bodies
- * with a single return statement. Fragment wrappers with a single JSX child
- * are unwrapped.
- */
-function getReturnedJsxTagName(callback: ArrowFunction | FunctionExpression): string | undefined {
-  const body = callback.getBody();
-  const jsxNode = unwrapReturnedJsx(body);
-  if (!jsxNode) return undefined;
-
-  if (Node.isJsxSelfClosingElement(jsxNode) || Node.isJsxOpeningElement(jsxNode)) {
-    return jsxNode.getTagNameNode().getText();
-  }
-  if (Node.isJsxElement(jsxNode)) {
-    return jsxNode.getOpeningElement().getTagNameNode().getText();
-  }
-  return undefined;
-}
-
-function unwrapReturnedJsx(bodyOrExpr: Node): Node | undefined {
-  // Arrow with expression body: `(x) => <Foo/>` or `(x) => <><Foo/></>`
-  if (
-    Node.isJsxElement(bodyOrExpr) ||
-    Node.isJsxSelfClosingElement(bodyOrExpr) ||
-    Node.isJsxOpeningElement(bodyOrExpr)
-  ) {
-    return bodyOrExpr;
-  }
-  if (Node.isJsxFragment(bodyOrExpr)) {
-    return unwrapSingleJsxChildOfFragment(bodyOrExpr);
-  }
-  if (Node.isParenthesizedExpression(bodyOrExpr)) {
-    return unwrapReturnedJsx(bodyOrExpr.getExpression());
-  }
-
-  // Block body: look for a single `return <Foo/>;` at the top level.
-  if (Node.isBlock(bodyOrExpr)) {
-    const returns = bodyOrExpr.getStatements().filter(Node.isReturnStatement);
-    if (returns.length !== 1) return undefined;
-    const expr = returns[0].getExpression();
-    if (!expr) return undefined;
-    return unwrapReturnedJsx(expr);
-  }
-
-  return undefined;
-}
-
-function unwrapSingleJsxChildOfFragment(fragment: Node): Node | undefined {
-  if (!Node.isJsxFragment(fragment)) return undefined;
-  const jsxChildren = fragment
-    .getJsxChildren()
-    .filter((child) => Node.isJsxElement(child) || Node.isJsxSelfClosingElement(child));
-  if (jsxChildren.length !== 1) return undefined;
-  return jsxChildren[0];
-}
-
-const JSX_CARRYING_TYPE_TOKENS = ['ReactNode', 'ReactElement', 'JSX.Element'];
-
-/**
- * True if the type text refers to a React-JSX-carrying type. Used to reject
- * `items: ReactNode[]`-style props from the array-map signal so we don't
- * overlap with the typed-slot pass, which already handles those.
- */
-function isJsxCarryingTypeText(typeText: string): boolean {
-  for (const token of JSX_CARRYING_TYPE_TOKENS) {
-    if (typeText.includes(token)) return true;
-  }
-  return false;
 }

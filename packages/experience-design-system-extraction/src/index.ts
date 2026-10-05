@@ -48,7 +48,7 @@ export {
   POSSIBLE_DATA_FETCH_WRAPPER_REASON,
   ZERO_SURFACE_RENDERED_UI_REASON,
 } from './extract/policies/quality/source-inspection.js';
-export type { ComponentSourceInspection } from './extract/policies/quality/source-inspection.js';
+export type { ComponentSourceInspection } from './extract/model/source-inspection.js';
 
 // Validation
 export {
@@ -69,4 +69,4 @@ export {
 
 // Pre-classification
 export { preClassifyProp, preClassifyComponent } from './extract/services/classification-service.js';
-export type { PreClassification } from './extract/services/classification-service.js';
+export type { PreClassification } from './extract/model/classification.js';

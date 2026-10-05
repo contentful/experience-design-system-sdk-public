@@ -1,94 +1,32 @@
 import { readFile } from 'node:fs/promises';
 import type { RawComponentDefinition } from '../../model/component.js';
-import { parseImportedNames } from '../../evidence/source-evidence.js';
+import type { ComponentSourceInspection } from '../../model/source-inspection.js';
+import {
+  DATA_WRAPPER_REASON_PREFIX,
+  GENERATED_IMPORT_PATTERN,
+  GENERATED_QUERY_HOOK_PATTERN,
+  GQL_FILENAME_PATTERN,
+  LOADING_NULL_GUARD_PATTERN,
+  collectSiblingRendererImports,
+  hasSiblingForwardRender,
+  hasVisibleUiRender,
+  collectInfraPropNames,
+  mapScoreToWrapperConfidence,
+  dedupeStrings,
+} from './helpers/data-wrapper-signals.js';
+
+export type { ComponentSourceInspection } from '../../model/source-inspection.js';
 
 export const HIGH_CONFIDENCE_DATA_FETCH_WRAPPER_REASON = 'data-fetch-wrapper';
 export const POSSIBLE_DATA_FETCH_WRAPPER_REASON = 'possible-data-fetch-wrapper';
 export const ZERO_SURFACE_RENDERED_UI_REASON = 'zero-surface:rendered-ui';
-
-const DATA_WRAPPER_REASON_PREFIX = 'data-wrapper:';
-const INFRA_PROP_NAMES = new Set(['id', 'locale', 'preview', 'slug', 'topic', 'previousComponent', '__typename']);
-const VISIBLE_UI_TAG_PATTERN =
-  /<(?:[A-Z][A-Za-z0-9_.]*|div|span|section|main|article|header|footer|nav|aside|img|video|p|h[1-6]|ul|ol|li|button|input|textarea|select|form|label|table|tbody|thead|tr|td|th)\b/;
-const GENERATED_IMPORT_PATTERN = /from\s+['"][^'"]*__generated[^'"]*['"]/;
-const GENERATED_QUERY_HOOK_PATTERN = /\buse[A-Z][A-Za-z0-9]*(?:Lazy|Suspense)?Query\s*\(/;
-const GQL_FILENAME_PATTERN = /(?:-gql|-ggl)\.[cm]?[jt]sx?$/i;
-const LOADING_NULL_GUARD_PATTERN =
-  /if\s*\([^)]*(?:isLoading|loading|!data|!\w+Collection|!\w+Item|!\w+)\s*[^)]*\)\s*return\s+null\b/;
-const IMPORT_PATTERN = /import\s+(?:type\s+)?(.+?)\s+from\s+['"]([^'"]+)['"]/g;
-
-export interface ComponentSourceInspection {
-  wrapperConfidence: 0 | 1 | 2 | 3 | 4 | 5;
-  reviewReasons: string[];
-  keepDespiteZeroSurface: boolean;
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function collectSiblingRendererImports(sourceText: string): string[] {
-  const names = new Set<string>();
-
-  for (const match of sourceText.matchAll(IMPORT_PATTERN)) {
-    const importClause = match[1]?.trim() ?? '';
-    const importPath = match[2]?.trim() ?? '';
-    if (!importPath.startsWith('./')) continue;
-    if (importPath.includes('__generated')) continue;
-    if (/-g(?:ql|gl)(?:$|\.)/i.test(importPath)) continue;
-
-    for (const name of parseImportedNames(importClause)) {
-      if (name) names.add(name);
-    }
-  }
-
-  return [...names];
-}
-
-function hasSiblingForwardRender(sourceText: string, siblingImports: string[]): boolean {
-  return siblingImports.some((name) => {
-    const renderPattern = new RegExp(`<${escapeRegExp(name)}\\b[\\s\\S]*?(?:/>|</${escapeRegExp(name)}>)`);
-    if (!renderPattern.test(sourceText)) return false;
-
-    const siblingSpreadPattern = new RegExp(`<${escapeRegExp(name)}\\b[^>]*\\{\\.\\.\\.(?!props\\b)[^}]+\\}`);
-    const propsPlusSiblingSpreadPattern = new RegExp(
-      `<${escapeRegExp(name)}\\b[^>]*\\{\\.\\.\\.props\\}[^>]*\\{\\.\\.\\.(?!props\\b)[^}]+\\}`,
-    );
-    return siblingSpreadPattern.test(sourceText) || propsPlusSiblingSpreadPattern.test(sourceText);
-  });
-}
-
-function hasVisibleUiRender(sourceText: string): boolean {
-  return /return\s*(?:\(|<)/.test(sourceText) && VISIBLE_UI_TAG_PATTERN.test(sourceText);
-}
-
-function infraPropNames(component: RawComponentDefinition): string[] {
-  const props = component.props.map((prop) => prop.name);
-  return props.length > 0 && props.every((prop) => INFRA_PROP_NAMES.has(prop)) ? props : [];
-}
-
-function scoreToConfidence(score: number): 0 | 1 | 2 | 3 | 4 | 5 {
-  if (score <= 0) return 0;
-  if (score <= 2) return 2;
-  if (score <= 4) return 3;
-  if (score <= 6) return 4;
-  return 5;
-}
-
-function dedupeReasons(reasons: string[]): string[] {
-  return [...new Set(reasons)];
-}
 
 export async function inspectComponentSource(component: RawComponentDefinition): Promise<ComponentSourceInspection> {
   let sourceText = '';
   try {
     sourceText = await readFile(component.source, 'utf8');
   } catch {
-    return {
-      wrapperConfidence: 0,
-      reviewReasons: [],
-      keepDespiteZeroSurface: false,
-    };
+    return { wrapperConfidence: 0, reviewReasons: [], keepDespiteZeroSurface: false };
   }
 
   const reviewReasons: string[] = [];
@@ -96,7 +34,7 @@ export async function inspectComponentSource(component: RawComponentDefinition):
 
   const hasGeneratedQueryHook =
     GENERATED_IMPORT_PATTERN.test(sourceText) && GENERATED_QUERY_HOOK_PATTERN.test(sourceText);
-  const infraProps = infraPropNames(component);
+  const infraProps = collectInfraPropNames(component);
   const siblingImports = collectSiblingRendererImports(sourceText);
 
   if (GQL_FILENAME_PATTERN.test(component.source)) {
@@ -136,7 +74,7 @@ export async function inspectComponentSource(component: RawComponentDefinition):
     wrapperScore += 1;
   }
 
-  const wrapperConfidence = scoreToConfidence(wrapperScore);
+  const wrapperConfidence = mapScoreToWrapperConfidence(wrapperScore);
   if (wrapperConfidence >= 4) {
     reviewReasons.unshift(HIGH_CONFIDENCE_DATA_FETCH_WRAPPER_REASON);
   } else if (wrapperConfidence === 3) {
@@ -152,7 +90,7 @@ export async function inspectComponentSource(component: RawComponentDefinition):
 
   return {
     wrapperConfidence,
-    reviewReasons: dedupeReasons(reviewReasons),
+    reviewReasons: dedupeStrings(reviewReasons),
     keepDespiteZeroSurface,
   };
 }
@@ -193,5 +131,5 @@ export function describeReviewReason(reason: string): string {
 }
 
 export function describeReviewReasons(reasons: string[]): string[] {
-  return dedupeReasons(reasons.map(describeReviewReason));
+  return dedupeStrings(reasons.map(describeReviewReason));
 }
