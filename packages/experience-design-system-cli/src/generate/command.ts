@@ -954,13 +954,13 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
       const response = await endpoint.execute({
         stage: 'tokens',
         prompt: {
-        skill,
-        mode: 'autonomous',
-        rawTokensInline,
-        rawTokensFilename: opts.rawTokens ? resolve(opts.rawTokens).split('/').pop() : undefined,
-        tokensInline,
-        tokenMapInline,
-        outDir: process.cwd(),
+          skill,
+          mode: 'autonomous',
+          rawTokensInline,
+          rawTokensFilename: opts.rawTokens ? resolve(opts.rawTokens).split('/').pop() : undefined,
+          tokensInline,
+          tokenMapInline,
+          outDir: process.cwd(),
         },
         invocation: { agent, model, timeoutMs: DEFAULT_TIMEOUT_MS * 5 },
       });

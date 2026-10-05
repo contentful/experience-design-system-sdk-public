@@ -11,6 +11,7 @@ import {
   parseMapTokenPropToolCallLines,
   resolveBinary,
   resolveSkillPath,
+  type PromptOptions,
 } from '@contentful/experience-design-system-generation';
 import {
   openPipelineDb,
@@ -221,21 +222,23 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
       }
     }
 
+    const mapTokensPrompt: PromptOptions & { skill: 'map-tokens' } = {
+      skill: 'map-tokens',
+      mode: 'autonomous',
+      generatedCdf,
+      tokenTree,
+      componentSourceRefs,
+      outDir: process.cwd(),
+      existingTokensInline,
+      ...(mapPromptText !== undefined ? { skillContentOverride: mapPromptText } : {}),
+      ...(mapPromptText === undefined && mapPromptPath ? { skillPathOverride: mapPromptPath } : {}),
+    };
+
     if (opts.printPrompt) {
       const promptEndpoint = createGenerateEndpoint({ invoker: createLocalCliAgentInvoker() });
       const promptResponse = await promptEndpoint.execute({
         stage: 'map-tokens',
-        prompt: {
-          skill: 'map-tokens',
-          mode: 'autonomous',
-          generatedCdf,
-          tokenTree,
-          componentSourceRefs,
-          outDir: process.cwd(),
-          existingTokensInline,
-          ...(mapPromptText !== undefined ? { skillContentOverride: mapPromptText } : {}),
-          ...(mapPromptText === undefined && mapPromptPath ? { skillPathOverride: mapPromptPath } : {}),
-        },
+        prompt: mapTokensPrompt,
         invocation: { agent: configuredAgent ?? 'claude', model, timeoutMs: DEFAULT_TIMEOUT_MS },
         dryRun: true,
       });
@@ -295,17 +298,7 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
     const endpoint = createGenerateEndpoint({ invoker });
     const response = await endpoint.execute({
       stage: 'map-tokens',
-      prompt: {
-        skill: 'map-tokens',
-        mode: 'autonomous',
-        generatedCdf,
-        tokenTree,
-        componentSourceRefs,
-        outDir: process.cwd(),
-        existingTokensInline,
-        ...(mapPromptText !== undefined ? { skillContentOverride: mapPromptText } : {}),
-        ...(mapPromptText === undefined && mapPromptPath ? { skillPathOverride: mapPromptPath } : {}),
-      },
+      prompt: mapTokensPrompt,
       invocation: { agent, model, timeoutMs: DEFAULT_TIMEOUT_MS },
     });
     if (response.dryRun) throw new Error('expected an executed generation response');
