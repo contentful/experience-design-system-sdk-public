@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { findLegacyCliPath } from '../../legacy/legacy-cli-path.js';
+import { findLegacyCliPath } from './legacy-cli-path.js';
 
 interface StepResult {
   step: string;

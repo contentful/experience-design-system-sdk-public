@@ -1,0 +1,86 @@
+{
+  "name": "experience-design-system-cli-v2",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/experience-design-system-cli-v2",
+  "projectType": "application",
+  "tags": [],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "outputs": ["{workspaceRoot}/packages/experience-design-system-cli-v2/dist"],
+      "options": {
+        "parallel": false,
+        "commands": [
+          "rm -rf packages/experience-design-system-cli-v2/dist",
+          "nx run experience-design-system-cli-v2:compile",
+          "nx run experience-design-system-cli-v2:compile-app"
+        ]
+      }
+    },
+    "compile": {
+      "executor": "@nx/esbuild:esbuild",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "packages/experience-design-system-cli-v2/dist",
+        "outputFileName": "index.js",
+        "main": "packages/experience-design-system-cli-v2/index.ts",
+        "tsConfig": "packages/experience-design-system-cli-v2/tsconfig.build.json",
+        "platform": "node",
+        "format": ["esm"],
+        "bundle": true,
+        "thirdParty": false,
+        "declaration": false,
+        "assets": [],
+        "external": ["commander", "ink", "react"]
+      }
+    },
+    "compile-app": {
+      "executor": "@nx/esbuild:esbuild",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "packages/experience-design-system-cli-v2/dist",
+        "outputFileName": "app.js",
+        "main": "packages/experience-design-system-cli-v2/app.tsx",
+        "tsConfig": "packages/experience-design-system-cli-v2/tsconfig.build.json",
+        "platform": "node",
+        "format": ["esm"],
+        "bundle": true,
+        "thirdParty": false,
+        "declaration": true,
+        "declarationRootDir": "packages/experience-design-system-cli-v2",
+        "deleteOutputPath": false,
+        "assets": [],
+        "external": ["commander", "ink", "react"]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": { "command": "vitest run", "cwd": "packages/experience-design-system-cli-v2" },
+      "dependsOn": ["build"]
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": { "command": "eslint", "cwd": "packages/experience-design-system-cli-v2" },
+      "dependsOn": ["build"]
+    },
+    "lint:fix": {
+      "executor": "nx:run-commands",
+      "options": { "command": "eslint --fix", "cwd": "packages/experience-design-system-cli-v2" },
+      "dependsOn": ["build"]
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": { "command": "tsc --noEmit", "cwd": "packages/experience-design-system-cli-v2" },
+      "dependsOn": ["build"]
+    },
+    "clean": {
+      "executor": "nx:run-commands",
+      "options": { "command": "rm -rf dist", "cwd": "packages/experience-design-system-cli-v2" }
+    },
+    "nx-release-publish": {
+      "executor": "@nx/js:release-publish",
+      "options": { "packageRoot": "packages/experience-design-system-cli-v2" },
+      "dependsOn": ["build"]
+    }
+  }
+}

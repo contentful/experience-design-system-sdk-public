@@ -3,12 +3,9 @@
 **/dist
 **/built
 
-# generated build-time copy of generation's skills/ (see legacy's build target);
+# generated build-time copy of generation's skills/ (see cli's build target);
 # generation's own packages/experience-design-system-generation/skills/ stays tracked
-packages/experience-design-system-cli-legacy/skills/
-
-# generated build-time copy of the legacy CLI bundled into the cli package
-packages/experience-design-system-cli/legacy/
+packages/experience-design-system-cli/skills/
 
 # misc
 *.log

@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import semver from 'semver';
 import { findPackageRoot } from '../package-root.js';
 
-const PACKAGE_NAME = '@contentful/experience-design-system-cli';
+const PACKAGE_NAME = '@contentful/experience-design-system-cli-v2';
 const TAGS_URL = 'https://api.github.com/repos/contentful/experience-design-system-sdk-public/tags?per_page=10';
 
 export function readPackageVersion(): string {

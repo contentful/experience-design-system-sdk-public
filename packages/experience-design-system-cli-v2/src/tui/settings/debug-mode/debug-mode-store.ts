@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { findPackageRoot } from '../../package-root.js';
 
-const PACKAGE_NAME = '@contentful/experience-design-system-cli';
+const PACKAGE_NAME = '@contentful/experience-design-system-cli-v2';
 
 export type DebugModeSetting = {
   enabled: boolean;

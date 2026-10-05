@@ -72,6 +72,18 @@ export function resolveBedrockFromAncestors(actionCommand: Command): boolean {
   return false;
 }
 
+function registerImportV2Command(program: Command): void {
+  program
+    .command('importv2')
+    .description('Launch the v2 import TUI (experience-design-system-cli-v2)')
+    .helpOption(false)
+    .action(async () => {
+      const { renderWithGoodbye } = await import('./tui/render-with-goodbye.js');
+      const { runApp } = await import('@contentful/experience-design-system-cli-v2/app');
+      await runApp((element) => renderWithGoodbye(element));
+    });
+}
+
 function registerBuildCommand(program: Command): void {
   program
     .command('build')
@@ -89,7 +101,7 @@ function registerBuildCommand(program: Command): void {
 }
 
 function configureRootHelpOrder(program: Command): void {
-  const order = ['build', 'help', 'import', 'apply', 'setup', 'doctor'];
+  const order = ['build', 'help', 'import', 'apply', 'importv2', 'setup', 'doctor'];
   const rank = new Map(order.map((name, index) => [name, index]));
 
   program.configureHelp({
@@ -122,6 +134,7 @@ export function createProgram(): Command {
   program.helpCommand('help [command]', 'display help for command');
   registerImportCommand(program);
   registerApplyCommand(program);
+  registerImportV2Command(program);
   registerSetupCommand(program);
   registerDoctorCommand(program);
   configureRootHelpOrder(program);

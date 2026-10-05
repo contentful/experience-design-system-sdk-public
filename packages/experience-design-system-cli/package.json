@@ -9,13 +9,13 @@
     "experiences": "./bin/cli.js",
     "exo": "./bin/cli.js"
   },
-  "main": "./dist/index.js",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
   "exports": {
-    ".": "./dist/index.js",
-    "./app": {
-      "types": "./dist/app.d.ts",
-      "import": "./dist/app.js",
-      "node": "./dist/app.js"
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "node": "./dist/src/index.js"
     }
   },
   "publishConfig": {
@@ -25,17 +25,20 @@
   "files": [
     "bin/",
     "dist/",
-    "legacy/"
+    "prompts/",
+    "skills/"
   ],
   "scripts": {
     "build": "nx build experience-design-system-cli",
     "typecheck": "nx typecheck experience-design-system-cli",
     "clean": "nx clean experience-design-system-cli",
     "test": "nx test experience-design-system-cli",
+    "test:watch": "nx test:watch experience-design-system-cli",
     "lint": "nx lint experience-design-system-cli",
     "lint:fix": "nx lint:fix experience-design-system-cli"
   },
   "dependencies": {
+    "@contentful/experience-design-system-cli-v2": "workspace:*",
     "@contentful/experience-design-system-types": "workspace:*",
     "@inkjs/ui": "^2.0.0",
     "@segment/analytics-node": "^3.0.0",
@@ -46,19 +49,21 @@
     "ink": "^5.2.1",
     "react": "^18.3.1",
     "react-devtools-core": "^4.19.1",
-    "semver": "^7.7.2",
     "svelte": "^5.56.4",
     "ts-morph": "^27.0.2",
     "typescript": "^5.9.3"
   },
   "devDependencies": {
+    "@contentful/experience-design-system-client": "workspace:*",
+    "@contentful/experience-design-system-extraction": "workspace:*",
+    "@contentful/experience-design-system-generation": "workspace:*",
     "@tsconfig/node24": "^24.0.4",
     "@types/node": "^24.0.3",
     "@types/react": "^18.3.24",
-    "@types/semver": "^7.7.1",
     "eslint": "^9.39.5",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.6",
+    "ink-testing-library": "^4.0.0",
     "typescript-eslint": "^8.67.0",
     "vitest": "^4.0.16"
   },

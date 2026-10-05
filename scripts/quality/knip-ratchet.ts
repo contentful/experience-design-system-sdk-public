@@ -10,23 +10,23 @@ const repoRoot = path.resolve(scriptDir, '..', '..');
 const budgetPath = path.join(scriptDir, 'knip-budget.json');
 
 type KnipIssueEntry = Record<string, unknown[] | string | undefined>;
-type Scope = 'legacy' | 'cli';
+type Scope = 'v1' | 'cli-v2';
 type KnipBudgets = Record<Scope, number>;
 
 const NON_ISSUE_FIELDS = new Set(['file', 'owners']);
 const SCOPE_OPTIONS: Record<Scope, string[]> = {
-  legacy: [
+  v1: [
     '--workspace',
     'packages/*',
     '--workspace',
-    '!packages/experience-design-system-cli',
+    '!packages/experience-design-system-cli-v2',
   ],
-  cli: ['--workspace', 'packages/experience-design-system-cli'],
+  'cli-v2': ['--workspace', 'packages/experience-design-system-cli-v2'],
 };
 
 function parseScope(value: string | undefined): Scope {
-  if (value === 'legacy' || value === 'cli') return value;
-  throw new Error('Scope must be one of: legacy, cli');
+  if (value === 'v1' || value === 'cli-v2') return value;
+  throw new Error('Scope must be one of: v1, cli-v2');
 }
 
 async function runKnip(scope: Scope): Promise<{ issues: KnipIssueEntry[] }> {
@@ -117,7 +117,7 @@ try {
 } catch (error) {
   console.error(
     `${error instanceof Error ? error.message : String(error)}\n` +
-      'Usage: tsx scripts/quality/knip-ratchet.ts <check|baseline|report> <legacy|cli>',
+      'Usage: tsx scripts/quality/knip-ratchet.ts <check|baseline|report> <v1|cli-v2>',
   );
   process.exitCode = 1;
 }

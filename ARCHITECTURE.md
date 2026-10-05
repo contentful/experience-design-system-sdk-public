@@ -4,13 +4,14 @@
 
 The Experience Design System SDK is an Nx monorepo that ships six packages:
 
-| Package                                           | Purpose                                                                                                                                                                 |
-| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@contentful/experience-design-system-cli`        | The published CLI: an Ink TUI (opened by `experiences import` or bare `experiences`) that forwards `apply`, `setup`, `doctor`, `print`, `map` to the bundled legacy CLI |
-| `@contentful/experience-design-system-extraction` | Component extraction engine (ts-morph, per-framework parsers); a runtime dependency of the CLI                                                                          |
-| `@contentful/experience-design-system-generation` | Agent-invocation and skill-prompt engine used internally by the import wizard                                                                                           |
-| `@contentful/experience-design-system-client`     | Generated API client for the Experience Design System Integrations API (from `openapi.json`); a runtime dependency of the CLI's `apply` command                         |
-| `@contentful/experience-design-system-types`      | Shared TypeScript types, Zod schemas, and validation logic for CDF and DTCG formats                                                                                     |
+| Package                                           | Purpose                                                                                                                                         |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@contentful/experience-design-system-cli`        | CLI + TUI for extracting, reviewing, generating, validating, and pushing design system component definitions                                    |
+| `@contentful/experience-design-system-cli-v2`     | Newer Ink TUI, launched with `experiences importv2`; v1 depends on it                                                                           |
+| `@contentful/experience-design-system-extraction` | Component extraction engine (ts-morph, per-framework parsers); a runtime dependency of the CLI                                                  |
+| `@contentful/experience-design-system-generation` | Agent-invocation and skill-prompt engine used internally by the import wizard                                                                   |
+| `@contentful/experience-design-system-client`     | Generated API client for the Experience Design System Integrations API (from `openapi.json`); a runtime dependency of the CLI's `apply` command |
+| `@contentful/experience-design-system-types`      | Shared TypeScript types, Zod schemas, and validation logic for CDF and DTCG formats                                                             |
 
 The CLI is the developer-facing ingestion tool in the design system import pipeline. A developer runs it against their component library to produce curated, validated artifacts, then pushes them directly into Contentful Experience Orchestration (ExO) from their terminal.
 
@@ -24,13 +25,13 @@ Design system codebase
         │
         ▼
   experience-design-system-cli  (binaries: experiences | exo | experience-design-system-cli)
-    ├── (default)               → Ink TUI: Import, Upgrade, Settings, Help
-    └── apply, setup, doctor, print, map, __extract, __generate
-          → forwarded unchanged to the bundled legacy CLI (experience-design-system-cli-legacy):
-            import (wizard, run from the TUI's Import menu item) → interactive TUI; drives the full pipeline + scope-gate + final-review + save/push
-            apply <file>        → manifest preview, apply operation, and operation polling
-            setup, doctor       → prereq + credentials wizard, prereq health check
-            hidden commands     → subprocesses the wizard spawns
+    ├── import (wizard)         → interactive TUI; drives the full pipeline + scope-gate + final-review + save/push
+    ├── apply <file>            → manifest preview, apply operation, and operation polling
+    ├── setup                   → interactive prereq + credentials wizard
+    ├── doctor                  → prereq health check
+    ├── build                   → rebuild a local checkout and re-link the binaries
+    ├── importv2                → launches the v2 TUI (experience-design-system-cli-v2)
+    └── hidden: __extract, __generate, map tokens, print → subprocesses the wizard spawns
                               │
                               ▼
                       Contentful ExO
@@ -49,21 +50,6 @@ When a token file is supplied (`--tokens` or the token-input step), the wizard p
 
 ### `experience-design-system-cli`
 
-The published package and the only one users install. An Ink TUI with the menu items Import, Upgrade, Settings and Help (each an independent flow under `src/tui/`). Commands it does not implement yet (`apply`, `setup`, `doctor`, `print`, `map`, `__extract`, `__generate`) are forwarded by `src/legacy/run-legacy.ts` to the bundled legacy CLI, and the Import menu item spawns the legacy `import`. The legacy build output is copied to `legacy/` inside this package by the `copy-legacy` Nx target, and its runtime dependencies are declared here.
-
-**See `packages/experience-design-system-cli/DSI_TUI_ARCHITECTURE.md` for TUI architecture and component guidelines.**
-
-**Key dependencies:**
-
-- `ink` 5 and `react` 18 — React renderer for terminals
-- `commander` — argument parsing
-- `semver` — version checks for the Upgrade flow
-- the legacy CLI's runtime dependencies (`ts-morph`, `typescript`, `@segment/analytics-node`, ...), because the legacy bundle runs from inside this package
-
-### `experience-design-system-cli-legacy`
-
-The previous CLI and import wizard. Private: it is never published, and is excluded from `nx release`. It keeps the `commander` program, the import wizard (`src/import/tui/`), the session database, `apply` and the hidden commands. Once these are ported into `experience-design-system-cli` this package is deleted.
-
 **Key dependencies:**
 
 - `typescript` — runtime dependency; the CLI compiles customer source files at analysis time.
@@ -71,7 +57,21 @@ The previous CLI and import wizard. Private: it is never published, and is exclu
 - `ink` — React for the terminal; all TUI components are standard React functional components
 - `commander` — CLI argument parsing and help text
 - `node:sqlite` (`DatabaseSync`) — built-in Node.js synchronous SQLite for pipeline session state
-- `@contentful/experience-design-system-extraction`, `-generation`, `-client` — bundled at build time
+- `@contentful/experience-design-system-extraction` — component extraction engine
+- `@contentful/experience-design-system-generation` — agent-invocation and skill-prompt engine used by the import wizard
+- `@contentful/experience-design-system-client` — generated API client used by `apply`
+
+### `experience-design-system-cli-v2`
+
+The newer Ink TUI, launched with `experiences importv2` (and its own `experiences-v2` bin). Each menu item (Import, Settings, Upgrade, Help) is an independent flow under `src/tui/`. The Import flow currently spawns `experiences import` from v1 (`src/tui/import/spawn-v1-import.ts`) instead of reimplementing the wizard. v1 depends on v2 (`workspace:*`); v2 must never import v1 code.
+
+**See `packages/experience-design-system-cli-v2/DSI_TUI_ARCHITECTURE.md` for v2-specific architecture and component guidelines.**
+
+**Key dependencies:**
+
+- `ink` 5 and `react` 18 — React renderer for terminals, shared with v1
+- `commander` — argument parsing
+- `semver` — version checks for the Upgrade flow
 
 ### `experience-design-system-extraction`
 
@@ -486,6 +486,6 @@ The scope-gate step shows two columns at 100 or more terminal columns and one co
 
 Design patterns and detailed guidelines for building v2 TUI screens are documented in:
 
-- **`packages/experience-design-system-cli/DSI_TUI_ARCHITECTURE.md`** — v2 architecture and screen guidelines
-- **`packages/experience-design-system-cli/.claude/skills/ink-api/SKILL.md`** — Ink core API (Box, Text, colors, hooks)
-- **`packages/experience-design-system-cli/.claude/skills/ink-ui/SKILL.md`** — Ink UI component reference
+- **`packages/experience-design-system-cli-v2/DSI_TUI_ARCHITECTURE.md`** — v2 architecture and screen guidelines
+- **`packages/experience-design-system-cli-v2/.claude/skills/ink-api/SKILL.md`** — Ink core API (Box, Text, colors, hooks)
+- **`packages/experience-design-system-cli-v2/.claude/skills/ink-ui/SKILL.md`** — Ink UI component reference

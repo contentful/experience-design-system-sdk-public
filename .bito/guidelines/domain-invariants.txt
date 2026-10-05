@@ -18,7 +18,7 @@ violations of these rules in any PR.
 ## React extractor (the most failure-prone area)
 
 - The extractor lives at
-  packages/experience-design-system-extraction/src/extract/react.ts. Read the
+  packages/experience-design-system-cli/src/analyze/extract/react.ts. Read the
   "DOM attribute prop surfacing" section of ARCHITECTURE.md before reviewing
   changes here.
 - Never call getType().getProperties() on a type that extends a DOM attribute

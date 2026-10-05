@@ -117,12 +117,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Knip legacy
-            command: quality:knip:legacy
-          - name: Knip cli
-            command: quality:knip:cli
-          - name: jscpd legacy
-            command: quality:jscpd:legacy
+          - name: Knip v1
+            command: quality:knip:v1
+          - name: Knip cli-v2
+            command: quality:knip:cli-v2
+          - name: jscpd v1
+            command: quality:jscpd:v1
     permissions:
       contents: read
       actions: read
@@ -283,11 +283,13 @@ jobs:
           # already published to GitHub Packages, so mutating the working-tree
           # manifests here is safe (the checkout is discarded after the job).
           #
-          for pkg in types cli; do
+          for pkg in types cli-v2 cli; do
             npm pkg set publishConfig.registry=https://registry.npmjs.org \
               --prefix "packages/experience-design-system-$pkg"
           done
           pnpm --filter @contentful/experience-design-system-types run build
+          pnpm --filter @contentful/experience-design-system-cli-v2 run build
           pnpm --filter @contentful/experience-design-system-cli run build
           pnpm --filter @contentful/experience-design-system-types publish --access public --no-git-checks --@contentful:registry=https://registry.npmjs.org
+          pnpm --filter @contentful/experience-design-system-cli-v2 publish --access public --no-git-checks --@contentful:registry=https://registry.npmjs.org
           pnpm --filter @contentful/experience-design-system-cli publish --access public --no-git-checks --@contentful:registry=https://registry.npmjs.org

@@ -5,7 +5,7 @@ import { findPackageRoot } from './package-root.js';
 import { readPackageVersion } from './upgrade/version.js';
 import { readDebugModeSetting } from './settings/debug-mode/debug-mode-store.js';
 
-const PACKAGE_NAME = '@contentful/experience-design-system-cli';
+const PACKAGE_NAME = '@contentful/experience-design-system-cli-v2';
 
 type PendingRun = {
   flow: string;

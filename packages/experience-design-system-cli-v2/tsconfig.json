@@ -11,11 +11,11 @@
     "noEmitOnError": true,
     "noErrorTruncation": true,
     "pretty": true,
-    "declaration": true,
+    "declaration": false,
     "strict": true,
     "esModuleInterop": true,
     "jsx": "react-jsx",
     "noEmit": true
   },
-  "exclude": ["dist", "test/fixtures", "test/analyze/extract/fixtures", "test/analyze/select/tui/fixtures"]
+  "exclude": ["dist", "node_modules"]
 }

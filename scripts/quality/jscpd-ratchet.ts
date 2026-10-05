@@ -7,22 +7,20 @@ const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const baseRef = process.env.GITHUB_BASE_REF || 'main';
 const baselineRef = `origin/${baseRef}`;
-type Scope = 'legacy';
+type Scope = 'v1';
 
 function parseScope(value: string | undefined): Scope {
-  if (value === 'legacy') return value;
-  throw new Error('Scope must be: legacy');
+  if (value === 'v1') return value;
+  throw new Error('Scope must be: v1');
 }
 
-// cli is deliberately not scanned: its screens keep their logic separate even where two are identical.
+// cli-v2 is deliberately not scanned: its screens keep their logic separate even where two are identical.
 const IGNORES = [
   '**/node_modules/**',
   '**/dist/**',
   '**/coverage/**',
   '**/.nx/**',
-  '**/experience-design-system-cli/src/tui/**',
-  '**/experience-design-system-cli/src/api/**',
-  '**/experience-design-system-cli/src/legacy/**',
+  '**/experience-design-system-cli-v2/**',
 ];
 
 function scanArgs(): string[] {
@@ -87,7 +85,7 @@ try {
 } catch (error) {
   console.error(
     `${error instanceof Error ? error.message : String(error)}\n` +
-      'Usage: tsx scripts/quality/jscpd-ratchet.ts <check|report> legacy',
+      'Usage: tsx scripts/quality/jscpd-ratchet.ts <check|report> v1',
   );
   process.exitCode = 1;
 }
