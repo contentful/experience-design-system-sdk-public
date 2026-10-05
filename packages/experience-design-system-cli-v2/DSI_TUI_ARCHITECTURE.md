@@ -15,8 +15,8 @@ This is where all the api calls are made that the TUI needs
 **~/.config/experiences/credentials.json**
 Shared v1 store for credentials (SPACE_ID, ENV_ID, CMA_TOKEN, host) and preferences (analyticsDisabled, debug). Managed by v2's settings flow via `src/tui/settings/utils/v1-store.ts`.
 
-**~/.contentful/debug/sessions**
-Per-session debug logs. v2 creates `MM-DD-YYYY-session-N/` directories with markdown run snapshots for each flow visit.
+**packages/experience-design-system-cli-v2/.contentful/debug/sessions**
+Per-session debug logs, written inside the installed package directory. v2 creates `MM-DD-YYYY-session-N/` directories with markdown run snapshots for each flow visit. Logging is toggled from Settings > Debug Mode.
 
 ## Project Architecture
 
@@ -51,265 +51,51 @@ See `src/tui/settings/README.md` for implementation details.
 
 ---
 
-## TUI Design Patterns & Architecture
+## TUI Design Patterns
 
-The v2 wizard uses React and Ink for a modern, step-by-step guided experience. Design patterns are documented here and adapted from PostHog's wizard architecture.
+The v2 TUI uses React 18 and Ink 5, the same copies v1 uses. Its only runtime dependencies are `ink`, `react`, `commander` and `semver`.
 
-### State Management
+### State
 
-**Default approach: Component-driven**
+Each screen manages its own React state with `useState`. State flows down via props and up via callbacks. There is no shared store.
 
-Each screen manages its own React state via `useState`. State flows down via props, mutations flow up via callbacks.
+### Input
 
-```tsx
-export function MyScreen({ onDone }: { onDone: () => void }) {
-  const [value, setValue] = useState("");
+Use Ink's `useInput` for keys. The existing screens treat `q` and `Esc` as "go back" (see `src/tui/home/home.tsx` and `src/tui/settings/debug-mode/screen.tsx`). `useInput` subscribes after the first frame, so a keypress sent immediately on mount can be dropped.
 
-  return (
-    <TextInput value={value} onChange={setValue} onSubmit={() => onDone()} />
-  );
-}
-```
+### Theme
 
-**When to upgrade: Shared state (Jotai)**
+Each flow owns its styling. The home menu keeps its palette in `src/tui/home/home.theme.ts`; other flows define theirs beside their screens. There is no shared `ui/` folder.
 
-If 3+ screens read/write the same data (e.g., credentials, extracted components), use Jotai atoms:
+### The Import flow
 
-```ts
-// src/tui/wizard-store.ts
-import { atom } from "jotai";
+`src/tui/import/` is the Import menu item. Its `PageContainer.tsx` currently stops reading stdin, spawns `experiences import` from v1 with inherited stdio (`spawn-v1-import.ts`, `terminal-input.ts`), then resumes the menu. `legacy-cli-path.ts` locates the v1 binary. v2 must never import v1 code.
 
-export const $credentials = atom<Credentials | null>(null);
-export const $sessionId = atom<string | null>(null);
-```
+### Terminal
 
-Then in screens:
-
-```tsx
-import { $credentials } from "../wizard-store.js";
-import { useAtom } from "jotai";
-
-export function CredentialsScreen() {
-  const [creds, setCreds] = useAtom($credentials);
-  // ...
-}
-```
-
-**Decision tree**:
-
-- Single screen, local data → `useState`
-- 2–3 screens share data → pass via props + callbacks
-- 3+ screens, frequent mutations → upgrade to Jotai
-
-### Theme & Styling
-
-**Always use `src/tui/ui/theme.ts`** — centralized colors, spacing, icons:
-
-```ts
-export const COLORS = {
-  primary: "#06b6d4",
-  success: "#22c55e",
-  error: "#ef4444",
-  muted: "#9ca3af",
-} as const;
-
-export const SPACING = {
-  xs: 1,
-  sm: 2,
-  md: 4,
-  lg: 8,
-} as const;
-```
-
-Import and use everywhere:
-
-```tsx
-import { COLORS, SPACING } from "../../ui/theme.js";
-
-<Box padding={SPACING.md} borderColor={COLORS.primary}>
-  <Text>Content</Text>
-</Box>;
-```
-
-**Benefits**:
-
-- Single point of change for redesigns
-- Consistent color semantics
-- Easy to add dark mode later
-
-### Layout Primitives
-
-**When to extract: After 4+ screens with repeated structure**
-
-Create simple wrappers in `src/tui/ui/primitives/`:
-
-```tsx
-// primitives/ScreenFrame.tsx
-export function ScreenFrame({ title, subtitle, children }) {
-  return (
-    <Box flexDirection="column" paddingX={SPACING.md} paddingY={SPACING.md}>
-      <Text bold color={COLORS.primary}>
-        {title}
-      </Text>
-      {subtitle && <Text color={COLORS.muted}>{subtitle}</Text>}
-      <Box marginTop={SPACING.sm}>{children}</Box>
-    </Box>
-  );
-}
-```
-
-Then use:
-
-```tsx
-<ScreenFrame title="Import Settings" subtitle="Step 1 of 3">
-  {/* content */}
-</ScreenFrame>
-```
-
-**Start simple**: If you only have 2–3 screens, keep inline `<Box>` hierarchies. Refactor when you hit 4+ screens with identical structure.
-
-### Flow Router (Optional)
-
-**When to add: 5+ steps with complex interdependencies**
-
-Create `src/tui/wizard-router.ts` to centralize decision logic:
-
-```ts
-export type WizardStep = "home" | "credentials" | "extracting" | "done";
-
-export interface FlowDecision {
-  step: WizardStep;
-  canAdvance(state: WizardState): boolean;
-  description: string;
-}
-
-export const FLOW: FlowDecision[] = [
-  {
-    step: "home",
-    canAdvance: (s) => s.confirmed,
-    description: "User clicked Start",
-  },
-  // ...
-];
-
-export function canAdvance(step: WizardStep, state: WizardState): boolean {
-  return FLOW.find((f) => f.step === step)?.canAdvance(state) ?? false;
-}
-```
-
-Then in screens, gate the "Next" button:
-
-```tsx
-const nextEnabled = canAdvance(currentStep, wizardState);
-
-<Button disabled={!nextEnabled} onClick={() => onDone()}>
-  Continue
-</Button>;
-```
-
-**Don't add prematurely**: The current step-based approach works fine. Add a router only when flow logic becomes too complex to reason about.
-
-### Terminal Compatibility
-
-**Always detect at startup** — v2 is TUI-only:
-
-```ts
-// src/tui/terminal.ts
-export function requireInteractiveTerminal(): void {
-  const isTTY = process.stdout.isTTY ?? false;
-  const cols = process.stdout.columns ?? 80;
-  const isSmall = cols < 80;
-  const isCI = !!process.env.CI;
-
-  if (!isTTY || isSmall || isCI) {
-    process.stderr.write(
-      "Error: v2 wizard requires an interactive terminal (80+ columns, not CI).\n" +
-        'Use "exo importv2" in a real terminal.\n',
-    );
-    process.exit(1);
-  }
-}
-```
-
-Call in entry point before rendering:
-
-```tsx
-export function WizardApp() {
-  requireInteractiveTerminal();
-  // ... render wizard ...
-}
-```
-
-### @inkjs/ui Components
-
-Use official components from `@inkjs/ui` when possible:
-
-- **`Select`** — Menu with arrow-key navigation, Enter to confirm
-- **`TextInput`** — Single-line text entry
-- **`Confirm`** — Yes/No prompt
-- **`Spinner`** — Animated loading indicator (dots, line, pipe, etc.)
-- **`ProgressBar`** — Visual progress indicator
-
-See `.claude/skills/ink-ui/SKILL.md` for full API and examples.
+The v2 TUI needs an interactive terminal. `app.tsx` exports `runApp`, which v1 loads for `experiences importv2`.
 
 ### Example Screen
 
 ```tsx
 import { Box, Text, useInput } from "ink";
-import { TextInput } from "@inkjs/ui";
-import { useState } from "react";
-import { COLORS, SPACING } from "../../ui/theme.js";
 
-export function CredentialsScreen({
+export function ConfirmScreen({
   onDone,
+  onBack,
 }: {
-  onDone: (status: string) => void;
+  onDone: () => void;
+  onBack: () => void;
 }) {
-  const [spaceId, setSpaceId] = useState("");
-  const [token, setToken] = useState("");
+  useInput((input, key) => {
+    if (key.return) onDone();
+    if (key.escape || input === "q") onBack();
+  });
 
   return (
-    <Box flexDirection="column" paddingX={SPACING.md} paddingY={SPACING.sm}>
-      <Text bold color={COLORS.primary}>
-        Contentful Credentials
-      </Text>
-
-      <Box marginTop={SPACING.md} flexDirection="column" gap={1}>
-        <Text>Space ID:</Text>
-        <TextInput
-          value={spaceId}
-          onChange={setSpaceId}
-          focus
-          placeholder="sp_..."
-        />
-
-        <Text marginTop={SPACING.md}>Management Token:</Text>
-        <TextInput
-          value={token}
-          onChange={setToken}
-          mask="*"
-          placeholder="CFPAT-..."
-        />
-      </Box>
-
-      <Box marginTop={SPACING.md} gap={2}>
-        <Box
-          onClick={() => onDone("completed")}
-          borderStyle="round"
-          padding={1}
-        >
-          <Text color={spaceId && token ? COLORS.primary : COLORS.muted}>
-            {spaceId && token ? "→ Continue" : "  (fill both fields)"}
-          </Text>
-        </Box>
-        <Box
-          onClick={() => onDone("cancelled")}
-          borderStyle="round"
-          padding={1}
-        >
-          <Text color={COLORS.muted}>Cancel</Text>
-        </Box>
-      </Box>
+    <Box flexDirection="column" paddingX={2}>
+      <Text bold>Continue?</Text>
+      <Text dimColor>Enter to confirm, Esc to go back</Text>
     </Box>
   );
 }
@@ -317,59 +103,20 @@ export function CredentialsScreen({
 
 ## Testing
 
-### Mock Terminal Detection
-
-```ts
-vi.mock("../terminal.ts", () => ({
-  requireInteractiveTerminal: () => {
-    // no-op in tests
-  },
-}));
-```
-
-### Mock Stores (Jotai)
-
-```ts
-vi.mock("../wizard-store.ts", () => ({
-  useWizardStore: () => ({
-    sessionId: ["test-123", vi.fn()],
-    credentials: [{ spaceId: "sp_123" }, vi.fn()],
-  }),
-}));
-```
-
-### Render Components
-
-Use `ink-testing-library`:
-
-```ts
-import { render } from 'ink-testing-library';
-
-const { lastFrame } = render(<MyScreen onDone={vi.fn()} />);
-expect(lastFrame()).toContain('My Title');
-```
-
-Set `NO_COLOR=1` in test environment to suppress ANSI codes in snapshots.
+Use `ink-testing-library` for screen tests and set `NO_COLOR=1` to suppress ANSI codes. Wait for Ink to subscribe to input before sending keys.
 
 ## Performance Tips
 
-1. **Keep renders light** — Ink renders every frame. Move expensive computations outside React (e.g., file I/O, network calls)
-2. **Use `useCallback` for inline functions** — Prevents child re-renders
-3. **Only one `useInput` listener** — Multiple listeners on the same screen conflict
-4. **Don't inline large arrays** — Define `COLORS`, `SPACING` once at module level
-
-## When to Reach for Each Pattern
-
-**Rule of thumb**: Start simple (component-driven state, inline layouts). Refactor only when the pattern becomes painful. \
+1. **Keep renders light** — Ink renders every frame. Move expensive work (file I/O, network calls) outside React
+2. **Only one `useInput` listener per screen** — multiple listeners on the same screen conflict
 
 ## Skills & Resources
 
 ### Available Skills
 
 - **`ink-api`** — Core Ink API (Box, Text, colors, hooks)
-- **`ink-ui`** — @inkjs/ui components (Select, TextInput, Confirm, Spinner, ProgressBar)
+- **`ink-ui`** — Ink UI component reference
 
 ### External References
 
 - **Ink GitHub**: https://github.com/vadimdemedes/ink
-- **@inkjs/ui docs**: https://github.com/vadimdemedes/ink/tree/master/packages/ui
