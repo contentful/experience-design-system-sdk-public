@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { DESIGN_TOKEN_TYPES, CDF_PROPERTY_TYPES } from '@contentful/experience-design-system-types';
 
-const skillsDir = resolve(import.meta.dirname, '../skills');
+const skillsDir = resolve(import.meta.dirname, '../../skills');
 
 async function readSkill(filename: string): Promise<string> {
   return readFile(resolve(skillsDir, filename), 'utf-8');
@@ -163,7 +163,7 @@ describe('map-tokens.md', () => {
 
 describe('packaging', () => {
   it('package.json includes skills in files', async () => {
-    const pkg = JSON.parse(await readFile(resolve(import.meta.dirname, '../package.json'), 'utf-8'));
+    const pkg = JSON.parse(await readFile(resolve(import.meta.dirname, '../../package.json'), 'utf-8'));
     expect(pkg.files).toContain('skills/');
   });
 });

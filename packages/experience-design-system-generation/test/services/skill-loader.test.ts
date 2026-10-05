@@ -22,4 +22,14 @@ describe('skill loader service', () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it('names the missing path when a custom skill file does not exist', async () => {
+    await expect(loadSkillContent('components', '/no/such/dir/custom.md')).rejects.toThrow(
+      /custom prompt file not found \(skill: components, path: \/no\/such\/dir\/custom\.md\)/,
+    );
+  });
+
+  it('rejects a skill name that has no packaged asset', () => {
+    expect(() => resolveSkillPath('bogus' as never)).toThrow('Invalid skill: bogus');
+  });
 });
