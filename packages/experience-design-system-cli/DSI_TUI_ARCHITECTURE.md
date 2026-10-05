@@ -144,3 +144,34 @@ Use `ink-testing-library` for screen tests and set `NO_COLOR=1` to suppress ANSI
 ### External References
 
 - **Ink GitHub**: https://github.com/vadimdemedes/ink
+
+## Selection debate review flow
+
+The cli-v2 selection prototype keeps the classification escalation pipeline in
+the API layer and passes its serializable output directly to the TUI:
+
+1. Every component is broadcast to the configured agents through the existing
+   `AgentInvoker` contract.
+2. The deterministic diff and tiering stages route factual disagreements to
+   verification and interpretive disagreements to a concurrent FOR/AGAINST
+   pair using the `debate-select` prompt skill.
+3. `buildSelectionReview()` projects the disagreement, both debate arguments,
+   cited evidence, and any determination into `SelectionReviewItem[]`.
+4. The selection review screen renders that projection and never reads a
+   cache, database, or agent transport directly.
+
+Review state is session-scoped and in memory only. A process restart loses the
+projection unless a caller explicitly saves and rehydrates it as a plain
+payload; no automatic cache or session database is part of this flow. The
+debate pair runs before the review projection is returned, so a human sees the
+disagreement values and debate evidence together rather than triggering an
+additional transport from the screen.
+
+## Post-run archive
+
+Completed selection prototype runs write a post-run evidence archive under
+`~/.contentful/runs/<run-id>/`. The archive contains metadata, broadcast results,
+the mechanical diff and tiering output, escalation transcripts, determinations,
+and the final selection projection. A caller can provide an alternate archive
+root for isolated environments and tests. The pipeline never reads the archive;
+it is created only after the in-memory selection and review projections finish.

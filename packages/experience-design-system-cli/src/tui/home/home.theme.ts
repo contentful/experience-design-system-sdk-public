@@ -1,4 +1,4 @@
-const BRAND = {
+export const BRAND = {
   blue: '#1773EB',
   green: '#00C459',
   orange: '#E44F20',
