@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { PALETTE } from '../../home/home.theme.js';
 import { readDebugModeSetting, writeDebugModeSetting } from './debug-mode-store.js';
+import { startDebugRun, finishDebugRun } from '../../debug-store.js';
 
 export function DebugModeScreen({ onDone }: { onDone: () => void }): React.ReactElement {
   const [loading, setLoading] = useState(true);
@@ -11,6 +12,12 @@ export function DebugModeScreen({ onDone }: { onDone: () => void }): React.React
     readDebugModeSetting().then((setting) => {
       setEnabled(setting.enabled);
       setLoading(false);
+      startDebugRun({
+        flow: 'settings/debug-mode',
+        step: '01-debug-mode',
+        menuOption: 'Debug Mode',
+        inputs: { enabled: setting.enabled },
+      });
     });
   }, []);
 
@@ -26,6 +33,7 @@ export function DebugModeScreen({ onDone }: { onDone: () => void }): React.React
       return;
     }
     if (key.escape || input === 'q') {
+      void finishDebugRun({ outputs: { enabled }, status: 'success', exitMethod: 'saved' });
       onDone();
     }
   });

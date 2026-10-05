@@ -1,14 +1,24 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
+import { startDebugRun, finishDebugRun } from '../debug-store.js';
 
 export function HelpScreen({ onDone }: { onDone: () => void }): React.ReactElement {
+  useEffect(() => {
+    startDebugRun({ flow: 'help', step: '01-help', menuOption: 'Help', inputs: {} });
+  }, []);
+
+  const leave = (exitMethod: 'saved' | 'discarded'): void => {
+    void finishDebugRun({ outputs: {}, status: 'success', exitMethod });
+    onDone();
+  };
+
   useInput((input, key) => {
     if (key.return) {
-      onDone();
+      leave('saved');
       return;
     }
     if (key.escape || input === 'q') {
-      onDone();
+      leave('discarded');
       return;
     }
   });

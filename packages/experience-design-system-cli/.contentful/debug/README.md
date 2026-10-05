@@ -1,7 +1,7 @@
 # Debug logs
 
-This directory holds per-screen debug logs written by the v2 CLI's Configuration
-and Upgrade flows. Each file records what you did on a screen and what the CLI
+This directory holds per-screen debug logs written by the CLI's menu screens (Help, Settings, Configuration,
+Opt-in Analytics, Debug Mode and Upgrade). Each file records what you did on a screen and what the CLI
 did in response — useful for reproducing an issue with Contentful's dev team.
 
 - `sessions/<sessionId>/` — one directory per terminal session, created the

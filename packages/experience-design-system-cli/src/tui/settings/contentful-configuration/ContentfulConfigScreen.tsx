@@ -2,11 +2,21 @@ import React, { useEffect, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { PALETTE } from '../../home/home.theme.js';
 import { readCredentials, writeCredentials, type V1Credentials } from './config-store.js';
+import { startDebugRun, finishDebugRun } from '../../debug-store.js';
 
 type Field = 'spaceId' | 'environmentId' | 'cmaToken' | 'host';
 type Stage = 'loading' | 'form' | 'saving' | 'saved';
 
 const FIELD_ORDER: Field[] = ['spaceId', 'environmentId', 'cmaToken', 'host'];
+function debugFields(config: V1Credentials | null): Record<string, unknown> {
+  return {
+    space_id: config?.spaceId ?? '',
+    environment_id: config?.environmentId ?? '',
+    cma_token: config?.cmaToken ?? '',
+    host: config?.host ?? '',
+  };
+}
+
 const FIELD_LABELS: Record<Field, string> = {
   spaceId: 'Space ID',
   environmentId: 'Environment ID',
@@ -24,6 +34,12 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
     readCredentials().then((cfg) => {
       setConfig(cfg);
       setStage('form');
+      startDebugRun({
+        flow: 'settings/contentful-configuration',
+        step: '01-configuration',
+        menuOption: 'Configuration',
+        inputs: debugFields(cfg),
+      });
     });
   }, []);
 
@@ -57,12 +73,14 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
 
     if (stage === 'saved') {
       if (key.return || key.escape || input === 'q') {
+        void finishDebugRun({ outputs: debugFields(config), status: 'success', exitMethod: 'saved' });
         onDone();
       }
       return;
     }
 
     if (key.escape || input === 'q') {
+      void finishDebugRun({ outputs: {}, status: 'success', exitMethod: 'discarded' });
       onDone();
       return;
     }
