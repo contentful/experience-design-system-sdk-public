@@ -53,10 +53,10 @@ describe('experiences import flag surface', () => {
     expect(stdout).not.toContain('--auto-accept-scope');
   });
 
-  it('exposes --no-cache in experiences import --help', async () => {
+  it('does not expose --no-cache in experiences import --help', async () => {
     const { stdout, code } = await run('import', '--help');
     expect(code).toBe(0);
-    expect(stdout).toContain('--no-cache');
+    expect(stdout).not.toContain('--no-cache');
   });
 
   it('does not expose --no-auto-filter in experiences import --help', async () => {

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 /**
  * Feature 2 (live preview after every save) flag-plumbing pins. Mirrors the
- * shape of `wizard-cache.test.ts` and `wizard-auto-filter.test.ts`. The actual
+ * shape of `wizard-args.test.ts` and `wizard-auto-filter.test.ts`. The actual
  * end-to-end behavior is exercised via the GenerateReviewStep tests; here we
  * just pin the Commander negation-flag → boolean prop translation that lives
  * in command.ts.
@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
  * The contract: `--no-live-preview` is registered as a Commander negation
  * flag, parsed as `opts.livePreview === false` when set, and threaded into
  * WizardApp / GenerateReviewStep as a positive `livePreview` prop (default
- * true). Mirrors the --no-cache option's Commander behavior.
+ * true).
  */
 describe('wizard --no-live-preview flag plumbing', () => {
   it('translates Commander opts.livePreview undefined → livePreview true (default)', () => {

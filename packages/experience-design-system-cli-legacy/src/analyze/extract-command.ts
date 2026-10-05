@@ -15,11 +15,7 @@ import {
   storeRawComponents,
   storeScannedFiles,
   storeSlotCycles,
-  getCliCacheVersion,
-  lookupExtractCache,
-  storeExtractCache,
 } from '../session/db.js';
-import { hashFile } from '../session/cache-keys.js';
 import { findSlotCycles, suggestCycleBreakEdge } from './cycle-detection.js';
 import { resolveMapping } from './composition/resolve-mapping.js';
 import { collectManifestDocEdges } from './composition/manifest-doc-evidence.js';
@@ -41,14 +37,8 @@ interface AnalyzeExtractOptions {
   project: string;
   dir?: string;
   resolveUnreachable?: 'auto' | 'always' | 'never';
-  /** Commander stores a negated --no-cache option as cache=false. */
-  cache?: boolean;
-  noCache?: boolean;
 }
 
-export function resolveExtractNoCache(opts: { cache?: boolean; noCache?: boolean }): boolean {
-  return opts.noCache === true || opts.cache === false;
-}
 const SCANNED_FILE_EXTENSIONS = new Set(['.astro', '.js', '.jsx', '.svelte', '.ts', '.tsx', '.vue']);
 /**
  * `.json`/`.md` are scanned too (Figma `manifest.json`, `AGENTS.md`-style
@@ -224,9 +214,7 @@ export function registerInternalExtractCommand(program: Command): void {
       "Retry pass for unresolved Svelte Props types: 'auto' (default), 'always', or 'never'",
       'auto',
     )
-    .option('--no-cache', 'Re-run extraction even when all source files are unchanged')
     .action(async (opts: AnalyzeExtractOptions) => {
-      const noCache = resolveExtractNoCache(opts);
       const resolveUnreachable: 'auto' | 'always' | 'never' = (() => {
         const v = opts.resolveUnreachable ?? 'auto';
         if (v !== 'auto' && v !== 'always' && v !== 'never') {
@@ -259,50 +247,15 @@ export function registerInternalExtractCommand(program: Command): void {
         process.stderr.write(`progress=scan-done:${sourceFiles.length}\n`);
       }
 
-      const extractionCacheDb = openPipelineDb();
-      let extraction: Awaited<ReturnType<typeof extractComponents>>;
-      let extractionCacheHits = 0;
-      try {
-        const cacheVersion = await getCliCacheVersion();
-        const cachedByPath = new Map<string, Awaited<ReturnType<typeof lookupExtractCache>>>();
-        if (!noCache && sourceFiles.length > 0) {
-          const hashes = await Promise.all(
-            sourceFiles.map(async (filePath) => [filePath, await hashFile(filePath)] as const),
-          );
-          for (const [filePath, fileHash] of hashes) {
-            cachedByPath.set(filePath, lookupExtractCache(extractionCacheDb, fileHash, cacheVersion));
-          }
-        }
-
-        const allFilesCached =
-          !noCache && sourceFiles.length > 0 && sourceFiles.every((filePath) => cachedByPath.get(filePath) !== null);
-        if (allFilesCached) {
-          const cachedComponents = sourceFiles.flatMap((filePath) => cachedByPath.get(filePath)!.components);
-          extractionCacheHits = sourceFiles.length;
-          extraction = { components: cachedComponents, warnings: [], exclusions: [] };
+      const extraction = await extractComponents(
+        sourceFiles,
+        ({ filesProcessed, componentsFound }) => {
           if (!process.stdout.isTTY) {
-            process.stderr.write(
-              `progress=extract:${sourceFiles.length}/${sourceFiles.length}:${cachedComponents.length}\n`,
-            );
+            process.stderr.write(`progress=extract:${filesProcessed}/${sourceFiles.length}:${componentsFound}\n`);
           }
-          getDebugLogger().event('analyze', 'extract.cache-hit', {
-            files: sourceFiles.length,
-            components: cachedComponents.length,
-          });
-        } else {
-          extraction = await extractComponents(
-            sourceFiles,
-            ({ filesProcessed, componentsFound }) => {
-              if (!process.stdout.isTTY) {
-                process.stderr.write(`progress=extract:${filesProcessed}/${sourceFiles.length}:${componentsFound}\n`);
-              }
-            },
-            { resolveUnreachable, projectRoot },
-          );
-        }
-      } finally {
-        extractionCacheDb.close();
-      }
+        },
+        { resolveUnreachable, projectRoot },
+      );
 
       await mkdir(outDir, { recursive: true });
 
@@ -319,25 +272,6 @@ export function registerInternalExtractCommand(program: Command): void {
       const stepId = createStep(db, sessionId, 'analyze extract', {
         project: projectRoot,
       });
-      if (extractionCacheHits === 0 && !noCache) {
-        const cacheVersion = await getCliCacheVersion();
-        const componentsBySourcePath = new Map<string, typeof extraction.components>();
-        for (const component of extraction.components) {
-          if (!component.sourcePath) continue;
-          const components = componentsBySourcePath.get(component.sourcePath) ?? [];
-          components.push(component);
-          componentsBySourcePath.set(component.sourcePath, components);
-        }
-        for (const filePath of sourceFiles) {
-          storeExtractCache(
-            db,
-            filePath,
-            await hashFile(filePath),
-            cacheVersion,
-            componentsBySourcePath.get(filePath) ?? [],
-          );
-        }
-      }
       const classifiedComponents = extraction.components.map(preClassifyComponent);
       for (const exclusion of extraction.exclusions ?? []) {
         getDebugLogger().event('filter', 'extract.excluded', { ...exclusion });

@@ -1,5 +1,5 @@
 /**
- * Deep behavioral assertions for 6 flags in the experiences CLI.
+ * Deep behavioral assertions for the flags below in the experiences CLI.
  *
  * These tests go beyond "flag accepted, exit 0" and verify that each flag
  * actually changes observable behavior.
@@ -9,16 +9,7 @@ import { mkdtemp, rm, writeFile, chmod, stat, readFile } from 'node:fs/promises'
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { runCliWithEnv } from '../helpers/cli-runner.js';
-import {
-  openPipelineDb,
-  getOrCreateSession,
-  storeCDFComponents,
-  storeRawComponents,
-  loadRawComponents,
-  storeCache,
-  computeComponentInputHash,
-} from '../../src/session/db.js';
-import { hashPromptForSkill } from '../../src/session/cache-keys.js';
+import { openPipelineDb, getOrCreateSession, storeCDFComponents, storeRawComponents } from '../../src/session/db.js';
 import type { RawComponentDefinition } from '../../src/types.js';
 
 // ---------------------------------------------------------------------------
@@ -139,178 +130,7 @@ describe('--verbose shows prose output from the agent', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 2. --no-cache: bypasses the component cache and invokes the agent
-// ---------------------------------------------------------------------------
-
-describe('--no-cache bypasses cached component results', () => {
-  it('without cache bypass a cache hit is used; with EDS_NO_CACHE=1 the agent is invoked', async () => {
-    // Set up a fresh DB with raw components and a pre-seeded cache entry.
-    const dbDir = await createTempDir('no-cache-db-');
-    const dbPath = join(dbDir, 'pipeline.db');
-
-    const db = openPipelineDb(dbPath);
-
-    // Seed extract session
-    const { sessionId: extractSession } = getOrCreateSession(db, 'new', undefined, {
-      command: 'analyze extract',
-    });
-    storeRawComponents(db, extractSession, SINGLE_COMPONENT);
-
-    // Seed a prior generate session as the cache source
-    const { sessionId: priorSession } = getOrCreateSession(db, 'new', undefined, {
-      command: 'generate components',
-    });
-    storeCDFComponents(db, priorSession, [
-      {
-        key: 'FlagTestButton',
-        entry: {
-          $type: 'component',
-          $description: 'Cached version',
-          $properties: {
-            label: { $type: 'string', $category: 'content', $required: true },
-          },
-        },
-      },
-    ]);
-
-    // Write a cache record for the component's input hash
-    const loadedComponents = loadRawComponents(db, extractSession);
-    const component = loadedComponents[0]!;
-    const inputHash = computeComponentInputHash(component);
-    // Seed with the actual bundled-prompt hash so the cache lookup in the CLI matches.
-    const seedPromptHash = await hashPromptForSkill('components', 'claude', undefined);
-    storeCache(db, inputHash, 'component', component.component_id, priorSession, false, seedPromptHash);
-    db.close();
-
-    // Fake agent: emits valid tool calls so the run succeeds when cache is bypassed
-    const { envPatch } = await makeFakeAgent();
-
-    const baseRunEnv = {
-      EDS_PIPELINE_DB_PATH: dbPath,
-      NODE_NO_WARNINGS: '1',
-      EDS_RETRY_BACKOFF_MS: '0',
-      ...envPatch,
-    };
-
-    // Without cache bypass: should use the cache (agent is NOT invoked, "cached" in stderr)
-    const withCache = await runCliWithEnv(
-      ['__generate', 'components', '--agent', 'claude', '--session', extractSession],
-      baseRunEnv,
-    );
-    expect(withCache.code).toBe(0);
-    expect(withCache.stderr).toContain('cached');
-    // Summary shows all cached, none generated
-    expect(withCache.stderr).toContain('1 cached');
-
-    // With EDS_NO_CACHE=1 env var: skips cache, agent IS invoked
-    const withNoCacheEnv = await runCliWithEnv(
-      ['__generate', 'components', '--agent', 'claude', '--session', extractSession],
-      { ...baseRunEnv, EDS_NO_CACHE: '1' },
-    );
-    expect(withNoCacheEnv.code).toBe(0);
-    expect(withNoCacheEnv.stderr).toContain('1/1 components');
-    expect(withNoCacheEnv.stderr).not.toContain('cached)');
-  });
-
-  it('--no-cache CLI flag bypasses cache and invokes the agent', async () => {
-    // Same setup as above but using the --no-cache flag instead of env var
-    const dbDir = await createTempDir('no-cache-flag-db-');
-    const dbPath = join(dbDir, 'pipeline.db');
-
-    const db = openPipelineDb(dbPath);
-    const { sessionId: extractSession } = getOrCreateSession(db, 'new', undefined, {
-      command: 'analyze extract',
-    });
-    storeRawComponents(db, extractSession, SINGLE_COMPONENT);
-
-    const { sessionId: priorSession } = getOrCreateSession(db, 'new', undefined, {
-      command: 'generate components',
-    });
-    storeCDFComponents(db, priorSession, [
-      {
-        key: 'FlagTestButton',
-        entry: {
-          $type: 'component',
-          $description: 'Cached version',
-          $properties: {
-            label: { $type: 'string', $category: 'content', $required: true },
-          },
-        },
-      },
-    ]);
-
-    const loadedComponents = loadRawComponents(db, extractSession);
-    const component = loadedComponents[0]!;
-    const inputHash = computeComponentInputHash(component);
-    // Seed with the actual bundled-prompt hash so the cache lookup in the CLI matches.
-    const seedPromptHash = await hashPromptForSkill('components', 'claude', undefined);
-    storeCache(db, inputHash, 'component', component.component_id, priorSession, false, seedPromptHash);
-    db.close();
-
-    const { envPatch } = await makeFakeAgent();
-
-    // With --no-cache flag: agent IS invoked (cache bypassed)
-    const result = await runCliWithEnv(
-      ['__generate', 'components', '--agent', 'claude', '--session', extractSession, '--no-cache'],
-      { EDS_PIPELINE_DB_PATH: dbPath, NODE_NO_WARNINGS: '1', EDS_RETRY_BACKOFF_MS: '0', ...envPatch },
-    );
-    expect(result.code).toBe(0);
-    expect(result.stderr).toContain('1/1 components');
-    expect(result.stderr).not.toContain('cached)');
-  });
-
-  it('a cache entry seeded under a different --model is not reused — the agent is invoked', async () => {
-    // Regression test for INTEG-4753: the cache key must fold in agent/model,
-    // or switching --model on a component that already has a cache entry
-    // silently returns the old result instead of invoking the agent.
-    const dbDir = await createTempDir('model-cache-db-');
-    const dbPath = join(dbDir, 'pipeline.db');
-
-    const db = openPipelineDb(dbPath);
-    const { sessionId: extractSession } = getOrCreateSession(db, 'new', undefined, {
-      command: 'analyze extract',
-    });
-    storeRawComponents(db, extractSession, SINGLE_COMPONENT);
-
-    const { sessionId: priorSession } = getOrCreateSession(db, 'new', undefined, {
-      command: 'generate components',
-    });
-    storeCDFComponents(db, priorSession, [
-      {
-        key: 'FlagTestButton',
-        entry: {
-          $type: 'component',
-          $description: 'Cached version',
-          $properties: {
-            label: { $type: 'string', $category: 'content', $required: true },
-          },
-        },
-      },
-    ]);
-
-    const loadedComponents = loadRawComponents(db, extractSession);
-    const component = loadedComponents[0]!;
-    const inputHash = computeComponentInputHash(component);
-    // Seed the cache as if a prior run used --model model-a.
-    const seedPromptHash = await hashPromptForSkill('components', 'claude', 'model-a');
-    storeCache(db, inputHash, 'component', component.component_id, priorSession, false, seedPromptHash);
-    db.close();
-
-    const { envPatch } = await makeFakeAgent();
-
-    // Re-run with a different --model: must miss the cache and invoke the agent.
-    const result = await runCliWithEnv(
-      ['__generate', 'components', '--agent', 'claude', '--model', 'model-b', '--session', extractSession],
-      { EDS_PIPELINE_DB_PATH: dbPath, NODE_NO_WARNINGS: '1', EDS_RETRY_BACKOFF_MS: '0', ...envPatch },
-    );
-    expect(result.code).toBe(0);
-    expect(result.stderr).toContain('1/1 components');
-    expect(result.stderr).not.toContain('cached)');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 3. --model: model name is forwarded to the agent binary
+// 2. --model: model name is forwarded to the agent binary
 // ---------------------------------------------------------------------------
 
 describe('--model name is forwarded to the agent binary as a CLI argument', () => {
@@ -382,7 +202,7 @@ describe('--model name is forwarded to the agent binary as a CLI argument', () =
 });
 
 // ---------------------------------------------------------------------------
-// 4. --token-map: file content is embedded in the dry-run prompt
+// 3. --token-map: file content is embedded in the dry-run prompt
 // ---------------------------------------------------------------------------
 
 describe('--token-map file content is embedded in the generated prompt', () => {
@@ -432,7 +252,7 @@ describe('--token-map file content is embedded in the generated prompt', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 5. --out: print components writes a JSON file to disk
+// 4. --out: print components writes a JSON file to disk
 // ---------------------------------------------------------------------------
 
 describe('--out writes generated components to a JSON file on disk', () => {

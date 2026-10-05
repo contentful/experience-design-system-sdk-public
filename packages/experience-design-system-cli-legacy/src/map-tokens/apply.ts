@@ -61,8 +61,8 @@ export function applyMapTokenPropCalls(
     }
 
     // A person's restriction set in the review editor outranks a fresh
-    // suggestion. This step's own prior output does not: re-running it, with or
-    // without the cache, has to be able to revise what it decided last time.
+    // suggestion. This step's own prior output does not: re-running it has to
+    // be able to revise what it decided last time.
     const reviewed = db
       .prepare(
         `SELECT COUNT(*) AS count FROM raw_prop_token_paths

@@ -39,7 +39,7 @@ Each successful wizard run appends a record to `~/.config/experiences/runs.json`
 
 ### Import options
 
-`experiences import` accepts `--project`, `--tokens`, `--agent`, `--prompt <stage=value>` and `--no-cache`. `--model`, `--composition-map`, `--skip-map-tokens` and `--raw-tokens` were removed and are rejected. The model is passed as `--agent agent:model`; it resolves `--agent` → `credentials.json` → built-in default, and `EDS_AGENT_MODEL_<AGENT>` sets a per-agent model.
+`experiences import` accepts `--project`, `--tokens`, `--agent` and `--prompt <stage=value>`. `--model`, `--composition-map`, `--skip-map-tokens`, `--raw-tokens` and `--no-cache` were removed and are rejected. The CLI keeps no result cache: every run of extract, composition, selection, generation and token mapping does its work again. The model is passed as `--agent agent:model`; it resolves `--agent` → `credentials.json` → built-in default, and `EDS_AGENT_MODEL_<AGENT>` sets a per-agent model.
 
 ## Build System
 

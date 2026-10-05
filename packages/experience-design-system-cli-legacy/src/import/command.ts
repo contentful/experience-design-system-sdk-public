@@ -30,8 +30,7 @@ export function registerImportCommand(program: Command): void {
       (v: string, acc: string[]) => [...acc, v],
       [] as string[],
     )
-    .option('--no-cache', 'Re-run all steps even if output already exists')
-    .action(async (opts: { project: string; agent?: string; tokens?: string; cache?: boolean; prompt?: string[] }) => {
+    .action(async (opts: { project: string; agent?: string; tokens?: string; prompt?: string[] }) => {
       const interactiveTerminalSupported = getInteractiveTerminalSupport().supported;
 
       if (opts.tokens !== undefined) {
@@ -65,7 +64,6 @@ export function registerImportCommand(program: Command): void {
           bedrock?: boolean;
           initialProjectPath?: string;
           promptOverrides?: string[];
-          noCache?: boolean;
           skipMapTokens?: boolean;
           livePreview?: boolean;
           generatePromptPath?: string;
@@ -87,7 +85,6 @@ export function registerImportCommand(program: Command): void {
             ...(resolvedModel ? { initialModel: resolvedModel } : {}),
             initialProjectPath: opts.project !== '.' ? normalizePath(opts.project) : undefined,
             ...buildCompositionForwardingOptions(opts),
-            noCache: opts.cache === false,
             skipMapTokens: false,
             livePreview: true,
             generatePromptPath: creds.generatePromptPath,

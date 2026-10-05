@@ -1,19 +1,16 @@
 /**
- * Shared harness for the cache integration suite. Centralizes:
+ * Shared harness for integration tests that drive the CLI against a scripted
+ * agent. Centralizes:
  *
  *  - a scripted fake `claude` binary on PATH whose stdout per invocation is
- *    driven by a callback (Strategy C — fake binary on PATH), keeping LLM
- *    calls deterministic and offline;
+ *    driven by a callback, keeping LLM calls deterministic and offline;
  *  - a per-test temp `pipeline.db` plus a temp project dir, wired through the
- *    same `EDS_PIPELINE_DB_PATH` env-var path the CLI uses in production;
- *  - direct sqlite read helpers so tests can assert cache state without re-
- *    parsing CLI output.
+ *    same `EDS_PIPELINE_DB_PATH` env-var path the CLI uses in production.
  */
-import { mkdtemp, rm, writeFile, chmod, mkdir, readFile, appendFile } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile, chmod, mkdir, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
-import { DatabaseSync } from 'node:sqlite';
 import {
   openPipelineDb,
   storeRawComponents,
@@ -55,7 +52,7 @@ export type ScriptedAgent = {
  * it as source code into the script.
  */
 export async function createScriptedAgent(responderSource: string): Promise<ScriptedAgent> {
-  const dir = await mkdtemp(join(tmpdir(), 'cache-harness-agent-'));
+  const dir = await mkdtemp(join(tmpdir(), 'scripted-agent-'));
   const countFile = join(dir, 'count.txt');
   const logFile = join(dir, 'calls.jsonl');
   const scriptPath = join(dir, 'claude');
@@ -132,8 +129,7 @@ export function selectAllResponderSource(
 /**
  * Responder source: emit one classify_component + classify_prop per prop and
  * classify_slot per slot for every component name in the prompt. This is the
- * minimum tool-call surface for `generate components` to apply changes and
- * write a generation_cache row.
+ * minimum tool-call surface for `generate components` to apply changes.
  */
 export function generateComponentsResponderSource(): string {
   return `function(inv) {
@@ -175,7 +171,7 @@ export function generateTokensResponderSource(): string {
   }`;
 }
 
-export type CacheFixture = {
+export type SessionFixture = {
   dbPath: string;
   dbDir: string;
   projectDir: string;
@@ -186,7 +182,6 @@ export type CacheFixture = {
     newComponents: RawComponentDefinition[],
     sourceMap?: Record<string, string>,
   ): Promise<{ sessionId: string }>;
-  seedAcceptedSnapshot(): Promise<void>;
   cleanup(): Promise<void>;
 };
 
@@ -196,13 +191,13 @@ export type CacheFixture = {
  * file contents per component default to `// stub <name>` unless `sourceMap`
  * overrides per-relative-path.
  */
-export async function createCacheFixture(
+export async function createSessionFixture(
   components: RawComponentDefinition[],
   sourceMap: Record<string, string> = {},
-): Promise<CacheFixture> {
-  const dbDir = await mkdtemp(join(tmpdir(), 'cache-integ-db-'));
-  const projectDir = await mkdtemp(join(tmpdir(), 'cache-integ-proj-'));
-  const artifactsDir = await mkdtemp(join(tmpdir(), 'cache-integ-art-'));
+): Promise<SessionFixture> {
+  const dbDir = await mkdtemp(join(tmpdir(), 'session-fixture-db-'));
+  const projectDir = await mkdtemp(join(tmpdir(), 'session-fixture-proj-'));
+  const artifactsDir = await mkdtemp(join(tmpdir(), 'session-fixture-art-'));
   const dbPath = join(dbDir, 'pipeline.db');
 
   for (const c of components) {
@@ -252,106 +247,12 @@ export async function createCacheFixture(
       db2.close();
       return { sessionId: newSessionId };
     },
-    /**
-     * Seed a `current-review-state.json` snapshot with all components marked
-     * accepted, so `generate components` will pick them up without first
-     * running select.
-     */
-    async seedAcceptedSnapshot() {
-      const dir = join(artifactsDir, sessionId);
-      await mkdir(dir, { recursive: true });
-      const snapshot = {
-        sessionId,
-        components: components.map((c) => ({
-          name: c.name,
-          status: 'accepted',
-          originalProposal: c,
-        })),
-      };
-      await writeFile(join(dir, 'current-review-state.json'), JSON.stringify(snapshot), 'utf8');
-      await appendFile(join(dir, 'events.jsonl'), '', 'utf8');
-    },
     cleanup: async () => {
       await rm(dbDir, { recursive: true, force: true });
       await rm(projectDir, { recursive: true, force: true });
       await rm(artifactsDir, { recursive: true, force: true });
     },
   };
-}
-
-export type CacheRow = {
-  input_hash: string;
-  entity_type: string;
-  entity_id: string;
-  source_session_id: string;
-  prompt_hash: string;
-};
-
-export function readGenerationCache(dbPath: string): CacheRow[] {
-  const db = new DatabaseSync(dbPath);
-  try {
-    return db
-      .prepare(
-        'SELECT input_hash, entity_type, entity_id, source_session_id, prompt_hash FROM generation_cache ORDER BY entity_type, entity_id',
-      )
-      .all() as CacheRow[];
-  } finally {
-    db.close();
-  }
-}
-
-export function readSelectCache(dbPath: string): Array<{
-  component_hash: string;
-  prompt_hash: string;
-  cli_version: string;
-  decision: string;
-  reason: string | null;
-}> {
-  const db = new DatabaseSync(dbPath);
-  try {
-    return db
-      .prepare(
-        'SELECT component_hash, prompt_hash, cli_version, decision, reason FROM select_cache ORDER BY component_hash',
-      )
-      .all() as Array<{
-      component_hash: string;
-      prompt_hash: string;
-      cli_version: string;
-      decision: string;
-      reason: string | null;
-    }>;
-  } finally {
-    db.close();
-  }
-}
-
-export function readExtractCache(dbPath: string): Array<{
-  file_path: string;
-  file_hash: string;
-  cli_version: string;
-}> {
-  const db = new DatabaseSync(dbPath);
-  try {
-    return db.prepare('SELECT file_path, file_hash, cli_version FROM extract_cache ORDER BY file_path').all() as Array<{
-      file_path: string;
-      file_hash: string;
-      cli_version: string;
-    }>;
-  } finally {
-    db.close();
-  }
-}
-
-export function corruptSelectCacheCliVersion(dbPath: string): number {
-  const db = new DatabaseSync(dbPath);
-  try {
-    const r = db.prepare("UPDATE select_cache SET cli_version = 'corrupted-version-xyz'").run() as {
-      changes: number;
-    };
-    return r.changes;
-  } finally {
-    db.close();
-  }
 }
 
 export const SAMPLE_TWO_COMPONENTS: RawComponentDefinition[] = [

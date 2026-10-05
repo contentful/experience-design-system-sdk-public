@@ -17,17 +17,12 @@ import {
   loadCDFComponents,
   loadDTCGTokens,
   loadComponentSourceRefs,
-  computeMapTokensInputHash,
   createStep,
   updateStep,
   findLatestSessionForCommand,
-  lookupCache,
-  storeCache,
-  copyMapTokensFromCache,
   replaceRawTokenNamePaths,
   loadRawTokenNamePathRows,
 } from '../session/db.js';
-import { hashContent, hashPromptForSkill } from '../session/cache-keys.js';
 import { readExistingContentfulEntitiesFromSession } from '../helpers/read-existing-contentful-entities-from-session.js';
 import { summarizeForMapTokens } from '../helpers/summarize-existing-contentful-entities.js';
 import { resolve } from 'node:path';
@@ -49,7 +44,6 @@ interface MapTokensOptions {
   agent?: string;
   model?: string;
   printPrompt?: boolean;
-  cache?: boolean;
   skipAgent?: boolean;
   tokenMap?: string;
   existingEntitiesPath?: string;
@@ -63,8 +57,9 @@ async function renderResult(result: MapTokensViewResult): Promise<void> {
     );
     await waitUntilExit();
   } else {
-    const summary = result.cached ? 'cached' : `${result.applied} mapping(s) applied`;
-    process.stdout.write(`map tokens complete\nagent: ${result.agent}\nsession=${result.sessionId}\n${summary}\n`);
+    process.stdout.write(
+      `map tokens complete\nagent: ${result.agent}\nsession=${result.sessionId}\n${result.applied} mapping(s) applied\n`,
+    );
     await exitWithAnalytics(0);
   }
 }
@@ -248,33 +243,11 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
         skipAgent: 'true',
       });
       updateStep(db, stepId, 'complete', { applied: '0', skipAgent: 'true' });
-      await renderResult({ agent: resultAgent, sessionId, applied: 0, cached: false });
+      await renderResult({ agent: resultAgent, sessionId, applied: 0 });
       return;
     }
 
     const agent = configuredAgent!;
-
-    const noCache = opts.cache === false || process.env.EDS_NO_CACHE === '1';
-    const promptHash = await hashPromptForSkill(
-      'map-tokens',
-      agent,
-      model,
-      undefined,
-      existingTokensInline ? [hashContent(existingTokensInline)] : [],
-      mapPromptText,
-    );
-    const inputHash = computeMapTokensInputHash(db, sessionId, componentSourceRefs);
-
-    if (!noCache) {
-      const cached = lookupCache(db, inputHash, 'token_mapping', '__map_tokens__', promptHash);
-      if (cached) {
-        const appliedFromCache = copyMapTokensFromCache(db, cached.sourceSessionId, sessionId);
-        const stepId = createStep(db, sessionId, 'map tokens', { agent, model: model ?? '' });
-        updateStep(db, stepId, 'complete', { cached: 'true', applied: String(appliedFromCache) });
-        await renderResult({ agent, sessionId, applied: appliedFromCache, cached: true });
-        return;
-      }
-    }
 
     const binary = resolveBinary(agent);
     if (!(await assertBinaryInPath(binary))) {
@@ -303,17 +276,13 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
     const { calls, warnings: parseWarnings } = parseMapTokenPropToolCallLines(result.stdout);
     const { applied, warnings } = applyMapTokenPropCalls(db, sessionId, calls, parseWarnings);
 
-    if (!noCache) {
-      storeCache(db, inputHash, 'token_mapping', '__map_tokens__', sessionId, false, promptHash);
-    }
-
     updateStep(db, stepId, 'complete', { applied: String(applied), warnings: String(warnings.length) });
 
     if (warnings.length > 0) {
       process.stderr.write(`Warnings:\n${warnings.map((w) => `  ${w}`).join('\n')}\n`);
     }
 
-    await renderResult({ agent, sessionId, applied, cached: false });
+    await renderResult({ agent, sessionId, applied });
   } finally {
     db.close();
   }
@@ -330,7 +299,6 @@ export function registerMapTokensCommand(program: Command): void {
     .option('--session <id>', 'Session ID from generate components (defaults to most recent)')
     .option('--print-prompt', 'Print the prompt without invoking the agent')
     .option('--skip-agent', 'Resolve token defaults without agentic $token.allowed inference')
-    .option('--no-cache', 'Bypass the map-tokens cache and force a re-run')
     .option(
       '--prompt <stage=value>',
       'Override a stage prompt (repeatable). Used here for the map-tokens stage.',

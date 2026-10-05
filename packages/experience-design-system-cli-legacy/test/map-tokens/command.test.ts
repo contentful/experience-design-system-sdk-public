@@ -219,7 +219,7 @@ describe('map tokens command', () => {
     db.close();
   });
 
-  it('retains resolved defaults when a cached allowed-list mapping is reused', async () => {
+  it('retains resolved defaults when a later session maps the same tokens again', async () => {
     const dbDir = await createTempDir('map-tokens-db-');
     const dbPath = join(dbDir, 'pipeline.db');
     const sessionA = await seedGeneratedSessionWithAliasDefault(dbPath);
@@ -233,7 +233,14 @@ describe('map tokens command', () => {
     ).toBe(0);
 
     const sessionB = await seedGeneratedSessionWithAliasDefault(dbPath);
-    expect((await run(['map', 'tokens', '--session', sessionB, '--agent', 'claude'], { dbPath })).code).toBe(0);
+    expect(
+      (
+        await run(['map', 'tokens', '--session', sessionB, '--agent', 'claude'], {
+          dbPath,
+          fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-valid.mjs'),
+        })
+      ).code,
+    ).toBe(0);
 
     const db = openPipelineDb(dbPath);
     expect(loadRawTokenNamePaths(db, sessionB)).toEqual({
@@ -295,57 +302,47 @@ describe('map tokens command', () => {
     db.close();
   });
 
-  it('a cache hit skips the agent invocation and copies the prior mapping', async () => {
+  it('applies a fresh mapping for a later session instead of copying the earlier one', async () => {
     const dbDir = await createTempDir('map-tokens-db-');
     const dbPath = join(dbDir, 'pipeline.db');
     const sessionA = await seedGeneratedSession(dbPath, true);
-
-    const first = await run(['map', 'tokens', '--session', sessionA, '--agent', 'claude'], {
-      dbPath,
-      fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-valid.mjs'),
-    });
-    expect(first.code).toBe(0);
+    expect(
+      (
+        await run(['map', 'tokens', '--session', sessionA, '--agent', 'claude'], {
+          dbPath,
+          fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-valid.mjs'),
+        })
+      ).code,
+    ).toBe(0);
 
     const sessionB = await seedGeneratedSession(dbPath, true);
-    // No fakeAgentScript this time — if the command tries to invoke the agent, `which claude` fails and it dies non-zero.
-    const second = await run(['map', 'tokens', '--session', sessionB, '--agent', 'claude'], { dbPath });
-
-    expect(second.code).toBe(0);
-    expect(second.stdout).toContain('map tokens complete');
-
-    const db = openPipelineDb(dbPath);
-    const componentId = loadRawComponents(db, sessionB)[0].component_id;
-    expect(readTokenPaths(db, sessionB, componentId, 'bgColor')).toEqual(['colors.surface.default']);
-    db.close();
-  });
-
-  it('stores a cache entry when applied = 0, and a later session reuses it without invoking the agent', async () => {
-    const dbDir = await createTempDir('map-tokens-db-');
-    const dbPath = join(dbDir, 'pipeline.db');
-    const sessionA = await seedGeneratedSession(dbPath, true);
-
-    const first = await run(['map', 'tokens', '--session', sessionA, '--agent', 'claude'], {
+    const second = await run(['map', 'tokens', '--session', sessionB, '--agent', 'claude'], {
       dbPath,
       fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-wrong-category.mjs'),
     });
-    expect(first.code).toBe(0);
+
+    expect(second.code).toBe(0);
+    expect(second.stdout).toContain('0 mapping(s) applied');
+    expect(second.stdout).not.toContain('cached');
 
     const db = openPipelineDb(dbPath);
-    const cacheRows = db.prepare(`SELECT * FROM generation_cache WHERE entity_type = 'token_mapping'`).all();
-    expect(cacheRows).toHaveLength(1);
+    const componentId = loadRawComponents(db, sessionB)[0].component_id;
+    expect(readTokenPaths(db, sessionB, componentId, 'bgColor')).toEqual([]);
     db.close();
+  });
 
-    const sessionB = await seedGeneratedSession(dbPath, true);
-    // No fakeAgentScript — if the cache hit didn't short-circuit this run, `which claude` would
-    // fail and the process would die non-zero, since no agent script is set up here.
-    const second = await run(['map', 'tokens', '--session', sessionB, '--agent', 'claude'], { dbPath });
-    expect(second.code).toBe(0);
-    expect(second.stdout).toContain('cached');
+  it('rejects --no-cache as an unknown option', async () => {
+    const dbDir = await createTempDir('map-tokens-db-');
+    const dbPath = join(dbDir, 'pipeline.db');
+    const sessionId = await seedGeneratedSession(dbPath, true);
 
-    const db2 = openPipelineDb(dbPath);
-    const componentId = loadRawComponents(db2, sessionB)[0].component_id;
-    expect(readTokenPaths(db2, sessionB, componentId, 'bgColor')).toEqual([]);
-    db2.close();
+    const { stderr, code } = await run(['map', 'tokens', '--session', sessionId, '--agent', 'claude', '--no-cache'], {
+      dbPath,
+      fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-valid.mjs'),
+    });
+
+    expect(code).not.toBe(0);
+    expect(stderr).toContain("unknown option '--no-cache'");
   });
 
   it('records a step row with inputs and outputs', async () => {

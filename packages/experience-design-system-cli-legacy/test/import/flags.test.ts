@@ -70,11 +70,12 @@ describe('import — help output lists all flags', () => {
     const { stdout, code } = await run(['import', '--help']);
     expect(code).toBe(0);
 
-    const flags = ['--project', '--tokens', '--agent', '--prompt', '--no-cache'];
+    const flags = ['--project', '--tokens', '--agent', '--prompt'];
 
     for (const flag of flags) {
       expect(stdout, `expected ${flag} in help output`).toContain(flag);
     }
+    expect(stdout).not.toContain('--no-cache');
     expect(stdout).not.toContain('--composite');
     expect(stdout).not.toContain('--atomic');
     expect(stdout).not.toContain('--composition-refresh');
@@ -178,17 +179,10 @@ describe('import — removed flags', () => {
 });
 
 describe('import — push-related flags', () => {
-  it('--no-cache is accepted and forces a re-run', async () => {
-    // Isolated project/DB: --no-cache forces a real analyze extract run, which
-    // would otherwise leave a session in the shared DB for later tests to pick up.
-    const freshDbPath = join(await createTempDir('no-cache-db-'), 'pipeline.db');
-    const { stderr } = await run(
-      ['import', '--help', '--no-cache'],
-      { EDS_PIPELINE_DB_PATH: freshDbPath, NODE_NO_WARNINGS: '1' },
-      30_000,
-    );
-    expect(stderr).not.toContain("unknown option '--no-cache'");
-    // The important assertion is that the flag is recognized and acted upon.
+  it('--no-cache is rejected as a removed option', async () => {
+    const { stderr, code } = await run(['import', '--no-cache'], baseEnv());
+    expect(code).not.toBe(0);
+    expect(stderr).toContain("unknown option '--no-cache'");
   });
 
   it('--tokens <path> is accepted when the file exists', async () => {

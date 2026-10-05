@@ -3,7 +3,6 @@ import {
   shouldGenerateAfterScopeGate,
   shouldGenerateAfterCredentialsValidated,
   shouldSkipFinalReviewAfterCredentials,
-  resolveNoCacheForGenerate,
   resolveCycleGateAction,
 } from '../../../src/import/tui/wizard-state-transitions.js';
 import { computeCycleAutoRejectTargets } from '../../../src/import/cycle-auto-reject.js';
@@ -43,16 +42,6 @@ describe('shouldSkipFinalReviewAfterCredentials', () => {
   it('never skips before the generate session exists', () => {
     expect(shouldSkipFinalReviewAfterCredentials({ generateSessionId: null, finalReviewPassed: false })).toBe(false);
     expect(shouldSkipFinalReviewAfterCredentials({ generateSessionId: null, finalReviewPassed: true })).toBe(false);
-  });
-});
-
-describe('resolveNoCacheForGenerate', () => {
-  it('leaves the content-addressed cache enabled by default (no --no-cache)', () => {
-    expect(resolveNoCacheForGenerate({ cliNoCache: false })).toBe(false);
-  });
-
-  it('honors --no-cache when explicitly opted in', () => {
-    expect(resolveNoCacheForGenerate({ cliNoCache: true })).toBe(true);
   });
 });
 

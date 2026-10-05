@@ -96,12 +96,13 @@ describe('generate components — flag variations', () => {
     expect(code).toBe(0);
   });
 
-  it('--no-cache flag is accepted (with --dry-run)', async () => {
-    const { code } = await runCliWithEnv(
+  it('--no-cache is rejected as an unknown option', async () => {
+    const { code, stderr } = await runCliWithEnv(
       ['__generate', 'components', '--agent', 'claude', '--session', fixture.sessionId, '--dry-run', '--no-cache'],
       baseEnv(),
     );
-    expect(code).toBe(0);
+    expect(code).not.toBe(0);
+    expect(stderr).toContain("unknown option '--no-cache'");
   });
 
   it('--verbose flag is accepted (with --dry-run)', async () => {
@@ -239,12 +240,13 @@ describe('generate components — flag variations', () => {
       expect(code).toBe(0);
     });
 
-    it('--no-cache flag is accepted (with --dry-run)', async () => {
-      const { code } = await runCliWithEnv(
+    it('--no-cache is rejected as an unknown option', async () => {
+      const { code, stderr } = await runCliWithEnv(
         ['__generate', 'tokens', '--agent', 'claude', '--raw-tokens', '/dev/null', '--dry-run', '--no-cache'],
         baseEnv(),
       );
-      expect(code).toBe(0);
+      expect(code).not.toBe(0);
+      expect(stderr).toContain("unknown option '--no-cache'");
     });
   });
 });

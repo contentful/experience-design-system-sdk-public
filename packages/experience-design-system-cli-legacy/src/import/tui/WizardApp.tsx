@@ -56,7 +56,7 @@ import {
   loadCDFComponents,
   loadScopeComponents,
   loadDTCGTokens,
-  copyTokensFromCache,
+  copyTokensBetweenSessions,
   storeDTCGTokens,
   seedCDFFromPreviewResponse,
   seedDefaultsFromChangedItems,
@@ -77,7 +77,6 @@ import {
   shouldRefusePush,
   buildSkippedPushTransition,
   shouldSkipFinalReviewAfterCredentials,
-  resolveNoCacheForGenerate,
   resolveCycleGateAction,
 } from './wizard-state-transitions.js';
 import { findCliPath } from '../../lib/cli-path.js';
@@ -191,25 +190,17 @@ export function buildGenerateComponentsArgs(opts: {
   agent: string;
   model?: string;
   bedrock?: boolean;
-  noCache?: boolean;
   generatePromptPath?: string;
   promptOverrides?: string[];
   existingEntitiesPath?: string;
-  restoreCache?: boolean;
-  cachedComponents?: string[];
 }): string[] {
   const args = ['__generate', 'components', '--agent', opts.agent, '--session', opts.sessionId];
   if (opts.tokensPath) args.push('--tokens', opts.tokensPath);
   if (opts.model) args.push('--model', opts.model);
   if (opts.bedrock) args.push('--bedrock');
-  if (opts.noCache) args.push('--no-cache');
   if (opts.generatePromptPath) args.push('--generate-prompt-path', opts.generatePromptPath);
   for (const prompt of opts.promptOverrides ?? []) args.push('--prompt', prompt);
   if (opts.existingEntitiesPath) args.push('--existing-entities-path', opts.existingEntitiesPath);
-  if (opts.restoreCache) args.push('--restore-cache');
-  if (opts.cachedComponents && opts.cachedComponents.length > 0) {
-    args.push('--cached-components', JSON.stringify(opts.cachedComponents));
-  }
   return args;
 }
 
@@ -218,13 +209,11 @@ export function buildGenerateTokensArgs(opts: {
   agent: string;
   model?: string;
   bedrock?: boolean;
-  noCache?: boolean;
   promptOverrides?: string[];
 }): string[] {
   const args = [findCliPath(), '__generate', 'tokens', '--agent', opts.agent, '--raw-tokens', opts.rawTokensPath];
   if (opts.model) args.push('--model', opts.model);
   if (opts.bedrock) args.push('--bedrock');
-  if (opts.noCache) args.push('--no-cache');
   for (const prompt of opts.promptOverrides ?? []) args.push('--prompt', prompt);
   return args;
 }
@@ -233,14 +222,12 @@ export function buildMapTokensArgs(opts: {
   sessionId: string;
   agent: string;
   model?: string;
-  noCache?: boolean;
   skipAgent?: boolean;
   promptOverrides?: string[];
   existingEntitiesPath?: string;
 }): string[] {
   const args = ['map', 'tokens', '--session', opts.sessionId, '--agent', opts.agent];
   if (opts.model) args.push('--model', opts.model);
-  if (opts.noCache) args.push('--no-cache');
   if (opts.skipAgent) args.push('--skip-agent');
   for (const prompt of opts.promptOverrides ?? []) args.push('--prompt', prompt);
   if (opts.existingEntitiesPath) args.push('--existing-entities-path', opts.existingEntitiesPath);
@@ -363,7 +350,6 @@ export type WizardAppProps = {
   initialProjectPath?: string;
   host?: string;
   promptOverrides?: string[];
-  noCache?: boolean;
   livePreview?: boolean;
   generatePromptPath?: string;
   skipMapTokens?: boolean;
@@ -382,7 +368,6 @@ export function WizardApp({
   initialProjectPath,
   host,
   promptOverrides,
-  noCache = false,
   livePreview = true,
   generatePromptPath,
   skipMapTokens = false,
@@ -417,10 +402,6 @@ export function WizardApp({
   const allowEmptyDeleteAllRef = useRef(false);
 
   const generateChildRef = useRef<import('node:child_process').ChildProcess | null>(null);
-  const generationCachePreflightRef = useRef<{
-    sessionId: string;
-    promise: Promise<Set<string>>;
-  } | null>(null);
   const selectionToReviewStartedAtRef = useRef<number | null>(null);
   const credentialsValidationIdRef = useRef(0);
   const pendingCredentialValidationRef = useRef<{
@@ -444,7 +425,6 @@ export function WizardApp({
   }> | null>(null);
 
   const rawTokensEntryReady = !!initialRawTokensPath;
-  const effectiveNoCache = resolveNoCacheForGenerate({ cliNoCache: noCache });
   const initialStepResolved: WizardStep = rawTokensEntryReady
     ? initialProjectPath
       ? 'path-validation'
@@ -570,7 +550,7 @@ export function WizardApp({
     setState((prev) => ({ ...prev, ...partial }));
   };
 
-  const finishSelectionToReviewTimer = (mode: 'cached' | 'generated' | 'error'): void => {
+  const finishSelectionToReviewTimer = (mode: 'generated' | 'error'): void => {
     const startedAt = selectionToReviewStartedAtRef.current;
     if (startedAt === null) return;
     selectionToReviewStartedAtRef.current = null;
@@ -631,18 +611,13 @@ export function WizardApp({
     return true;
   };
 
-  const runGenerateTokens = async (
-    rawTokensPath: string,
-    outDir: string,
-    forceRegenerate = false,
-  ): Promise<boolean> => {
+  const runGenerateTokens = async (rawTokensPath: string, outDir: string): Promise<boolean> => {
     update({ tokenGenerationStatus: 'running' });
     const tokenArgs = buildGenerateTokensArgs({
       rawTokensPath,
       agent: state.agent,
       ...(state.agentModel ? { model: state.agentModel } : {}),
       ...(state.bedrock ? { bedrock: true } : {}),
-      noCache: effectiveNoCache || forceRegenerate,
       promptOverrides,
     });
     const result = await runSpawnedCli(tokenArgs);
@@ -696,7 +671,6 @@ export function WizardApp({
     const timer = startWizardTimer('token-mapping', {
       sessionId,
       silent,
-      noCache: effectiveNoCache,
       skipAgent: skipMapTokens,
     });
     let mappablePropCount = 0;
@@ -710,7 +684,7 @@ export function WizardApp({
         // generated-component session while leaving the recorded token session
         // intact for save/push.
         if (state.tokenSessionId && state.tokenSessionId !== sessionId) {
-          copyTokensFromCache(db, state.tokenSessionId, sessionId);
+          copyTokensBetweenSessions(db, state.tokenSessionId, sessionId);
         } else if (!state.tokenSessionId && state.tokensPath) {
           // Reusing an existing tokens.json has no token session to copy. The
           // map-tokens command consumes the session DB, so restore the saved
@@ -758,7 +732,6 @@ export function WizardApp({
       sessionId,
       agent: state.agent,
       ...(state.agentModel ? { model: state.agentModel } : {}),
-      noCache: effectiveNoCache,
       skipAgent: skipMapTokens,
       promptOverrides,
       ...(state.existingEntitiesPath ? { existingEntitiesPath: state.existingEntitiesPath } : {}),
@@ -861,7 +834,6 @@ export function WizardApp({
     });
     const existingEntitiesPromise = startExistingEntitiesFetch(projectPath, outDir);
     const extractArgs = [findCliPath(), '__extract', '--project', projectPath];
-    if (effectiveNoCache) extractArgs.push('--no-cache');
     let selectionPromptText: string | undefined;
     let selectionPromptPath: string | undefined;
     try {
@@ -896,7 +868,6 @@ export function WizardApp({
           ...(state.agentModel ? { model: state.agentModel } : {}),
           ...(selectionPromptText !== undefined ? { promptText: selectionPromptText } : {}),
           ...(selectionPromptPath ? { promptPath: selectionPromptPath } : {}),
-          noCache: effectiveNoCache,
         });
       })()
         .catch((error: unknown) => {
@@ -1046,174 +1017,19 @@ export function WizardApp({
     }));
   };
 
-  const buildGenerateOptions = (
-    extractSessionId: string,
-    tokensPath: string,
-    generatePromptPath?: string,
-    cachedComponents?: string[],
-  ) => ({
+  const buildGenerateOptions = (extractSessionId: string, tokensPath: string, generatePromptPath?: string) => ({
     sessionId: extractSessionId,
     tokensPath,
     agent: state.agent,
     ...(state.agentModel ? { model: state.agentModel } : {}),
     ...(state.bedrock ? { bedrock: true } : {}),
-    noCache: effectiveNoCache,
     ...(state.existingEntitiesPath ? { existingEntitiesPath: state.existingEntitiesPath } : {}),
     ...(generatePromptPath ? { generatePromptPath } : {}),
     promptOverrides,
-    ...(cachedComponents && cachedComponents.length > 0 ? { cachedComponents } : {}),
   });
 
-  const buildGenerateArgs = (
-    extractSessionId: string,
-    tokensPath: string,
-    generatePromptPath?: string,
-    cachedComponents?: string[],
-  ): string[] =>
-    buildGenerateProcessArgs(buildGenerateOptions(extractSessionId, tokensPath, generatePromptPath, cachedComponents));
-
-  const buildGenerateCliArgs = (
-    extractSessionId: string,
-    tokensPath: string,
-    generatePromptPath?: string,
-    cachedComponents?: string[],
-  ): string[] =>
-    buildGenerateComponentsArgs(
-      buildGenerateOptions(extractSessionId, tokensPath, generatePromptPath, cachedComponents),
-    );
-
-  const checkGenerateCache = async (extractSessionId: string, tokensPath: string): Promise<boolean> => {
-    const timer = startWizardTimer('generation-cache-status', {
-      sessionId: extractSessionId,
-      noCache: effectiveNoCache,
-    });
-    if (effectiveNoCache) {
-      finishWizardTimer('generation-cache-status', timer, { status: 'skipped' });
-      return false;
-    }
-    const result = await runCli([...buildGenerateCliArgs(extractSessionId, tokensPath), '--cache-status']);
-    const hit = result.exitCode === 0 && /^cache-status=hit$/m.test(result.stdout);
-    finishWizardTimer('generation-cache-status', timer, {
-      status: hit ? 'hit' : 'miss',
-      exitCode: result.exitCode,
-      ...(result.exitCode !== 0 ? { stderrTail: result.stderr.trim().slice(-500) } : {}),
-    });
-    return hit;
-  };
-
-  const checkGenerateCacheComponents = async (
-    extractSessionId: string,
-    tokensPath: string,
-    restoreCache = false,
-  ): Promise<Set<string>> => {
-    const timer = startWizardTimer('generation-cache-components', {
-      sessionId: extractSessionId,
-      restoreCache,
-      noCache: effectiveNoCache,
-    });
-    if (effectiveNoCache) {
-      finishWizardTimer('generation-cache-components', timer, { status: 'skipped' });
-      return new Set();
-    }
-    const args = [...buildGenerateCliArgs(extractSessionId, tokensPath), '--cache-status'];
-    if (restoreCache) args.push('--restore-cache');
-    const result = await runCli(args);
-    if (result.exitCode !== 0) {
-      finishWizardTimer('generation-cache-components', timer, {
-        status: 'error',
-        exitCode: result.exitCode,
-        stderrTail: result.stderr.trim().slice(-500),
-      });
-      return new Set();
-    }
-    const line = /^cache-components=(.+)$/m.exec(result.stdout)?.[1];
-    if (!line) {
-      finishWizardTimer('generation-cache-components', timer, {
-        status: 'missing-output',
-        exitCode: result.exitCode,
-        cachedCount: 0,
-      });
-      return new Set();
-    }
-    try {
-      const names: unknown = JSON.parse(line);
-      const cachedNames = new Set(
-        Array.isArray(names) ? names.filter((name): name is string => typeof name === 'string') : [],
-      );
-      finishWizardTimer('generation-cache-components', timer, {
-        status: 'complete',
-        exitCode: result.exitCode,
-        cachedCount: cachedNames.size,
-      });
-      return cachedNames;
-    } catch {
-      finishWizardTimer('generation-cache-components', timer, {
-        status: 'invalid-output',
-        exitCode: result.exitCode,
-        cachedCount: 0,
-      });
-      return new Set();
-    }
-  };
-
-  useEffect(() => {
-    if (
-      (state.step !== 'extracting' && state.step !== 'scope-gate') ||
-      !state.extractSessionId ||
-      state.existingEntitiesStatus === 'running' ||
-      state.existingEntitiesStatus === 'idle' ||
-      state.selectionAgentStatus !== 'complete' ||
-      state.compositionPhase !== 'done' ||
-      (state.rawTokensPath && state.tokenGenerationStatus !== 'complete') ||
-      effectiveNoCache
-    ) {
-      return;
-    }
-    const sessionId = state.extractSessionId;
-    if (generationCachePreflightRef.current?.sessionId === sessionId) return;
-    const timer = startWizardTimer('generation-cache-preflight', { sessionId });
-    const db = openPipelineDb();
-    let generatedNames: Set<string> | null = null;
-    try {
-      const rows = db.prepare('SELECT name, status FROM raw_components WHERE session_id = ?').all(sessionId) as Array<{
-        name: string;
-        status: string;
-      }>;
-      if (rows.length > 0 && rows.every((row) => row.status === 'generated')) {
-        generatedNames = new Set(rows.map((row) => row.name));
-      }
-    } finally {
-      db.close();
-    }
-    if (generatedNames) {
-      generationCachePreflightRef.current = { sessionId, promise: Promise.resolve(generatedNames) };
-      finishWizardTimer('generation-cache-preflight', timer, {
-        status: 'complete',
-        source: 'session-db',
-        cachedCount: generatedNames.size,
-      });
-      return;
-    }
-    const promise = checkGenerateCacheComponents(sessionId, state.tokensPath, true);
-    generationCachePreflightRef.current = { sessionId, promise };
-    void promise.then((cachedNames) => {
-      finishWizardTimer('generation-cache-preflight', timer, {
-        status: 'complete',
-        source: 'cache-status',
-        cachedCount: cachedNames.size,
-      });
-    });
-  }, [
-    state.step,
-    state.extractSessionId,
-    state.tokensPath,
-    state.rawTokensPath,
-    state.tokenGenerationStatus,
-    state.selectionAgentStatus,
-    state.compositionPhase,
-    state.existingEntitiesStatus,
-    state.existingEntitiesPath,
-  ]);
+  const buildGenerateArgs = (extractSessionId: string, tokensPath: string, generatePromptPath?: string): string[] =>
+    buildGenerateProcessArgs(buildGenerateOptions(extractSessionId, tokensPath, generatePromptPath));
 
   const startGeneratePrefetch = (
     extractSessionId: string,
@@ -1285,15 +1101,13 @@ export function WizardApp({
     tokensPath: string,
     acceptedCount: number,
     suppressScreen = false,
-    cachedComponents: string[] = [],
   ) => {
     const timer = startWizardTimer('component-generation', {
       sessionId: extractSessionId,
       acceptedCount,
       suppressScreen,
-      noCache: effectiveNoCache,
     });
-    const args = buildGenerateArgs(extractSessionId, tokensPath, generatePromptPath, cachedComponents);
+    const args = buildGenerateArgs(extractSessionId, tokensPath, generatePromptPath);
     let progressCursor: GenerateProgressState = state.generateProgress;
     const { donePromise } = spawnGenerateChild({
       command: 'node',
@@ -1357,26 +1171,6 @@ export function WizardApp({
           autoRejectedCount: 0,
           generateSessionId: mappedSessionId,
           generatedCount,
-          generateProgress: null,
-          mapTokensStatus: 'complete',
-          step: 'final-review',
-        },
-        { clearScreen: false },
-      );
-    } else {
-      finishSelectionToReviewTimer('error');
-    }
-  };
-
-  const finishCachedGeneration = async (sessionId: string, acceptedCount: number): Promise<void> => {
-    if (await runMapTokens(sessionId, true)) {
-      finishSelectionToReviewTimer('cached');
-      update(
-        {
-          acceptedCount,
-          autoRejectedCount: 0,
-          generateSessionId: sessionId,
-          generatedCount: acceptedCount,
           generateProgress: null,
           mapTokensStatus: 'complete',
           step: 'final-review',
@@ -1596,14 +1390,8 @@ export function WizardApp({
         }
       }
       if (await runAgentAuthCheck('generating', true)) {
-        const cacheHit = await checkGenerateCache(sid, state.tokensPath);
-        if (cacheHit) {
-          update({ step: 'generating' });
-          void finishCachedGeneration(sid, state.acceptedCount);
-        } else {
-          update({ step: 'generating' });
-          void runGenerate(sid, state.tokensPath, state.acceptedCount);
-        }
+        update({ step: 'generating' });
+        void runGenerate(sid, state.tokensPath, state.acceptedCount);
       }
       return;
     }
@@ -2106,12 +1894,6 @@ export function WizardApp({
       tokenReuseChecked.current = true;
       const tokenNextStep: WizardStep = state.projectPath ? 'path-validation' : 'credentials';
       const existingTokensPath = join(state.outDir, 'tokens.json');
-      if (effectiveNoCache) {
-        tokenGenerationPromiseRef.current = runAgentAuthCheck(tokenNextStep).then((ok) =>
-          ok ? runGenerateTokens(state.rawTokensPath, state.outDir) : false,
-        );
-        return;
-      }
       (async () => {
         try {
           await access(existingTokensPath);
@@ -2203,7 +1985,7 @@ export function WizardApp({
               const tokenNextStep: WizardStep = state.projectPath ? 'path-validation' : 'credentials';
               update({ step: tokenNextStep });
               if (await runAgentAuthCheck(tokenNextStep)) {
-                tokenGenerationPromiseRef.current = runGenerateTokens(state.rawTokensPath, state.outDir, true);
+                tokenGenerationPromiseRef.current = runGenerateTokens(state.rawTokensPath, state.outDir);
               }
             }}
             onQuit={() => process.exit(0)}
@@ -2248,10 +2030,9 @@ export function WizardApp({
           tokenGenerationComplete &&
           state.existingEntitiesStatus !== 'running';
 
-        // Once extraction, composition, and selection are all cached, there is
-        // no useful intermediate screen to show. Keep this screen only while
-        // the existing-entity fetch is still doing work; it is intentionally
-        // independent of the local pipeline caches.
+        // Once extraction, composition, and selection have all finished, there
+        // is no useful intermediate screen to show. Keep this screen only while
+        // the existing-entity fetch is still doing work.
         if (extractionTasksComplete) return null;
 
         let extractDetail: string;
@@ -2332,7 +2113,7 @@ export function WizardApp({
           scopeComponentsRef.current = { sessionId, components: loadedComponents };
         }
         // Confirming the scope changes accepted rows to `generated` before the
-        // async cache/auth transition completes. A resize can render this case
+        // async auth transition completes. A resize can render this case
         // again while those rows are no longer returned by loadScopeComponents;
         // keep the last valid list for this session instead of showing the
         // unrecoverable empty-session error.
@@ -2357,35 +2138,6 @@ export function WizardApp({
                         rejectedCount: decisions.rejected.length,
                       })
                     : null;
-                const preflight = generationCachePreflightRef.current;
-                const cachePromise =
-                  preflight?.sessionId === sessionId
-                    ? preflight.promise
-                    : checkGenerateCacheComponents(sessionId, state.tokensPath, true);
-                if (!preflight || preflight.sessionId !== sessionId) {
-                  generationCachePreflightRef.current = { sessionId, promise: cachePromise };
-                }
-                // Let the cache restore finish while the selection screen is
-                // still visible. Scope decisions are applied only afterward,
-                // so the two SQLite writers cannot race.
-                const cacheWaitStartedAt = startWizardTimer('selection-cache-restoration-wait', {
-                  sessionId,
-                  preflight: Boolean(preflight?.sessionId === sessionId),
-                });
-                try {
-                  const cachedNames = await cachePromise;
-                  finishWizardTimer('selection-cache-restoration-wait', cacheWaitStartedAt, {
-                    status: 'complete',
-                    cachedCount: cachedNames.size,
-                  });
-                } catch (error) {
-                  finishWizardTimer('selection-cache-restoration-wait', cacheWaitStartedAt, {
-                    status: 'error',
-                    error: error instanceof Error ? error.message : String(error),
-                  });
-                  finishSelectionToReviewTimer('error');
-                  throw error;
-                }
                 await runScopeGate({
                   sessionId,
                   decisions,
@@ -2398,42 +2150,12 @@ export function WizardApp({
                       // its component query appear empty.
                       const authPromise = runAgentAuthCheck('generating', true);
                       if (await authPromise) {
-                        const comparisonStartedAt = startWizardTimer('generation-cache-set-comparison', {
-                          sessionId: sid,
-                          acceptedCount: decisions?.accepted.length ?? 0,
+                        update({
+                          step: 'generating',
+                          generateProgress: null,
+                          acceptedCount,
                         });
-                        let cachedNames = await cachePromise;
-                        const acceptedNames = decisions?.accepted ?? [];
-                        let cacheHit =
-                          !effectiveNoCache &&
-                          acceptedNames.length > 0 &&
-                          acceptedNames.every((name) => cachedNames.has(name));
-                        // The preflight may have read a stale review snapshot
-                        // while the scope decision was being persisted. Always
-                        // refresh a non-hit after that transaction completes so
-                        // a partial preflight set cannot trigger generation.
-                        if (!cacheHit && !effectiveNoCache && acceptedNames.length > 0) {
-                          cachedNames = await checkGenerateCacheComponents(sid, state.tokensPath, true);
-                          cacheHit = acceptedNames.every((name) => cachedNames.has(name));
-                        }
-                        finishWizardTimer('generation-cache-set-comparison', comparisonStartedAt, {
-                          status: 'complete',
-                          cacheHit,
-                          cachedCount: cachedNames.size,
-                          acceptedCount: acceptedNames.length,
-                        });
-                        if (cacheHit) {
-                          void finishCachedGeneration(sid, acceptedCount);
-                        } else {
-                          const acceptedNameSet = new Set(acceptedNames);
-                          const restoredCachedNames = [...cachedNames].filter((name) => acceptedNameSet.has(name));
-                          update({
-                            step: 'generating',
-                            generateProgress: null,
-                            acceptedCount,
-                          });
-                          void runGenerate(sid, state.tokensPath, acceptedCount, false, restoredCachedNames);
-                        }
+                        void runGenerate(sid, state.tokensPath, acceptedCount);
                       } else {
                         finishSelectionToReviewTimer('error');
                       }

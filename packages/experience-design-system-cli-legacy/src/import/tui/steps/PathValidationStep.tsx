@@ -18,8 +18,8 @@ type FileCounts = {
 };
 
 // Keep the confirmation screen stable when the wizard briefly revisits this
-// step during a cached run. The counts are only display data; extraction still
-// performs its own source scan and cache validation.
+// step. The counts are only display data; extraction performs its own source
+// scan.
 const fileCountsCache = new Map<string, FileCounts>();
 
 const IGNORE_DIRS = new Set([

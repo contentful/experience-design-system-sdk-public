@@ -13,10 +13,6 @@ export function shouldSkipFinalReviewAfterCredentials(state: {
   return state.finalReviewPassed && state.generateSessionId != null;
 }
 
-export function resolveNoCacheForGenerate(opts: { cliNoCache: boolean }): boolean {
-  return opts.cliNoCache;
-}
-
 export function shouldBypassPreview(state: { credentialsSkipped: boolean }): boolean {
   return state.credentialsSkipped === true;
 }

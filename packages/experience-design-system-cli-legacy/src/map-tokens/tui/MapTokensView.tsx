@@ -5,7 +5,6 @@ export interface MapTokensViewResult {
   agent: string;
   sessionId: string;
   applied: number;
-  cached: boolean;
 }
 
 interface MapTokensViewProps {
@@ -19,9 +18,7 @@ export function MapTokensView({ result, onExit }: MapTokensViewProps): React.Rea
     return () => clearTimeout(timer);
   }, [onExit]);
 
-  const summary = result.cached
-    ? 'reused from cache'
-    : `${result.applied} mapping${result.applied === 1 ? '' : 's'} applied`;
+  const summary = `${result.applied} mapping${result.applied === 1 ? '' : 's'} applied`;
 
   return (
     <CommandCompletionView

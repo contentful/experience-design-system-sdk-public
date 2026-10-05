@@ -34,32 +34,13 @@ describe('wizard combined CDF output', () => {
   });
 });
 
-describe('wizard generate-tokens cache', () => {
-  it('defaults to cache-on (no --no-cache flag)', () => {
+describe('wizard generate-tokens args', () => {
+  it('never passes a cache flag', () => {
     const args = buildGenerateTokensArgs({
       rawTokensPath: '/tmp/raw-tokens.scss',
       agent: 'claude',
     });
     expect(args).not.toContain('--no-cache');
-  });
-
-  it('passes --no-cache when noCache is true', () => {
-    const args = buildGenerateTokensArgs({
-      rawTokensPath: '/tmp/raw-tokens.scss',
-      agent: 'claude',
-      noCache: true,
-    });
-    expect(args).toContain('--no-cache');
-  });
-
-  it('passes precomputed cached component names to generation', () => {
-    const args = buildGenerateComponentsArgs({
-      sessionId: 'abc-123',
-      agent: 'claude',
-      cachedComponents: ['Button', 'Card'],
-    });
-    expect(args).toContain('--cached-components');
-    expect(args).toContain('["Button","Card"]');
   });
 
   it('forwards prompt overrides to token generation', () => {
@@ -73,17 +54,8 @@ describe('wizard generate-tokens cache', () => {
   });
 });
 
-describe('wizard generate-components cache', () => {
-  it('defaults to cache-on (no --no-cache flag)', () => {
-    const args = buildGenerateComponentsArgs({
-      sessionId: 'abc-123',
-      tokensPath: '/tmp/tokens.json',
-      agent: 'claude',
-    });
-    expect(args).not.toContain('--no-cache');
-  });
-
-  it('does pass --session and --agent', () => {
+describe('wizard generate-components args', () => {
+  it('passes --session and --agent', () => {
     const args = buildGenerateComponentsArgs({
       sessionId: 's',
       agent: 'claude',
@@ -94,56 +66,25 @@ describe('wizard generate-components cache', () => {
     expect(args).toContain('claude');
   });
 
-  it('passes --no-cache when noCache is true', () => {
+  it('never passes cache flags', () => {
     const args = buildGenerateComponentsArgs({
       sessionId: 'abc-123',
       tokensPath: '/tmp/tokens.json',
       agent: 'claude',
-      noCache: true,
     });
-    expect(args).toContain('--no-cache');
+    for (const flag of ['--no-cache', '--cache-status', '--restore-cache', '--cached-components']) {
+      expect(args).not.toContain(flag);
+    }
   });
 
-  it('omits --no-cache when noCache is false or undefined (default)', () => {
-    const explicit = buildGenerateComponentsArgs({
-      sessionId: 's',
-      agent: 'claude',
-      noCache: false,
-    });
-    const omitted = buildGenerateComponentsArgs({
-      sessionId: 's',
-      agent: 'claude',
-    });
-    expect(explicit).not.toContain('--no-cache');
-    expect(omitted).not.toContain('--no-cache');
-  });
-
-  it('does not render a dedicated cache-check or cache-restore screen', async () => {
-    const source = await readFile(wizardAppPath, 'utf8');
-    expect(source).not.toContain('generation-cache-check');
-    expect(source).not.toContain('generationCacheHit');
-    expect(source).not.toContain('Reusing cached definitions');
-    expect(source).not.toContain('Checking cached definitions');
-  });
-
-  it('does not enter the generation screen when cached definitions are restored', async () => {
+  it('starts generation for every accepted component without a cache lookup step', async () => {
     const source = await readFile(wizardAppPath, 'utf8');
     const scopeGateBlock = source.slice(source.indexOf('onAdvanceToGenerate'), source.indexOf('onAdvanceToPushFlow'));
-    expect(scopeGateBlock).toContain('void finishCachedGeneration(sid, acceptedCount);');
-    expect(scopeGateBlock).toContain(
-      "step: 'generating',\n                            generateProgress: null,\n                            acceptedCount,",
-    );
-    expect(scopeGateBlock).toContain(
-      'void runGenerate(sid, state.tokensPath, acceptedCount, false, restoredCachedNames);',
-    );
-    const cacheBranch = scopeGateBlock.slice(
-      scopeGateBlock.indexOf('if (cacheHit)'),
-      scopeGateBlock.indexOf('} else {'),
-    );
-    expect(cacheBranch).not.toContain("step: 'generating'");
-    expect(source).not.toContain('GENERATION_SCREEN_DELAY_MS');
-    expect(source).toContain('const promise = checkGenerateCacheComponents(sessionId, state.tokensPath, true);');
-    expect(source).toContain('await cachePromise;');
+    expect(scopeGateBlock).toContain('void runGenerate(sid, state.tokensPath, acceptedCount);');
+    expect(scopeGateBlock).toContain("step: 'generating'");
+    expect(source).not.toContain('--cache-status');
+    expect(source).not.toContain('finishCachedGeneration');
+    expect(source).not.toContain('checkGenerateCache');
   });
 });
 
@@ -154,19 +95,8 @@ describe('wizard map-tokens step', () => {
         sessionId: 'generated-session',
         agent: 'claude',
         model: 'model-a',
-        noCache: true,
       }),
-    ).toEqual([
-      'map',
-      'tokens',
-      '--session',
-      'generated-session',
-      '--agent',
-      'claude',
-      '--model',
-      'model-a',
-      '--no-cache',
-    ]);
+    ).toEqual(['map', 'tokens', '--session', 'generated-session', '--agent', 'claude', '--model', 'model-a']);
   });
 
   it('can resolve defaults without invoking the agent', () => {

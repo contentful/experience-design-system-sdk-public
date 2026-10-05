@@ -437,7 +437,7 @@ Do not use agent SDKs or APIs — the import wizard invokes agents as subprocess
 
 ## The Import Command — Wizard
 
-`experiences import` requires an interactive terminal and has no headless mode. Its options are `--project`, `--tokens`, `--agent`, `--prompt <stage=value>` and `--no-cache`; `--model`, `--composition-map`, `--skip-map-tokens` and `--raw-tokens` were removed.
+`experiences import` requires an interactive terminal and has no headless mode. Its options are `--project`, `--tokens`, `--agent` and `--prompt <stage=value>`; `--model`, `--composition-map`, `--skip-map-tokens`, `--raw-tokens` and `--no-cache` were removed.
 
 `src/import/tui/WizardApp.tsx` renders a full-screen Ink TUI driven by an explicit step machine:
 
@@ -451,7 +451,7 @@ welcome → token-input → path-validation → credentials → extracting (sele
 
 A single human review gate (`scope-gate`) precedes generation. The final-review step edits names, `$description`, `$default`, `$allowedComponents` and `$values` inline with rationale and source panels, and re-runs the live preview after each save. After final-review the wizard always saves one combined `components.json` CDF, then previews and pushes it unless credentials were skipped.
 
-`--no-cache` bypasses the extract, selection and generation caches and is forwarded to the internal stages.
+The CLI keeps no result cache. Every run re-extracts the project, re-runs composition mapping and selection, and regenerates every accepted component, so a rerun never replays earlier agent output.
 
 ### Run records
 

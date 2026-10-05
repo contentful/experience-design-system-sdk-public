@@ -1,6 +1,4 @@
-# @contentful/experience-design-system-cli-legacy
-
-> **Deprecated and internal.** This package is not published. It is bundled into `@contentful/experience-design-system-cli`, which forwards the `apply`, `setup`, `doctor`, `print` and `map` commands to it until they are ported. Install and use `@contentful/experience-design-system-cli` instead.
+# @contentful/experience-design-system-cli
 
 CLI for extracting, reviewing, generating, validating, and pushing Contentful Experience Design System component definitions into Experiences.
 
@@ -24,7 +22,7 @@ The CLI has two primary workflows:
 
 2. **`experiences apply <file>`** — applies a CDF file of component and token definitions to Contentful.
 
-`experiences setup` and `experiences doctor` configure and check your environment. `experiences build` rebuilds a local checkout and re-links the binaries.
+`experiences setup` and `experiences doctor` configure and check your environment. `experiences importv2` launches the newer v2 TUI, and `experiences build` rebuilds a local checkout and re-links the binaries.
 
 The import wizard owns extraction, selection, generation, validation, and apply orchestration internally; those implementation stages are not exposed as public commands. Hidden internal commands (`__extract`, `__generate`, `map tokens`, `print`) are what the wizard runs in subprocesses.
 
@@ -147,9 +145,8 @@ Custom `.md` skill prompt paths can be saved via `experiences setup`; the CLI em
 | `--tokens <path>`        | —                         | Raw token source file (SCSS, CSS variables, JS/TS, Style Dictionary, …) to classify and import alongside components; skips the interactive token prompt             |
 | `--agent <name>`         | saved by setup / `claude` | Coding agent, with an optional model as `agent:model` or `"agent model"`                                                                                            |
 | `--prompt <stage=value>` | —                         | Override a stage prompt (repeatable); value is a file path or literal text, e.g. `--prompt select=./p.md`. Stages used today: `composition`, `select`, `map-tokens` |
-| `--no-cache`             | cache on                  | Re-run all steps instead of reusing cached results                                                                                                                  |
 
-`--model`, `--composition-map`, `--skip-map-tokens` and `--raw-tokens` were removed from `import`. Unknown flags are rejected. Pass the model through `--agent` instead, and use `--tokens` for a token file.
+`--model`, `--composition-map`, `--skip-map-tokens`, `--raw-tokens` and `--no-cache` were removed from `import`. The CLI keeps no result cache, so every run does each step again. Unknown flags are rejected. Pass the model through `--agent` instead, and use `--tokens` for a token file.
 
 ### Choosing the agent and model
 

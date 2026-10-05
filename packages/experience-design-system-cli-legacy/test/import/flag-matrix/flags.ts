@@ -26,11 +26,6 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     incompatibleWith: [],
   },
   {
-    flag: '--no-cache',
-    kind: 'boolean',
-    incompatibleWith: [],
-  },
-  {
     flag: '--prompt',
     kind: 'value',
     sampleValue: 'composition=./p.md',
