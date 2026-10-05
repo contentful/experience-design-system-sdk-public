@@ -1,4 +1,6 @@
-# @contentful/experience-design-system-cli
+# @contentful/experience-design-system-cli-legacy
+
+> **Deprecated and internal.** This package is not published. It is bundled into `@contentful/experience-design-system-cli`, which forwards the `apply`, `setup`, `doctor`, `print` and `map` commands to it until they are ported. Install and use `@contentful/experience-design-system-cli` instead.
 
 CLI for extracting, reviewing, generating, validating, and pushing Contentful Experience Design System component definitions into Experiences.
 
@@ -22,7 +24,7 @@ The CLI has two primary workflows:
 
 2. **`experiences apply <file>`** — applies a CDF file of component and token definitions to Contentful.
 
-`experiences setup` and `experiences doctor` configure and check your environment. `experiences importv2` launches the newer v2 TUI, and `experiences build` rebuilds a local checkout and re-links the binaries.
+`experiences setup` and `experiences doctor` configure and check your environment. `experiences build` rebuilds a local checkout and re-links the binaries.
 
 The import wizard owns extraction, selection, generation, validation, and apply orchestration internally; those implementation stages are not exposed as public commands. Hidden internal commands (`__extract`, `__generate`, `map tokens`, `print`) are what the wizard runs in subprocesses.
 

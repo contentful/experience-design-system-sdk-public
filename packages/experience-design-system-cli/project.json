@@ -1,7 +1,7 @@
 {
   "name": "experience-design-system-cli",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
-  "sourceRoot": "packages/experience-design-system-cli/src",
+  "sourceRoot": "packages/experience-design-system-cli",
   "projectType": "application",
   "tags": [],
   "targets": {
@@ -9,26 +9,43 @@
       "executor": "nx:run-commands",
       "outputs": [
         "{workspaceRoot}/packages/experience-design-system-cli/dist",
-        "{workspaceRoot}/packages/experience-design-system-cli/skills"
+        "{workspaceRoot}/packages/experience-design-system-cli/legacy"
       ],
       "options": {
         "parallel": false,
         "commands": [
           "rm -rf packages/experience-design-system-cli/dist",
-          "rm -rf packages/experience-design-system-cli/skills",
-          "cp -r packages/experience-design-system-generation/skills packages/experience-design-system-cli/skills",
-          "nx run experience-design-system-cli:compile"
+          "rm -rf packages/experience-design-system-cli/legacy",
+          "nx run experience-design-system-cli:compile",
+          "nx run experience-design-system-cli:compile-app",
+          "nx run experience-design-system-cli:copy-legacy"
         ]
-      },
-      "dependsOn": ["^build"]
+      }
     },
     "compile": {
       "executor": "@nx/esbuild:esbuild",
       "outputs": ["{options.outputPath}"],
       "options": {
         "outputPath": "packages/experience-design-system-cli/dist",
-        "outputFileName": "src/index.js",
-        "main": "packages/experience-design-system-cli/src/index.ts",
+        "outputFileName": "index.js",
+        "main": "packages/experience-design-system-cli/index.ts",
+        "tsConfig": "packages/experience-design-system-cli/tsconfig.build.json",
+        "platform": "node",
+        "format": ["esm"],
+        "bundle": true,
+        "thirdParty": false,
+        "declaration": false,
+        "assets": [],
+        "external": ["commander", "ink", "react"]
+      }
+    },
+    "compile-app": {
+      "executor": "@nx/esbuild:esbuild",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "packages/experience-design-system-cli/dist",
+        "outputFileName": "app.js",
+        "main": "packages/experience-design-system-cli/app.tsx",
         "tsConfig": "packages/experience-design-system-cli/tsconfig.build.json",
         "platform": "node",
         "format": ["esm"],
@@ -36,37 +53,15 @@
         "thirdParty": false,
         "declaration": true,
         "declarationRootDir": "packages/experience-design-system-cli",
+        "deleteOutputPath": false,
         "assets": [],
-        "external": [
-          "commander",
-          "ink",
-          "react",
-          "react-devtools-core",
-          "@segment/analytics-node",
-          "@contentful/experience-design-system-cli-v2",
-          "@contentful/experience-design-system-cli-v2/app",
-          "@contentful/experience-design-system-types",
-          "@hey-api/client-fetch",
-          "@vue/compiler-sfc",
-          "svelte",
-          "ts-morph",
-          "typescript",
-          "node:sqlite"
-        ]
+        "external": ["commander", "ink", "react"]
       }
     },
     "test": {
       "executor": "nx:run-commands",
       "options": {
         "command": "vitest run",
-        "cwd": "packages/experience-design-system-cli"
-      },
-      "dependsOn": ["build"]
-    },
-    "test:watch": {
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "vitest",
         "cwd": "packages/experience-design-system-cli"
       },
       "dependsOn": ["build"]
@@ -98,7 +93,7 @@
     "clean": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "rm -rf dist",
+        "command": "rm -rf dist legacy",
         "cwd": "packages/experience-design-system-cli"
       }
     },
@@ -108,6 +103,18 @@
         "packageRoot": "packages/experience-design-system-cli"
       },
       "dependsOn": ["build"]
+    },
+    "copy-legacy": {
+      "executor": "nx:run-commands",
+      "options": {
+        "parallel": false,
+        "commands": [
+          "mkdir -p packages/experience-design-system-cli/legacy",
+          "cp -r packages/experience-design-system-cli-legacy/bin packages/experience-design-system-cli-legacy/dist packages/experience-design-system-cli-legacy/prompts packages/experience-design-system-cli-legacy/skills packages/experience-design-system-cli/legacy/",
+          "cp packages/experience-design-system-cli/package.json packages/experience-design-system-cli/legacy/package.json"
+        ]
+      }
     }
-  }
+  },
+  "implicitDependencies": ["experience-design-system-cli-legacy"]
 }

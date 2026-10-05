@@ -6,8 +6,8 @@ This file tells AI coding agents what they need to know to be productive in this
 
 Nx monorepo with six packages:
 
-- `packages/experience-design-system-cli` — the CLI and the import wizard TUI (the main package, "v1")
-- `packages/experience-design-system-cli-v2` — the newer Ink TUI. v1 depends on it (`workspace:*`) and loads it for `experiences importv2` through the `./app` export; v2 must never import v1 code
+- `packages/experience-design-system-cli` — the published CLI (`@contentful/experience-design-system-cli`, bins `experiences`, `exo`, `experience-design-system-cli`). An Ink TUI; `experiences import` and bare `experiences` open it. It forwards `apply`, `setup`, `doctor`, `print`, `map` and `__*` to the bundled legacy CLI
+- `packages/experience-design-system-cli-legacy` — the previous CLI and import wizard (`@contentful/experience-design-system-cli-legacy`). Private and never published; its build output is copied into `packages/experience-design-system-cli/legacy/` and spawned from there. It is being ported into the new CLI and will then be deleted
 - `packages/experience-design-system-extraction` — component extraction engine (ts-morph, framework parsers); a runtime dependency of the CLI
 - `packages/experience-design-system-generation` — agent-invocation and skill-prompt engine; used internally by the import wizard
 - `packages/experience-design-system-client` — generated API client for the Experience Design System Integrations API (from `openapi.json` via `@hey-api/openapi-ts`); a runtime dependency of the CLI's `apply` command
@@ -17,9 +17,11 @@ The CLI extracts React/Vue/Astro/Stencil/Web Component definitions from customer
 
 The supported import pipeline is internal to `experiences import`: **extract → selection agent → internal generation → validate → apply.** When a raw token source is supplied (`--tokens` or the token-input step), the wizard performs token generation internally before component extraction and generation, then runs token mapping after generation. The extraction and selection stages are implementation modules, not public commands.
 
-Public commands today: `import`, `apply <file>`, `setup`, `doctor`, `build`, `importv2`. Hidden internal commands the wizard spawns: `__extract`, `__generate`, `map tokens`, `print`. The former `runs`, `session` and `analyze` commands no longer exist.
+Unless stated otherwise, `src/...` paths below are relative to `packages/experience-design-system-cli-legacy`.
 
-### Wizard step machine (`src/import/tui/`)
+Legacy commands: `import`, `apply <file>`, `setup`, `doctor`, `build`. Hidden internal commands the wizard spawns: `__extract`, `__generate`, `map tokens`, `print`. The former `runs`, `session` and `analyze` commands no longer exist.
+
+### Wizard step machine (`packages/experience-design-system-cli-legacy/src/import/tui/`)
 
 ```
 welcome → token-input → path-validation → credentials → extracting (selection agent runs here)
@@ -49,15 +51,15 @@ pnpm test           # test all packages
 pnpm lint           # lint all packages
 
 # Single package (preferred when iterating)
-pnpm -F @contentful/experience-design-system-cli build
-pnpm -F @contentful/experience-design-system-cli test
-pnpm -F @contentful/experience-design-system-cli typecheck
+pnpm -F @contentful/experience-design-system-cli build            # the published CLI (also builds legacy and copies it in)
+pnpm -F @contentful/experience-design-system-cli-legacy test
+pnpm -F @contentful/experience-design-system-cli-legacy typecheck
 ```
 
-The CLI's compiled output lands in `packages/experience-design-system-cli/dist/src/`, not `dist/`. This is because `@nx/js:tsc` preserves the `src/` prefix. If you see Nx cache issues after structural changes, run:
+The legacy CLI's compiled output lands in `packages/experience-design-system-cli-legacy/dist/src/`, not `dist/`. This is because `@nx/js:tsc` preserves the `src/` prefix. If you see Nx cache issues after structural changes, run:
 
 ```bash
-pnpm -F @contentful/experience-design-system-cli clean && pnpm build
+pnpm -F @contentful/experience-design-system-cli-legacy clean && pnpm build
 ```
 
 ## TypeScript
@@ -152,7 +154,7 @@ The apply flow validates the target, builds a `ManifestPayload` through the shar
 
 `src/import/tui/WizardApp.tsx` is the import wizard. There is no headless mode: `experiences import` requires an interactive terminal. State transitions live in `wizard-state-transitions.ts`; the step components are in `src/import/tui/steps/`. `WizardApp` reads pipeline-DB state itself and passes it directly to the step components; `ScopeGateStep` and `GenerateReviewStep` each guard their own missing-session/empty-components case. `runLivePreview.ts` re-runs the diff after each FieldEditor save. Extraction and generation run as `__extract` and `__generate` subprocesses.
 
-The v2 TUI's Import option (`packages/experience-design-system-cli-v2/src/tui/import/`) currently spawns `experiences import` (`spawn-v1-import.ts`) rather than reimplementing the wizard.
+The new CLI's Import option (`packages/experience-design-system-cli/src/tui/import/`) spawns the bundled legacy `import` (`spawn-v1-import.ts`, `src/legacy/`) rather than reimplementing the wizard.
 
 ## TUI Components
 
@@ -162,7 +164,7 @@ All TUI components are standard React functional components rendered by Ink. The
 - `src/print/` — hidden `print` command and `validate` view
 - `src/apply/tui/` — `SummaryView`, `EntityDiffView`, `ServerApplyView`
 - `src/import/tui/` — the wizard: `WizardApp` and step components in `steps/` (`WelcomeStep`, `TokenInputStep`, `PathValidationStep`, `CredentialsStep`, `ScopeGateStep`, `GenerateReviewStep`, `WizardPreviewStep`, `PreviewValidationErrorStep`, `PushingStep`, `DoneStep`, `ErrorStep`, `GateStep`, `RunningStep`)
-- `packages/experience-design-system-cli-v2/src/tui/` — the v2 TUI; see `DSI_TUI_ARCHITECTURE.md` in that package
+- `packages/experience-design-system-cli/src/tui/` — the new CLI's TUI; see `DSI_TUI_ARCHITECTURE.md` in that package
 
 When writing TUI tests, use `ink-testing-library`. Set `NO_COLOR=1` in the environment before running tests to suppress ANSI escape codes. Strip ANSI before snapshot assertions if the test renders raw strings.
 

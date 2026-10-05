@@ -18,7 +18,12 @@ export interface NodeVersionCheck {
 
 export function checkNodeVersion(nodeVersion: string = process.versions.node): NodeVersionCheck {
   const major = Number.parseInt(nodeVersion.split('.')[0]!, 10);
-  return { passed: major >= REQUIRED_NODE_MAJOR, version: nodeVersion, major, required: REQUIRED_NODE_MAJOR };
+  return {
+    passed: major >= REQUIRED_NODE_MAJOR,
+    version: nodeVersion,
+    major,
+    required: REQUIRED_NODE_MAJOR,
+  };
 }
 
 /** Which Node version manager is available, so callers can offer the right fix. */
@@ -30,7 +35,10 @@ export interface NodeVersionManagers {
 
 export async function detectNodeVersionManagers(
   homeDir: string,
-  deps: { binaryExists: typeof binaryExists; pathExists: typeof pathExists } = { binaryExists, pathExists },
+  deps: { binaryExists: typeof binaryExists; pathExists: typeof pathExists } = {
+    binaryExists,
+    pathExists,
+  },
 ): Promise<NodeVersionManagers> {
   const nvmScript = join(homeDir, '.nvm', 'nvm.sh');
   return {
@@ -67,7 +75,9 @@ export async function checkPnpm(pkgRoot: string, deps: PnpmDeps = { binaryExists
   const detected = await detectPnpm(deps);
   if (detected.status !== 'ok') return detected;
 
-  const ping = await deps.run('pnpm', ['exec', 'node', '--version'], { cwd: pkgRoot });
+  const ping = await deps.run('pnpm', ['exec', 'node', '--version'], {
+    cwd: pkgRoot,
+  });
   if (ping.exitCode !== 0) return { status: 'unusable-in-repo', version: detected.version };
 
   return detected;
@@ -82,7 +92,9 @@ export async function installDependencies(
   repoRoot: string,
   deps: { run: typeof runSpawn } = { run: runSpawn },
 ): Promise<CommandCheck> {
-  const result = await deps.run('pnpm', ['install', '--frozen-lockfile'], { cwd: repoRoot });
+  const result = await deps.run('pnpm', ['install', '--frozen-lockfile'], {
+    cwd: repoRoot,
+  });
   return { passed: result.exitCode === 0, result };
 }
 
@@ -90,8 +102,12 @@ export async function buildCli(
   repoRoot: string,
   deps: { run: typeof runSpawn } = { run: runSpawn },
 ): Promise<CommandCheck> {
-  const result = await deps.run('pnpm', ['--filter', '@contentful/experience-design-system-cli', 'run', 'build'], {
-    cwd: repoRoot,
-  });
+  const result = await deps.run(
+    'pnpm',
+    ['--filter', '@contentful/experience-design-system-cli-legacy', 'run', 'build'],
+    {
+      cwd: repoRoot,
+    },
+  );
   return { passed: result.exitCode === 0, result };
 }
