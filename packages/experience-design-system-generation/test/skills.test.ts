@@ -178,3 +178,14 @@ describe('packaging', () => {
     expect(pkg.files).toContain('skills/');
   });
 });
+
+describe('debate-select.md', () => {
+  it('exists and requires role-matched evidence-bearing output', async () => {
+    const content = await readSkill('debate-select.md');
+    expect(content).toContain('FOR/AGAINST');
+    expect(content).toContain('exact disagreement');
+    expect(content).toContain('disagreement_id');
+    expect(content).toContain('evidence');
+    expect(content).toContain('Do not write files');
+  });
+});

@@ -28,7 +28,7 @@ export type {
 } from './types/tool-calls.js';
 
 // Prompt types
-export type { ComponentSourceRef, GeneratedCdf, Mode, PromptOptions, Skill } from './types/prompt.js';
+export type { ComponentSourceRef, DebateRole, GeneratedCdf, Mode, PromptOptions, Skill } from './types/prompt.js';
 
 // Generation endpoint (primary entry point)
 export { createGenerationEndpoint } from './controller/create-generation-endpoint.js';
