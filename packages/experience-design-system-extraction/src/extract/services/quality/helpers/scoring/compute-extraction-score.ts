@@ -1,6 +1,6 @@
 import type { RawComponentDefinition } from '../../../../types/component.js';
 import type { ExtractionConfidence, ExtractionScore, ExtractionScoreOptions } from '../../../../types/scoring.js';
-import { countExtractionIssues, mapIssueCountToConfidence } from './scoring-signals.js';
+import { countExtractionIssues, mapIssueCountToConfidence } from './collect-scoring-inputs.js';
 
 export type { ExtractionConfidence, ExtractionScore, ExtractionScoreOptions } from '../../../../types/scoring.js';
 

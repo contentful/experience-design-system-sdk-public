@@ -13,7 +13,7 @@ import {
   collectInfraPropNames,
   mapScoreToWrapperConfidence,
   dedupeStrings,
-} from './data-wrapper-signals.js';
+} from './detect-data-wrapper-patterns.js';
 
 export type { ComponentSourceInspection } from '../../../../types/source-inspection.js';
 

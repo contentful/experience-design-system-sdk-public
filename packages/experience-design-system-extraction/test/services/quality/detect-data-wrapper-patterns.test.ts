@@ -6,7 +6,7 @@ import {
   collectInfraPropNames,
   mapScoreToWrapperConfidence,
   dedupeStrings,
-} from '../../../src/extract/services/quality/helpers/inspection/data-wrapper-signals.js';
+} from '../../../src/extract/services/quality/helpers/inspection/detect-data-wrapper-patterns.js';
 
 function component(overrides: Partial<RawComponentDefinition> = {}): RawComponentDefinition {
   return {

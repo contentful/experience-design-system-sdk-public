@@ -4,7 +4,7 @@ import {
   isWidePrimitiveUnion,
   countExtractionIssues,
   mapIssueCountToConfidence,
-} from '../../../src/extract/services/quality/helpers/scoring/scoring-signals.js';
+} from '../../../src/extract/services/quality/helpers/scoring/collect-scoring-inputs.js';
 
 function component(overrides: Partial<RawComponentDefinition> = {}): RawComponentDefinition {
   return {
