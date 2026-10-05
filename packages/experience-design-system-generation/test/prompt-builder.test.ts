@@ -37,6 +37,18 @@ describe('buildPrompt', () => {
     expect(prompt).toContain('Button');
   });
 
+  it('injects advisory prop buckets when provided', async () => {
+    const prompt = await buildPrompt({
+      skill: 'components',
+      mode: 'autonomous',
+      rawComponentsInline: INLINE_COMPONENTS,
+      propBucketsInline: '{"component":"Card","customPropNames":["label"]}',
+      outDir: '/fake/out',
+    });
+    expect(prompt).toContain('Deterministic prop buckets (advisory evidence only');
+    expect(prompt).toContain('"customPropNames":["label"]');
+  });
+
   it('omits token sections when not provided', async () => {
     const prompt = await buildPrompt({
       skill: 'components',

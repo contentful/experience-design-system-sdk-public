@@ -24,6 +24,7 @@ export interface PromptOptions {
   skill: Skill;
   mode: Mode;
   rawComponentsInline?: string;
+  propBucketsInline?: string;
   rawTokensInline?: string;
   /** Original filename for raw tokens — used to set the correct code fence language. */
   rawTokensFilename?: string;
