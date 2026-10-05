@@ -9,7 +9,7 @@ import { execFile, spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import { buildRunTeaserLine } from './run-teaser.js';
 import { getDebugLogger } from '../../lib/debug-logger.js';
-import { startPushDebugRun } from '../../lib/push-debug-log.js';
+import { startPushDebugRun, summarizeCdf, summarizePreview, type PushDebugRun } from '../../lib/push-debug-log.js';
 import { readExperiencesCredentials, writeExperiencesCredentials } from '../../credentials-store.js';
 import { PathPrompt } from '../../runs/path-prompt.js';
 import { detectSaveConflict, buildTimestampedSubdir } from '../../runs/save-path-resolver.js';
@@ -416,6 +416,9 @@ export function WizardApp({
   // empty-but-present document → server deletes all. A ref (not state) so
   // the async preview/push closures see the confirmed value.
   const allowEmptyDeleteAllRef = useRef(false);
+
+  // One debug log covers a whole push: the preview, the confirmation and the apply.
+  const pushDebugRef = useRef<PushDebugRun | null>(null);
 
   const generateChildRef = useRef<import('node:child_process').ChildProcess | null>(null);
   const generationCachePreflightRef = useRef<{
@@ -1623,12 +1626,31 @@ export function WizardApp({
     cmaToken: string,
     host: string,
   ) => {
+    const resolvedHost = resolveWizardHost(host);
+    pushDebugRef.current?.finish({
+      outcome: 'superseded',
+      summary: 'A new push attempt started before this one finished.',
+    });
+    const pushDebug = startPushDebugRun({
+      space_id: spaceId,
+      environment_id: environmentId,
+      host: resolvedHost,
+      cma_token: cmaToken,
+      extract_session_id: extractSessionId,
+      tokens_file: tokensPath || null,
+      delete_everything_not_listed: allowEmptyDeleteAllRef.current,
+    });
+    pushDebugRef.current = pushDebug;
+
     if (shouldBypassPreview(state)) {
+      pushDebug.finish({
+        outcome: 'skipped',
+        summary: 'Credentials were skipped, so nothing is previewed or pushed. Files were saved only.',
+      });
       update(buildSkippedPreviewTransition());
       return;
     }
     update({ step: 'previewing' });
-    const resolvedHost = resolveWizardHost(host);
     try {
       const client = new ImportApiClient({
         cmaToken,
@@ -1636,6 +1658,7 @@ export function WizardApp({
         environmentId,
         host: resolvedHost,
       });
+      pushDebug.event('Preview started', { note: `POST ${resolvedHost}/…/design_systems/imports/preview` });
 
       let components: Array<{
         key: string;
@@ -1655,7 +1678,16 @@ export function WizardApp({
         tokens = await readTokensFromPath('tokens', tokensPath);
       }
       let cdf = buildCDF(components, toCDFTokens(tokens), { deleteAll: allowEmptyDeleteAllRef.current })!;
+      pushDebug.event('Built the CDF to send', {
+        note: `${summarizeCdf(cdf as Record<string, unknown>).length} entries`,
+        data: { entries: summarizeCdf(cdf as Record<string, unknown>), tokens_loaded: tokens.length },
+      });
       let preview = await client.previewImport(cdf);
+      pushDebug.event('Server previewed the CDF', {
+        note: 'what the server would create, change, leave alone or remove',
+        data: summarizePreview(preview),
+        requestId: client.getLastRequestId(),
+      });
 
       if (extractSessionId) {
         let needsRepreview = false;
@@ -1682,9 +1714,16 @@ export function WizardApp({
           }
 
           if (needsRepreview) {
+            pushDebug.event('Re-previewing', {
+              note: 'the server listed components as removed or changed that exist locally, so defaults were filled in',
+            });
             components = loadCDFComponents(db, extractSessionId);
             cdf = buildCDF(components, toCDFTokens(tokens), { deleteAll: allowEmptyDeleteAllRef.current })!;
             preview = await client.previewImport(cdf);
+            pushDebug.event('Server previewed the updated CDF', {
+              data: summarizePreview(preview),
+              requestId: client.getLastRequestId(),
+            });
           }
         } finally {
           db.close();
@@ -1692,6 +1731,12 @@ export function WizardApp({
       }
 
       if (isEmptyPreview(preview)) {
+        pushDebug.finish({
+          outcome: 'nothing-to-push',
+          summary:
+            'The server says every component and token in the CDF already matches what is in this space, so no apply request was sent. If the space looks empty, check that this is the space and environment you are viewing.',
+          details: { preview: summarizePreview(preview), request_id: client.getLastRequestId() },
+        });
         // No-op push: the accepted set already matches the target space, so
         // there is nothing to create/update/remove. Route to a terminal "done"
         // state rather than bouncing back to final-review — the review screen
@@ -1708,6 +1753,9 @@ export function WizardApp({
         });
         return;
       }
+      pushDebug.event('Waiting for confirmation', {
+        note: 'the preview shows changes, so the wizard asks before pushing',
+      });
       update({
         step: 'preview-gate',
         serverPreview: preview,
@@ -1716,6 +1764,17 @@ export function WizardApp({
         ...clearedValidationErrorState(),
       });
     } catch (e) {
+      pushDebug.finish({
+        outcome: 'preview-failed',
+        summary:
+          e instanceof ApiError
+            ? `The preview request was rejected with HTTP ${e.status}.`
+            : `The preview failed before the server answered: ${e instanceof Error ? e.message : String(e)}`,
+        details:
+          e instanceof ApiError
+            ? { status: e.status, body: (e.body ?? '').slice(0, 4000) }
+            : { error: e instanceof Error ? e.message : String(e) },
+      });
       if (e instanceof ApiError) {
         if (e.status === 401 || e.status === 403) {
           let bodyMsg = '';
@@ -1787,7 +1846,21 @@ export function WizardApp({
     acknowledgeBreakingChanges: boolean,
     preview?: ServerPreviewResponse | null,
   ) => {
+    const pushDebug =
+      pushDebugRef.current ??
+      startPushDebugRun({
+        space_id: spaceId,
+        environment_id: environmentId,
+        host: resolveWizardHost(host),
+        cma_token: cmaToken,
+      });
+    pushDebugRef.current = pushDebug;
+
     if (shouldRefusePush(state)) {
+      pushDebug.finish({
+        outcome: 'skipped',
+        summary: 'Credentials were skipped, so the push was refused. Files were saved only.',
+      });
       update(buildSkippedPushTransition());
       return;
     }
@@ -1799,6 +1872,11 @@ export function WizardApp({
       const hasTokenChanges =
         preview.tokens.new.length > 0 || preview.tokens.changed.length > 0 || preview.tokens.removed.length > 0;
       if (!hasComponentChanges && !hasTokenChanges) {
+        pushDebug.finish({
+          outcome: 'nothing-to-push',
+          summary: 'The preview had no new, changed or removed items, so no apply request was sent.',
+          details: { preview: summarizePreview(preview) },
+        });
         update({
           step: 'done',
           pushResult: {
@@ -1812,6 +1890,11 @@ export function WizardApp({
 
     const cycles = detectSlotCycles(extractComponents(cdf));
     if (cycles.length > 0) {
+      pushDebug.finish({
+        outcome: 'failed',
+        summary: 'The push was blocked locally because components slot each other in a cycle.',
+        details: { cycles: formatSlotCycleReport(cycles) },
+      });
       update({
         step: 'error',
         errorStep: 'apply',
@@ -1823,6 +1906,11 @@ export function WizardApp({
 
     const unresolvedSlotReferences = validateSlotReferences(extractComponents(cdf));
     if (unresolvedSlotReferences.length > 0) {
+      pushDebug.finish({
+        outcome: 'failed',
+        summary: 'The push was blocked locally because a slot refers to a component that is not in the CDF.',
+        details: { unresolved: formatUnresolvedSlotReferences(unresolvedSlotReferences) },
+      });
       update({
         step: 'error',
         errorStep: 'apply',
@@ -1833,29 +1921,13 @@ export function WizardApp({
     }
 
     update({ step: 'pushing', pushProgress: null, errorAllowBreakingChangeAcknowledgment: false });
-    const cdfEntries = Object.entries(cdf).filter(([key]) => !key.startsWith('$') && key !== 'allowDeletions');
-    const pushDebug = startPushDebugRun({
-      space_id: spaceId,
-      environment_id: environmentId,
-      host: resolveWizardHost(host),
-      cma_token: cmaToken,
-      acknowledge_breaking_changes: acknowledgeBreakingChanges,
-      cdf_keys: cdfEntries.map(([key]) => key),
-      cdf_entry_count: cdfEntries.length,
-      preview: preview
-        ? {
-            components: {
-              new: preview.components.new.length,
-              changed: preview.components.changed.length,
-              removed: preview.components.removed.length,
-            },
-            tokens: {
-              new: preview.tokens.new.length,
-              changed: preview.tokens.changed.length,
-              removed: preview.tokens.removed.length,
-            },
-          }
-        : null,
+    pushDebug.event('Apply started', {
+      note: `POST ${resolveWizardHost(host)}/…/design_systems/imports/apply`,
+      data: {
+        acknowledge_breaking_changes: acknowledgeBreakingChanges,
+        sending: summarizeCdf(cdf as Record<string, unknown>),
+        expected: preview ? summarizePreview(preview) : null,
+      },
     });
     try {
       const resolvedHost = resolveWizardHost(host);
@@ -1866,6 +1938,11 @@ export function WizardApp({
         host: resolvedHost,
       });
       let operation = await client.applyImport(cdf, { acknowledgeBreakingChanges });
+      pushDebug.event('Server accepted the apply request', {
+        note: `operation ${operation.sys.id} is ${operation.sys.status}`,
+        data: { operation_id: operation.sys.id, status: operation.sys.status, summary: operation.summary },
+        requestId: client.getLastRequestId(),
+      });
       try {
         logStep({
           applyResponse: {
@@ -1882,9 +1959,15 @@ export function WizardApp({
       });
 
       let pollCount = 0;
+      let lastPolledStatus = '';
       operation = await client.pollOperation(operation.sys.id, {
         onProgress: (op) => {
           pollCount++;
+          const polled = `${op.sys.status} ${op.summary ? `${op.summary.total - op.summary.pending}/${op.summary.total}` : ''}`;
+          if (polled !== lastPolledStatus) {
+            lastPolledStatus = polled;
+            pushDebug.event('Operation status changed', { note: polled.trim(), requestId: client.getLastRequestId() });
+          }
           const s = op.summary;
           if (s) {
             const done = s.total - s.pending;
@@ -1993,27 +2076,33 @@ export function WizardApp({
           );
         }
       }
-      pushDebug.finish(
-        {
+      const failedItems = items.filter((item) => item.status === 'failed');
+      const pushedCount = items.filter((item) => item.status === 'succeeded').length;
+      pushDebug.finish({
+        outcome: pushSucceeded ? 'pushed' : pushedCount > 0 ? 'partial' : 'failed',
+        summary: pushSucceeded
+          ? items.length > 0
+            ? `The server reports ${pushedCount} of ${items.length} items applied.`
+            : `The operation finished as ${operation.sys.status}, but the server returned no per-item results, so the counts come from the preview.`
+          : `The operation finished as ${operation.sys.status}; ${failedItems.length} item(s) failed.`,
+        details: {
           operation_id: operation.sys.id,
           operation_status: operation.sys.status,
-          summary: operation.summary,
-          item_count: items.length,
+          server_summary: operation.summary,
           items: items.map((item) => ({
-            entityType: item.entityType,
+            type: item.entityType,
             id: item.id,
             action: item.action,
             status: item.status,
             ...(item.error ? { error: formatEdsiError(item.error) } : {}),
           })),
-          push_result: {
+          shown_to_user: {
             component_types: pushResult.componentTypes,
             design_tokens: pushResult.designTokens,
           },
-          succeeded: pushSucceeded,
+          request_id: client.getLastRequestId(),
         },
-        pushSucceeded ? 'success' : 'error',
-      );
+      });
       update({ step: 'done', pushResult });
     } catch (e) {
       let msg: string;
@@ -2024,13 +2113,17 @@ export function WizardApp({
       } else {
         msg = 'Push failed';
       }
-      pushDebug.finish(
-        {
-          error: msg,
-          ...(e instanceof ApiError ? { status: e.status, body: (e.body ?? '').slice(0, 2000) } : {}),
+      pushDebug.finish({
+        outcome: 'failed',
+        summary:
+          e instanceof ApiError
+            ? `The apply request failed with HTTP ${e.status}.`
+            : `The apply request failed before the server answered: ${msg}`,
+        details: {
+          message: msg,
+          ...(e instanceof ApiError ? { status: e.status, body: (e.body ?? '').slice(0, 4000) } : {}),
         },
-        'error',
-      );
+      });
       update({
         step: 'error',
         errorStep: 'apply',
