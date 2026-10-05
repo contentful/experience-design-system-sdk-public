@@ -4,15 +4,7 @@ import tseslint from "typescript-eslint";
 
 export default defineConfig([
 	{
-		ignores: [
-			"**/node_modules/**",
-			"**/dist/**",
-			"**/.nx/**",
-			"**/coverage/**",
-			"eslint.config.ts",
-			"test/fixtures/**",
-			"test/analyze/extract/fixtures/**",
-		],
+		ignores: ["**/node_modules/**", "**/dist/**", "**/.nx/**", "**/coverage/**", "eslint.config.ts"],
 	},
 	...tseslint.configs.recommended,
 	eslintPluginPrettierRecommended,
@@ -34,13 +26,6 @@ export default defineConfig([
 				},
 			],
 			"prettier/prettier": ["error", { singleQuote: true, printWidth: 120 }],
-		},
-	},
-	{
-		files: ["test/**/*.ts", "src/**/*.test.ts"],
-		rules: {
-			"@typescript-eslint/no-explicit-any": "off",
-			"no-console": "off",
 		},
 	},
 ]);

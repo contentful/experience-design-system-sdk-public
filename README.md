@@ -69,11 +69,10 @@ To apply a checked-in CDF file without the wizard, use `experiences apply <file>
 
 ## Packages
 
-| Package                                                                                    | Description                                                                               |
-| ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
-| [`@contentful/experience-design-system-cli`](packages/experience-design-system-cli/)       | The CLI + interactive wizard — review, generate, validate, and push component definitions |
-| [`@contentful/experience-design-system-cli-v2`](packages/experience-design-system-cli-v2/) | The newer Ink TUI, launched with `experiences importv2`                                   |
-| [`@contentful/experience-design-system-types`](packages/experience-design-system-types/)   | Shared types and schemas for the CDF and DTCG data formats                                |
+| Package                                                                                  | Description                                                                                       |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| [`@contentful/experience-design-system-cli`](packages/experience-design-system-cli/)     | The CLI: interactive TUI and wizard to review, generate, validate, and push component definitions |
+| [`@contentful/experience-design-system-types`](packages/experience-design-system-types/) | Shared types and schemas for the CDF and DTCG data formats                                        |
 
 ## Command Reference
 
@@ -85,5 +84,3 @@ Full documentation for every flag and every subcommand lives in [`packages/exper
 | `experiences doctor`       | Health check — verify Node version, credentials, and agent binaries      |
 | `experiences import`       | Run the interactive wizard (extract → select → generate → review → push) |
 | `experiences apply <file>` | Write component types and design tokens from one CDF file to Contentful  |
-| `experiences build`        | Rebuild a local checkout and re-link the binaries                        |
-| `experiences importv2`     | Launch the v2 TUI                                                        |

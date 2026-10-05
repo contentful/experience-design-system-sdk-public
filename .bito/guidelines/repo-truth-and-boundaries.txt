@@ -11,7 +11,7 @@ the change matches the documented intent.
 - If CI or another required check already enforces a merge rule, do not ask
   for duplicate PR template sections or manual checklists.
 - For any change to the React extractor
-  (packages/experience-design-system-cli/src/analyze/extract/react.ts), check
+  (packages/experience-design-system-extraction/src/extract/react.ts), check
   whether AGENTS.md's "DOM prop inflation" guidance was considered. If the
   change adds a new extraction path that could inflate prop counts, flag it.
 - Distinguish the current shipped API surface (RawComponentDefinition, CDFFile,
@@ -25,6 +25,6 @@ Key documentation to reference:
   session DB schema
 - AGENTS.md — sharp edges, invariants, gotchas the agents must know
 - CONTRIBUTING.md — commit conventions, CI pipeline, release process
-- packages/experience-design-system-cli/README.md — full CLI command docs
-- packages/experience-design-system-cli/skills/*.md — agent skill instructions
+- packages/experience-design-system-cli-legacy/README.md — full CLI command docs
+- packages/experience-design-system-generation/skills/*.md — agent skill instructions
   shipped with the CLI; changes here affect downstream agent behavior

@@ -69,7 +69,8 @@
   ],
   "release": {
     "projects": [
-      "packages/*"
+      "packages/*",
+      "!packages/experience-design-system-cli-legacy"
     ],
     "changelog": {
       "workspaceChangelog": false,
