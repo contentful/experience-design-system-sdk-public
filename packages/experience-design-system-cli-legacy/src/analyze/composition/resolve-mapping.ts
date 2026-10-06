@@ -4,6 +4,7 @@ import { mergeEdges, type EdgeConflict } from './merge-edges.js';
 import { parseMapEdges } from './parse-map-edges.js';
 import { applyMapping } from './apply-mapping.js';
 import { loadPrompt } from './prompt-loader.js';
+import { getDebugLogger } from '../../lib/debug-logger.js';
 import type { SourceCallSiteEvidence, SourceCallSiteRejection } from './source-call-site-evidence.js';
 
 export type ResolveMappingResult = {
@@ -95,6 +96,22 @@ export async function resolveMapping(input: {
   const coveredParents = new Set(collected.map((e) => e.parent));
   const residueParents = input.components.map((c) => c.name).filter((n) => !coveredParents.has(n));
 
+  const debug = getDebugLogger();
+  const countByProvenance = (edges: readonly CompositionEdge[]): Record<string, number> => {
+    const counts: Record<string, number> = {};
+    for (const edge of edges) counts[edge.provenance] = (counts[edge.provenance] ?? 0) + 1;
+    return counts;
+  };
+  debug.event('analyze', 'composition.pre-agent', {
+    edgeCountsByProvenance: countByProvenance(collected),
+    coveredParents: [...coveredParents].sort(),
+    residueParents,
+    forceAgent: input.forceAgent === true,
+    candidateFileCount: input.files.length,
+    sourceCallSiteAccepted: input.sourceCallSiteEvidence?.length ?? 0,
+    sourceCallSiteRejected: input.sourceCallSiteRejections?.length ?? 0,
+  });
+
   // Rank 7 — agent. Runs when enabled AND (forced OR there is residue).
   const shouldRunAgent = input.forceAgent || (residueParents.length > 0 && input.files.length > 0);
   if (shouldRunAgent) {
@@ -103,11 +120,29 @@ export async function resolveMapping(input: {
       : defaultPrompt(input.files, [...componentNames], input.promptOverride, input.sourceCallSiteEvidence ?? []);
     const raw = (await input.runAgentFn({ prompt, files: input.files })) ?? '';
     const parsed = parseMapEdges(raw, { componentNames, sourceCallSiteEvidence: input.sourceCallSiteEvidence });
+    debug.event('analyze', 'composition.agent-edges', {
+      reason: input.forceAgent ? 'forced' : 'residue',
+      rawOutputLength: raw.length,
+      acceptedEdges: parsed.edges.map((edge) => ({ parent: edge.parent, child: edge.child, slot: edge.slot ?? null })),
+      warnings: parsed.warnings,
+    });
     collected.push(...parsed.edges);
     agentWarnings.push(...parsed.warnings);
+  } else {
+    debug.event('analyze', 'composition.agent-skipped', { residueParents, fileCount: input.files.length });
   }
 
   const merged = mergeEdges(collected);
+  debug.event('analyze', 'composition.merged', {
+    edgeCountsByProvenance: countByProvenance(merged.edges),
+    conflicts: merged.conflicts,
+    edges: merged.edges.map((edge) => ({
+      parent: edge.parent,
+      child: edge.child,
+      slot: edge.slot ?? null,
+      provenance: edge.provenance,
+    })),
+  });
 
   // Apply the merged edges onto components whose allowedComponents are cleared,
   // so the ranked merge is authoritative.
@@ -120,6 +155,14 @@ export async function resolveMapping(input: {
     }),
   }));
   const applied = applyMapping(base, merged.edges);
+  debug.event('analyze', 'composition.applied', {
+    slots: applied.components.flatMap((component) =>
+      component.slots
+        .filter((slot) => (slot.allowedComponents?.length ?? 0) > 0)
+        .map((slot) => ({ component: component.name, slot: slot.name, allowedComponents: slot.allowedComponents })),
+    ),
+    warnings: applied.warnings,
+  });
 
   return {
     components: applied.components,
