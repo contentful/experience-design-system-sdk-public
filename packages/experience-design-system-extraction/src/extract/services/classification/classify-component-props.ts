@@ -7,7 +7,6 @@ import {
   isNumberType,
   isComplexType,
 } from './helpers/check-prop-types.js';
-import { isDomPassThroughProp } from './helpers/detect-dom-props.js';
 
 export type { PreClassification } from '../../types/classification.js';
 
@@ -40,18 +39,6 @@ export function preClassifyProp(prop: RawPropDefinition): PreClassification | un
 
   // Rule 5: Dispatch/setter
   if (type.includes('Dispatch<') || type.includes('SetStateAction')) {
-    return { category: 'exclude' };
-  }
-
-  // Rule 6: DOM / a11y / framework pass-through props
-  if (isDomPassThroughProp(name)) {
-    return { category: 'exclude' };
-  }
-
-  // `name` is overloaded: form controls forward it to the DOM, while icons,
-  // flags, and animations often use it as an authorable semantic selector.
-  // Exclude only when the extractor retained concrete DOM provenance.
-  if (name === 'name' && prop.domAttribute) {
     return { category: 'exclude' };
   }
 
@@ -146,24 +133,15 @@ export function preClassifyComponent(component: RawComponentDefinition): RawComp
       return [];
     }
 
-    // Provenance is extraction-only evidence. Do not add it to the payload
-    // presented to downstream agents.
-    const { domAttribute: _domAttribute, ...authorableProp } = prop;
-
     if (prop.category) {
-      return [authorableProp];
+      return [prop];
     }
 
     if (!result) {
-      return [authorableProp];
+      return [prop];
     }
 
-    return [
-      {
-        ...authorableProp,
-        category: result.category as 'content' | 'design' | 'state',
-      },
-    ];
+    return [{ ...prop, category: result.category as 'content' | 'design' | 'state' }];
   });
 
   return { ...component, props };

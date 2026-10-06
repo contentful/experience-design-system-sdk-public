@@ -19,6 +19,8 @@ export type {
   RejectComponentCall,
   SelectComponentCall,
   SelectToolCall,
+  SelectionSlotEvidence,
+  SelectionSlotEvidenceCitation,
   SetGroupCall,
   SetTokenCall,
   ToolCall,

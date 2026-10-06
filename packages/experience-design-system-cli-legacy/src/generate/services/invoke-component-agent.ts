@@ -1,5 +1,6 @@
 import { buildPrompt, describeAgentFailure, parseToolCallLines } from '@contentful/experience-design-system-generation';
 import type { AgentInvoker, AgentName } from '@contentful/experience-design-system-generation';
+import { bucketComponentProps } from '@contentful/experience-design-system-extraction';
 import type { RawComponentDefinition } from '../../types.js';
 import {
   applyToolCalls,
@@ -8,11 +9,13 @@ import {
   loadComponentSourceRef,
   renameEmptySlots,
   storeCache,
+  stripPropProvenance,
 } from '../../session/db.js';
 import type { openPipelineDb } from '../../session/db.js';
 import type { ExistingContentfulEntities } from '../../helpers/fetch-existing-contentful-entities.js';
 import { summarizeForGenerateAgent } from '../../helpers/summarize-existing-contentful-entities.js';
 import { invokeAgentWithOutput } from '../../lib/agent-output.js';
+import { getDebugLogger } from '../../lib/debug-logger.js';
 import { c } from '../../output/format.js';
 import { normalizeComponentForCache } from '../helpers/normalize-component-for-cache.js';
 import { resolveComponentCache } from './resolve-component-cache.js';
@@ -149,13 +152,16 @@ export async function invokeComponentAgent(
     }
   }
 
+  const componentBuckets = bucketComponentProps(component);
+  getDebugLogger().event('analyze', 'prop-buckets.generate', { ...componentBuckets });
+
   const rawComponentsInline = JSON.stringify(
     [
       {
         name: component.name,
         source: component.source,
         framework: component.framework,
-        props: component.props,
+        props: component.props.map(stripPropProvenance),
         slots: effectiveSlots,
       },
     ],
@@ -175,6 +181,7 @@ export async function invokeComponentAgent(
     skill: 'components',
     mode: 'autonomous',
     rawComponentsInline,
+    propBucketsInline: JSON.stringify(componentBuckets),
     tokensInline,
     tokenMapInline,
     outDir: process.cwd(),

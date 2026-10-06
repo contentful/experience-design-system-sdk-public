@@ -1,3 +1,4 @@
+import { bucketComponentsProps } from '@contentful/experience-design-system-extraction';
 import {
   buildPrompt,
   createLocalCliAgentInvoker,
@@ -13,8 +14,11 @@ import {
   lookupSelectCache,
   openPipelineDb,
   storeSelectCache,
+  stripPropProvenance,
 } from '../../session/db.js';
 import { hashPromptForSkill } from '../../session/cache-keys.js';
+
+const SELECT_PAYLOAD_FORMAT = 'prop-buckets-v1';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 5 * 60 * 1000);
 
@@ -35,7 +39,7 @@ export async function runSelectionAgent(options: {
     options.agent,
     options.model,
     options.promptPath,
-    [],
+    [SELECT_PAYLOAD_FORMAT],
     options.promptText,
   );
   try {
@@ -66,10 +70,20 @@ export async function runSelectionAgent(options: {
       onDebugEvent: (name, payload) => getDebugLogger().event('agent', name, payload),
     });
 
+    const selectBuckets = bucketComponentsProps(componentsToRun);
+    for (const assignment of selectBuckets) {
+      getDebugLogger().event('analyze', 'prop-buckets.select', { ...assignment });
+    }
+
     const prompt = await buildPrompt({
       skill: 'select',
       mode: 'autonomous',
-      rawComponentsInline: JSON.stringify(componentsToRun, null, 2),
+      rawComponentsInline: JSON.stringify(
+        componentsToRun.map((component) => ({ ...component, props: component.props.map(stripPropProvenance) })),
+        null,
+        2,
+      ),
+      propBucketsInline: JSON.stringify(selectBuckets),
       outDir: process.cwd(),
       ...(options.promptText !== undefined ? { skillContentOverride: options.promptText } : {}),
       ...(options.promptText === undefined && options.promptPath ? { skillPathOverride: options.promptPath } : {}),

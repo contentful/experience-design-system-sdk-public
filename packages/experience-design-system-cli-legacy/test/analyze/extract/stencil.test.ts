@@ -68,8 +68,12 @@ describe('StencilComponentExtractor', () => {
 
     expect(ionInput.props.find((prop) => prop.name === 'name')?.domAttribute).toBe(true);
     expect(pInputEmail.props.find((prop) => prop.name === 'name')?.domAttribute).toBe(true);
-    expect(preClassifyComponent(ionInput).props.find((prop) => prop.name === 'name')).toBeUndefined();
-    expect(preClassifyComponent(pInputEmail).props.find((prop) => prop.name === 'name')).toBeUndefined();
+    expect(preClassifyComponent(ionInput).props).toContainEqual(
+      expect.objectContaining({ name: 'name', category: 'content' }),
+    );
+    expect(preClassifyComponent(pInputEmail).props).toContainEqual(
+      expect.objectContaining({ name: 'name', category: 'content' }),
+    );
 
     for (const component of [pFlag, mismatchedName, semanticName]) {
       expect(component.props.find((prop) => prop.name === 'name')?.domAttribute, component.name).toBeUndefined();

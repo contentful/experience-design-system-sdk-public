@@ -71,7 +71,12 @@ export async function runAgent(options: {
 
     child.on('close', (code, signal) => {
       clearTimeout(timer);
-      const result = { exitCode: signal ? 1 : (code ?? 1), stdout, stderr, timedOut };
+      const result = {
+        exitCode: signal ? 1 : (code ?? 1),
+        stdout,
+        stderr,
+        timedOut,
+      };
       onDebugEvent?.('run.end', {
         agent,
         model,

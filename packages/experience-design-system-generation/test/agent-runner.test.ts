@@ -10,6 +10,7 @@ import {
   describeAgentFailure,
   extractSentinelOutput,
   parseMapTokenPropToolCallLines,
+  parseSelectToolCallLines,
   parseToolCallLines,
   parseTokenToolCallLines,
   resolveBinary,
@@ -135,7 +136,10 @@ describe('parseToolCallLines', () => {
     it('parses classify_component with description', () => {
       const { calls } = parseToolCallLines('{"tool":"classify_component","description":"Primary action button"}');
       expect(calls).toHaveLength(1);
-      expect(calls[0]).toEqual({ tool: 'classify_component', description: 'Primary action button' });
+      expect(calls[0]).toEqual({
+        tool: 'classify_component',
+        description: 'Primary action button',
+      });
     });
 
     it('parses classify_component without description', () => {
@@ -191,7 +195,10 @@ describe('parseToolCallLines', () => {
         token_kind: 'color',
       });
       const { calls } = parseToolCallLines(line);
-      expect(calls[0]).toMatchObject({ cdf_type: 'token', token_kind: 'color' });
+      expect(calls[0]).toMatchObject({
+        cdf_type: 'token',
+        token_kind: 'color',
+      });
     });
 
     it('rejects missing prop name', () => {
@@ -292,12 +299,20 @@ describe('parseToolCallLines', () => {
         '{"tool":"exclude_prop","prop":"className","reason":"CSS class — framework internal"}',
       );
       expect(warnings).toHaveLength(0);
-      expect(calls[0]).toEqual({ tool: 'exclude_prop', prop: 'className', reason: 'CSS class — framework internal' });
+      expect(calls[0]).toEqual({
+        tool: 'exclude_prop',
+        prop: 'className',
+        reason: 'CSS class — framework internal',
+      });
     });
 
     it('uses empty string when reason is missing', () => {
       const { calls } = parseToolCallLines('{"tool":"exclude_prop","prop":"ref"}');
-      expect(calls[0]).toMatchObject({ tool: 'exclude_prop', prop: 'ref', reason: '' });
+      expect(calls[0]).toMatchObject({
+        tool: 'exclude_prop',
+        prop: 'ref',
+        reason: '',
+      });
     });
 
     it('rejects missing prop name', () => {
@@ -354,7 +369,11 @@ describe('parseToolCallLines', () => {
         '{"tool":"classify_prop","prop":"margin","cdf_type":"enum","cdf_category":"design","values":["none","spacingXs"]}"';
       const { calls, warnings } = parseToolCallLines(line);
       expect(calls).toHaveLength(1);
-      expect(calls[0]).toMatchObject({ tool: 'classify_prop', prop: 'margin', cdf_type: 'enum' });
+      expect(calls[0]).toMatchObject({
+        tool: 'classify_prop',
+        prop: 'margin',
+        cdf_type: 'enum',
+      });
       expect(warnings).toEqual(['ignored trailing content after JSON: "']);
     });
 
@@ -363,7 +382,9 @@ describe('parseToolCallLines', () => {
       const { calls, warnings } = parseToolCallLines(line);
       expect(calls).toHaveLength(1);
       expect(warnings).toHaveLength(0);
-      expect(calls[0]).toMatchObject({ description: 'renders `<Text>{title}</Text>` and a "quote"' });
+      expect(calls[0]).toMatchObject({
+        description: 'renders `<Text>{title}</Text>` and a "quote"',
+      });
     });
 
     it('still drops and warns when the object itself is incomplete', () => {
@@ -412,17 +433,32 @@ describe('parseToolCallLines', () => {
       expect(warnings).toHaveLength(0);
       expect(calls).toHaveLength(7);
       expect(calls[0]).toMatchObject({ tool: 'classify_component' });
-      expect(calls[1]).toMatchObject({ tool: 'classify_prop', prop: 'label', cdf_type: 'string' });
+      expect(calls[1]).toMatchObject({
+        tool: 'classify_prop',
+        prop: 'label',
+        cdf_type: 'string',
+      });
       expect(calls[2]).toMatchObject({
         tool: 'classify_prop',
         prop: 'variant',
         cdf_type: 'enum',
         values: ['primary', 'secondary'],
       });
-      expect(calls[3]).toMatchObject({ tool: 'classify_prop', prop: 'disabled', cdf_category: 'state' });
-      expect(calls[4]).toMatchObject({ tool: 'exclude_prop', prop: 'className' });
+      expect(calls[3]).toMatchObject({
+        tool: 'classify_prop',
+        prop: 'disabled',
+        cdf_category: 'state',
+      });
+      expect(calls[4]).toMatchObject({
+        tool: 'exclude_prop',
+        prop: 'className',
+      });
       expect(calls[5]).toMatchObject({ tool: 'exclude_prop', prop: 'onClick' });
-      expect(calls[6]).toMatchObject({ tool: 'classify_slot', slot: 'icon', required: false });
+      expect(calls[6]).toMatchObject({
+        tool: 'classify_slot',
+        slot: 'icon',
+        required: false,
+      });
     });
 
     it('continues parsing after a bad line', () => {
@@ -438,12 +474,107 @@ describe('parseToolCallLines', () => {
   });
 });
 
+describe('parseSelectToolCallLines', () => {
+  it('preserves cited real-slot evidence on a selection call', () => {
+    const { calls, warnings } = parseSelectToolCallLines(
+      JSON.stringify({
+        tool: 'select_component',
+        name: 'Card',
+        slot_evidence: [
+          {
+            name: 'children',
+            is_real_slot: true,
+            allowed_components: ['CardBadge'],
+            evidence: [
+              {
+                source: 'src/Panel.tsx',
+                line: '42',
+                quote: '<Card><CardBadge /></Card>',
+              },
+            ],
+            reason: 'Named component rendered by caller.',
+          },
+        ],
+      }),
+    );
+
+    expect(warnings).toEqual([]);
+    expect(calls[0]).toMatchObject({
+      tool: 'select_component',
+      slot_evidence: [
+        {
+          name: 'children',
+          is_real_slot: true,
+          allowed_components: ['CardBadge'],
+          evidence: [
+            {
+              source: 'src/Panel.tsx',
+              line: '42',
+              quote: '<Card><CardBadge /></Card>',
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  it('rejects a real slot without citation evidence', () => {
+    const { calls, warnings } = parseSelectToolCallLines(
+      JSON.stringify({
+        tool: 'select_component',
+        name: 'Card',
+        slot_evidence: [
+          {
+            name: 'children',
+            is_real_slot: true,
+            evidence: [],
+            reason: 'Looks like a slot.',
+          },
+        ],
+      }),
+    );
+
+    expect(calls[0]).toMatchObject({ slot_evidence: [] });
+    expect(warnings).toContain('slot_evidence[0] marks a real slot without citation evidence — skipped');
+  });
+
+  it('rejects a real slot without an exact allowed-component list', () => {
+    const { calls, warnings } = parseSelectToolCallLines(
+      JSON.stringify({
+        tool: 'select_component',
+        name: 'Card',
+        slot_evidence: [
+          {
+            name: 'children',
+            is_real_slot: true,
+            evidence: [
+              {
+                source: 'src/Panel.tsx',
+                line: '42',
+                quote: '<Card><CardBadge /></Card>',
+              },
+            ],
+            reason: 'Named component rendered by caller.',
+          },
+        ],
+      }),
+    );
+
+    expect(calls[0]).toMatchObject({ slot_evidence: [] });
+    expect(warnings).toContain('slot_evidence[0] marks a real slot without allowed_components — skipped');
+  });
+});
+
 describe('parseTokenToolCallLines', () => {
   it('parses set_group with description', () => {
     const { calls } = parseTokenToolCallLines(
       '{"tool":"set_group","path":"colors.brand","description":"Brand palette"}',
     );
-    expect(calls[0]).toEqual({ tool: 'set_group', path: 'colors.brand', description: 'Brand palette' });
+    expect(calls[0]).toEqual({
+      tool: 'set_group',
+      path: 'colors.brand',
+      description: 'Brand palette',
+    });
   });
 
   it('parses set_group without description', () => {
@@ -467,14 +598,34 @@ describe('parseTokenToolCallLines', () => {
   it('parses set_token with numeric value', () => {
     const line = '{"tool":"set_token","path":"spacing.sm","type":"dimension","value":"8px"}';
     const { calls } = parseTokenToolCallLines(line);
-    expect(calls[0]).toMatchObject({ tool: 'set_token', path: 'spacing.sm', type: 'dimension', value: '8px' });
+    expect(calls[0]).toMatchObject({
+      tool: 'set_token',
+      path: 'spacing.sm',
+      type: 'dimension',
+      value: '8px',
+    });
   });
 
   it('parses set_token with object value (shadow)', () => {
-    const shadow = { offsetX: '0px', offsetY: '4px', blur: '8px', spread: '0px', color: '#00000026' };
-    const line = JSON.stringify({ tool: 'set_token', path: 'effects.shadow', type: 'shadow', value: shadow });
+    const shadow = {
+      offsetX: '0px',
+      offsetY: '4px',
+      blur: '8px',
+      spread: '0px',
+      color: '#00000026',
+    };
+    const line = JSON.stringify({
+      tool: 'set_token',
+      path: 'effects.shadow',
+      type: 'shadow',
+      value: shadow,
+    });
     const { calls } = parseTokenToolCallLines(line);
-    expect(calls[0]).toMatchObject({ tool: 'set_token', type: 'shadow', value: shadow });
+    expect(calls[0]).toMatchObject({
+      tool: 'set_token',
+      type: 'shadow',
+      value: shadow,
+    });
   });
 
   it('parses set_token with array value (gradient)', () => {
@@ -482,9 +633,18 @@ describe('parseTokenToolCallLines', () => {
       { color: '#000', position: 0 },
       { color: '#fff', position: 1 },
     ];
-    const line = JSON.stringify({ tool: 'set_token', path: 'effects.gradient', type: 'gradient', value: gradient });
+    const line = JSON.stringify({
+      tool: 'set_token',
+      path: 'effects.gradient',
+      type: 'gradient',
+      value: gradient,
+    });
     const { calls } = parseTokenToolCallLines(line);
-    expect(calls[0]).toMatchObject({ tool: 'set_token', type: 'gradient', value: gradient });
+    expect(calls[0]).toMatchObject({
+      tool: 'set_token',
+      type: 'gradient',
+      value: gradient,
+    });
   });
 
   it('warns on set_token missing path', () => {
@@ -536,7 +696,11 @@ describe('parseTokenToolCallLines', () => {
     expect(warnings).toHaveLength(0);
     expect(calls).toHaveLength(2);
     expect(calls[0]).toMatchObject({ tool: 'set_group', path: 'colors' });
-    expect(calls[1]).toMatchObject({ tool: 'set_token', path: 'colors.primary', type: 'color' });
+    expect(calls[1]).toMatchObject({
+      tool: 'set_token',
+      path: 'colors.primary',
+      type: 'color',
+    });
   });
 
   it('continues after a bad line', () => {
@@ -920,7 +1084,12 @@ describe('describeAgentFailure', () => {
   });
 
   it('returns the base message alone when there is no stderr/stdout detail', () => {
-    const msg = describeAgentFailure({ exitCode: 127, stdout: '', stderr: '', timedOut: false });
+    const msg = describeAgentFailure({
+      exitCode: 127,
+      stdout: '',
+      stderr: '',
+      timedOut: false,
+    });
     expect(msg).toBe('agent exited with code 127');
   });
 });
@@ -958,40 +1127,67 @@ describe('runAgent bedrock env', () => {
 
   it('sets CLAUDE_CODE_USE_BEDROCK=1 in the child env when bedrock is true', async () => {
     process.env.EDS_AGENT_BINARY_CLAUDE = await makeEnvEchoBinary();
-    const result = await runAgent({ agent: 'claude', prompt: 'PROMPT', timeoutMs: 5000, bedrock: true });
+    const result = await runAgent({
+      agent: 'claude',
+      prompt: 'PROMPT',
+      timeoutMs: 5000,
+      bedrock: true,
+    });
     expect(result.stdout).toBe('1');
   });
 
   it('does not set CLAUDE_CODE_USE_BEDROCK when bedrock is omitted', async () => {
     process.env.EDS_AGENT_BINARY_CLAUDE = await makeEnvEchoBinary();
-    const result = await runAgent({ agent: 'claude', prompt: 'PROMPT', timeoutMs: 5000 });
+    const result = await runAgent({
+      agent: 'claude',
+      prompt: 'PROMPT',
+      timeoutMs: 5000,
+    });
     expect(result.stdout).toBe('');
   });
 
   it('is a no-op for an agent with no Bedrock env entry, even when bedrock is true', async () => {
     process.env.EDS_AGENT_BINARY_CURSOR = await makeEnvEchoBinary();
-    const result = await runAgent({ agent: 'cursor', prompt: 'PROMPT', timeoutMs: 5000, bedrock: true });
+    const result = await runAgent({
+      agent: 'cursor',
+      prompt: 'PROMPT',
+      timeoutMs: 5000,
+      bedrock: true,
+    });
     expect(result.stdout).toBe('');
   });
 
   it('falls back to EDS_BEDROCK=1 when bedrock is not passed explicitly', async () => {
     process.env.EDS_AGENT_BINARY_CLAUDE = await makeEnvEchoBinary();
     process.env.EDS_BEDROCK = '1';
-    const result = await runAgent({ agent: 'claude', prompt: 'PROMPT', timeoutMs: 5000 });
+    const result = await runAgent({
+      agent: 'claude',
+      prompt: 'PROMPT',
+      timeoutMs: 5000,
+    });
     expect(result.stdout).toBe('1');
   });
 
   it('an explicit bedrock: false overrides EDS_BEDROCK=1', async () => {
     process.env.EDS_AGENT_BINARY_CLAUDE = await makeEnvEchoBinary();
     process.env.EDS_BEDROCK = '1';
-    const result = await runAgent({ agent: 'claude', prompt: 'PROMPT', timeoutMs: 5000, bedrock: false });
+    const result = await runAgent({
+      agent: 'claude',
+      prompt: 'PROMPT',
+      timeoutMs: 5000,
+      bedrock: false,
+    });
     expect(result.stdout).toBe('');
   });
 
   it('ignores EDS_BEDROCK when set to a non-"1" value', async () => {
     process.env.EDS_AGENT_BINARY_CLAUDE = await makeEnvEchoBinary();
     process.env.EDS_BEDROCK = 'true';
-    const result = await runAgent({ agent: 'claude', prompt: 'PROMPT', timeoutMs: 5000 });
+    const result = await runAgent({
+      agent: 'claude',
+      prompt: 'PROMPT',
+      timeoutMs: 5000,
+    });
     expect(result.stdout).toBe('');
   });
 });

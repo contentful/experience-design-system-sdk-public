@@ -37,6 +37,18 @@ describe('buildPrompt', () => {
     expect(prompt).toContain('Button');
   });
 
+  it('injects advisory prop buckets when provided', async () => {
+    const prompt = await buildPrompt({
+      skill: 'components',
+      mode: 'autonomous',
+      rawComponentsInline: INLINE_COMPONENTS,
+      propBucketsInline: '{"component":"Card","customPropNames":["label"]}',
+      outDir: '/fake/out',
+    });
+    expect(prompt).toContain('Deterministic prop buckets (advisory evidence only');
+    expect(prompt).toContain('"customPropNames":["label"]');
+  });
+
   it('omits token sections when not provided', async () => {
     const prompt = await buildPrompt({
       skill: 'components',
@@ -193,20 +205,42 @@ describe('buildPrompt', () => {
     expect(prompt).toContain('Generate Components');
   });
 
-  it('select skill prompt includes utility-wrapper rejection rule (no authorable content surface)', async () => {
+  it('select skill prompt makes renderability the inclusion bar', async () => {
     const prompt = await buildPrompt({
       skill: 'select',
       mode: 'autonomous',
       rawComponentsInline: INLINE_COMPONENTS,
       outDir: '/fake/out',
     });
-    // Distinctive phrase from the new rejection rule.
-    expect(prompt).toContain('Utility wrapper — no authorable content surface');
-    // The rule should call out structural-only props as a rejection signal.
-    expect(prompt).toMatch(/structural[- ]only/i);
-    // Concrete examples authors expect to be rejected.
-    expect(prompt).toMatch(/Portal/);
-    expect(prompt).toMatch(/SrOnly|screen[- ]reader[- ]only/i);
+    expect(prompt).toContain('Renderability, not authorable surface, is the bar for inclusion');
+    expect(prompt).toContain('no props, few props');
+    expect(prompt).toContain('visible, placeable UI');
+    expect(prompt).not.toContain('Utility wrapper — no authorable content surface');
+    expect(prompt).not.toMatch(/structural[- ]only/i);
+    expect(prompt).not.toMatch(/\bPortal\b/);
+    expect(prompt).not.toMatch(/\bSrOnly\b|screen[- ]reader[- ]only/i);
+  });
+
+  it('preserves a zero-prop renderable component in the selection input', async () => {
+    const zeroPropComponent = JSON.stringify([
+      {
+        name: 'Divider',
+        source: 'src/Divider.tsx',
+        framework: 'react',
+        props: [],
+        slots: [],
+      },
+    ]);
+    const prompt = await buildPrompt({
+      skill: 'select',
+      mode: 'autonomous',
+      rawComponentsInline: zeroPropComponent,
+      outDir: '/fake/out',
+    });
+
+    expect(prompt).toContain('"name":"Divider"');
+    expect(prompt).toContain('Do not reject a component merely because it has no props');
+    expect(prompt).toContain('visible, placeable UI');
   });
 
   it('select skill prompt advertises batch input (1–N components per message)', async () => {
@@ -230,6 +264,41 @@ describe('buildPrompt', () => {
     });
     expect(prompt).toContain('Data-fetch wrapper rule');
     expect(prompt).toContain('React hooks');
+  });
+
+  it('passes source evidence for inherited versus redeclared DOM props to generation', async () => {
+    const prompt = await buildPrompt({
+      skill: 'components',
+      mode: 'autonomous',
+      rawComponentsInline: JSON.stringify([
+        {
+          name: 'Card',
+          source: 'src/Card.tsx',
+          framework: 'react',
+          props: [{ name: 'title', type: 'string', required: false }],
+          slots: [],
+        },
+      ]),
+      componentSourceRefs: [
+        {
+          component: 'Card',
+          sourcePath: 'src/Card.tsx',
+          content: `interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
+  title?: string;
+}
+
+export function Card({ title, ...props }: CardProps) {
+  return <div {...props}>{title}</div>;
+}`,
+        },
+      ],
+      outDir: '/fake/out',
+      componentName: 'Card',
+    });
+
+    expect(prompt).toContain('interface CardProps extends React.HTMLAttributes<HTMLDivElement>');
+    expect(prompt).toContain('a component that redeclares one of these with its own type or JSDoc');
+    expect(prompt).toContain('title?: string');
   });
 
   describe('skillPathOverride (Feature 8)', () => {
@@ -273,7 +342,7 @@ describe('buildPrompt', () => {
         rawComponentsInline: INLINE_COMPONENTS,
         outDir: '/fake/out',
       });
-      expect(prompt).toContain('Utility wrapper — no authorable content surface');
+      expect(prompt).toContain('Renderability, not authorable surface, is the bar for inclusion');
     });
 
     it('uses inline skill content when provided', async () => {

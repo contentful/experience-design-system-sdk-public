@@ -1,3 +1,4 @@
+import { bucketComponentProps } from '@contentful/experience-design-system-extraction';
 import { describe, it, expect, afterEach } from 'vitest';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -36,6 +37,7 @@ import {
   loadComponentSourceRefs,
   loadComponentSourceRef,
   copyMapTokensFromCache,
+  stripPropProvenance,
 } from '../../src/session/db.js';
 import { exportedFiller } from '../helpers/exported-filler.js';
 import type { RawComponentDefinition } from '../../src/types.js';
@@ -225,9 +227,50 @@ describe('openPipelineDb', () => {
       expect(propNames.filter((n) => n === 'rationale').length).toBe(1);
       expect(propNames.filter((n) => n === 'source_start_line').length).toBe(1);
       expect(propNames.filter((n) => n === 'source_end_line').length).toBe(1);
+      expect(propNames.filter((n) => n === 'dom_attribute').length).toBe(1);
       const compCols = db2.prepare('PRAGMA table_info(raw_components)').all() as Array<{ name: string }>;
       expect(compCols.map((c) => c.name).filter((n) => n === 'source_path').length).toBe(1);
       db2.close();
+    });
+  });
+
+  it('adds a nullable dom_attribute column to raw_props and keeps existing rows', async () => {
+    await withTempDb((dbPath) => {
+      const initial = openPipelineDb(dbPath);
+      let sessionId: string;
+      try {
+        ({ sessionId } = getOrCreateSession(initial, 'new', undefined, { command: 'analyze extract' }));
+        storeRawComponents(initial, sessionId, [
+          {
+            name: 'Card',
+            source: 'src/Card.tsx',
+            framework: 'react',
+            props: [{ name: 'title', type: 'string', required: false }],
+            slots: [],
+          },
+        ]);
+        initial.exec('ALTER TABLE raw_props DROP COLUMN dom_attribute');
+      } finally {
+        initial.close();
+      }
+
+      const migrated = openPipelineDb(dbPath);
+      try {
+        const cols = migrated.prepare('PRAGMA table_info(raw_props)').all() as Array<{
+          name: string;
+          notnull: number;
+        }>;
+        const column = cols.find((c) => c.name === 'dom_attribute');
+        expect(column?.notnull).toBe(0);
+        expect(
+          migrated.prepare(`SELECT name, dom_attribute FROM raw_props WHERE session_id = ?`).get(sessionId),
+        ).toEqual({
+          name: 'title',
+          dom_attribute: null,
+        });
+      } finally {
+        migrated.close();
+      }
     });
   });
 
@@ -798,6 +841,56 @@ describe('storeRawComponents + loadRawComponents', () => {
       slots: [],
     },
   ];
+
+  it('round-trips the extractor domAttribute signal, leaving unknown props unset', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db, sessionId, [
+        {
+          name: 'Field',
+          source: 'src/Field.tsx',
+          framework: 'react',
+          props: [
+            { name: 'name', type: 'string', required: false, domAttribute: true },
+            { name: 'icon', type: 'string', required: false, domAttribute: false },
+            { name: 'label', type: 'string', required: false },
+          ],
+          slots: [],
+        },
+      ]);
+
+      const props = loadRawComponents(db, sessionId)[0]!.props;
+      expect(props.find((p) => p.name === 'name')?.domAttribute).toBe(true);
+      expect(props.find((p) => p.name === 'icon')?.domAttribute).toBe(false);
+      expect(props.find((p) => p.name === 'label')).not.toHaveProperty('domAttribute');
+      db.close();
+    });
+  });
+
+  it('lets prop bucketing see DOM provenance after a store and load cycle', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db, sessionId, [
+        {
+          name: 'Field',
+          source: 'src/Field.tsx',
+          framework: 'react',
+          props: [
+            { name: 'name', type: 'string', required: false, domAttribute: true },
+            { name: 'icon', type: 'string', required: false },
+          ],
+          slots: [],
+        },
+      ]);
+
+      const buckets = bucketComponentProps(loadRawComponents(db, sessionId)[0]!);
+      expect(buckets.domPassthroughPropNames).toEqual(['name']);
+      expect(buckets.customPropNames).toEqual(['icon']);
+      db.close();
+    });
+  });
 
   it('stores and loads raw components round-trip', async () => {
     await withTempDb((dbPath) => {
@@ -3677,5 +3770,37 @@ describe('loadCDFComponents — zero-classified-prop components (INTEG-4257)', (
       expect(widget!.entry.$type).toBe('component');
       expect(widget!.entry.$properties).toEqual({});
     });
+  });
+});
+
+describe('stripPropProvenance', () => {
+  it('removes domAttribute and keeps every authorable field', () => {
+    const prop = {
+      name: 'href',
+      type: 'string',
+      required: true,
+      category: 'content' as const,
+      description: 'Destination',
+      domAttribute: true,
+    };
+
+    const result = stripPropProvenance(prop);
+
+    expect(result).not.toHaveProperty('domAttribute');
+    expect(result).toEqual({
+      name: 'href',
+      type: 'string',
+      required: true,
+      category: 'content',
+      description: 'Destination',
+    });
+  });
+
+  it('does not mutate the stored prop', () => {
+    const prop = { name: 'href', type: 'string', required: false, domAttribute: true };
+
+    stripPropProvenance(prop);
+
+    expect(prop.domAttribute).toBe(true);
   });
 });

@@ -23,7 +23,12 @@ export function parseTokenToolCallLines(stdout: string): ParsedTokenToolCalls {
         warnings.push(`set_token '${rec.path}': missing value — skipped`);
         continue;
       }
-      const call: SetTokenCall = { tool: 'set_token', path: rec.path, type: rec.type, value: rec.value };
+      const call: SetTokenCall = {
+        tool: 'set_token',
+        path: rec.path,
+        type: rec.type,
+        value: rec.value,
+      };
       if (typeof rec.description === 'string') call.description = rec.description;
       calls.push(call);
     } else if (rec.tool === 'set_group') {

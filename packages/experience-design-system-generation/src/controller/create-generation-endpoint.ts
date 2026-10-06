@@ -11,7 +11,9 @@ import { createLocalCliAgentInvoker } from '../services/agent/local-cli-agent-in
 export type { GenerationEndpoint, GenerationEndpointOptions, GenerationEndpointRequest, GenerationEndpointResponse };
 
 export function createGenerationEndpoint(options: GenerationEndpointOptions = {}): GenerationEndpoint {
-  const invoker = createLocalCliAgentInvoker({ onDebugEvent: options.onDebugEvent });
+  const invoker = createLocalCliAgentInvoker({
+    onDebugEvent: options.onDebugEvent,
+  });
   return {
     async run(request) {
       validateGenerationRequest(request);
