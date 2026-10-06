@@ -4,23 +4,17 @@ import {
   isAgentName,
   parseSelectToolCallLines,
 } from '@contentful/experience-design-system-generation';
-import type { RawComponentDefinition } from '@contentful/experience-design-system-extraction';
-import type { SelectionServiceResult, ComponentSelection } from '../types/contract.js';
+import type {
+  RunSelectionServiceOptions,
+  SelectionServiceResult,
+  ComponentSelection,
+} from '../types/contract.js';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 5 * 60 * 1000);
 
-export interface RunSelectionServiceOptions {
-  components: RawComponentDefinition[];
-  agent: string;
-  model?: string;
-  promptText?: string;
-  promptPath?: string;
-  onCacheLookup?: (componentHash: string, promptHash: string) => { decision: 'accepted' | 'rejected'; reason: string | null } | null;
-  onCacheStore?: (componentHash: string, promptHash: string, decision: 'accepted' | 'rejected', reason: string | null) => void;
-  onWarning?: (message: string) => void;
-}
-
-export async function runSelectionService(options: RunSelectionServiceOptions): Promise<SelectionServiceResult> {
+export async function runSelectionService(
+  options: RunSelectionServiceOptions,
+): Promise<SelectionServiceResult> {
   const { components, agent, model } = options;
   if (components.length === 0) return { selections: [], warnings: [] };
 

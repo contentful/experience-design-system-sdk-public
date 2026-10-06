@@ -1,27 +1,10 @@
 import { runAgent } from '@contentful/experience-design-system-generation';
-import type { AgentName } from '@contentful/experience-design-system-generation';
 import type { RawComponentDefinition } from '@contentful/experience-design-system-extraction';
 import { resolveMapping } from '../helpers/resolve-mapping.js';
 import { selectCandidateFiles, capCandidatesToPromptBudget } from '../helpers/candidate-files.js';
 import { buildCompositionInputHash } from '../helpers/composition-cache-key.js';
 import { collectManifestDocEdges } from '../helpers/manifest-doc-evidence.js';
-
-export interface ResolveCompositionServiceOptions {
-  components: RawComponentDefinition[];
-  allFiles: Array<{ path: string; content: string }>;
-  forceAgent: boolean;
-  agent: AgentName;
-  promptOverride?: string;
-  onProgress?: (phase: string) => void;
-  onCacheLookup?: (cacheKey: string) => string | null;
-  onCacheStore?: (cacheKey: string, stdout: string) => void;
-  onWarning?: (message: string) => void;
-}
-
-export interface ResolveCompositionServiceResult {
-  components: RawComponentDefinition[];
-  warnings: string[];
-}
+import type { ResolveCompositionServiceOptions, ResolveCompositionServiceResult } from '../types/contract.js';
 
 export async function resolveCompositionService(
   options: ResolveCompositionServiceOptions,
