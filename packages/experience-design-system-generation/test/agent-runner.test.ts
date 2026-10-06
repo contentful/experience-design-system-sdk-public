@@ -17,7 +17,7 @@ import {
   isAgentName,
   runAgent,
   DEFAULT_AGENT_NAME,
-} from '../src/agent-runner.js';
+} from '../src/index.js';
 
 describe('agent definitions', () => {
   it('exposes the canonical agent names and validates against them', () => {
