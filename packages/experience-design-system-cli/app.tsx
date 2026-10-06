@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { HomeScreen } from './src/tui/home/home.js';
 import { ImportScreen } from './src/tui/import/PageContainer.js';
-import { WelcomeScreen } from './src/tui/import/steps/index.js';
+import { TokenInputScreen, WelcomeScreen } from './src/tui/import/steps/index.js';
+import type { SpawnV1ImportOptions } from './src/tui/import/spawn-v1-import.js';
 import { spawnV1Import } from './src/tui/import/spawn-v1-import.js';
 import { startReadingTerminal, stopReadingTerminal } from './src/tui/import/terminal-input.js';
 import { HelpScreen } from './src/tui/help/PageContainer.js';
@@ -22,7 +23,7 @@ export type Screen =
   | 'upgrade';
 
 interface AppProps {
-  onLaunchImport?: (projectPath: string) => void;
+  onLaunchImport?: (options: SpawnV1ImportOptions) => void;
   importExitCode?: number;
 }
 
@@ -30,21 +31,32 @@ function App({ onLaunchImport, importExitCode }: AppProps): React.ReactElement {
   const returnedFromImport = importExitCode !== undefined;
   const [screen, setScreen] = useState<Screen>(returnedFromImport ? 'import' : 'start');
   const [showImportResult, setShowImportResult] = useState(returnedFromImport);
+  const [projectPath, setProjectPath] = useState<string>();
 
   const goToStart = (): void => setScreen('start');
   const goToSettings = (): void => setScreen('settings');
 
   const finishImportResult = (): void => {
     setShowImportResult(false);
+    setProjectPath(undefined);
+    goToStart();
+  };
+
+  const leaveImport = (): void => {
+    setProjectPath(undefined);
     goToStart();
   };
 
   switch (screen) {
     case 'import':
-      return showImportResult ? (
-        <ImportScreen exitCode={importExitCode} onDone={finishImportResult} />
-      ) : (
-        <WelcomeScreen onContinue={(projectPath) => onLaunchImport?.(projectPath)} onQuit={goToStart} />
+      if (showImportResult) return <ImportScreen exitCode={importExitCode} onDone={finishImportResult} />;
+      if (projectPath === undefined) return <WelcomeScreen onContinue={setProjectPath} onQuit={leaveImport} />;
+      return (
+        <TokenInputScreen
+          onConfirm={(tokens) => onLaunchImport?.({ project: projectPath, tokens })}
+          onSkip={() => onLaunchImport?.({ project: projectPath, skipTokenPrompt: true })}
+          onBack={() => setProjectPath(undefined)}
+        />
       );
     case 'help':
       return <HelpScreen onDone={goToStart} />;
@@ -73,14 +85,14 @@ type RenderApp = (element: React.ReactElement) => AppInstance;
 async function renderUntilImportRequestedOrExit(
   renderApp: RenderApp,
   importExitCode: number | undefined,
-): Promise<string | undefined> {
-  let requestedProjectPath: string | undefined;
+): Promise<SpawnV1ImportOptions | undefined> {
+  let requestedImport: SpawnV1ImportOptions | undefined;
 
   const instance: AppInstance = renderApp(
     <App
       importExitCode={importExitCode}
-      onLaunchImport={(projectPath) => {
-        requestedProjectPath = projectPath;
+      onLaunchImport={(options) => {
+        requestedImport = options;
         instance.unmount();
       }}
     />,
@@ -88,16 +100,16 @@ async function renderUntilImportRequestedOrExit(
   await instance.waitUntilExit();
   await stopReadingTerminal();
 
-  return requestedProjectPath;
+  return requestedImport;
 }
 
 export async function runApp(renderApp: RenderApp): Promise<void> {
   let importExitCode: number | undefined;
 
-  let projectPath = await renderUntilImportRequestedOrExit(renderApp, importExitCode);
-  while (projectPath !== undefined) {
-    importExitCode = (await spawnV1Import({ project: projectPath })).exitCode;
+  let requestedImport = await renderUntilImportRequestedOrExit(renderApp, importExitCode);
+  while (requestedImport !== undefined) {
+    importExitCode = (await spawnV1Import(requestedImport)).exitCode;
     startReadingTerminal();
-    projectPath = await renderUntilImportRequestedOrExit(renderApp, importExitCode);
+    requestedImport = await renderUntilImportRequestedOrExit(renderApp, importExitCode);
   }
 }

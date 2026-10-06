@@ -1,4 +1,4 @@
-import type { Command } from 'commander';
+import { Option, type Command } from 'commander';
 import { normalizePath } from './path-utils.js';
 import { parseAgentModel, resolveAgent, resolveModel } from './agent-model-resolve.js';
 import { addAgentModelOptions } from '../lib/agent-model-options.js';
@@ -7,6 +7,15 @@ import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
 import { buildCompositionForwardingOptions } from './composition-options.js';
 import { getInteractiveTerminalSupport, requireInteractiveTerminal } from '../lib/terminal-capabilities.js';
 import { checkAgentAuth, type AgentAuthStatus, type AgentName } from '@contentful/experience-design-system-generation';
+
+interface ImportOptions {
+  project: string;
+  agent?: string;
+  tokens?: string;
+  cache?: boolean;
+  prompt?: string[];
+  skipTokenPrompt?: boolean;
+}
 
 export function registerImportCommand(program: Command): void {
   const cmd = program
@@ -31,7 +40,10 @@ export function registerImportCommand(program: Command): void {
       [] as string[],
     )
     .option('--no-cache', 'Re-run all steps even if output already exists')
-    .action(async (opts: { project: string; agent?: string; tokens?: string; cache?: boolean; prompt?: string[] }) => {
+    .addOption(
+      new Option('--skip-token-prompt', 'Start after the token prompt, as if the token step was skipped').hideHelp(),
+    )
+    .action(async (opts: ImportOptions) => {
       const interactiveTerminalSupported = getInteractiveTerminalSupport().supported;
 
       if (opts.tokens !== undefined) {
@@ -70,6 +82,7 @@ export function registerImportCommand(program: Command): void {
           livePreview?: boolean;
           generatePromptPath?: string;
           initialRawTokensPath?: string;
+          skipTokenPrompt?: boolean;
           initialAgentAuth?: Promise<AgentAuthStatus>;
         };
         const creds = await readExperiencesCredentials();
@@ -92,6 +105,7 @@ export function registerImportCommand(program: Command): void {
             livePreview: true,
             generatePromptPath: creds.generatePromptPath,
             ...(opts.tokens ? { initialRawTokensPath: normalizePath(opts.tokens) } : {}),
+            ...(opts.skipTokenPrompt ? { skipTokenPrompt: true } : {}),
             initialAgentAuth,
           }),
         );
