@@ -2698,7 +2698,6 @@ export function WizardApp({
 
       case 'done': {
         const totalFailed = state.pushResult.componentTypes.failed + state.pushResult.designTokens.failed;
-        const teaser = buildRunTeaserLine(state.lastRunId);
         return (
           <DoneStep
             componentTypes={state.pushResult.componentTypes}
@@ -2708,7 +2707,6 @@ export function WizardApp({
             spaceId={state.spaceId}
             environmentId={state.environmentId}
             host={state.host}
-            {...(teaser ? { runTeaser: teaser } : {})}
             onExit={() => process.exit(totalFailed > 0 ? 1 : 0)}
           />
         );
