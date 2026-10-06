@@ -16,7 +16,7 @@ const store = vi.hoisted(() => ({ read: vi.fn(), write: vi.fn() }));
 vi.mock('../../../src/credentials-store.js', () => ({
   readExperiencesCredentials: store.read,
   writeExperiencesCredentials: store.write,
-  experiencesCredentialsPath: () => '/home/tester/.contentful/experience-design-system-cli/config.json',
+  experiencesCredentialsPath: () => '/home/tester/.config/experiences/credentials.json',
 }));
 
 function makeDeps(overrides: Partial<CodingAgentDeps> = {}): CodingAgentDeps {

@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-import { configRoot } from '@contentful/experience-design-system-types/config';
+import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { escapeForRegExp, excerptAroundNames } from './source-excerpt.js';
 import type { RawComponentDefinition, RawPropDefinition, RawSlotDefinition } from '../types.js';
@@ -232,7 +232,7 @@ export function getPipelineDbPath(): string {
   if (process.env.EDS_PIPELINE_DB_PATH) {
     return resolve(process.env.EDS_PIPELINE_DB_PATH);
   }
-  return resolve(configRoot(), 'pipeline.db');
+  return resolve(homedir(), '.contentful', 'experience-design-system-cli', 'pipeline.db');
 }
 
 export function openPipelineDb(dbPath?: string): DatabaseSync {

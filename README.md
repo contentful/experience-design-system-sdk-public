@@ -35,7 +35,7 @@ The package publishes three binaries — `experiences`, `exo`, and `experience-d
 experiences setup
 ```
 
-The interactive setup wizard installs Node 24 (if needed), verifies pnpm, checks for a coding agent, and persists credentials + agent preferences to `~/.contentful/experience-design-system-cli/config.json`. Later commands read those values automatically.
+The interactive setup wizard installs Node 24 (if needed), verifies pnpm, checks for a coding agent, and persists credentials + agent preferences to `~/.config/experiences/credentials.json`. Later commands read those values automatically.
 
 ### Run
 

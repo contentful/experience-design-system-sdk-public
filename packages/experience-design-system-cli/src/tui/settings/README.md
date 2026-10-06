@@ -4,7 +4,7 @@ Settings pages allow users to configure CLI preferences and credentials.
 
 ## V1 Store Integration
 
-All settings persist to `~/.contentful/experience-design-system-cli/config.json` (shared with the bundled legacy import, via `@contentful/experience-design-system-types/config`):
+All settings persist to `~/.config/experiences/credentials.json` (shared with cli-v1):
 
 - `readV1Store()` / `writeV1Store()` — Generic v1 store read/write
 - `analyticsDisabled` — Inverted logic (true = OFF, false = ON)

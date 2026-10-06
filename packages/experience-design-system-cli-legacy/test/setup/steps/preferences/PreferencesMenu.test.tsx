@@ -14,7 +14,7 @@ const shell = vi.hoisted(() => ({
 vi.mock('../../../../src/credentials-store.js', () => ({
   readExperiencesCredentials: store.read,
   writeExperiencesCredentials: store.write,
-  experiencesCredentialsPath: () => '/home/tester/.contentful/experience-design-system-cli/config.json',
+  experiencesCredentialsPath: () => '/home/tester/.config/experiences/credentials.json',
 }));
 
 vi.mock('../../../../src/setup/lib/shell.js', () => shell);

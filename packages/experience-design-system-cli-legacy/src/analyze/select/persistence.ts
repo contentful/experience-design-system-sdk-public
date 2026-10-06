@@ -1,5 +1,5 @@
 import { access, appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { configRoot } from '@contentful/experience-design-system-types/config';
+import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { loadRawComponents } from '../../session/db.js';
@@ -16,7 +16,7 @@ export function getRefineArtifactsRoot(): string {
   if (process.env.EDS_REVIEW_ARTIFACTS_DIR) {
     return resolve(process.env.EDS_REVIEW_ARTIFACTS_DIR);
   }
-  return resolve(configRoot(), 'reviews');
+  return resolve(homedir(), '.contentful', 'experience-design-system-cli', 'reviews');
 }
 
 export async function getRefineSessionPaths(sessionId: string, artifactsRoot: string): Promise<ReviewSessionPaths> {

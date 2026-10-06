@@ -3,30 +3,21 @@ import { DEFAULT_CONFIGURED_HOST } from '../src/host-utils.js';
 
 // ── Hoist mock fns so they are available inside the vi.mock factory ────────
 
-const { mockReadFile, mockWriteFile, mockMkdir, mockRename } = vi.hoisted(() => ({
+const { mockReadFile, mockWriteFile, mockMkdir } = vi.hoisted(() => ({
   mockReadFile: vi.fn(),
   mockWriteFile: vi.fn(),
   mockMkdir: vi.fn(),
-  mockRename: vi.fn(),
 }));
 
 vi.mock('node:fs/promises', () => ({
   readFile: mockReadFile,
   writeFile: mockWriteFile,
   mkdir: mockMkdir,
-  rename: mockRename,
 }));
 
 // ── Import after mocks ─────────────────────────────────────────────────────
 
 import { readExperiencesCredentials, writeExperiencesCredentials } from '../src/credentials-store.js';
-
-// Everything lives in config.json, written via a temp file that is then renamed into place.
-function writesTo(file: string): Record<string, unknown>[] {
-  return mockWriteFile.mock.calls
-    .filter((call) => String(call[0]).includes(file))
-    .map((call) => JSON.parse(call[1] as string) as Record<string, unknown>);
-}
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -212,11 +203,9 @@ describe('writeExperiencesCredentials', () => {
     });
 
     expect(mockWriteFile).toHaveBeenCalledTimes(1);
-    expect(writesTo('config.json')[0]).toMatchObject({
-      spaceId: 'space1',
-      cmaToken: 'token',
-      host: 'api.eu.contentful.com',
-    });
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string) as Record<string, unknown>;
+    expect(written.spaceId).toBe('space1');
+    expect(written.host).toBe('api.eu.contentful.com');
   });
 
   it('writes credentials without host when host is undefined', async () => {
@@ -229,7 +218,8 @@ describe('writeExperiencesCredentials', () => {
       cmaToken: 'token',
     });
 
-    expect(writesTo('config.json')[0]).not.toHaveProperty('host');
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string) as Record<string, unknown>;
+    expect(written).not.toHaveProperty('host');
   });
 
   it('omits generatePromptPath when undefined (Feature 8)', async () => {
@@ -288,7 +278,7 @@ describe('ExperiencesCredentials.analyticsDisabled round-trip', () => {
       analyticsDisabled: true,
     });
 
-    const written = writesTo('config.json')[0]!;
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string) as Record<string, unknown>;
     expect(written.analyticsDisabled).toBe(true);
   });
 
@@ -335,7 +325,8 @@ describe('ExperiencesCredentials.noColor round-trip', () => {
     await writeExperiencesCredentials({ spaceId: 's', environmentId: 'master', cmaToken: 't', noColor: false });
     await writeExperiencesCredentials({ spaceId: 's', environmentId: 'master', cmaToken: 't' });
 
-    const [withValue, without] = writesTo('config.json') as [Record<string, unknown>, Record<string, unknown>];
+    const withValue = JSON.parse(mockWriteFile.mock.calls[0][1] as string) as Record<string, unknown>;
+    const without = JSON.parse(mockWriteFile.mock.calls[1][1] as string) as Record<string, unknown>;
     expect(withValue.noColor).toBe(false);
     expect(without).not.toHaveProperty('noColor');
   });
