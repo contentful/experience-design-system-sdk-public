@@ -1,6 +1,7 @@
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 
-export type Skill = 'components' | 'tokens' | 'select' | 'map-tokens';
+export type Skill = 'components' | 'tokens' | 'select' | 'debate-select' | 'map-tokens';
+export type DebateRole = 'for' | 'against';
 export type Mode = 'autonomous';
 
 export interface ComponentSourceRef {
@@ -24,6 +25,10 @@ export interface PromptOptions {
   skill: Skill;
   mode: Mode;
   rawComponentsInline?: string;
+  /** For the debate-select skill: which side of the disagreement this agent argues. */
+  debateRole?: DebateRole;
+  /** For the debate-select skill: JSON-serialized disagreement under review. */
+  disagreementInline?: string;
   propBucketsInline?: string;
   rawTokensInline?: string;
   /** Original filename for raw tokens — used to set the correct code fence language. */

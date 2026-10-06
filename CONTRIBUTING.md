@@ -33,6 +33,7 @@ packages/
   experience-design-system-cli-legacy/  # Previous CLI and import wizard (private, never published)
   experience-design-system-extraction/  # Component extraction engine (ts-morph, per-framework parsers)
   experience-design-system-generation/  # Agent-invocation and skill-prompt engine (used internally by the import wizard)
+  experience-design-system-agents/      # Stateless classification stage library (bundled into the CLIs at build time)
   experience-design-system-client/      # Generated API client (from openapi.json), used by `apply`
   experience-design-system-types/       # Shared types and schemas
 .github/workflows/                      # CI/CD pipelines

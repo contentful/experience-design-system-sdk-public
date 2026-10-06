@@ -9,7 +9,7 @@ const VERSION = readPackageVersion();
 const HEADING = 'Contentful Experiences';
 const SUBTITLE = "Let's import your design system into Contentful";
 
-const MIN_TERMINAL_WIDTH = 164;
+export const MIN_TERMINAL_WIDTH = 164;
 
 const START_ITEMS: { label: string; screen: Screen }[] = [
   { label: 'Import', screen: 'import' },

@@ -3,6 +3,7 @@ import { inferFenceLang, filterDesignTokenProps, buildTokenCandidateSections } f
 import { formatSourceRefsSection } from './format-source-refs.js';
 import {
   buildComponentsAutonomousPreamble,
+  buildDebateSelectAutonomousPreamble,
   buildSelectAutonomousPreamble,
   buildMapTokensAutonomousPreamble,
   buildTokensAutonomousPreamble,
@@ -23,6 +24,8 @@ export function buildPreamble(options: PromptOptions): string {
     existingComponentsInline,
     existingTokensInline,
     componentAllowlistInline,
+    debateRole,
+    disagreementInline,
   } = options;
 
   const sections: string[] = [];
@@ -79,6 +82,7 @@ export function buildPreamble(options: PromptOptions): string {
 
   if (skill === 'components') return buildComponentsAutonomousPreamble(inputBlock);
   if (skill === 'select') return buildSelectAutonomousPreamble(inputBlock);
+  if (skill === 'debate-select') return buildDebateSelectAutonomousPreamble(inputBlock, debateRole, disagreementInline);
   if (skill === 'map-tokens') return buildMapTokensAutonomousPreamble(inputBlock);
   return buildTokensAutonomousPreamble(inputBlock);
 }

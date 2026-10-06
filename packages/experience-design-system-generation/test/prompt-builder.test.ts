@@ -725,4 +725,29 @@ export function Card({ title, ...props }: CardProps) {
     expect(prompt).toContain('set_group');
     expect(prompt).not.toContain('<<<EDS_OUTPUT_START>>>');
   });
+
+  it('debate-select prompt binds the role and disagreement to the structured output contract', async () => {
+    const disagreement = JSON.stringify({
+      id: 'd1',
+      componentKey: 'Card::src/Card.tsx',
+      field: 'decision',
+      tier: 'interpretive',
+    });
+    const prompt = await buildPrompt({
+      skill: 'debate-select',
+      mode: 'autonomous',
+      debateRole: 'against',
+      disagreementInline: disagreement,
+      rawComponentsInline: INLINE_COMPONENTS,
+      outDir: '/fake/out',
+    });
+
+    expect(prompt).toContain('AGAINST participant');
+    expect(prompt).toContain(disagreement);
+    expect(prompt).toContain('"role":"against"');
+    expect(prompt).toContain('"disagreement_id":"<id>"');
+    expect(prompt).toContain('source');
+    expect(prompt).toContain('quote');
+    expect(prompt).toContain('do not ask the developer for confirmation');
+  });
 });

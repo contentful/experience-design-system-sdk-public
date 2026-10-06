@@ -1,3 +1,5 @@
+import type { DebateRole } from '../../../types/prompt.js';
+
 export function buildComponentsAutonomousPreamble(inputBlock: string): string {
   return `You are running as part of the experience-design-system-cli generate pipeline in AUTONOMOUS mode. The developer is not present to answer questions.
 
@@ -126,4 +128,40 @@ Rules:
 - "value" must be valid JSON (string, number, array, or object depending on the type). Do NOT wrap it in quotes if it is a complex type.
 - Emit set_group calls before the set_token calls that fall under them.
 - You may emit prose lines (not starting with {) anywhere — they are ignored by the parser and serve as your reasoning log.`;
+}
+
+export function buildDebateSelectAutonomousPreamble(
+  inputBlock: string,
+  debateRole: DebateRole | undefined,
+  disagreementInline: string | undefined,
+): string {
+  const role = debateRole ?? 'for';
+  return [
+    'You are the ' +
+      role.toUpperCase() +
+      ' participant in an adversarial review of one component-selection disagreement. This is an automatic escalation stage; do not ask the developer for confirmation.',
+    '',
+    'Your role is to argue the ' +
+      role.toUpperCase() +
+      ' position on the exact disagreement below. Address the claim literally, cite the supplied component evidence, and do not substitute a nearby component or field. The opposing participant is evaluating the same evidence independently.',
+    '',
+    'Component and source data:' + inputBlock,
+    '',
+    'Disagreement under review (JSON):',
+    '~~~json',
+    disagreementInline ?? '{}',
+    '~~~',
+    '',
+    '## Output protocol',
+    '',
+    'Emit exactly one JSON object on one line and do not write files:',
+    '',
+    '~~~json',
+    '{"role":"' +
+      role +
+      '","disagreement_id":"<id>","argument":"<position and reasoning>","evidence":[{"source":"<path>","line":"<line-or-range>","quote":"<verbatim evidence>"}]}',
+    '~~~',
+    '',
+    'The role and disagreement_id must match the values in this prompt. Use an empty evidence array only when the supplied context contains no citable source evidence.',
+  ].join('\n');
 }
