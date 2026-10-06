@@ -12,8 +12,18 @@ describe('ai-flag policy', () => {
       expect(isAiFlagged({ aiDecision: 'failed' })).toBe(true);
     });
 
-    it('flags deterministic review candidates even when no AI decision exists', () => {
-      expect(isAiFlagged({ needsReview: true })).toBe(true);
+    it('does not flag deterministic review candidates the AI accepted', () => {
+      expect(isAiFlagged({ aiDecision: 'accepted', needsReview: true } as never)).toBe(false);
+    });
+
+    it('does not flag a row that only extraction asked to review', () => {
+      expect(isAiFlagged({ needsReview: true } as never)).toBe(false);
+      expect(isAiFlagged({ aiDecision: null, needsReview: true } as never)).toBe(false);
+    });
+
+    it('flags an AI-rejected row whether or not extraction asked to review', () => {
+      expect(isAiFlagged({ aiDecision: 'rejected', needsReview: true } as never)).toBe(true);
+      expect(isAiFlagged({ aiDecision: 'rejected', needsReview: false } as never)).toBe(true);
     });
 
     it('does not flag accepted rows', () => {
@@ -32,10 +42,17 @@ describe('ai-flag policy', () => {
       expect(isDefaultIncluded({})).toBe(true);
     });
 
+    it('includes AI-accepted rows even when extraction asked for review', () => {
+      expect(isDefaultIncluded({ aiDecision: 'accepted', needsReview: true } as never)).toBe(true);
+    });
+
+    it('includes a row that only extraction asked to review', () => {
+      expect(isDefaultIncluded({ needsReview: true } as never)).toBe(true);
+    });
+
     it('excludes flagged rows by default', () => {
       expect(isDefaultIncluded({ aiDecision: 'rejected' })).toBe(false);
       expect(isDefaultIncluded({ aiDecision: 'failed' })).toBe(false);
-      expect(isDefaultIncluded({ needsReview: true })).toBe(false);
     });
   });
 });
