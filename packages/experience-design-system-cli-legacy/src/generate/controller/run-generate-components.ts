@@ -1,12 +1,8 @@
 import { resolve } from 'node:path';
 import {
-  AGENT_NAMES,
-  agentSupportsBedrock,
   buildPrompt,
   createLocalCliAgentInvoker,
   formatCustomPromptBanner,
-  isAgentName,
-  resolveBinary,
 } from '@contentful/experience-design-system-generation';
 import {
   openPipelineDb,
@@ -26,9 +22,8 @@ import {
   summarizeForMapTokens,
 } from '../../helpers/summarize-existing-contentful-entities.js';
 import { resolveExtractSessionId } from '../../session/resolve-session-id.js';
-import { readExperiencesCredentials } from '../../credentials-store.js';
 import { bindAnalyticsSessionId, exitWithAnalytics } from '../../analytics/index.js';
-import { die, assertBinaryInPath } from '../../lib/cli-errors.js';
+import { die } from '../../lib/cli-errors.js';
 import { parsePromptOverrides, resolvePromptOverride } from '../../lib/prompt-overrides.js';
 import { pathExists } from '../../lib/path-exists.js';
 import { getDebugLogger } from '../../lib/debug-logger.js';
@@ -37,24 +32,13 @@ import { runAllComponents } from '../services/run-all-components.js';
 import { normalizeComponentForCache, resolveComponentCache } from '../services/component-cache.js';
 import { assertFileExists, readFileInline } from '../helpers/read-file-inline.js';
 import { parsePrecomputedCachedNames, loadAcceptedNames } from '../helpers/load-session-data.js';
-import { printFallbackInstructions } from '../helpers/print-fallback-instructions.js';
+import { assertBinaryOrExit } from '../helpers/print-fallback-instructions.js';
+import { resolveGenerateAgent } from '../helpers/resolve-agent.js';
 import { showGenerateView } from '../helpers/show-generate-view.js';
 import type { GenerateSubcommandOptions } from '../command.js';
 
 export async function runGenerateComponents(opts: GenerateSubcommandOptions, verbose: boolean): Promise<void> {
-  const savedCreds = await readExperiencesCredentials();
-  const agentName = opts.agent ?? savedCreds.agent;
-  const model = opts.model ?? savedCreds.agentModel;
-  if (!agentName || !isAgentName(agentName)) {
-    die(
-      `Error: no agent configured. Pass --agent <name> or run experiences setup. Accepted values: ${AGENT_NAMES.join(', ')}`,
-    );
-  }
-  const agent = agentName;
-
-  if (opts.bedrock && !agentSupportsBedrock(agent)) {
-    die(`Error: --bedrock is not supported for --agent ${agent}`);
-  }
+  const { agent, model, savedCreds } = await resolveGenerateAgent(opts);
 
   const configuredGeneratePromptPath = opts.generatePromptPath ?? savedCreds.generatePromptPath;
   const { overrides: promptOverrides, errors: promptErrors } = parsePromptOverrides(opts.prompt ?? []);
@@ -214,12 +198,7 @@ export async function runGenerateComponents(opts: GenerateSubcommandOptions, ver
     return;
   }
 
-  const binary = resolveBinary(agent);
-  if (!(await assertBinaryInPath(binary))) {
-    printFallbackInstructions({ agent, skill: 'components', sessionId });
-    await exitWithAnalytics(1);
-    return;
-  }
+  if (!(await assertBinaryOrExit(agent, 'components', sessionId))) return;
 
   const invoker = createLocalCliAgentInvoker({
     onDebugEvent: (name, payload) => getDebugLogger().event('agent', name, payload),

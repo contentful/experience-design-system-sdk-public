@@ -9,7 +9,7 @@ async function die(message: string): Promise<never> {
   return exitWithAnalytics(1);
 }
 
-async function readJsonFile(flag: string, p: string): Promise<unknown> {
+export async function readJsonFile(flag: string, p: string): Promise<unknown> {
   let text: string;
   try {
     text = await readFile(p, 'utf8');

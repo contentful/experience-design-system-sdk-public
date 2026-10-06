@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises';
 import { validateCDF } from '@contentful/experience-design-system-types';
 import type { CDFComponentEntry, DTCGTokenEntry } from '@contentful/experience-design-system-types';
 import { ApiError, ImportApiClient } from '../api-client.js';
@@ -6,6 +5,7 @@ import { formatApiError } from '../../lib/error-parser.js';
 import { failureFromApiError, exitWithAnalytics } from '../../analytics/index.js';
 import type { CommandFailure } from '../../analytics/index.js';
 import { readExperiencesCredentials } from '../../credentials-store.js';
+import { readJsonFile } from '../helpers/read-token-files.js';
 
 async function die(message: string, fields: CommandFailure = {}): Promise<never> {
   process.stderr.write(`${message}\n`);
@@ -19,20 +19,6 @@ export interface SharedInputs {
   spaceId: string;
   environmentId: string;
   host?: string;
-}
-
-async function readJsonFile(flag: string, p: string): Promise<unknown> {
-  let text: string;
-  try {
-    text = await readFile(p, 'utf8');
-  } catch {
-    return await die(`Error: file not found: ${p} (from ${flag})`);
-  }
-  try {
-    return JSON.parse(text);
-  } catch {
-    return await die(`Error: ${flag} is not valid JSON: ${p}`);
-  }
 }
 
 async function resolveSharedInputs(file: string): Promise<SharedInputs> {

@@ -1,11 +1,7 @@
 import {
-  AGENT_NAMES,
-  agentSupportsBedrock,
   buildPrompt,
   createLocalCliAgentInvoker,
-  isAgentName,
   parseTokenToolCallLines,
-  resolveBinary,
 } from '@contentful/experience-design-system-generation';
 import {
   openPipelineDb,
@@ -16,33 +12,21 @@ import {
   copyTokensFromCache,
 } from '../../session/db.js';
 import { hashPromptForSkill } from '../../session/cache-keys.js';
-import { readExperiencesCredentials } from '../../credentials-store.js';
 import { bindAnalyticsSessionId, exitWithAnalytics } from '../../analytics/index.js';
-import { die, assertBinaryInPath } from '../../lib/cli-errors.js';
+import { die } from '../../lib/cli-errors.js';
 import { parsePromptOverrides, resolvePromptOverride } from '../../lib/prompt-overrides.js';
 import { resolve } from 'node:path';
 import { assertFileExists, readFileInline } from '../helpers/read-file-inline.js';
 import { showGenerateView } from '../helpers/show-generate-view.js';
-import { printFallbackInstructions } from '../helpers/print-fallback-instructions.js';
+import { assertBinaryOrExit } from '../helpers/print-fallback-instructions.js';
+import { resolveGenerateAgent } from '../helpers/resolve-agent.js';
 import { c } from '../../output/format.js';
 import type { GenerateSubcommandOptions } from '../command.js';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 5 * 60 * 1000);
 
 export async function runGenerateTokens(opts: GenerateSubcommandOptions, _verbose: boolean): Promise<void> {
-  const savedCreds = await readExperiencesCredentials();
-  const agentName = opts.agent ?? savedCreds.agent;
-  const model = opts.model ?? savedCreds.agentModel;
-  if (!agentName || !isAgentName(agentName)) {
-    die(
-      `Error: no agent configured. Pass --agent <name> or run experiences setup. Accepted values: ${AGENT_NAMES.join(', ')}`,
-    );
-  }
-  const agent = agentName;
-
-  if (opts.bedrock && !agentSupportsBedrock(agent)) {
-    die(`Error: --bedrock is not supported for --agent ${agent}`);
-  }
+  const { agent, model } = await resolveGenerateAgent(opts);
 
   const { overrides: promptOverrides, errors: promptErrors } = parsePromptOverrides(opts.prompt ?? []);
   if (promptErrors.length > 0) die(`Error: ${promptErrors.join('; ')}`);
@@ -69,8 +53,8 @@ export async function runGenerateTokens(opts: GenerateSubcommandOptions, _verbos
     readFileInline(opts.tokenMap),
   ]);
 
-  if (opts.dryRun) {
-    const prompt = await buildPrompt({
+  const buildTokensPrompt = () =>
+    buildPrompt({
       skill: 'tokens',
       mode: 'autonomous',
       rawTokensInline,
@@ -80,17 +64,15 @@ export async function runGenerateTokens(opts: GenerateSubcommandOptions, _verbos
       outDir: process.cwd(),
       skillContentOverride: generatePrompt,
     });
+
+  if (opts.dryRun) {
+    const prompt = await buildTokensPrompt();
     process.stdout.write(prompt + '\n');
     await exitWithAnalytics(0);
     return;
   }
 
-  const binary = resolveBinary(agent);
-  if (!(await assertBinaryInPath(binary))) {
-    printFallbackInstructions({ agent, skill: 'tokens', sessionId: '' });
-    await exitWithAnalytics(1);
-    return;
-  }
+  if (!(await assertBinaryOrExit(agent, 'tokens', ''))) return;
 
   const noCache = opts.cache === false || process.env.EDS_NO_CACHE === '1';
   const tokenInputContent = rawTokensInline ?? '';
@@ -139,16 +121,7 @@ export async function runGenerateTokens(opts: GenerateSubcommandOptions, _verbos
       }
     }
 
-    const prompt = await buildPrompt({
-      skill: 'tokens',
-      mode: 'autonomous',
-      rawTokensInline,
-      rawTokensFilename: opts.rawTokens ? resolve(opts.rawTokens).split('/').pop() : undefined,
-      tokensInline,
-      tokenMapInline,
-      outDir: process.cwd(),
-      skillContentOverride: generatePrompt,
-    });
+    const prompt = await buildTokensPrompt();
 
     const invoker = createLocalCliAgentInvoker();
     const result = await invoker.invoke({ agent, model, prompt, timeoutMs: DEFAULT_TIMEOUT_MS * 5 });

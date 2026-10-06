@@ -21,16 +21,20 @@ export interface ExtractionWithCacheResult {
   cacheHits: number;
 }
 
+async function callExtractEndpoint(options: ExtractionWithCacheOptions) {
+  return extractEndpoint({
+    filePaths: options.sourceFiles,
+    ...(options.resolveUnreachable ? { resolveUnreachable: options.resolveUnreachable } : {}),
+    ...(options.projectRoot ? { projectRoot: options.projectRoot } : {}),
+    onProgress: ({ filesProcessed }) => options.onProgress?.(filesProcessed),
+  });
+}
+
 export async function runExtractionWithCache(options: ExtractionWithCacheOptions): Promise<ExtractionWithCacheResult> {
   const { db, sourceFiles, noCache, cacheVersion } = options;
 
   if (noCache || sourceFiles.length === 0) {
-    const result = await extractEndpoint({
-      filePaths: sourceFiles,
-      ...(options.resolveUnreachable ? { resolveUnreachable: options.resolveUnreachable } : {}),
-      ...(options.projectRoot ? { projectRoot: options.projectRoot } : {}),
-      onProgress: ({ filesProcessed }) => options.onProgress?.(filesProcessed),
-    });
+    const result = await callExtractEndpoint(options);
     return { ...result, cacheHits: 0 };
   }
 
@@ -49,12 +53,7 @@ export async function runExtractionWithCache(options: ExtractionWithCacheOptions
     return { components, warnings: [], cacheHits: sourceFiles.length };
   }
 
-  const result = await extractEndpoint({
-    filePaths: sourceFiles,
-    ...(options.resolveUnreachable ? { resolveUnreachable: options.resolveUnreachable } : {}),
-    ...(options.projectRoot ? { projectRoot: options.projectRoot } : {}),
-    onProgress: ({ filesProcessed }) => options.onProgress?.(filesProcessed),
-  });
+  const result = await callExtractEndpoint(options);
 
   const bySourcePath = new Map<string, RawComponentDefinition[]>();
   for (const component of result.components) {
