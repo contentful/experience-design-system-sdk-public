@@ -20,7 +20,7 @@ export const INK_UI_THEME = extendTheme(defaultTheme, {
     ProgressBar: {
       styles: {
         completed: (): TextProps => ({
-          color: PALETTE.info,
+          color: 'blue',
         }),
       },
     },
