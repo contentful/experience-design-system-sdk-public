@@ -1,29 +1,10 @@
-import type { RawComponentDefinition } from '@contentful/experience-design-system-extraction';
-import {
-  executeSelectionOrchestrator,
-  type SelectionOrchestratorResult,
-} from '../orchestrator/execute-selection-orchestrator.js';
+import { executeSelectionOrchestrator } from '../orchestrator/execute-selection-orchestrator.js';
+import type {
+  SelectComponentsEndpointRequest,
+  SelectComponentsEndpointResponse,
+} from '../types/contract.js';
 
-export interface SelectComponentsEndpointRequest {
-  components: RawComponentDefinition[];
-  agent?: string;
-  model?: string;
-  promptText?: string;
-  promptPath?: string;
-  onCacheLookup?: (
-    componentHash: string,
-    promptHash: string,
-  ) => { decision: 'accepted' | 'rejected'; reason: string | null } | null;
-  onCacheStore?: (
-    componentHash: string,
-    promptHash: string,
-    decision: 'accepted' | 'rejected',
-    reason: string | null,
-  ) => void;
-  onWarning?: (message: string) => void;
-}
-
-export type SelectComponentsEndpointResponse = SelectionOrchestratorResult;
+export type { SelectComponentsEndpointRequest, SelectComponentsEndpointResponse };
 
 export async function selectComponents(
   request: SelectComponentsEndpointRequest,
@@ -34,8 +15,5 @@ export async function selectComponents(
     throw new Error('agent is required for component selection');
   }
 
-  return executeSelectionOrchestrator({
-    ...rest,
-    agent: agentInput,
-  });
+  return executeSelectionOrchestrator({ ...rest, agent: agentInput });
 }

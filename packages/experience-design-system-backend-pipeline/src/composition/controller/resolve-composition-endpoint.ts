@@ -1,23 +1,11 @@
-import type { RawComponentDefinition } from '@contentful/experience-design-system-extraction';
 import { isAgentName } from '@contentful/experience-design-system-generation';
-import {
-  executeCompositionOrchestrator,
-  type CompositionOrchestratorResult,
-} from '../orchestrator/execute-composition-orchestrator.js';
+import { executeCompositionOrchestrator } from '../orchestrator/execute-composition-orchestrator.js';
+import type {
+  ResolveCompositionEndpointRequest,
+  ResolveCompositionEndpointResponse,
+} from '../types/contract.js';
 
-export interface ResolveCompositionEndpointRequest {
-  components: RawComponentDefinition[];
-  allFiles: Array<{ path: string; content: string }>;
-  agent?: string;
-  forceAgent?: boolean;
-  promptOverride?: string;
-  onProgress?: (phase: string) => void;
-  onCacheLookup?: (cacheKey: string) => string | null;
-  onCacheStore?: (cacheKey: string, stdout: string) => void;
-  onWarning?: (message: string) => void;
-}
-
-export type ResolveCompositionEndpointResponse = CompositionOrchestratorResult;
+export type { ResolveCompositionEndpointRequest, ResolveCompositionEndpointResponse };
 
 export async function resolveComposition(
   request: ResolveCompositionEndpointRequest,
@@ -28,11 +16,9 @@ export async function resolveComposition(
     throw new Error(`Unknown agent: "${agentInput}"`);
   }
 
-  const agent = agentInput ?? 'claude';
-
   return executeCompositionOrchestrator({
     ...rest,
-    agent,
+    agent: agentInput ?? 'claude',
     forceAgent: forceAgent ?? false,
   });
 }
