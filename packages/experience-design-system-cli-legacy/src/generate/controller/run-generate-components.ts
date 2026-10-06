@@ -184,11 +184,13 @@ export async function runGenerateComponents(opts: GenerateSubcommandOptions, ver
       existingContentfulEntities && sampleComponent
         ? JSON.stringify(summarizeForGenerateAgent(existingContentfulEntities, sampleComponent.name))
         : undefined;
+    const sampleBuckets = sampleComponent ? bucketComponentProps(sampleComponent) : undefined;
+    if (sampleBuckets) getDebugLogger().event('analyze', 'prop-buckets.generate', { ...sampleBuckets });
     const prompt = await buildPrompt({
       skill: 'components',
       mode: 'autonomous',
       rawComponentsInline: sampleInline,
-      propBucketsInline: sampleComponent ? JSON.stringify(bucketComponentProps(sampleComponent)) : undefined,
+      propBucketsInline: sampleBuckets ? JSON.stringify(sampleBuckets) : undefined,
       tokensInline,
       tokenMapInline,
       outDir: process.cwd(),
