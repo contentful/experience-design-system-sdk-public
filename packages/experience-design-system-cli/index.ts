@@ -1,7 +1,4 @@
 import { createProgram } from './program.js';
-import { migrateOldConfig } from './src/config/migrate.js';
-
-await migrateOldConfig();
 
 createProgram()
   .parseAsync()

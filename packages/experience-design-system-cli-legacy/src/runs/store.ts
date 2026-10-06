@@ -1,6 +1,6 @@
 import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
-import { dirname } from 'node:path';
-import { runsFilePath } from '@contentful/experience-design-system-types/config';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
 import { randomBytes } from 'node:crypto';
 
 export const RUNS_FILE_VERSION = 3 as const;
@@ -54,7 +54,12 @@ export type RunsFile = {
   runs: RunRecord[];
 };
 
-export { runsFilePath };
+const RUNS_DIR = join(homedir(), '.config', 'experiences');
+const RUNS_PATH = join(RUNS_DIR, 'runs.json');
+
+export function runsFilePath(): string {
+  return RUNS_PATH;
+}
 
 // Crockford-base32 ULID (26 chars: 10 timestamp + 16 random).
 const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -104,7 +109,7 @@ function migrateRecord(rec: RunRecord | RunRecordV1 | RunRecordV2): RunRecord {
 
 async function readFileMaybe(): Promise<RunsFile | null> {
   try {
-    const raw = await readFile(runsFilePath(), 'utf8');
+    const raw = await readFile(RUNS_PATH, 'utf8');
     const parsed = JSON.parse(raw) as RunsFile | RunsFileV1 | RunsFileV2;
     if (!READABLE_VERSIONS.has(parsed.version)) {
       throw new Error(
@@ -122,11 +127,11 @@ async function readFileMaybe(): Promise<RunsFile | null> {
 }
 
 async function writeAtomic(file: RunsFile): Promise<void> {
-  await mkdir(dirname(runsFilePath()), { recursive: true });
+  await mkdir(RUNS_DIR, { recursive: true });
   const body = JSON.stringify(file, null, 2) + '\n';
-  const tmp = `${runsFilePath()}.${process.pid}.${Date.now()}.tmp`;
+  const tmp = `${RUNS_PATH}.${process.pid}.${Date.now()}.tmp`;
   await writeFile(tmp, body, { mode: 0o600 });
-  await rename(tmp, runsFilePath());
+  await rename(tmp, RUNS_PATH);
 }
 
 export type AppendInput = Omit<RunRecord, 'id' | 'createdAt'> & Partial<Pick<RunRecord, 'id' | 'createdAt'>>;
@@ -173,14 +178,14 @@ export async function listRuns(opts: ListOptions = {}): Promise<RunRecord[]> {
 export async function getRun(id: string): Promise<RunRecord> {
   const file = await readFileMaybe();
   const found = file?.runs.find((r) => r.id === id);
-  if (!found) throw new Error(`Run ${id} not found in ${runsFilePath()}`);
+  if (!found) throw new Error(`Run ${id} not found in ${RUNS_PATH}`);
   return found;
 }
 
 export async function updateRun(id: string, patch: Partial<Omit<RunRecord, 'id'>>): Promise<RunRecord> {
   const file = (await readFileMaybe()) ?? { version: RUNS_FILE_VERSION, runs: [] };
   const idx = file.runs.findIndex((r) => r.id === id);
-  if (idx < 0) throw new Error(`Run ${id} not found in ${runsFilePath()}`);
+  if (idx < 0) throw new Error(`Run ${id} not found in ${RUNS_PATH}`);
   const updated: RunRecord = { ...file.runs[idx]!, ...patch, id };
   file.runs[idx] = updated;
   await writeAtomic(file);

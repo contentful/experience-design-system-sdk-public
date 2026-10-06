@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { readdirSync, readFileSync, renameSync, statSync } from 'node:fs';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { configRoot } from '@contentful/experience-design-system-types/config';
+import { homedir } from 'node:os';
 import { generateSessionId } from './session-id.js';
 
 const MIGRATION_NAME = 'v1_import_and_reviews';
@@ -11,14 +11,14 @@ function getReviewsDir(): string {
   if (process.env.EDS_REVIEW_ARTIFACTS_DIR) {
     return resolve(process.env.EDS_REVIEW_ARTIFACTS_DIR);
   }
-  return resolve(configRoot(), 'reviews');
+  return resolve(homedir(), '.contentful', 'experience-design-system-cli', 'reviews');
 }
 
 function getLegacyImportDbPath(): string {
   if (process.env.EDS_IMPORT_DB_PATH) {
     return resolve(process.env.EDS_IMPORT_DB_PATH);
   }
-  return resolve(configRoot(), 'import.db');
+  return resolve(homedir(), '.contentful', 'experience-design-system-cli', 'import.db');
 }
 
 export function runMigrationIfNeeded(db: DatabaseSync): void {

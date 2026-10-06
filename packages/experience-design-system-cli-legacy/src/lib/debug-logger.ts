@@ -1,6 +1,6 @@
 import { mkdirSync, appendFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { configRoot } from '@contentful/experience-design-system-types/config';
+import { homedir } from 'node:os';
 
 // ── Public types ─────────────────────────────────────────────────────────────
 
@@ -86,7 +86,7 @@ const DEBUG_ROOT_ENV = 'EDSI_DEBUG_ROOT';
 const DEBUG_LOG_ENV = 'EDSI_DEBUG_LOG';
 
 function defaultDebugRoot(): string {
-  return process.env[DEBUG_ROOT_ENV] ?? join(configRoot(), 'debug');
+  return process.env[DEBUG_ROOT_ENV] ?? join(homedir(), '.contentful', 'experience-design-system-cli', 'debug');
 }
 
 // Session timestamp source. Deterministic-friendly: honors EDSI_DEBUG_TS for tests.
