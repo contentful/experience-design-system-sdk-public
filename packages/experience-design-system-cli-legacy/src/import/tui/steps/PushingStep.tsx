@@ -1,9 +1,10 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import { ProgressBar } from '@inkjs/ui';
+import { ProgressBar, ThemeProvider } from '@inkjs/ui';
 import type { PushProgress } from '../push-progress.js';
 import { StepHeader } from '../components/StepHeader.js';
 import { useTimedSpinner } from '../../../tui/use-timed-spinner.js';
+import { INK_UI_THEME } from '../../../analyze/select/tui/theme.js';
 
 type PushingStepProps = {
   stepNumber: number;
@@ -36,7 +37,9 @@ export function PushingStep({ stepNumber, totalSteps, progress }: PushingStepPro
         <Box gap={1} flexDirection="column">
           <Box gap={2}>
             <Box width={40}>
-              <ProgressBar value={Math.round((progress.processed / progress.total) * 100)} />
+              <ThemeProvider theme={INK_UI_THEME}>
+                <ProgressBar value={Math.round((progress.processed / progress.total) * 100)} />
+              </ThemeProvider>
             </Box>
             <Text dimColor>
               {progress.processed}/{progress.total} entities

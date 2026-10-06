@@ -1,4 +1,6 @@
 import type { ReviewComponentStatus } from '../types.js';
+import type { TextProps } from 'ink';
+import { extendTheme, defaultTheme } from '@inkjs/ui';
 
 export const PALETTE = {
   info: '#1773EB',
@@ -12,6 +14,18 @@ export const PALETTE = {
   subtle: '#DDE5EC',
   bg: '#EFF2F6',
 } as const;
+
+export const INK_UI_THEME = extendTheme(defaultTheme, {
+  components: {
+    ProgressBar: {
+      styles: {
+        completed: (): TextProps => ({
+          color: PALETTE.info,
+        }),
+      },
+    },
+  },
+});
 
 export function statusPaletteColor(
   status: ReviewComponentStatus,

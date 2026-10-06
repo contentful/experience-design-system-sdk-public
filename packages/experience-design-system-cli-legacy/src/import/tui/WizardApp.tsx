@@ -2485,9 +2485,7 @@ export function WizardApp({
             title="Generating definitions"
             description={`${formatAcceptanceSummary({ accepted: state.acceptedCount, autoRejected: state.autoRejectedCount })} ${displayAgent} is mapping your selected components to CDF format.${hasTokens ? ' Using your design tokens for prop resolution.' : ''}`}
             detail={progressDetail}
-            detailProgress={
-              p ? { done: p.done, total: p.total } : undefined
-            }
+            detailProgress={p ? { done: p.done, total: p.total } : undefined}
             secondaryDetail={mapTokensDetail}
             secondaryComplete={state.mapTokensStatus === 'complete'}
           />

@@ -1,7 +1,7 @@
 import React from 'react';
-import { PALETTE } from '../../../analyze/select/tui/theme.js';
+import { PALETTE, INK_UI_THEME } from '../../../analyze/select/tui/theme.js';
 import { Box, Text } from 'ink';
-import { ProgressBar } from '@inkjs/ui';
+import { ProgressBar, ThemeProvider } from '@inkjs/ui';
 import { StepHeader } from '../components/StepHeader.js';
 import { useTimedSpinner } from '../../../tui/use-timed-spinner.js';
 
@@ -64,7 +64,9 @@ export function RunningStep({
           <>
             <Box gap={2}>
               <Box width={40}>
-                <ProgressBar value={Math.round((detailProgress.done / detailProgress.total) * 100)} />
+                <ThemeProvider theme={INK_UI_THEME}>
+                  <ProgressBar value={Math.round((detailProgress.done / detailProgress.total) * 100)} />
+                </ThemeProvider>
               </Box>
               <Text dimColor>
                 {detailProgress.done}/{detailProgress.total}
@@ -74,11 +76,7 @@ export function RunningStep({
           </>
         ) : (
           <Box gap={1}>
-            {detailComplete ? (
-              <Text color={PALETTE.success}>✓</Text>
-            ) : (
-              spinner
-            )}
+            {detailComplete ? <Text color={PALETTE.success}>✓</Text> : spinner}
             <Text dimColor>{detail ?? 'Running...'}</Text>
           </Box>
         )}
@@ -89,7 +87,9 @@ export function RunningStep({
             <>
               <Box gap={2}>
                 <Box width={40}>
-                  <ProgressBar value={Math.round((secondaryProgress.done / secondaryProgress.total) * 100)} />
+                  <ThemeProvider theme={THEME}>
+                    <ProgressBar value={Math.round((secondaryProgress.done / secondaryProgress.total) * 100)} />
+                  </ThemeProvider>
                 </Box>
                 <Text dimColor>
                   {secondaryProgress.done}/{secondaryProgress.total}
@@ -99,11 +99,7 @@ export function RunningStep({
             </>
           ) : (
             <Box gap={1}>
-              {secondaryComplete ? (
-                <Text color={PALETTE.success}>✓</Text>
-              ) : (
-                spinner
-              )}
+              {secondaryComplete ? <Text color={PALETTE.success}>✓</Text> : spinner}
               <Text dimColor>{secondaryDetail}</Text>
             </Box>
           )}
@@ -111,31 +107,19 @@ export function RunningStep({
       )}
       {tertiaryDetail !== undefined && (
         <Box gap={1}>
-          {tertiaryComplete ? (
-            <Text color={PALETTE.success}>✓</Text>
-          ) : (
-            spinner
-          )}
+          {tertiaryComplete ? <Text color={PALETTE.success}>✓</Text> : spinner}
           <Text dimColor>{tertiaryDetail}</Text>
         </Box>
       )}
       {quaternaryDetail !== undefined && (
         <Box gap={1}>
-          {quaternaryComplete ? (
-            <Text color={PALETTE.success}>✓</Text>
-          ) : (
-            spinner
-          )}
+          {quaternaryComplete ? <Text color={PALETTE.success}>✓</Text> : spinner}
           <Text dimColor>{quaternaryDetail}</Text>
         </Box>
       )}
       {quinaryDetail !== undefined && (
         <Box gap={1}>
-          {quinaryComplete ? (
-            <Text color={PALETTE.success}>✓</Text>
-          ) : (
-            spinner
-          )}
+          {quinaryComplete ? <Text color={PALETTE.success}>✓</Text> : spinner}
           <Text dimColor>{quinaryDetail}</Text>
         </Box>
       )}

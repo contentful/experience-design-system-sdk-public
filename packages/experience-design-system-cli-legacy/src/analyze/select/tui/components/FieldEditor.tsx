@@ -275,9 +275,7 @@ function Picker({ value, active }: { value: string; active: boolean }): React.Re
 function Toggle({ value, active }: { value: boolean; active: boolean }): React.ReactElement {
   return (
     <Box>
-      <Text color={active ? PALETTE.info : value ? PALETTE.success : PALETTE.border}>
-        {value ? '[✓]' : '[ ]'}
-      </Text>
+      <Text color={active ? PALETTE.info : value ? PALETTE.success : PALETTE.border}>{value ? '[✓]' : '[ ]'}</Text>
     </Box>
   );
 }
@@ -358,7 +356,15 @@ function DefaultValueRow({
   );
 }
 
-function RowLabel({ name, selected, trailing = true }: { name: string; selected: boolean; trailing?: boolean }): React.ReactElement {
+function RowLabel({
+  name,
+  selected,
+  trailing = true,
+}: {
+  name: string;
+  selected: boolean;
+  trailing?: boolean;
+}): React.ReactElement {
   return (
     <Text
       color={selected ? PALETTE.inverse : PALETTE.info}
@@ -585,9 +591,7 @@ function DescriptionField({
       {editing ? (
         <EditableDescription cursor={cursor} cursorVisible={cursorVisible} value={value} textCursor={textCursor} />
       ) : (
-        <Text wrap="wrap">
-          {value || '—'}
-        </Text>
+        <Text wrap="wrap">{value || '—'}</Text>
       )}
     </Box>
   );
@@ -842,9 +846,7 @@ function SlotRow({
           {slot.allowedComponents.length === 0 ? (
             <Text dimColor>(any)</Text>
           ) : (
-            <Text wrap="wrap">
-              {slot.allowedComponents.join(', ')}
-            </Text>
+            <Text wrap="wrap">{slot.allowedComponents.join(', ')}</Text>
           )}
         </Box>
       )}
@@ -2195,13 +2197,7 @@ export function FieldEditor({
       {...(fixedHeight ? { height } : { minHeight: height })}
       clipOverflow={fixedHeight}
       borderStyle="single"
-      borderColor={
-        hasEmptyProperties
-          ? PALETTE.warning
-          : active
-            ? PALETTE.info
-            : PALETTE.border
-      }
+      borderColor={hasEmptyProperties ? PALETTE.warning : active ? PALETTE.info : PALETTE.border}
     >
       {hasEmptyProperties && (
         <Text color={PALETTE.warning}>
