@@ -16,7 +16,7 @@ const credentialsStore = vi.hoisted(() => ({
 vi.mock('../../../src/credentials-store.js', () => ({
   readExperiencesCredentials: credentialsStore.read,
   writeExperiencesCredentials: credentialsStore.write,
-  experiencesCredentialsPath: () => '/home/tester/.config/experiences/credentials.json',
+  experiencesCredentialsPath: () => '/home/tester/.contentful/experience-design-system-cli/config.json',
 }));
 
 const EMPTY = { spaceId: '', environmentId: '', cmaToken: '' };
@@ -88,7 +88,7 @@ describe('ContentfulScreen', () => {
       (f) => f.includes('loaded automatically'),
     );
 
-    expect(frame).toContain('Saved to /home/tester/.config/experiences/credentials.json');
+    expect(frame).toContain('Saved to /home/tester/.contentful/experience-design-system-cli/config.json');
   });
 
   it('skips without writing when the operator declines', async () => {

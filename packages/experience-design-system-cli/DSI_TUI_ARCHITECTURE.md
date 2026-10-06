@@ -12,11 +12,11 @@ This package is the Terminal UI flow that the customer interacts with
 **packages/experience-design-system-cli/src/api**
 This is where all the api calls are made that the TUI needs
 
-**~/.config/experiences/credentials.json**
-Shared v1 store for credentials (SPACE_ID, ENV_ID, CMA_TOKEN, host) and preferences (analyticsDisabled, debug). Managed by v2's settings flow via `src/tui/settings/utils/v1-store.ts`.
+**~/.contentful/experience-design-system-cli/config.json**
+The single settings file, read and written through `@contentful/experience-design-system-types/config` (the only module that knows the path). Holds credentials (spaceId, environmentId, cmaToken, host), preferences (analyticsDisabled, debug, debugMode) and defaults. The CLI and the bundled legacy import share it; `EDS_HOME` relocates the whole folder (used by tests).
 
-**packages/experience-design-system-cli/.contentful/debug/sessions**
-Per-session debug logs, written inside the installed package directory. v2 creates `MM-DD-YYYY-session-N/` directories with markdown run snapshots for each flow visit. Logging is toggled from Settings > Debug Mode.
+**~/.contentful/experience-design-system-cli/debug/sessions**
+Per-session debug logs. v2 creates `MM-DD-YYYY-session-N/` directories with markdown run snapshots for each flow visit. Logging is toggled from Settings > Debug Mode.
 
 ## Project Architecture
 
@@ -28,7 +28,7 @@ For each directory and flow, there is always a top level parent container screen
 
 ### Settings Flow (`src/tui/settings/`)
 
-Settings pages persist user preferences and credentials to `~/.config/experiences/credentials.json` (shared with cli-v1). The `utils/v1-store.ts` module provides generic read/write functions for this store.
+Settings pages persist user preferences and credentials to `~/.contentful/experience-design-system-cli/config.json` (shared with the bundled legacy import). `utils/v1-store.ts` re-exports the shared read/write functions from `@contentful/experience-design-system-types/config`.
 
 Each preference screen:
 
