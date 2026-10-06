@@ -206,8 +206,8 @@ export function CredentialsStep({
               push your import at the end. Press S to skip and run without space context (push will be disabled).
             </Text>
             <Text dimColor>
-              Tip: run experiences setup to save these to ~/.config/experiences/credentials.json so they pre-fill here
-              automatically.
+              Tip: run experiences setup to save these to ~/.contentful/experience-design-system-cli/config.json so they
+              pre-fill here automatically.
             </Text>
           </>
         )}

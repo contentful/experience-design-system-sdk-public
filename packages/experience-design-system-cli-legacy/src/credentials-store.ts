@@ -1,6 +1,4 @@
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
-import { homedir } from 'node:os';
+import { configFilePath, readSettings, writeSettings } from '@contentful/experience-design-system-types/config';
 import { toConfiguredHost } from './host-utils.js';
 
 export type ExperiencesCredentials = {
@@ -19,13 +17,23 @@ export type ExperiencesCredentials = {
   analyticsDisabled?: boolean;
 };
 
-const CREDENTIALS_DIR = join(homedir(), '.config', 'experiences');
-const CREDENTIALS_PATH = join(CREDENTIALS_DIR, 'credentials.json');
+// Every key this store owns. Cleared on write so an emptied value really disappears.
+const OWNED_KEYS = [
+  'spaceId',
+  'environmentId',
+  'cmaToken',
+  'host',
+  'agent',
+  'agentModel',
+  'generatePromptPath',
+  'debug',
+  'noColor',
+  'analyticsDisabled',
+];
 
 export async function readExperiencesCredentials(): Promise<ExperiencesCredentials> {
   try {
-    const raw = await readFile(CREDENTIALS_PATH, 'utf8');
-    const parsed = JSON.parse(raw) as Partial<ExperiencesCredentials>;
+    const parsed = (await readSettings()) as Partial<ExperiencesCredentials>;
     // Disk value wins when non-empty; env is the fallback.
     const host = toConfiguredHost(parsed.host || process.env['EDS_HOST']);
     return {
@@ -52,29 +60,22 @@ export async function readExperiencesCredentials(): Promise<ExperiencesCredentia
 }
 
 export async function writeExperiencesCredentials(creds: ExperiencesCredentials): Promise<void> {
-  const { host: _host, agent, agentModel, generatePromptPath, debug, noColor, analyticsDisabled, ...rest } = creds;
+  const { host: _host, ...rest } = creds;
   const host = toConfiguredHost(creds.host);
-  await mkdir(CREDENTIALS_DIR, { recursive: true });
-  await writeFile(
-    CREDENTIALS_PATH,
-    JSON.stringify(
-      {
-        ...rest,
-        ...(host ? { host } : {}),
-        ...(agent ? { agent } : {}),
-        ...(agentModel ? { agentModel } : {}),
-        ...(generatePromptPath ? { generatePromptPath } : {}),
-        ...(typeof debug === 'boolean' ? { debug } : {}),
-        ...(typeof noColor === 'boolean' ? { noColor } : {}),
-        ...(typeof analyticsDisabled === 'boolean' ? { analyticsDisabled } : {}),
-      },
-      null,
-      2,
-    ) + '\n',
-    { mode: 0o600 },
-  );
+  const optional = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined && v !== ''));
+  // Merge into the shared config so keys owned by the new CLI (debugMode, defaults) survive.
+  const current = await readSettings();
+  for (const key of OWNED_KEYS) delete current[key];
+  await writeSettings({
+    ...current,
+    ...optional,
+    spaceId: rest.spaceId,
+    environmentId: rest.environmentId,
+    cmaToken: rest.cmaToken,
+    ...(host ? { host } : {}),
+  });
 }
 
 export function experiencesCredentialsPath(): string {
-  return CREDENTIALS_PATH;
+  return configFilePath();
 }
