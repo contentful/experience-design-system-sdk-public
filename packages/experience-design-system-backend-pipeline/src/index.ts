@@ -23,6 +23,15 @@ export type {
   SelectionServiceResult,
 } from './selection/types/contract.js';
 
+// Generation
+export { generateComponents } from './generation/controller/generate-components-endpoint.js';
+export type {
+  GenerateComponentsRequest,
+  GenerateComponentsResponse,
+  GeneratedComponent,
+  GenerationFailure,
+} from './generation/types/contract.js';
+
 // Apply
 export { applyComponents } from './apply/controller/apply-components-endpoint.js';
 export type {
