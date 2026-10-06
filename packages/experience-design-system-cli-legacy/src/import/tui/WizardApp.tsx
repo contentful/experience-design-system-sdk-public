@@ -912,7 +912,10 @@ export function WizardApp({
     };
 
     const projectRoot = resolve(projectPath);
-    const compositionSources = resolveCompositionSources({ compositionRefresh: effectiveNoCache, noCache: effectiveNoCache });
+    const compositionSources = resolveCompositionSources({
+      compositionRefresh: effectiveNoCache,
+      noCache: effectiveNoCache,
+    });
     const extractAgent = resolveCompositionAgentName(state.agent);
     const sourceDirectory = await resolveSourceDirectory(projectRoot, undefined);
 
