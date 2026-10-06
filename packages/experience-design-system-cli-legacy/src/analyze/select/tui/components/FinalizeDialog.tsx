@@ -57,7 +57,8 @@ export function FinalizeDialog({
   const hasMoreAbove = offset > 0;
 
   return (
-    <Box flexDirection="column" borderStyle="round" padding={1} width={58}>
+    <Box width="100%" justifyContent="center">
+      <Box flexDirection="column" borderStyle="round" padding={1} width={58}>
       <Text bold>{'─'.repeat(17) + ' Finalize ' + '─'.repeat(17)}</Text>
       <Text> </Text>
       <Text>
@@ -121,6 +122,7 @@ export function FinalizeDialog({
       </Text>
       <Text> </Text>
       <Text>{'  [y / Enter]  Confirm    [n / Esc]  Cancel'}</Text>
+      </Box>
     </Box>
   );
 }

@@ -275,7 +275,9 @@ function Picker({ value, active }: { value: string; active: boolean }): React.Re
 function Toggle({ value, active }: { value: boolean; active: boolean }): React.ReactElement {
   return (
     <Box>
-      <Text color={active ? PALETTE.info : value ? PALETTE.success : undefined}>{value ? '[✓]' : '[ ]'}</Text>
+      <Text color={active ? PALETTE.info : value ? PALETTE.success : PALETTE.border}>
+        {value ? '[✓]' : '[ ]'}
+      </Text>
     </Box>
   );
 }

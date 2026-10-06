@@ -2467,7 +2467,7 @@ export function WizardApp({
         const p = state.generateProgress;
         const stepNum = hasTokenStage ? 4 : 3;
         const displayAgent = state.agent.charAt(0).toUpperCase() + state.agent.slice(1);
-        const progressDetail = p ? `[${p.done}/${p.total}] ${p.current}` : `Starting up ${displayAgent}...`;
+        const progressDetail = p ? `${p.current}` : `Starting up ${displayAgent}...`;
         const mapTokensDetail =
           state.mapTokensStatus === 'running'
             ? skipMapTokens
@@ -2485,6 +2485,9 @@ export function WizardApp({
             title="Generating definitions"
             description={`${formatAcceptanceSummary({ accepted: state.acceptedCount, autoRejected: state.autoRejectedCount })} ${displayAgent} is mapping your selected components to CDF format.${hasTokens ? ' Using your design tokens for prop resolution.' : ''}`}
             detail={progressDetail}
+            detailProgress={
+              p ? { done: p.done, total: p.total } : undefined
+            }
             secondaryDetail={mapTokensDetail}
             secondaryComplete={state.mapTokensStatus === 'complete'}
           />

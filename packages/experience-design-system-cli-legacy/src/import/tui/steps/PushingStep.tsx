@@ -1,6 +1,6 @@
 import React from 'react';
-import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { Box, Text } from 'ink';
+import { ProgressBar } from '@inkjs/ui';
 import type { PushProgress } from '../push-progress.js';
 import { StepHeader } from '../components/StepHeader.js';
 import { useTimedSpinner } from '../../../tui/use-timed-spinner.js';
@@ -12,7 +12,7 @@ type PushingStepProps = {
 };
 
 export function PushingStep({ stepNumber, totalSteps, progress }: PushingStepProps): React.ReactElement {
-  const { spinner, elapsed } = useTimedSpinner();
+  const { elapsed } = useTimedSpinner();
 
   const operationId = progress && progress.kind === 'queued' ? progress.operationId : null;
 
@@ -33,11 +33,15 @@ export function PushingStep({ stepNumber, totalSteps, progress }: PushingStepPro
       )}
 
       {showGlobal && progress && progress.kind === 'progress' && (
-        <Box gap={1}>
-          <Text color={PALETTE.info}>{spinner}</Text>
-          <Text dimColor>
-            {progress.processed}/{progress.total} entities
-          </Text>
+        <Box gap={1} flexDirection="column">
+          <Box gap={2}>
+            <Box width={40}>
+              <ProgressBar value={Math.round((progress.processed / progress.total) * 100)} />
+            </Box>
+            <Text dimColor>
+              {progress.processed}/{progress.total} entities
+            </Text>
+          </Box>
         </Box>
       )}
 
