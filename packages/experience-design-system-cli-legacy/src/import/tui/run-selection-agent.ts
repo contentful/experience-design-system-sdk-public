@@ -70,6 +70,11 @@ export async function runSelectionAgent(options: {
       onDebugEvent: (name, payload) => getDebugLogger().event('agent', name, payload),
     });
 
+    const selectBuckets = bucketComponentsProps(componentsToRun);
+    for (const assignment of selectBuckets) {
+      getDebugLogger().event('analyze', 'prop-buckets.select', { ...assignment });
+    }
+
     const prompt = await buildPrompt({
       skill: 'select',
       mode: 'autonomous',
@@ -78,7 +83,7 @@ export async function runSelectionAgent(options: {
         null,
         2,
       ),
-      propBucketsInline: JSON.stringify(bucketComponentsProps(componentsToRun)),
+      propBucketsInline: JSON.stringify(selectBuckets),
       outDir: process.cwd(),
       ...(options.promptText !== undefined ? { skillContentOverride: options.promptText } : {}),
       ...(options.promptText === undefined && options.promptPath ? { skillPathOverride: options.promptPath } : {}),

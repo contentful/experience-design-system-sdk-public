@@ -367,6 +367,9 @@ async function runOneComponent(
     }
   }
 
+  const componentBuckets = bucketComponentProps(component);
+  getDebugLogger().event('analyze', 'prop-buckets.generate', { ...componentBuckets });
+
   const rawComponentsInline = JSON.stringify(
     [
       {
@@ -393,7 +396,7 @@ async function runOneComponent(
     skill: 'components',
     mode: 'autonomous',
     rawComponentsInline,
-    propBucketsInline: JSON.stringify(bucketComponentProps(component)),
+    propBucketsInline: JSON.stringify(componentBuckets),
     tokensInline,
     tokenMapInline,
     outDir: process.cwd(),
@@ -702,11 +705,13 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
       skill === 'components' && existingContentfulEntities && sampleComponent
         ? JSON.stringify(summarizeForGenerateAgent(existingContentfulEntities, sampleComponent.name))
         : undefined;
+    const sampleBuckets = sampleComponent ? bucketComponentProps(sampleComponent) : undefined;
+    if (sampleBuckets) getDebugLogger().event('analyze', 'prop-buckets.generate', { ...sampleBuckets });
     const prompt = await buildPrompt({
       skill,
       mode: 'autonomous',
       rawComponentsInline: sampleInline ?? rawTokensInline,
-      propBucketsInline: sampleComponent ? JSON.stringify(bucketComponentProps(sampleComponent)) : undefined,
+      propBucketsInline: sampleBuckets ? JSON.stringify(sampleBuckets) : undefined,
       rawTokensInline: skill === 'tokens' ? rawTokensInline : undefined,
       rawTokensFilename: opts.rawTokens ? resolve(opts.rawTokens).split('/').pop() : undefined,
       tokensInline,
