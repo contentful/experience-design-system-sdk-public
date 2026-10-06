@@ -20,7 +20,6 @@ interface PipelineResult {
 export interface SpawnV1ImportOptions {
   project?: string;
   tokens?: string;
-  skipTokenPrompt?: boolean;
   onProgress?: (line: string) => void;
 }
 
@@ -40,10 +39,6 @@ function buildArgs(options: SpawnV1ImportOptions): string[] {
 
   if (options.tokens) {
     args.push('--tokens', options.tokens);
-  }
-
-  if (options.skipTokenPrompt) {
-    args.push('--skip-token-prompt');
   }
 
   return args;

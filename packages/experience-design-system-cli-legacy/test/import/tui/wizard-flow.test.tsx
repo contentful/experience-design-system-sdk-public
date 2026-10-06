@@ -19,10 +19,7 @@ vi.mock('../../../src/apply/api-client.js', () => ({
         components: { new: [], changed: [], removed: [], unchanged: [] },
         tokens: { new: [], changed: [], removed: [], unchanged: [] },
       }),
-      applyImport: vi.fn().mockResolvedValue({
-        sys: { id: 'op-1', status: 'queued' },
-        items: [],
-      }),
+      applyImport: vi.fn().mockResolvedValue({ sys: { id: 'op-1', status: 'queued' }, items: [] }),
       pollOperation: vi.fn().mockResolvedValue({
         sys: { id: 'op-1', status: 'succeeded' },
         items: [],
@@ -145,18 +142,6 @@ describe('WizardApp TUI flow', () => {
     // TokenInputStep renders "Design tokens" heading and token path prompt
     expect(frame).toContain('Design tokens');
     expect(frame).toContain('Token path');
-  });
-
-  it('starts at path validation, not the token prompt, when skipTokenPrompt is set', async () => {
-    const { lastFrame } = render(<WizardApp initialProjectPath="/tmp/test-project" skipTokenPrompt />);
-
-    const frame = await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('Scanning') || f.includes('Found'),
-      3000,
-    );
-
-    expect(frame).not.toContain('Design tokens');
   });
 
   it('token-input step responds to skip keystroke', async () => {

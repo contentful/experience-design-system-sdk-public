@@ -36,10 +36,4 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     sampleValue: 'composition=./p.md',
     incompatibleWith: [],
   },
-  {
-    flag: '--skip-token-prompt',
-    kind: 'boolean',
-    incompatibleWith: [],
-    notes: 'Hidden. The new CLI passes it after the user skips its own token step.',
-  },
 ];

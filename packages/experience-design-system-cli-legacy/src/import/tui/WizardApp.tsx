@@ -368,7 +368,6 @@ export type WizardAppProps = {
   generatePromptPath?: string;
   skipMapTokens?: boolean;
   initialRawTokensPath?: string;
-  skipTokenPrompt?: boolean;
   initialAgentAuth?: Promise<AgentAuthStatus>;
 };
 
@@ -388,7 +387,6 @@ export function WizardApp({
   generatePromptPath,
   skipMapTokens = false,
   initialRawTokensPath,
-  skipTokenPrompt = false,
   initialAgentAuth,
 }: WizardAppProps = {}): React.ReactElement {
   const defaultConfiguredHost = toConfiguredHost(host || process.env['EDS_HOST']) ?? DEFAULT_CONFIGURED_HOST;
@@ -452,9 +450,7 @@ export function WizardApp({
       ? 'path-validation'
       : 'credentials'
     : initialProjectPath
-      ? skipTokenPrompt
-        ? 'path-validation'
-        : 'token-input'
+      ? 'token-input'
       : 'welcome';
   const initialOutDir = initialProjectPath ? join(resolve(initialProjectPath), '.contentful') : '';
 
