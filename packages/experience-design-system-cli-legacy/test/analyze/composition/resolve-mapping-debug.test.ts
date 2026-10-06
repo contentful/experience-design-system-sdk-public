@@ -27,39 +27,54 @@ describe('resolveMapping debug events', () => {
     vi.restoreAllMocks();
   });
 
-  it('records the agent edges with their source, then the merged edges by provenance', async () => {
+  it('records the edges before the merge, the merged edges by provenance, and the applied slots', () => {
     const events = captureEvents();
-    const runAgentFn = vi.fn(async () => '{"tool":"map_edge","parent":"Tabs","child":"Tab"}');
 
-    await resolveMapping({ components: COMPONENTS, files: [{ path: 'm.ts', content: 'x' }], runAgentFn });
+    resolveMapping({
+      components: COMPONENTS,
+      sourceCallSiteEvidence: [
+        {
+          parent: 'Tabs',
+          child: 'Tab',
+          sourcePath: 'src/FeatureTabs.tsx',
+          startLine: 8,
+          endLine: 12,
+          excerpt: '<Tab />',
+          kind: 'jsx-render',
+        },
+      ],
+      sourceCallSiteRejections: [
+        { parent: 'Card', candidate: '<text>', sourcePath: 'src/Page.tsx', reason: 'text-only-child' },
+      ],
+    });
 
-    const names = events.map((event) => event.name);
-    expect(names).toEqual([
-      'composition.pre-agent',
-      'composition.agent-edges',
+    expect(events.map((event) => event.name)).toEqual([
+      'composition.pre-merge',
       'composition.merged',
       'composition.applied',
     ]);
-    expect(events[0]?.payload).toMatchObject({ residueParents: ['Tabs', 'Tab', 'Card'], forceAgent: false });
+    expect(events[0]?.payload).toMatchObject({
+      edgeCountsByProvenance: { 'call-site': 1 },
+      coveredParents: ['Tabs'],
+      residueParents: ['Tab', 'Card'],
+      sourceCallSiteAccepted: 1,
+      sourceCallSiteRejected: 1,
+    });
     expect(events[1]?.payload).toMatchObject({
-      reason: 'residue',
-      acceptedEdges: [{ parent: 'Tabs', child: 'Tab', slot: null }],
+      edgeCountsByProvenance: { 'call-site': 1 },
+      edges: [{ parent: 'Tabs', child: 'Tab', slot: null, provenance: 'call-site' }],
     });
     expect(events[2]?.payload).toMatchObject({
-      edgeCountsByProvenance: { agent: 1 },
-      edges: [{ parent: 'Tabs', child: 'Tab', slot: null, provenance: 'agent' }],
-    });
-    expect(events[3]?.payload).toMatchObject({
       slots: [{ component: 'Tabs', slot: 'children', allowedComponents: ['Tab'] }],
     });
   });
 
-  it('records why the agent was skipped when there are no files', async () => {
+  it('records no edges when nothing is collected', () => {
     const events = captureEvents();
 
-    await resolveMapping({ components: COMPONENTS, files: [], runAgentFn: vi.fn() });
+    resolveMapping({ components: COMPONENTS });
 
-    expect(events.map((event) => event.name)).toContain('composition.agent-skipped');
-    expect(events.map((event) => event.name)).not.toContain('composition.agent-edges');
+    expect(events[0]?.payload).toMatchObject({ edgeCountsByProvenance: {}, coveredParents: [] });
+    expect(events[1]?.payload).toMatchObject({ edges: [] });
   });
 });

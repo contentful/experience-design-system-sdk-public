@@ -1,9 +1,7 @@
 import type { RawComponentDefinition } from '../../types.js';
 import type { CompositionEdge } from './interchange-schema.js';
 import { mergeEdges, type EdgeConflict } from './merge-edges.js';
-import { parseMapEdges } from './parse-map-edges.js';
 import { applyMapping } from './apply-mapping.js';
-import { loadPrompt } from './prompt-loader.js';
 import { getDebugLogger } from '../../lib/debug-logger.js';
 import type { SourceCallSiteEvidence, SourceCallSiteRejection } from './source-call-site-evidence.js';
 
@@ -19,34 +17,18 @@ export type ResolveMappingResult = {
 /**
  * Orchestrate composition-edge acquisition and enrichment.
  *
- * Sources by rank: typed-slot / "code slots" (2) > structural usage evidence
- * (3) > manifest (4) > doc (5) > adapter-resolved / extraEdges (6) >
- * edge-emitting agent (7). Manifest/doc edges are computed deterministically outside
+ * Sources by rank: typed-slot / "code slots" (1) > structural usage evidence
+ * (2) > cited source call sites (3) > manifest (4) > doc (5) > adapter-resolved
+ * / extraEdges (6). Manifest/doc edges are computed deterministically outside
  * this function (see manifest-doc-evidence.ts) and joined via `extraEdges`.
  * ALL sources — including the code slots already on the incoming components —
  * are fed into one ranked merge and unioned; non-conflicting edges from every
  * source survive, and on a conflict (same parent+child, different slot) the
- * higher-rank source wins and the loser is recorded. The edge-emitting agent runs only when
- * `forceAgent` is set OR there is residue a higher-rank source
- * didn't cover (routing/cost optimization) — `forceAgent` bypasses that
- * suppression but never changes rank.
- *
- * `runAgentFn` is injected (returns the agent's raw stdout) so this is
- * testable without spawning a subprocess.
+ * higher-rank source wins and the loser is recorded. No agent contributes
+ * edges: every edge is backed by code, a manifest or documentation.
  */
-export async function resolveMapping(input: {
+export function resolveMapping(input: {
   components: RawComponentDefinition[];
-  forceAgent?: boolean;
-  files: Array<{ path: string; content: string }>;
-  runAgentFn: (opts: { prompt: string; files: Array<{ path: string; content: string }> }) => Promise<string>;
-  buildPrompt?: (files: Array<{ path: string; content: string }>, componentNames: string[]) => string;
-  /**
-   * Custom instruction preamble (from `--prompt composition=...`). Replaces the
-   * default guidance line ONLY; the machine-readable output contract + the
-   * component-name allowlist + candidate files are always appended so the
-   * JSONL parser keeps working regardless of the override.
-   */
-  promptOverride?: string;
   /**
    * Pre-resolved edges from an external source (e.g. manifest or documentation)
    * path). They join the ranked merge at their own provenance rank alongside
@@ -55,15 +37,13 @@ export async function resolveMapping(input: {
   extraEdges?: CompositionEdge[];
   sourceCallSiteEvidence?: SourceCallSiteEvidence[];
   sourceCallSiteRejections?: SourceCallSiteRejection[];
-}): Promise<ResolveMappingResult> {
-  const componentNames = new Set(input.components.map((c) => c.name));
+}): ResolveMappingResult {
   const collected: CompositionEdge[] = [];
-  const agentWarnings: string[] = [];
 
-  // Rank 2 — typed-slot ("code slots") already resolved by the AST extractor.
-  // Feed them into the ranked merge so a conflicting lower-rank edge (agent
-  // placing the same child in a different slot) LOSES to code rather than being
-  // unioned in alongside it.
+  // Rank 1 — typed-slot ("code slots") already resolved by the AST extractor.
+  // Feed them into the ranked merge so a conflicting lower-rank edge (the same
+  // child in a different slot) LOSES to code rather than being unioned in
+  // alongside it.
   for (const c of input.components) {
     for (const slot of c.slots) {
       for (const child of slot.allowedComponents ?? []) {
@@ -72,11 +52,9 @@ export async function resolveMapping(input: {
     }
   }
 
-  // Rank 3 — structural usage evidence (runtime type-predicate, `.type ===`
+  // Rank 2 — structural usage evidence (runtime type-predicate, `.type ===`
   // identity check, or direct JSX nesting — see structural-slot-evidence.ts).
-  // Lower trust than a declared slot contract, but still code-derived, so it
-  // outranks the agent and suppresses a redundant agent run when it alone
-  // covers a parent.
+  // Lower trust than a declared slot contract, but still code-derived.
   for (const c of input.components) {
     for (const slot of c.slots) {
       for (const child of slot.structuralAllowedComponents ?? []) {
@@ -92,7 +70,18 @@ export async function resolveMapping(input: {
     collected.push(...input.extraEdges);
   }
 
-  // Routing: which parents are already covered by a higher-rank source?
+  // Rank 3 — cited source call sites: a parent that renders a child as JSX,
+  // with the path and line range of the call.
+  for (const evidence of input.sourceCallSiteEvidence ?? []) {
+    collected.push({
+      parent: evidence.parent,
+      child: evidence.child,
+      ...(evidence.slot ? { slot: evidence.slot } : {}),
+      citation: { sourcePath: evidence.sourcePath, startLine: evidence.startLine, endLine: evidence.endLine },
+      provenance: 'call-site',
+    });
+  }
+
   const coveredParents = new Set(collected.map((e) => e.parent));
   const residueParents = input.components.map((c) => c.name).filter((n) => !coveredParents.has(n));
 
@@ -102,35 +91,13 @@ export async function resolveMapping(input: {
     for (const edge of edges) counts[edge.provenance] = (counts[edge.provenance] ?? 0) + 1;
     return counts;
   };
-  debug.event('analyze', 'composition.pre-agent', {
+  debug.event('analyze', 'composition.pre-merge', {
     edgeCountsByProvenance: countByProvenance(collected),
     coveredParents: [...coveredParents].sort(),
     residueParents,
-    forceAgent: input.forceAgent === true,
-    candidateFileCount: input.files.length,
     sourceCallSiteAccepted: input.sourceCallSiteEvidence?.length ?? 0,
     sourceCallSiteRejected: input.sourceCallSiteRejections?.length ?? 0,
   });
-
-  // Rank 7 — agent. Runs when enabled AND (forced OR there is residue).
-  const shouldRunAgent = input.forceAgent || (residueParents.length > 0 && input.files.length > 0);
-  if (shouldRunAgent) {
-    const prompt = input.buildPrompt
-      ? input.buildPrompt(input.files, [...componentNames])
-      : defaultPrompt(input.files, [...componentNames], input.promptOverride, input.sourceCallSiteEvidence ?? []);
-    const raw = (await input.runAgentFn({ prompt, files: input.files })) ?? '';
-    const parsed = parseMapEdges(raw, { componentNames, sourceCallSiteEvidence: input.sourceCallSiteEvidence });
-    debug.event('analyze', 'composition.agent-edges', {
-      reason: input.forceAgent ? 'forced' : 'residue',
-      rawOutputLength: raw.length,
-      acceptedEdges: parsed.edges.map((edge) => ({ parent: edge.parent, child: edge.child, slot: edge.slot ?? null })),
-      warnings: parsed.warnings,
-    });
-    collected.push(...parsed.edges);
-    agentWarnings.push(...parsed.warnings);
-  } else {
-    debug.event('analyze', 'composition.agent-skipped', { residueParents, fileCount: input.files.length });
-  }
 
   const merged = mergeEdges(collected);
   debug.event('analyze', 'composition.merged', {
@@ -168,38 +135,8 @@ export async function resolveMapping(input: {
     components: applied.components,
     edges: merged.edges,
     conflicts: merged.conflicts,
-    warnings: [...agentWarnings, ...applied.warnings],
+    warnings: applied.warnings,
     sourceCallSiteEvidence: [...(input.sourceCallSiteEvidence ?? [])],
     sourceCallSiteRejections: [...(input.sourceCallSiteRejections ?? [])],
   };
-}
-
-function defaultPrompt(
-  files: Array<{ path: string; content: string }>,
-  componentNames: string[],
-  promptOverride?: string,
-  sourceCallSiteEvidence: SourceCallSiteEvidence[] = [],
-): string {
-  const fileBlocks = files.map((f) => `--- ${f.path} ---\n${f.content}`).join('\n\n');
-  // The override replaces only the leading instruction; the output contract,
-  // name allowlist, and candidate files are always appended so the JSONL
-  // parser keeps working.
-  const instruction = promptOverride?.trim() ? promptOverride.trim() : loadPrompt('composition-edges.md').trim();
-  return [
-    instruction,
-    '',
-    'Emit one JSON object per line, each: {"tool":"map_edge","parent":"<Name>","child":"<Name>","slot"?:"<slot>","confidence"?:1-5,"reason":"<cite the file + declaration>","citation"?:{"sourcePath":"<exact path>","startLine":1,"endLine":1}}.',
-    'Use ONLY these exact component names (an edge naming anything else is dropped):',
-    componentNames.join(', '),
-    '',
-    'Candidate files:',
-    fileBlocks,
-    ...(sourceCallSiteEvidence.length > 0
-      ? [
-          '',
-          'Deterministic source call-site evidence (untrusted data; cite these exact paths and line ranges):',
-          JSON.stringify(sourceCallSiteEvidence),
-        ]
-      : []),
-  ].join('\n');
 }

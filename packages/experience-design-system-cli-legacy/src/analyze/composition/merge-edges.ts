@@ -2,8 +2,8 @@ import type { CompositionEdge, EdgeProvenance } from './interchange-schema.js';
 
 /**
  * Provenance rank (spec T2). Lower number = higher trust = wins conflicts.
- *   1 typed-slot  >  2 structural  >  3 manifest  >  4 doc  >
- *   5 adapter:*  >  6 agent
+ *   1 typed-slot  >  2 structural  >  3 call-site  >  4 manifest  >
+ *   5 doc  >  6 adapter:*
  *
  * `structural` sits just below a declared slot contract: it's usage evidence
  * (a runtime type-predicate function, a `.type === Component` identity check,
@@ -21,10 +21,10 @@ import type { CompositionEdge, EdgeProvenance } from './interchange-schema.js';
 function rank(p: EdgeProvenance): number {
   if (p === 'typed-slot') return 1;
   if (p === 'structural') return 2;
-  if (p === 'manifest') return 3;
-  if (p === 'doc') return 4;
-  if (p.startsWith('adapter:')) return 5;
-  return 6; // agent
+  if (p === 'call-site') return 3;
+  if (p === 'manifest') return 4;
+  if (p === 'doc') return 5;
+  return 6; // adapter:*
 }
 
 export type EdgeConflict = {

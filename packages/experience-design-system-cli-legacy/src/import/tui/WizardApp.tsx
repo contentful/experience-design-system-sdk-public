@@ -861,11 +861,7 @@ export function WizardApp({
     });
     const existingEntitiesPromise = startExistingEntitiesFetch(projectPath, outDir);
     const extractArgs = [findCliPath(), '__extract', '--project', projectPath];
-    if (effectiveNoCache) extractArgs.push('--composition-refresh', '--no-cache');
-    for (const p of promptOverrides ?? []) extractArgs.push('--prompt', p);
-    // Composition resolution uses the same agent the user picked for the run.
-    if (state.agent) extractArgs.push('--agent', state.agent);
-    if (state.bedrock) extractArgs.push('--bedrock');
+    if (effectiveNoCache) extractArgs.push('--no-cache');
     let selectionPromptText: string | undefined;
     let selectionPromptPath: string | undefined;
     try {
@@ -1167,7 +1163,7 @@ export function WizardApp({
       state.existingEntitiesStatus === 'running' ||
       state.existingEntitiesStatus === 'idle' ||
       state.selectionAgentStatus !== 'complete' ||
-      (state.compositionPhase !== 'done' && state.compositionPhase !== 'cache-hit') ||
+      state.compositionPhase !== 'done' ||
       (state.rawTokensPath && state.tokenGenerationStatus !== 'complete') ||
       effectiveNoCache
     ) {
@@ -2242,7 +2238,7 @@ export function WizardApp({
 
       case 'extracting': {
         const ep = state.extractProgress;
-        const compositionComplete = state.compositionPhase === 'done' || state.compositionPhase === 'cache-hit';
+        const compositionComplete = state.compositionPhase === 'done';
         const tokenGenerationComplete = !state.rawTokensPath || state.tokenGenerationStatus === 'complete';
         const extractionTasksComplete =
           ep !== null &&
@@ -2272,14 +2268,9 @@ export function WizardApp({
           state.selectionAgentStatus === 'complete'
             ? 'Selection agent complete'
             : `Filtering component selection via ${state.agent}...`;
-        const compositionDetail =
-          state.compositionPhase === 'cache-hit'
-            ? 'Composition mapping (cached)'
-            : compositionComplete
-              ? 'Composition mapping complete'
-              : state.compositionPhase?.startsWith('agent:')
-                ? `Mapping composition via ${state.compositionPhase.slice('agent:'.length)}...`
-                : `Mapping composition via ${state.agent}...`;
+        const compositionDetail = compositionComplete
+          ? 'Composition mapping complete'
+          : 'Mapping composition from source call sites...';
         return (
           <RunningStep
             stepNumber={hasTokenStage ? 2 : 1}

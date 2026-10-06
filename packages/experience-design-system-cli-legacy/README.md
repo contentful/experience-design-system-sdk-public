@@ -43,19 +43,12 @@ All imports use composite mode: embedded-component relationships are resolved an
 Relationships are resolved from the highest-confidence source available, in this precedence order:
 
 1. **Typed slots (code)** — slots the source already declares, e.g. React `ReactElement<XProps>` / `children`, Svelte `Snippet<[XProps]>`, or an explicit `@allowedComponents` JSDoc tag. Fully deterministic; picked up automatically.
-2. **Agent** — direct edge emission for codebases that encode composition in _code patterns_ rather than typed slots (common in real-world design systems). It is enabled automatically in composite mode and only runs when the deterministic sources above find nothing.
+2. **Structural usage (code)** — runtime type predicates, `.type === Component` identity checks and direct JSX nesting inside the parent.
+3. **Source call sites (code)** — a parent that renders a known child as JSX, recorded with the file, line range and excerpt of the call. Text-only children, unknown names and components without a call site are kept as rejected evidence with a reason.
+4. **Manifest** — slot declarations in a Figma-generated `manifest.json`.
+5. **Documentation** — component `AGENTS.md` prose.
 
-When more than one source speaks to the same relationship, the higher-precedence one wins (**code slots > agent**).
-
-### The composition agent
-
-The composition agent emits one structured edge per relationship. The CLI validates component names and merges those edges with deterministic sources by provenance and precedence.
-
-- `--no-cache` — ignore caches and re-resolve composition from scratch, forcing the agent to run.
-- `--agent <name>` — which coding agent runs composition, and the rest of the wizard's agent stages (`claude`, `codex`, `opencode`, `cursor`, `copilot`).
-- `--prompt composition=<file-or-text>` — override the composition stage's prompt.
-
-Because the agent path spawns a coding agent, it adds latency and cost and is best-effort.
+When more than one source speaks to the same relationship, the higher-precedence one wins. No agent contributes composition edges: every relationship is backed by code, a manifest or documentation.
 
 ### Slot cycles
 
