@@ -1,15 +1,15 @@
 import { resolve, join } from 'node:path';
 import { agentSupportsBedrock } from '@contentful/experience-design-system-generation';
-import { resolveCompositionSources } from '../../analyze/composition/resolve-mapping-cli.js';
-import { resolveCompositionAgentName } from '../../analyze/helpers/resolve-composition-agent.js';
-import { resolveSourceDirectory } from '../../analyze/services/resolve-source-directory.js';
+import { resolveCompositionSources } from '../composition/resolve-mapping-cli.js';
+import { resolveCompositionAgentName } from '../helpers/resolve-composition-agent.js';
+import { resolveSourceDirectory } from '../services/resolve-source-directory.js';
 import { parsePromptOverrides, resolvePromptOverride } from '../../lib/prompt-overrides.js';
 import {
   executeAnalyzeExtractOrchestrator,
   type AnalyzeExtractOrchestratorResult,
-} from '../../analyze/orchestrator/execute-analyze-extract.js';
+} from '../orchestrator/execute-analyze-extract.js';
 
-export interface InvokeAnalyzeExtractOptions {
+export interface AnalyzeExtractEndpointRequest {
   projectPath: string;
   agent?: string;
   noCache: boolean;
@@ -20,25 +20,27 @@ export interface InvokeAnalyzeExtractOptions {
   onSessionCreated?: (sessionId: string) => Promise<void> | void;
 }
 
-export async function invokeAnalyzeExtract(
-  opts: InvokeAnalyzeExtractOptions,
-): Promise<AnalyzeExtractOrchestratorResult> {
-  const agent = resolveCompositionAgentName(opts.agent);
+export type AnalyzeExtractEndpointResponse = AnalyzeExtractOrchestratorResult;
 
-  if (opts.bedrock && !agentSupportsBedrock(agent)) {
+export async function analyzeExtractEndpoint(
+  request: AnalyzeExtractEndpointRequest,
+): Promise<AnalyzeExtractEndpointResponse> {
+  const agent = resolveCompositionAgentName(request.agent);
+
+  if (request.bedrock && !agentSupportsBedrock(agent)) {
     throw new Error(`--bedrock is not supported for --agent ${agent}`);
   }
 
-  const projectRoot = resolve(opts.projectPath);
+  const { overrides, errors } = parsePromptOverrides(request.promptOverrides ?? []);
+  if (errors.length > 0) throw new Error(errors.join('; '));
+
+  const projectRoot = resolve(request.projectPath);
   const outDir = join(projectRoot, '.contentful');
   const sourceDirectory = await resolveSourceDirectory(projectRoot, undefined);
   const compositionSources = resolveCompositionSources({
-    compositionRefresh: opts.noCache,
-    noCache: opts.noCache,
+    compositionRefresh: request.noCache,
+    noCache: request.noCache,
   });
-
-  const { overrides, errors } = parsePromptOverrides(opts.promptOverrides ?? []);
-  if (errors.length > 0) throw new Error(errors.join('; '));
 
   let compositionPrompt: string | undefined;
   const compositionOverride = overrides.get('composition');
@@ -48,13 +50,13 @@ export async function invokeAnalyzeExtract(
     projectRoot,
     sourceDirectory,
     outDir,
-    noCache: opts.noCache,
+    noCache: request.noCache,
     forceAgent: compositionSources.forceAgent,
     agent,
     compositionPrompt,
     resolveUnreachable: 'auto',
-    onScanProgress: opts.onScanProgress,
-    onCompositionProgress: opts.onCompositionProgress,
-    onSessionCreated: opts.onSessionCreated,
+    onScanProgress: request.onScanProgress,
+    onCompositionProgress: request.onCompositionProgress,
+    onSessionCreated: request.onSessionCreated,
   });
 }

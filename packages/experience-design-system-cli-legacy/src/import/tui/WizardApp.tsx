@@ -82,7 +82,7 @@ import {
 } from './wizard-state-transitions.js';
 import { findCliPath } from '../../lib/cli-path.js';
 import { parsePromptOverrides, resolvePromptOverride } from '../../lib/prompt-overrides.js';
-import { invokeAnalyzeExtract } from '../services/invoke-analyze-extract.js';
+import { analyzeExtractEndpoint } from '../../analyze/controller/create-analyze-extract-endpoint.js';
 import { bindAnalyticsSessionId } from '../../analytics/index.js';
 import { runSelectionAgent } from './run-selection-agent.js';
 import { useTerminalSize } from '../../tui/use-terminal-size.js';
@@ -908,7 +908,7 @@ export function WizardApp({
     let extractSessionId: string | null = null;
     let extractedCount = 0;
     try {
-      const result = await invokeAnalyzeExtract({
+      const result = await analyzeExtractEndpoint({
         projectPath,
         agent: state.agent,
         noCache: effectiveNoCache,
