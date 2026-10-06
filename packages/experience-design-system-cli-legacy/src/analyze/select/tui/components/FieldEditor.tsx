@@ -313,6 +313,26 @@ function InlinePropField({
   );
 }
 
+function RequiredField({
+  value,
+  selected,
+  focused,
+  editingField,
+  activeField,
+}: {
+  value: boolean;
+  selected: boolean;
+  focused: boolean;
+  editingField: boolean;
+  activeField: PropField | SlotField | null;
+}): React.ReactElement {
+  return (
+    <InlinePropField label="req:" selected={selected} focused={focused}>
+      <Toggle value={value} active={editingField && activeField === 'required'} />
+    </InlinePropField>
+  );
+}
+
 function DefaultValueRow({
   display,
   active,
@@ -643,9 +663,13 @@ function PropRow({
       />
 
       <Box gap={1} flexWrap="wrap" width={width} flexShrink={0}>
-        <InlinePropField label="req:" selected={selected} focused={activeField === 'required'}>
-          <Toggle value={prop.required} active={editingField && activeField === 'required'} />
-        </InlinePropField>
+        <RequiredField
+          value={prop.required}
+          selected={selected}
+          focused={activeField === 'required'}
+          editingField={editingField}
+          activeField={activeField}
+        />
 
         <InlinePropField label="type:" selected={selected} focused={activeField === 'type'}>
           {editingField && activeField === 'type' ? (
@@ -797,9 +821,13 @@ function SlotRow({
       />
 
       <Box gap={1} flexWrap="wrap" width={width} flexShrink={0}>
-        <InlinePropField label="req:" selected={selected} focused={activeField === 'required'}>
-          <Toggle value={slot.required} active={editingField && activeField === 'required'} />
-        </InlinePropField>
+        <RequiredField
+          value={slot.required}
+          selected={selected}
+          focused={activeField === 'required'}
+          editingField={editingField}
+          activeField={activeField}
+        />
       </Box>
 
       {!(selected && editingField && activeField === 'allowedComponents') && (
