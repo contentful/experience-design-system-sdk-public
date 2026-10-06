@@ -1,4 +1,5 @@
 import type { RawComponentDefinition } from '@contentful/experience-design-system-extraction';
+import type { AgentName } from '@contentful/experience-design-system-generation';
 
 export interface ComponentSelection {
   name: string;
@@ -14,7 +15,7 @@ export interface SelectionServiceResult {
 
 export interface RunSelectionServiceOptions {
   components: RawComponentDefinition[];
-  agent: string;
+  agent: AgentName;
   model?: string;
   promptText?: string;
   promptPath?: string;
@@ -30,27 +31,6 @@ export interface RunSelectionServiceOptions {
   ) => void;
   onWarning?: (message: string) => void;
 }
-
-export interface SelectionOrchestratorRequest {
-  components: RawComponentDefinition[];
-  agent: string;
-  model?: string;
-  promptText?: string;
-  promptPath?: string;
-  onCacheLookup?: (
-    componentHash: string,
-    promptHash: string,
-  ) => { decision: 'accepted' | 'rejected'; reason: string | null } | null;
-  onCacheStore?: (
-    componentHash: string,
-    promptHash: string,
-    decision: 'accepted' | 'rejected',
-    reason: string | null,
-  ) => void;
-  onWarning?: (message: string) => void;
-}
-
-export type SelectionOrchestratorResult = SelectionServiceResult;
 
 export interface SelectComponentsEndpointRequest {
   components: RawComponentDefinition[];
@@ -71,4 +51,4 @@ export interface SelectComponentsEndpointRequest {
   onWarning?: (message: string) => void;
 }
 
-export type SelectComponentsEndpointResponse = SelectionOrchestratorResult;
+export type SelectComponentsEndpointResponse = SelectionServiceResult;
