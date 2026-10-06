@@ -19,8 +19,6 @@ export { selectComponents } from './selection/controller/select-components-endpo
 export type {
   SelectComponentsEndpointRequest,
   SelectComponentsEndpointResponse,
-  SelectionOrchestratorRequest,
-  SelectionOrchestratorResult,
   ComponentSelection,
   SelectionServiceResult,
 } from './selection/types/contract.js';

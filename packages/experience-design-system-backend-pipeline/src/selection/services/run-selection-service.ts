@@ -1,7 +1,6 @@
 import {
   buildPrompt,
   createLocalCliAgentInvoker,
-  isAgentName,
   parseSelectToolCallLines,
 } from '@contentful/experience-design-system-generation';
 import type {
@@ -18,8 +17,6 @@ export async function runSelectionService(
   const { components, agent, model } = options;
   if (components.length === 0) return { selections: [], warnings: [] };
 
-  if (!isAgentName(agent)) throw new Error(`Unknown agent: "${agent}"`);
-
   const warnings: string[] = [];
   const invoker = createLocalCliAgentInvoker({});
 
@@ -32,11 +29,11 @@ export async function runSelectionService(
     ...(options.promptText === undefined && options.promptPath ? { skillPathOverride: options.promptPath } : {}),
   });
 
-  const result = await invoker.invoke({ agent, model, prompt, timeoutMs: DEFAULT_TIMEOUT_MS });
-  if (result.timedOut) throw new Error('selection agent timed out');
-  if (result.exitCode !== 0) throw new Error(`selection agent exited with code ${result.exitCode}`);
+  const agentRun = await invoker.invoke({ agent, model, prompt, timeoutMs: DEFAULT_TIMEOUT_MS });
+  if (agentRun.timedOut) throw new Error('selection agent timed out');
+  if (agentRun.exitCode !== 0) throw new Error(`selection agent exited with code ${agentRun.exitCode}`);
 
-  const parsed = parseSelectToolCallLines(result.stdout);
+  const parsed = parseSelectToolCallLines(agentRun.stdout);
   for (const warning of parsed.warnings) warnings.push(`selection agent: ${warning}`);
 
   const selections: ComponentSelection[] = parsed.calls.map((call) => ({
