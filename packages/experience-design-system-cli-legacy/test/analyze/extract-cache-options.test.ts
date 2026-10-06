@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveExtractNoCache } from '../../src/analyze/extract-command.js';
+import { resolveExtractNoCache } from '../../src/analyze/helpers/resolve-no-cache.js';
 
 describe('resolveExtractNoCache', () => {
   it('recognizes Commander’s negated --no-cache option', () => {

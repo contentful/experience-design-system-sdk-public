@@ -82,6 +82,11 @@ import {
 } from './wizard-state-transitions.js';
 import { findCliPath } from '../../lib/cli-path.js';
 import { parsePromptOverrides, resolvePromptOverride } from '../../lib/prompt-overrides.js';
+import { executeAnalyzeExtractOrchestrator } from '../../analyze/orchestrator/execute-analyze-extract.js';
+import { resolveCompositionSources } from '../../analyze/composition/resolve-mapping-cli.js';
+import { resolveCompositionAgentName } from '../../analyze/helpers/resolve-composition-agent.js';
+import { resolveSourceDirectory } from '../../analyze/services/resolve-source-directory.js';
+import { bindAnalyticsSessionId } from '../../analytics/index.js';
 import { runSelectionAgent } from './run-selection-agent.js';
 import { useTerminalSize } from '../../tui/use-terminal-size.js';
 import { useScreenTransitionClear } from '../../tui/render-with-goodbye.js';
@@ -860,14 +865,9 @@ export function WizardApp({
       existingEntitiesStatus: existingEntitiesExpected ? 'running' : 'idle',
     });
     const existingEntitiesPromise = startExistingEntitiesFetch(projectPath, outDir);
-    const extractArgs = [findCliPath(), '__extract', '--project', projectPath];
-    if (effectiveNoCache) extractArgs.push('--composition-refresh', '--no-cache');
-    for (const p of promptOverrides ?? []) extractArgs.push('--prompt', p);
-    // Composition resolution uses the same agent the user picked for the run.
-    if (state.agent) extractArgs.push('--agent', state.agent);
-    if (state.bedrock) extractArgs.push('--bedrock');
     let selectionPromptText: string | undefined;
     let selectionPromptPath: string | undefined;
+    let compositionPrompt: string | undefined;
     try {
       const { overrides, errors } = parsePromptOverrides(promptOverrides ?? []);
       if (errors.length > 0) throw new Error(errors.join('; '));
@@ -877,6 +877,8 @@ export function WizardApp({
         selectionPromptPath = resolve(selectOverride.value);
         await resolvePromptOverride(selectOverride);
       }
+      const compositionOverride = overrides.get('composition');
+      if (compositionOverride) compositionPrompt = await resolvePromptOverride(compositionOverride);
     } catch (error) {
       update({
         step: 'error',
@@ -909,90 +911,69 @@ export function WizardApp({
         .finally(() => update({ selectionAgentStatus: 'complete' }));
     };
 
-    let stderrBuffer = '';
-    let stdoutBuffer = '';
-    const r = await runSpawnedCli(
-      extractArgs,
-      (chunk) => {
-        stderrBuffer += chunk;
-        const lines = stderrBuffer.split('\n');
-        stderrBuffer = lines.pop() ?? '';
-        for (const line of lines) {
-          const scanMatch = /^progress=scan:(\d+)$/.exec(line.trim());
-          if (scanMatch) {
-            const scanned = Number(scanMatch[1]);
-            setState((prev) => ({
-              ...prev,
-              extractProgress: {
-                scanned,
-                filesProcessed: prev.extractProgress?.filesProcessed ?? 0,
-                totalFiles: prev.extractProgress?.totalFiles ?? 0,
-                componentsFound: prev.extractProgress?.componentsFound ?? 0,
-              },
-            }));
-            continue;
-          }
-          const scanDoneMatch = /^progress=scan-done:(\d+)$/.exec(line.trim());
-          if (scanDoneMatch) {
-            const scanned = Number(scanDoneMatch[1]);
-            setState((prev) => ({
-              ...prev,
-              extractProgress: {
-                scanned,
-                filesProcessed: prev.extractProgress?.filesProcessed ?? 0,
-                totalFiles: scanned,
-                componentsFound: prev.extractProgress?.componentsFound ?? 0,
-              },
-            }));
-            continue;
-          }
-          const extractMatch = /^progress=extract:(\d+)\/(\d+):(\d+)$/.exec(line.trim());
-          if (extractMatch) {
-            const filesProcessed = Number(extractMatch[1]);
-            const totalFiles = Number(extractMatch[2]);
-            const componentsFound = Number(extractMatch[3]);
-            setState((prev) => ({
-              ...prev,
-              extractProgress: {
-                scanned: prev.extractProgress?.scanned ?? 0,
-                filesProcessed,
-                totalFiles,
-                componentsFound,
-              },
-            }));
-            continue;
-          }
-          const compositionMatch = /^progress=composition:(.+)$/.exec(line.trim());
-          if (compositionMatch) {
-            setState((prev) => ({ ...prev, compositionPhase: compositionMatch[1]!.trim() }));
-          }
-        }
-      },
-      (chunk) => {
-        stdoutBuffer += chunk;
-        const lines = stdoutBuffer.split('\n');
-        stdoutBuffer = lines.pop() ?? '';
-        for (const line of lines) {
-          const sessionMatch = /^session=(.+)$/.exec(line.trim());
-          if (sessionMatch) startSelection(sessionMatch[1]!.trim());
-        }
-      },
-    );
-    const sessionMatch = /^session=(.+)$/m.exec(r.stdout);
-    if (!selectionStarted && sessionMatch) startSelection(sessionMatch[1]!.trim());
-    if (selectionPromise) await selectionPromise;
-    if (!selectionStarted && existingEntitiesPromise) await existingEntitiesPromise;
-    if (r.exitCode !== 0) {
+    const projectRoot = resolve(projectPath);
+    const compositionSources = resolveCompositionSources({ compositionRefresh: effectiveNoCache, noCache: effectiveNoCache });
+    const extractAgent = resolveCompositionAgentName(state.agent);
+    const sourceDirectory = await resolveSourceDirectory(projectRoot, undefined);
+
+    let extractSessionId: string | null = null;
+    let extractedCount = 0;
+    try {
+      const result = await executeAnalyzeExtractOrchestrator({
+        projectRoot,
+        sourceDirectory,
+        outDir,
+        noCache: effectiveNoCache,
+        forceAgent: compositionSources.forceAgent,
+        agent: extractAgent,
+        compositionPrompt,
+        resolveUnreachable: 'auto',
+        onScanProgress: (count) => {
+          setState((prev) => ({
+            ...prev,
+            extractProgress: {
+              scanned: count,
+              filesProcessed: prev.extractProgress?.filesProcessed ?? 0,
+              totalFiles: prev.extractProgress?.totalFiles ?? 0,
+              componentsFound: prev.extractProgress?.componentsFound ?? 0,
+            },
+          }));
+        },
+        onCompositionProgress: (phase) => {
+          setState((prev) => ({ ...prev, compositionPhase: phase }));
+        },
+        onSessionCreated: async (sessionId) => {
+          await bindAnalyticsSessionId(sessionId);
+          extractSessionId = sessionId;
+          startSelection(sessionId);
+        },
+      });
+      extractedCount = result.componentCount;
+      setState((prev) => ({
+        ...prev,
+        extractProgress: prev.extractProgress
+          ? {
+              ...prev.extractProgress,
+              scanned: result.sourceFileCount,
+              filesProcessed: result.sourceFileCount,
+              totalFiles: result.sourceFileCount,
+              componentsFound: result.componentCount,
+            }
+          : prev.extractProgress,
+      }));
+    } catch (error) {
+      if (selectionPromise) await selectionPromise;
+      if (!selectionStarted && existingEntitiesPromise) await existingEntitiesPromise;
       update({
         step: 'error',
         errorStep: 'analyze extract',
-        errorMessage: r.stderr.trim() || 'Unknown error',
+        errorMessage: error instanceof Error ? error.message : String(error),
       });
       return;
     }
-    const extractSessionId = sessionMatch ? sessionMatch[1]!.trim() : null;
-    const countMatch = /Extracted (\d+) components?/.exec(r.stderr);
-    const extractedCount = countMatch ? Number(countMatch[1]) : 0;
+
+    if (selectionPromise) await selectionPromise;
+    if (!selectionStarted && existingEntitiesPromise) await existingEntitiesPromise;
     if (extractedCount === 0) {
       update({
         step: 'error',
