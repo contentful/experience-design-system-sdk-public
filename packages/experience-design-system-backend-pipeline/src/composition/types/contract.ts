@@ -18,24 +18,7 @@ export interface ResolveCompositionServiceResult {
   warnings: string[];
 }
 
-export interface CompositionOrchestratorRequest {
-  components: RawComponentDefinition[];
-  allFiles: Array<{ path: string; content: string }>;
-  forceAgent: boolean;
-  agent: AgentName;
-  promptOverride?: string;
-  onProgress?: (phase: string) => void;
-  onCacheLookup?: (cacheKey: string) => string | null;
-  onCacheStore?: (cacheKey: string, stdout: string) => void;
-  onWarning?: (message: string) => void;
-}
-
-export interface CompositionOrchestratorResult {
-  components: RawComponentDefinition[];
-  warnings: string[];
-}
-
-export interface ResolveCompositionEndpointRequest {
+export interface ComposeComponentsRequest {
   components: RawComponentDefinition[];
   allFiles: Array<{ path: string; content: string }>;
   agent?: string;
@@ -47,4 +30,4 @@ export interface ResolveCompositionEndpointRequest {
   onWarning?: (message: string) => void;
 }
 
-export type ResolveCompositionEndpointResponse = CompositionOrchestratorResult;
+export type ComposeComponentsResponse = ResolveCompositionServiceResult;

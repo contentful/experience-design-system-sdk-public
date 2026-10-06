@@ -6,7 +6,7 @@ import { buildCompositionInputHash } from '../helpers/composition-cache-key.js';
 import { collectManifestDocEdges } from '../helpers/manifest-doc-evidence.js';
 import type { ResolveCompositionServiceOptions, ResolveCompositionServiceResult } from '../types/contract.js';
 
-export async function resolveCompositionService(
+export async function runCompositionService(
   options: ResolveCompositionServiceOptions,
 ): Promise<ResolveCompositionServiceResult> {
   const { components, allFiles, forceAgent, agent } = options;
