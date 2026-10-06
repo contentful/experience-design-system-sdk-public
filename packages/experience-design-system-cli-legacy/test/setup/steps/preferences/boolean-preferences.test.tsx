@@ -14,7 +14,7 @@ const store = vi.hoisted(() => ({ read: vi.fn(), write: vi.fn() }));
 vi.mock('../../../../src/credentials-store.js', () => ({
   readExperiencesCredentials: store.read,
   writeExperiencesCredentials: store.write,
-  experiencesCredentialsPath: () => '/home/tester/.config/experiences/credentials.json',
+  experiencesCredentialsPath: () => '/home/tester/.contentful/experience-design-system-cli/config.json',
 }));
 
 const EMPTY: ExperiencesCredentials = { spaceId: '', environmentId: '', cmaToken: '' };

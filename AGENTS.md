@@ -35,7 +35,7 @@ A single human review gate (`scope-gate`) precedes generation. The final-review 
 
 ### Run records
 
-Each successful wizard run appends a record to `~/.config/experiences/runs.json`. There is no command for listing them.
+Each successful wizard run appends a record to `~/.contentful/experience-design-system-cli/state/runs.json`. There is no command for listing them.
 
 ### Import options
 
@@ -176,7 +176,7 @@ The `scope-gate` step shows two columns at 100 or more terminal columns (`scope-
 
 The legacy `import.db` is read only by the session migration when present; the current apply flow does not use it for per-entity push resumption.
 
-Run records are appended to `~/.config/experiences/runs.json` (`src/runs/store.ts`).
+Run records are appended to `~/.contentful/experience-design-system-cli/state/runs.json` (`src/runs/store.ts`).
 
 ## Testing
 
