@@ -49,7 +49,6 @@ export type ScopeComponent = {
   componentId: string;
   aiDecision?: 'accepted' | 'rejected' | 'failed' | null;
   aiReason?: string | null;
-  needsReview?: boolean;
   slots?: Array<{ name: string; allowedComponents: string[] }>;
 };
 
