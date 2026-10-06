@@ -4,13 +4,14 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 // The single source of truth for where the CLI keeps files on disk and how settings are read and written.
-// Both the CLI and the legacy package import this; nothing else calls homedir() or touches these files.
+// The CLI and the bundled legacy import both use this; nothing else calls homedir() or touches these files.
 //
 // ~/.contentful/experience-design-system-cli/
-//   config.json    every setting: credentials, preferences, defaults (mode 0600)
-//   state/         runs.json
-//   debug/         per-session debug logs
-//   pipeline.db    pipeline session database
+//   config.json    every setting: credentials, preferences, debug mode (mode 0600)    [CLI]
+//   debug/         per-session debug logs                                              [CLI]
+//   state/         runs.json, run history                                              [legacy, until deleted]
+//   reviews/       review artifacts                                                    [legacy, until deleted]
+//   pipeline.db    session database, including the generation cache                    [legacy, until deleted]
 export function configRoot(): string {
   return process.env['EDS_HOME'] || join(homedir(), '.contentful', 'experience-design-system-cli');
 }
