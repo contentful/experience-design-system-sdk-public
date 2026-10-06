@@ -1,9 +1,12 @@
-import { resolve, join, isAbsolute } from 'node:path';
+import { resolve, join } from 'node:path';
 import { agentSupportsBedrock } from '@contentful/experience-design-system-generation';
 import { resolveCompositionSources } from '../composition/resolve-mapping-cli.js';
 import { resolveCompositionAgentName } from '../helpers/resolve-composition-agent.js';
 import { resolveExtractNoCache } from '../helpers/resolve-no-cache.js';
+import { resolveUnreachableMode } from '../helpers/resolve-unreachable-mode.js';
+import { resolveSourceDirectory } from '../services/resolve-source-directory.js';
 import { parsePromptOverrides, resolvePromptOverride } from '../../lib/prompt-overrides.js';
+import { pluralize } from '../../lib/pluralize.js';
 import { executeAnalyzeExtractOrchestrator } from '../orchestrator/execute-analyze-extract.js';
 import {
   bindAnalyticsSessionId,
@@ -11,7 +14,6 @@ import {
   exitWithAnalytics,
   isPipelineAnalyticsChild,
 } from '../../analytics/index.js';
-import { pathExists } from '../../lib/path-exists.js';
 
 export interface AnalyzeExtractOptions {
   project: string;
@@ -23,32 +25,6 @@ export interface AnalyzeExtractOptions {
   prompt?: string[];
   agent?: string;
   bedrock?: boolean;
-}
-
-function pluralize(count: number, singular: string, plural = `${singular}s`): string {
-  return `${count} ${count === 1 ? singular : plural}`;
-}
-
-function resolveUnreachableMode(value: string | undefined): 'auto' | 'always' | 'never' {
-  const v = value ?? 'auto';
-  if (v !== 'auto' && v !== 'always' && v !== 'never') {
-    process.stderr.write(`Error: --resolve-unreachable must be one of 'auto', 'always', 'never' (got '${v}')\n`);
-    process.exit(1);
-  }
-  return v;
-}
-
-async function resolveSourceDirectory(projectRoot: string, dir: string | undefined): Promise<string> {
-  if (dir !== undefined) {
-    const sourceDirectory = isAbsolute(dir) ? dir : resolve(projectRoot, dir);
-    if (!(await pathExists(sourceDirectory))) {
-      process.stderr.write(`Error: source directory does not exist: ${sourceDirectory}\n`);
-      process.exit(1);
-    }
-    return sourceDirectory;
-  }
-  const srcPath = resolve(projectRoot, 'src');
-  return (await pathExists(srcPath)) ? srcPath : projectRoot;
 }
 
 export async function runAnalyzeExtract(opts: AnalyzeExtractOptions): Promise<void> {

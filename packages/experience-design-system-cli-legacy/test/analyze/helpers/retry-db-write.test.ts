@@ -12,7 +12,9 @@ describe('retryDatabaseWrite', () => {
   it('retries on database locked error', async () => {
     const op = vi
       .fn()
-      .mockImplementationOnce(() => { throw new Error('database is locked'); })
+      .mockImplementationOnce(() => {
+        throw new Error('database is locked');
+      })
       .mockReturnValue('ok');
     const result = await retryDatabaseWrite(op);
     expect(result).toBe('ok');
@@ -22,7 +24,9 @@ describe('retryDatabaseWrite', () => {
   it('retries on database is busy error', async () => {
     const op = vi
       .fn()
-      .mockImplementationOnce(() => { throw new Error('database is busy'); })
+      .mockImplementationOnce(() => {
+        throw new Error('database is busy');
+      })
       .mockReturnValue('done');
     const result = await retryDatabaseWrite(op);
     expect(result).toBe('done');
@@ -30,13 +34,17 @@ describe('retryDatabaseWrite', () => {
   });
 
   it('throws immediately on non-locking errors', async () => {
-    const op = vi.fn().mockImplementation(() => { throw new Error('syntax error'); });
+    const op = vi.fn().mockImplementation(() => {
+      throw new Error('syntax error');
+    });
     await expect(retryDatabaseWrite(op)).rejects.toThrow('syntax error');
     expect(op).toHaveBeenCalledTimes(1);
   });
 
   it('throws after exhausting attempts', async () => {
-    const op = vi.fn().mockImplementation(() => { throw new Error('database is locked'); });
+    const op = vi.fn().mockImplementation(() => {
+      throw new Error('database is locked');
+    });
     await expect(retryDatabaseWrite(op, 3)).rejects.toThrow('database is locked');
     expect(op).toHaveBeenCalledTimes(3);
   });
