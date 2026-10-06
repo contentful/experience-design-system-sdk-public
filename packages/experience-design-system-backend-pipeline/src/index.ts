@@ -1,10 +1,8 @@
 // Composition
-export { resolveComposition } from './composition/controller/resolve-composition-endpoint.js';
+export { composeComponents } from './composition/controller/compose-components-endpoint.js';
 export type {
-  ResolveCompositionEndpointRequest,
-  ResolveCompositionEndpointResponse,
-  CompositionOrchestratorRequest,
-  CompositionOrchestratorResult,
+  ComposeComponentsRequest,
+  ComposeComponentsResponse,
 } from './composition/types/contract.js';
 export type { CompositionEdge, EdgeProvenance } from './composition/helpers/interchange-schema.js';
 export type { MergeResult, EdgeConflict } from './composition/helpers/merge-edges.js';
