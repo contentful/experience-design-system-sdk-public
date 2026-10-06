@@ -82,10 +82,7 @@ import {
 } from './wizard-state-transitions.js';
 import { findCliPath } from '../../lib/cli-path.js';
 import { parsePromptOverrides, resolvePromptOverride } from '../../lib/prompt-overrides.js';
-import { executeAnalyzeExtractOrchestrator } from '../../analyze/orchestrator/execute-analyze-extract.js';
-import { resolveCompositionSources } from '../../analyze/composition/resolve-mapping-cli.js';
-import { resolveCompositionAgentName } from '../../analyze/helpers/resolve-composition-agent.js';
-import { resolveSourceDirectory } from '../../analyze/services/resolve-source-directory.js';
+import { invokeAnalyzeExtract } from '../services/invoke-analyze-extract.js';
 import { bindAnalyticsSessionId } from '../../analytics/index.js';
 import { runSelectionAgent } from './run-selection-agent.js';
 import { useTerminalSize } from '../../tui/use-terminal-size.js';
@@ -867,7 +864,6 @@ export function WizardApp({
     const existingEntitiesPromise = startExistingEntitiesFetch(projectPath, outDir);
     let selectionPromptText: string | undefined;
     let selectionPromptPath: string | undefined;
-    let compositionPrompt: string | undefined;
     try {
       const { overrides, errors } = parsePromptOverrides(promptOverrides ?? []);
       if (errors.length > 0) throw new Error(errors.join('; '));
@@ -877,8 +873,6 @@ export function WizardApp({
         selectionPromptPath = resolve(selectOverride.value);
         await resolvePromptOverride(selectOverride);
       }
-      const compositionOverride = overrides.get('composition');
-      if (compositionOverride) compositionPrompt = await resolvePromptOverride(compositionOverride);
     } catch (error) {
       update({
         step: 'error',
@@ -911,26 +905,15 @@ export function WizardApp({
         .finally(() => update({ selectionAgentStatus: 'complete' }));
     };
 
-    const projectRoot = resolve(projectPath);
-    const compositionSources = resolveCompositionSources({
-      compositionRefresh: effectiveNoCache,
-      noCache: effectiveNoCache,
-    });
-    const extractAgent = resolveCompositionAgentName(state.agent);
-    const sourceDirectory = await resolveSourceDirectory(projectRoot, undefined);
-
     let extractSessionId: string | null = null;
     let extractedCount = 0;
     try {
-      const result = await executeAnalyzeExtractOrchestrator({
-        projectRoot,
-        sourceDirectory,
-        outDir,
+      const result = await invokeAnalyzeExtract({
+        projectPath,
+        agent: state.agent,
         noCache: effectiveNoCache,
-        forceAgent: compositionSources.forceAgent,
-        agent: extractAgent,
-        compositionPrompt,
-        resolveUnreachable: 'auto',
+        promptOverrides: promptOverrides ?? [],
+        bedrock: state.bedrock,
         onScanProgress: (count) => {
           setState((prev) => ({
             ...prev,
