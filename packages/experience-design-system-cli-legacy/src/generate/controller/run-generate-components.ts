@@ -28,13 +28,16 @@ import { parsePromptOverrides, resolvePromptOverride } from '../../lib/prompt-ov
 import { pathExists } from '../../lib/path-exists.js';
 import { getDebugLogger } from '../../lib/debug-logger.js';
 import { c } from '../../output/format.js';
-import { runAllComponents } from '../services/run-all-components.js';
-import { normalizeComponentForCache, resolveComponentCache } from '../services/component-cache.js';
-import { assertFileExists, readFileInline } from '../helpers/read-file-inline.js';
-import { parsePrecomputedCachedNames, loadAcceptedNames } from '../helpers/load-session-data.js';
-import { assertBinaryOrExit } from '../helpers/print-fallback-instructions.js';
-import { resolveGenerateAgent } from '../helpers/resolve-agent.js';
-import { showGenerateView } from '../helpers/show-generate-view.js';
+import { invokeAllComponentAgents } from '../services/invoke-all-component-agents.js';
+import { normalizeComponentForCache } from '../helpers/normalize-component-for-cache.js';
+import { resolveComponentCache } from '../services/resolve-component-cache.js';
+import { readFileInline } from '../helpers/read-file-inline.js';
+import { assertFileExists } from '../helpers/assert-file-exists.js';
+import { parsePrecomputedCachedNames } from '../helpers/parse-precomputed-cached-names.js';
+import { loadAcceptedNames } from '../services/load-accepted-names.js';
+import { verifyAgentBinary } from '../services/verify-agent-binary.js';
+import { resolveGenerateAgent } from '../services/resolve-generate-agent.js';
+import { showGenerateView } from '../services/show-generate-view.js';
 import type { GenerateSubcommandOptions } from '../command.js';
 
 export async function runGenerateComponents(opts: GenerateSubcommandOptions, verbose: boolean): Promise<void> {
@@ -198,7 +201,7 @@ export async function runGenerateComponents(opts: GenerateSubcommandOptions, ver
     return;
   }
 
-  if (!(await assertBinaryOrExit(agent, 'components', sessionId))) return;
+  if (!(await verifyAgentBinary(agent, 'components', sessionId))) return;
 
   const invoker = createLocalCliAgentInvoker({
     onDebugEvent: (name, payload) => getDebugLogger().event('agent', name, payload),
@@ -269,7 +272,7 @@ export async function runGenerateComponents(opts: GenerateSubcommandOptions, ver
       return;
     }
 
-    componentResults = await runAllComponents(
+    componentResults = await invokeAllComponentAgents(
       {
         agent,
         model,

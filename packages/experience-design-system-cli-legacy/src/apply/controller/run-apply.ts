@@ -14,11 +14,13 @@ import type { CommandFailure } from '../../analytics/index.js';
 
 import { isEmptyPreview } from '../preview-utils.js';
 import { ServerPreviewConfirm } from '../tui/ServerApplyView.js';
-import { resolveSharedInputsOrDie } from '../services/resolve-apply-inputs.js';
-import { runNonInteractiveApply, runInteractiveApply } from '../services/apply-and-poll.js';
+import { resolveApplyInputsOrDie } from '../services/resolve-apply-inputs.js';
+import { applyNonInteractive } from '../services/apply-non-interactive.js';
+import { applyInteractive } from '../services/apply-interactive.js';
 import { assertNoSlotCycles, assertNoUnresolvedSlotReferences } from '../helpers/slot-validation.js';
 import { toCDFTokens } from '../helpers/read-token-files.js';
-import { hasBreakingChangesWithImpact, buildPreviewOutput } from '../helpers/apply-output-builders.js';
+import { hasBreakingChangesWithImpact } from '../helpers/has-breaking-changes.js';
+import { buildPreviewOutput } from '../helpers/build-apply-output.js';
 
 async function die(message: string, fields: CommandFailure = {}): Promise<never> {
   process.stderr.write(`${message}\n`);
@@ -28,7 +30,7 @@ async function die(message: string, fields: CommandFailure = {}): Promise<never>
 export async function runApply(file: string): Promise<void> {
   const isTTY = getInteractiveTerminalSupport().supported;
 
-  const inputs = await resolveSharedInputsOrDie(file);
+  const inputs = await resolveApplyInputsOrDie(file);
   const { components, tokens, client, spaceId, environmentId, host } = inputs;
 
   await bindAnalyticsSessionId(undefined, {
@@ -78,7 +80,7 @@ export async function runApply(file: string): Promise<void> {
       process.stdout.write(JSON.stringify(buildPreviewOutput(preview, spaceId, environmentId), null, 2) + '\n');
       await exitWithAnalytics(1);
     }
-    await runNonInteractiveApply({
+    await applyNonInteractive({
       client,
       cdf,
       spaceId,
@@ -91,7 +93,7 @@ export async function runApply(file: string): Promise<void> {
 
   await new Promise<void>((resolvePromise) => {
     const runApplyInteractive = async (acknowledge: boolean) => {
-      await runInteractiveApply({
+      await applyInteractive({
         client,
         cdf,
         spaceId,

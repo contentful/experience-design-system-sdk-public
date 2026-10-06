@@ -9,7 +9,7 @@ import {
 } from '../../session/db.js';
 import { collectSourceFiles } from '../services/collect-source-files.js';
 import { runExtractionWithCache } from '../services/extract-with-cache.js';
-import { runCompositionMapping } from '../services/run-composition-mapping.js';
+import { resolveCompositionMapping } from '../services/resolve-composition-mapping.js';
 import { persistExtractResults } from '../services/persist-extract-results.js';
 import { readCandidateFiles } from '../helpers/resolve-composition-agent.js';
 import { enrichCommandResult } from '../../analytics/index.js';
@@ -71,7 +71,7 @@ export async function executeAnalyzeExtractOrchestrator(
 
     const allFiles = await readCandidateFiles(extraction.components, sourceFiles);
 
-    const composition = await runCompositionMapping({
+    const composition = await resolveCompositionMapping({
       db,
       components: extraction.components,
       allFiles,

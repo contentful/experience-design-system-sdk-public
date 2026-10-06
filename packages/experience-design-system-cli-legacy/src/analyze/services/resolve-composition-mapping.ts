@@ -9,7 +9,7 @@ import { buildCompositionInputHash } from '../composition/composition-cache-key.
 import { collectManifestDocEdges } from '../composition/manifest-doc-evidence.js';
 import { getDebugLogger } from '../../lib/debug-logger.js';
 
-export interface RunCompositionMappingOptions {
+export interface CompositionMappingOptions {
   db: ReturnType<typeof openPipelineDb>;
   components: RawComponentDefinition[];
   allFiles: Array<{ path: string; content: string }>;
@@ -26,7 +26,7 @@ export interface CompositionMappingResult {
   warnings: string[];
 }
 
-export async function runCompositionMapping(options: RunCompositionMappingOptions): Promise<CompositionMappingResult> {
+export async function resolveCompositionMapping(options: CompositionMappingOptions): Promise<CompositionMappingResult> {
   const { db, components, allFiles, noCache, forceAgent, agent, cacheVersion } = options;
 
   const selectedCandidates = selectCandidateFiles(allFiles);

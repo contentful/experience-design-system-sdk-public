@@ -2,16 +2,6 @@ import type { ApplyOperationResponse, ServerPreviewResponse } from '@contentful/
 import { buildPostPushUrl } from '../../lib/contentful-urls.js';
 import { formatEdsiError } from '../../lib/error-parser.js';
 
-export function hasBreakingChangesWithImpact(preview: ServerPreviewResponse): boolean {
-  const allChanged = [...preview.components.changed, ...preview.tokens.changed];
-  return allChanged.some(
-    (c) =>
-      c.changeClassification?.classification === 'breaking' &&
-      c.impact &&
-      (c.impact.affectedFragments > 0 || c.impact.affectedExperiences > 0),
-  );
-}
-
 export function buildPreviewOutput(preview: ServerPreviewResponse, spaceId: string, environmentId: string) {
   return {
     spaceId,

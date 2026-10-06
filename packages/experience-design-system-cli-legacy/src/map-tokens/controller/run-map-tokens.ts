@@ -32,7 +32,7 @@ import { bindAnalyticsSessionId, exitWithAnalytics } from '../../analytics/index
 import { die, assertBinaryInPath } from '../../lib/cli-errors.js';
 import { parsePromptOverrides, resolvePromptOverride } from '../../lib/prompt-overrides.js';
 import { resolveTokenNamePaths } from '../services/resolve-token-name-paths.js';
-import { renderResult } from '../helpers/render-result.js';
+import { renderMapTokensResult } from '../services/render-map-tokens-result.js';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 5 * 60 * 1000);
 
@@ -161,7 +161,7 @@ export async function runMapTokens(opts: MapTokensOptions): Promise<void> {
         skipAgent: 'true',
       });
       updateStep(db, stepId, 'complete', { applied: '0', skipAgent: 'true' });
-      await renderResult({ agent: resultAgent, sessionId, applied: 0, cached: false });
+      await renderMapTokensResult({ agent: resultAgent, sessionId, applied: 0, cached: false });
       return;
     }
 
@@ -184,7 +184,7 @@ export async function runMapTokens(opts: MapTokensOptions): Promise<void> {
         const appliedFromCache = copyMapTokensFromCache(db, cached.sourceSessionId, sessionId);
         const stepId = createStep(db, sessionId, 'map tokens', { agent, model: model ?? '' });
         updateStep(db, stepId, 'complete', { cached: 'true', applied: String(appliedFromCache) });
-        await renderResult({ agent, sessionId, applied: appliedFromCache, cached: true });
+        await renderMapTokensResult({ agent, sessionId, applied: appliedFromCache, cached: true });
         return;
       }
     }
@@ -226,7 +226,7 @@ export async function runMapTokens(opts: MapTokensOptions): Promise<void> {
       process.stderr.write(`Warnings:\n${warnings.map((w) => `  ${w}`).join('\n')}\n`);
     }
 
-    await renderResult({ agent, sessionId, applied, cached: false });
+    await renderMapTokensResult({ agent, sessionId, applied, cached: false });
   } finally {
     db.close();
   }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeComponentForCache } from '../../../src/generate/services/component-cache.js';
+import { normalizeComponentForCache } from '../../../src/generate/helpers/normalize-component-for-cache.js';
 
 const baseComponent = {
   component_id: 'comp1',

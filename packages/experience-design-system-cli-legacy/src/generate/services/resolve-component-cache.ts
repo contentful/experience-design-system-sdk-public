@@ -6,34 +6,12 @@ import {
 } from '../../session/db.js';
 import type { openPipelineDb } from '../../session/db.js';
 import type { RawComponentDefinition } from '../../types.js';
-import { c } from '../../output/format.js';
-
-export interface ComponentRunResult {
-  componentName: string;
-  classified: number;
-  excluded: number;
-  slots: number;
-  warnings: string[];
-  failed: boolean;
-  error?: string;
-  cached?: boolean;
-  renamedSlotsCount: number;
-}
+import { normalizeComponentForCache } from '../helpers/normalize-component-for-cache.js';
 
 export type ComponentCacheResolution = {
   entry: NonNullable<ReturnType<typeof lookupCache>>;
   humanEdited: boolean;
 };
-
-export function normalizeComponentForCache(
-  component: RawComponentDefinition & { component_id?: string },
-): RawComponentDefinition & { component_id?: string } {
-  const slots = component.slots.map((slot, index, allSlots) => ({
-    ...slot,
-    name: slot.name.trim() || (allSlots.length === 1 ? 'children' : `slot_${index}`),
-  }));
-  return { ...component, slots };
-}
 
 export function lookupComponentCache(
   db: ReturnType<typeof openPipelineDb>,
@@ -70,22 +48,4 @@ export function resolveComponentCache(
       .length === 0
     ? { entry: pinned, humanEdited: true }
     : null;
-}
-
-export function createCachedComponentResult(componentName: string, warnings: string[] = []): ComponentRunResult {
-  return {
-    componentName,
-    classified: 0,
-    excluded: 0,
-    slots: 0,
-    warnings,
-    failed: false,
-    cached: true,
-    renamedSlotsCount: 0,
-  };
-}
-
-export function writeCachedComponentStatus(position: string, componentName: string, pinned: boolean): void {
-  const status = pinned ? c.cyan('pinned (human-edited)') : c.green('cached');
-  process.stderr.write(`  ${position}  ${c.bold(componentName)}  ${status}\n`);
 }

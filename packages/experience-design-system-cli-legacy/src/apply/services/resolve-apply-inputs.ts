@@ -12,7 +12,7 @@ async function die(message: string, fields: CommandFailure = {}): Promise<never>
   return exitWithAnalytics(1, fields);
 }
 
-export interface SharedInputs {
+export interface ApplyInputs {
   components: Array<{ key: string; entry: CDFComponentEntry }>;
   tokens: DTCGTokenEntry[];
   client: ImportApiClient;
@@ -21,7 +21,7 @@ export interface SharedInputs {
   host?: string;
 }
 
-async function resolveSharedInputs(file: string): Promise<SharedInputs> {
+async function resolveApplyInputs(file: string): Promise<ApplyInputs> {
   const credentials = await readExperiencesCredentials();
   const spaceId = credentials.spaceId;
   const environmentId = credentials.environmentId;
@@ -55,9 +55,9 @@ async function resolveSharedInputs(file: string): Promise<SharedInputs> {
   return { components, tokens, client, spaceId, environmentId, host: credentials.host };
 }
 
-export async function resolveSharedInputsOrDie(file: string): Promise<SharedInputs> {
+export async function resolveApplyInputsOrDie(file: string): Promise<ApplyInputs> {
   try {
-    return await resolveSharedInputs(file);
+    return await resolveApplyInputs(file);
   } catch (e) {
     if (e instanceof ApiError) return await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
     throw e;

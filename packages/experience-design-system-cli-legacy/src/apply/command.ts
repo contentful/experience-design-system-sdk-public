@@ -10,7 +10,7 @@ export {
   assertNoUnresolvedSlotReferences,
   extractComponents,
 } from './helpers/slot-validation.js';
-export { hasBreakingChangesWithImpact } from './helpers/apply-output-builders.js';
+export { hasBreakingChangesWithImpact } from './helpers/has-breaking-changes.js';
 
 export function registerApplyCommand(program: Command): void {
   program

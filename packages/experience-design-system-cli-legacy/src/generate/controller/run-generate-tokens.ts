@@ -16,10 +16,11 @@ import { bindAnalyticsSessionId, exitWithAnalytics } from '../../analytics/index
 import { die } from '../../lib/cli-errors.js';
 import { parsePromptOverrides, resolvePromptOverride } from '../../lib/prompt-overrides.js';
 import { resolve } from 'node:path';
-import { assertFileExists, readFileInline } from '../helpers/read-file-inline.js';
-import { showGenerateView } from '../helpers/show-generate-view.js';
-import { assertBinaryOrExit } from '../helpers/print-fallback-instructions.js';
-import { resolveGenerateAgent } from '../helpers/resolve-agent.js';
+import { assertFileExists } from '../helpers/assert-file-exists.js';
+import { readFileInline } from '../helpers/read-file-inline.js';
+import { showGenerateView } from '../services/show-generate-view.js';
+import { verifyAgentBinary } from '../services/verify-agent-binary.js';
+import { resolveGenerateAgent } from '../services/resolve-generate-agent.js';
 import { c } from '../../output/format.js';
 import type { GenerateSubcommandOptions } from '../command.js';
 
@@ -72,7 +73,7 @@ export async function runGenerateTokens(opts: GenerateSubcommandOptions, _verbos
     return;
   }
 
-  if (!(await assertBinaryOrExit(agent, 'tokens', ''))) return;
+  if (!(await verifyAgentBinary(agent, 'tokens', ''))) return;
 
   const noCache = opts.cache === false || process.env.EDS_NO_CACHE === '1';
   const tokenInputContent = rawTokensInline ?? '';

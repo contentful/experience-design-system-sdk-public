@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parsePrecomputedCachedNames } from '../../../src/generate/helpers/load-session-data.js';
+import { parsePrecomputedCachedNames } from '../../../src/generate/helpers/parse-precomputed-cached-names.js';
 
 describe('parsePrecomputedCachedNames', () => {
   it('returns empty set for undefined', () => {

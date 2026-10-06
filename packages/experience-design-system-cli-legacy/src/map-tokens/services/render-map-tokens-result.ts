@@ -4,7 +4,7 @@ import { exitWithAnalytics } from '../../analytics/index.js';
 import { MapTokensView } from '../tui/MapTokensView.js';
 import type { MapTokensViewResult } from '../tui/MapTokensView.js';
 
-export async function renderResult(result: MapTokensViewResult): Promise<void> {
+export async function renderMapTokensResult(result: MapTokensViewResult): Promise<void> {
   if (process.stdout.isTTY) {
     const { waitUntilExit } = renderWithGoodbye(
       createElement(MapTokensView, { result, onExit: () => void exitWithAnalytics(0) }),

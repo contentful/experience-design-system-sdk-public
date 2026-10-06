@@ -1,15 +1,15 @@
 import { formatGenerateProgressLine } from '@contentful/experience-design-system-generation';
 import type { RawComponentDefinition } from '../../types.js';
 import { c } from '../../output/format.js';
-import { runOneComponent } from './run-one-component.js';
-import type { ComponentRunOptions, ComponentRunResult } from './run-one-component.js';
+import { invokeComponentAgent } from './invoke-component-agent.js';
+import type { ComponentAgentOptions, ComponentRunResult } from './invoke-component-agent.js';
 
-export type { ComponentRunOptions, ComponentRunResult };
+export type { ComponentAgentOptions, ComponentRunResult };
 
 const DEFAULT_COMPONENT_CONCURRENCY = 10;
 
-export async function runAllComponents(
-  options: ComponentRunOptions,
+export async function invokeAllComponentAgents(
+  options: ComponentAgentOptions,
   components: Array<RawComponentDefinition & { component_id: string }>,
 ): Promise<ComponentRunResult[]> {
   const concurrency = Number(process.env.EDS_GENERATE_CONCURRENCY ?? DEFAULT_COMPONENT_CONCURRENCY);
@@ -26,7 +26,7 @@ export async function runAllComponents(
   async function worker(): Promise<void> {
     while (next < components.length) {
       const i = next++;
-      results[i] = await runOneComponent(options, components[i]!, i, components.length);
+      results[i] = await invokeComponentAgent(options, components[i]!, i, components.length);
       completed += 1;
       process.stderr.write(`${formatGenerateProgressLine(completed, components.length, results[i]!.componentName)}\n`);
     }

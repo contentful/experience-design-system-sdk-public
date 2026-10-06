@@ -14,18 +14,25 @@ import type { ExistingContentfulEntities } from '../../helpers/fetch-existing-co
 import { summarizeForGenerateAgent } from '../../helpers/summarize-existing-contentful-entities.js';
 import { invokeAgentWithOutput } from '../../lib/agent-output.js';
 import { c } from '../../output/format.js';
-import {
-  normalizeComponentForCache,
-  resolveComponentCache,
-  createCachedComponentResult,
-  writeCachedComponentStatus,
-} from './component-cache.js';
-import type { ComponentRunResult } from './component-cache.js';
+import { normalizeComponentForCache } from '../helpers/normalize-component-for-cache.js';
+import { resolveComponentCache } from './resolve-component-cache.js';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 5 * 60 * 1000);
 const RETRY_BACKOFF_MS = Number(process.env.EDS_RETRY_BACKOFF_MS ?? 5_000);
 
-export interface ComponentRunOptions {
+export interface ComponentRunResult {
+  componentName: string;
+  classified: number;
+  excluded: number;
+  slots: number;
+  warnings: string[];
+  failed: boolean;
+  error?: string;
+  cached?: boolean;
+  renamedSlotsCount: number;
+}
+
+export interface ComponentAgentOptions {
   agent: AgentName;
   model: string | undefined;
   invoker: AgentInvoker;
@@ -44,10 +51,26 @@ export interface ComponentRunOptions {
   allowedComponentNames: ReadonlySet<string>;
 }
 
-export type { ComponentRunResult };
+function createCachedComponentResult(componentName: string, warnings: string[] = []): ComponentRunResult {
+  return {
+    componentName,
+    classified: 0,
+    excluded: 0,
+    slots: 0,
+    warnings,
+    failed: false,
+    cached: true,
+    renamedSlotsCount: 0,
+  };
+}
 
-export async function runOneComponent(
-  options: ComponentRunOptions,
+function writeCachedComponentStatus(position: string, componentName: string, pinned: boolean): void {
+  const status = pinned ? c.cyan('pinned (human-edited)') : c.green('cached');
+  process.stderr.write(`  ${position}  ${c.bold(componentName)}  ${status}\n`);
+}
+
+export async function invokeComponentAgent(
+  options: ComponentAgentOptions,
   component: RawComponentDefinition & { component_id: string },
   index: number,
   total: number,

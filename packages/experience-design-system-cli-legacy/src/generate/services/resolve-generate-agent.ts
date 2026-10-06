@@ -4,7 +4,7 @@ import { readExperiencesCredentials } from '../../credentials-store.js';
 import { die } from '../../lib/cli-errors.js';
 import type { GenerateSubcommandOptions } from '../command.js';
 
-export interface ResolvedAgent {
+export interface ResolvedGenerateAgent {
   agent: AgentName;
   model: string | undefined;
   savedCreds: Awaited<ReturnType<typeof readExperiencesCredentials>>;
@@ -12,7 +12,7 @@ export interface ResolvedAgent {
 
 export async function resolveGenerateAgent(
   opts: Pick<GenerateSubcommandOptions, 'agent' | 'model' | 'bedrock'>,
-): Promise<ResolvedAgent> {
+): Promise<ResolvedGenerateAgent> {
   const savedCreds = await readExperiencesCredentials();
   const agentName = opts.agent ?? savedCreds.agent;
   const model = opts.model ?? savedCreds.agentModel;
