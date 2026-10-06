@@ -2,13 +2,14 @@
 
 ## Overview
 
-The Experience Design System SDK is an Nx monorepo that ships six packages:
+The Experience Design System SDK is an Nx monorepo that ships seven packages:
 
 | Package                                           | Purpose                                                                                                                                                                 |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `@contentful/experience-design-system-cli`        | The published CLI: an Ink TUI (opened by `experiences import` or bare `experiences`) that forwards `apply`, `setup`, `doctor`, `print`, `map` to the bundled legacy CLI |
 | `@contentful/experience-design-system-extraction` | Component extraction engine (ts-morph, per-framework parsers); a runtime dependency of the CLI                                                                          |
 | `@contentful/experience-design-system-generation` | Agent-invocation and skill-prompt engine used internally by the import wizard                                                                                           |
+| `@contentful/experience-design-system-agents`     | Stateless classification stage library: selection diff and tiering; bundled at build time into both CLIs                                                                |
 | `@contentful/experience-design-system-client`     | Generated API client for the Experience Design System Integrations API (from `openapi.json`); a runtime dependency of the CLI's `apply` command                         |
 | `@contentful/experience-design-system-types`      | Shared TypeScript types, Zod schemas, and validation logic for CDF and DTCG formats                                                                                     |
 
@@ -71,7 +72,7 @@ The previous CLI and import wizard. Private: it is never published, and is exclu
 - `ink` — React for the terminal; all TUI components are standard React functional components
 - `commander` — CLI argument parsing and help text
 - `node:sqlite` (`DatabaseSync`) — built-in Node.js synchronous SQLite for pipeline session state
-- `@contentful/experience-design-system-extraction`, `-generation`, `-client` — bundled at build time
+- `@contentful/experience-design-system-extraction`, `-generation`, `-agents`, `-client` — bundled at build time
 
 ### `experience-design-system-extraction`
 
@@ -80,6 +81,10 @@ Component extraction engine: per-framework parsers (React, Vue, Astro, Stencil, 
 ### `experience-design-system-generation`
 
 Agent-invocation (`agent-invoker.ts`, `agent-runner.ts`), skill-prompt building (`prompt-builder.ts`), and progress reporting for coding-agent subprocesses. Consumed by the import wizard's internal generation step.
+
+### `experience-design-system-agents`
+
+Stateless stage library for the classification pipeline. Every stage is a function of its inputs plus an injected `AgentInvoker`: selection diff and tiering. It reads no files, databases, caches or environment, and never imports either CLI.
 
 ### `experience-design-system-client`
 
@@ -101,7 +106,7 @@ Produced by extraction, stored in the pipeline session database, consumed by the
 interface RawComponentDefinition {
   name: string; // PascalCase component name
   source: string; // absolute path to source file
-  framework: "react" | "next" | "vue" | "astro" | "web-component" | "stencil";
+  framework: 'react' | 'next' | 'vue' | 'astro' | 'web-component' | 'stencil';
   props: RawPropDefinition[];
   slots: RawSlotDefinition[];
 }
@@ -110,7 +115,7 @@ interface RawPropDefinition {
   name: string;
   type: string; // TypeScript type string
   required: boolean;
-  category?: "content" | "design" | "state";
+  category?: 'content' | 'design' | 'state';
   defaultValue?: string;
   allowedValues?: string[]; // for enum / union types
   description?: string;
@@ -136,7 +141,7 @@ interface CDFFile {
 }
 
 interface CDFComponentEntry {
-  $type: "component";
+  $type: 'component';
   $description?: string;
   $properties: Record<string, CDFPropertyDefinition>;
   $slots?: Record<string, CDFSlotDefinition>;
@@ -149,8 +154,8 @@ interface CDFPropertyDefinition {
   $required?: boolean;
   $default?: unknown;
   $values?: string[];
-  "$token.kind"?: string;
-  "$token.allowed"?: string[]; // restricted DTCG paths; omitted for unrestricted token props
+  '$token.kind'?: string;
+  '$token.allowed'?: string[]; // restricted DTCG paths; omitted for unrestricted token props
 }
 ```
 

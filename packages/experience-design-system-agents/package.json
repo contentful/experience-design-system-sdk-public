@@ -1,0 +1,57 @@
+{
+  "name": "@contentful/experience-design-system-agents",
+  "version": "2.35.0",
+  "description": "Stateless agent pipeline stages (explore, diff, tier, verify, debate, rule, adjudicate, assemble) for the Contentful Experience Design System SDK",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "node": "./dist/src/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://npm.pkg.github.com/"
+  },
+  "files": [
+    "dist/"
+  ],
+  "scripts": {
+    "build": "nx build experience-design-system-agents",
+    "typecheck": "nx typecheck experience-design-system-agents",
+    "clean": "nx clean experience-design-system-agents",
+    "test": "nx test experience-design-system-agents",
+    "lint": "nx lint experience-design-system-agents",
+    "lint:fix": "nx lint:fix experience-design-system-agents"
+  },
+  "dependencies": {
+    "@contentful/experience-design-system-generation": "workspace:*",
+    "@contentful/experience-design-system-types": "workspace:*"
+  },
+  "devDependencies": {
+    "@tsconfig/node24": "^24.0.4",
+    "@types/node": "^24.0.3",
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.6",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.67.0",
+    "vitest": "^4.0.16"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/contentful/experience-design-system-sdk-public.git",
+    "directory": "packages/experience-design-system-agents"
+  },
+  "homepage": "https://github.com/contentful/experience-design-system-sdk-public#readme",
+  "bugs": {
+    "url": "https://github.com/contentful/experience-design-system-sdk-public/issues"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
