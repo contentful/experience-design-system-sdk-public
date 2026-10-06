@@ -1,13 +1,4 @@
 import { readFile } from 'node:fs/promises';
-import { DEFAULT_AGENT_NAME, isAgentName } from '@contentful/experience-design-system-generation';
-import type { AgentName } from '@contentful/experience-design-system-generation';
-
-export function resolveCompositionAgentName(flagValue?: string): AgentName {
-  if (flagValue && isAgentName(flagValue)) return flagValue;
-  const env = process.env['EDS_COMPOSITION_AGENT'];
-  if (env && isAgentName(env)) return env;
-  return DEFAULT_AGENT_NAME;
-}
 
 export async function readCandidateFiles(
   components: Array<{ sourcePath?: string; source?: string }>,

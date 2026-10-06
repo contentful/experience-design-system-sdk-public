@@ -6,7 +6,7 @@
  * and `provenance`. It is easier to merge and dedupe across sources (T2).
  */
 
-export type EdgeProvenance = 'typed-slot' | 'structural' | 'manifest' | 'doc' | `adapter:${string}` | 'agent';
+export type EdgeProvenance = 'typed-slot' | 'structural' | 'call-site' | 'manifest' | 'doc' | `adapter:${string}`;
 
 export type CompositionEdge = {
   parent: string;
@@ -15,5 +15,12 @@ export type CompositionEdge = {
   slot?: string;
   /** 1–5 scale, same as select/reject agent tools. */
   confidence?: number;
+  citation?: CompositionCitation;
   provenance: EdgeProvenance;
+};
+
+export type CompositionCitation = {
+  sourcePath: string;
+  startLine: number;
+  endLine: number;
 };

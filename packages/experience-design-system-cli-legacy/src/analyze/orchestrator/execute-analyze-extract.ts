@@ -1,5 +1,4 @@
 import { mkdir } from 'node:fs/promises';
-import type { AgentName } from '@contentful/experience-design-system-generation';
 import {
   openPipelineDb,
   getOrCreateSession,
@@ -11,7 +10,7 @@ import { collectSourceFiles } from '../services/collect-source-files.js';
 import { runExtractionWithCache } from '../services/extract-with-cache.js';
 import { resolveCompositionMapping } from '../services/resolve-composition-mapping.js';
 import { persistExtractResults } from '../services/persist-extract-results.js';
-import { readCandidateFiles } from '../helpers/resolve-composition-agent.js';
+import { readCandidateFiles } from '../helpers/read-candidate-files.js';
 import { enrichCommandResult } from '../../analytics/index.js';
 
 export interface AnalyzeExtractOrchestratorRequest {
@@ -19,9 +18,6 @@ export interface AnalyzeExtractOrchestratorRequest {
   sourceDirectory: string;
   outDir: string;
   noCache: boolean;
-  forceAgent: boolean;
-  agent: AgentName;
-  compositionPrompt?: string;
   resolveUnreachable: 'auto' | 'always' | 'never';
   onScanProgress?: (count: number) => void;
   onCompositionProgress?: (phase: string) => void;
@@ -71,15 +67,9 @@ export async function executeAnalyzeExtractOrchestrator(
 
     const allFiles = await readCandidateFiles(extraction.components, sourceFiles);
 
-    const composition = await resolveCompositionMapping({
-      db,
+    const composition = resolveCompositionMapping({
       components: extraction.components,
       allFiles,
-      noCache: request.noCache,
-      forceAgent: request.forceAgent,
-      agent: request.agent,
-      promptOverride: request.compositionPrompt,
-      cacheVersion,
       onProgress: request.onCompositionProgress,
     });
 
@@ -90,6 +80,8 @@ export async function executeAnalyzeExtractOrchestrator(
       projectRoot: request.projectRoot,
       sourceFiles,
       components: composition.components,
+      sourceCallSiteEvidence: composition.sourceCallSiteEvidence,
+      sourceCallSiteRejections: composition.sourceCallSiteRejections,
     });
 
     enrichCommandResult({ extracted_component_count: composition.components.length });
