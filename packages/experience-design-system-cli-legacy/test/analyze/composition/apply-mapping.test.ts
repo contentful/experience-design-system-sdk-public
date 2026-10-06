@@ -48,14 +48,14 @@ describe('applyMapping (T7 — enrichment pass)', () => {
 
   it('merges (unions) with pre-existing allowedComponents without duplicates', () => {
     const components = [comp('A', [slot('children', true, ['X'])]), comp('B')];
-    const res = applyMapping(components, [edge('A', 'B', 'agent'), edge('A', 'X', 'agent')]);
+    const res = applyMapping(components, [edge('A', 'B', 'doc'), edge('A', 'X', 'doc')]);
     const a = res.components.find((c) => c.name === 'A')!;
     expect(a.slots.find((s) => s.isDefault)!.allowedComponents!.sort()).toEqual(['B', 'X']);
   });
 
   it('drops an edge whose parent is not an extracted component (warn)', () => {
     const components = [comp('A', [slot('children', true)])];
-    const res: ApplyMappingResult = applyMapping(components, [edge('GHOST', 'A', 'agent')]);
+    const res: ApplyMappingResult = applyMapping(components, [edge('GHOST', 'A', 'doc')]);
     expect(res.warnings.join(' ')).toMatch(/GHOST/);
     // A untouched
     expect(res.components.find((c) => c.name === 'A')!.slots[0].allowedComponents ?? []).toEqual([]);
@@ -63,16 +63,16 @@ describe('applyMapping (T7 — enrichment pass)', () => {
 
   it('drops an edge whose child is not an extracted component (warn)', () => {
     const components = [comp('A', [slot('children', true)])];
-    const res = applyMapping(components, [edge('A', 'GHOST', 'agent')]);
+    const res = applyMapping(components, [edge('A', 'GHOST', 'doc')]);
     expect(res.warnings.join(' ')).toMatch(/GHOST/);
     expect(res.components.find((c) => c.name === 'A')!.slots[0].allowedComponents ?? []).toEqual([]);
   });
 
-  it('T7 edge case: agent edge naming a nonexistent slot is dropped-and-warned; typed-slot synthesizes', () => {
+  it('T7 edge case: doc edge naming a nonexistent slot is dropped-and-warned; typed-slot synthesizes', () => {
     const components = [comp('A', [slot('children', true)]), comp('B')];
-    const agentRes = applyMapping(components, [edge('A', 'B', 'agent', 'ghostSlot')]);
-    expect(agentRes.warnings.join(' ')).toMatch(/ghostSlot/i);
-    expect(agentRes.components.find((c) => c.name === 'A')!.slots.find((s) => s.name === 'ghostSlot')).toBeUndefined();
+    const docRes = applyMapping(components, [edge('A', 'B', 'doc', 'ghostSlot')]);
+    expect(docRes.warnings.join(' ')).toMatch(/ghostSlot/i);
+    expect(docRes.components.find((c) => c.name === 'A')!.slots.find((s) => s.name === 'ghostSlot')).toBeUndefined();
 
     const typedRes = applyMapping(
       [comp('A', [slot('children', true)]), comp('B')],

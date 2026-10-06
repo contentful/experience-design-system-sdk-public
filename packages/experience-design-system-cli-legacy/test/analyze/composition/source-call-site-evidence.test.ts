@@ -58,7 +58,7 @@ describe('source call-site composition evidence', () => {
     ]);
   });
 
-  it('retains evidence and makes it available to the composition prompt', async () => {
+  it('turns accepted evidence into cited call-site edges and retains the evidence', () => {
     const evidence = {
       parent: 'Card',
       child: 'Button',
@@ -68,82 +68,35 @@ describe('source call-site composition evidence', () => {
       excerpt: 'return <Button />;',
       kind: 'jsx-render' as const,
     };
-    const prompts: string[] = [];
-    const result = await resolveMapping({
+    const result = resolveMapping({
       components: [component('Card', '/project/Card.tsx'), component('Button', '/project/Button.tsx')],
-      files: [{ path: '/project/Card.tsx', content: 'return <Button />;' }],
       sourceCallSiteEvidence: [evidence],
       sourceCallSiteRejections: [],
-      runAgentFn: async ({ prompt }) => {
-        prompts.push(prompt);
-        return '';
-      },
     });
 
     expect(result.sourceCallSiteEvidence).toEqual([evidence]);
     expect(result.sourceCallSiteRejections).toEqual([]);
-    expect(prompts[0]).toContain('/project/Card.tsx');
-    expect(prompts[0]).toContain('return <Button />;');
-  });
-
-  it('accepts an agent edge only when its citation matches source evidence', async () => {
-    const evidence = {
-      parent: 'Card',
-      child: 'Button',
-      sourcePath: '/project/Card.tsx',
-      startLine: 4,
-      endLine: 4,
-      excerpt: 'return <Button />;',
-      kind: 'jsx-render' as const,
-    };
-    const result = await resolveMapping({
-      components: [component('Card', '/project/Card.tsx'), component('Button', '/project/Button.tsx')],
-      files: [{ path: '/project/Card.tsx', content: 'return <Button />;' }],
-      sourceCallSiteEvidence: [evidence],
-      runAgentFn: async () =>
-        JSON.stringify({
-          tool: 'map_edge',
-          parent: 'Card',
-          child: 'Button',
-          citation: { sourcePath: '/project/Card.tsx', startLine: 4, endLine: 4 },
-        }),
-    });
-
     expect(result.edges).toEqual([
       expect.objectContaining({
         parent: 'Card',
         child: 'Button',
+        provenance: 'call-site',
         citation: { sourcePath: '/project/Card.tsx', startLine: 4, endLine: 4 },
       }),
     ]);
   });
 
-  it('rejects an agent edge with a citation that is not in the evidence set', async () => {
-    const result = await resolveMapping({
+  it('produces no edge for a pair without a call site', () => {
+    const result = resolveMapping({
       components: [component('Card', '/project/Card.tsx'), component('Button', '/project/Button.tsx')],
-      files: [{ path: '/project/Card.tsx', content: 'return <Button />;' }],
-      sourceCallSiteEvidence: [
-        {
-          parent: 'Card',
-          child: 'Button',
-          sourcePath: '/project/Card.tsx',
-          startLine: 4,
-          endLine: 4,
-          excerpt: 'return <Button />;',
-          kind: 'jsx-render',
-        },
+      sourceCallSiteEvidence: [],
+      sourceCallSiteRejections: [
+        { parent: 'Card', candidate: 'Button', sourcePath: '/project/Card.tsx', reason: 'no-call-site' },
       ],
-      runAgentFn: async () =>
-        JSON.stringify({
-          tool: 'map_edge',
-          parent: 'Card',
-          child: 'Button',
-          citation: { sourcePath: '/project/Card.tsx', startLine: 99, endLine: 99 },
-        }),
     });
 
     expect(result.edges).toEqual([]);
-    expect(result.warnings.join(' ')).toContain('citation');
+    expect(result.sourceCallSiteRejections).toHaveLength(1);
   });
 
   it('captures a caller-side child rendered into a named slot', () => {

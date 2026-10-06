@@ -110,7 +110,7 @@
         "parallel": false,
         "commands": [
           "mkdir -p packages/experience-design-system-cli/legacy",
-          "cp -r packages/experience-design-system-cli-legacy/bin packages/experience-design-system-cli-legacy/dist packages/experience-design-system-cli-legacy/prompts packages/experience-design-system-cli-legacy/skills packages/experience-design-system-cli/legacy/",
+          "cp -r packages/experience-design-system-cli-legacy/bin packages/experience-design-system-cli-legacy/dist packages/experience-design-system-cli-legacy/skills packages/experience-design-system-cli/legacy/",
           "cp packages/experience-design-system-cli/package.json packages/experience-design-system-cli/legacy/package.json"
         ]
       }
