@@ -337,7 +337,7 @@ export function WizardPreviewStep({
           <WindowedPanel
             width={Math.max(20, terminalColumns - 4)}
             height={panelHeight}
-            title={diffExpanded ? `Diff (${diffLines.length} lines)` : 'Component types'}
+            title={diffExpanded ? `Diff (${diffLines.length} lines)` : ''}
             focused={false}
           >
             {activeLines.slice(boundedScrollOffset, boundedScrollOffset + viewportHeight).map((line) => (
