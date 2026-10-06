@@ -87,7 +87,7 @@ export function RunningStep({
             <>
               <Box gap={2}>
                 <Box width={40}>
-                  <ThemeProvider theme={THEME}>
+                  <ThemeProvider theme={INK_UI_THEME}>
                     <ProgressBar value={Math.round((secondaryProgress.done / secondaryProgress.total) * 100)} />
                   </ThemeProvider>
                 </Box>
