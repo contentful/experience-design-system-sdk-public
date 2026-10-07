@@ -1,24 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import type { CandidateFile } from '../shared/types.js';
-
-const INCLUDED_EXTENSIONS = new Set(['.astro', '.js', '.jsx', '.svelte', '.ts', '.tsx', '.vue']);
-const EXCLUDED_SUFFIXES = [
-  '.d.ts',
-  '.stories.ts',
-  '.stories.tsx',
-  '.stories.js',
-  '.stories.jsx',
-  '.test.ts',
-  '.test.tsx',
-  '.test.js',
-  '.test.jsx',
-  '.spec.ts',
-  '.spec.tsx',
-  '.spec.js',
-  '.spec.jsx',
-];
-const IGNORED_DIRS = new Set(['node_modules', 'dist', '.git', 'build', 'coverage', '.next', '.vscode', '.nx']);
+import { EXCLUDED_SUFFIXES, IGNORED_DIRS, INCLUDED_EXTENSIONS } from './constants.js';
 
 function isIncluded(filePath: string): boolean {
   if (EXCLUDED_SUFFIXES.some((suffix) => filePath.endsWith(suffix))) return false;

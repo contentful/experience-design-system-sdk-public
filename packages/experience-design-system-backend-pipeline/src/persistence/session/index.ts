@@ -1,16 +1,19 @@
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { lookupCompositionCache, storeCompositionCache } from './cache/composition.js';
-import { lookupGenerationCache, storeGenerationCache } from './cache/generation.js';
-import { lookupSelectionCache, storeSelectionCache } from './cache/selection.js';
-import { SCHEMA_SQL } from './schema.js';
-import { generateSessionId } from './session-id.js';
-import type { OpenSessionOptions, SessionHandle } from './types/contract.js';
+import { lookupCompositionCache, storeCompositionCache } from '../cache/composition.js';
+import { lookupGenerationCache, storeGenerationCache } from '../cache/generation.js';
+import { lookupSelectionCache, storeSelectionCache } from '../cache/selection.js';
+import { SCHEMA_SQL } from '../schema.js';
+import type { OpenSessionOptions, SessionHandle } from '../types/contract.js';
+import { generateSessionId } from './helpers/generate-session-id.js';
+
+export { generateSessionId } from './helpers/generate-session-id.js';
 
 export function openSession({ dbPath, sessionId, cliVersion }: OpenSessionOptions): SessionHandle {
   const resolvedPath =
-    dbPath ?? path.join(process.env['HOME'] ?? '.', '.contentful', 'experience-design-system-cli', 'pipeline.db');
+    dbPath ??
+    path.join(process.env['HOME'] ?? '.', '.contentful', 'experience-design-system-cli', 'pipeline.db');
   const id = sessionId ?? generateSessionId();
 
   if (resolvedPath !== ':memory:') {

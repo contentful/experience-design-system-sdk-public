@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { generateSessionId } from '../session-id.js';
+import { generateSessionId } from '../session/helpers/generate-session-id.js';
 
 describe('generateSessionId', () => {
   it('returns a string matching {adjective}-{noun}-{hex} format', () => {
