@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
+import TextInput from 'ink-text-input';
 import { PALETTE } from '../../home/home.theme.js';
 import { readCredentials, writeCredentials, type V1Credentials } from './config-store.js';
 import { startDebugRun, finishDebugRun } from '../../debug-store.js';
@@ -95,21 +96,10 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
     }
 
     if (editing) {
-      if (key.return) {
-        setEditing(false);
-        return;
-      }
+      // <TextInput> handles typing, the cursor, left/right and Enter (onSubmit) itself.
       if (key.escape) {
         setFieldValue(activeField, valueBeforeEdit);
         setEditing(false);
-        return;
-      }
-      if (key.backspace || key.delete) {
-        setFieldValue(activeField, fieldValue(activeField).slice(0, -1));
-        return;
-      }
-      if (input && !key.ctrl && !key.meta && !key.tab && !key.upArrow && !key.downArrow) {
-        setFieldValue(activeField, fieldValue(activeField) + input);
       }
       return;
     }
@@ -180,8 +170,16 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
             <Box key={field} gap={1}>
               <Text color={isActive ? PALETTE.accent : undefined}>{isActive ? '❯' : ' '}</Text>
               <Text bold={isActive}>{FIELD_LABELS[field]}:</Text>
-              <Text>{display || (isActive && editing ? '' : <Text dimColor>(empty)</Text>)}</Text>
-              {isActive && editing && <Text color={PALETTE.accent}>▏</Text>}
+              {isActive && editing ? (
+                <TextInput
+                  value={value}
+                  onChange={(next) => setFieldValue(field, next)}
+                  onSubmit={() => setEditing(false)}
+                  mask={field === 'cmaToken' ? '•' : undefined}
+                />
+              ) : (
+                <Text>{display || <Text dimColor>(empty)</Text>}</Text>
+              )}
             </Box>
           );
         })}
@@ -195,7 +193,7 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
       <Text> </Text>
       <Text dimColor>
         {editing
-          ? '[type] Edit value · [Enter] Done · [Esc] Cancel edit'
+          ? '[type] Edit · [←/→] Move cursor · [Enter] Done · [Esc] Cancel edit'
           : '[↑/↓] Switch field · [Enter] Edit · [s] Save · [Esc/q] Back'}
       </Text>
     </Box>
