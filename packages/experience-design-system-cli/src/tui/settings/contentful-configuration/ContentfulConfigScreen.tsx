@@ -40,7 +40,9 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
   const [stage, setStage] = useState<Stage>('loading');
   const [config, setConfig] = useState<V1Credentials | null>(null);
   const [activeField, setActiveField] = useState<Field>('spaceId');
-  const [message, setMessage] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  // The config as last written to disk, so leaving can log whether anything was saved.
+  const [lastSaved, setLastSaved] = useState<V1Credentials | null>(null);
   // Fields are read-only until Enter opens one for editing; Enter again closes it. While editing, keys type
   // into the field (so a "q" in a path is just a "q"), and Esc closes it and restores the previous value.
   const [editing, setEditing] = useState(false);
@@ -67,22 +69,34 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
   function setFieldValue(field: Field, value: string): void {
     if (!config) return;
     setConfig({ ...config, [field]: value });
+    setNotice(null);
   }
 
-  // Leaving the screen saves whatever is entered. A failed save keeps the screen open with the error.
-  function saveAndLeave(): void {
+  // Explicit save: stays on the screen and shows a confirmation. A failed save shows the error instead.
+  function handleSave(): void {
     if (!config) return;
     setStage('saving');
-    setMessage(null);
+    setNotice(null);
     writeCredentials(config)
       .then(() => {
-        void finishDebugRun({ outputs: debugFields(config), status: 'success', exitMethod: 'saved' });
-        onDone();
+        setLastSaved(config);
+        setNotice({ kind: 'success', text: 'Configuration saved' });
+        setStage('form');
       })
       .catch((err: unknown) => {
-        setMessage(err instanceof Error ? err.message : 'Failed to save');
+        setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'Failed to save' });
         setStage('form');
       });
+  }
+
+  // Leaves without writing anything. Changes since the last save are dropped.
+  function quit(): void {
+    void finishDebugRun(
+      lastSaved
+        ? { outputs: debugFields(lastSaved), status: 'success', exitMethod: 'saved' }
+        : { outputs: {}, status: 'success', exitMethod: 'discarded' },
+    );
+    onDone();
   }
 
   useInput((input, key) => {
@@ -98,7 +112,12 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
     }
 
     if (key.escape || input === 'q') {
-      saveAndLeave();
+      quit();
+      return;
+    }
+
+    if (input === 's') {
+      handleSave();
       return;
     }
 
@@ -164,17 +183,19 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
           );
         })}
       </Box>
-      {message && (
+      {notice && (
         <>
           <Text> </Text>
-          <Text color={PALETTE.error}>✗ {message}</Text>
+          <Text color={notice.kind === 'success' ? PALETTE.success : PALETTE.error}>
+            {notice.kind === 'success' ? '✓' : '✗'} {notice.text}
+          </Text>
         </>
       )}
       <Text> </Text>
       <Text dimColor>
         {editing
           ? '[type] Edit · [←/→] Move cursor · [Enter] Done · [Esc] Cancel edit'
-          : '[↑/↓] Switch field · [Enter] Edit · [c] Clear field · [Esc/q] Save & back'}
+          : '[↑/↓] Switch field · [Enter] Edit · [c] Clear field · [s] Save · [Esc/q] Quit without saving'}
       </Text>
     </Box>
   );
