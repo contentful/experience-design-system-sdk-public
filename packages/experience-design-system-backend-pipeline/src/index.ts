@@ -55,11 +55,7 @@ export { toApiHost, toConfiguredHost } from './apply/helpers/host-utils.js';
 
 // Persistence
 export { collectFiles, openSession, generateSessionId } from './persistence/index.js';
-export type {
-  OpenSessionOptions,
-  SelectionDecision,
-  SessionHandle,
-} from './persistence/index.js';
+export type { OpenSessionOptions, SelectionDecision, SessionHandle } from './persistence/index.js';
 
 // Shared
 export type { CandidateFile } from './shared/types.js';

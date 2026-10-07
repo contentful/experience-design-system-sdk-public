@@ -9,7 +9,8 @@ import { generateSessionId } from './session-id.js';
 import type { OpenSessionOptions, SessionHandle } from './types/contract.js';
 
 export function openSession({ dbPath, sessionId, cliVersion }: OpenSessionOptions): SessionHandle {
-  const resolvedPath = dbPath ?? path.join(process.env['HOME'] ?? '.', '.contentful', 'experience-design-system-cli', 'pipeline.db');
+  const resolvedPath =
+    dbPath ?? path.join(process.env['HOME'] ?? '.', '.contentful', 'experience-design-system-cli', 'pipeline.db');
   const id = sessionId ?? generateSessionId();
 
   if (resolvedPath !== ':memory:') {
@@ -32,16 +33,13 @@ export function openSession({ dbPath, sessionId, cliVersion }: OpenSessionOption
       store: (inputHash, agentOutput) => storeCompositionCache(db, inputHash, cliVersion, agentOutput),
     },
     selection: {
-      lookup: (componentHash, promptHash) =>
-        lookupSelectionCache(db, componentHash, promptHash, cliVersion),
+      lookup: (componentHash, promptHash) => lookupSelectionCache(db, componentHash, promptHash, cliVersion),
       store: (componentHash, promptHash, decision, reason) =>
         storeSelectionCache(db, componentHash, promptHash, cliVersion, decision, reason),
     },
     generation: {
-      lookup: (inputHash, promptHash) =>
-        lookupGenerationCache(db, inputHash, promptHash, cliVersion),
-      store: (inputHash, promptHash, entry) =>
-        storeGenerationCache(db, inputHash, promptHash, cliVersion, entry),
+      lookup: (inputHash, promptHash) => lookupGenerationCache(db, inputHash, promptHash, cliVersion),
+      store: (inputHash, promptHash, entry) => storeGenerationCache(db, inputHash, promptHash, cliVersion, entry),
     },
     close: () => db.close(),
   };

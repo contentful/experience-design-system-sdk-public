@@ -8,9 +8,7 @@ export function lookupGenerationCache(
   cliVersion: string,
 ): CDFComponentEntry | null {
   const row = db
-    .prepare(
-      'SELECT cdf_json FROM generation_cache WHERE input_hash = ? AND prompt_hash = ? AND cli_version = ?',
-    )
+    .prepare('SELECT cdf_json FROM generation_cache WHERE input_hash = ? AND prompt_hash = ? AND cli_version = ?')
     .get(inputHash, promptHash, cliVersion) as { cdf_json: string } | undefined;
   if (!row) return null;
   return JSON.parse(row.cdf_json) as CDFComponentEntry;

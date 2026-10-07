@@ -19,12 +19,7 @@ export interface SessionHandle {
   };
   selection: {
     lookup(componentHash: string, promptHash: string): SelectionDecision | null;
-    store(
-      componentHash: string,
-      promptHash: string,
-      decision: 'accepted' | 'rejected',
-      reason: string | null,
-    ): void;
+    store(componentHash: string, promptHash: string, decision: 'accepted' | 'rejected', reason: string | null): void;
   };
   generation: {
     lookup(inputHash: string, promptHash: string): CDFComponentEntry | null;
