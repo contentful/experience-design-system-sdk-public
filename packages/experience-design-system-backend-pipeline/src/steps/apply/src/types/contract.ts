@@ -3,7 +3,7 @@ import type {
   DTCGTokenEntry,
   ServerPreviewResponse,
   ApplyOperationResponse,
-} from '../../../shared/types/index.js';
+} from '../../../shared/index.js';
 
 export interface RetryConfig {
   maxAttempts: number;

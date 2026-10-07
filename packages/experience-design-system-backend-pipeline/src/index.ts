@@ -62,4 +62,4 @@ export { collectFiles, openSession, generateSessionId } from './persistence/inde
 export type { OpenSessionOptions, SelectionDecision, SessionHandle } from './persistence/index.js';
 
 // Shared
-export type { CandidateFile } from './steps/shared/types/index.js';
+export type { CandidateFile } from './steps/shared/index.js';

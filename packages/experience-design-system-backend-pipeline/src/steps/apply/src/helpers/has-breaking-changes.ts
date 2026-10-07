@@ -1,4 +1,4 @@
-import type { ServerPreviewResponse } from '../../../shared/types/index.js';
+import type { ServerPreviewResponse } from '../../../shared/index.js';
 
 export function hasBreakingChangesWithImpact(preview: ServerPreviewResponse): boolean {
   const allChanged = [...preview.components.changed, ...preview.tokens.changed];

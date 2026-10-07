@@ -1,5 +1,5 @@
 import * as z from 'zod/mini';
-import { DESIGN_TOKEN_TYPES } from './token-types.js';
+import { DESIGN_TOKEN_TYPES } from '../constants/token-types.js';
 
 export const DTCGTokenSchema = z.strictObject({
   path: z.string(),

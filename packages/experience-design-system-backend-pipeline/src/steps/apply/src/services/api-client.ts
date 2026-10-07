@@ -3,7 +3,7 @@ import {
   designSystemImportGetOperation,
   designSystemImportSourcelessPreview,
 } from '../client/index.js';
-import type { ApplyOperationResponse, CDFDocument, ServerPreviewResponse } from '../../../shared/types/index.js';
+import type { ApplyOperationResponse, CDFDocument, ServerPreviewResponse } from '../../../shared/index.js';
 import { APPLY_ERROR_PREFIX, PREVIEW_ERROR_PREFIX, USER_AGENT } from '../constants/index.js';
 import {
   isApsDenialBody,

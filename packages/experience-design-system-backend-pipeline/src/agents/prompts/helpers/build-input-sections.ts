@@ -1,4 +1,4 @@
-import { flattenDTCG } from '../../../steps/shared/types/index.js';
+import { flattenDTCG } from '../../../steps/shared/index.js';
 import type { PromptOptions } from '../../types/prompts.js';
 import { filterDesignTokenProps } from './filter-design-token-props.js';
 import { renderTokenCandidateSection } from './format-token-candidates.js';

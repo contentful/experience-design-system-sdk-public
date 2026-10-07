@@ -1,7 +1,13 @@
 import { Ajv, type ErrorObject } from 'ajv';
-import { cdfJsonSchema, CDF_SCHEMA_URL } from './schema.js';
-import { DESIGN_TOKEN_TYPES } from '../dtcg/token-types.js';
-import type { CDFFile, CDFComponentEntry, CDFTokenEntry, CDFValidationError, CDFValidationResult } from './types.js';
+import { cdfJsonSchema, CDF_SCHEMA_URL } from '../constants/schema.js';
+import { DESIGN_TOKEN_TYPES } from '../../dtcg/constants/token-types.js';
+import type {
+  CDFFile,
+  CDFComponentEntry,
+  CDFTokenEntry,
+  CDFValidationError,
+  CDFValidationResult,
+} from '../types/types.js';
 
 const ajv = new Ajv({ allErrors: true });
 const validate = ajv.compile(cdfJsonSchema);

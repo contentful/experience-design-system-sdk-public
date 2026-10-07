@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { buildPrompt, createLocalCliAgentInvoker, parseToolCalls, type ToolCall } from '../../../../agents/index.js';
 import type { RawComponentDefinition } from '../../../extraction/src/types/component.js';
-import type { CDFComponentEntry, CDFPropertyDefinition, CDFSlotDefinition } from '../../../shared/types/index.js';
+import type { CDFComponentEntry, CDFPropertyDefinition, CDFSlotDefinition } from '../../../shared/index.js';
 import type {
   CdfGenerationFailure,
   RunCdfGenerationServiceOptions,

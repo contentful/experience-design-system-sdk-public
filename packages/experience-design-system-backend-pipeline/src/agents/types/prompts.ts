@@ -1,4 +1,4 @@
-import type { CDFComponentEntry } from '../../steps/shared/types/index.js';
+import type { CDFComponentEntry } from '../../steps/shared/index.js';
 
 /**
  * `components` — classify component props;

@@ -1,5 +1,5 @@
-import { CDF_SCHEMA_URL } from './schema.js';
-import type { CDFComponentEntry, CDFTokenEntry, CDFValidationError } from './types.js';
+import { CDF_SCHEMA_URL } from '../constants/schema.js';
+import type { CDFComponentEntry, CDFTokenEntry, CDFValidationError } from '../types/types.js';
 
 /** Drops `$required` from slot definitions — the server never reads it and
  * older CDF consumers reject unknown slot fields. */

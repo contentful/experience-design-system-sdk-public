@@ -1,6 +1,6 @@
 import type { RawComponentDefinition } from '../../../extraction/src/types/component.js';
 import type { AgentName } from '../../../../agents/index.js';
-import type { CandidateFile } from '../../../shared/types/index.js';
+import type { CandidateFile } from '../../../shared/index.js';
 
 export type { CandidateFile };
 export type SelectedCandidate = CandidateFile & { matchReason: string };

@@ -1,5 +1,5 @@
-import type { DTCGTokenEntry } from './types.js';
-import { type DesignTokenType } from './token-types.js';
+import type { DTCGTokenEntry } from '../types/types.js';
+import { type DesignTokenType } from '../constants/token-types.js';
 
 export function flattenDTCG(obj: Record<string, unknown>, prefix: string): DTCGTokenEntry[] {
   const results: DTCGTokenEntry[] = [];

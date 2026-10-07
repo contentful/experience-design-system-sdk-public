@@ -1,5 +1,5 @@
 import { dirname } from 'node:path';
-import type { CandidateFile } from '../../../shared/types/index.js';
+import type { CandidateFile } from '../../../shared/index.js';
 import type { CompositionEdge } from './interchange-schema.js';
 
 type ComponentRef = { name: string; sourcePath?: string };

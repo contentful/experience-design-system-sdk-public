@@ -1,5 +1,5 @@
 import { CDF_PROPERTY_TYPES, CDF_PROPERTY_CATEGORIES } from './vocabularies.js';
-import { DESIGN_TOKEN_TYPES } from '../dtcg/token-types.js';
+import { DESIGN_TOKEN_TYPES } from '../../dtcg/constants/token-types.js';
 
 export const CDF_SCHEMA_URL = 'https://contentful.com/schemas/cdf';
 

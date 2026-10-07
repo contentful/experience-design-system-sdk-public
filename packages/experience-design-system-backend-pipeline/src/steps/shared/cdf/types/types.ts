@@ -1,6 +1,6 @@
 import * as z from 'zod/mini';
-import { CDF_PROPERTY_TYPES, CDF_PROPERTY_CATEGORIES } from './vocabularies.js';
-import { DESIGN_TOKEN_TYPES } from '../dtcg/token-types.js';
+import { CDF_PROPERTY_TYPES, CDF_PROPERTY_CATEGORIES } from '../constants/vocabularies.js';
+import { DESIGN_TOKEN_TYPES } from '../../dtcg/constants/token-types.js';
 
 export const CDFPropertySchema = z.strictObject({
   $type: z.enum(CDF_PROPERTY_TYPES),

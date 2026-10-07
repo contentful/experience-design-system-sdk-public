@@ -1,4 +1,4 @@
-import type { BreakingChange, ServerPreviewResponse } from '../../../shared/types/index.js';
+import type { BreakingChange, ServerPreviewResponse } from '../../../shared/index.js';
 
 const PROPERTY_BREAKING_REASONS = new Set([
   'removed',

@@ -1,5 +1,5 @@
-import { DESIGN_TOKEN_TYPES, type DesignTokenType } from './token-types.js';
-import { flattenDTCG } from './utils.js';
+import { DESIGN_TOKEN_TYPES, type DesignTokenType } from '../constants/token-types.js';
+import { flattenDTCG } from './flatten.js';
 
 export interface DTCGValidationError {
   path: string;
