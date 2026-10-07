@@ -1,4 +1,4 @@
-import { extractComponents } from '@contentful/experience-design-system-extraction';
+import { extractComponents } from '../extract/pipeline.js';
 import type { ExtractComponentsRequest, ExtractComponentsResponse } from '../types/contract.js';
 
 export async function runExtractionService(request: ExtractComponentsRequest): Promise<ExtractComponentsResponse> {

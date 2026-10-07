@@ -1,4 +1,4 @@
-import type { ComponentExtractionResult, ExtractorOptions } from '@contentful/experience-design-system-extraction';
+import type { ComponentExtractionResult, ExtractorOptions } from '../extraction-types.js';
 
 export interface ExtractionEndpointProgress {
   phase: 'extract';

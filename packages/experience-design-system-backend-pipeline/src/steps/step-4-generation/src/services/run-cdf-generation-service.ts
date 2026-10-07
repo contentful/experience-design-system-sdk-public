@@ -4,9 +4,9 @@ import {
   createLocalCliAgentInvoker,
   parseToolCallLines,
   type ToolCall,
-} from '@contentful/experience-design-system-generation';
-import type { RawComponentDefinition } from '@contentful/experience-design-system-extraction';
-import type { CDFComponentEntry, CDFPropertyDefinition, CDFSlotDefinition } from '@contentful/experience-design-system-types';
+} from '../../../shared/src/agent/index.js';
+import type { RawComponentDefinition } from '../../../step-1-extraction/src/extraction-types.js';
+import type { CDFComponentEntry, CDFPropertyDefinition, CDFSlotDefinition } from '../../../shared/src/cdf-types/index.js';
 import type { CdfGenerationFailure, RunCdfGenerationServiceOptions, RunCdfGenerationServiceResult } from '../types/contract.js';
 
 const DEFAULT_CONCURRENCY = 3;

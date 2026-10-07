@@ -1,6 +1,6 @@
-import type { RawComponentDefinition } from '@contentful/experience-design-system-extraction';
-import type { AgentName } from '@contentful/experience-design-system-generation';
-import type { CDFComponentEntry, DTCGTokenEntry } from '@contentful/experience-design-system-types';
+import type { RawComponentDefinition } from '../../../step-1-extraction/src/extraction-types.js';
+import type { AgentName } from '../../../shared/src/agent/index.js';
+import type { CDFComponentEntry, DTCGTokenEntry } from '../../../shared/src/cdf-types/index.js';
 
 export interface CdfGenerationFailure {
   componentName: string;

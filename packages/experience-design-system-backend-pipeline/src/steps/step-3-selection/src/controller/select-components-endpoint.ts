@@ -1,4 +1,4 @@
-import { isAgentName } from '@contentful/experience-design-system-generation';
+import { isAgentName } from '../../../shared/src/agent/index.js';
 import { DEFAULT_AGENT } from '../../../shared/src/constants.js';
 import { runSelectionService } from '../services/run-selection-service.js';
 import type { SelectComponentsEndpointRequest, SelectComponentsEndpointResponse } from '../types/contract.js';

@@ -1,3 +1,3 @@
-import type { AgentName } from '@contentful/experience-design-system-generation';
+import type { AgentName } from './agent/index.js';
 
 export const DEFAULT_AGENT: AgentName = 'claude';

@@ -1,4 +1,4 @@
-import { isAgentName } from '@contentful/experience-design-system-generation';
+import { isAgentName } from '../../../shared/src/agent/index.js';
 import { DEFAULT_AGENT } from '../../../shared/src/constants.js';
 import { runCdfGenerationService } from '../services/run-cdf-generation-service.js';
 import type { GenerateCdfComponentsRequest, GenerateCdfComponentsResponse } from '../types/contract.js';

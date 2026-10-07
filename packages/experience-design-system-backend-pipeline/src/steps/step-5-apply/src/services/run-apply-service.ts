@@ -1,5 +1,5 @@
-import { buildCDF } from '@contentful/experience-design-system-types';
-import type { ApplyOperationResponse } from '@contentful/experience-design-system-types';
+import { buildCDF } from '../../../shared/src/cdf-types/index.js';
+import type { ApplyOperationResponse } from '../../../shared/src/cdf-types/index.js';
 import { createApiClient } from '../helpers/clients.js';
 import { hasBreakingChangesWithImpact } from '../helpers/has-breaking-changes.js';
 import { isEmptyPreview } from '../helpers/is-empty-preview.js';

@@ -1,4 +1,4 @@
-import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
+import type { CDFComponentEntry } from '../../steps/shared/src/cdf-types/index.js';
 
 export interface WriteResult {
   createdCount: number;

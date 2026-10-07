@@ -2,7 +2,7 @@ import {
   buildPrompt,
   createLocalCliAgentInvoker,
   parseSelectToolCallLines,
-} from '@contentful/experience-design-system-generation';
+} from '../../../shared/src/agent/index.js';
 import type { RunSelectionServiceOptions, SelectionServiceResult, ComponentSelection } from '../types/contract.js';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 5 * 60 * 1000);

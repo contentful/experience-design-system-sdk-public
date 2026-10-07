@@ -1,4 +1,4 @@
-import type { ServerPreviewResponse } from '@contentful/experience-design-system-types';
+import type { ServerPreviewResponse } from '../../../shared/src/cdf-types/index.js';
 
 export function hasBreakingChangesWithImpact(preview: ServerPreviewResponse): boolean {
   const allChanged = [...preview.components.changed, ...preview.tokens.changed];

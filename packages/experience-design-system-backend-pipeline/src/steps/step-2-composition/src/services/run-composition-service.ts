@@ -1,5 +1,5 @@
-import { runAgent } from '@contentful/experience-design-system-generation';
-import type { RawComponentDefinition } from '@contentful/experience-design-system-extraction';
+import { runAgent } from '../../../shared/src/agent/index.js';
+import type { RawComponentDefinition } from '../../../step-1-extraction/src/extraction-types.js';
 import { resolveMapping } from '../helpers/resolve-mapping.js';
 import { selectCandidateFiles, capCandidatesToPromptBudget } from '../helpers/candidate-files.js';
 import { buildCompositionInputHash } from '../helpers/composition-cache-key.js';

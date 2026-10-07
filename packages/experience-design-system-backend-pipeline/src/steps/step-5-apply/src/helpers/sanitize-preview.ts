@@ -1,4 +1,4 @@
-import type { BreakingChange, ServerPreviewResponse } from '@contentful/experience-design-system-types';
+import type { BreakingChange, ServerPreviewResponse } from '../../../shared/src/cdf-types/index.js';
 
 const PROPERTY_BREAKING_REASONS = new Set([
   'removed',

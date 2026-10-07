@@ -1,5 +1,5 @@
-import type { RawComponentDefinition } from '@contentful/experience-design-system-extraction';
-import type { AgentName } from '@contentful/experience-design-system-generation';
+import type { RawComponentDefinition } from '../../../step-1-extraction/src/extraction-types.js';
+import type { AgentName } from '../../../shared/src/agent/index.js';
 import type { CandidateFile } from '../../../shared/src/types.js';
 
 export type { CandidateFile };

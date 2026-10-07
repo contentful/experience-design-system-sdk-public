@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { hasBreakingChangesWithImpact } from '../../src/helpers/has-breaking-changes.js';
-import type { ServerPreviewResponse } from '@contentful/experience-design-system-types';
+import type { ServerPreviewResponse } from '../../../shared/src/cdf-types/index.js';
 
 function makePreview(
   componentChanges: Array<{ classification?: string; affectedFragments?: number; affectedExperiences?: number }> = [],

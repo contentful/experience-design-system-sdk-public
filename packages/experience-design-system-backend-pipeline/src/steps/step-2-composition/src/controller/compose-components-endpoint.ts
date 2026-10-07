@@ -1,4 +1,4 @@
-import { isAgentName } from '@contentful/experience-design-system-generation';
+import { isAgentName } from '../../../shared/src/agent/index.js';
 import { DEFAULT_AGENT } from '../../../shared/src/constants.js';
 import { runCompositionService } from '../services/run-composition-service.js';
 import type { ComposeComponentsRequest, ComposeComponentsResponse } from '../types/contract.js';

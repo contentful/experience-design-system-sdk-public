@@ -1,4 +1,4 @@
-import type { ServerPreviewResponse } from '@contentful/experience-design-system-types';
+import type { ServerPreviewResponse } from '../../../shared/src/cdf-types/index.js';
 
 export function isEmptyPreview(preview: ServerPreviewResponse): boolean {
   const { components, tokens, taxonomies } = preview;
