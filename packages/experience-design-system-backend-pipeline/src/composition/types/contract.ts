@@ -1,6 +1,14 @@
 import type { RawComponentDefinition } from '@contentful/experience-design-system-extraction';
 import type { AgentName } from '@contentful/experience-design-system-generation';
 
+export type CandidateFile = { path: string; content: string };
+export type SelectedCandidate = CandidateFile & { matchReason: string };
+
+export type ApplyCompositionEdgesResult = {
+  components: RawComponentDefinition[];
+  warnings: string[];
+};
+
 export interface ResolveCompositionServiceOptions {
   components: RawComponentDefinition[];
   allFiles: Array<{ path: string; content: string }>;

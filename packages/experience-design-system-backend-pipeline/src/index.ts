@@ -11,12 +11,12 @@ export { composeComponents } from './composition/controller/compose-components-e
 export type { ComposeComponentsRequest, ComposeComponentsResponse } from './composition/types/contract.js';
 export type { CompositionEdge, EdgeProvenance } from './composition/helpers/interchange-schema.js';
 export type { MergeResult, EdgeConflict } from './composition/helpers/merge-edges.js';
-export type { CandidateFile, SelectedCandidate } from './composition/helpers/candidate-files.js';
+export type { CandidateFile, SelectedCandidate } from './composition/types/contract.js';
 export { selectCandidateFiles, capCandidatesToPromptBudget } from './composition/helpers/candidate-files.js';
 export { collectManifestDocEdges } from './composition/helpers/manifest-doc-evidence.js';
 export { mergeEdges } from './composition/helpers/merge-edges.js';
 export { parseMapEdges } from './composition/helpers/parse-map-edges.js';
-export { applyMapping } from './composition/helpers/apply-mapping.js';
+export { applyCompositionEdges } from './composition/helpers/apply-mapping.js';
 export { buildCompositionInputHash } from './composition/helpers/composition-cache-key.js';
 
 // Selection
@@ -45,6 +45,8 @@ export type {
   ApplyPreviewResult,
   ApplySuccessResult,
   ApplyNoChangesResult,
+  BuildPostPushUrlInput,
+  PostPushView,
 } from './apply/types/contract.js';
 export { hasBreakingChangesWithImpact } from './apply/helpers/has-breaking-changes.js';
 export { buildPostPushUrl } from './apply/helpers/contentful-urls.js';

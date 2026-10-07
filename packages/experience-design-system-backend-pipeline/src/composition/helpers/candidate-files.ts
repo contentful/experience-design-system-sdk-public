@@ -1,22 +1,17 @@
-export const CANDIDATE_NAME_PATTERNS: RegExp[] = [/mapping/i, /meta/i, /registry/i, /schema/i, /composition/i];
-export const CANDIDATE_CONTENT_MARKERS: string[] = [
-  'requiredParent',
-  'withParentType',
-  'allowedTagNames',
-  'createContext',
-  'MappingContext',
-  'allowedComponents',
-];
-export const CANDIDATE_TOKEN_BUDGET = 6000;
-export const PROMPT_CANDIDATE_TOKEN_BUDGET = 80_000;
+import {
+  CANDIDATE_NAME_PATTERNS,
+  CANDIDATE_CONTENT_MARKERS,
+  CANDIDATE_TOKEN_BUDGET,
+  PROMPT_CANDIDATE_TOKEN_BUDGET,
+} from '../constants.js';
+import type { CandidateFile, SelectedCandidate } from '../types/contract.js';
+
+export type { CandidateFile, SelectedCandidate };
 
 const CHARS_PER_TOKEN = 4;
 const DEFAULT_SLICE_WINDOW = 3;
 
-export type CandidateFile = { path: string; content: string };
-export type SelectedCandidate = CandidateFile & { reason: string };
-
-function matchReason(file: CandidateFile): string | undefined {
+function getMatchReason(file: CandidateFile): string | undefined {
   const segments = file.path.split('/').filter((s) => s !== '');
   for (const pattern of CANDIDATE_NAME_PATTERNS) {
     if (segments.some((seg) => pattern.test(seg))) return `name:${pattern.source.toLowerCase()}`;
@@ -32,10 +27,10 @@ export function selectCandidateFiles(files: CandidateFile[]): SelectedCandidate[
   const seen = new Set<string>();
   for (const file of files) {
     if (seen.has(file.path)) continue;
-    const reason = matchReason(file);
-    if (reason === undefined) continue;
+    const matchReason = getMatchReason(file);
+    if (matchReason === undefined) continue;
     seen.add(file.path);
-    selected.push({ path: file.path, content: file.content, reason });
+    selected.push({ path: file.path, content: file.content, matchReason });
   }
   return selected;
 }

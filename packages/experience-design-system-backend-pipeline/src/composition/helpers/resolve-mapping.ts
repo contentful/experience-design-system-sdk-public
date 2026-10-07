@@ -2,7 +2,7 @@ import type { RawComponentDefinition } from '@contentful/experience-design-syste
 import type { CompositionEdge } from './interchange-schema.js';
 import { mergeEdges, type EdgeConflict } from './merge-edges.js';
 import { parseMapEdges } from './parse-map-edges.js';
-import { applyMapping } from './apply-mapping.js';
+import { applyCompositionEdges } from './apply-mapping.js';
 import { loadPrompt } from './prompt-loader.js';
 
 export type ResolveMappingResult = {
@@ -66,7 +66,7 @@ export async function resolveMapping(input: {
       return rest;
     }),
   }));
-  const applied = applyMapping(base, merged.edges);
+  const applied = applyCompositionEdges(base, merged.edges);
 
   return {
     components: applied.components,

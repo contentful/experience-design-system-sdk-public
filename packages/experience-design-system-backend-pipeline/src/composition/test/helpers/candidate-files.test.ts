@@ -10,7 +10,7 @@ describe('selectCandidateFiles', () => {
     const result = selectCandidateFiles(files);
     expect(result).toHaveLength(1);
     expect(result[0]!.path).toBe('src/component-mapping.ts');
-    expect(result[0]!.reason).toMatch(/^name:/);
+    expect(result[0]!.matchReason).toMatch(/^name:/);
   });
 
   it('selects files containing a content marker', () => {
@@ -20,7 +20,7 @@ describe('selectCandidateFiles', () => {
     ];
     const result = selectCandidateFiles(files);
     expect(result).toHaveLength(1);
-    expect(result[0]!.reason).toBe('content:allowedComponents');
+    expect(result[0]!.matchReason).toBe('content:allowedComponents');
   });
 
   it('does not select files with no matching name or content', () => {
@@ -45,12 +45,12 @@ describe('selectCandidateFiles', () => {
     }
   });
 
-  it('returns reason as name: for name match and content: for content match', () => {
+  it('returns matchReason as name: for name match and content: for content match', () => {
     const byName = selectCandidateFiles([{ path: 'src/registry.ts', content: '' }]);
-    expect(byName[0]!.reason).toMatch(/^name:/);
+    expect(byName[0]!.matchReason).toMatch(/^name:/);
 
     const byContent = selectCandidateFiles([{ path: 'src/x.ts', content: 'createContext' }]);
-    expect(byContent[0]!.reason).toMatch(/^content:/);
+    expect(byContent[0]!.matchReason).toMatch(/^content:/);
   });
 });
 
@@ -90,7 +90,6 @@ describe('capCandidatesToPromptBudget', () => {
       { path: 'a.ts', content: 'x'.repeat(100) },
       { path: 'b.ts', content: 'x'.repeat(200) },
     ];
-    // budget 100 tokens = 400 chars. a(25)+b(50) = 75 tokens kept, c(100 tokens) > remaining 25 → dropped
     const { kept, dropped } = capCandidatesToPromptBudget(files, 100);
     expect(kept.map((f) => f.path).sort()).toEqual(['a.ts', 'b.ts']);
     expect(dropped[0]!.path).toBe('c.ts');

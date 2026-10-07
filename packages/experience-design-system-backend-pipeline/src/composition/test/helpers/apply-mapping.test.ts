@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyMapping } from '../../helpers/apply-mapping.js';
+import { applyCompositionEdges } from '../../helpers/apply-mapping.js';
 import type { CompositionEdge } from '../../helpers/interchange-schema.js';
 
 function makeComponent(
@@ -20,10 +20,10 @@ function makeComponent(
   };
 }
 
-describe('applyMapping', () => {
+describe('applyCompositionEdges', () => {
   it('returns cloned components unchanged when no edges are provided', () => {
     const components = [makeComponent('Button')];
-    const { components: result, warnings } = applyMapping(components, []);
+    const { components: result, warnings } = applyCompositionEdges(components, []);
     expect(warnings).toHaveLength(0);
     expect(result[0]!.name).toBe('Button');
     expect(result[0]).not.toBe(components[0]);
@@ -32,7 +32,7 @@ describe('applyMapping', () => {
   it('adds child to named slot allowedComponents', () => {
     const components = [makeComponent('Layout', [{ name: 'content', allowedComponents: [] }]), makeComponent('Button')];
     const edges: CompositionEdge[] = [{ parent: 'Layout', child: 'Button', slot: 'content', provenance: 'agent' }];
-    const { components: result, warnings } = applyMapping(components, edges);
+    const { components: result, warnings } = applyCompositionEdges(components, edges);
     expect(warnings).toHaveLength(0);
     expect(result[0]!.slots[0]!.allowedComponents).toContain('Button');
   });
@@ -40,7 +40,7 @@ describe('applyMapping', () => {
   it('creates a default children slot when edge has no slot and none exists', () => {
     const components = [makeComponent('Layout'), makeComponent('Button')];
     const edges: CompositionEdge[] = [{ parent: 'Layout', child: 'Button', provenance: 'agent' }];
-    const { components: result } = applyMapping(components, edges);
+    const { components: result } = applyCompositionEdges(components, edges);
     const defaultSlot = result[0]!.slots.find((s) => s.isDefault);
     expect(defaultSlot).toBeDefined();
     expect(defaultSlot!.name).toBe('children');
@@ -53,7 +53,7 @@ describe('applyMapping', () => {
       makeComponent('Button'),
     ];
     const edges: CompositionEdge[] = [{ parent: 'Layout', child: 'Button', provenance: 'agent' }];
-    const { components: result } = applyMapping(components, edges);
+    const { components: result } = applyCompositionEdges(components, edges);
     const defaultSlot = result[0]!.slots.find((s) => s.isDefault);
     expect(defaultSlot!.allowedComponents).toEqual(expect.arrayContaining(['Card', 'Button']));
   });
@@ -61,28 +61,28 @@ describe('applyMapping', () => {
   it('warns and drops edge for unknown parent', () => {
     const components = [makeComponent('Button')];
     const edges: CompositionEdge[] = [{ parent: 'Ghost', child: 'Button', provenance: 'agent' }];
-    const { warnings } = applyMapping(components, edges);
+    const { warnings } = applyCompositionEdges(components, edges);
     expect(warnings[0]).toContain('unknown parent "Ghost"');
   });
 
   it('warns and drops edge for unknown child', () => {
     const components = [makeComponent('Layout')];
     const edges: CompositionEdge[] = [{ parent: 'Layout', child: 'Ghost', provenance: 'agent' }];
-    const { warnings } = applyMapping(components, edges);
+    const { warnings } = applyCompositionEdges(components, edges);
     expect(warnings[0]).toContain('unknown child "Ghost"');
   });
 
   it('warns and drops agent-provenance edge targeting a non-existent slot', () => {
     const components = [makeComponent('Layout', [{ name: 'header' }]), makeComponent('Button')];
     const edges: CompositionEdge[] = [{ parent: 'Layout', child: 'Button', slot: 'nonexistent', provenance: 'agent' }];
-    const { warnings } = applyMapping(components, edges);
+    const { warnings } = applyCompositionEdges(components, edges);
     expect(warnings[0]).toContain('slot "nonexistent" not found');
   });
 
   it('synthesizes a new slot for typed-slot-provenance edge with non-existent slot name', () => {
     const components = [makeComponent('Layout'), makeComponent('Button')];
     const edges: CompositionEdge[] = [{ parent: 'Layout', child: 'Button', slot: 'sidebar', provenance: 'typed-slot' }];
-    const { components: result, warnings } = applyMapping(components, edges);
+    const { components: result, warnings } = applyCompositionEdges(components, edges);
     expect(warnings).toHaveLength(0);
     const synthesized = result[0]!.slots.find((s) => s.name === 'sidebar');
     expect(synthesized).toBeDefined();
@@ -93,7 +93,7 @@ describe('applyMapping', () => {
     const original = makeComponent('Layout', [{ name: 'content', allowedComponents: [] }]);
     const components = [original, makeComponent('Button')];
     const edges: CompositionEdge[] = [{ parent: 'Layout', child: 'Button', slot: 'content', provenance: 'agent' }];
-    applyMapping(components, edges);
+    applyCompositionEdges(components, edges);
     expect(original.slots[0]!.allowedComponents).toHaveLength(0);
   });
 });

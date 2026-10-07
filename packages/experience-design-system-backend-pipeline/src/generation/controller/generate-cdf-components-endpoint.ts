@@ -1,11 +1,9 @@
 import { isAgentName } from '@contentful/experience-design-system-generation';
-import type { AgentName } from '@contentful/experience-design-system-generation';
+import { DEFAULT_AGENT } from '../../shared/constants.js';
 import { runCdfGenerationService } from '../services/run-cdf-generation-service.js';
 import type { GenerateCdfComponentsRequest, GenerateCdfComponentsResponse } from '../types/contract.js';
 
 export type { GenerateCdfComponentsRequest, GenerateCdfComponentsResponse };
-
-const DEFAULT_AGENT: AgentName = 'claude';
 
 export async function generateCdfComponents(
   request: GenerateCdfComponentsRequest,

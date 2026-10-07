@@ -1,11 +1,9 @@
 import { isAgentName } from '@contentful/experience-design-system-generation';
-import type { AgentName } from '@contentful/experience-design-system-generation';
+import { DEFAULT_AGENT } from '../../shared/constants.js';
 import { runSelectionService } from '../services/run-selection-service.js';
 import type { SelectComponentsEndpointRequest, SelectComponentsEndpointResponse } from '../types/contract.js';
 
 export type { SelectComponentsEndpointRequest, SelectComponentsEndpointResponse };
-
-const DEFAULT_AGENT: AgentName = 'claude';
 
 export async function selectComponents(
   request: SelectComponentsEndpointRequest,

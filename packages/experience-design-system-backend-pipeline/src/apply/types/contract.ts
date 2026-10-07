@@ -5,6 +5,15 @@ import type {
   ApplyOperationResponse,
 } from '@contentful/experience-design-system-types';
 
+export type PostPushView = 'components' | 'design_tokens';
+
+export interface BuildPostPushUrlInput {
+  host: string;
+  spaceId: string;
+  environmentId: string;
+  view?: PostPushView;
+}
+
 export interface ApplyCredentials {
   accessToken: string;
   spaceId: string;

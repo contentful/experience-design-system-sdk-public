@@ -1,11 +1,9 @@
 import { isAgentName } from '@contentful/experience-design-system-generation';
-import type { AgentName } from '@contentful/experience-design-system-generation';
+import { DEFAULT_AGENT } from '../../shared/constants.js';
 import { runCompositionService } from '../services/run-composition-service.js';
 import type { ComposeComponentsRequest, ComposeComponentsResponse } from '../types/contract.js';
 
 export type { ComposeComponentsRequest, ComposeComponentsResponse };
-
-const DEFAULT_AGENT: AgentName = 'claude';
 
 export async function composeComponents(request: ComposeComponentsRequest): Promise<ComposeComponentsResponse> {
   const { agent: agentInput, forceAgent, ...rest } = request;

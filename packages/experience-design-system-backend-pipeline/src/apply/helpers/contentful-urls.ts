@@ -1,11 +1,4 @@
-type PostPushView = 'components' | 'design_tokens';
-
-export interface BuildPostPushUrlInput {
-  host: string;
-  spaceId: string;
-  environmentId: string;
-  view?: PostPushView;
-}
+import type { BuildPostPushUrlInput } from '../types/contract.js';
 
 function normalizeHost(host: string): string {
   return host
