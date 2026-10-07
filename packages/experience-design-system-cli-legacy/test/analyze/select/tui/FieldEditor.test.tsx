@@ -475,7 +475,6 @@ describe('FieldEditor — prop category grouping', () => {
     }
   });
 
-
   it('omits empty category headers', () => {
     const onlyDesignAndSlot = JSON.stringify({
       Button: {
