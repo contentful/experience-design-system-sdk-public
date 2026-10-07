@@ -102,6 +102,11 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
       return;
     }
 
+    if (input === 'c') {
+      setFieldValue(activeField, '');
+      return;
+    }
+
     if (key.tab || key.downArrow) {
       const idx = FIELD_ORDER.indexOf(activeField);
       setActiveField(FIELD_ORDER[(idx + 1) % FIELD_ORDER.length]!);
@@ -169,7 +174,7 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
       <Text dimColor>
         {editing
           ? '[type] Edit · [←/→] Move cursor · [Enter] Done · [Esc] Cancel edit'
-          : '[↑/↓] Switch field · [Enter] Edit · [Esc/q] Save & back'}
+          : '[↑/↓] Switch field · [Enter] Edit · [c] Clear field · [Esc/q] Save & back'}
       </Text>
     </Box>
   );
