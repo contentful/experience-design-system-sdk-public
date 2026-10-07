@@ -32,23 +32,8 @@ export interface RunSelectionServiceOptions {
   onWarning?: (message: string) => void;
 }
 
-export interface SelectComponentsEndpointRequest {
-  components: RawComponentDefinition[];
+export interface SelectComponentsEndpointRequest extends Omit<RunSelectionServiceOptions, 'agent'> {
   agent?: string;
-  model?: string;
-  promptText?: string;
-  promptPath?: string;
-  onCacheLookup?: (
-    componentHash: string,
-    promptHash: string,
-  ) => { decision: 'accepted' | 'rejected'; reason: string | null } | null;
-  onCacheStore?: (
-    componentHash: string,
-    promptHash: string,
-    decision: 'accepted' | 'rejected',
-    reason: string | null,
-  ) => void;
-  onWarning?: (message: string) => void;
 }
 
 export type SelectComponentsEndpointResponse = SelectionServiceResult;

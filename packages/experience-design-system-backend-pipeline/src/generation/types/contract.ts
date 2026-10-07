@@ -27,18 +27,8 @@ export interface RunCdfGenerationServiceResult {
   failures: CdfGenerationFailure[];
 }
 
-export interface GenerateCdfComponentsRequest {
-  components: RawComponentDefinition[];
-  tokens?: DTCGTokenEntry[];
+export interface GenerateCdfComponentsRequest extends Omit<RunCdfGenerationServiceOptions, 'agent'> {
   agent?: string;
-  model?: string;
-  concurrency?: number;
-  skillPathOverride?: string;
-  skillContentOverride?: string;
-  onProgress?: (componentName: string, index: number, total: number) => void;
-  onCacheLookup?: (inputHash: string, promptHash: string) => CDFComponentEntry | null;
-  onCacheStore?: (inputHash: string, promptHash: string, entry: CDFComponentEntry) => void;
-  onWarning?: (message: string) => void;
 }
 
 export type GenerateCdfComponentsResponse = RunCdfGenerationServiceResult;

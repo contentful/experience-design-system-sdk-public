@@ -18,16 +18,9 @@ export interface ResolveCompositionServiceResult {
   warnings: string[];
 }
 
-export interface ComposeComponentsRequest {
-  components: RawComponentDefinition[];
-  allFiles: Array<{ path: string; content: string }>;
+export interface ComposeComponentsRequest extends Omit<ResolveCompositionServiceOptions, 'agent' | 'forceAgent'> {
   agent?: string;
   forceAgent?: boolean;
-  promptOverride?: string;
-  onProgress?: (phase: string) => void;
-  onCacheLookup?: (cacheKey: string) => string | null;
-  onCacheStore?: (cacheKey: string, stdout: string) => void;
-  onWarning?: (message: string) => void;
 }
 
 export type ComposeComponentsResponse = ResolveCompositionServiceResult;
