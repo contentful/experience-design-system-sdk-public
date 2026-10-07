@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
-import type { CandidateFile } from '../../shared/types.js';
+import type { CandidateFile } from '../../steps/shared/types.js';
 import { EXCLUDED_SUFFIXES, IGNORED_DIRS, INCLUDED_EXTENSIONS } from '../constants.js';
 
 function isIncluded(filePath: string): boolean {

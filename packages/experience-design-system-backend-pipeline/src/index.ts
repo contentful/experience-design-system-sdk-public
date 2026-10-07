@@ -1,43 +1,43 @@
 // Extraction
-export { extractComponents } from './extraction/controller/extract-components-endpoint.js';
+export { extractComponents } from './steps/extraction/controller/extract-components-endpoint.js';
 export type {
   ExtractComponentsRequest,
   ExtractComponentsResponse,
   ExtractionEndpointProgress,
-} from './extraction/types/contract.js';
+} from './steps/extraction/types/contract.js';
 
 // Composition
-export { composeComponents } from './composition/controller/compose-components-endpoint.js';
-export type { ComposeComponentsRequest, ComposeComponentsResponse } from './composition/types/contract.js';
-export type { CompositionEdge, EdgeProvenance } from './composition/helpers/interchange-schema.js';
-export type { MergeResult, EdgeConflict } from './composition/helpers/merge-edges.js';
-export type { CandidateFile, SelectedCandidate } from './composition/types/contract.js';
-export { selectCandidateFiles, capCandidatesToPromptBudget } from './composition/helpers/candidate-files.js';
-export { collectManifestDocEdges } from './composition/helpers/manifest-doc-evidence.js';
-export { mergeEdges } from './composition/helpers/merge-edges.js';
-export { parseMapEdges } from './composition/helpers/parse-map-edges.js';
-export { applyCompositionEdges } from './composition/helpers/apply-mapping.js';
-export { buildCompositionInputHash } from './composition/helpers/composition-cache-key.js';
+export { composeComponents } from './steps/composition/controller/compose-components-endpoint.js';
+export type { ComposeComponentsRequest, ComposeComponentsResponse } from './steps/composition/types/contract.js';
+export type { CompositionEdge, EdgeProvenance } from './steps/composition/helpers/interchange-schema.js';
+export type { MergeResult, EdgeConflict } from './steps/composition/helpers/merge-edges.js';
+export type { SelectedCandidate } from './steps/composition/types/contract.js';
+export { selectCandidateFiles, capCandidatesToPromptBudget } from './steps/composition/helpers/candidate-files.js';
+export { collectManifestDocEdges } from './steps/composition/helpers/manifest-doc-evidence.js';
+export { mergeEdges } from './steps/composition/helpers/merge-edges.js';
+export { parseMapEdges } from './steps/composition/helpers/parse-map-edges.js';
+export { applyCompositionEdges } from './steps/composition/helpers/apply-mapping.js';
+export { buildCompositionInputHash } from './steps/composition/helpers/composition-cache-key.js';
 
 // Selection
-export { selectComponents } from './selection/controller/select-components-endpoint.js';
+export { selectComponents } from './steps/selection/controller/select-components-endpoint.js';
 export type {
   SelectComponentsEndpointRequest,
   SelectComponentsEndpointResponse,
   ComponentSelection,
   SelectionServiceResult,
-} from './selection/types/contract.js';
+} from './steps/selection/types/contract.js';
 
 // Generation
-export { generateCdfComponents } from './generation/controller/generate-cdf-components-endpoint.js';
+export { generateCdfComponents } from './steps/generation/controller/generate-cdf-components-endpoint.js';
 export type {
   GenerateCdfComponentsRequest,
   GenerateCdfComponentsResponse,
   CdfGenerationFailure,
-} from './generation/types/contract.js';
+} from './steps/generation/types/contract.js';
 
 // Apply
-export { applyComponents } from './apply/controller/apply-components-endpoint.js';
+export { applyComponents } from './steps/apply/controller/apply-components-endpoint.js';
 export type {
   ApplyEndpointRequest,
   ApplyEndpointResponse,
@@ -48,17 +48,18 @@ export type {
   BuildPostPushUrlInput,
   PostPushView,
   WriteResult,
-} from './apply/types/contract.js';
-export { hasBreakingChangesWithImpact } from './apply/helpers/has-breaking-changes.js';
-export { isEmptyPreview } from './apply/helpers/is-empty-preview.js';
-export { buildPostPushUrl } from './apply/helpers/contentful-urls.js';
-export { ApiError } from './apply/services/run-apply-service.js';
-export type { PreviewValidationError } from './apply/services/import-api-client.js';
-export { toApiHost, toConfiguredHost } from './apply/helpers/host-utils.js';
+} from './steps/apply/types/contract.js';
+export { hasBreakingChangesWithImpact } from './steps/apply/helpers/has-breaking-changes.js';
+export { isEmptyPreview } from './steps/apply/helpers/is-empty-preview.js';
+export { buildPostPushUrl } from './steps/apply/helpers/contentful-urls.js';
+export { ApiError } from './steps/apply/types/api-error.js';
+export type { PreviewValidationError } from './steps/apply/types/contract.js';
+export { parsePreviewValidationErrors } from './steps/apply/helpers/parse-preview-errors.js';
+export { toApiHost, toConfiguredHost } from './steps/apply/helpers/host-utils.js';
 
 // Persistence
 export { collectFiles, openSession, generateSessionId } from './persistence/index.js';
 export type { OpenSessionOptions, SelectionDecision, SessionHandle } from './persistence/index.js';
 
 // Shared
-export type { CandidateFile } from './shared/types.js';
+export type { CandidateFile } from './steps/shared/types.js';

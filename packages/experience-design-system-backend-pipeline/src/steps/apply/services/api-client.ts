@@ -3,172 +3,34 @@ import {
   designSystemImportGetOperation,
   designSystemImportSourcelessPreview,
 } from '@contentful/experience-design-system-client';
-import type {
-  ApplyOperationResponse,
-  BreakingChange,
-  CDFDocument,
-  ServerPreviewResponse,
-} from '@contentful/experience-design-system-types';
+import type { ApplyOperationResponse, CDFDocument, ServerPreviewResponse } from '@contentful/experience-design-system-types';
+import { isApsDenialBody, isTransientStatus, retryAfterMs, stringifyError, errorMessage, defaultSleep } from '../helpers/http-utils.js';
+import { sanitizePreviewResponse } from '../helpers/sanitize-preview.js';
 import { toApiHost } from '../helpers/host-utils.js';
+import { ApiError } from '../types/api-error.js';
+import type { ApiClientOptions } from '../types/contract.js';
 
 export const PREVIEW_ERROR_PREFIX = 'preview failed:';
 export const APPLY_ERROR_PREFIX = 'apply failed:';
 
 const USER_AGENT = 'experience-design-system-backend-pipeline';
-const ERROR_BODY_LOG_CAP = 16384;
-const MAX_RETRY_AFTER_MS = 60_000;
 
-export class ApiError extends Error {
-  constructor(
-    message: string,
-    public readonly status: number,
-    public readonly body: string,
-    public readonly guidance?: string,
-  ) {
-    super(message);
-    if (body) {
-      const trimmed = body.length > ERROR_BODY_LOG_CAP ? body.slice(0, ERROR_BODY_LOG_CAP) + '…' : body;
-      this.message = `${message}\n${trimmed}`;
-    }
-  }
-}
-
-export interface PreviewValidationError {
-  componentName: string;
-  path: string;
-  message: string;
-}
-
-const COMPONENT_PATH_PREFIX = 'manifest:components/';
-
-export function parsePreviewValidationErrors(body: string): PreviewValidationError[] {
-  if (!body) return [];
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(body);
-  } catch {
-    return [];
-  }
-  const details = (parsed as { details?: unknown })?.details;
-  const errors = (details as { errors?: unknown })?.errors;
-  if (!Array.isArray(errors)) return [];
-  const out: PreviewValidationError[] = [];
-  for (const raw of errors) {
-    if (typeof raw !== 'object' || raw === null) continue;
-    const entry = raw as { path?: unknown; message?: unknown };
-    if (typeof entry.path !== 'string' || typeof entry.message !== 'string') continue;
-    if (!entry.path.startsWith(COMPONENT_PATH_PREFIX)) continue;
-    const tail = entry.path.slice(COMPONENT_PATH_PREFIX.length);
-    const slash = tail.indexOf('/');
-    const componentName = slash === -1 ? tail : tail.slice(0, slash);
-    if (!componentName) continue;
-    out.push({ componentName, path: entry.path, message: entry.message });
-  }
-  return out;
-}
-
-const PROPERTY_BREAKING_REASONS = new Set([
-  'removed',
-  'added_required_no_default',
-  'type_changed',
-  'validation_narrowed',
-]);
-const SLOT_BREAKING_REASONS = new Set(['slot_removed', 'slot_allowed_components_narrowed']);
-
-function sanitizeBreakingChanges(raw: unknown): BreakingChange[] {
-  if (!Array.isArray(raw)) return [];
-  const out: BreakingChange[] = [];
-  for (const bc of raw) {
-    if (typeof bc !== 'object' || bc === null) continue;
-    const reason = (bc as { reason?: unknown }).reason;
-    if (typeof reason !== 'string') continue;
-    if ('propertyId' in bc && typeof (bc as { propertyId?: unknown }).propertyId === 'string') {
-      if (PROPERTY_BREAKING_REASONS.has(reason)) out.push(bc as BreakingChange);
-      continue;
-    }
-    if ('slotId' in bc && typeof (bc as { slotId?: unknown }).slotId === 'string') {
-      if (SLOT_BREAKING_REASONS.has(reason)) out.push(bc as BreakingChange);
-      continue;
-    }
-  }
-  return out;
-}
-
-function sanitizePreviewResponse(res: ServerPreviewResponse): ServerPreviewResponse {
-  for (const item of res.components?.changed ?? []) {
-    const cc = item.changeClassification;
-    if (cc && Array.isArray(cc.breakingChanges)) {
-      cc.breakingChanges = sanitizeBreakingChanges(cc.breakingChanges);
-    }
-  }
-  return res;
-}
-
-function isApsDenialBody(body: string): boolean {
-  if (!body) return false;
-  try {
-    const parsed = JSON.parse(body) as { sys?: { id?: unknown } };
-    const id = parsed?.sys?.id;
-    return id === 'NotFound' || id === 'AccessDenied';
-  } catch {
-    return false;
-  }
-}
-
-function isTransientStatus(status: number): boolean {
-  return status >= 500 && status <= 599;
-}
-
-function retryAfterMs(response: Response): number | undefined {
-  const value = response.headers?.get('retry-after')?.trim();
-  if (!value) return undefined;
-  const seconds = Number(value);
-  const delayMs = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(value) - Date.now();
-  if (!Number.isFinite(delayMs) || delayMs < 0 || delayMs > MAX_RETRY_AFTER_MS) return undefined;
-  return Math.round(delayMs);
-}
-
-function stringifyError(error: unknown): string {
-  return typeof error === 'string' ? error : JSON.stringify(error ?? {});
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error && error.message ? error.message : String(error);
-}
-
-function defaultSleep(delayMs: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, delayMs));
-}
-
-export interface ImportApiClientOptions {
-  host?: string;
-  cmaToken: string;
-  spaceId: string;
-  environmentId: string;
-  retry?: {
-    maxAttempts?: number;
-    initialDelayMs?: number;
-    maxDelayMs?: number;
-    sleep?: (delayMs: number) => Promise<void>;
-  };
-}
-
-interface RetryOptions {
+interface RetryConfig {
   maxAttempts: number;
   initialDelayMs: number;
   maxDelayMs: number;
   sleep: (delayMs: number) => Promise<void>;
 }
 
-export class ImportApiClient {
+export class ApiClient {
   private host: string;
   private token: string;
   private spaceId: string;
   private environmentId: string;
-  private retry: RetryOptions;
+  private retry: RetryConfig;
   private lastRequestId?: string;
 
-  constructor(opts: ImportApiClientOptions) {
+  constructor(opts: ApiClientOptions) {
     this.host = toApiHost(opts.host);
     this.token = opts.cmaToken;
     this.spaceId = opts.spaceId;
@@ -213,8 +75,7 @@ export class ImportApiClient {
           const body = `The request failed after ${attempt} attempts because of a network error: ${errorMessage(error)}. Check your connection and try again.`;
           throw new ApiError(`${errorPrefix} 0`, 0, body);
         }
-        const delayMs = Math.min(this.retry.initialDelayMs * 2 ** (attempt - 1), this.retry.maxDelayMs);
-        await this.retry.sleep(delayMs);
+        await this.retry.sleep(Math.min(this.retry.initialDelayMs * 2 ** (attempt - 1), this.retry.maxDelayMs));
         continue;
       }
 
@@ -230,17 +91,14 @@ export class ImportApiClient {
       }
 
       const backoffMs = Math.min(this.retry.initialDelayMs * 2 ** (attempt - 1), this.retry.maxDelayMs);
-      const delayMs = retryAfterMs(result.response) ?? backoffMs;
-      await this.retry.sleep(delayMs);
+      await this.retry.sleep(retryAfterMs(result.response) ?? backoffMs);
     }
 
     throw new Error('Retry attempts exhausted');
   }
 
   async validateToken(): Promise<void> {
-    const res = await fetch(`${this.host}/users/me`, {
-      headers: this.headers(),
-    });
+    const res = await fetch(`${this.host}/users/me`, { headers: this.headers() });
     this.noteRequestId(res);
     if (res.status === 401) {
       throw new ApiError('CMA token is invalid or revoked', res.status, await res.text());
@@ -287,17 +145,14 @@ export class ImportApiClient {
     return sanitizePreviewResponse(result.data as unknown as ServerPreviewResponse);
   }
 
-  async applyImport(
-    cdf: CDFDocument,
-    options: { acknowledgeBreakingChanges: boolean },
-  ): Promise<ApplyOperationResponse> {
+  async applyImport(cdf: CDFDocument, opts: { acknowledgeBreakingChanges: boolean }): Promise<ApplyOperationResponse> {
     let result: Awaited<ReturnType<typeof designSystemImportApply<false>>>;
     try {
       result = await designSystemImportApply<false>({
         baseUrl: this.host,
         headers: this.headers(),
         path: { spaceId: this.spaceId, environmentId: this.environmentId },
-        body: { ...cdf, acknowledgeBreakingChanges: options.acknowledgeBreakingChanges } as never,
+        body: { ...cdf, acknowledgeBreakingChanges: opts.acknowledgeBreakingChanges } as never,
         parseAs: 'json',
       });
     } catch (error) {

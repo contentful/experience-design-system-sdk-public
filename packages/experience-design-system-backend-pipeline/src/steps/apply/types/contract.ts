@@ -22,7 +22,7 @@ export interface ApplyCredentials {
 }
 
 export interface ApplyEndpointRequest {
-  components: CDFComponentEntry[];
+  components: Array<{ key: string; entry: CDFComponentEntry }>;
   tokens?: DTCGTokenEntry[];
   credentials: ApplyCredentials;
   previewOnly?: boolean;
@@ -34,6 +34,25 @@ export interface WriteResult {
   createdCount: number;
   updatedCount: number;
   failedCount: number;
+}
+
+export interface ApiClientOptions {
+  host?: string;
+  cmaToken: string;
+  spaceId: string;
+  environmentId: string;
+  retry?: {
+    maxAttempts?: number;
+    initialDelayMs?: number;
+    maxDelayMs?: number;
+    sleep?: (delayMs: number) => Promise<void>;
+  };
+}
+
+export interface PreviewValidationError {
+  componentName: string;
+  path: string;
+  message: string;
 }
 
 export interface ApplyPreviewResult {

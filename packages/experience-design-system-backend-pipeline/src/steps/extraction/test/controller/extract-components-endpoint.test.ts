@@ -32,8 +32,12 @@ describe('extractComponents', () => {
   it('calls onProgress with extraction phase updates', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'pipeline-extract-progress-'));
     tempDirs.push(dir);
-    const file = join(dir, 'Card.tsx');
-    await writeFile(file, 'export function Card({ title }: { title: string }) { return <div>{title}</div>; }');
+    // Svelte extractor emits per-file progress; React extractor does not
+    const file = join(dir, 'Card.svelte');
+    await writeFile(
+      file,
+      '<script lang="ts">\n  export let title: string = "";\n</script>\n<div>{title}</div>',
+    );
 
     const progress: unknown[] = [];
     await extractComponents({ filePaths: [file], projectRoot: dir, onProgress: (p) => progress.push(p) });

@@ -3,7 +3,8 @@ import type { ApplyOperationResponse, CDFTokenEntry, DTCGTokenEntry } from '@con
 import { hasBreakingChangesWithImpact } from '../helpers/has-breaking-changes.js';
 import { isEmptyPreview } from '../helpers/is-empty-preview.js';
 import { parseComponentWriteResult, parseTokenWriteResult } from '../helpers/parse-write-result.js';
-import { ApiError, ImportApiClient } from '../services/import-api-client.js';
+import { ApiClient } from './api-client.js';
+import { ApiError } from '../types/api-error.js';
 import type {
   ApplyEndpointRequest,
   ApplyEndpointResponse,
@@ -29,7 +30,7 @@ export async function runApplyService(request: ApplyEndpointRequest): Promise<Ap
   const cdf = buildCDF(components, toCdfTokens(tokens));
   if (!cdf) throw new Error('nothing to push — no components or tokens resolved');
 
-  const client = new ImportApiClient({
+  const client = new ApiClient({
     host: credentials.host,
     cmaToken: credentials.accessToken,
     spaceId: credentials.spaceId,
