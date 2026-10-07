@@ -4,7 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { lookupCompositionCache, storeCompositionCache } from '../cache/composition.js';
 import { lookupGenerationCache, storeGenerationCache } from '../cache/generation.js';
 import { lookupSelectionCache, storeSelectionCache } from '../cache/selection.js';
-import { SCHEMA_SQL } from '../schema.js';
+import { SCHEMA_SQL } from './helpers/create-tables.js';
 import type { OpenSessionOptions, SessionHandle } from '../types/contract.js';
 import { generateSessionId } from './helpers/generate-session-id.js';
 
@@ -26,6 +26,7 @@ export function openSession({ dbPath, sessionId, cliVersion }: OpenSessionOption
   db.exec('PRAGMA foreign_keys = ON');
   db.exec('PRAGMA busy_timeout = 5000');
   db.exec(SCHEMA_SQL);
+
 
   db.prepare('INSERT OR IGNORE INTO sessions (id, cli_version) VALUES (?, ?)').run(id, cliVersion);
 
