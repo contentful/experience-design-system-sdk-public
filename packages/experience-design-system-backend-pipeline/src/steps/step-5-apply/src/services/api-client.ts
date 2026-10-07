@@ -1,5 +1,6 @@
 import { applyImport, getOperation, previewImport } from '../client/import-endpoints.js';
 import type { ApplyOperationResponse, CDFDocument, ServerPreviewResponse } from '../../../shared/types/index.js';
+import { APPLY_ERROR_PREFIX, PREVIEW_ERROR_PREFIX, USER_AGENT } from '../constants.js';
 import {
   isApsDenialBody,
   isTransientStatus,
@@ -11,19 +12,7 @@ import {
 import { sanitizePreviewResponse } from '../helpers/sanitize-preview.js';
 import { toApiHost } from '../helpers/host-utils.js';
 import { ApiError } from '../types/api-error.js';
-import type { ApiClientOptions } from '../types/contract.js';
-
-export const PREVIEW_ERROR_PREFIX = 'preview failed:';
-export const APPLY_ERROR_PREFIX = 'apply failed:';
-
-const USER_AGENT = 'experience-design-system-backend-pipeline';
-
-interface RetryConfig {
-  maxAttempts: number;
-  initialDelayMs: number;
-  maxDelayMs: number;
-  sleep: (delayMs: number) => Promise<void>;
-}
+import type { ApiClientOptions, RetryConfig } from '../types/contract.js';
 
 export class ApiClient {
   private host: string;

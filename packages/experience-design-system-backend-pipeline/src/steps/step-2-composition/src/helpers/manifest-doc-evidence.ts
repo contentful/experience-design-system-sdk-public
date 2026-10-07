@@ -1,7 +1,7 @@
 import { dirname } from 'node:path';
+import type { CandidateFile } from '../../../shared/types/index.js';
 import type { CompositionEdge } from './interchange-schema.js';
 
-type CandidateFile = { path: string; content: string };
 type ComponentRef = { name: string; sourcePath?: string };
 
 export function kebabToPascal(name: string): string {

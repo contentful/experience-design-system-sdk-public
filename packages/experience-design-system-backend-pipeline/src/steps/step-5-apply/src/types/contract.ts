@@ -5,6 +5,13 @@ import type {
   ApplyOperationResponse,
 } from '../../../shared/types/index.js';
 
+export interface RetryConfig {
+  maxAttempts: number;
+  initialDelayMs: number;
+  maxDelayMs: number;
+  sleep: (delayMs: number) => Promise<void>;
+}
+
 export type PostPushView = 'components' | 'design_tokens';
 
 export interface BuildPostPushUrlInput {

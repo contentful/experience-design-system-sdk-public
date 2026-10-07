@@ -1,3 +1,6 @@
+// Cross-step types
+export type { CandidateFile } from './candidate-file.js';
+
 // CDF (Component Definition Format) exports — one schema/file for both
 // components and design tokens, no separate manifest envelope.
 export {

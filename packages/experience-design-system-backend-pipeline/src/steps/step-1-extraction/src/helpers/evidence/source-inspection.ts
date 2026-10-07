@@ -1,10 +1,17 @@
 import { readFile } from 'node:fs/promises';
+import {
+  HIGH_CONFIDENCE_DATA_FETCH_WRAPPER_REASON,
+  POSSIBLE_DATA_FETCH_WRAPPER_REASON,
+  ZERO_SURFACE_RENDERED_UI_REASON,
+} from '../../constants.js';
 import type { RawComponentDefinition } from '../../types/component.js';
 import { parseImportedNames } from '../../framework-adapters/shared/parse-imported-names.js';
 
-export const HIGH_CONFIDENCE_DATA_FETCH_WRAPPER_REASON = 'data-fetch-wrapper';
-export const POSSIBLE_DATA_FETCH_WRAPPER_REASON = 'possible-data-fetch-wrapper';
-export const ZERO_SURFACE_RENDERED_UI_REASON = 'zero-surface:rendered-ui';
+export {
+  HIGH_CONFIDENCE_DATA_FETCH_WRAPPER_REASON,
+  POSSIBLE_DATA_FETCH_WRAPPER_REASON,
+  ZERO_SURFACE_RENDERED_UI_REASON,
+};
 
 const DATA_WRAPPER_REASON_PREFIX = 'data-wrapper:';
 const INFRA_PROP_NAMES = new Set(['id', 'locale', 'preview', 'slug', 'topic', 'previousComponent', '__typename']);

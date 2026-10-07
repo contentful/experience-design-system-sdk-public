@@ -113,7 +113,7 @@ export function resolveSkillPath(skill: Skill): string {
     if (existsSync(candidate)) return join(candidate, SKILL_FILES[skill]);
     const parent = resolve(dir, '..');
     if (parent === dir) {
-      throw new Error(`skill file missing from CLI installation (could not locate skills/ directory from: ${thisDir})`);
+      throw new Error(`skill file missing from package (could not locate skills/ directory from: ${thisDir})`);
     }
     dir = parent;
   }
@@ -132,7 +132,7 @@ async function readSkillFile(skill: Skill, override?: string): Promise<string> {
   try {
     return await readFile(skillPath, 'utf8');
   } catch {
-    throw new Error(`skill file missing from CLI installation — try reinstalling the CLI (looked for: ${skillPath})`);
+    throw new Error(`skill file missing from package (expected at: ${skillPath})`);
   }
 }
 

@@ -84,12 +84,9 @@ export function shouldExcludeDueToValidation(component: RawComponentDefinition):
 }
 
 /**
- * Format a stderr-ready warning describing components auto-rejected by the
- * extraction gate. Used by `analyze select --select-all --exclude-invalid`
- * and `analyze select-agent --exclude-invalid` so both opt-in paths emit a
- * consistent message — non-interactive callers (CI, orchestrator, scripted
- * pipeline) need to see WHICH components were excluded and WHY, not just
- * the bare counts.
+ * Format a stderr-ready warning describing components the extractor could not
+ * produce a valid shape for. Non-interactive callers (CI, orchestrator) need
+ * to see WHICH components were excluded and WHY, not just the bare counts.
  */
 export function formatExclusionWarning(
   rejected: Array<{ name: string; validationIssues?: ExtractionValidationIssue[] }>,
