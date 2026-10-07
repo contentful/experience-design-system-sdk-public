@@ -1,12 +1,5 @@
 import { createHash } from 'node:crypto';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
-import {
-  buildPrompt,
-  createLocalCliAgentInvoker,
-  parseToolCallLines,
-  type ToolCall,
-} from '../../../shared/agent/index.js';
+import { buildPrompt, createLocalCliAgentInvoker, parseToolCalls, type ToolCall } from '../../../../agents/index.js';
 import type { RawComponentDefinition } from '../../../extraction/src/types/component.js';
 import type { CDFComponentEntry, CDFPropertyDefinition, CDFSlotDefinition } from '../../../shared/types/index.js';
 import type {
@@ -14,9 +7,6 @@ import type {
   RunCdfGenerationServiceOptions,
   RunCdfGenerationServiceResult,
 } from '../types/contract.js';
-
-const SKILL_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'skills');
-const COMPONENTS_SKILL_PATH = join(SKILL_DIR, 'generate-components.md');
 
 const DEFAULT_CONCURRENCY = 3;
 const AGENT_TIMEOUT_MS = 120_000;
@@ -87,7 +77,7 @@ async function generateOne(
     rawComponentsInline: JSON.stringify(component),
     outDir: '',
     componentName: component.name,
-    skillPathOverride: skillPathOverride ?? COMPONENTS_SKILL_PATH,
+    skillPathOverride,
     skillContentOverride,
   });
 
@@ -114,7 +104,7 @@ async function generateOne(
     return { failure: { componentName: component.name, error }, warnings: [] };
   }
 
-  const { calls, warnings } = parseToolCallLines(agentResult.stdout);
+  const { calls, warnings } = parseToolCalls(agentResult.stdout);
   for (const w of warnings) onWarning?.(`${component.name}: ${w}`);
 
   const entry = toolCallsToEntry(component, calls);

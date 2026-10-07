@@ -1,4 +1,4 @@
-import { isAgentName } from '../../../shared/agent/index.js';
+import { isAgentName } from '../../../../agents/index.js';
 import { DEFAULT_AGENT } from '../../../shared/constants/index.js';
 import { runCdfGenerationService } from '../services/run-cdf-generation-service.js';
 import type { GenerateCdfComponentsRequest, GenerateCdfComponentsResponse } from '../types/contract.js';

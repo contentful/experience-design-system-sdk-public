@@ -1,5 +1,5 @@
-import type { AgentDebugEvent, AgentAuthStatus, AgentName, AgentRunResult } from './agent-runner.js';
-import { checkAgentAuth, runAgent } from './agent-runner.js';
+import type { AgentName } from './agent-name.js';
+import type { AgentAuthStatus, AgentDebugEvent, AgentRunResult } from './agent-run.js';
 
 export interface InvokeAgentOptions {
   agent: AgentName;
@@ -24,17 +24,4 @@ export interface AgentInvoker {
 export interface CreateLocalCliAgentInvokerOptions {
   /** Wire in a debug-event sink (e.g. the CLI's own debug logger). No-op by default. */
   onDebugEvent?: AgentDebugEvent;
-}
-
-/** Default `AgentInvoker`: spawns the agent CLI binary as a local subprocess. */
-export function createLocalCliAgentInvoker(options: CreateLocalCliAgentInvokerOptions = {}): AgentInvoker {
-  const { onDebugEvent } = options;
-  return {
-    invoke(invokeOptions) {
-      return runAgent({ ...invokeOptions, onDebugEvent });
-    },
-    checkAuth(agent) {
-      return checkAgentAuth(agent);
-    },
-  };
 }

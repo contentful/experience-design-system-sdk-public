@@ -1,10 +1,7 @@
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
-import { buildPrompt, createLocalCliAgentInvoker, parseSelectToolCallLines } from '../../../shared/agent/index.js';
+import { buildPrompt, createLocalCliAgentInvoker, parseSelectToolCalls } from '../../../../agents/index.js';
 import type { RunSelectionServiceOptions, SelectionServiceResult, ComponentSelection } from '../types/contract.js';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 5 * 60 * 1000);
-const SKILL_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'skills', 'select-components.md');
 
 export async function runSelectionService(options: RunSelectionServiceOptions): Promise<SelectionServiceResult> {
   const { components, agent, model } = options;
@@ -18,7 +15,7 @@ export async function runSelectionService(options: RunSelectionServiceOptions): 
     mode: 'autonomous',
     rawComponentsInline: JSON.stringify(components, null, 2),
     outDir: process.cwd(),
-    skillPathOverride: options.promptPath ?? SKILL_PATH,
+    ...(options.promptPath ? { skillPathOverride: options.promptPath } : {}),
     ...(options.promptText !== undefined ? { skillContentOverride: options.promptText } : {}),
   });
 
@@ -26,7 +23,7 @@ export async function runSelectionService(options: RunSelectionServiceOptions): 
   if (agentRun.timedOut) throw new Error('selection agent timed out');
   if (agentRun.exitCode !== 0) throw new Error(`selection agent exited with code ${agentRun.exitCode}`);
 
-  const parsed = parseSelectToolCallLines(agentRun.stdout);
+  const parsed = parseSelectToolCalls(agentRun.stdout);
   for (const warning of parsed.warnings) warnings.push(`selection agent: ${warning}`);
 
   const selections: ComponentSelection[] = parsed.calls.map((call) => ({

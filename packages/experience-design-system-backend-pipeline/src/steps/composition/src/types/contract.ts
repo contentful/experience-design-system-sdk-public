@@ -1,5 +1,5 @@
 import type { RawComponentDefinition } from '../../../extraction/src/types/component.js';
-import type { AgentName } from '../../../shared/agent/index.js';
+import type { AgentName } from '../../../../agents/index.js';
 import type { CandidateFile } from '../../../shared/types/index.js';
 
 export type { CandidateFile };

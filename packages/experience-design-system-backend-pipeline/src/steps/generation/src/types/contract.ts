@@ -1,5 +1,5 @@
 import type { RawComponentDefinition } from '../../../extraction/src/types/component.js';
-import type { AgentName } from '../../../shared/agent/index.js';
+import type { AgentName } from '../../../../agents/index.js';
 import type { CDFComponentEntry, DTCGTokenEntry } from '../../../shared/types/index.js';
 
 export interface CdfGenerationFailure {

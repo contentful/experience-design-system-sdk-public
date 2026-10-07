@@ -1,4 +1,4 @@
-import { isAgentName } from '../../../shared/agent/index.js';
+import { isAgentName } from '../../../../agents/index.js';
 import { DEFAULT_AGENT } from '../../../shared/constants/index.js';
 import { runSelectionService } from '../services/run-selection-service.js';
 import type { SelectComponentsEndpointRequest, SelectComponentsEndpointResponse } from '../types/contract.js';
