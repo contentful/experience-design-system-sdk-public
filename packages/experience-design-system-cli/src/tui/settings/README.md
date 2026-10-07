@@ -20,6 +20,6 @@ New preference screens should follow this pattern:
 2. Implement read/write functions following the screen's domain model
 3. Use the same UX as debug-mode: load-state, toggle on Enter/Space, navigate on Esc/q
 
-## Import Defaults
+## Import defaults
 
-Settings > Import Defaults saves two optional values in `config.json` (`defaultComponentDir`, `defaultTokenFile`). The import flow reads them each time it opens and pre-fills the Welcome (project path) and Token input (token file) screens, so you can press Enter instead of retyping. Leaving a field empty removes the default.
+Settings > Configuration also holds two optional values, the default component directory and the default token file (`defaultComponentDir`, `defaultTokenFile` in `config.json`). The import flow reads them each time it opens and pre-fills the Welcome (project path) and Token input (token file) screens, so you can press Enter instead of retyping. Leaving a field empty removes the default.

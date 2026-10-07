@@ -4,16 +4,25 @@ import { PALETTE } from '../../home/home.theme.js';
 import { readCredentials, writeCredentials, type V1Credentials } from './config-store.js';
 import { startDebugRun, finishDebugRun } from '../../debug-store.js';
 
-type Field = 'spaceId' | 'environmentId' | 'cmaToken' | 'host';
+type Field = 'spaceId' | 'environmentId' | 'cmaToken' | 'host' | 'defaultComponentDir' | 'defaultTokenFile';
 type Stage = 'loading' | 'form' | 'saving' | 'saved';
 
-const FIELD_ORDER: Field[] = ['spaceId', 'environmentId', 'cmaToken', 'host'];
+const FIELD_ORDER: Field[] = [
+  'spaceId',
+  'environmentId',
+  'cmaToken',
+  'host',
+  'defaultComponentDir',
+  'defaultTokenFile',
+];
 function debugFields(config: V1Credentials | null): Record<string, unknown> {
   return {
     space_id: config?.spaceId ?? '',
     environment_id: config?.environmentId ?? '',
     cma_token: config?.cmaToken ?? '',
     host: config?.host ?? '',
+    default_component_dir: config?.defaultComponentDir ?? '',
+    default_token_file: config?.defaultTokenFile ?? '',
   };
 }
 
@@ -22,6 +31,8 @@ const FIELD_LABELS: Record<Field, string> = {
   environmentId: 'Environment ID',
   cmaToken: 'CMA Token',
   host: 'API Host (optional)',
+  defaultComponentDir: 'Default component directory (optional)',
+  defaultTokenFile: 'Default token file (optional)',
 };
 
 export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.ReactElement {

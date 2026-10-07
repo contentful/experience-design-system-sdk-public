@@ -11,8 +11,7 @@ import { ConfigurationScreen } from './src/tui/settings/contentful-configuration
 import { OptInAnalyticsScreen } from './src/tui/settings/opt-in-analytics/screen.js';
 import { UpgradeScreen } from './src/tui/upgrade/PageContainer.js';
 import { DebugModeScreen } from './src/tui/settings/debug-mode/screen.js';
-import { ImportDefaultsScreen } from './src/tui/settings/import-defaults/screen.js';
-import { readImportDefaults, type ImportDefaults } from './src/tui/settings/import-defaults/defaults-store.js';
+import { readCredentials } from './src/tui/settings/contentful-configuration/config-store.js';
 
 export type Screen =
   | 'start'
@@ -22,7 +21,6 @@ export type Screen =
   | 'settings-configuration'
   | 'settings-opt-in-analytics'
   | 'settings-debug-mode'
-  | 'settings-import-defaults'
   | 'upgrade';
 
 interface AppProps {
@@ -35,7 +33,7 @@ function App({ onLaunchImport, importExitCode }: AppProps): React.ReactElement {
   const [screen, setScreen] = useState<Screen>(returnedFromImport ? 'import' : 'start');
   const [showImportResult, setShowImportResult] = useState(returnedFromImport);
   const [projectPath, setProjectPath] = useState<string>();
-  const [importDefaults, setImportDefaults] = useState<ImportDefaults>();
+  const [importDefaults, setImportDefaults] = useState<{ componentDir: string; tokenFile: string }>();
 
   // Read the saved defaults each time the import flow opens, so a change in Settings shows up right away.
   // The screens only read their initial value on mount, so they wait for this to resolve.
@@ -44,7 +42,9 @@ function App({ onLaunchImport, importExitCode }: AppProps): React.ReactElement {
       setImportDefaults(undefined);
       return;
     }
-    void readImportDefaults().then(setImportDefaults);
+    void readCredentials().then((saved) =>
+      setImportDefaults({ componentDir: saved.defaultComponentDir ?? '', tokenFile: saved.defaultTokenFile ?? '' }),
+    );
   }, [screen]);
 
   const goToStart = (): void => setScreen('start');
@@ -90,8 +90,6 @@ function App({ onLaunchImport, importExitCode }: AppProps): React.ReactElement {
       return <OptInAnalyticsScreen onDone={goToSettings} />;
     case 'settings-debug-mode':
       return <DebugModeScreen onDone={goToSettings} />;
-    case 'settings-import-defaults':
-      return <ImportDefaultsScreen onDone={goToSettings} />;
     case 'start':
       return <HomeScreen onNavigate={setScreen} />;
   }

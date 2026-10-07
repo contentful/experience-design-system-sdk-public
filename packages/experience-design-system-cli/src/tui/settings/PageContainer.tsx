@@ -12,7 +12,6 @@ export function SettingsScreen({
   const [focusIdx, setFocusIdx] = useState(0);
   const items: { label: string; screen?: Screen }[] = [
     { label: 'Configuration', screen: 'settings-configuration' },
-    { label: 'Import Defaults', screen: 'settings-import-defaults' },
     { label: 'Opt-in Analytics', screen: 'settings-opt-in-analytics' },
     { label: 'Debug Mode', screen: 'settings-debug-mode' },
   ];

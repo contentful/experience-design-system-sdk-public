@@ -5,6 +5,8 @@ export type V1Credentials = {
   environmentId?: string;
   cmaToken?: string;
   host?: string;
+  defaultComponentDir?: string;
+  defaultTokenFile?: string;
   [key: string]: string | undefined;
 };
 
@@ -15,6 +17,8 @@ export async function readCredentials(): Promise<V1Credentials> {
     environmentId: (store.environmentId as string) || '',
     cmaToken: (store.cmaToken as string) || '',
     host: (store.host as string) || '',
+    defaultComponentDir: (store.defaultComponentDir as string) || '',
+    defaultTokenFile: (store.defaultTokenFile as string) || '',
   };
 }
 
