@@ -14,7 +14,7 @@
         "tsConfig": "packages/experience-design-system-backend-pipeline/tsconfig.build.json",
         "assets": []
       },
-      "dependsOn": []
+      "dependsOn": ["^build"]
     },
     "typecheck": {
       "executor": "nx:run-commands",
