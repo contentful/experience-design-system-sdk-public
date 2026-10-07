@@ -10,6 +10,7 @@ export default defineConfig([
 			"**/.nx/**",
 			"**/coverage/**",
 			"eslint.config.ts",
+			"src/steps/apply/src/client/generated/**",
 		],
 	},
 	...tseslint.configs.recommended,

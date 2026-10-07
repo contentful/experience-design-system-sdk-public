@@ -46,21 +46,27 @@ importers:
 
   packages/experience-design-system-backend-pipeline:
     dependencies:
-      '@contentful/experience-design-system-client':
-        specifier: workspace:*
-        version: link:../experience-design-system-client
-      '@contentful/experience-design-system-extraction':
-        specifier: workspace:*
-        version: link:../experience-design-system-extraction
-      '@contentful/experience-design-system-generation':
-        specifier: workspace:*
-        version: link:../experience-design-system-generation
-      '@contentful/experience-design-system-types':
-        specifier: workspace:*
-        version: link:../experience-design-system-types
+      '@hey-api/client-fetch':
+        specifier: ^0.9.0
+        version: 0.9.0(@hey-api/openapi-ts@0.80.18(typescript@5.9.3))
+      '@vue/compiler-sfc':
+        specifier: ^3.5.31
+        version: 3.5.32
+      ajv:
+        specifier: ^8.17.1
+        version: 8.18.0
       contentful-management:
         specifier: ^12.17.0
         version: 12.17.0
+      svelte:
+        specifier: ^5.56.4
+        version: 5.56.4(@typescript-eslint/types@8.67.0)
+      ts-morph:
+        specifier: ^27.0.2
+        version: 27.0.2
+      zod:
+        specifier: ^4.3.6
+        version: 4.6.5
     devDependencies:
       '@tsconfig/node24':
         specifier: ^24.0.4
