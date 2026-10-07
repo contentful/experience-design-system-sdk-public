@@ -39,7 +39,7 @@ Design system codebase
 
 Component-analysis data between pipeline steps flows through a local SQLite session database (`~/.contentful/experience-design-system-cli/pipeline.db`). The wizard runs token mapping after generation when a token file was supplied. `experiences apply <file>` reads one CDF file containing both component and design-token definitions and builds the request for the sources API.
 
-A separate JSON file at `~/.config/experiences/runs.json` records each successful wizard session (id, project path, save path, push target, component count). No command lists these records.
+A separate JSON file at `~/.contentful/experience-design-system-cli/state/runs.json` records each successful wizard session (id, project path, save path, push target, component count). No command lists these records.
 
 When a token file is supplied (`--tokens` or the token-input step), the wizard performs token generation internally before it extracts and generates components. Token mapping needs the generated CDF and DTCG data in the same pipeline session.
 
@@ -455,7 +455,7 @@ A single human review gate (`scope-gate`) precedes generation. The final-review 
 
 ### Run records
 
-After every successful wizard session, the CLI appends a record to `~/.config/experiences/runs.json`.
+After every successful wizard session, the CLI appends a record to `~/.contentful/experience-design-system-cli/state/runs.json`.
 
 ### Agent and model
 

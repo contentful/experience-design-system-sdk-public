@@ -12,7 +12,7 @@ function readWizardAppSource(): Promise<string> {
 /**
  * Regression tests for INTEG-4410: credentials edited via `experiences setup`
  * or via the wizard's credentials step must always be persisted to
- * ~/.config/experiences/credentials.json — even when the operator submits
+ * ~/.contentful/experience-design-system-cli/config.json — even when the operator submits
  * without changing any field (the "unchanged" path used to route through
  * `onContinue` → `advanceWithCredentials`, which never writes to disk).
  *
