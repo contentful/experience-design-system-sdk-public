@@ -1,9 +1,10 @@
 import { buildCDF } from '@contentful/experience-design-system-types';
-import type { ApplyOperationResponse, CDFTokenEntry, DTCGTokenEntry } from '@contentful/experience-design-system-types';
+import type { ApplyOperationResponse } from '@contentful/experience-design-system-types';
+import { createApiClient } from '../helpers/clients.js';
 import { hasBreakingChangesWithImpact } from '../helpers/has-breaking-changes.js';
 import { isEmptyPreview } from '../helpers/is-empty-preview.js';
 import { parseComponentWriteResult, parseTokenWriteResult } from '../helpers/parse-write-result.js';
-import { ApiClient } from './api-client.js';
+import { toCdfTokens } from '../helpers/token-utils.js';
 import { ApiError } from '../types/api-error.js';
 import type {
   ApplyEndpointRequest,
@@ -12,10 +13,6 @@ import type {
   ApplyPreviewResult,
   ApplySuccessResult,
 } from '../types/contract.js';
-
-function toCdfTokens(tokens: DTCGTokenEntry[]): Array<{ path: string; entry: CDFTokenEntry }> {
-  return tokens.map(({ path, ...entry }) => ({ path, entry: entry as CDFTokenEntry }));
-}
 
 export async function runApplyService(request: ApplyEndpointRequest): Promise<ApplyEndpointResponse> {
   const {
@@ -30,12 +27,7 @@ export async function runApplyService(request: ApplyEndpointRequest): Promise<Ap
   const cdf = buildCDF(components, toCdfTokens(tokens));
   if (!cdf) throw new Error('nothing to push — no components or tokens resolved');
 
-  const client = new ApiClient({
-    host: credentials.host,
-    cmaToken: credentials.accessToken,
-    spaceId: credentials.spaceId,
-    environmentId: credentials.environmentId,
-  });
+  const client = createApiClient(credentials);
 
   onProgress?.('previewing');
   const preview = await client.previewImport(cdf);
