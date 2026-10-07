@@ -199,7 +199,7 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
     expect(lastFrame() ?? '').toMatch(/cycle/);
   });
 
-  it('navigates type → category → required → default → description via j', async () => {
+  it('navigates type → required → default → description via j', async () => {
     const { stdin, lastFrame } = render(
       <FieldEditor
         value={STRING_COMPONENT}
@@ -216,17 +216,13 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
 
     stdin.write('j');
     await tick();
-    expect(lastFrame() ?? '').toContain('category: content');
-
-    stdin.write('j');
-    await tick();
     expect(lastFrame() ?? '').toContain('req: [ ]');
 
     stdin.write('j');
     await tick();
     expect(lastFrame() ?? '').toMatch(/default:/);
 
-    stdin.write('\x1b[B');
+    stdin.write('j');
     await tick();
     stdin.write('\r');
     await tick();
@@ -487,36 +483,6 @@ describe('FieldEditor — prop category grouping', () => {
     }
   });
 
-  it('switches a selected design property back to content without losing the row', async () => {
-    const { stdin, lastFrame } = render(
-      <FieldEditor
-        value={GROUPED_COMPONENT}
-        width={100}
-        height={30}
-        onChange={vi.fn()}
-        onSave={vi.fn()}
-        onDiscard={vi.fn()}
-      />,
-    );
-
-    stdin.write('j');
-    await tick();
-    stdin.write('\r');
-    await tick();
-    stdin.write('j');
-    await tick();
-    expect(lastFrame() ?? '').toContain('category: design');
-    stdin.write('\r');
-    await tick();
-    expect(lastFrame() ?? '').toContain('switch to content property');
-    stdin.write('\r');
-    await tick();
-
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('color');
-    expect(frame).toContain('CONTENT PROPERTIES');
-    expect(frame).not.toContain('switch to content property');
-  });
 
   it('omits empty category headers', () => {
     const onlyDesignAndSlot = JSON.stringify({
@@ -768,7 +734,7 @@ describe('FieldEditor — active prop gating', () => {
 });
 
 describe('FieldEditor — field-nav cycling at edges (Bug 2)', () => {
-  it('j at description (last field) cycles back to type (first field, same prop)', async () => {
+  it('j at description (last field) cycles back to type (first field, same prop) [category removed]', async () => {
     const { stdin, lastFrame } = render(
       <FieldEditor
         value={STRING_COMPONENT}
@@ -992,7 +958,7 @@ describe('FieldEditor — duplicate React-key safety (Bug 1, INTEG-4257)', () =>
 });
 
 describe('FieldEditor — Feature 5: propFields ordering ($default before description)', () => {
-  it('cycle for richtext omits default — j×3 after Return lands on description (no default in cycle)', async () => {
+  it('cycle for richtext omits default — j×2 after Return lands on description (no default in cycle)', async () => {
     const RICHTEXT = JSON.stringify(
       {
         Block: {
