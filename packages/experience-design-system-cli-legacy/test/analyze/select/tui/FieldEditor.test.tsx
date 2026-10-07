@@ -274,6 +274,8 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
     await tick();
     stdin.write('j');
     await tick();
+    stdin.write('j');
+    await tick();
     stdin.write('\r');
     await tick();
     stdin.write('j');
@@ -297,6 +299,8 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
       />,
     );
     stdin.write('\r');
+    await tick();
+    stdin.write('j');
     await tick();
     stdin.write('j');
     await tick();
@@ -2790,6 +2794,8 @@ describe('FieldEditor — INTEG-4401: cycle existing $allowedComponents entries 
 describe('FieldEditor — onDirtyChange + discardTrigger (T5)', () => {
   async function enterStringDescriptionEdit(stdin: { write: (data: string) => void }): Promise<void> {
     stdin.write('\r');
+    await tick();
+    stdin.write('j');
     await tick();
     stdin.write('j');
     await tick();
