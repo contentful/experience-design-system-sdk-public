@@ -2277,8 +2277,6 @@ describe('FieldEditor - rationale panels are lifted to the parent', () => {
     await tick();
     stdin.write('j');
     await tick();
-    stdin.write('j');
-    await tick();
     stdin.write('\r');
     await tick();
     expect(onTextEntryActiveChange).toHaveBeenLastCalledWith(true);
@@ -2840,8 +2838,6 @@ describe('FieldEditor — onDirtyChange + discardTrigger (T5)', () => {
     stdin.write('j');
     await tick();
     stdin.write('j');
-    await tick();
-    stdin.write('\x1b[B');
     await tick();
     stdin.write('\r');
     await tick();
