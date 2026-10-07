@@ -1,5 +1,5 @@
-import { buildCDF } from '../../../shared/src/cdf-types/index.js';
-import type { ApplyOperationResponse } from '../../../shared/src/cdf-types/index.js';
+import { buildCDF } from '../../../shared/types/index.js';
+import type { ApplyOperationResponse } from '../../../shared/types/index.js';
 import { createApiClient } from '../helpers/clients.js';
 import { hasBreakingChangesWithImpact } from '../helpers/has-breaking-changes.js';
 import { isEmptyPreview } from '../helpers/is-empty-preview.js';

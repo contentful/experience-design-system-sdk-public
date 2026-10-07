@@ -1,21 +1,22 @@
 import { createHash } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import {
   buildPrompt,
   createLocalCliAgentInvoker,
   parseToolCallLines,
   type ToolCall,
-} from '../../../shared/src/agent/index.js';
-import type { RawComponentDefinition } from '../../../step-1-extraction/src/extraction-types.js';
-import type {
-  CDFComponentEntry,
-  CDFPropertyDefinition,
-  CDFSlotDefinition,
-} from '../../../shared/src/cdf-types/index.js';
+} from '../../../shared/generation/index.js';
+import type { RawComponentDefinition } from '../../../step-1-extraction/src/types/extraction.js';
+import type { CDFComponentEntry, CDFPropertyDefinition, CDFSlotDefinition } from '../../../shared/types/index.js';
 import type {
   CdfGenerationFailure,
   RunCdfGenerationServiceOptions,
   RunCdfGenerationServiceResult,
 } from '../types/contract.js';
+
+const SKILL_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'skills');
+const COMPONENTS_SKILL_PATH = join(SKILL_DIR, 'generate-components.md');
 
 const DEFAULT_CONCURRENCY = 3;
 const AGENT_TIMEOUT_MS = 120_000;
@@ -86,7 +87,7 @@ async function generateOne(
     rawComponentsInline: JSON.stringify(component),
     outDir: '',
     componentName: component.name,
-    skillPathOverride,
+    skillPathOverride: skillPathOverride ?? COMPONENTS_SKILL_PATH,
     skillContentOverride,
   });
 

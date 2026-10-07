@@ -2,12 +2,8 @@ import {
   designSystemImportApply,
   designSystemImportGetOperation,
   designSystemImportSourcelessPreview,
-} from '../cma-client/index.js';
-import type {
-  ApplyOperationResponse,
-  CDFDocument,
-  ServerPreviewResponse,
-} from '../../../shared/src/cdf-types/index.js';
+} from '../client/index.js';
+import type { ApplyOperationResponse, CDFDocument, ServerPreviewResponse } from '../../../shared/types/index.js';
 import {
   isApsDenialBody,
   isTransientStatus,

@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import type { CDFComponentEntry } from '../../../steps/shared/src/cdf-types/index.js';
+import type { CDFComponentEntry } from '../../../steps/shared/types/index.js';
 
 export function lookupGenerationCache(
   db: DatabaseSync,

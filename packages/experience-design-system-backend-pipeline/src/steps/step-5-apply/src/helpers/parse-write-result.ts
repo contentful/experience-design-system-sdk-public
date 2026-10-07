@@ -1,4 +1,4 @@
-import type { ApplyOperationResponse } from '../../../shared/src/cdf-types/index.js';
+import type { ApplyOperationResponse } from '../../../shared/types/index.js';
 import type { WriteResult } from '../types/contract.js';
 
 type OperationItem = NonNullable<ApplyOperationResponse['items']>[number];

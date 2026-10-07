@@ -1,7 +1,10 @@
-import { buildPrompt, createLocalCliAgentInvoker, parseSelectToolCallLines } from '../../../shared/src/agent/index.js';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import { buildPrompt, createLocalCliAgentInvoker, parseSelectToolCallLines } from '../../../shared/generation/index.js';
 import type { RunSelectionServiceOptions, SelectionServiceResult, ComponentSelection } from '../types/contract.js';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 5 * 60 * 1000);
+const SKILL_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'skills', 'select-components.md');
 
 export async function runSelectionService(options: RunSelectionServiceOptions): Promise<SelectionServiceResult> {
   const { components, agent, model } = options;
@@ -15,8 +18,8 @@ export async function runSelectionService(options: RunSelectionServiceOptions): 
     mode: 'autonomous',
     rawComponentsInline: JSON.stringify(components, null, 2),
     outDir: process.cwd(),
+    skillPathOverride: options.promptPath ?? SKILL_PATH,
     ...(options.promptText !== undefined ? { skillContentOverride: options.promptText } : {}),
-    ...(options.promptText === undefined && options.promptPath ? { skillPathOverride: options.promptPath } : {}),
   });
 
   const agentRun = await invoker.invoke({ agent, model, prompt, timeoutMs: DEFAULT_TIMEOUT_MS });

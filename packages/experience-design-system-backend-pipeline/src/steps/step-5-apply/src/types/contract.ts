@@ -3,7 +3,7 @@ import type {
   DTCGTokenEntry,
   ServerPreviewResponse,
   ApplyOperationResponse,
-} from '../../../shared/src/cdf-types/index.js';
+} from '../../../shared/types/index.js';
 
 export type PostPushView = 'components' | 'design_tokens';
 

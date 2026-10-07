@@ -1,6 +1,6 @@
-import type { RawComponentDefinition } from '../../../step-1-extraction/src/extraction-types.js';
-import type { AgentName } from '../../../shared/src/agent/index.js';
-import type { CDFComponentEntry, DTCGTokenEntry } from '../../../shared/src/cdf-types/index.js';
+import type { RawComponentDefinition } from '../../../step-1-extraction/src/types/extraction.js';
+import type { AgentName } from '../../../shared/generation/index.js';
+import type { CDFComponentEntry, DTCGTokenEntry } from '../../../shared/types/index.js';
 
 export interface CdfGenerationFailure {
   componentName: string;

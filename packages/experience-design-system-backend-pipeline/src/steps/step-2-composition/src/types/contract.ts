@@ -1,6 +1,6 @@
-import type { RawComponentDefinition } from '../../../step-1-extraction/src/extraction-types.js';
-import type { AgentName } from '../../../shared/src/agent/index.js';
-import type { CandidateFile } from '../../../shared/src/types.js';
+import type { RawComponentDefinition } from '../../../step-1-extraction/src/types/extraction.js';
+import type { AgentName } from '../../../shared/generation/index.js';
+import type { CandidateFile } from '../../../shared/types.js';
 
 export type { CandidateFile };
 export type SelectedCandidate = CandidateFile & { matchReason: string };
