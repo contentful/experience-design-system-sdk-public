@@ -6,7 +6,7 @@ import { readCredentials, writeCredentials, type V1Credentials } from './config-
 import { startDebugRun, finishDebugRun } from '../../debug-store.js';
 
 type Field = 'spaceId' | 'environmentId' | 'cmaToken' | 'host' | 'defaultComponentDir' | 'defaultTokenFile';
-type Stage = 'loading' | 'form' | 'saving' | 'saved';
+type Stage = 'loading' | 'form' | 'saving';
 
 const FIELD_ORDER: Field[] = [
   'spaceId',
@@ -69,14 +69,15 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
     setConfig({ ...config, [field]: value });
   }
 
-  function handleSave(): void {
+  // Leaving the screen saves whatever is entered. A failed save keeps the screen open with the error.
+  function saveAndLeave(): void {
     if (!config) return;
     setStage('saving');
     setMessage(null);
     writeCredentials(config)
       .then(() => {
-        setStage('saved');
-        setMessage('Configuration saved');
+        void finishDebugRun({ outputs: debugFields(config), status: 'success', exitMethod: 'saved' });
+        onDone();
       })
       .catch((err: unknown) => {
         setMessage(err instanceof Error ? err.message : 'Failed to save');
@@ -86,14 +87,6 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
 
   useInput((input, key) => {
     if (stage === 'loading' || stage === 'saving') return;
-
-    if (stage === 'saved') {
-      if (key.return || key.escape || input === 'q') {
-        void finishDebugRun({ outputs: debugFields(config), status: 'success', exitMethod: 'saved' });
-        onDone();
-      }
-      return;
-    }
 
     if (editing) {
       // <TextInput> handles typing, the cursor, left/right and Enter (onSubmit) itself.
@@ -105,13 +98,7 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
     }
 
     if (key.escape || input === 'q') {
-      void finishDebugRun({ outputs: {}, status: 'success', exitMethod: 'discarded' });
-      onDone();
-      return;
-    }
-
-    if (input === 's') {
-      handleSave();
+      saveAndLeave();
       return;
     }
 
@@ -139,18 +126,6 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
         <Text bold>Configuration</Text>
         <Text> </Text>
         <Text color={PALETTE.accent}>Loading...</Text>
-      </Box>
-    );
-  }
-
-  if (stage === 'saved') {
-    return (
-      <Box flexDirection="column" paddingX={2} paddingY={1}>
-        <Text bold>Configuration</Text>
-        <Text> </Text>
-        <Text color={PALETTE.success}>✓ {message}</Text>
-        <Text> </Text>
-        <Text dimColor>[Enter] Back to Settings</Text>
       </Box>
     );
   }
@@ -194,7 +169,7 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
       <Text dimColor>
         {editing
           ? '[type] Edit · [←/→] Move cursor · [Enter] Done · [Esc] Cancel edit'
-          : '[↑/↓] Switch field · [Enter] Edit · [s] Save · [Esc/q] Back'}
+          : '[↑/↓] Switch field · [Enter] Edit · [Esc/q] Save & back'}
       </Text>
     </Box>
   );
