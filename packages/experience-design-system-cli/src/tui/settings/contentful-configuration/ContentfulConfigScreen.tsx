@@ -158,8 +158,6 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
     <Box flexDirection="column" paddingX={2} paddingY={1}>
       <Text bold>Configuration</Text>
       <Text> </Text>
-      <Text>Contentful API Credentials</Text>
-      <Text> </Text>
       <Box flexDirection="column">
         {FIELD_ORDER.map((field) => {
           const isActive = activeField === field;
