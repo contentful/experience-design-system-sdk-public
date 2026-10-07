@@ -1628,6 +1628,8 @@ describe('FieldEditor — description boxes constrain long text', () => {
     await tick();
     stdin.write('\r');
     await tick();
+    stdin.write('x');
+    await tick();
     const lines = (lastFrame() ?? '').split('\n');
     const firstDescriptionBox = lines.findIndex((line) => line.includes('╭'));
     const closingDescriptionBox = lines.findIndex((line, index) => index > firstDescriptionBox && line.includes('╯'));
@@ -1665,6 +1667,8 @@ describe('FieldEditor — description boxes constrain long text', () => {
     stdin.write('\r');
     await tick();
     stdin.write('\r');
+    await tick();
+    stdin.write('x');
     await tick();
 
     const lines = (lastFrame() ?? '').split('\n');
@@ -2950,8 +2954,8 @@ describe('FieldEditor — BD4 initialFocusTarget', () => {
     expect(frame).not.toContain('HEADING_DESC');
   });
 
-  it('falls back to the first prop when the target name does not resolve', () => {
-    const { lastFrame } = render(
+  it('falls back to the first prop when the target name does not resolve', async () => {
+    const { stdin, lastFrame } = render(
       <FieldEditor
         value={MULTI_PROP_COMPONENT}
         width={80}
@@ -2962,6 +2966,10 @@ describe('FieldEditor — BD4 initialFocusTarget', () => {
         initialFocusTarget={{ kind: 'prop', name: 'does-not-exist' }}
       />,
     );
+    stdin.write('\r');
+    await tick();
+    stdin.write('\r');
+    await tick();
     const frame = lastFrame() ?? '';
     expect(frame).toContain('ALPHA_DESC');
     expect(frame).not.toContain('CHARLIE_DESC');
