@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { buildPrompt, createLocalCliAgentInvoker, parseSelectToolCallLines } from '../../../shared/generation/index.js';
+import { buildPrompt, createLocalCliAgentInvoker, parseSelectToolCallLines } from '../../../shared/agent/index.js';
 import type { RunSelectionServiceOptions, SelectionServiceResult, ComponentSelection } from '../types/contract.js';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 5 * 60 * 1000);

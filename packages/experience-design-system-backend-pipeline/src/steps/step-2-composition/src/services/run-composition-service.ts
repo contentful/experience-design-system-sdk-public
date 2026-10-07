@@ -1,4 +1,4 @@
-import { runAgent } from '../../../shared/generation/index.js';
+import { runAgent } from '../../../shared/agent/index.js';
 import type { RawComponentDefinition } from '../../../step-1-extraction/src/types/component.js';
 import { resolveMapping } from '../helpers/resolve-mapping.js';
 import { selectCandidateFiles, capCandidatesToPromptBudget } from '../helpers/candidate-files.js';

@@ -1,4 +1,4 @@
-import { isAgentName } from '../../../shared/generation/index.js';
+import { isAgentName } from '../../../shared/agent/index.js';
 import { DEFAULT_AGENT } from '../../../shared/constants.js';
 import { runCompositionService } from '../services/run-composition-service.js';
 import type { ComposeComponentsRequest, ComposeComponentsResponse } from '../types/contract.js';

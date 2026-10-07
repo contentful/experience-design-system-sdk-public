@@ -1,5 +1,5 @@
 import type { RawComponentDefinition } from '../../../step-1-extraction/src/types/component.js';
-import type { AgentName } from '../../../shared/generation/index.js';
+import type { AgentName } from '../../../shared/agent/index.js';
 
 export interface ComponentSelection {
   name: string;
