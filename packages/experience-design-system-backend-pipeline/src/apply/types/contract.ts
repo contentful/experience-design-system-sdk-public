@@ -29,10 +29,17 @@ export interface ApplyEndpointRequest {
   acknowledgeBreakingChanges?: boolean;
 }
 
+export interface WriteResult {
+  createdCount: number;
+  updatedCount: number;
+  failedCount: number;
+}
+
 export interface ApplyPreviewResult {
   type: 'preview';
   preview: ServerPreviewResponse;
   hasBreakingChanges: boolean;
+  xContentfulRequestId?: string;
 }
 
 export interface ApplySuccessResult {
@@ -41,10 +48,15 @@ export interface ApplySuccessResult {
   spaceId: string;
   environmentId: string;
   host: string | undefined;
+  operationId: string;
+  xContentfulRequestId?: string;
+  componentWriteResult: WriteResult;
+  designTokenWriteResult?: WriteResult;
 }
 
 export interface ApplyNoChangesResult {
   type: 'no-changes';
+  xContentfulRequestId?: string;
 }
 
 export type ApplyEndpointResponse = ApplyPreviewResult | ApplySuccessResult | ApplyNoChangesResult;

@@ -1,7 +1,8 @@
 import type { RawComponentDefinition } from '@contentful/experience-design-system-extraction';
 import type { AgentName } from '@contentful/experience-design-system-generation';
+import type { CandidateFile } from '../../shared/types.js';
 
-export type CandidateFile = { path: string; content: string };
+export type { CandidateFile };
 export type SelectedCandidate = CandidateFile & { matchReason: string };
 
 export type ApplyCompositionEdgesResult = {
