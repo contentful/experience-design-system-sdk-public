@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hasBreakingChangesWithImpact } from '../../../src/apply/helpers/has-breaking-changes.js';
+import { hasBreakingChangesWithImpact } from '../../helpers/has-breaking-changes.js';
 import type { ServerPreviewResponse } from '@contentful/experience-design-system-types';
 
 function makePreview(

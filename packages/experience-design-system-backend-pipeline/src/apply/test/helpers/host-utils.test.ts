@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { toApiHost, toConfiguredHost } from '../../../src/apply/helpers/host-utils.js';
+import { toApiHost, toConfiguredHost } from '../../helpers/host-utils.js';
 
 describe('toApiHost', () => {
   it('returns the default API host when host is undefined', () => {

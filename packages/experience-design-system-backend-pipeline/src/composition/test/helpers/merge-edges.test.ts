@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mergeEdges } from '../../../src/composition/helpers/merge-edges.js';
+import { mergeEdges } from '../../helpers/merge-edges.js';
 
 describe('mergeEdges', () => {
   it('returns empty result for no edges', () => {

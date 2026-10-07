@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseMapEdges } from '../../../src/composition/helpers/parse-map-edges.js';
+import { parseMapEdges } from '../../helpers/parse-map-edges.js';
 
 const names = new Set(['Button', 'Card', 'Layout', 'Hero']);
 

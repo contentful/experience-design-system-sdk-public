@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildPostPushUrl } from '../../../src/apply/helpers/contentful-urls.js';
+import { buildPostPushUrl } from '../../helpers/contentful-urls.js';
 
 describe('buildPostPushUrl', () => {
   it('builds a URL with api host converted to app host', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { composeComponents } from '../../../src/composition/controller/compose-components-endpoint.js';
+import { composeComponents } from '../../controller/compose-components-endpoint.js';
 
 describe('composeComponents validation', () => {
   it('throws for an unknown agent name', async () => {

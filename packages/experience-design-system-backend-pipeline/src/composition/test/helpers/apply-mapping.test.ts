@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { applyMapping } from '../../../src/composition/helpers/apply-mapping.js';
-import type { CompositionEdge } from '../../../src/composition/helpers/interchange-schema.js';
+import { applyMapping } from '../../helpers/apply-mapping.js';
+import type { CompositionEdge } from '../../helpers/interchange-schema.js';
 
 function makeComponent(name: string, slots: Array<{ name: string; isDefault?: boolean; allowedComponents?: string[] }> = []) {
   return {

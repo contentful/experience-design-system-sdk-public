@@ -32,12 +32,11 @@ export type {
 } from './selection/types/contract.js';
 
 // Generation
-export { generateComponents } from './generation/controller/generate-components-endpoint.js';
+export { generateCdfComponents } from './generation/controller/generate-cdf-components-endpoint.js';
 export type {
-  GenerateComponentsRequest,
-  GenerateComponentsResponse,
-  GeneratedComponent,
-  GenerationFailure,
+  GenerateCdfComponentsRequest,
+  GenerateCdfComponentsResponse,
+  CdfGenerationFailure,
 } from './generation/types/contract.js';
 
 // Apply

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { selectComponents } from '../../../src/selection/controller/select-components-endpoint.js';
+import { selectComponents } from '../../controller/select-components-endpoint.js';
 
 describe('selectComponents validation', () => {
   it('throws for an unknown agent name', async () => {

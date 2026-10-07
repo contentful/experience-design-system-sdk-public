@@ -2,17 +2,12 @@ import type { RawComponentDefinition } from '@contentful/experience-design-syste
 import type { AgentName } from '@contentful/experience-design-system-generation';
 import type { CDFComponentEntry, DTCGTokenEntry } from '@contentful/experience-design-system-types';
 
-export interface GeneratedComponent {
-  name: string;
-  entry: CDFComponentEntry;
-}
-
-export interface GenerationFailure {
+export interface CdfGenerationFailure {
   componentName: string;
   error: string;
 }
 
-export interface RunGenerationServiceOptions {
+export interface RunCdfGenerationServiceOptions {
   components: RawComponentDefinition[];
   tokens?: DTCGTokenEntry[];
   agent: AgentName;
@@ -26,13 +21,13 @@ export interface RunGenerationServiceOptions {
   onWarning?: (message: string) => void;
 }
 
-export interface RunGenerationServiceResult {
+export interface RunCdfGenerationServiceResult {
   components: CDFComponentEntry[];
   warnings: string[];
-  failures: GenerationFailure[];
+  failures: CdfGenerationFailure[];
 }
 
-export interface GenerateComponentsRequest {
+export interface GenerateCdfComponentsRequest {
   components: RawComponentDefinition[];
   tokens?: DTCGTokenEntry[];
   agent?: string;
@@ -46,4 +41,4 @@ export interface GenerateComponentsRequest {
   onWarning?: (message: string) => void;
 }
 
-export type GenerateComponentsResponse = RunGenerationServiceResult;
+export type GenerateCdfComponentsResponse = RunCdfGenerationServiceResult;

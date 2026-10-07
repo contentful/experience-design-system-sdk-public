@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyComponents } from '../../../src/apply/controller/apply-components-endpoint.js';
+import { applyComponents } from '../../controller/apply-components-endpoint.js';
 
 const validCredentials = {
   accessToken: 'token',

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { selectCandidateFiles, capCandidatesToPromptBudget } from '../../../src/composition/helpers/candidate-files.js';
+import { selectCandidateFiles, capCandidatesToPromptBudget } from '../../helpers/candidate-files.js';
 
 describe('selectCandidateFiles', () => {
   it('selects files whose path segment matches a name pattern', () => {
