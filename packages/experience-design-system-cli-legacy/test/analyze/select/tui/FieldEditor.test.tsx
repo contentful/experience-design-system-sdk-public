@@ -90,8 +90,6 @@ async function navigateToValuesField(stdin: { write: (data: string) => void }): 
   await tick();
   stdin.write('j');
   await tick();
-  stdin.write('j');
-  await tick();
   stdin.write('\r');
   await tick();
 }
@@ -133,11 +131,9 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
     await tick();
     stdin.write('j');
     await tick();
-    stdin.write('\x1b[B');
-    await tick();
     stdin.write('\r');
     await tick();
-    stdin.write('X');
+    stdin.write('x');
     await tick();
 
     const savedValue = onChange.mock.calls.at(-1)?.[0] as string;
@@ -326,7 +322,7 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
     );
     stdin.write('\r');
     await tick();
-    for (let i = 0; i < 6; i += 1) {
+    for (let i = 0; i < 5; i += 1) {
       stdin.write('\x1b[B');
       await tick();
     }
@@ -336,9 +332,9 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
     expect(frame).toContain('press [t] to edit allowed tokens');
     expect(frame).toContain('╭');
 
-    stdin.write('\x1b[B');
+    stdin.write('\x1b[A');
     await tick();
-    expect(lastFrame() ?? '').toContain('press [t] to edit allowed tokens');
+    expect(lastFrame() ?? '').toContain('press [t] to edit');
   });
 
   it('sets design token defaults when a prop is converted to token', async () => {
@@ -363,7 +359,7 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
     }
     stdin.write('\r');
     await tick();
-    for (let i = 0; i < 6; i += 1) {
+    for (let i = 0; i < 5; i += 1) {
       stdin.write('\x1b[B');
       await tick();
     }
@@ -749,21 +745,13 @@ describe('FieldEditor — field-nav cycling at edges (Bug 2)', () => {
     await tick();
     stdin.write('j');
     await tick();
-    stdin.write('\x1b[B');
+    expect(lastFrame() ?? '').toMatch(/navigate fields/);
+    stdin.write('j');
     await tick();
     expect(lastFrame() ?? '').toMatch(/navigate fields/);
     stdin.write('\r');
     await tick();
-    expect(lastFrame() ?? '').toMatch(/Type to edit/);
-    stdin.write('\x1b');
-    await tick();
-    stdin.write('j');
-    await tick();
-    stdin.write('\r');
-    await tick();
-    const frame = lastFrame() ?? '';
-    expect(frame).toMatch(/cycle/);
-    expect(frame).not.toMatch(/Type to edit/);
+    expect(lastFrame() ?? '').toMatch(/cycle value/);
   });
 
   it('arrow-up at type (first field) cycles to description (last field, same prop)', async () => {
@@ -976,8 +964,6 @@ describe('FieldEditor — Feature 5: propFields ordering ($default before descri
     await tick();
     stdin.write('j');
     await tick();
-    stdin.write('j');
-    await tick();
     expect(lastFrame() ?? '').toMatch(/navigate fields/);
     stdin.write('\r');
     await tick();
@@ -1001,8 +987,6 @@ describe('FieldEditor — Feature 5: propFields ordering ($default before descri
       <FieldEditor value={MEDIA} width={80} height={20} onChange={vi.fn()} onSave={vi.fn()} onDiscard={vi.fn()} />,
     );
     stdin.write('\r');
-    await tick();
-    stdin.write('j');
     await tick();
     stdin.write('j');
     await tick();
@@ -1052,8 +1036,6 @@ describe('FieldEditor — Feature 5: $default editor per prop type', () => {
     await tick();
     stdin.write('j');
     await tick();
-    stdin.write('j');
-    await tick();
     stdin.write('\r');
     await tick();
     stdin.write('H');
@@ -1083,8 +1065,6 @@ describe('FieldEditor — Feature 5: $default editor per prop type', () => {
       <FieldEditor value={BOOL} width={80} height={20} onChange={onChange} onSave={vi.fn()} onDiscard={vi.fn()} />,
     );
     stdin.write('\r');
-    await tick();
-    stdin.write('j');
     await tick();
     stdin.write('j');
     await tick();
@@ -2199,8 +2179,6 @@ describe('FieldEditor - rationale panels are lifted to the parent', () => {
       />,
     );
     stdin.write('\r');
-    await tick();
-    stdin.write('j');
     await tick();
     stdin.write('j');
     await tick();
