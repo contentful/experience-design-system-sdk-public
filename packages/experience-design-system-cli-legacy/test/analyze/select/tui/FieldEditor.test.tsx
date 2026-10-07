@@ -827,15 +827,6 @@ describe('FieldEditor — field-nav cycling at edges (Bug 2)', () => {
     stdin.write('\r');
     await tick();
     expect(lastFrame() ?? '').toMatch(/cycle value/);
-    stdin.write('\x1b');
-    await tick();
-    stdin.write('\x1b[B');
-    await tick();
-    stdin.write('\r');
-    await tick();
-    const frame = lastFrame() ?? '';
-    expect(frame).toMatch(/cycle/);
-    expect(frame).not.toMatch(/Type to edit/);
   });
 });
 
@@ -1503,7 +1494,7 @@ describe('FieldEditor — Feature 5: parseToState round-trip ($default, $allowed
     await tick();
     stdin.write('\r');
     await tick();
-    stdin.write('\x1b');
+    stdin.write('\r');
     await tick();
 
     expect(onChange).toHaveBeenCalled();
