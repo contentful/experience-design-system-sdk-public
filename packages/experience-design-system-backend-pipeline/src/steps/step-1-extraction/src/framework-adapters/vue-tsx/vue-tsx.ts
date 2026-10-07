@@ -5,7 +5,7 @@ import type {
   RawSlotDefinition,
   ComponentExtractionResult,
   ExtractionExclusion,
-} from '../types/extraction.js';
+} from '../../types/component.js';
 import {
   extractAllowedValues,
   extractTsxComponents,
@@ -13,7 +13,7 @@ import {
   getTypeTargetDeclarations,
   getValueTargetDeclarations,
   getRenderableExports,
-} from './tsx-shared.js';
+} from '../shared/tsx-shared.js';
 
 export async function extractVueTsxComponents(filePaths: string[]): Promise<ComponentExtractionResult> {
   const { components, warnings, exclusions } = extractTsxComponents(filePaths, /\.tsx$/, extractFromSourceFile);

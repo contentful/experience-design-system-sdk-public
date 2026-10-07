@@ -1,4 +1,4 @@
-import type { RawComponentDefinition, RawPropDefinition } from '../types/extraction.js';
+import type { RawComponentDefinition, RawPropDefinition } from '../../types/component.js';
 
 interface NonAuthorableResult {
   skip: boolean;

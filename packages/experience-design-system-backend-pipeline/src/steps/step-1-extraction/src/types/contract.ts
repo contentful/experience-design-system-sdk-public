@@ -1,4 +1,4 @@
-import type { ComponentExtractionResult, ExtractorOptions } from '../types/extraction.js';
+import type { ComponentExtractionResult, ExtractorOptions } from './component.js';
 
 export interface ExtractionEndpointProgress {
   phase: 'extract';

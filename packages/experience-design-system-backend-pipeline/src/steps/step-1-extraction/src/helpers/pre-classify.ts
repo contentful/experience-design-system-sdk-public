@@ -1,4 +1,4 @@
-import type { RawPropDefinition, RawComponentDefinition } from '../types/extraction.js';
+import type { RawPropDefinition, RawComponentDefinition } from '../types/component.js';
 
 export interface PreClassification {
   category: 'content' | 'design' | 'state' | 'exclude';

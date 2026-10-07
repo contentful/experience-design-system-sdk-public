@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
-import type { RawComponentDefinition } from '../types/extraction.js';
-import { parseImportedNames } from './parse-imported-names.js';
+import type { RawComponentDefinition } from '../../types/component.js';
+import { parseImportedNames } from '../../framework-adapters/shared/parse-imported-names.js';
 
 export const HIGH_CONFIDENCE_DATA_FETCH_WRAPPER_REASON = 'data-fetch-wrapper';
 export const POSSIBLE_DATA_FETCH_WRAPPER_REASON = 'possible-data-fetch-wrapper';

@@ -3,14 +3,14 @@ import type {
   ComponentExtractor,
   ExtractionExclusion,
   ExtractorOptions,
-} from '../types/extraction.js';
-import { extractStencilComponents } from './stencil.js';
-import { extractReactComponents } from './react.js';
-import { extractVueTsxComponents } from './vue-tsx.js';
-import { extractVueComponents } from './vue.js';
-import { extractAstroComponents } from './astro.js';
-import { extractWebComponentDefinitions } from './web-components.js';
-import { extractSvelteComponents } from './svelte.js';
+} from '../types/component.js';
+import { extractStencilComponents } from '../framework-adapters/stencil/stencil.js';
+import { extractReactComponents } from '../framework-adapters/react/react.js';
+import { extractVueTsxComponents } from '../framework-adapters/vue-tsx/vue-tsx.js';
+import { extractVueComponents } from '../framework-adapters/vue/vue.js';
+import { extractAstroComponents } from '../framework-adapters/astro/astro.js';
+import { extractWebComponentDefinitions } from '../framework-adapters/web-components/web-components.js';
+import { extractSvelteComponents } from '../framework-adapters/svelte/svelte.js';
 
 type ExtractedComponent = ComponentExtractionResult['components'][number];
 

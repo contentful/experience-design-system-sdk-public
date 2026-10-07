@@ -1,4 +1,4 @@
-import type { RawComponentDefinition, RawSlotDefinition } from '../../../step-1-extraction/src/types/extraction.js';
+import type { RawComponentDefinition, RawSlotDefinition } from '../../../step-1-extraction/src/types/component.js';
 import type { CompositionEdge } from './interchange-schema.js';
 import type { ApplyCompositionEdgesResult } from '../types/contract.js';
 

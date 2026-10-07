@@ -1,4 +1,4 @@
-import type { RawComponentDefinition, ExtractionValidationIssue } from '../types/extraction.js';
+import type { RawComponentDefinition, ExtractionValidationIssue } from '../../types/component.js';
 
 export function validateExtractedComponents(components: RawComponentDefinition[]): RawComponentDefinition[] {
   const nameCounts = new Map<string, number>();

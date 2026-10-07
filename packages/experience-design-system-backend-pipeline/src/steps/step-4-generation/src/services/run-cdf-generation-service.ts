@@ -7,7 +7,7 @@ import {
   parseToolCallLines,
   type ToolCall,
 } from '../../../shared/generation/index.js';
-import type { RawComponentDefinition } from '../../../step-1-extraction/src/types/extraction.js';
+import type { RawComponentDefinition } from '../../../step-1-extraction/src/types/component.js';
 import type { CDFComponentEntry, CDFPropertyDefinition, CDFSlotDefinition } from '../../../shared/types/index.js';
 import type {
   CdfGenerationFailure,

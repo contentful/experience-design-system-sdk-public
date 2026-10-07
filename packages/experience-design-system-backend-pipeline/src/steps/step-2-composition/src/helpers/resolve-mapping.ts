@@ -1,4 +1,4 @@
-import type { RawComponentDefinition } from '../../../step-1-extraction/src/types/extraction.js';
+import type { RawComponentDefinition } from '../../../step-1-extraction/src/types/component.js';
 import type { CompositionEdge } from './interchange-schema.js';
 import { mergeEdges, type EdgeConflict } from './merge-edges.js';
 import { parseMapEdges } from './parse-map-edges.js';

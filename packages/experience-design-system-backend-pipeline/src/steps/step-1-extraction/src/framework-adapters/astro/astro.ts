@@ -6,10 +6,10 @@ import type {
   RawPropDefinition,
   RawSlotDefinition,
   ComponentExtractionResult,
-} from '../types/extraction.js';
-import { createSortedExtractionResult, runFileExtractionWorkers } from './file-extraction-workers.js';
-import { resolveTypeProperty } from './resolve-type-property.js';
-import { getSourceLineMetadata } from './source-line-metadata.js';
+} from '../../types/component.js';
+import { createSortedExtractionResult, runFileExtractionWorkers } from '../shared/file-extraction-workers.js';
+import { resolveTypeProperty } from '../shared/resolve-type-property.js';
+import { getSourceLineMetadata } from '../shared/source-line-metadata.js';
 
 function extractAllowedValues(typeText: string): string[] | undefined {
   // Check if the type is a union of string literals like 'a' | 'b' | 'c'

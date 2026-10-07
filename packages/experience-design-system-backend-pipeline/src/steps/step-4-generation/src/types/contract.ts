@@ -1,4 +1,4 @@
-import type { RawComponentDefinition } from '../../../step-1-extraction/src/types/extraction.js';
+import type { RawComponentDefinition } from '../../../step-1-extraction/src/types/component.js';
 import type { AgentName } from '../../../shared/generation/index.js';
 import type { CDFComponentEntry, DTCGTokenEntry } from '../../../shared/types/index.js';
 
