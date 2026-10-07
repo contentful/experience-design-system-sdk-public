@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { openSession } from '../session/index.js';
+import { openSession } from '../index.js';
 
 describe('openSession', () => {
   it('returns a SessionHandle with the provided sessionId', () => {

@@ -26,9 +26,9 @@ describe('applyComponents validation', () => {
     ).rejects.toThrow('credentials.environmentId is required');
   });
 
-  it('passes validation and delegates to orchestrator with valid credentials', async () => {
+  it('passes validation and delegates to service with valid credentials', async () => {
     await expect(applyComponents({ components: [], credentials: validCredentials })).rejects.toThrow(
-      'executeApplyOrchestrator not yet implemented',
+      'nothing to push — no components or tokens resolved',
     );
   });
 });

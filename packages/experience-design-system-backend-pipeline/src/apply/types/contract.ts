@@ -27,6 +27,7 @@ export interface ApplyEndpointRequest {
   credentials: ApplyCredentials;
   previewOnly?: boolean;
   acknowledgeBreakingChanges?: boolean;
+  onProgress?: (status: 'previewing' | 'applying' | 'polling', operationId?: string) => void;
 }
 
 export interface WriteResult {

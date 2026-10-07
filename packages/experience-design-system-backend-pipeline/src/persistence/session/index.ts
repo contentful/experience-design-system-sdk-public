@@ -12,8 +12,7 @@ export { generateSessionId } from './helpers/generate-session-id.js';
 
 export function openSession({ dbPath, sessionId, cliVersion }: OpenSessionOptions): SessionHandle {
   const resolvedPath =
-    dbPath ??
-    path.join(process.env['HOME'] ?? '.', '.contentful', 'experience-design-system-cli', 'pipeline.db');
+    dbPath ?? path.join(process.env['HOME'] ?? '.', '.contentful', 'experience-design-system-cli', 'pipeline.db');
   const id = sessionId ?? generateSessionId();
 
   if (resolvedPath !== ':memory:') {
@@ -26,7 +25,6 @@ export function openSession({ dbPath, sessionId, cliVersion }: OpenSessionOption
   db.exec('PRAGMA foreign_keys = ON');
   db.exec('PRAGMA busy_timeout = 5000');
   db.exec(SCHEMA_SQL);
-
 
   db.prepare('INSERT OR IGNORE INTO sessions (id, cli_version) VALUES (?, ?)').run(id, cliVersion);
 

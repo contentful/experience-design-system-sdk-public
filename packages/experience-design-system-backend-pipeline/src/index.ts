@@ -50,7 +50,10 @@ export type {
   WriteResult,
 } from './apply/types/contract.js';
 export { hasBreakingChangesWithImpact } from './apply/helpers/has-breaking-changes.js';
+export { isEmptyPreview } from './apply/helpers/is-empty-preview.js';
 export { buildPostPushUrl } from './apply/helpers/contentful-urls.js';
+export { ApiError } from './apply/services/run-apply-service.js';
+export type { PreviewValidationError } from './apply/services/import-api-client.js';
 export { toApiHost, toConfiguredHost } from './apply/helpers/host-utils.js';
 
 // Persistence

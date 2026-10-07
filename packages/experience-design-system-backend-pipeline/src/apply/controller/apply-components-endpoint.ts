@@ -1,4 +1,4 @@
-import { executeApplyOrchestrator } from '../orchestrator/execute-apply-orchestrator.js';
+import { runApplyService } from '../services/run-apply-service.js';
 import type { ApplyEndpointRequest, ApplyEndpointResponse } from '../types/contract.js';
 
 export type { ApplyEndpointRequest, ApplyEndpointResponse };
@@ -14,5 +14,5 @@ export async function applyComponents(request: ApplyEndpointRequest): Promise<Ap
     throw new Error('credentials.environmentId is required');
   }
 
-  return executeApplyOrchestrator(request);
+  return runApplyService(request);
 }

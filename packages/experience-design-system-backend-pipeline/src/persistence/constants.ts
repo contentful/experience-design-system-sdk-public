@@ -16,13 +16,4 @@ export const EXCLUDED_SUFFIXES = [
   '.spec.jsx',
 ];
 
-export const IGNORED_DIRS = new Set([
-  'node_modules',
-  'dist',
-  '.git',
-  'build',
-  'coverage',
-  '.next',
-  '.vscode',
-  '.nx',
-]);
+export const IGNORED_DIRS = new Set(['node_modules', 'dist', '.git', 'build', 'coverage', '.next', '.vscode', '.nx']);

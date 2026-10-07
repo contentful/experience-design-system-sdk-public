@@ -1,0 +1,83 @@
+import { buildCDF } from '@contentful/experience-design-system-types';
+import type { ApplyOperationResponse, CDFTokenEntry, DTCGTokenEntry } from '@contentful/experience-design-system-types';
+import { hasBreakingChangesWithImpact } from '../helpers/has-breaking-changes.js';
+import { isEmptyPreview } from '../helpers/is-empty-preview.js';
+import { parseComponentWriteResult, parseTokenWriteResult } from '../helpers/parse-write-result.js';
+import { ApiError, ImportApiClient } from '../services/import-api-client.js';
+import type {
+  ApplyEndpointRequest,
+  ApplyEndpointResponse,
+  ApplyNoChangesResult,
+  ApplyPreviewResult,
+  ApplySuccessResult,
+} from '../types/contract.js';
+
+function toCdfTokens(tokens: DTCGTokenEntry[]): Array<{ path: string; entry: CDFTokenEntry }> {
+  return tokens.map(({ path, ...entry }) => ({ path, entry: entry as CDFTokenEntry }));
+}
+
+export async function runApplyService(request: ApplyEndpointRequest): Promise<ApplyEndpointResponse> {
+  const {
+    components,
+    tokens = [],
+    credentials,
+    previewOnly = false,
+    acknowledgeBreakingChanges = false,
+    onProgress,
+  } = request;
+
+  const cdf = buildCDF(components, toCdfTokens(tokens));
+  if (!cdf) throw new Error('nothing to push — no components or tokens resolved');
+
+  const client = new ImportApiClient({
+    host: credentials.host,
+    cmaToken: credentials.accessToken,
+    spaceId: credentials.spaceId,
+    environmentId: credentials.environmentId,
+  });
+
+  onProgress?.('previewing');
+  const preview = await client.previewImport(cdf);
+
+  if (isEmptyPreview(preview)) {
+    const result: ApplyNoChangesResult = {
+      type: 'no-changes',
+      xContentfulRequestId: client.getLastRequestId(),
+    };
+    return result;
+  }
+
+  if (previewOnly) {
+    const result: ApplyPreviewResult = {
+      type: 'preview',
+      preview,
+      hasBreakingChanges: hasBreakingChangesWithImpact(preview),
+      xContentfulRequestId: client.getLastRequestId(),
+    };
+    return result;
+  }
+
+  onProgress?.('applying');
+  const operation = await client.applyImport(cdf, { acknowledgeBreakingChanges });
+  const operationId = operation.sys.id;
+
+  onProgress?.('polling', operationId);
+  const finalOperation = await client.pollOperation(operationId, {
+    onProgress: (op: ApplyOperationResponse) => onProgress?.('polling', op.sys.id),
+  });
+
+  const result: ApplySuccessResult = {
+    type: 'applied',
+    operation: finalOperation,
+    spaceId: credentials.spaceId,
+    environmentId: credentials.environmentId,
+    host: credentials.host,
+    operationId,
+    xContentfulRequestId: client.getLastRequestId(),
+    componentWriteResult: parseComponentWriteResult(finalOperation),
+    designTokenWriteResult: parseTokenWriteResult(finalOperation),
+  };
+  return result;
+}
+
+export { ApiError };

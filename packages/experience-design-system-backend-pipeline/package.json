@@ -29,6 +29,7 @@
     "lint:fix": "nx lint:fix experience-design-system-backend-pipeline"
   },
   "dependencies": {
+    "@contentful/experience-design-system-client": "workspace:*",
     "@contentful/experience-design-system-extraction": "workspace:*",
     "@contentful/experience-design-system-generation": "workspace:*",
     "@contentful/experience-design-system-types": "workspace:*",
