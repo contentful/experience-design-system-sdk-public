@@ -34,10 +34,7 @@ describe('extractComponents', () => {
     tempDirs.push(dir);
     // Svelte extractor emits per-file progress; React extractor does not
     const file = join(dir, 'Card.svelte');
-    await writeFile(
-      file,
-      '<script lang="ts">\n  export let title: string = "";\n</script>\n<div>{title}</div>',
-    );
+    await writeFile(file, '<script lang="ts">\n  export let title: string = "";\n</script>\n<div>{title}</div>');
 
     const progress: unknown[] = [];
     await extractComponents({ filePaths: [file], projectRoot: dir, onProgress: (p) => progress.push(p) });

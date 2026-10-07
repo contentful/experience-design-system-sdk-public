@@ -8,11 +8,17 @@ export type {
 
 // Composition
 export { composeComponents } from './steps/step-2-composition/src/controller/compose-components-endpoint.js';
-export type { ComposeComponentsRequest, ComposeComponentsResponse } from './steps/step-2-composition/src/types/contract.js';
+export type {
+  ComposeComponentsRequest,
+  ComposeComponentsResponse,
+} from './steps/step-2-composition/src/types/contract.js';
 export type { CompositionEdge, EdgeProvenance } from './steps/step-2-composition/src/helpers/interchange-schema.js';
 export type { MergeResult, EdgeConflict } from './steps/step-2-composition/src/helpers/merge-edges.js';
 export type { SelectedCandidate } from './steps/step-2-composition/src/types/contract.js';
-export { selectCandidateFiles, capCandidatesToPromptBudget } from './steps/step-2-composition/src/helpers/candidate-files.js';
+export {
+  selectCandidateFiles,
+  capCandidatesToPromptBudget,
+} from './steps/step-2-composition/src/helpers/candidate-files.js';
 export { collectManifestDocEdges } from './steps/step-2-composition/src/helpers/manifest-doc-evidence.js';
 export { mergeEdges } from './steps/step-2-composition/src/helpers/merge-edges.js';
 export { parseMapEdges } from './steps/step-2-composition/src/helpers/parse-map-edges.js';

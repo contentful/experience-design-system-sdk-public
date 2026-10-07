@@ -6,8 +6,16 @@ import {
   type ToolCall,
 } from '../../../shared/src/agent/index.js';
 import type { RawComponentDefinition } from '../../../step-1-extraction/src/extraction-types.js';
-import type { CDFComponentEntry, CDFPropertyDefinition, CDFSlotDefinition } from '../../../shared/src/cdf-types/index.js';
-import type { CdfGenerationFailure, RunCdfGenerationServiceOptions, RunCdfGenerationServiceResult } from '../types/contract.js';
+import type {
+  CDFComponentEntry,
+  CDFPropertyDefinition,
+  CDFSlotDefinition,
+} from '../../../shared/src/cdf-types/index.js';
+import type {
+  CdfGenerationFailure,
+  RunCdfGenerationServiceOptions,
+  RunCdfGenerationServiceResult,
+} from '../types/contract.js';
 
 const DEFAULT_CONCURRENCY = 3;
 const AGENT_TIMEOUT_MS = 120_000;
@@ -47,7 +55,8 @@ function toolCallsToEntry(component: RawComponentDefinition, calls: ToolCall[]):
       const slot: CDFSlotDefinition = {};
       if (call.description) slot.$description = call.description;
       if (call.required !== undefined) slot.$required = call.required;
-      if (call.allowed_components && call.allowed_components.length > 0) slot.$allowedComponents = call.allowed_components;
+      if (call.allowed_components && call.allowed_components.length > 0)
+        slot.$allowedComponents = call.allowed_components;
       slots[call.slot] = slot;
     }
   }

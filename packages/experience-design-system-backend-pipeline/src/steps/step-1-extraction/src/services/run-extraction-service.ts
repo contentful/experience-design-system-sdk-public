@@ -3,9 +3,8 @@ import type { ExtractComponentsRequest, ExtractComponentsResponse } from '../typ
 
 export async function runExtractionService(request: ExtractComponentsRequest): Promise<ExtractComponentsResponse> {
   const { filePaths, projectRoot, opts, onProgress } = request;
-  return extractComponents(
-    filePaths,
-    onProgress ? (p) => onProgress({ ...p, phase: 'extract' }) : undefined,
-    { ...opts, projectRoot: projectRoot ?? opts?.projectRoot },
-  );
+  return extractComponents(filePaths, onProgress ? (p) => onProgress({ ...p, phase: 'extract' }) : undefined, {
+    ...opts,
+    projectRoot: projectRoot ?? opts?.projectRoot,
+  });
 }
