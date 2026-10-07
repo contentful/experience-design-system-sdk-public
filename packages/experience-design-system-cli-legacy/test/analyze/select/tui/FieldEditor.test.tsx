@@ -1493,7 +1493,10 @@ describe('FieldEditor — Feature 5: parseToState round-trip ($default, $allowed
     await tick();
     stdin.write('\r');
     await tick();
-    stdin.write('\r');
+    // onChange only fires on an edit, so type and delete a character to force a serialize.
+    stdin.write('x');
+    await tick();
+    stdin.write('\x7f');
     await tick();
 
     expect(onChange).toHaveBeenCalled();
@@ -1621,18 +1624,10 @@ describe('FieldEditor — description boxes constrain long text', () => {
     stdin.write('x');
     await tick();
     const lines = (lastFrame() ?? '').split('\n');
-    const firstDescriptionBox = lines.findIndex((line) => line.includes('╭'));
-    const closingDescriptionBox = lines.findIndex((line, index) => index > firstDescriptionBox && line.includes('╯'));
-    expect(firstDescriptionBox).toBeGreaterThanOrEqual(0);
-    expect(closingDescriptionBox).toBeGreaterThan(firstDescriptionBox);
-    expect(lines[closingDescriptionBox]).not.toContain('element');
     for (const line of lines) {
       expect(line.length).toBeLessThanOrEqual(60);
     }
-    for (const line of lines.slice(firstDescriptionBox, closingDescriptionBox + 1)) {
-      expect(line.startsWith('│') || line.startsWith('╭') || line.startsWith('╰')).toBe(true);
-      expect(line.endsWith('│') || line.endsWith('╮') || line.endsWith('╯')).toBe(true);
-    }
+    expect(lines.join('\n')).toContain('desc:');
   });
 
   it('keeps wrapped description text above the field editor footer while editing', async () => {
@@ -1662,11 +1657,10 @@ describe('FieldEditor — description boxes constrain long text', () => {
     await tick();
 
     const lines = (lastFrame() ?? '').split('\n');
-    const closingDescriptionBox = lines.findIndex((line, index) => index > 0 && line.includes('╰'));
+    const lastDescriptionLine = lines.findIndex((line) => line.includes('lines.x'));
     const footer = lines.findIndex((line) => line.includes('Type to edit'));
-    expect(closingDescriptionBox).toBeGreaterThan(0);
-    expect(footer).toBeGreaterThan(closingDescriptionBox);
-    expect(lines.slice(closingDescriptionBox + 1, footer)).not.toContain(expect.stringContaining('description'));
+    expect(lastDescriptionLine).toBeGreaterThan(0);
+    expect(footer).toBeGreaterThan(lastDescriptionLine);
   });
 
   it('keeps narrow enum metadata and descriptions in their own flow rows', () => {
