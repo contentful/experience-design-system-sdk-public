@@ -1,3 +1,11 @@
+// Extraction
+export { extractComponents } from './extraction/controller/extract-components-endpoint.js';
+export type {
+  ExtractComponentsRequest,
+  ExtractComponentsResponse,
+  ExtractionEndpointProgress,
+} from './extraction/types/contract.js';
+
 // Composition
 export { composeComponents } from './composition/controller/compose-components-endpoint.js';
 export type {
