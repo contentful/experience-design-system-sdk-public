@@ -5,7 +5,7 @@ import type {
   RawSlotDefinition,
   ComponentExtractionResult,
 } from '../../types/component.js';
-import { getJsxTagNameNode, isIntrinsicJsxElement, kebabToPascal } from '../shared/tsx-shared.js';
+import { getJsxTagNameNode, isIntrinsicJsxElement, kebabToPascal } from '../shared/extract-tsx-components.js';
 import { createSortedExtractionResult, extractProjectSourceFiles } from '../shared/file-extraction-workers.js';
 
 function isStencilFile(sourceFile: SourceFile): boolean {

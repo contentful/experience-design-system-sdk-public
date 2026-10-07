@@ -4,13 +4,13 @@ import type {
   ExtractionExclusion,
   ExtractorOptions,
 } from '../types/component.js';
-import { extractStencilComponents } from '../framework-adapters/stencil/stencil.js';
-import { extractReactComponents } from '../framework-adapters/react/react.js';
-import { extractVueTsxComponents } from '../framework-adapters/vue-tsx/vue-tsx.js';
-import { extractVueComponents } from '../framework-adapters/vue/vue.js';
-import { extractAstroComponents } from '../framework-adapters/astro/astro.js';
-import { extractWebComponentDefinitions } from '../framework-adapters/web-components/web-components.js';
-import { extractSvelteComponents } from '../framework-adapters/svelte/svelte.js';
+import { extractStencilComponents } from '../framework-adapters/stencil/extract-stencil-components.js';
+import { extractReactComponents } from '../framework-adapters/react/extract-react-components.js';
+import { extractVueTsxComponents } from '../framework-adapters/vue-tsx/extract-vue-tsx-components.js';
+import { extractVueComponents } from '../framework-adapters/vue/extract-vue-components.js';
+import { extractAstroComponents } from '../framework-adapters/astro/extract-astro-components.js';
+import { extractWebComponentDefinitions } from '../framework-adapters/web-components/extract-web-components.js';
+import { extractSvelteComponents } from '../framework-adapters/svelte/extract-svelte-components.js';
 
 type ExtractedComponent = ComponentExtractionResult['components'][number];
 

@@ -1,15 +1,11 @@
-export interface AllowedComponentsContext {
-  propsToComponent: ReadonlyMap<string, string>;
-  componentNames: ReadonlySet<string>;
-}
+import {
+  IDENTIFIER,
+  REACT_ELEMENT_GENERIC,
+  SVELTE_SNIPPET_TUPLE,
+  type AllowedComponentsContext,
+} from '../shared/allowed-components-context.js';
 
-// Matches ReactElement<XProps> and ReactElement<XProps, ...> (TS often
-// expands the second generic argument to string | JSXElementConstructor<any>).
-// Only the first generic argument (the props type name) is captured.
-const REACT_ELEMENT_GENERIC = /(?:React\.)?ReactElement\s*<\s*([A-Za-z_$][\w$.]*)(?![\w$.])/g;
-
-const SVELTE_SNIPPET_TUPLE = /Snippet\s*<\s*\[([^\]]*)\]\s*>/g;
-const IDENTIFIER = /[A-Za-z_$][\w$.]*/g;
+export type { AllowedComponentsContext };
 
 export function extractAllowedComponentsFromTypeText(typeText: string, ctx: AllowedComponentsContext): string[] {
   const found = new Set<string>();

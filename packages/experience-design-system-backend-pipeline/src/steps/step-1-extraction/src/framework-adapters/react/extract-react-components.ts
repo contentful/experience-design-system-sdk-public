@@ -27,7 +27,7 @@ import {
   extractTsxComponents,
   getRenderableExports,
   isIntrinsicJsxElement,
-} from '../shared/tsx-shared.js';
+} from '../shared/extract-tsx-components.js';
 import { shouldBeSlot } from '../../helpers/evidence/slot-detection.js';
 import { extractAllowedComponentsFromTypeText, extractAllowedComponentsFromJsdoc } from './slot-allowed-components.js';
 import { getSourceLineMetadata } from '../shared/source-line-metadata.js';

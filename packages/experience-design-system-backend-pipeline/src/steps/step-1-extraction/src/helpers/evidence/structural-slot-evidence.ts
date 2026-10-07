@@ -6,11 +6,9 @@ import {
   type FunctionExpression,
   type SourceFile,
 } from 'ts-morph';
-import {
-  extractAllowedComponentsFromTypeText,
-  type AllowedComponentsContext,
-} from '../../framework-adapters/react/slot-allowed-components.js';
-import { isIntrinsicJsxElement } from '../../framework-adapters/shared/tsx-shared.js';
+import { extractAllowedComponentsFromTypeText } from '../../framework-adapters/react/slot-allowed-components.js';
+import type { AllowedComponentsContext } from '../../framework-adapters/shared/allowed-components-context.js';
+import { isIntrinsicJsxElement } from '../../framework-adapters/shared/extract-tsx-components.js';
 
 type FunctionLike = FunctionDeclaration | ArrowFunction | FunctionExpression;
 

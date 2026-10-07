@@ -1,8 +1,4 @@
-import {
-  designSystemImportApply,
-  designSystemImportGetOperation,
-  designSystemImportSourcelessPreview,
-} from '../client/index.js';
+import { applyImport, getOperation, previewImport } from '../client/import-endpoints.js';
 import type { ApplyOperationResponse, CDFDocument, ServerPreviewResponse } from '../../../shared/types/index.js';
 import {
   isApsDenialBody,
@@ -134,12 +130,11 @@ export class ApiClient {
 
   async previewImport(cdf: CDFDocument): Promise<ServerPreviewResponse> {
     const result = await this.requestWithRetry('preview', PREVIEW_ERROR_PREFIX, () =>
-      designSystemImportSourcelessPreview({
+      previewImport({
         baseUrl: this.host,
         headers: this.headers(),
         path: { spaceId: this.spaceId, environmentId: this.environmentId },
-        body: cdf as never,
-        parseAs: 'json',
+        body: cdf,
       }),
     );
     if (!result.response.ok) {
@@ -149,18 +144,17 @@ export class ApiClient {
         stringifyError(result.error),
       );
     }
-    return sanitizePreviewResponse(result.data as unknown as ServerPreviewResponse);
+    return sanitizePreviewResponse(result.data as ServerPreviewResponse);
   }
 
   async applyImport(cdf: CDFDocument, opts: { acknowledgeBreakingChanges: boolean }): Promise<ApplyOperationResponse> {
-    let result: Awaited<ReturnType<typeof designSystemImportApply<false>>>;
+    let result: Awaited<ReturnType<typeof applyImport>>;
     try {
-      result = await designSystemImportApply<false>({
+      result = await applyImport({
         baseUrl: this.host,
         headers: this.headers(),
         path: { spaceId: this.spaceId, environmentId: this.environmentId },
-        body: { ...cdf, acknowledgeBreakingChanges: opts.acknowledgeBreakingChanges } as never,
-        parseAs: 'json',
+        body: { ...cdf, acknowledgeBreakingChanges: opts.acknowledgeBreakingChanges },
       });
     } catch (error) {
       const body = `The apply request was not retried because its outcome is unknown and retrying could start a duplicate operation. Cause: ${errorMessage(error)}`;
@@ -174,7 +168,7 @@ export class ApiClient {
       throw new ApiError(`${APPLY_ERROR_PREFIX} ${result.response.status}`, result.response.status, body, guidance);
     }
     this.noteRequestId(result.response);
-    return result.data as unknown as ApplyOperationResponse;
+    return result.data as ApplyOperationResponse;
   }
 
   async pollOperation(
@@ -193,11 +187,10 @@ export class ApiClient {
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const result = await this.requestWithRetry('poll', 'poll failed:', () =>
-        designSystemImportGetOperation({
+        getOperation({
           baseUrl: this.host,
           headers: this.headers(),
           path: { spaceId: this.spaceId, environmentId: this.environmentId, operationId },
-          parseAs: 'json',
         }),
       );
       if (!result.response.ok) {
@@ -207,7 +200,7 @@ export class ApiClient {
           stringifyError(result.error),
         );
       }
-      const op = result.data as unknown as ApplyOperationResponse;
+      const op = result.data as ApplyOperationResponse;
       opts.onProgress?.(op);
       if (terminalStatuses.has(op.sys.status)) return op;
       if (attempt < maxAttempts - 1) {

@@ -7,7 +7,7 @@ import type {
   ComponentExtractionResult,
 } from '../../types/component.js';
 import { createSortedExtractionResult, extractProjectSourceFiles } from '../shared/file-extraction-workers.js';
-import { kebabToPascal } from '../shared/tsx-shared.js';
+import { kebabToPascal } from '../shared/extract-tsx-components.js';
 
 function normalizeComponentName(input: string): string {
   return input.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();

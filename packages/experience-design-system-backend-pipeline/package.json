@@ -29,7 +29,6 @@
     "lint:fix": "nx lint:fix experience-design-system-backend-pipeline"
   },
   "dependencies": {
-    "@hey-api/client-fetch": "^0.9.0",
     "@vue/compiler-sfc": "^3.5.31",
     "ajv": "^8.17.1",
     "contentful-management": "^12.17.0",

@@ -1,4 +1,4 @@
-import { extractComponents } from '../helpers/pipeline.js';
+import { extractComponents } from '../helpers/run-extraction-pipeline.js';
 import type { ExtractComponentsRequest, ExtractComponentsResponse } from '../types/contract.js';
 
 export async function runExtractionService(request: ExtractComponentsRequest): Promise<ExtractComponentsResponse> {

@@ -13,7 +13,7 @@ import {
   getTypeTargetDeclarations,
   getValueTargetDeclarations,
   getRenderableExports,
-} from '../shared/tsx-shared.js';
+} from '../shared/extract-tsx-components.js';
 
 export async function extractVueTsxComponents(filePaths: string[]): Promise<ComponentExtractionResult> {
   const { components, warnings, exclusions } = extractTsxComponents(filePaths, /\.tsx$/, extractFromSourceFile);
