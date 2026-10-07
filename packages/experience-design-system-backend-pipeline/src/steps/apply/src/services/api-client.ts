@@ -2,7 +2,7 @@ import {
   designSystemImportApply,
   designSystemImportGetOperation,
   designSystemImportSourcelessPreview,
-} from '../client/index.js';
+} from '@contentful/experience-design-system-client';
 import type { ApplyOperationResponse, CDFDocument, ServerPreviewResponse } from '../../../shared/index.js';
 import { APPLY_ERROR_PREFIX, PREVIEW_ERROR_PREFIX, USER_AGENT } from '../constants/index.js';
 import {
