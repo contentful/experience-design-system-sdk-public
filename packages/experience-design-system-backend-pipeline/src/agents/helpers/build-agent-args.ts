@@ -1,5 +1,9 @@
 import type { AgentName } from '../types/agent-name.js';
-import { codexBedrockConfigArgs } from './codex-bedrock-config-args.js';
+import { buildClaudeArgs } from './build-args/build-claude-args.js';
+import { buildCodexArgs } from './build-args/build-codex-args.js';
+import { buildCopilotArgs } from './build-args/build-copilot-args.js';
+import { buildCursorArgs } from './build-args/build-cursor-args.js';
+import { buildOpencodeArgs } from './build-args/build-opencode-args.js';
 import { resolveAgentModel } from './resolve-agent-model.js';
 
 /**
@@ -17,21 +21,17 @@ export function buildArgs(
   const resolvedModel = resolveAgentModel(agent, model, bedrock);
   const modelArg = resolvedModel ? ['--model', resolvedModel] : [];
   const promptArg = promptViaStdin ? [] : [prompt];
+
   switch (agent) {
     case 'claude':
-      return ['--print', ...modelArg, ...promptArg];
-    case 'codex': {
-      const bedrockArgs = bedrock ? codexBedrockConfigArgs() : [];
-      return ['exec', ...bedrockArgs, ...modelArg, '--dangerously-bypass-approvals-and-sandbox', ...promptArg];
-    }
+      return buildClaudeArgs(modelArg, promptArg);
+    case 'codex':
+      return buildCodexArgs(modelArg, promptArg, bedrock);
     case 'opencode':
-      return ['run', ...modelArg, ...promptArg];
+      return buildOpencodeArgs(modelArg, promptArg);
     case 'cursor':
-      return ['--print', ...modelArg, ...promptArg];
-    case 'copilot': {
-      const copilotModel = resolveAgentModel('copilot', model);
-      const copilotModelArg = !copilotModel || copilotModel === 'Auto' ? [] : ['--model', copilotModel];
-      return ['-p', ...promptArg, ...copilotModelArg, '--allow-all-tools'];
-    }
+      return buildCursorArgs(modelArg, promptArg);
+    case 'copilot':
+      return buildCopilotArgs(model, promptArg);
   }
 }

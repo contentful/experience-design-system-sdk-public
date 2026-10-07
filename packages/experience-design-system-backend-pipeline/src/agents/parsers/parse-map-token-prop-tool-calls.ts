@@ -1,24 +1,12 @@
 import type { MapTokenPropCall, ParsedMapTokenPropToolCalls } from '../types/tool-calls.js';
 import { isStringArray } from './helpers/is-string-array.js';
+import { readToolCallObjects } from './helpers/read-tool-call-objects.js';
 
 export function parseMapTokenPropToolCalls(stdout: string): ParsedMapTokenPropToolCalls {
   const calls: MapTokenPropCall[] = [];
-  const warnings: string[] = [];
+  const { objects, warnings } = readToolCallObjects(stdout);
 
-  for (const raw of stdout.split('\n')) {
-    const line = raw.trim();
-    if (!line.startsWith('{')) continue;
-
-    let obj: unknown;
-    try {
-      obj = JSON.parse(line);
-    } catch {
-      warnings.push(`unparseable line: ${line.slice(0, 120)}`);
-      continue;
-    }
-
-    if (typeof obj !== 'object' || obj === null || !('tool' in obj)) continue;
-    const rec = obj as Record<string, unknown>;
+  for (const rec of objects) {
     if (rec.tool !== 'map_token_prop') continue;
 
     if (typeof rec.component !== 'string' || !rec.component) {
