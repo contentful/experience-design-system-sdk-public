@@ -1,7 +1,5 @@
 import type { AgentName } from '../types/agent-name.js';
 
-export const DEFAULT_OPENCODE_MODEL = 'claude-haiku-4-5';
-
 /**
  * Default models per agent — lightweight/fast picks to control cost when no
  * explicit model is configured. codex is deliberately absent: with no entry
@@ -10,7 +8,7 @@ export const DEFAULT_OPENCODE_MODEL = 'claude-haiku-4-5';
  */
 export const DEFAULT_MODELS: Partial<Record<AgentName, string>> = {
   claude: 'haiku',
-  opencode: DEFAULT_OPENCODE_MODEL,
+  opencode: 'claude-haiku-4-5',
   cursor: 'gpt-mini',
   copilot: 'Auto',
 };
