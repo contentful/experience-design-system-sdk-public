@@ -1,9 +1,9 @@
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { lookupCompositionCache, storeCompositionCache } from '../cache/composition.js';
-import { lookupGenerationCache, storeGenerationCache } from '../cache/generation.js';
-import { lookupSelectionCache, storeSelectionCache } from '../cache/selection.js';
+import { lookupCompositionCache, storeCompositionCache } from './cache/composition.js';
+import { lookupGenerationCache, storeGenerationCache } from './cache/generation.js';
+import { lookupSelectionCache, storeSelectionCache } from './cache/selection.js';
 import { SCHEMA_SQL } from './helpers/create-tables.js';
 import type { OpenSessionOptions, SessionHandle } from '../types/contract.js';
 import { generateSessionId } from './helpers/generate-session-id.js';

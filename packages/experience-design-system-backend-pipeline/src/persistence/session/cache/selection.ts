@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import type { SelectionDecision } from '../types/contract.js';
+import type { SelectionDecision } from '../../types/contract.js';
 
 export function lookupSelectionCache(
   db: DatabaseSync,
