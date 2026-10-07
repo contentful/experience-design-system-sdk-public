@@ -40,7 +40,10 @@ export function applyMapping(components: RawComponentDefinition[], edges: Compos
 
     if (edge.slot) {
       const named = parent.slots.find((s) => s.name === edge.slot);
-      if (named) { addAllowed(named, edge.child); continue; }
+      if (named) {
+        addAllowed(named, edge.child);
+        continue;
+      }
       if (isHighTrust(edge.provenance)) {
         const synthesized: RawSlotDefinition = { name: edge.slot, isDefault: false, allowedComponents: [edge.child] };
         parent.slots.push(synthesized);

@@ -13,7 +13,13 @@ describe('parseMapEdges', () => {
     const { edges, warnings } = parseMapEdges(raw, { componentNames: names });
     expect(warnings).toHaveLength(0);
     expect(edges).toHaveLength(1);
-    expect(edges[0]).toMatchObject({ parent: 'Layout', child: 'Button', slot: 'content', confidence: 4, provenance: 'agent' });
+    expect(edges[0]).toMatchObject({
+      parent: 'Layout',
+      child: 'Button',
+      slot: 'content',
+      confidence: 4,
+      provenance: 'agent',
+    });
   });
 
   it('parses a map_edge without optional slot or confidence', () => {

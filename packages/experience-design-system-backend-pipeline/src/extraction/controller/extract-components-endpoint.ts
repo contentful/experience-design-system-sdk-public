@@ -3,8 +3,6 @@ import type { ExtractComponentsRequest, ExtractComponentsResponse } from '../typ
 
 export type { ExtractComponentsRequest, ExtractComponentsResponse };
 
-export async function extractComponents(
-  request: ExtractComponentsRequest,
-): Promise<ExtractComponentsResponse> {
+export async function extractComponents(request: ExtractComponentsRequest): Promise<ExtractComponentsResponse> {
   return extractEndpoint(request);
 }

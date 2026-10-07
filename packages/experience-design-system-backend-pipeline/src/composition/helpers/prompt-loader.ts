@@ -23,8 +23,6 @@ export function loadPrompt(fileName: string): string {
   try {
     return readFileSync(path, 'utf8');
   } catch {
-    throw new Error(
-      `prompt file missing from package installation — try reinstalling (looked for: ${path})`,
-    );
+    throw new Error(`prompt file missing from package installation — try reinstalling (looked for: ${path})`);
   }
 }

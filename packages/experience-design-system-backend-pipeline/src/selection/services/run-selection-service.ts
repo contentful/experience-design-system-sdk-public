@@ -3,17 +3,11 @@ import {
   createLocalCliAgentInvoker,
   parseSelectToolCallLines,
 } from '@contentful/experience-design-system-generation';
-import type {
-  RunSelectionServiceOptions,
-  SelectionServiceResult,
-  ComponentSelection,
-} from '../types/contract.js';
+import type { RunSelectionServiceOptions, SelectionServiceResult, ComponentSelection } from '../types/contract.js';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 5 * 60 * 1000);
 
-export async function runSelectionService(
-  options: RunSelectionServiceOptions,
-): Promise<SelectionServiceResult> {
+export async function runSelectionService(options: RunSelectionServiceOptions): Promise<SelectionServiceResult> {
   const { components, agent, model } = options;
   if (components.length === 0) return { selections: [], warnings: [] };
 

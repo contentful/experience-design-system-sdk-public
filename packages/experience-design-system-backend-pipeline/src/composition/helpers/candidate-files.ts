@@ -50,7 +50,10 @@ export function capCandidatesToPromptBudget<T extends CandidateFile>(
   let spent = 0;
   for (const file of ordered) {
     const cost = Math.ceil(file.content.length / CHARS_PER_TOKEN);
-    if (spent + cost > budget) { dropped.push(file); continue; }
+    if (spent + cost > budget) {
+      dropped.push(file);
+      continue;
+    }
     kept.push(file);
     spent += cost;
   }
@@ -73,8 +76,9 @@ export function sliceDeclarationRegions(
     const start = Math.max(0, hit - window);
     const end = Math.min(lines.length - 1, hit + window);
     const last = ranges[ranges.length - 1];
-    if (last && start <= last.end + 1) { last.end = Math.max(last.end, end); }
-    else ranges.push({ start, end });
+    if (last && start <= last.end + 1) {
+      last.end = Math.max(last.end, end);
+    } else ranges.push({ start, end });
   }
   return ranges.map((r) => lines.slice(r.start, r.end + 1).join('\n'));
 }
@@ -87,12 +91,18 @@ export function batchCandidates(files: CandidateFile[], budget: number = CANDIDA
   for (const file of sorted) {
     const cost = Math.ceil(file.content.length / CHARS_PER_TOKEN);
     if (cost > budget) {
-      if (current.length > 0) { batches.push(current); current = []; currentCost = 0; }
+      if (current.length > 0) {
+        batches.push(current);
+        current = [];
+        currentCost = 0;
+      }
       batches.push([file]);
       continue;
     }
     if (current.length > 0 && currentCost + cost > budget) {
-      batches.push(current); current = []; currentCost = 0;
+      batches.push(current);
+      current = [];
+      currentCost = 0;
     }
     current.push(file);
     currentCost += cost;

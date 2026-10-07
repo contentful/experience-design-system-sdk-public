@@ -1,10 +1,7 @@
 import { isAgentName } from '@contentful/experience-design-system-generation';
 import type { AgentName } from '@contentful/experience-design-system-generation';
 import { runSelectionService } from '../services/run-selection-service.js';
-import type {
-  SelectComponentsEndpointRequest,
-  SelectComponentsEndpointResponse,
-} from '../types/contract.js';
+import type { SelectComponentsEndpointRequest, SelectComponentsEndpointResponse } from '../types/contract.js';
 
 export type { SelectComponentsEndpointRequest, SelectComponentsEndpointResponse };
 

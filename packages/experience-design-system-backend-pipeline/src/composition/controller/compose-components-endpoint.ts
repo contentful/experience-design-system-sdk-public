@@ -7,9 +7,7 @@ export type { ComposeComponentsRequest, ComposeComponentsResponse };
 
 const DEFAULT_AGENT: AgentName = 'claude';
 
-export async function composeComponents(
-  request: ComposeComponentsRequest,
-): Promise<ComposeComponentsResponse> {
+export async function composeComponents(request: ComposeComponentsRequest): Promise<ComposeComponentsResponse> {
   const { agent: agentInput, forceAgent, ...rest } = request;
 
   if (agentInput !== undefined && !isAgentName(agentInput)) {

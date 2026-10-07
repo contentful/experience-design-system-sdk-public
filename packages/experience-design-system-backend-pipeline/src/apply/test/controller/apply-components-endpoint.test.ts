@@ -27,8 +27,8 @@ describe('applyComponents validation', () => {
   });
 
   it('passes validation and delegates to orchestrator with valid credentials', async () => {
-    await expect(
-      applyComponents({ components: [], credentials: validCredentials }),
-    ).rejects.toThrow('executeApplyOrchestrator not yet implemented');
+    await expect(applyComponents({ components: [], credentials: validCredentials })).rejects.toThrow(
+      'executeApplyOrchestrator not yet implemented',
+    );
   });
 });

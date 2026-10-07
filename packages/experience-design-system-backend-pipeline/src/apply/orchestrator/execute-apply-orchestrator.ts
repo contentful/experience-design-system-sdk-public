@@ -5,8 +5,6 @@ import type { ApplyEndpointRequest, ApplyEndpointResponse } from '../types/contr
 // helpers/poll-apply-operation, helpers/read-token-files, helpers/slot-validation.
 // These require decoupling from CLI internals (analytics, process.exit, TUI).
 
-export async function executeApplyOrchestrator(
-  _request: ApplyEndpointRequest,
-): Promise<ApplyEndpointResponse> {
+export async function executeApplyOrchestrator(_request: ApplyEndpointRequest): Promise<ApplyEndpointResponse> {
   throw new Error('executeApplyOrchestrator not yet implemented — see INTEG-5027');
 }

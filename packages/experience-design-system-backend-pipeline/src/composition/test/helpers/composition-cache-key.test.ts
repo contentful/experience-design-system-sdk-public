@@ -35,8 +35,14 @@ describe('buildCompositionInputHash', () => {
 
   it('is order-independent — same hash regardless of file array order', () => {
     const agent = 'claude';
-    const files1 = [{ path: 'a.ts', content: 'a' }, { path: 'b.ts', content: 'b' }];
-    const files2 = [{ path: 'b.ts', content: 'b' }, { path: 'a.ts', content: 'a' }];
+    const files1 = [
+      { path: 'a.ts', content: 'a' },
+      { path: 'b.ts', content: 'b' },
+    ];
+    const files2 = [
+      { path: 'b.ts', content: 'b' },
+      { path: 'a.ts', content: 'a' },
+    ];
     expect(buildCompositionInputHash({ files: files1, agent })).toBe(
       buildCompositionInputHash({ files: files2, agent }),
     );

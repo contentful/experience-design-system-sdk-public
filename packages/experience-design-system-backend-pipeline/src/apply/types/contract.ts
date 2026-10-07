@@ -1,4 +1,9 @@
-import type { CDFComponentEntry, DTCGTokenEntry, ServerPreviewResponse, ApplyOperationResponse } from '@contentful/experience-design-system-types';
+import type {
+  CDFComponentEntry,
+  DTCGTokenEntry,
+  ServerPreviewResponse,
+  ApplyOperationResponse,
+} from '@contentful/experience-design-system-types';
 
 export interface ApplyCredentials {
   accessToken: string;

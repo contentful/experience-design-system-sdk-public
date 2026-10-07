@@ -8,10 +8,7 @@ export type {
 
 // Composition
 export { composeComponents } from './composition/controller/compose-components-endpoint.js';
-export type {
-  ComposeComponentsRequest,
-  ComposeComponentsResponse,
-} from './composition/types/contract.js';
+export type { ComposeComponentsRequest, ComposeComponentsResponse } from './composition/types/contract.js';
 export type { CompositionEdge, EdgeProvenance } from './composition/helpers/interchange-schema.js';
 export type { MergeResult, EdgeConflict } from './composition/helpers/merge-edges.js';
 export type { CandidateFile, SelectedCandidate } from './composition/helpers/candidate-files.js';

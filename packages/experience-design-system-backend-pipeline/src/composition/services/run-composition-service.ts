@@ -46,7 +46,10 @@ export async function runCompositionService(
     runAgentFn: async ({ prompt }) => {
       if (!forceAgent && options.onCacheLookup) {
         const cached = options.onCacheLookup(agentCacheKey);
-        if (cached !== null) { options.onProgress?.('cache-hit'); return cached; }
+        if (cached !== null) {
+          options.onProgress?.('cache-hit');
+          return cached;
+        }
       }
       options.onProgress?.(`agent:${agent}`);
       const stdout = await spawnAgent(prompt);

@@ -1,16 +1,9 @@
-import {
-  executeApplyOrchestrator,
-} from '../orchestrator/execute-apply-orchestrator.js';
-import type {
-  ApplyEndpointRequest,
-  ApplyEndpointResponse,
-} from '../types/contract.js';
+import { executeApplyOrchestrator } from '../orchestrator/execute-apply-orchestrator.js';
+import type { ApplyEndpointRequest, ApplyEndpointResponse } from '../types/contract.js';
 
 export type { ApplyEndpointRequest, ApplyEndpointResponse };
 
-export async function applyComponents(
-  request: ApplyEndpointRequest,
-): Promise<ApplyEndpointResponse> {
+export async function applyComponents(request: ApplyEndpointRequest): Promise<ApplyEndpointResponse> {
   if (!request.credentials.accessToken) {
     throw new Error('credentials.accessToken is required');
   }

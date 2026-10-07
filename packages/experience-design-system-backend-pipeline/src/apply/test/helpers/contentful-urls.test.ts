@@ -20,7 +20,12 @@ describe('buildPostPushUrl', () => {
   });
 
   it('uses the provided view when specified', () => {
-    const url = buildPostPushUrl({ host: 'api.contentful.com', spaceId: 'sp1', environmentId: 'env1', view: 'design_tokens' });
+    const url = buildPostPushUrl({
+      host: 'api.contentful.com',
+      spaceId: 'sp1',
+      environmentId: 'env1',
+      view: 'design_tokens',
+    });
     expect(url).toContain('/views/design_tokens');
   });
 

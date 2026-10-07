@@ -14,14 +14,14 @@ describe('generateCdfComponents validation', () => {
   });
 
   it('passes validation and delegates to service with valid agent', async () => {
-    await expect(
-      generateCdfComponents({ components: [{ name: 'Button' } as never], agent: 'claude' }),
-    ).rejects.toThrow('runCdfGenerationService not yet implemented');
+    await expect(generateCdfComponents({ components: [{ name: 'Button' } as never], agent: 'claude' })).rejects.toThrow(
+      'runCdfGenerationService not yet implemented',
+    );
   });
 
   it('uses claude as default when agent is omitted', async () => {
-    await expect(
-      generateCdfComponents({ components: [{ name: 'Button' } as never] }),
-    ).rejects.toThrow('runCdfGenerationService not yet implemented');
+    await expect(generateCdfComponents({ components: [{ name: 'Button' } as never] })).rejects.toThrow(
+      'runCdfGenerationService not yet implemented',
+    );
   });
 });

@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { applyMapping } from '../../helpers/apply-mapping.js';
 import type { CompositionEdge } from '../../helpers/interchange-schema.js';
 
-function makeComponent(name: string, slots: Array<{ name: string; isDefault?: boolean; allowedComponents?: string[] }> = []) {
+function makeComponent(
+  name: string,
+  slots: Array<{ name: string; isDefault?: boolean; allowedComponents?: string[] }> = [],
+) {
   return {
     name,
     source: `${name}.tsx`,
@@ -27,10 +30,7 @@ describe('applyMapping', () => {
   });
 
   it('adds child to named slot allowedComponents', () => {
-    const components = [
-      makeComponent('Layout', [{ name: 'content', allowedComponents: [] }]),
-      makeComponent('Button'),
-    ];
+    const components = [makeComponent('Layout', [{ name: 'content', allowedComponents: [] }]), makeComponent('Button')];
     const edges: CompositionEdge[] = [{ parent: 'Layout', child: 'Button', slot: 'content', provenance: 'agent' }];
     const { components: result, warnings } = applyMapping(components, edges);
     expect(warnings).toHaveLength(0);

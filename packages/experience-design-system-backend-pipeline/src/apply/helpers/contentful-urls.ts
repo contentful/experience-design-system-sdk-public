@@ -8,7 +8,10 @@ export interface BuildPostPushUrlInput {
 }
 
 function normalizeHost(host: string): string {
-  return host.trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+  return host
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/\/+$/, '');
 }
 
 function apiHostToAppHost(host: string): string {

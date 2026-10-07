@@ -3,21 +3,23 @@ import { composeComponents } from '../../controller/compose-components-endpoint.
 
 describe('composeComponents validation', () => {
   it('throws for an unknown agent name', async () => {
-    await expect(
-      composeComponents({ components: [], allFiles: [], agent: 'not-a-real-agent' }),
-    ).rejects.toThrow('Unknown agent: "not-a-real-agent"');
+    await expect(composeComponents({ components: [], allFiles: [], agent: 'not-a-real-agent' })).rejects.toThrow(
+      'Unknown agent: "not-a-real-agent"',
+    );
   });
 
   it('accepts a known agent without throwing', async () => {
-    await expect(
-      composeComponents({ components: [], allFiles: [], agent: 'claude' }),
-    ).resolves.toMatchObject({ components: [], warnings: [] });
+    await expect(composeComponents({ components: [], allFiles: [], agent: 'claude' })).resolves.toMatchObject({
+      components: [],
+      warnings: [],
+    });
   });
 
   it('uses claude as default when agent is omitted', async () => {
-    await expect(
-      composeComponents({ components: [], allFiles: [] }),
-    ).resolves.toMatchObject({ components: [], warnings: [] });
+    await expect(composeComponents({ components: [], allFiles: [] })).resolves.toMatchObject({
+      components: [],
+      warnings: [],
+    });
   });
 
   it('passes forceAgent=false by default', async () => {
