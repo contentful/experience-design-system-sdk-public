@@ -40,6 +40,10 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
   const [config, setConfig] = useState<V1Credentials | null>(null);
   const [activeField, setActiveField] = useState<Field>('spaceId');
   const [message, setMessage] = useState<string | null>(null);
+  // Fields are read-only until Enter opens one for editing; Enter again closes it. While editing, keys type
+  // into the field (so a "q" in a path is just a "q"), and Esc closes it and restores the previous value.
+  const [editing, setEditing] = useState(false);
+  const [valueBeforeEdit, setValueBeforeEdit] = useState('');
 
   useEffect(() => {
     readCredentials().then((cfg) => {
@@ -90,9 +94,34 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
       return;
     }
 
+    if (editing) {
+      if (key.return) {
+        setEditing(false);
+        return;
+      }
+      if (key.escape) {
+        setFieldValue(activeField, valueBeforeEdit);
+        setEditing(false);
+        return;
+      }
+      if (key.backspace || key.delete) {
+        setFieldValue(activeField, fieldValue(activeField).slice(0, -1));
+        return;
+      }
+      if (input && !key.ctrl && !key.meta && !key.tab && !key.upArrow && !key.downArrow) {
+        setFieldValue(activeField, fieldValue(activeField) + input);
+      }
+      return;
+    }
+
     if (key.escape || input === 'q') {
       void finishDebugRun({ outputs: {}, status: 'success', exitMethod: 'discarded' });
       onDone();
+      return;
+    }
+
+    if (input === 's') {
+      handleSave();
       return;
     }
 
@@ -109,23 +138,8 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
     }
 
     if (key.return) {
-      const idx = FIELD_ORDER.indexOf(activeField);
-      if (idx < FIELD_ORDER.length - 1) {
-        setActiveField(FIELD_ORDER[idx + 1]!);
-      } else {
-        handleSave();
-      }
-      return;
-    }
-
-    if (key.backspace || key.delete) {
-      const current = fieldValue(activeField);
-      setFieldValue(activeField, current.slice(0, -1));
-      return;
-    }
-
-    if (input && !key.ctrl && !key.meta) {
-      setFieldValue(activeField, fieldValue(activeField) + input);
+      setValueBeforeEdit(fieldValue(activeField));
+      setEditing(true);
     }
   });
 
@@ -166,7 +180,8 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
             <Box key={field} gap={1}>
               <Text color={isActive ? PALETTE.accent : undefined}>{isActive ? '❯' : ' '}</Text>
               <Text bold={isActive}>{FIELD_LABELS[field]}:</Text>
-              <Text>{display || <Text dimColor>(empty)</Text>}</Text>
+              <Text>{display || (isActive && editing ? '' : <Text dimColor>(empty)</Text>)}</Text>
+              {isActive && editing && <Text color={PALETTE.accent}>▏</Text>}
             </Box>
           );
         })}
@@ -178,7 +193,11 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
         </>
       )}
       <Text> </Text>
-      <Text dimColor>[↑/↓] Switch field · [Enter] Save/Next · [Esc/q] Back</Text>
+      <Text dimColor>
+        {editing
+          ? '[type] Edit value · [Enter] Done · [Esc] Cancel edit'
+          : '[↑/↓] Switch field · [Enter] Edit · [s] Save · [Esc/q] Back'}
+      </Text>
     </Box>
   );
 }
