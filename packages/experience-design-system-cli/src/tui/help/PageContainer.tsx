@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { PALETTE } from '../home/home.theme.js';
 import { startDebugRun, finishDebugRun } from '../debug-store.js';
+import { ControlHints } from '../control-hints.js';
 import { readHelpInfo, type HelpInfo, type HelpRow } from './help-info.js';
 
 function Section({ title, rows }: { title: string; rows: HelpRow[] }): React.ReactElement {
@@ -61,7 +62,12 @@ export function HelpScreen({ onDone }: { onDone: () => void }): React.ReactEleme
       ) : (
         <Text color={PALETTE.accent}>Loading...</Text>
       )}
-      <Text dimColor>[Enter] Complete [Esc/q] Exit — both return to Start</Text>
+      <ControlHints
+        hints={[
+          { keys: '⏎', label: 'done' },
+          { keys: 'Esc/q', label: 'back' },
+        ]}
+      />
     </Box>
   );
 }

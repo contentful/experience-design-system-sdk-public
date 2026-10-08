@@ -4,6 +4,7 @@ import TextInput from 'ink-text-input';
 import { PALETTE } from '../../home/home.theme.js';
 import { readCredentials, writeCredentials, type V1Credentials } from './config-store.js';
 import { startDebugRun, finishDebugRun } from '../../debug-store.js';
+import { ControlHints } from '../../control-hints.js';
 
 type Field = 'spaceId' | 'environmentId' | 'cmaToken' | 'host' | 'defaultComponentDir' | 'defaultTokenFile';
 type Stage = 'loading' | 'form' | 'saving';
@@ -190,11 +191,24 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
         </>
       )}
       <Text> </Text>
-      <Text dimColor>
-        {editing
-          ? '[type] Edit · [←/→] Move cursor · [Enter] Done · [Esc] Cancel edit'
-          : '[↑/↓] Switch field · [Enter] Edit · [c] Clear field · [s] Save · [Esc/q] Quit without saving'}
-      </Text>
+      <ControlHints
+        hints={
+          editing
+            ? [
+                { keys: 'type', label: 'edit' },
+                { keys: '←/→', label: 'move cursor' },
+                { keys: '⏎', label: 'done' },
+                { keys: 'Esc', label: 'cancel edit' },
+              ]
+            : [
+                { keys: '↑/↓', label: 'move' },
+                { keys: '⏎', label: 'edit' },
+                { keys: 'c', label: 'clear' },
+                { keys: 's', label: 'save' },
+                { keys: 'Esc/q', label: 'quit without saving' },
+              ]
+        }
+      />
     </Box>
   );
 }
