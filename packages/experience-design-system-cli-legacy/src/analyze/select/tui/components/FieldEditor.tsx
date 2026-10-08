@@ -296,7 +296,7 @@ function InlinePropField({
   return (
     <Box width={width} gap={1} flexShrink={flexible ? 1 : 0} flexGrow={flexible ? 1 : 0} flexWrap="wrap">
       <Text
-        color={focused ? PALETTE.inverse : undefined}
+        color={focused ? PALETTE.warning : undefined}
         bold={focused}
         dimColor={!focused}
         wrap="truncate-end"
@@ -338,7 +338,7 @@ function DefaultValueRow({
 }): React.ReactElement {
   return (
     <Box gap={1} flexWrap="wrap" flexShrink={0}>
-      <Text color={focused ? PALETTE.inverse : undefined} bold={focused} dimColor={!focused}>
+      <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused}>
         {focused ? '› ' : '  '}default:
       </Text>
       {active ? (
@@ -488,7 +488,7 @@ function DefaultSubRow({
   if (prop.type === 'richtext' || prop.type === 'media' || prop.type === 'link') {
     return (
       <Box gap={1} flexShrink={0}>
-        <Text color={focused ? PALETTE.inverse : undefined} bold={focused} dimColor={!focused}>
+        <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused}>
           {focused ? '› ' : '  '}default:
         </Text>
         <Text dimColor={!focused}>(not applicable)</Text>
@@ -505,7 +505,7 @@ function DefaultSubRow({
     if (prop.values.length === 0) {
       return (
         <Box gap={1} flexShrink={0}>
-          <Text color={focused ? PALETTE.inverse : undefined} bold={focused} dimColor={!focused}>
+          <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused}>
             {focused ? '› ' : '  '}default:
           </Text>
           <Text dimColor={!focused}>(no values defined)</Text>
@@ -520,7 +520,7 @@ function DefaultSubRow({
   if (active) {
     return (
       <Box flexDirection="row" flexShrink={0}>
-        <Text color={focused ? PALETTE.inverse : undefined} bold={focused} dimColor={!focused}>
+        <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused}>
           {focused ? '› ' : '  '}default:
         </Text>
         <Box flexGrow={1} borderStyle="round" borderColor={PALETTE.warning} paddingX={1}>
@@ -533,7 +533,7 @@ function DefaultSubRow({
   }
   return (
     <Box gap={1} flexShrink={0}>
-      <Text color={focused ? PALETTE.inverse : undefined} bold={focused} dimColor={!focused}>
+      <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused}>
         {focused ? '› ' : '  '}default:
       </Text>
       <Text color={focused ? PALETTE.inverse : value ? PALETTE.inverse : undefined} dimColor={!value && !focused}>
@@ -568,7 +568,7 @@ function DescriptionField({
   if (compact) {
     return (
       <Box gap={1} flexWrap="wrap" width={width} flexShrink={0}>
-        <Text color={focused ? PALETTE.inverse : undefined} bold={focused} dimColor={!focused}>
+        <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused}>
           {focused ? '› ' : '  '}
           {label}
         </Text>
@@ -580,7 +580,7 @@ function DescriptionField({
   }
   return (
     <Box paddingLeft={paddingLeft} flexDirection="column" width={width} flexShrink={0}>
-      <Text color={focused ? PALETTE.inverse : undefined} bold={focused} dimColor={!focused}>
+      <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused}>
         {focused ? '› ' : '  '}
         {label}
       </Text>
@@ -694,7 +694,7 @@ function PropRow({
       {prop.type === 'enum' && (
         <Box gap={1} flexWrap="wrap" width={width} flexShrink={0}>
           <Text
-            color={activeField === 'values' ? PALETTE.inverse : undefined}
+            color={activeField === 'values' ? PALETTE.warning : undefined}
             bold={activeField === 'values'}
             dimColor={activeField !== 'values'}
           >
@@ -717,7 +717,7 @@ function PropRow({
       {prop.type === 'token' && prop.category === 'design' && (
         <Box gap={1} flexWrap="wrap" width={width} flexShrink={0}>
           <Text
-            color={activeField === 'allowed' ? PALETTE.inverse : undefined}
+            color={activeField === 'allowed' ? PALETTE.warning : undefined}
             bold={activeField === 'allowed'}
             dimColor={activeField !== 'allowed'}
           >
@@ -831,7 +831,7 @@ function SlotRow({
       {!(selected && editingField && activeField === 'allowedComponents') && (
         <Box gap={1} flexWrap="wrap" width={width} flexShrink={0}>
           <Text
-            color={activeField === 'allowedComponents' ? PALETTE.inverse : undefined}
+            color={activeField === 'allowedComponents' ? PALETTE.warning : undefined}
             bold={activeField === 'allowedComponents'}
             dimColor={activeField !== 'allowedComponents'}
           >
@@ -848,7 +848,7 @@ function SlotRow({
         <Box flexDirection="column">
           <Box>
             <Text
-              color={activeField === 'allowedComponents' ? PALETTE.inverse : undefined}
+              color={activeField === 'allowedComponents' ? PALETTE.warning : undefined}
               bold={activeField === 'allowedComponents'}
               dimColor={activeField !== 'allowedComponents'}
             >

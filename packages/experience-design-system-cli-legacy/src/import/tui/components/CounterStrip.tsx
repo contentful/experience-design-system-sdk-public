@@ -27,6 +27,7 @@ export function CounterStrip(props: { counters: CounterStripCounters; totalWidth
         <Text dimColor>{sep}</Text>
         <Text dimColor>{labelUnd} </Text>
         <Text bold>{counters.undecided}</Text>
+        <Text dimColor>{sep}</Text>
       </Text>
     </Box>
   );
