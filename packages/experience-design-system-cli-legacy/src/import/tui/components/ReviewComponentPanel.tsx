@@ -26,7 +26,7 @@ export type ReviewComponentPanelProps = ReviewDetailsEditorConfig & {
   selectedKey: string;
   selectedEntry: CDFComponentEntry;
   saveError: string | null;
-  sidebarFooter: React.ReactNode;
+  sidebarFooter?: React.ReactNode;
   livePreview: Pick<UseLivePreviewReturn, 'status' | 'disabled'>;
   livePreviewSpinner: string;
 };

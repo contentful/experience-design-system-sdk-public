@@ -1896,7 +1896,7 @@ describe('GenerateReviewStep — composite-components grouped sidebar (subtask C
     expect(frame).toMatch(/Card/);
   });
 
-  it('legend advertises [Space] and [E/C] group-toggle bindings when at least one group root exists', async () => {
+  it('legend advertises the [space/E/C] group-toggle binding when at least one group root exists', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
       { key: 'Card', entry: withSlot('Card', ['Heading']) },
@@ -1908,8 +1908,8 @@ describe('GenerateReviewStep — composite-components grouped sidebar (subtask C
     await tick();
 
     const frame = (lastFrame() ?? '').replace(/\[[0-9;]*m/g, '').replace(/\s+/g, ' ');
-    expect(frame).toMatch(/\[Space\][^\n]*expand\/collapse group/);
-    expect(frame).toMatch(/\[E\/C\][^\n]*expand\/collapse/);
+    expect(frame).toContain('[space/E/C]');
+    expect(frame).toMatch(/\[space\/E\/C\][^\n]*expand\/collapse/);
   });
 
   it('legend omits group-toggle bindings when the manifest is flat (no group roots)', async () => {
@@ -1923,8 +1923,7 @@ describe('GenerateReviewStep — composite-components grouped sidebar (subtask C
     );
     await tick();
     const frame = lastFrame() ?? '';
-    expect(frame).not.toContain('[Space] expand/collapse');
-    expect(frame).not.toContain('[E/C] expand/collapse');
+    expect(frame).not.toContain('[space/E/C]');
   });
 
   it('[C] collapses every group root; [E] expands every group root; both idempotent', async () => {
