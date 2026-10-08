@@ -17,7 +17,7 @@ export function CounterStrip(props: { counters: CounterStripCounters; totalWidth
   const labelUnd = condensed ? 'Und' : 'Undecided';
   const sep = condensed ? ' | ' : '    ';
   return (
-    <Box marginTop={1} marginBottom={1} >
+    <Box>
       <Text>
         <Text dimColor>{labelGrp} </Text>
         <Text bold>{counters.groups}</Text>

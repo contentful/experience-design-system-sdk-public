@@ -1973,8 +1973,8 @@ describe('FieldEditor — discoverability footer (s source, h help)', () => {
       />,
     );
     const frame = lastFrame() ?? '';
-    expect(frame).toMatch(/s source/);
-    expect(frame).toMatch(/h help/);
+    expect(frame).toMatch(/\[s\] source/);
+    expect(frame).toMatch(/\[h\] help/);
   });
 });
 
@@ -2249,8 +2249,8 @@ describe('FieldEditor - legend documents i and I keys', () => {
       />,
     );
     const out = lastFrame() ?? '';
-    expect(out).toMatch(/i\s+prop rationale|i prop rationale/);
-    expect(out).toMatch(/I\s+component rationale|I component rationale/);
+    expect(out).toMatch(/\[i\]\s+prop rationale/);
+    expect(out).toMatch(/\[I\]\s+component rationale/)
   });
 
   it('help overlay documents I for component rationale and clarifies i for prop rationale', async () => {

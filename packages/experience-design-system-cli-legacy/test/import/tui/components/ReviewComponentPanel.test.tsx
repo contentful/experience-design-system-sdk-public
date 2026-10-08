@@ -1,10 +1,17 @@
 import { render } from 'ink-testing-library';
-import { Text } from 'ink';
+import React from 'react';
+import { Box, Text } from 'ink';
 import { describe, expect, it, vi } from 'vitest';
 import { ReviewComponentPanel } from '../../../../src/import/tui/components/ReviewComponentPanel.js';
 
 vi.mock('../../../../src/import/tui/components/ReviewDetailsEditor.js', () => ({
-  ReviewDetailsEditor: ({ selectedKey }: { selectedKey: string }) => <Text>{`editor:${selectedKey}`}</Text>,
+  // The real editor draws `header` inside its box above the rows; mirror that here.
+  ReviewDetailsEditor: ({ selectedKey, header }: { selectedKey: string; header?: React.ReactNode }) => (
+    <Box flexDirection="column">
+      {header}
+      <Text>{`editor:${selectedKey}`}</Text>
+    </Box>
+  ),
 }));
 
 const REVIEW_EDITOR = {

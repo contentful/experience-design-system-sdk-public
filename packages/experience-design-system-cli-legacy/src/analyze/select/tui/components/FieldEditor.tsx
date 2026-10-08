@@ -56,6 +56,9 @@ export type FieldEditorProps = {
   initialFocusTarget?: { kind: 'description' } | { kind: 'prop' | 'slot'; name: string };
   showHiddenProps?: boolean;
   showInlineRationales?: boolean;
+  /** Pinned inside the box above the rows, in row and field-edit modes. Counts as `headerHeight` rows. */
+  header?: React.ReactNode;
+  headerHeight?: number;
 };
 
 type FocusLevel = 'section' | 'prop' | 'slot' | 'field' | 'componentDescription';
@@ -1067,6 +1070,8 @@ export function FieldEditor({
   initialFocusTarget,
   showHiddenProps = true,
   showInlineRationales = true,
+  header,
+  headerHeight = 2,
 }: FieldEditorProps): React.ReactElement {
   const { state: initialState, error: parseError } = parseToState(value);
 
@@ -2020,7 +2025,7 @@ export function FieldEditor({
     return `${base}-${selected ? 'selected' : 'normal'}`;
   };
   const rowHeight = (row: Row, index: number): number => rowHeights[rowKey(row, index)] ?? 1;
-  const contentHeight = Math.max(1, height - 2 - (hasEmptyProperties ? 1 : 0) - 1);
+  const contentHeight = Math.max(1, height - 2 - (hasEmptyProperties ? 1 : 0) - 1 - (header ? headerHeight : 0));
   const visibleEnd = (start: number): number => {
     if (focusLevel === 'field') return Math.min(rows.length, start + 1);
     let used = 0;
@@ -2199,6 +2204,8 @@ export function FieldEditor({
           }
         </Text>
       )}
+
+      {header}
 
       <Box flexDirection="column" width={innerWidth} flexShrink={0}>
         {focusLevel === 'field' && !inComponentDesc && currentProp ? (
