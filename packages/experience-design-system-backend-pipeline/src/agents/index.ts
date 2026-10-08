@@ -13,6 +13,17 @@ export { buildArgs } from './helpers/build-agent-args.js';
 export { describeAgentFailure } from './helpers/describe-agent-failure.js';
 export { extractSentinelOutput } from './helpers/extract-sentinel-output.js';
 export { formatGenerateProgressLine } from './helpers/format-generate-progress-line.js';
+export { parseAgentModel, type ParsedAgentModel } from './helpers/parse-agent-model.js';
+export { resolveAgent } from './helpers/resolve-agent.js';
+export { resolveModel } from './helpers/resolve-model.js';
+export { looksLikePath } from './helpers/looks-like-path.js';
+export {
+  parsePromptOverrides,
+  type PromptOverride,
+  type ParsePromptOverridesResult,
+} from './helpers/parse-prompt-overrides.js';
+export { resolvePromptOverride } from './helpers/resolve-prompt-override.js';
+export { buildUserAgent } from './helpers/build-user-agent.js';
 
 // --- Parsers (agent stdout → structured tool calls) ---
 export { parseSelectToolCalls } from './parsers/parse-select-tool-calls.js';
@@ -24,6 +35,10 @@ export { parseMapTokenPropToolCalls } from './parsers/parse-map-token-prop-tool-
 export { runAgent } from './services/run-agent.js';
 export type { RunAgentOptions } from './services/run-agent.js';
 export { checkAgentAuth } from './services/check-agent-auth.js';
+export { invokeAgentWithOutput, type InvokeAgentWithOutputResult } from './services/invoke-agent-with-output.js';
+
+// --- Output formatter (streaming agent stdout → human-readable lines) ---
+export { OutputFormatter, formatToolCall } from './output-formatter/index.js';
 
 // --- Invoker (AgentInvoker interface implementations) ---
 export { createLocalCliAgentInvoker } from './invoker/create-local-cli-agent-invoker.js';

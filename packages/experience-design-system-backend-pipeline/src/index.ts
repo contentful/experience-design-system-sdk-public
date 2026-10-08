@@ -113,6 +113,24 @@ export { stripLambdaLogPrefix } from './steps/apply/src/helpers/edsi-errors/stri
 // Apply — token file reading
 export { readTokensFromPath } from './steps/apply/src/controller/read-tokens-from-path.js';
 
+// Agents — resolution + prompt overrides + user agent + output formatter
+export {
+  parseAgentModel,
+  type ParsedAgentModel,
+  resolveAgent,
+  resolveModel,
+  parsePromptOverrides,
+  type PromptOverride,
+  type ParsePromptOverridesResult,
+  resolvePromptOverride,
+  looksLikePath,
+  buildUserAgent,
+  invokeAgentWithOutput,
+  type InvokeAgentWithOutputResult,
+  OutputFormatter,
+  formatToolCall,
+} from './agents/index.js';
+
 // Persistence
 export { collectFiles, openSession, generateSessionId } from './persistence/index.js';
 export type { OpenSessionOptions, SelectionDecision, SessionHandle } from './persistence/index.js';
