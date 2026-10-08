@@ -298,12 +298,7 @@ function InlinePropField({
 }): React.ReactElement {
   return (
     <Box width={width} gap={1} flexShrink={flexible ? 1 : 0} flexGrow={flexible ? 1 : 0} flexWrap="wrap">
-      <Text
-        color={focused ? PALETTE.warning : undefined}
-        bold={focused}
-        dimColor={!focused}
-        wrap="truncate-end"
-      >
+      <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused} wrap="truncate-end">
         {focused ? '› ' : '  '}
         {label}
       </Text>
