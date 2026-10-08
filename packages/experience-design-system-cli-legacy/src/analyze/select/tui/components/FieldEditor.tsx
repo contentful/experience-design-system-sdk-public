@@ -1966,7 +1966,7 @@ export function FieldEditor({
     if (rationaleOpen) {
       return '↑↓/Ctrl+u/d scroll  i/Esc close  rationale panel';
     }
-    return `↑↓ navigate rows  Enter edit fields  s source  ${propRationaleKey} prop rationale  ${componentRationaleKey} component rationale  h help  Esc exit panel`;
+    return `[↑↓] navigate rows  [Enter] edit fields  [s] source  [${propRationaleKey}] prop rationale  [${componentRationaleKey}] component rationale  [h] help  [Esc] exit panel`;
   })();
 
   type Row =
