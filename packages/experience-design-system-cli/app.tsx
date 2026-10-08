@@ -74,7 +74,6 @@ function App({ onLaunchImport, importExitCode }: AppProps): React.ReactElement {
         <TokenInputScreen
           initialPath={importDefaults.tokenFile}
           onConfirm={(tokens) => onLaunchImport?.({ project: projectPath, tokens })}
-          onSkip={() => onLaunchImport?.({ project: projectPath })}
           onBack={() => setProjectPath(undefined)}
         />
       );
