@@ -13,6 +13,30 @@ export function stripUnsupportedSlotFields(entry: CDFComponentEntry): CDFCompone
   return { ...entry, $slots: cleaned };
 }
 
+const COLLISION_LEAF_KEY = 'default';
+
+/** A token path that is also the parent of other token paths cannot be both
+ * in a nested tree, so the leaf moves to a `default` child (suffixed with `_`
+ * until it is unique). */
+function resolveTokenPathCollisions(
+  tokens: Array<{ path: string; entry: CDFTokenEntry }>,
+): Array<{ path: string; entry: CDFTokenEntry }> {
+  const taken = new Set(tokens.map((token) => token.path));
+  const parents = new Set<string>();
+  for (const path of taken) {
+    const segments = path.split('.');
+    for (let i = 1; i < segments.length; i += 1) parents.add(segments.slice(0, i).join('.'));
+  }
+  return tokens.map((token) => {
+    if (!parents.has(token.path)) return token;
+    let key = COLLISION_LEAF_KEY;
+    while (taken.has(`${token.path}.${key}`)) key += '_';
+    const path = `${token.path}.${key}`;
+    taken.add(path);
+    return { path, entry: token.entry };
+  });
+}
+
 /** A CDF document — the single file/wire payload for both components and
  * design tokens. There is no separate manifest envelope. */
 export interface CDFDocument {
@@ -31,7 +55,7 @@ export function buildCDF(
   for (const { key, entry } of components) {
     setAtPath(doc, key, stripUnsupportedSlotFields(entry));
   }
-  for (const { path, entry } of tokens) {
+  for (const { path, entry } of resolveTokenPathCollisions(tokens)) {
     setAtPath(doc, path, entry);
   }
   return doc;
