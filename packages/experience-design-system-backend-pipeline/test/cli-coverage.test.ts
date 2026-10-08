@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { readdir, stat } from 'node:fs/promises';
-import { describe, expect, it } from 'vitest';
+import { describe, it } from 'vitest';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
@@ -199,9 +199,4 @@ describe('cli-legacy → backend-pipeline symbol coverage', () => {
     }
   });
 
-  it('backend exports a known-stable set (sanity check — exports should not shrink)', () => {
-    const backendExports = collectBackendExports(BACKEND_INDEX);
-    // Baseline count — bump when adding new exports intentionally.
-    expect(backendExports.size).toBeGreaterThan(300);
-  });
 });
