@@ -58,8 +58,8 @@ export function FinalizeDialog({
 
   return (
     <Box width="100%" justifyContent="center">
-      <Box flexDirection="column" borderStyle="round" padding={1} width={58}>
-        <Text bold>{'─'.repeat(17) + ' Finalize ' + '─'.repeat(17)}</Text>
+      <Box flexDirection="column" alignItems="center" borderStyle="round" padding={1} width={58}>
+        <Text bold>{'─'.repeat(22) + ' Finalize ' + '─'.repeat(22)}</Text>
         <Text> </Text>
         <Text>
           <Text color={PALETTE.success}>{accepted} accepted</Text>
@@ -75,7 +75,7 @@ export function FinalizeDialog({
               {'⚠ No components are accepted — nothing will be pushed.'}
             </Text>
             <Text color={PALETTE.warning}>
-              {'  Accept at least one component ([a] a row, [A] accept all) to push.'}
+              {'Accept at least one component ([a] a row, [A] accept all) to push.'}
             </Text>
             <Text> </Text>
           </>
@@ -85,7 +85,7 @@ export function FinalizeDialog({
             <Text color={PALETTE.warning}>
               {'⚠ ' + needsReview + ' unresolved component' + (needsReview === 1 ? '' : 's') + ' will not be pushed.'}
             </Text>
-            <Text color={PALETTE.warning}>{'  Only explicitly accepted components ship.'}</Text>
+            <Text color={PALETTE.warning}>{'Only explicitly accepted components ship.'}</Text>
             <Text> </Text>
           </>
         )}
@@ -104,14 +104,14 @@ export function FinalizeDialog({
             <Text bold color={PALETTE.error}>
               {removedComponentsHeader(removed.length, false)}
             </Text>
-            {hasMoreAbove && <Text dimColor>{'  ↑ more above'}</Text>}
+            {hasMoreAbove && <Text dimColor>{'↑ more above'}</Text>}
             {windowed.map((rc) => (
               <Text key={rc.id} color={PALETTE.error}>
                 {removedComponentLine(rc)}
               </Text>
             ))}
-            {hasMoreBelow && <Text dimColor>{'  ↓ more below'}</Text>}
-            {removed.length > FINALIZE_REMOVED_WINDOW && <Text dimColor>{'  [↑↓] scroll deletions'}</Text>}
+            {hasMoreBelow && <Text dimColor>{'↓ more below'}</Text>}
+            {removed.length > FINALIZE_REMOVED_WINDOW && <Text dimColor>{'[↑↓] scroll deletions'}</Text>}
             <Text> </Text>
           </>
         )}
@@ -123,7 +123,7 @@ export function FinalizeDialog({
               : 'Save decisions and exit?'}
         </Text>
         <Text> </Text>
-        <Text>{'  [y / Enter]  Confirm    [n / Esc]  Cancel'}</Text>
+        <Text>{'[y / Enter]  Confirm    [n / Esc]  Cancel'}</Text>
       </Box>
     </Box>
   );

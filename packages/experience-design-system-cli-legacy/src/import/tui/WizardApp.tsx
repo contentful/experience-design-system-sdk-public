@@ -2186,8 +2186,8 @@ export function WizardApp({
             successMessage="Existing tokens.json found"
             summary={
               state.tokenSourceChanged
-                ? `Source file has been modified since tokens were last generated.\n  ${state.tokensPath}`
-                : `Source file has not changed since tokens were last generated.\n  ${state.tokensPath}`
+                ? `Source file has been modified since tokens were last generated.\n${state.tokensPath}`
+                : `Source file has not changed since tokens were last generated.\n${state.tokensPath}`
             }
             context={
               state.tokenSourceChanged ? 'The source tokens file changed — regenerating is recommended.' : undefined
