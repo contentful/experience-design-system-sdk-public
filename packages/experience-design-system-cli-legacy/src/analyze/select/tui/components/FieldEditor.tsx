@@ -298,7 +298,12 @@ function InlinePropField({
 }): React.ReactElement {
   return (
     <Box width={width} gap={1} flexShrink={flexible ? 1 : 0} flexGrow={flexible ? 1 : 0} flexWrap="wrap">
-      <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused} wrap="truncate-end">
+      <Text
+        color={focused ? PALETTE.warning : undefined}
+        bold={focused}
+        dimColor={!focused}
+        wrap="truncate-end"
+      >
         {focused ? '› ' : '  '}
         {label}
       </Text>
@@ -562,6 +567,7 @@ function DescriptionField({
   compact?: boolean;
   paddingLeft?: number;
 }): React.ReactElement {
+  const cursor = cursorVisible ? '█' : ' ';
   if (compact) {
     return (
       <Box gap={1} flexWrap="wrap" width={width} flexShrink={0}>
@@ -582,7 +588,7 @@ function DescriptionField({
         {label}
       </Text>
       {editing ? (
-        <EditableDescription cursorVisible={cursorVisible} value={value} textCursor={textCursor} />
+        <EditableDescription cursor={cursor} cursorVisible={cursorVisible} value={value} textCursor={textCursor} />
       ) : (
         <Text wrap="wrap">{value || '—'}</Text>
       )}
@@ -591,10 +597,12 @@ function DescriptionField({
 }
 
 function EditableDescription({
+  cursor,
   cursorVisible,
   value,
   textCursor,
 }: {
+  cursor: string;
   cursorVisible: boolean;
   value: string;
   textCursor: number;
@@ -1943,25 +1951,25 @@ export function FieldEditor({
 
   const modeLabel = (() => {
     if (editingValue) {
-      return editingValue.mode === 'add' ? 'Enter to add · Esc to cancel' : 'Enter to save edit · Esc to cancel';
+      return editingValue.mode === 'add' ? 'Enter to add · [Esc] to cancel' : 'Enter to save edit · [Esc] to cancel';
     }
     if (focusLevel === 'field' && editingField && activeField === 'description') {
-      return 'Type to edit  ←→ cursor  ↑↓ cycle field  Esc row  Enter save';
+      return 'Type to edit  [←→] cursor  [↑↓] cycle field  [Esc] back  [Enter] save';
     }
     if (focusLevel === 'field' && editingField && (activeField === 'type' || activeField === 'tokenKind')) {
-      return '←→ cycle value  ↑↓/←→ cycle field  Esc row';
+      return '[←→] cycle value  [↑↓]/[←→] cycle field  [Esc] back  [Enter] save';
     }
     if (focusLevel === 'field' && editingField && activeField === 'required') {
-      return 'Space toggle  Enter save  Esc back';
+      return '[Space] toggle  [Enter] save  [Esc] back';
     }
     if (focusLevel === 'field' && editingField && (activeField === 'values' || activeField === 'allowedComponents')) {
-      return '[a]dd  [e]dit  [r]emove  ↑↓ navigate  Shift+↑/↓ reorder  Esc row';
+      return '[a] add  [e] edit  [r] remove  [↑↓] navigate  [Shift+↑/↓] reorder  [Esc] back';
     }
     if (focusLevel === 'field' && !editingField) {
-      return '↑↓/←→ navigate fields  Enter edit  Esc back';
+      return '[↑↓/←→] navigate fields  [Enter] edit  [Esc] back';
     }
     if (rationaleOpen) {
-      return '↑↓/Ctrl+u/d scroll  i/Esc close  rationale panel';
+      return '[↑↓] scroll  [i/Esc] close rationale panel';
     }
     return `[↑↓] navigate rows  [Enter] edit fields  [s] source  [${propRationaleKey}] prop rationale  [${componentRationaleKey}] component rationale  [h] help  [Esc] exit panel`;
   })();
