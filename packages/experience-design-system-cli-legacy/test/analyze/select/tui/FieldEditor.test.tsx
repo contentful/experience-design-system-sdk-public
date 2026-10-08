@@ -86,10 +86,10 @@ const tick = () => new Promise((r) => setTimeout(r, 30));
 async function navigateToValuesField(stdin: { write: (data: string) => void }): Promise<void> {
   stdin.write('\r');
   await tick();
-  stdin.write('j');
-  await tick();
-  stdin.write('j');
-  await tick();
+  for (let i = 0; i < 3; i += 1) {
+    stdin.write('j');
+    await tick();
+  }
   stdin.write('\r');
   await tick();
 }
@@ -195,7 +195,7 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
     expect(lastFrame() ?? '').toMatch(/cycle/);
   });
 
-  it('navigates type → required → default → description via j', async () => {
+  it('navigates description → required → type → default via j', async () => {
     const { stdin, lastFrame } = render(
       <FieldEditor
         value={STRING_COMPONENT}
@@ -216,9 +216,15 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
 
     stdin.write('j');
     await tick();
+    stdin.write('j');
+    await tick();
     expect(lastFrame() ?? '').toMatch(/default:/);
 
-    stdin.write('j');
+    stdin.write('k');
+    await tick();
+    stdin.write('k');
+    await tick();
+    stdin.write('k');
     await tick();
     stdin.write('\r');
     await tick();
@@ -266,12 +272,6 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
     );
     stdin.write('\r');
     await tick();
-    stdin.write('j');
-    await tick();
-    stdin.write('j');
-    await tick();
-    stdin.write('j');
-    await tick();
     stdin.write('\r');
     await tick();
     stdin.write('j');
@@ -295,12 +295,6 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
       />,
     );
     stdin.write('\r');
-    await tick();
-    stdin.write('j');
-    await tick();
-    stdin.write('j');
-    await tick();
-    stdin.write('j');
     await tick();
     stdin.write('\r');
     await tick();
@@ -351,6 +345,10 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
     );
     stdin.write('\r');
     await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('j');
+    await tick();
     stdin.write('\r');
     await tick();
     for (let i = 0; i < 6; i += 1) {
@@ -359,7 +357,8 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
     }
     stdin.write('\r');
     await tick();
-    for (let i = 0; i < 5; i += 1) {
+    // type → kind → default → allowed
+    for (let i = 0; i < 3; i += 1) {
       stdin.write('\x1b[B');
       await tick();
     }
@@ -455,9 +454,14 @@ describe('FieldEditor — prop category grouping', () => {
       />,
     );
 
-    const enterAndAssert = async (expected: string) => {
+    // Props land on description: j×2 reaches type. Slots land on description: j×1 reaches required.
+    const enterAndAssert = async (expected: string, steps = 2) => {
       stdin.write('\r');
       await tick();
+      for (let i = 0; i < steps; i += 1) {
+        stdin.write('j');
+        await tick();
+      }
       stdin.write('\r');
       await tick();
       expect(lastFrame() ?? '').toContain(expected);
@@ -468,10 +472,15 @@ describe('FieldEditor — prop category grouping', () => {
     };
 
     await enterAndAssert('‹string›');
-    for (const expected of ['‹token›', 'toggle', '‹boolean›', '‹string›']) {
+    for (const [expected, steps] of [
+      ['‹token›', 2],
+      ['toggle', 1],
+      ['‹boolean›', 2],
+      ['‹string›', 2],
+    ] as const) {
       stdin.write('j');
       await tick();
-      await enterAndAssert(expected);
+      await enterAndAssert(expected, steps);
     }
   });
 
@@ -725,7 +734,7 @@ describe('FieldEditor — active prop gating', () => {
 });
 
 describe('FieldEditor — field-nav cycling at edges (Bug 2)', () => {
-  it('j at description (last field) cycles back to type (first field, same prop) [category removed]', async () => {
+  it('j at default (last field) cycles back to description (first field, same prop) [category removed]', async () => {
     const { stdin, lastFrame } = render(
       <FieldEditor
         value={STRING_COMPONENT}
@@ -738,22 +747,20 @@ describe('FieldEditor — field-nav cycling at edges (Bug 2)', () => {
     );
     stdin.write('\r');
     await tick();
-    stdin.write('j');
-    await tick();
-    stdin.write('j');
-    await tick();
-    stdin.write('j');
-    await tick();
+    for (let i = 0; i < 3; i += 1) {
+      stdin.write('j');
+      await tick();
+    }
     expect(lastFrame() ?? '').toMatch(/navigate fields/);
     stdin.write('j');
     await tick();
     expect(lastFrame() ?? '').toMatch(/navigate fields/);
     stdin.write('\r');
     await tick();
-    expect(lastFrame() ?? '').toMatch(/cycle value/);
+    expect(lastFrame() ?? '').toMatch(/Type to edit/);
   });
 
-  it('arrow-up at type (first field) cycles to description (last field, same prop)', async () => {
+  it('arrow-up at description (first field) cycles to default (last field, same prop)', async () => {
     const { stdin, lastFrame } = render(
       <FieldEditor
         value={STRING_COMPONENT}
@@ -771,10 +778,10 @@ describe('FieldEditor — field-nav cycling at edges (Bug 2)', () => {
     expect(lastFrame() ?? '').toMatch(/navigate fields/);
     stdin.write('\r');
     await tick();
-    expect(lastFrame() ?? '').toMatch(/Type to edit/);
+    expect(lastFrame() ?? '').not.toMatch(/Type to edit/);
   });
 
-  it('k at type (first field) cycles to description (last field, same prop)', async () => {
+  it('k at description (first field) cycles to default (last field, same prop)', async () => {
     const { stdin, lastFrame } = render(
       <FieldEditor
         value={STRING_COMPONENT}
@@ -792,10 +799,10 @@ describe('FieldEditor — field-nav cycling at edges (Bug 2)', () => {
     expect(lastFrame() ?? '').toMatch(/navigate fields/);
     stdin.write('\r');
     await tick();
-    expect(lastFrame() ?? '').toMatch(/Type to edit/);
+    expect(lastFrame() ?? '').not.toMatch(/Type to edit/);
   });
 
-  it('arrow-down inside description cycles to first field (type) instead of moving to next row', async () => {
+  it('arrow-down at the last field cycles to the first field (description) instead of moving to next row', async () => {
     const value = JSON.stringify(
       {
         Card: {
@@ -814,18 +821,16 @@ describe('FieldEditor — field-nav cycling at edges (Bug 2)', () => {
     );
     stdin.write('\r');
     await tick();
-    stdin.write('j');
-    await tick();
-    stdin.write('j');
-    await tick();
-    stdin.write('j');
-    await tick();
+    for (let i = 0; i < 3; i += 1) {
+      stdin.write('j');
+      await tick();
+    }
     stdin.write('\x1b[B');
     await tick();
     expect(lastFrame() ?? '').toMatch(/navigate fields/);
     stdin.write('\r');
     await tick();
-    expect(lastFrame() ?? '').toMatch(/cycle value/);
+    expect(lastFrame() ?? '').toMatch(/Type to edit/);
   });
 });
 
@@ -932,7 +937,7 @@ describe('FieldEditor — duplicate React-key safety (Bug 1, INTEG-4257)', () =>
 });
 
 describe('FieldEditor — Feature 5: propFields ordering ($default before description)', () => {
-  it('cycle for richtext omits default — j×2 after Return lands on description (no default in cycle)', async () => {
+  it('cycle for richtext omits default — j×3 after Return wraps back to description (no default in cycle)', async () => {
     const RICHTEXT = JSON.stringify(
       {
         Block: {
@@ -949,6 +954,8 @@ describe('FieldEditor — Feature 5: propFields ordering ($default before descri
       <FieldEditor value={RICHTEXT} width={80} height={20} onChange={vi.fn()} onSave={vi.fn()} onDiscard={vi.fn()} />,
     );
     stdin.write('\r');
+    await tick();
+    stdin.write('j');
     await tick();
     stdin.write('j');
     await tick();
@@ -978,10 +985,10 @@ describe('FieldEditor — Feature 5: propFields ordering ($default before descri
     );
     stdin.write('\r');
     await tick();
-    stdin.write('j');
-    await tick();
-    stdin.write('j');
-    await tick();
+    for (let i = 0; i < 3; i += 1) {
+      stdin.write('j');
+      await tick();
+    }
     stdin.write('\r');
     await tick();
     expect(lastFrame() ?? '').toMatch(/Type to edit/);
@@ -1026,6 +1033,8 @@ describe('FieldEditor — Feature 5: $default editor per prop type', () => {
     await tick();
     stdin.write('j');
     await tick();
+    stdin.write('j');
+    await tick();
     stdin.write('\r');
     await tick();
     stdin.write('H');
@@ -1055,6 +1064,8 @@ describe('FieldEditor — Feature 5: $default editor per prop type', () => {
       <FieldEditor value={BOOL} width={80} height={20} onChange={onChange} onSave={vi.fn()} onDiscard={vi.fn()} />,
     );
     stdin.write('\r');
+    await tick();
+    stdin.write('j');
     await tick();
     stdin.write('j');
     await tick();
@@ -1092,8 +1103,6 @@ describe('FieldEditor — Feature 5: $default editor per prop type', () => {
       />,
     );
     stdin.write('\r');
-    await tick();
-    stdin.write('\x1b[A');
     await tick();
     stdin.write('\x1b[A');
     await tick();
@@ -1142,8 +1151,10 @@ describe('FieldEditor — Feature 5: $allowedComponents per-slot editor', () => 
   async function navigateToAllowedComponents(stdin: { write: (data: string) => void }): Promise<void> {
     stdin.write('\r');
     await tick();
-    stdin.write('j');
-    await tick();
+    for (let i = 0; i < 2; i += 1) {
+      stdin.write('j');
+      await tick();
+    }
     stdin.write('\r');
     await tick();
   }
@@ -1271,13 +1282,15 @@ describe('FieldEditor — Feature 5: $allowedComponents per-slot editor', () => 
     expect(lastFrame() ?? '').toContain('(any)');
   });
 
-  it('SLOT_FIELDS cycle: required → allowedComponents (down arrow); description reachable via wrap', async () => {
+  it('SLOT_FIELDS cycle: description → required → allowedComponents (down arrow); description reachable via wrap', async () => {
     const { stdin, lastFrame } = render(
       <FieldEditor value={CONTAINER} width={80} height={25} onChange={vi.fn()} onSave={vi.fn()} onDiscard={vi.fn()} />,
     );
     stdin.write('\r');
     await tick();
     expect(lastFrame() ?? '').toMatch(/navigate fields/);
+    stdin.write('\x1b[B');
+    await tick();
     stdin.write('\x1b[B');
     await tick();
     stdin.write('\r');
@@ -1297,7 +1310,9 @@ describe('FieldEditor — Feature 5: $allowedComponents per-slot editor', () => 
     const { stdin, lastFrame } = render(
       <FieldEditor value={CONTAINER} width={80} height={25} onChange={onChange} onSave={vi.fn()} onDiscard={vi.fn()} />,
     );
-    stdin.write('\r'); // enter fields on the slot → 'required'
+    stdin.write('\r'); // enter fields on the slot → 'description'
+    await tick();
+    stdin.write('\x1b[B'); // down → 'required'
     await tick();
     stdin.write('\x1b[B'); // down → 'allowedComponents' (values-nav; cursor lands at top)
     await tick();
@@ -1487,10 +1502,6 @@ describe('FieldEditor — Feature 5: parseToState round-trip ($default, $allowed
     );
     stdin.write('\r');
     await tick();
-    stdin.write('j');
-    await tick();
-    stdin.write('j');
-    await tick();
     stdin.write('\r');
     await tick();
     // onChange only fires on an edit, so type and delete a character to force a serialize.
@@ -1530,10 +1541,6 @@ describe('FieldEditor — Feature 5: parseToState round-trip ($default, $allowed
     );
     stdin.write('\r');
     await tick();
-    stdin.write('j');
-    await tick();
-    stdin.write('j');
-    await tick();
     stdin.write('\r');
     await tick();
     stdin.write(' ');
@@ -1567,10 +1574,6 @@ describe('FieldEditor — Feature 5: parseToState round-trip ($default, $allowed
       <FieldEditor value={FIXTURE} width={80} height={30} onChange={onChange} onSave={vi.fn()} onDiscard={vi.fn()} />,
     );
     stdin.write('\r');
-    await tick();
-    stdin.write('j');
-    await tick();
-    stdin.write('j');
     await tick();
     stdin.write('\r');
     await tick();
@@ -2369,8 +2372,10 @@ describe('FieldEditor — INTEG-4401: picker render + input (render)', () => {
   async function navigateAndPressAdd(stdin: { write: (data: string) => void }): Promise<void> {
     stdin.write('\r');
     await new Promise((r) => setTimeout(r, 30));
-    stdin.write('j');
-    await new Promise((r) => setTimeout(r, 30));
+    for (let i = 0; i < 2; i += 1) {
+      stdin.write('j');
+      await new Promise((r) => setTimeout(r, 30));
+    }
     stdin.write('\r');
     await new Promise((r) => setTimeout(r, 30));
     stdin.write('a');
@@ -2625,8 +2630,10 @@ describe('FieldEditor — INTEG-4401: cycle existing $allowedComponents entries 
   async function navigateToAllowedComponentsRow(stdin: { write: (data: string) => void }): Promise<void> {
     stdin.write('\r');
     await new Promise((r) => setTimeout(r, 30));
-    stdin.write('j');
-    await new Promise((r) => setTimeout(r, 30));
+    for (let i = 0; i < 2; i += 1) {
+      stdin.write('j');
+      await new Promise((r) => setTimeout(r, 30));
+    }
     stdin.write('\r');
     await new Promise((r) => setTimeout(r, 30));
   }
