@@ -1,44 +1,18 @@
 import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Command } from 'commander';
-import { extractWatchFlag, runDevWatch } from './src/dev/run-watch.js';
-import { forwardedImportArgs } from './src/legacy/forwarded-import-args.js';
-import { runLegacy } from './src/legacy/run-legacy.js';
+import { registerForwardedCommands } from './src/commands/forwarded.js';
+import { registerImportCommand } from './src/commands/import.js';
+import { findPackageRoot } from './src/tui/package-root.js';
 
-const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+const pkg = JSON.parse(
+  readFileSync(
+    join(findPackageRoot(import.meta.url, '@contentful/experience-design-system-cli'), 'package.json'),
+    'utf8',
+  ),
+) as {
   version: string;
 };
-
-const FORWARDED_COMMANDS = [
-  {
-    name: 'apply',
-    description: 'Apply a CDF file of components and design tokens to Contentful',
-  },
-  {
-    name: 'setup',
-    description: 'Configure prerequisites, credentials and the coding agent',
-  },
-  { name: 'doctor', description: 'Check prerequisites and configuration' },
-  { name: 'print', hidden: true },
-  { name: 'map', hidden: true },
-  { name: '__extract', hidden: true },
-  { name: '__generate', hidden: true },
-] as const;
-
-function registerForwardedCommands(program: Command): void {
-  for (const entry of FORWARDED_COMMANDS) {
-    const hidden = 'hidden' in entry;
-    const command = program.command(entry.name, { hidden });
-    if (!hidden) command.description(entry.description);
-    command
-      .allowUnknownOption()
-      .allowExcessArguments()
-      .helpOption(false)
-      .argument('[args...]')
-      .action(async () => {
-        process.exit(await runLegacy(process.argv.slice(2)));
-      });
-  }
-}
 
 export function createProgram(): Command {
   const program = new Command()
@@ -46,26 +20,11 @@ export function createProgram(): Command {
     .description('Contentful Experiences design system import CLI')
     .version(pkg.version, '--version', 'Print version number');
 
-  program
-    .command('import', { isDefault: true })
-    .description('Launch the Experiences CLI')
-    .allowUnknownOption()
-    .allowExcessArguments()
-    .helpOption(false)
-    .argument('[args...]')
-    .action(async () => {
-      const { watch, rest: forwarded } = extractWatchFlag(forwardedImportArgs(process.argv.slice(2)));
-      if (watch) {
-        process.exit(await runDevWatch(forwarded));
-      }
-      if (forwarded.length > 0) {
-        process.exit(await runLegacy(['import', ...forwarded]));
-      }
-      const { render } = await import('ink');
-      const { runApp } = await import('./app.js');
-      await runApp(render);
-    });
-
+  registerImportCommand(program, async () => {
+    const { render } = await import('ink');
+    const { runApp } = await import('./app.js');
+    await runApp(render);
+  });
   registerForwardedCommands(program);
 
   return program;
