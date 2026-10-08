@@ -131,6 +131,39 @@ export {
   formatToolCall,
 } from './agents/index.js';
 
+// Generation — Contentful Management client factory
+export { buildContentfulManagementClient } from './steps/generation/src/controller/client/build-contentful-management-client.js';
+
+// Generation — existing-entities fetch, read, summarize
+export { fetchAndPersistExistingContentfulEntities } from './steps/generation/src/controller/existing-entities/fetch-and-persist.js';
+export type {
+  FetchAndPersistExistingEntitiesRequest,
+  FetchAndPersistResult,
+  FetchAndPersistSuccess,
+  FetchAndPersistFailure,
+} from './steps/generation/src/controller/existing-entities/fetch-and-persist.js';
+export { readExistingContentfulEntitiesFromSession } from './steps/generation/src/controller/existing-entities/read-from-session.js';
+export { summarizeForSelect } from './steps/generation/src/controller/existing-entities/summarize-for-select.js';
+export { summarizeForGenerate } from './steps/generation/src/controller/existing-entities/summarize-for-generate.js';
+export { summarizeForMapTokens } from './steps/generation/src/controller/existing-entities/summarize-for-map-tokens.js';
+export type { ExistingContentfulEntities } from './steps/generation/src/types/existing-entities.js';
+export type {
+  SelectAgentSummary,
+  GenerateAgentSummary,
+  MapTokensSummary,
+} from './steps/generation/src/types/summaries.js';
+
+// Generation — token-default resolution (pre-step for map-tokens)
+export { resolveTokenDefaults } from './steps/generation/src/controller/token-defaults/resolve-token-defaults.js';
+export type {
+  RawDesignTokenDefault,
+  DTCGTokenLeaf,
+  ResolveTokenDefaultsResult,
+} from './steps/generation/src/types/token-defaults.js';
+
+// Generation — fuzzy match (public for TUI's reject dialog)
+export { findNearlyMatchingComponent } from './steps/generation/src/helpers/existing-entities/find-nearly-matching-component.js';
+
 // Persistence
 export { collectFiles, openSession, generateSessionId } from './persistence/index.js';
 export type { OpenSessionOptions, SelectionDecision, SessionHandle } from './persistence/index.js';
