@@ -18,7 +18,18 @@ export interface SummarizeForGenerateRequest {
  * existing component (by name) and surfaces its props + slots in short form.
  */
 export function summarizeForGenerate(request: SummarizeForGenerateRequest): GenerateAgentSummary {
-  const { entities, codebaseComponentName } = request;
+  return summarizeForGenerateAgent(request.entities, request.codebaseComponentName);
+}
+
+/**
+ * Legacy positional-args signature used by cli-legacy call sites.
+ * Prefer `summarizeForGenerate({ entities, codebaseComponentName })` in new code.
+ */
+export function summarizeForGenerateAgent(
+  entities: ExistingContentfulEntities,
+  codebaseComponentName: string,
+): GenerateAgentSummary {
+  // Keep original body — one source of truth here, request-object wrapper delegates.
   const match = findNearlyMatchingComponent(entities.components, codebaseComponentName);
   const otherComponents = entities.components
     .filter((c) => c.sys.id !== match?.sys.id)

@@ -82,3 +82,6 @@ export function applyCompositionEdges(
 
   return { components: cloned, warnings };
 }
+
+// Legacy-name alias used by cli-legacy call sites.
+export { applyCompositionEdges as applyMapping };

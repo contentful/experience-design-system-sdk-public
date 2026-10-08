@@ -58,7 +58,12 @@ export {
 export { collectManifestDocEdges } from './steps/composition/src/helpers/edges/manifest-doc-evidence.js';
 export { mergeEdges } from './steps/composition/src/helpers/edges/merge-edges.js';
 export { parseMapEdges } from './steps/composition/src/helpers/edges/parse-map-edges.js';
-export { applyCompositionEdges } from './steps/composition/src/helpers/edges/apply-mapping.js';
+export {
+  applyCompositionEdges,
+  applyMapping, // legacy-name alias
+} from './steps/composition/src/helpers/edges/apply-mapping.js';
+export { resolveMapping } from './steps/composition/src/helpers/edges/resolve-mapping.js';
+export { loadPrompt } from './steps/composition/src/helpers/prompt/prompt-loader.js';
 export { buildCompositionInputHash } from './steps/composition/src/helpers/candidates/composition-cache-key.js';
 export { resolveCompositionSources } from './steps/composition/src/helpers/edges/resolve-composition-sources.js';
 export type {
@@ -85,6 +90,7 @@ export { formatCyclePathSegments } from './steps/composition/src/helpers/cycles/
 export type {
   ComponentGraphNode,
   ComponentGraphInput,
+  ComponentGraphInput as SlotGraphInput, // legacy-name alias
   SlotEdge,
   SlotCycle,
   CyclePathSegment,
@@ -238,8 +244,12 @@ export type {
   FetchAndPersistFailure,
 } from './steps/generation/src/controller/existing-entities/fetch-and-persist.js';
 export { readExistingContentfulEntitiesFromSession } from './steps/generation/src/controller/existing-entities/read-from-session.js';
+export { fetchExistingContentfulEntitiesFromContentful } from './steps/generation/src/helpers/existing-entities/fetch-from-contentful.js';
 export { summarizeForSelect } from './steps/generation/src/controller/existing-entities/summarize-for-select.js';
-export { summarizeForGenerate } from './steps/generation/src/controller/existing-entities/summarize-for-generate.js';
+export {
+  summarizeForGenerate,
+  summarizeForGenerateAgent, // legacy positional-args alias
+} from './steps/generation/src/controller/existing-entities/summarize-for-generate.js';
 export { summarizeForMapTokens } from './steps/generation/src/controller/existing-entities/summarize-for-map-tokens.js';
 export type { ExistingContentfulEntities } from './steps/generation/src/types/existing-entities.js';
 export type {
@@ -382,6 +392,11 @@ export {
   computeComponentInputHash,
   computeTokenInputHash,
   hashContent,
+  hashFile,
+  hashPromptForSkill,
+  getCliCacheVersion,
+  loadDTCGTokens,
+  loadRawTokenNamePathRows,
 } from './persistence/src/index.js';
 export type {
   CacheEntityType,
@@ -419,7 +434,54 @@ export {
   hashTokenContent,
   buildDtcgGroups,
   buildDtcgTokens,
+  escapeForRegExp,
+  excerptAroundNames,
 } from './persistence/src/index.js';
+
+// Persistence — runs ledger (runsFilePath exported above in "config paths")
+export {
+  appendRun,
+  listRuns,
+  getRun,
+  updateRun,
+  buildSourceFingerprint,
+  detectSaveConflict,
+  buildTimestampedSubdir,
+  sha256Hex,
+  generateUlid,
+  RUNS_FILE_VERSION,
+  READABLE_VERSIONS,
+} from './persistence/src/index.js';
+export type {
+  RunRecord,
+  RunsFile,
+  AppendInput,
+  ListOptions,
+  SourceFingerprint,
+  SourceFileEntry,
+  RawComponentsDb,
+} from './persistence/src/index.js';
+
+// Persistence — review-session file I/O (loadAcceptedNames + parsePrecomputedCachedNames
+// are new; the rest were exported earlier in this file)
+export { loadAcceptedNames, parsePrecomputedCachedNames } from './persistence/src/index.js';
 
 // Shared
 export type { CandidateFile } from './steps/shared/index.js';
+
+// Legacy-name alias: storeDTCGTokens (uppercase) used by cli-legacy
+export { storeDtcgTokens as storeDTCGTokens } from './persistence/src/index.js';
+
+// Extraction types — re-exported so the CLI can import from the backend barrel
+// instead of its local cli-legacy/types.ts file.
+export type {
+  RawComponentDefinition,
+  RawPropDefinition,
+  RawSlotDefinition,
+  ExtractionValidationIssue,
+  ExtractionValidationIssueCode,
+  ComponentExtractionResult,
+  ExtractionExclusion,
+  ExtractorProgress,
+} from './steps/extraction/src/types/component.js';
+export { stripScoringFields } from './steps/extraction/src/types/component.js';

@@ -108,7 +108,7 @@ export { storeCDFComponents, loadCDFComponents, loadScopeComponents } from './se
 export type { ScopeComponentRow } from './session/repositories/db.js';
 
 // --- DTCG token storage (read side) ---
-export { loadDTCGTokens } from './session/repositories/db.js';
+export { loadDTCGTokens, loadRawTokenNamePathRows } from './session/repositories/db.js';
 
 // --- Review metadata (DB) ---
 export {
@@ -161,8 +161,12 @@ export type {
   ExtractCacheEntry,
 } from './session/repositories/db.js';
 
-// --- Hashers ---
+// --- Hashers + cache versioning ---
 export { hashContent, hashFile, hashPromptForSkill } from './session/helpers/cache-keys.js';
+export { getCliCacheVersion } from './session/repositories/db.js';
+
+// --- Source excerpt helpers (bounded source windows for prompt building) ---
+export { escapeForRegExp, excerptAroundNames } from './session/helpers/source-excerpt.js';
 
 // --- Slot cycles + slot refs validation ---
 export {
