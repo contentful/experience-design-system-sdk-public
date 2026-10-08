@@ -24,6 +24,33 @@ type DoneStepProps = {
   onExit: () => void;
 };
 
+const ACTIONS = ['created', 'updated', 'removed'] as const;
+
+function EntityRows({ entity, label }: { entity: EntityResult; label: string }): React.ReactElement {
+  const plural = (n: number) => `${n} ${label}${n !== 1 ? 's' : ''}`;
+  return (
+    <>
+      {ACTIONS.filter((action) => entity[action] > 0).map((action) => (
+        <Text key={action}>
+          <Text color={PALETTE.success}>✓</Text> {plural(entity[action])} {action}
+        </Text>
+      ))}
+      {entity.failed > 0 && (
+        <Text color={PALETTE.error}>✗ {plural(entity.failed)} failed — check logs above</Text>
+      )}
+    </>
+  );
+}
+
+function LinkRow({ title, url }: { title: string; url: string }): React.ReactElement {
+  return (
+    <Box flexDirection="column">
+      <Text dimColor>{title}</Text>
+      <Text color={PALETTE.link}>{url}</Text>
+    </Box>
+  );
+}
+
 export function DoneStep({
   componentTypes,
   designTokens,
@@ -49,49 +76,7 @@ export function DoneStep({
     designTokens.updated +
     designTokens.removed;
   const success = totalFailed === 0;
-
-  function EntityRows({ entity, label }: { entity: EntityResult; label: string }) {
-    return (
-      <>
-        {entity.created > 0 && (
-          <Box gap={1}>
-            <Text color={PALETTE.success}>✓</Text>
-            <Text>
-              {entity.created} {label}
-              {entity.created !== 1 ? 's' : ''} created
-            </Text>
-          </Box>
-        )}
-        {entity.updated > 0 && (
-          <Box gap={1}>
-            <Text color={PALETTE.success}>✓</Text>
-            <Text>
-              {entity.updated} {label}
-              {entity.updated !== 1 ? 's' : ''} updated
-            </Text>
-          </Box>
-        )}
-        {entity.removed > 0 && (
-          <Box gap={1}>
-            <Text color={PALETTE.success}>✓</Text>
-            <Text>
-              {entity.removed} {label}
-              {entity.removed !== 1 ? 's' : ''} removed
-            </Text>
-          </Box>
-        )}
-        {entity.failed > 0 && (
-          <Box gap={1}>
-            <Text color={PALETTE.error}>✗</Text>
-            <Text color={PALETTE.error}>
-              {entity.failed} {label}
-              {entity.failed !== 1 ? 's' : ''} failed — check logs above
-            </Text>
-          </Box>
-        )}
-      </>
-    );
-  }
+  const urlArgs = { host: host ?? 'api.contentful.com', spaceId, environmentId };
 
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
@@ -106,26 +91,24 @@ export function DoneStep({
       )}
 
       {totalPushed === 0 && totalFailed === 0 && !summary ? (
-        <Box marginTop={1}>
-          <Text dimColor>Nothing was pushed — everything was already up to date.</Text>
-        </Box>
+        <Text dimColor>Nothing was pushed — everything was already up to date.</Text>
       ) : (
-        <Box flexDirection="column" gap={0} marginTop={1}>
+        <Box flexDirection="column">
           <EntityRows entity={componentTypes} label="Component Type" />
           <EntityRows entity={designTokens} label="Design Token" />
           {summary && (
-            <Box gap={1} marginTop={1}>
+            <Box marginTop={1}>
               <Text dimColor>
-                Server: {summary.succeeded}/{summary.total} succeeded
+                Push result: {summary.succeeded}/{summary.total} succeeded
+                {summary.failed > 0 && <Text color={PALETTE.error}>, {summary.failed} failed</Text>}
               </Text>
-              {summary.failed > 0 && <Text color={PALETTE.error}>, {summary.failed} failed</Text>}
             </Box>
           )}
         </Box>
       )}
 
       {failures.length > 0 && (
-        <Box flexDirection="column" marginTop={1}>
+        <Box flexDirection="column">
           <Text bold color={PALETTE.error}>
             Failure details
           </Text>
@@ -140,26 +123,14 @@ export function DoneStep({
       <SpaceEnvironment spaceId={spaceId} environmentId={environmentId} />
 
       {success && totalPushed > 0 && (
-        <Box flexDirection="column" gap={1} marginTop={1}>
+        <Box flexDirection="column" gap={1}>
           <Text color={PALETTE.success}>Your design system is now in Contentful Experiences.</Text>
-          <Box flexDirection="column" gap={0}>
-            <Text dimColor>View your components here:</Text>
-            <Text color={PALETTE.info}>
-              {buildPostPushUrl({ host: host ?? 'api.contentful.com', spaceId, environmentId })}
-            </Text>
-          </Box>
-          <Box flexDirection="column" gap={0}>
-            <Text dimColor>View your design tokens here:</Text>
-            <Text color={PALETTE.info}>
-              {buildPostPushUrl({ host: host ?? 'api.contentful.com', spaceId, environmentId, view: 'design_tokens' })}
-            </Text>
-          </Box>
+          <LinkRow title="View your components here:" url={buildPostPushUrl(urlArgs)} />
+          <LinkRow title="View your design tokens here:" url={buildPostPushUrl({ ...urlArgs, view: 'design_tokens' })} />
         </Box>
       )}
 
-      <Box marginTop={1}>
-        <Text dimColor>[Enter / q] Exit</Text>
-      </Box>
+      <Text dimColor>[Enter / q] Exit</Text>
     </Box>
   );
 }

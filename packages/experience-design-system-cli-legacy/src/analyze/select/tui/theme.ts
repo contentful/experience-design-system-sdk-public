@@ -4,6 +4,7 @@ import { extendTheme, defaultTheme } from '@inkjs/ui';
 
 export const PALETTE = {
   info: '#1773EB',
+  link: '#58A6FF',
   success: '#00C459',
   error: '#E44F20',
   warning: '#FFDA00',
