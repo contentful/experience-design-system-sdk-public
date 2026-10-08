@@ -198,5 +198,4 @@ describe('cli-legacy → backend-pipeline symbol coverage', () => {
       );
     }
   });
-
 });
