@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { Screen } from '../../../app.js';
+import { ControlHints } from '../control-hints.js';
 
 export function SettingsScreen({
   onNavigate,
@@ -48,7 +49,13 @@ export function SettingsScreen({
         </Text>
       ))}
       <Text> </Text>
-      <Text dimColor>[↑/↓] Navigate [Enter] Select [Esc/q] Back to Start</Text>
+      <ControlHints
+        hints={[
+          { keys: '↑/↓', label: 'move' },
+          { keys: '⏎', label: 'select' },
+          { keys: 'Esc/q', label: 'back' },
+        ]}
+      />
     </Box>
   );
 }

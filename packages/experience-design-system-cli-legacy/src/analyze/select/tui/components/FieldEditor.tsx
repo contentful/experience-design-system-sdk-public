@@ -272,14 +272,10 @@ function Picker({ value, active }: { value: string; active: boolean }): React.Re
   );
 }
 
-function categorySwitchTarget(category: PropState['category']): 'content' | 'design' {
-  return category === 'content' ? 'design' : 'content';
-}
-
 function Toggle({ value, active }: { value: boolean; active: boolean }): React.ReactElement {
   return (
     <Box>
-      <Text color={active ? PALETTE.info : value ? PALETTE.success : undefined}>{value ? '[✓]' : '[ ]'}</Text>
+      <Text color={active ? PALETTE.info : value ? PALETTE.success : PALETTE.border}>{value ? '[✓]' : '[ ]'}</Text>
     </Box>
   );
 }
@@ -315,6 +311,26 @@ function InlinePropField({
   );
 }
 
+function RequiredField({
+  value,
+  selected,
+  focused,
+  editingField,
+  activeField,
+}: {
+  value: boolean;
+  selected: boolean;
+  focused: boolean;
+  editingField: boolean;
+  activeField: PropField | SlotField | null;
+}): React.ReactElement {
+  return (
+    <InlinePropField label="req:" selected={selected} focused={focused}>
+      <Toggle value={value} active={editingField && activeField === 'required'} />
+    </InlinePropField>
+  );
+}
+
 function DefaultValueRow({
   display,
   active,
@@ -325,14 +341,14 @@ function DefaultValueRow({
   focused: boolean;
 }): React.ReactElement {
   return (
-    <Box paddingLeft={2} gap={1} flexWrap="wrap" flexShrink={0}>
+    <Box gap={1} flexWrap="wrap" flexShrink={0}>
       <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused}>
         {focused ? '› ' : '  '}default:
       </Text>
       {active ? (
         <Picker value={display} active={true} />
       ) : (
-        <Text color={PALETTE.inverse} wrap="wrap">
+        <Text color={focused ? PALETTE.warning : PALETTE.inverse} wrap="wrap">
           {display}
         </Text>
       )}
@@ -340,16 +356,25 @@ function DefaultValueRow({
   );
 }
 
-function RowLabel({ name, selected }: { name: string; selected: boolean }): React.ReactElement {
-  const nameDisplay = name.length > 14 ? name.slice(0, 13) + '…' : name.padEnd(14);
+function RowLabel({
+  name,
+  selected,
+  trailing = true,
+}: {
+  name: string;
+  selected: boolean;
+  trailing?: boolean;
+}): React.ReactElement {
   return (
     <Text
       color={selected ? PALETTE.inverse : PALETTE.info}
       bold={selected}
       backgroundColor={selected ? 'blue' : undefined}
+      wrap="truncate-end"
     >
       {' '}
-      {nameDisplay}{' '}
+      {name}
+      {trailing ? ' ' : ''}
     </Text>
   );
 }
@@ -466,11 +491,11 @@ function DefaultSubRow({
   const cursor = cursorVisible ? '█' : ' ';
   if (prop.type === 'richtext' || prop.type === 'media' || prop.type === 'link') {
     return (
-      <Box paddingLeft={2} gap={1} flexShrink={0}>
+      <Box gap={1} flexShrink={0}>
         <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused}>
           {focused ? '› ' : '  '}default:
         </Text>
-        <Text dimColor>(not applicable)</Text>
+        <Text dimColor={!focused}>(not applicable)</Text>
       </Box>
     );
   }
@@ -483,11 +508,11 @@ function DefaultSubRow({
   if (prop.type === 'enum') {
     if (prop.values.length === 0) {
       return (
-        <Box paddingLeft={2} gap={1} flexShrink={0}>
+        <Box gap={1} flexShrink={0}>
           <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused}>
             {focused ? '› ' : '  '}default:
           </Text>
-          <Text dimColor>(no values defined)</Text>
+          <Text dimColor={!focused}>(no values defined)</Text>
         </Box>
       );
     }
@@ -498,7 +523,7 @@ function DefaultSubRow({
   const value = typeof prop.default === 'string' ? prop.default : '';
   if (active) {
     return (
-      <Box paddingLeft={2} flexDirection="row" flexShrink={0}>
+      <Box flexDirection="row" flexShrink={0}>
         <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused}>
           {focused ? '› ' : '  '}default:
         </Text>
@@ -511,11 +536,11 @@ function DefaultSubRow({
     );
   }
   return (
-    <Box paddingLeft={2} gap={1} flexShrink={0}>
+    <Box gap={1} flexShrink={0}>
       <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused}>
         {focused ? '› ' : '  '}default:
       </Text>
-      <Text color={value ? PALETTE.inverse : undefined} dimColor={!value}>
+      <Text color={focused ? PALETTE.warning : value ? PALETTE.inverse : undefined} dimColor={!value && !focused}>
         {value || '(none)'}
       </Text>
     </Box>
@@ -531,6 +556,7 @@ function DescriptionField({
   width,
   label = 'desc:',
   compact = false,
+  paddingLeft = 2,
 }: {
   value: string;
   focused: boolean;
@@ -540,39 +566,33 @@ function DescriptionField({
   width?: number;
   label?: string;
   compact?: boolean;
+  paddingLeft?: number;
 }): React.ReactElement {
   const cursor = cursorVisible ? '█' : ' ';
   if (compact) {
     return (
-      <Box paddingLeft={2} width={width} flexShrink={0}>
-        <Text dimColor>{`  ${label}`}</Text>
-        <Text wrap="truncate-end" color={value ? PALETTE.success : undefined} dimColor={!value}>
-          {` ${value || '—'}`}
+      <Box gap={1} flexWrap="wrap" width={width} flexShrink={0}>
+        <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused}>
+          {focused ? '› ' : '  '}
+          {label}
+        </Text>
+        <Text wrap="truncate-end" dimColor={!value}>
+          {value || '—'}
         </Text>
       </Box>
     );
   }
   return (
-    <Box paddingLeft={2} flexDirection="column" width={width} flexShrink={0}>
+    <Box paddingLeft={paddingLeft} flexDirection="column" width={width} flexShrink={0}>
       <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused}>
         {focused ? '› ' : '  '}
         {label}
       </Text>
-      <Box
-        flexDirection="column"
-        borderStyle="round"
-        borderColor={focused ? PALETTE.info : PALETTE.border}
-        paddingX={1}
-        flexShrink={0}
-      >
-        {editing ? (
-          <EditableDescription cursor={cursor} cursorVisible={cursorVisible} value={value} textCursor={textCursor} />
-        ) : (
-          <Text color={PALETTE.success} wrap="wrap">
-            {value || '—'}
-          </Text>
-        )}
-      </Box>
+      {editing ? (
+        <EditableDescription cursor={cursor} cursorVisible={cursorVisible} value={value} textCursor={textCursor} />
+      ) : (
+        <Text wrap="wrap">{value || '—'}</Text>
+      )}
     </Box>
   );
 }
@@ -633,6 +653,27 @@ function PropRow({
     <Box flexDirection="column" width={width} flexShrink={0}>
       <Box gap={1} flexWrap="wrap" width={width} flexShrink={0}>
         <RowLabel name={prop.name} selected={selected} />
+      </Box>
+
+      <DescriptionField
+        value={prop.description}
+        focused={selected && descFocused}
+        editing={selected && descActive}
+        textCursor={textCursor}
+        cursorVisible={cursorVisible}
+        width={width}
+        compact={!descActive}
+        paddingLeft={0}
+      />
+
+      <Box gap={1} flexWrap="wrap" width={width} flexShrink={0}>
+        <RequiredField
+          value={prop.required}
+          selected={selected}
+          focused={activeField === 'required'}
+          editingField={editingField}
+          activeField={activeField}
+        />
 
         <InlinePropField label="type:" selected={selected} focused={activeField === 'type'}>
           {editingField && activeField === 'type' ? (
@@ -642,28 +683,6 @@ function PropRow({
           )}
         </InlinePropField>
       </Box>
-
-      <InlinePropField
-        label="category:"
-        selected={selected}
-        focused={activeField === 'category'}
-        flexible={editingField && activeField === 'category'}
-        width={width}
-      >
-        {editingField && activeField === 'category' ? (
-          <Text color={selected ? PALETTE.warning : PALETTE.inverse} bold wrap="wrap">
-            {`[Enter] switch to ${categorySwitchTarget(prop.category)} property`}
-          </Text>
-        ) : (
-          <Text color={selected ? PALETTE.warning : PALETTE.inverse} wrap="wrap">
-            {prop.category}
-          </Text>
-        )}
-      </InlinePropField>
-
-      <InlinePropField label="req:" selected={selected} focused={activeField === 'required'} width={width}>
-        <Toggle value={prop.required} active={editingField && activeField === 'required'} />
-      </InlinePropField>
 
       {prop.type === 'token' && (
         <InlinePropField label="kind:" selected={selected} focused={activeField === 'tokenKind'} width={width}>
@@ -678,7 +697,7 @@ function PropRow({
       )}
 
       {prop.type === 'enum' && (
-        <Box paddingLeft={2} flexDirection="column" width={width} flexShrink={0}>
+        <Box gap={1} flexWrap="wrap" width={width} flexShrink={0}>
           <Text
             color={activeField === 'values' ? PALETTE.warning : undefined}
             bold={activeField === 'values'}
@@ -686,11 +705,9 @@ function PropRow({
           >
             {activeField === 'values' ? '› ' : '  '}values:
           </Text>
-          <Box paddingLeft={2} width={Math.max(1, width - 4)}>
-            <Text color={selected ? PALETTE.warning : PALETTE.inverse} wrap="wrap">
-              [{prop.values.join(', ')}]
-            </Text>
-          </Box>
+          <Text color={activeField === 'values' ? PALETTE.warning : selected ? PALETTE.inverse : undefined} wrap="wrap">
+            [{prop.values.join(', ')}]
+          </Text>
         </Box>
       )}
 
@@ -702,18 +719,8 @@ function PropRow({
         cursorVisible={cursorVisible}
       />
 
-      <DescriptionField
-        value={prop.description}
-        focused={selected && descFocused}
-        editing={selected && descActive}
-        textCursor={textCursor}
-        cursorVisible={cursorVisible}
-        width={width}
-        compact={!selected}
-      />
-
       {selected && prop.type === 'token' && prop.category === 'design' && (
-        <Box paddingLeft={2} flexDirection="column" width={width} flexShrink={0}>
+        <Box gap={1} flexWrap="wrap" width={width} flexShrink={0}>
           <Text
             color={activeField === 'allowed' ? PALETTE.warning : undefined}
             bold={activeField === 'allowed'}
@@ -727,8 +734,8 @@ function PropRow({
             </Box>
           ) : (
             <Text
-              color={prop.allowed.length > 0 ? PALETTE.info : undefined}
-              dimColor={prop.allowed.length === 0}
+              color={activeField === 'allowed' ? PALETTE.warning : prop.allowed.length > 0 ? PALETTE.info : undefined}
+              dimColor={prop.allowed.length === 0 && activeField !== 'allowed'}
               wrap="wrap"
             >
               {prop.allowed.length > 0 ? prop.allowed.join(', ') : '(any)'}
@@ -803,14 +810,32 @@ function SlotRow({
   return (
     <Box flexDirection="column" width={width} flexShrink={0}>
       <Box gap={1} flexWrap="wrap" width={width} flexShrink={0}>
-        <RowLabel name={slot.name} selected={selected} />
-        <InlinePropField label="req:" selected={selected} focused={activeField === 'required'} width={width}>
-          <Toggle value={slot.required} active={editingField && activeField === 'required'} />
-        </InlinePropField>
+        <RowLabel name={slot.name} selected={selected} trailing={false} />
       </Box>
 
-      {!selected && (
-        <Box paddingLeft={2} gap={1} flexWrap="wrap">
+      <DescriptionField
+        value={slot.description}
+        focused={selected && activeField === 'description'}
+        editing={selected && editingField && activeField === 'description'}
+        textCursor={textCursor}
+        cursorVisible={cursorVisible}
+        width={width}
+        compact={!(selected && editingField && activeField === 'description')}
+        paddingLeft={0}
+      />
+
+      <Box gap={1} flexWrap="wrap" width={width} flexShrink={0}>
+        <RequiredField
+          value={slot.required}
+          selected={selected}
+          focused={activeField === 'required'}
+          editingField={editingField}
+          activeField={activeField}
+        />
+      </Box>
+
+      {!(selected && editingField && activeField === 'allowedComponents') && (
+        <Box gap={1} flexWrap="wrap" width={width} flexShrink={0}>
           <Text
             color={activeField === 'allowedComponents' ? PALETTE.warning : undefined}
             bold={activeField === 'allowedComponents'}
@@ -818,19 +843,15 @@ function SlotRow({
           >
             {activeField === 'allowedComponents' ? '› ' : '  '}allowed:
           </Text>
-          <Box flexGrow={1}>
-            {slot.allowedComponents.length === 0 ? (
-              <Text dimColor>(any)</Text>
-            ) : (
-              <Text color={PALETTE.info} wrap="wrap">
-                {slot.allowedComponents.join(', ')}
-              </Text>
-            )}
-          </Box>
+          {slot.allowedComponents.length === 0 ? (
+            <Text dimColor>(any)</Text>
+          ) : (
+            <Text wrap="wrap">{slot.allowedComponents.join(', ')}</Text>
+          )}
         </Box>
       )}
-      {selected && (
-        <Box paddingLeft={2} flexDirection="column">
+      {selected && editingField && activeField === 'allowedComponents' && (
+        <Box flexDirection="column">
           <Box>
             <Text
               color={activeField === 'allowedComponents' ? PALETTE.warning : undefined}
@@ -898,27 +919,17 @@ function SlotRow({
             )}
         </Box>
       )}
-
-      <DescriptionField
-        value={slot.description}
-        focused={selected && activeField === 'description'}
-        editing={selected && editingField && activeField === 'description'}
-        textCursor={textCursor}
-        cursorVisible={cursorVisible}
-        width={width}
-        compact={!selected}
-      />
     </Box>
   );
 }
 
-type PropField = 'type' | 'category' | 'required' | 'description' | 'tokenKind' | 'allowed' | 'values' | 'default';
+type PropField = 'type' | 'required' | 'description' | 'tokenKind' | 'allowed' | 'values' | 'default';
 type SlotField = 'required' | 'description' | 'allowedComponents';
 type PropDisplayGroup = 'content' | 'design' | 'hidden';
 type SelectableRow = { kind: 'prop'; idx: number } | { kind: 'slot'; idx: number };
 
 function propFields(prop: PropState): PropField[] {
-  const fields: PropField[] = ['type', 'category', 'required'];
+  const fields: PropField[] = ['type', 'required'];
   if (prop.type === 'token') {
     fields.push('tokenKind');
   }
@@ -1622,16 +1633,6 @@ export function FieldEditor({
         return;
       }
 
-      if (key.return && activeField === 'category' && currentProp) {
-        const next = categorySwitchTarget(currentProp.category);
-        const nextProps = props.map((p, i) => (i === propIdx ? { ...p, category: next } : p));
-        commit({ ...editorState, props: nextProps });
-        setEditingField(false);
-        setActiveField(null);
-        setFocusLevel('prop');
-        return;
-      }
-
       if (key.return) {
         setEditingField(false);
         return;
@@ -1960,9 +1961,6 @@ export function FieldEditor({
     if (focusLevel === 'field' && editingField && (activeField === 'type' || activeField === 'tokenKind')) {
       return '←→ cycle value  ↑↓/←→ cycle field  Esc row';
     }
-    if (focusLevel === 'field' && editingField && activeField === 'category') {
-      return 'Enter switch property group  ↑↓/←→ cycle field  Esc row';
-    }
     if (focusLevel === 'field' && editingField && activeField === 'required') {
       return 'Space toggle  Enter save  Esc back';
     }
@@ -2108,9 +2106,11 @@ export function FieldEditor({
     const key = rowKey(row, index);
     if (row.kind === 'header') {
       return (
-        <Text key={key} bold color={PALETTE.success}>
-          {row.label}
-        </Text>
+        <Box key={key} flexDirection="column" paddingTop={1}>
+          <Text bold color={PALETTE.success}>
+            {row.label}
+          </Text>
+        </Box>
       );
     }
     if (row.kind === 'component-description') {
@@ -2126,7 +2126,8 @@ export function FieldEditor({
           cursorVisible={cursorVisible}
           width={innerWidth}
           label="description:"
-          compact={!isSelected}
+          compact={!isEditing}
+          paddingLeft={0}
         />
       );
     }
@@ -2196,7 +2197,7 @@ export function FieldEditor({
       {...(fixedHeight ? { height } : { minHeight: height })}
       clipOverflow={fixedHeight}
       borderStyle="single"
-      borderColor={hasEmptyProperties ? PALETTE.warning : PALETTE.info}
+      borderColor={hasEmptyProperties ? PALETTE.warning : active ? PALETTE.info : PALETTE.border}
     >
       {hasEmptyProperties && (
         <Text color={PALETTE.warning}>
@@ -2325,7 +2326,9 @@ export function FieldEditor({
         </Box>
       )}
       {validationError && <Text color={PALETTE.error}>{'✗ ' + validationError}</Text>}
-      <Text dimColor>{modeLabel}</Text>
+      <Box paddingTop={1}>
+        <Text dimColor>{modeLabel}</Text>
+      </Box>
     </FixedPanel>
   );
 }

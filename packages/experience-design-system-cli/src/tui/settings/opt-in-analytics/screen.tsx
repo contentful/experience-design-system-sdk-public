@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { PALETTE } from '../../home/home.theme.js';
 import { readAnalyticsSetting, writeAnalyticsSetting } from './analytics-store.js';
+import { startDebugRun, finishDebugRun } from '../../debug-store.js';
+import { ControlHints } from '../../control-hints.js';
 
 export function OptInAnalyticsScreen({ onDone }: { onDone: () => void }): React.ReactElement {
   const [loading, setLoading] = useState(true);
@@ -11,6 +13,12 @@ export function OptInAnalyticsScreen({ onDone }: { onDone: () => void }): React.
     readAnalyticsSetting().then((setting) => {
       setEnabled(setting.enabled);
       setLoading(false);
+      startDebugRun({
+        flow: 'settings/opt-in-analytics',
+        step: '01-opt-in-analytics',
+        menuOption: 'Opt-in Analytics',
+        inputs: { enabled: setting.enabled },
+      });
     });
   }, []);
 
@@ -26,6 +34,7 @@ export function OptInAnalyticsScreen({ onDone }: { onDone: () => void }): React.
       return;
     }
     if (key.escape || input === 'q') {
+      void finishDebugRun({ outputs: { enabled }, status: 'success', exitMethod: 'saved' });
       onDone();
     }
   });
@@ -50,7 +59,12 @@ export function OptInAnalyticsScreen({ onDone }: { onDone: () => void }): React.
         </>
       )}
       <Text> </Text>
-      <Text dimColor>[Enter/Space] Toggle [Esc/q] Back to Settings</Text>
+      <ControlHints
+        hints={[
+          { keys: '⏎/Space', label: 'toggle' },
+          { keys: 'Esc/q', label: 'back' },
+        ]}
+      />
     </Box>
   );
 }

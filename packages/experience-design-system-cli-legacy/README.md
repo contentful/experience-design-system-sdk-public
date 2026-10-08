@@ -79,7 +79,7 @@ The import wizard's generation steps require a coding agent CLI in your `$PATH`.
 
 The CLI invokes the agent non-interactively in a subprocess. If the binary is not found in `$PATH`, the command exits 1 and prints manual fallback instructions.
 
-`experiences setup` persists your chosen agent (and optional model + custom prompt paths) to `~/.config/experiences/credentials.json`; later commands pick them up automatically.
+`experiences setup` persists your chosen agent (and optional model + custom prompt paths) to `~/.contentful/experience-design-system-cli/config.json`; later commands pick them up automatically.
 
 ### Contentful credentials
 
@@ -140,7 +140,7 @@ There is a single human review gate (`scope-gate`) before generation. Choosing t
 
 ### Save and push
 
-After final-review the wizard always saves one combined `components.json` CDF (components and design tokens) and then, unless credentials were skipped, previews the diff and pushes it to Contentful. The wizard records each saved run in `~/.config/experiences/runs.json`.
+After final-review the wizard always saves one combined `components.json` CDF (components and design tokens) and then, unless credentials were skipped, previews the diff and pushes it to Contentful. The wizard records each saved run in `~/.contentful/experience-design-system-cli/state/runs.json`.
 
 ### Custom skill prompts
 
@@ -163,7 +163,7 @@ Custom `.md` skill prompt paths can be saved via `experiences setup`; the CLI em
 `--agent` accepts `claude`, `codex`, `opencode`, `cursor` or `copilot`, optionally followed by a model: `--agent claude:sonnet` or `--agent "claude sonnet"`. The agent resolves in this order:
 
 1. `--agent <name>` flag
-2. `agent` field saved in `~/.config/experiences/credentials.json` by `experiences setup`
+2. `agent` field saved in `~/.contentful/experience-design-system-cli/config.json` by `experiences setup`
 3. Built-in default, `claude`
 
 The model resolves the same way: the model part of `--agent`, then the `agentModel` field in `credentials.json`, then the agent's own lightweight default. You can also set a model per agent with `EDS_AGENT_MODEL_<AGENT>` (for example `EDS_AGENT_MODEL_CLAUDE`).
@@ -219,7 +219,7 @@ What may be included:
 
 You can turn this off two ways:
 
-- Persistently: run `experiences setup`, open **Usage analytics** and choose "Don't share usage data". This writes `analyticsDisabled: true` to `~/.config/experiences/credentials.json`, which persists across invocations until you change it again — it will not silently re-enable itself.
+- Persistently: run `experiences setup`, open **Usage analytics** and choose "Don't share usage data". This writes `analyticsDisabled: true` to `~/.contentful/experience-design-system-cli/config.json`, which persists across invocations until you change it again — it will not silently re-enable itself.
 - Per invocation:
 
   ```bash

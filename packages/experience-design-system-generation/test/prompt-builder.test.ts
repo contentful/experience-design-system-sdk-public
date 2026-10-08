@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildPrompt, type GeneratedCdf } from '../src/prompt-builder.js';
+import { buildPrompt, type GeneratedCdf } from '../src/index.js';
 
 const INLINE_COMPONENTS = JSON.stringify([
   {

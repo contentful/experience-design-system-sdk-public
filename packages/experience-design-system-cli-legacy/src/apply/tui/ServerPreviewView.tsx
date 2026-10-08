@@ -51,11 +51,10 @@ export function ServerPreviewView({ preview, spaceId, environmentId }: ServerPre
 
       {totalComponents > 0 && (
         <Box flexDirection="column">
-          <Text bold> Component Types ({totalComponents} total)</Text>
-          <Text color="green"> ❆ {components.new.length} to create</Text>
-          <Text color="yellow"> ~ {components.changed.length} to update</Text>
-          <Text color="yellow"> ⊘ {components.removed.length} to skip</Text>
-          <Text dimColor> · {components.unchanged.length} unchanged</Text>
+          <Text color="green"> ❆ {components.new.length} components to create</Text>
+          <Text color="yellow"> ~ {components.changed.length} components to update</Text>
+          <Text color="yellow"> ⊘ {components.removed.length} components to skip</Text>
+          <Text dimColor> · {components.unchanged.length} components unchanged</Text>
           {components.changed.map((item, i) => (
             <Box key={i} flexDirection="column">
               <Box flexDirection="row">

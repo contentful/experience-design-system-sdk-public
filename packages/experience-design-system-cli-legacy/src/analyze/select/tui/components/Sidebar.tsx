@@ -132,7 +132,7 @@ export function Sidebar({
       width={width}
       flexShrink={0}
       borderStyle="single"
-      borderColor={focused ? 'white' : undefined}
+      borderColor={focused ? PALETTE.info : PALETTE.border}
     >
       {showScrollUp && !collapsed && <Text dimColor>▲</Text>}
       {visible.map((component) => {

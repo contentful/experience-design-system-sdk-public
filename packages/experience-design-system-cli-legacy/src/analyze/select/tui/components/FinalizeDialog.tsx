@@ -57,70 +57,74 @@ export function FinalizeDialog({
   const hasMoreAbove = offset > 0;
 
   return (
-    <Box flexDirection="column" borderStyle="round" padding={1} width={58}>
-      <Text bold>{'─'.repeat(17) + ' Finalize ' + '─'.repeat(17)}</Text>
-      <Text> </Text>
-      <Text>
-        <Text color={PALETTE.success}>{accepted} accepted</Text>
-        <Text> · </Text>
-        <Text color={PALETTE.error}>{rejected} rejected</Text>
-        <Text> · </Text>
-        <Text dimColor>{needsReview} unresolved</Text>
-      </Text>
-      <Text> </Text>
-      {noneAccepted && (
-        <>
-          <Text bold color={PALETTE.warning}>
-            {'⚠ No components are accepted — nothing will be pushed.'}
-          </Text>
-          <Text color={PALETTE.warning}>{'  Accept at least one component ([a] a row, [A] accept all) to push.'}</Text>
-          <Text> </Text>
-        </>
-      )}
-      {!allResolved && (
-        <>
-          <Text color={PALETTE.warning}>
-            {'⚠ ' + needsReview + ' unresolved component' + (needsReview === 1 ? '' : 's') + ' will not be pushed.'}
-          </Text>
-          <Text color={PALETTE.warning}>{'  Only explicitly accepted components ship.'}</Text>
-          <Text> </Text>
-        </>
-      )}
-      <Box flexDirection="column" height={2}>
-        {previewStatus === 'running' ? (
-          <Text dimColor>Previewing deletions against the target space…</Text>
-        ) : previewStatus === 'error' ? (
-          <Text color={PALETTE.warning}>{'⚠ Could not preview deletions (the push will still proceed).'}</Text>
-        ) : (
-          <Text> </Text>
-        )}
+    <Box width="100%" justifyContent="center">
+      <Box flexDirection="column" borderStyle="round" padding={1} width={58}>
+        <Text bold>{'─'.repeat(17) + ' Finalize ' + '─'.repeat(17)}</Text>
         <Text> </Text>
-      </Box>
-      {previewStatus === 'done' && removed.length > 0 && (
-        <>
-          <Text bold color={PALETTE.error}>
-            {removedComponentsHeader(removed.length, false)}
-          </Text>
-          {hasMoreAbove && <Text dimColor>{'  ↑ more above'}</Text>}
-          {windowed.map((rc) => (
-            <Text key={rc.id} color={PALETTE.error}>
-              {removedComponentLine(rc)}
+        <Text>
+          <Text color={PALETTE.success}>{accepted} accepted</Text>
+          <Text> · </Text>
+          <Text color={PALETTE.error}>{rejected} rejected</Text>
+          <Text> · </Text>
+          <Text dimColor>{needsReview} unresolved</Text>
+        </Text>
+        <Text> </Text>
+        {noneAccepted && (
+          <>
+            <Text bold color={PALETTE.warning}>
+              {'⚠ No components are accepted — nothing will be pushed.'}
             </Text>
-          ))}
-          {hasMoreBelow && <Text dimColor>{'  ↓ more below'}</Text>}
-          {removed.length > FINALIZE_REMOVED_WINDOW && <Text dimColor>{'  [↑↓] scroll deletions'}</Text>}
+            <Text color={PALETTE.warning}>
+              {'  Accept at least one component ([a] a row, [A] accept all) to push.'}
+            </Text>
+            <Text> </Text>
+          </>
+        )}
+        {!allResolved && (
+          <>
+            <Text color={PALETTE.warning}>
+              {'⚠ ' + needsReview + ' unresolved component' + (needsReview === 1 ? '' : 's') + ' will not be pushed.'}
+            </Text>
+            <Text color={PALETTE.warning}>{'  Only explicitly accepted components ship.'}</Text>
+            <Text> </Text>
+          </>
+        )}
+        <Box flexDirection="column" height={2}>
+          {previewStatus === 'running' ? (
+            <Text dimColor>Previewing deletions against the target space…</Text>
+          ) : previewStatus === 'error' ? (
+            <Text color={PALETTE.warning}>{'⚠ Could not preview deletions (the push will still proceed).'}</Text>
+          ) : (
+            <Text> </Text>
+          )}
           <Text> </Text>
-        </>
-      )}
-      <Text>
-        {noneAccepted
-          ? 'Confirm exit with nothing accepted?'
-          : allResolved
-            ? 'Save decisions and exit? All components resolved.'
-            : 'Save decisions and exit?'}
-      </Text>
-      <Text> </Text>
-      <Text>{'  [y / Enter]  Confirm    [n / Esc]  Cancel'}</Text>
+        </Box>
+        {previewStatus === 'done' && removed.length > 0 && (
+          <>
+            <Text bold color={PALETTE.error}>
+              {removedComponentsHeader(removed.length, false)}
+            </Text>
+            {hasMoreAbove && <Text dimColor>{'  ↑ more above'}</Text>}
+            {windowed.map((rc) => (
+              <Text key={rc.id} color={PALETTE.error}>
+                {removedComponentLine(rc)}
+              </Text>
+            ))}
+            {hasMoreBelow && <Text dimColor>{'  ↓ more below'}</Text>}
+            {removed.length > FINALIZE_REMOVED_WINDOW && <Text dimColor>{'  [↑↓] scroll deletions'}</Text>}
+            <Text> </Text>
+          </>
+        )}
+        <Text>
+          {noneAccepted
+            ? 'Confirm exit with nothing accepted?'
+            : allResolved
+              ? 'Save decisions and exit? All components resolved.'
+              : 'Save decisions and exit?'}
+        </Text>
+        <Text> </Text>
+        <Text>{'  [y / Enter]  Confirm    [n / Esc]  Cancel'}</Text>
+      </Box>
     </Box>
   );
 }

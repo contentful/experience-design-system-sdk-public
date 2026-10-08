@@ -31,7 +31,6 @@ export function DoneStep({
   spaceId,
   environmentId,
   host,
-  runTeaser,
   failures = [],
   onExit,
 }: DoneStepProps): React.ReactElement {
@@ -142,7 +141,7 @@ export function DoneStep({
 
       {success && totalPushed > 0 && (
         <Box flexDirection="column" gap={1} marginTop={1}>
-          <Text dimColor>Your design system is now in Contentful ExO.</Text>
+          <Text dimColor>Your design system is now in Contentful Experiences.</Text>
           <Box flexDirection="column" gap={0}>
             <Text dimColor>View your components here:</Text>
             <Text color={PALETTE.info}>
@@ -155,12 +154,6 @@ export function DoneStep({
               {buildPostPushUrl({ host: host ?? 'api.contentful.com', spaceId, environmentId, view: 'design_tokens' })}
             </Text>
           </Box>
-        </Box>
-      )}
-
-      {runTeaser && (
-        <Box marginTop={1}>
-          <Text dimColor>{runTeaser}</Text>
         </Box>
       )}
 

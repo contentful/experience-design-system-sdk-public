@@ -1,11 +1,9 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { findPackageRoot } from './package-root.js';
+import { debugSessionsDir } from '@contentful/experience-design-system-types/config';
 import { readPackageVersion } from './upgrade/version.js';
 import { readDebugModeSetting } from './settings/debug-mode/debug-mode-store.js';
-
-const PACKAGE_NAME = '@contentful/experience-design-system-cli';
 
 type PendingRun = {
   flow: string;
@@ -27,10 +25,6 @@ function generateRunId(): string {
   return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
 }
 
-function sessionsRootDir(): string {
-  return join(findPackageRoot(import.meta.url, PACKAGE_NAME), '.contentful', 'debug', 'sessions');
-}
-
 function datePrefix(now: Date = new Date()): string {
   const pad = (n: number): string => String(n).padStart(2, '0');
   return `${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${now.getFullYear()}`;
@@ -48,7 +42,7 @@ function slugify(value: string): string {
 function generateSessionId(): string {
   const today = datePrefix();
 
-  const root = sessionsRootDir();
+  const root = debugSessionsDir();
   const existing = existsSync(root) ? readdirSync(root) : [];
   const seqPattern = new RegExp(`^${today}-session-(\\d+)$`);
   const maxSeq = existing.reduce((max, entry) => {
@@ -65,7 +59,12 @@ function generateSessionId(): string {
 const SESSION_ID = generateSessionId();
 
 function sessionDebugDir(): string {
-  return join(sessionsRootDir(), SESSION_ID);
+  return join(debugSessionsDir(), SESSION_ID);
+}
+
+// Folder this terminal session writes its debug logs to (created only while Debug Mode is on).
+export function currentDebugSessionDir(): string {
+  return sessionDebugDir();
 }
 
 // Fire-and-forget so a user who never visits a wired flow still sees an (empty)

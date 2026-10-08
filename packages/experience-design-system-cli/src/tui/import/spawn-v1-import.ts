@@ -19,6 +19,7 @@ interface PipelineResult {
 
 export interface SpawnV1ImportOptions {
   project?: string;
+  tokens?: string;
   onProgress?: (line: string) => void;
 }
 
@@ -34,6 +35,10 @@ function buildArgs(options: SpawnV1ImportOptions): string[] {
 
   if (options.project) {
     args.push('--project', options.project);
+  }
+
+  if (options.tokens) {
+    args.push('--tokens', options.tokens);
   }
 
   return args;
