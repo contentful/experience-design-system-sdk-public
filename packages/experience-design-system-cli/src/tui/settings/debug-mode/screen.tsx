@@ -3,6 +3,7 @@ import { Box, Text, useInput } from 'ink';
 import { PALETTE } from '../../home/home.theme.js';
 import { readDebugModeSetting, writeDebugModeSetting } from './debug-mode-store.js';
 import { startDebugRun, finishDebugRun } from '../../debug-store.js';
+import { ControlHints } from '../../control-hints.js';
 
 export function DebugModeScreen({ onDone }: { onDone: () => void }): React.ReactElement {
   const [loading, setLoading] = useState(true);
@@ -53,7 +54,12 @@ export function DebugModeScreen({ onDone }: { onDone: () => void }): React.React
         </Text>
       )}
       <Text> </Text>
-      <Text dimColor>[Enter/Space] Toggle [Esc/q] Back to Settings</Text>
+      <ControlHints
+        hints={[
+          { keys: '⏎/Space', label: 'toggle' },
+          { keys: 'Esc/q', label: 'back' },
+        ]}
+      />
     </Box>
   );
 }

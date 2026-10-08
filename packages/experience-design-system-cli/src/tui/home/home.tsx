@@ -4,6 +4,7 @@ import type { Screen } from '../../../app.js';
 import { FOCUS_MARKER, PALETTE, brandBar } from './home.theme.js';
 import { checkForUpgrade, readPackageVersion, type UpgradeCheckResult } from '../upgrade/version.js';
 import { useTerminalWidth } from '../use-terminal-width.js';
+import { ControlHints } from '../control-hints.js';
 
 const VERSION = readPackageVersion();
 const HEADING = 'Contentful Experiences';
@@ -118,7 +119,13 @@ export function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => voi
       </Box>
 
       <Box marginTop={1} justifyContent="center">
-        <Text color={PALETTE.muted}>↑/↓ move · ⏎ select · q quit</Text>
+        <ControlHints
+          hints={[
+            { keys: '↑/↓', label: 'move' },
+            { keys: '⏎', label: 'select' },
+            { keys: 'q', label: 'quit' },
+          ]}
+        />
       </Box>
     </Box>
   );
