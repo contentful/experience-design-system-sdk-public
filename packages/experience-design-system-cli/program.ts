@@ -1,6 +1,5 @@
 import { readFileSync } from 'node:fs';
 import { Command } from 'commander';
-import { forwardedImportArgs } from './src/legacy/forwarded-import-args.js';
 import { runLegacy } from './src/legacy/run-legacy.js';
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
@@ -48,15 +47,7 @@ export function createProgram(): Command {
   program
     .command('import', { isDefault: true })
     .description('Launch the Experiences CLI')
-    .allowUnknownOption()
-    .allowExcessArguments()
-    .helpOption(false)
-    .argument('[args...]')
     .action(async () => {
-      const forwarded = forwardedImportArgs(process.argv.slice(2));
-      if (forwarded.length > 0) {
-        process.exit(await runLegacy(['import', ...forwarded]));
-      }
       const { render } = await import('ink');
       const { runApp } = await import('./app.js');
       await runApp(render);

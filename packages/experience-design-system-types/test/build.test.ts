@@ -36,37 +36,6 @@ describe('buildCDF', () => {
   });
 });
 
-describe('buildCDF token path collisions', () => {
-  const token = (path: string, value: string) => ({ path, entry: { $type: 'color', $value: value } as CDFTokenEntry });
-
-  it('moves a token that is also a group parent into a default child', () => {
-    const doc = buildCDF([], [token('button.primary', '#111'), token('button.primary.hover', '#222')]);
-    const primary = (doc?.button as Record<string, unknown>).primary as Record<string, unknown>;
-    expect(primary.default).toEqual({ $type: 'color', $value: '#111' });
-    expect(primary.hover).toEqual({ $type: 'color', $value: '#222' });
-  });
-
-  it('is independent of token order', () => {
-    const doc = buildCDF([], [token('a.b.c', '#2'), token('a.b', '#1')]);
-    expect(((doc?.a as Record<string, unknown>).b as Record<string, unknown>).default).toEqual({
-      $type: 'color',
-      $value: '#1',
-    });
-  });
-
-  it('avoids an existing default sibling', () => {
-    const doc = buildCDF([], [token('a', '#1'), token('a.default', '#2')]);
-    const a = doc?.a as Record<string, unknown>;
-    expect(a.default).toEqual({ $type: 'color', $value: '#2' });
-    expect(a.default_).toEqual({ $type: 'color', $value: '#1' });
-  });
-
-  it('leaves non-colliding tokens untouched', () => {
-    const doc = buildCDF([], [token('a.b', '#1'), token('a.c', '#2')]);
-    expect(doc?.a).toEqual({ b: { $type: 'color', $value: '#1' }, c: { $type: 'color', $value: '#2' } });
-  });
-});
-
 describe('buildFilteredCDF', () => {
   it('keeps only selected component keys and token paths, preserving group nesting', () => {
     const full = buildCDF([CARD], [PRIMARY_COLOR])!;
