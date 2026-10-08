@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { selectAllDescendants } from '../../src/controller/select-all-descendants.js';
-import { rejectAllAncestors } from '../../src/controller/reject-all-ancestors.js';
-import { findAllParents } from '../../src/controller/find-all-parents.js';
-import { expandMatchesByOneHop } from '../../src/controller/expand-matches-by-one-hop.js';
+import { selectAllDescendants } from '../../src/controller/selection/select-all-descendants.js';
+import { rejectAllAncestors } from '../../src/controller/selection/reject-all-ancestors.js';
+import { findAllParents } from '../../src/controller/graph/find-all-parents.js';
+import { expandMatchesByOneHop } from '../../src/controller/graph/expand-matches-by-one-hop.js';
 
 const graph = [
   { name: 'A', slots: [{ name: 's', allowedComponents: ['B', 'C'] }] },

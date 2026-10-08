@@ -1,8 +1,8 @@
 import { resolve } from 'node:path';
 import { buildPrompt } from '../../../../../agents/prompts/build-prompt.js';
 import { createLocalCliAgentInvoker } from '../../../../../agents/invoker/create-local-cli-agent-invoker.js';
-import { describeAgentFailure } from '../../../../../agents/helpers/describe-agent-failure.js';
-import { resolveBinary } from '../../../../../agents/helpers/resolve-binary.js';
+import { describeAgentFailure } from '../../../../../agents/helpers/metadata/describe-agent-failure.js';
+import { resolveBinary } from '../../../../../agents/helpers/resolution/resolve-binary.js';
 import { resolveSkillPath } from '../../../../../agents/prompts/resolve-skill-path.js';
 import { parseMapTokenPropToolCalls } from '../../../../../agents/parsers/parse-map-token-prop-tool-calls.js';
 import type { AgentName } from '../../../../../agents/types/agent-name.js';
@@ -20,14 +20,14 @@ import {
   replaceRawTokenNamePaths,
   storeCache,
   updateStep,
-} from '../../../../../persistence/session/db.js';
-import { hashContent, hashPromptForSkill } from '../../../../../persistence/session/cache-keys.js';
-import { binaryExists } from '../../../../../services/doctor/helpers/binary-exists.js';
+} from '../../../../../persistence/src/session/repositories/db.js';
+import { hashContent, hashPromptForSkill } from '../../../../../persistence/src/session/core/cache-keys.js';
+import { binaryExists } from '../../../../../doctor/src/helpers/binary-exists.js';
 import { applyMapTokenPropCalls } from './apply-map-token-prop-calls.js';
 import { countMappableProps } from '../../helpers/map-tokens/count-mappable-props.js';
 import { loadRawDefaults } from '../../helpers/map-tokens/load-raw-defaults.js';
 import { loadTokenLeaves } from '../../helpers/map-tokens/load-token-leaves.js';
-import { rebuildDTCGTree } from '../../../../../services/print/helpers/rebuild-dtcg-tree.js';
+import { rebuildDTCGTree } from '../../../../shared/dtcg/helpers/rebuild-dtcg-tree.js';
 import { resolveTokenDefaults } from '../../helpers/token-defaults/resolve-token-defaults.js';
 import type { MapTokensRunRequest, MapTokensRunResult } from '../../types/map-tokens-run.js';
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { annotatePreview } from '../../src/controller/annotate-preview.js';
+import { annotatePreview } from '../../src/controller/preview/annotate-preview.js';
 
 const preview = {
   components: {

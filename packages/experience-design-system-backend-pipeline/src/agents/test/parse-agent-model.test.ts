@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseAgentModel } from '../helpers/parse-agent-model.js';
+import { parseAgentModel } from '../helpers/resolution/parse-agent-model.js';
 
 describe('parseAgentModel', () => {
   it('returns {} for empty / whitespace input', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildUserAgent } from '../helpers/build-user-agent.js';
+import { buildUserAgent } from '../helpers/metadata/build-user-agent.js';
 
 describe('buildUserAgent', () => {
   it('includes app + platform + os segments in CEP-0056 shape', () => {

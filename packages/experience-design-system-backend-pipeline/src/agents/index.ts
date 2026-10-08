@@ -5,25 +5,25 @@ export * from './types/index.js';
 export { DEFAULT_AGENT_NAME } from './constants/models.js';
 
 // --- Agent capability + resolution helpers ---
-export { isAgentName } from './helpers/is-agent-name.js';
-export { resolveBinary } from './helpers/resolve-binary.js';
-export { resolveAgentModel } from './helpers/resolve-agent-model.js';
-export { agentSupportsBedrock } from './helpers/agent-supports-bedrock.js';
+export { isAgentName } from './helpers/resolution/is-agent-name.js';
+export { resolveBinary } from './helpers/resolution/resolve-binary.js';
+export { resolveAgentModel } from './helpers/resolution/resolve-agent-model.js';
+export { agentSupportsBedrock } from './helpers/bedrock/agent-supports-bedrock.js';
 export { buildArgs } from './helpers/build-agent-args.js';
-export { describeAgentFailure } from './helpers/describe-agent-failure.js';
-export { extractSentinelOutput } from './helpers/extract-sentinel-output.js';
-export { formatGenerateProgressLine } from './helpers/format-generate-progress-line.js';
-export { parseAgentModel, type ParsedAgentModel } from './helpers/parse-agent-model.js';
-export { resolveAgent } from './helpers/resolve-agent.js';
-export { resolveModel } from './helpers/resolve-model.js';
-export { looksLikePath } from './helpers/looks-like-path.js';
+export { describeAgentFailure } from './helpers/metadata/describe-agent-failure.js';
+export { extractSentinelOutput } from './helpers/metadata/extract-sentinel-output.js';
+export { formatGenerateProgressLine } from './helpers/metadata/format-generate-progress-line.js';
+export { parseAgentModel, type ParsedAgentModel } from './helpers/resolution/parse-agent-model.js';
+export { resolveAgent } from './helpers/resolution/resolve-agent.js';
+export { resolveModel } from './helpers/resolution/resolve-model.js';
+export { looksLikePath } from './helpers/prompt-overrides/looks-like-path.js';
 export {
   parsePromptOverrides,
   type PromptOverride,
   type ParsePromptOverridesResult,
-} from './helpers/parse-prompt-overrides.js';
-export { resolvePromptOverride } from './helpers/resolve-prompt-override.js';
-export { buildUserAgent } from './helpers/build-user-agent.js';
+} from './helpers/prompt-overrides/parse-prompt-overrides.js';
+export { resolvePromptOverride } from './helpers/prompt-overrides/resolve-prompt-override.js';
+export { buildUserAgent } from './helpers/metadata/build-user-agent.js';
 
 // --- Parsers (agent stdout → structured tool calls) ---
 export { parseSelectToolCalls } from './parsers/parse-select-tool-calls.js';

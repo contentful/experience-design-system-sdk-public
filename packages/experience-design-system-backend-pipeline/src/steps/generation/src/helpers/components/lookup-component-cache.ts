@@ -1,6 +1,10 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type { RawComponentDefinition } from '../../../../extraction/src/types/component.js';
-import { computeComponentInputHash, lookupCache, type CacheEntry } from '../../../../../persistence/session/db.js';
+import {
+  computeComponentInputHash,
+  lookupCache,
+  type CacheEntry,
+} from '../../../../../persistence/src/session/repositories/db.js';
 import { normalizeComponentForCache } from './normalize-component-for-cache.js';
 
 /**

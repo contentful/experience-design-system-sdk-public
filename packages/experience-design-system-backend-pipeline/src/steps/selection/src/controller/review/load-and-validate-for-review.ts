@@ -1,8 +1,8 @@
 import { validateExtractedComponents } from '../../../../extraction/src/helpers/quality/validate.js';
-import { openPipelineDb } from '../../../../../persistence/session/db.js';
-import { loadRawComponents } from '../../../../../persistence/session/db.js';
-import { loadReviewInput } from '../../../../../persistence/review-session/load-review-input.js';
-import type { ReviewSessionSnapshot } from '../../../../../persistence/review-session/types/review-session.js';
+import { openPipelineDb } from '../../../../../persistence/src/session/repositories/db.js';
+import { loadRawComponents } from '../../../../../persistence/src/session/repositories/db.js';
+import { loadReviewInput } from '../../../../../persistence/src/review-session/core/load-review-input.js';
+import type { ReviewSessionSnapshot } from '../../../../../persistence/src/review-session/types/review-session.js';
 
 /**
  * Load components from the pipeline DB and re-run extraction validation.

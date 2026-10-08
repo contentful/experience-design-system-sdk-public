@@ -1,4 +1,4 @@
-import { resolveAgentModel } from '../resolve-agent-model.js';
+import { resolveAgentModel } from '../resolution/resolve-agent-model.js';
 
 /**
  * copilot's -p takes the prompt as its value — it MUST come immediately

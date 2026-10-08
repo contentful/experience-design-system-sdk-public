@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { BEDROCK_ENV_BY_AGENT } from '../constants/bedrock.js';
 import { buildArgs } from '../helpers/build-agent-args.js';
-import { resolveBinary } from '../helpers/resolve-binary.js';
+import { resolveBinary } from '../helpers/resolution/resolve-binary.js';
 import type { AgentDebugEvent, AgentRunResult } from '../types/agent-run.js';
 import type { AgentName } from '../types/agent-name.js';
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { parsePromptOverrides } from '../helpers/parse-prompt-overrides.js';
-import { looksLikePath } from '../helpers/looks-like-path.js';
+import { parsePromptOverrides } from '../helpers/prompt-overrides/parse-prompt-overrides.js';
+import { looksLikePath } from '../helpers/prompt-overrides/looks-like-path.js';
 
 describe('looksLikePath', () => {
   it('recognizes path separators + ~ + prompt file extensions', () => {

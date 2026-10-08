@@ -4,7 +4,7 @@ import {
   findUnknownSlotAllowedComponents,
   lookupCacheByEntity,
   type CacheEntry,
-} from '../../../../../persistence/session/db.js';
+} from '../../../../../persistence/src/session/repositories/db.js';
 import { lookupComponentCache } from './lookup-component-cache.js';
 
 export type ComponentCacheResolution = {

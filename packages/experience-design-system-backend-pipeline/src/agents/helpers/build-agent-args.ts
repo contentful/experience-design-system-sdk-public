@@ -4,7 +4,7 @@ import { buildCodexArgs } from './build-args/build-codex-args.js';
 import { buildCopilotArgs } from './build-args/build-copilot-args.js';
 import { buildCursorArgs } from './build-args/build-cursor-args.js';
 import { buildOpencodeArgs } from './build-args/build-opencode-args.js';
-import { resolveAgentModel } from './resolve-agent-model.js';
+import { resolveAgentModel } from './resolution/resolve-agent-model.js';
 
 /**
  * Build the argv for a given agent CLI, including the model flag and any

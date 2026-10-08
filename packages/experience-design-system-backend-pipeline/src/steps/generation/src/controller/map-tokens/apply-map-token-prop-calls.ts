@@ -1,6 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type { MapTokenPropCall } from '../../../../../agents/types/tool-calls.js';
-import { replaceRawPropTokenPaths } from '../../../../../persistence/session/services/tokens/replace-raw-prop-token-paths.js';
+import { replaceRawPropTokenPaths } from '../../../../../persistence/src/session/services/tokens/replace-raw-prop-token-paths.js';
 import { filterAllowedPaths } from '../../helpers/map-tokens/filter-allowed-paths.js';
 import { isPropReviewed } from '../../helpers/map-tokens/is-prop-reviewed.js';
 import { loadTokenTypeByPath } from '../../helpers/map-tokens/load-token-type-by-path.js';

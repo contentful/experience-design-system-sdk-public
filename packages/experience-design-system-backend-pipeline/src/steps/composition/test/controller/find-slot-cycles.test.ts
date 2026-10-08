@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findSlotCycles } from '../../src/controller/find-slot-cycles.js';
+import { findSlotCycles } from '../../src/controller/cycles/find-slot-cycles.js';
 
 describe('findSlotCycles', () => {
   it('returns empty for a graph without cycles', () => {

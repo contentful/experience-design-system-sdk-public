@@ -1,6 +1,6 @@
 import type { CDFComponentEntry } from '../../../shared/index.js';
 import type { SlotCycle } from '../../../composition/src/types/graph.js';
-import { findSlotCycles } from '../../../composition/src/helpers/find-slot-cycles.js';
+import { findSlotCycles } from '../../../composition/src/helpers/cycles/find-slot-cycles.js';
 
 /**
  * Detects slot cycles in a CDF document that's about to be sent. Thin wrapper

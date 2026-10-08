@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { detectSlotCycles } from '../../src/controller/detect-slot-cycles.js';
-import { assertNoSlotCycles } from '../../src/controller/assert-no-slot-cycles.js';
-import { assertNoUnresolvedSlotReferences } from '../../src/controller/assert-no-unresolved-slot-references.js';
-import { formatSlotCycleReport } from '../../src/controller/format-slot-cycle-report.js';
-import { formatUnresolvedSlotReferences } from '../../src/controller/format-unresolved-slot-references.js';
+import { detectSlotCycles } from '../../src/controller/validation/detect-slot-cycles.js';
+import { assertNoSlotCycles } from '../../src/controller/validation/assert-no-slot-cycles.js';
+import { assertNoUnresolvedSlotReferences } from '../../src/controller/validation/assert-no-unresolved-slot-references.js';
+import { formatSlotCycleReport } from '../../src/controller/validation/format-slot-cycle-report.js';
+import { formatUnresolvedSlotReferences } from '../../src/controller/validation/format-unresolved-slot-references.js';
 
 const cycleComponents = [
   {

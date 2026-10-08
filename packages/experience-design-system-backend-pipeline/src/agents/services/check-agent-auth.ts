@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { resolveBinary } from '../helpers/resolve-binary.js';
+import { resolveBinary } from '../helpers/resolution/resolve-binary.js';
 import type { AgentAuthStatus } from '../types/agent-run.js';
 import type { AgentName } from '../types/agent-name.js';
 

@@ -1,6 +1,44 @@
-// Services — non-pipeline backend (doctor + print)
-export * as doctor from './services/doctor/index.js';
-export * as print from './services/print/index.js';
+// Non-pipeline backend domains (same shape as a pipeline step)
+export * as doctor from './doctor/src/index.js';
+
+// Generation — export CDF document / DTCG tree (reads session DB → in-memory artifacts)
+export {
+  exportCdfDocument,
+  ExportCdfDocumentFailure,
+  // legacy-name aliases
+  printComponents,
+  PrintComponentsFailure,
+} from './steps/generation/src/controller/export/export-cdf-document.js';
+export {
+  exportDtcgTree,
+  ExportDtcgTreeFailure,
+  // legacy-name aliases
+  printTokens,
+  PrintTokensFailure,
+} from './steps/generation/src/controller/export/export-dtcg-tree.js';
+export type {
+  ExportCdfDocumentRequest,
+  ExportCdfDocumentResult,
+  ExportCdfDocumentError,
+  ExportDtcgTreeRequest,
+  ExportDtcgTreeResult,
+  ExportDtcgTreeError,
+  // legacy-name aliases
+  PrintComponentsRequest,
+  PrintComponentsResult,
+  PrintComponentsError,
+  PrintTokensRequest,
+  PrintTokensResult,
+  PrintTokensError,
+} from './steps/generation/src/controller/export/types-export.js';
+
+// Shared validators (used by CLI's `print validate` command, apply pre-flight, and anywhere else)
+export { validateCDFFile } from './steps/shared/cdf/validators/validate-cdf-file.js';
+export { validateDTCGTokenFile } from './steps/shared/dtcg/validators/validate-dtcg-token-file.js';
+export { formatDiagnostics } from './steps/shared/cdf/validators/format-diagnostics.js';
+export { readJsonFile } from './steps/shared/cdf/validators/read-json-file.js';
+export type { ValidationResult, ValidationDiagnostic } from './steps/shared/cdf/validators/types-validation.js';
+export { rebuildDTCGTree } from './steps/shared/dtcg/helpers/rebuild-dtcg-tree.js';
 
 // Extraction
 export { extractComponents } from './steps/extraction/src/controller/extract-components-endpoint.js';
@@ -11,39 +49,42 @@ export type {
 } from './steps/extraction/src/types/contract.js';
 
 // Composition
-export { composeComponents } from './steps/composition/src/controller/compose-components-endpoint.js';
+export { composeComponents } from './steps/composition/src/controller/endpoint/compose-components-endpoint.js';
 export type { ComposeComponentsRequest, ComposeComponentsResponse } from './steps/composition/src/types/contract.js';
-export type { CompositionEdge, EdgeProvenance } from './steps/composition/src/helpers/interchange-schema.js';
-export type { MergeResult, EdgeConflict } from './steps/composition/src/helpers/merge-edges.js';
+export type { CompositionEdge, EdgeProvenance } from './steps/composition/src/helpers/edges/interchange-schema.js';
+export type { MergeResult, EdgeConflict } from './steps/composition/src/helpers/edges/merge-edges.js';
 export type { SelectedCandidate } from './steps/composition/src/types/contract.js';
-export { selectCandidateFiles, capCandidatesToPromptBudget } from './steps/composition/src/helpers/candidate-files.js';
-export { collectManifestDocEdges } from './steps/composition/src/helpers/manifest-doc-evidence.js';
-export { mergeEdges } from './steps/composition/src/helpers/merge-edges.js';
-export { parseMapEdges } from './steps/composition/src/helpers/parse-map-edges.js';
-export { applyCompositionEdges } from './steps/composition/src/helpers/apply-mapping.js';
-export { buildCompositionInputHash } from './steps/composition/src/helpers/composition-cache-key.js';
-export { resolveCompositionSources } from './steps/composition/src/helpers/resolve-composition-sources.js';
+export {
+  selectCandidateFiles,
+  capCandidatesToPromptBudget,
+} from './steps/composition/src/helpers/candidates/candidate-files.js';
+export { collectManifestDocEdges } from './steps/composition/src/helpers/edges/manifest-doc-evidence.js';
+export { mergeEdges } from './steps/composition/src/helpers/edges/merge-edges.js';
+export { parseMapEdges } from './steps/composition/src/helpers/edges/parse-map-edges.js';
+export { applyCompositionEdges } from './steps/composition/src/helpers/edges/apply-mapping.js';
+export { buildCompositionInputHash } from './steps/composition/src/helpers/candidates/composition-cache-key.js';
+export { resolveCompositionSources } from './steps/composition/src/helpers/edges/resolve-composition-sources.js';
 export type {
   CompositionCliOptions,
   ResolvedCompositionSources,
-} from './steps/composition/src/helpers/resolve-composition-sources.js';
+} from './steps/composition/src/helpers/edges/resolve-composition-sources.js';
 
 // Composition — graph & cycle analysis (operates on the composed-component graph)
-export { buildComponentGraph } from './steps/composition/src/controller/build-component-graph.js';
-export { findSlotCycles } from './steps/composition/src/controller/find-slot-cycles.js';
-export { groupNodesByCycleMembership } from './steps/composition/src/controller/group-nodes-by-cycle-membership.js';
-export { expandSeedsToIncludeCycleGroups } from './steps/composition/src/controller/expand-seeds-to-include-cycle-groups.js';
-export { selectDescendantsRespectingCycles } from './steps/composition/src/controller/select-descendants-respecting-cycles.js';
-export { rejectAncestorsRespectingCycles } from './steps/composition/src/controller/reject-ancestors-respecting-cycles.js';
-export { selectAllDescendants } from './steps/composition/src/controller/select-all-descendants.js';
-export { rejectAllAncestors } from './steps/composition/src/controller/reject-all-ancestors.js';
-export { expandMatchesByOneHop } from './steps/composition/src/controller/expand-matches-by-one-hop.js';
-export { findAllParents } from './steps/composition/src/controller/find-all-parents.js';
-export { propagateDescendantIssuesToAncestors } from './steps/composition/src/controller/propagate-descendant-issues-to-ancestors.js';
-export { findWorstIssuedDescendant } from './steps/composition/src/controller/find-worst-issued-descendant.js';
-export { suggestCycleBreakEdge } from './steps/composition/src/helpers/suggest-cycle-break-edge.js';
-export { formatCyclePath } from './steps/composition/src/helpers/format-cycle-path.js';
-export { formatCyclePathSegments } from './steps/composition/src/helpers/format-cycle-path-segments.js';
+export { buildComponentGraph } from './steps/composition/src/controller/graph/build-component-graph.js';
+export { findSlotCycles } from './steps/composition/src/controller/cycles/find-slot-cycles.js';
+export { groupNodesByCycleMembership } from './steps/composition/src/controller/cycles/group-nodes-by-cycle-membership.js';
+export { expandSeedsToIncludeCycleGroups } from './steps/composition/src/controller/selection/expand-seeds-to-include-cycle-groups.js';
+export { selectDescendantsRespectingCycles } from './steps/composition/src/controller/selection/select-descendants-respecting-cycles.js';
+export { rejectAncestorsRespectingCycles } from './steps/composition/src/controller/selection/reject-ancestors-respecting-cycles.js';
+export { selectAllDescendants } from './steps/composition/src/controller/selection/select-all-descendants.js';
+export { rejectAllAncestors } from './steps/composition/src/controller/selection/reject-all-ancestors.js';
+export { expandMatchesByOneHop } from './steps/composition/src/controller/graph/expand-matches-by-one-hop.js';
+export { findAllParents } from './steps/composition/src/controller/graph/find-all-parents.js';
+export { propagateDescendantIssuesToAncestors } from './steps/composition/src/controller/selection/propagate-descendant-issues-to-ancestors.js';
+export { findWorstIssuedDescendant } from './steps/composition/src/controller/selection/find-worst-issued-descendant.js';
+export { suggestCycleBreakEdge } from './steps/composition/src/helpers/cycles/suggest-cycle-break-edge.js';
+export { formatCyclePath } from './steps/composition/src/helpers/cycles/format-cycle-path.js';
+export { formatCyclePathSegments } from './steps/composition/src/helpers/cycles/format-cycle-path-segments.js';
 export type {
   ComponentGraphNode,
   ComponentGraphInput,
@@ -85,7 +126,7 @@ export {
   createReviewSessionDetail,
   countValidationIssues,
   writeScopeDecisionsSnapshot,
-} from './persistence/index.js';
+} from './persistence/src/index.js';
 export type {
   LoadReviewInputOptions,
   ReviewComponentStatus,
@@ -97,7 +138,7 @@ export type {
   ReviewSessionSummary,
   ReviewEvent,
   ReviewSessionPaths,
-} from './persistence/index.js';
+} from './persistence/src/index.js';
 
 // Generation
 export { generateCdfComponents } from './steps/generation/src/controller/generate-cdf-components-endpoint.js';
@@ -108,7 +149,7 @@ export type {
 } from './steps/generation/src/types/contract.js';
 
 // Apply
-export { applyComponents } from './steps/apply/src/controller/apply-components-endpoint.js';
+export { applyComponents } from './steps/apply/src/controller/endpoint/apply-components-endpoint.js';
 export type {
   ApplyEndpointRequest,
   ApplyEndpointResponse,
@@ -125,42 +166,50 @@ export { toCdfTokens, toCdfTokens as toCDFTokens } from './steps/apply/src/helpe
 export { isEmptyPreview } from './steps/apply/src/helpers/is-empty-preview.js';
 export { buildPostPushUrl } from './steps/apply/src/helpers/contentful-urls.js';
 export { ApiError } from './steps/apply/src/types/api-error.js';
-export { ApiClient } from './steps/apply/src/services/api-client.js';
+export { ApiClient } from './steps/apply/src/helpers/api-client/api-client.js';
 // Legacy-name alias used by cli-legacy apply command
-export { ApiClient as ImportApiClient } from './steps/apply/src/services/api-client.js';
+export { ApiClient as ImportApiClient } from './steps/apply/src/helpers/api-client/api-client.js';
 export type { ApiClientOptions, RetryConfig } from './steps/apply/src/types/contract.js';
 export type { PreviewValidationError } from './steps/apply/src/types/contract.js';
 export { parsePreviewValidationErrors } from './steps/apply/src/helpers/parse-preview-errors.js';
 export { toApiHost, toConfiguredHost } from './steps/apply/src/helpers/host-utils.js';
 
 // Apply — pre-apply validation gates
-export { detectSlotCycles } from './steps/apply/src/controller/detect-slot-cycles.js';
-export { assertNoSlotCycles } from './steps/apply/src/controller/assert-no-slot-cycles.js';
-export { assertNoUnresolvedSlotReferences } from './steps/apply/src/controller/assert-no-unresolved-slot-references.js';
-export { formatSlotCycleReport } from './steps/apply/src/controller/format-slot-cycle-report.js';
-export { formatUnresolvedSlotReferences } from './steps/apply/src/controller/format-unresolved-slot-references.js';
+export { detectSlotCycles } from './steps/apply/src/controller/validation/detect-slot-cycles.js';
+export { assertNoSlotCycles } from './steps/apply/src/controller/validation/assert-no-slot-cycles.js';
+export { assertNoUnresolvedSlotReferences } from './steps/apply/src/controller/validation/assert-no-unresolved-slot-references.js';
+export { formatSlotCycleReport } from './steps/apply/src/controller/validation/format-slot-cycle-report.js';
+export { formatUnresolvedSlotReferences } from './steps/apply/src/controller/validation/format-unresolved-slot-references.js';
 
 // Apply — inline CDF mutation (final-review edits)
 export {
-  applyComponentPatch,
+  mutateCdfComponent,
+  applyComponentPatch, // legacy-name alias
   type ComponentPatchOperation,
-} from './steps/apply/src/controller/apply-component-patch.js';
-export { applyDotPath } from './steps/apply/src/controller/apply-dot-path.js';
-export { warnOnUnknownPatchComponents } from './steps/apply/src/controller/warn-on-unknown-patch-components.js';
+  type MutateCdfComponentRequest,
+  type ApplyComponentPatchRequest, // legacy-name alias
+} from './steps/apply/src/controller/mutate/mutate-cdf-component.js';
+export {
+  mutateDotPath,
+  applyDotPath, // legacy-name alias
+  type MutateDotPathRequest,
+  type ApplyDotPathRequest, // legacy-name alias
+} from './steps/apply/src/controller/mutate/mutate-dot-path.js';
+export { warnOnUnknownPatchComponents } from './steps/apply/src/controller/mutate/warn-on-unknown-patch-components.js';
 
 // Apply — preview output transforms
-export { annotatePreview, type PreviewAnnotation } from './steps/apply/src/controller/annotate-preview.js';
+export { annotatePreview, type PreviewAnnotation } from './steps/apply/src/controller/preview/annotate-preview.js';
 // Legacy name used by TUI call sites — same impl, positional-args signature
 export { annotatePreview as applyPreviewAnnotations } from './steps/apply/src/helpers/annotate-preview.js';
 
 // Apply — server error parsing
-export { parseEdsiError, type ParsedEdsiError } from './steps/apply/src/controller/parse-edsi-error.js';
-export { formatEdsiError } from './steps/apply/src/controller/format-edsi-error.js';
-export { formatApiError, type ApiErrorLike } from './steps/apply/src/controller/format-api-error.js';
+export { parseEdsiError, type ParsedEdsiError } from './steps/apply/src/controller/errors/parse-edsi-error.js';
+export { formatEdsiError } from './steps/apply/src/controller/errors/format-edsi-error.js';
+export { formatApiError, type ApiErrorLike } from './steps/apply/src/controller/errors/format-api-error.js';
 export { stripLambdaLogPrefix } from './steps/apply/src/helpers/edsi-errors/strip-lambda-log-prefix.js';
 
 // Apply — token file reading
-export { readTokensFromPath } from './steps/apply/src/controller/read-tokens-from-path.js';
+export { readTokensFromPath } from './steps/apply/src/controller/tokens/read-tokens-from-path.js';
 
 // Agents — resolution + prompt overrides + user agent + output formatter
 export {
@@ -226,7 +275,7 @@ export {
   resolveSharedInputs,
   ResolveSharedInputsFailure,
   type SharedInputs,
-} from './steps/apply/src/controller/resolve-shared-inputs.js';
+} from './steps/apply/src/controller/endpoint/resolve-shared-inputs.js';
 
 // Generation — map-tokens (apply parsed map_token_prop calls to a session)
 export { applyMapTokenPropCalls } from './steps/generation/src/controller/map-tokens/apply-map-token-prop-calls.js';
@@ -242,8 +291,8 @@ export type {
 } from './steps/generation/src/types/map-tokens-run.js';
 
 // Persistence — file collection + legacy SessionHandle (cache callbacks)
-export { collectFiles, openSession, generateSessionId } from './persistence/index.js';
-export type { OpenSessionOptions, SelectionDecision, SessionHandle } from './persistence/index.js';
+export { collectFiles, openSession, generateSessionId } from './persistence/src/index.js';
+export type { OpenSessionOptions, SelectionDecision, SessionHandle } from './persistence/src/index.js';
 
 // Persistence — DB infra + schema + migrations
 export {
@@ -251,7 +300,7 @@ export {
   getPipelineDbPath,
   runMigrationIfNeeded,
   resolveExtractSessionId,
-} from './persistence/index.js';
+} from './persistence/src/index.js';
 
 // Persistence — config paths + settings
 export {
@@ -263,8 +312,8 @@ export {
   readSettings,
   writeSettings,
   updateSettings,
-} from './persistence/index.js';
-export type { Settings } from './persistence/index.js';
+} from './persistence/src/index.js';
+export type { Settings } from './persistence/src/index.js';
 
 // Persistence — credentials store (shared config.json)
 export {
@@ -272,12 +321,12 @@ export {
   writeExperiencesCredentials,
   experiencesCredentialsPath,
   DEFAULT_CONFIGURED_HOST,
-} from './persistence/index.js';
-export type { ExperiencesCredentials } from './persistence/index.js';
+} from './persistence/src/index.js';
+export type { ExperiencesCredentials } from './persistence/src/index.js';
 
 // Persistence — session + step state
-export { getOrCreateSession, createStep, updateStep, findLatestSessionForCommand } from './persistence/index.js';
-export type { CommandName, MatchHints } from './persistence/index.js';
+export { getOrCreateSession, createStep, updateStep, findLatestSessionForCommand } from './persistence/src/index.js';
+export type { CommandName, MatchHints } from './persistence/src/index.js';
 
 // Persistence — raw component storage
 export {
@@ -286,12 +335,12 @@ export {
   loadComponentSourceRef,
   loadComponentSourceRefs,
   renameEmptySlots,
-} from './persistence/index.js';
-export type { RawComponentWithId } from './persistence/index.js';
+} from './persistence/src/index.js';
+export type { RawComponentWithId } from './persistence/src/index.js';
 
 // Persistence — CDF storage
-export { storeCDFComponents, loadCDFComponents, loadScopeComponents } from './persistence/index.js';
-export type { ScopeComponentRow } from './persistence/index.js';
+export { storeCDFComponents, loadCDFComponents, loadScopeComponents } from './persistence/src/index.js';
+export type { ScopeComponentRow } from './persistence/src/index.js';
 
 // Persistence — review metadata (DB)
 export {
@@ -300,13 +349,13 @@ export {
   applyToolCalls,
   applyScopeDecisions,
   markCacheHumanEdited,
-} from './persistence/index.js';
+} from './persistence/src/index.js';
 export type {
   ComponentReviewMetadata,
   ComponentRationale,
   ApplyToolCallsResult,
   ApplyToolCallsOptions,
-} from './persistence/index.js';
+} from './persistence/src/index.js';
 
 // Persistence — resume seeds
 export {
@@ -314,7 +363,7 @@ export {
   seedCDFFromPreviewResponse,
   seedDefaultsFromChangedItems,
   backfillUnclassifiedProps,
-} from './persistence/index.js';
+} from './persistence/src/index.js';
 
 // Persistence — cache (lookup/store/copy, keys)
 export {
@@ -336,14 +385,14 @@ export {
   computeComponentInputHash,
   computeTokenInputHash,
   hashContent,
-} from './persistence/index.js';
+} from './persistence/src/index.js';
 export type {
   CacheEntityType,
   CacheEntry,
   SelectDecision,
   SelectCacheEntry,
   ExtractCacheEntry,
-} from './persistence/index.js';
+} from './persistence/src/index.js';
 
 // Persistence — slot cycles + unresolved slot refs
 export {
@@ -352,11 +401,11 @@ export {
   clearSlotCycles,
   findUnknownSlotAllowedComponents,
   filterUnknownSlotAllowedComponents,
-} from './persistence/index.js';
-export type { StoredSlotCycle, UnknownSlotAllowedComponent } from './persistence/index.js';
+} from './persistence/src/index.js';
+export type { StoredSlotCycle, UnknownSlotAllowedComponent } from './persistence/src/index.js';
 
 // Persistence — scanned files tracking
-export { storeScannedFiles, loadScannedFiles } from './persistence/index.js';
+export { storeScannedFiles, loadScannedFiles } from './persistence/src/index.js';
 
 // Persistence — token writers
 export {
@@ -364,7 +413,7 @@ export {
   applyTokenToolCalls,
   replaceRawTokenNamePaths,
   replaceRawPropTokenPaths,
-} from './persistence/index.js';
+} from './persistence/src/index.js';
 
 // Persistence — pure helpers
 export {
@@ -373,7 +422,7 @@ export {
   hashTokenContent,
   buildDtcgGroups,
   buildDtcgTokens,
-} from './persistence/index.js';
+} from './persistence/src/index.js';
 
 // Shared
 export type { CandidateFile } from './steps/shared/index.js';

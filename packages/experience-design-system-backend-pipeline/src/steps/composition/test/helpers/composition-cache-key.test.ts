@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildCompositionInputHash } from '../../src/helpers/composition-cache-key.js';
+import { buildCompositionInputHash } from '../../src/helpers/candidates/composition-cache-key.js';
 
 describe('buildCompositionInputHash', () => {
   it('returns a 64-character hex string', () => {

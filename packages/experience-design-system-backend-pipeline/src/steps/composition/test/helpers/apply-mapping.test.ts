@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { applyCompositionEdges } from '../../src/helpers/apply-mapping.js';
-import type { CompositionEdge } from '../../src/helpers/interchange-schema.js';
+import { applyCompositionEdges } from '../../src/helpers/edges/apply-mapping.js';
+import type { CompositionEdge } from '../../src/helpers/edges/interchange-schema.js';
 
 function makeComponent(
   name: string,

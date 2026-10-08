@@ -1,4 +1,4 @@
-import { c } from './colors.js';
+import { ansi } from './colors.js';
 import { formatToolCall } from './format-tool-call.js';
 
 /**
@@ -50,7 +50,7 @@ export class OutputFormatter {
     }
 
     if (this._verbose) {
-      this._write(c.dim('    ' + trimmed) + '\n');
+      this._write(ansi.dim('    ' + trimmed) + '\n');
     }
   }
 }

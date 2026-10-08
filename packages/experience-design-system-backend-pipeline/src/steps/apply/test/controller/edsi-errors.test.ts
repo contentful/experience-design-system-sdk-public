@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { parseEdsiError } from '../../src/controller/parse-edsi-error.js';
-import { formatEdsiError } from '../../src/controller/format-edsi-error.js';
-import { formatApiError } from '../../src/controller/format-api-error.js';
+import { parseEdsiError } from '../../src/controller/errors/parse-edsi-error.js';
+import { formatEdsiError } from '../../src/controller/errors/format-edsi-error.js';
+import { formatApiError } from '../../src/controller/errors/format-api-error.js';
 import { stripLambdaLogPrefix } from '../../src/helpers/edsi-errors/strip-lambda-log-prefix.js';
 
 describe('stripLambdaLogPrefix', () => {

@@ -1,9 +1,9 @@
 import { readFile } from 'node:fs/promises';
-import { openPipelineDb } from '../../../../../persistence/session/db.js';
-import { getRefineArtifactsRoot } from '../../../../../persistence/review-session/paths/review-artifacts-root.js';
-import { getRefineSessionPaths } from '../../../../../persistence/review-session/paths/review-session-paths.js';
-import { saveReviewState } from '../../../../../persistence/review-session/save-review-state.js';
-import type { ReviewSessionSnapshot } from '../../../../../persistence/review-session/types/review-session.js';
+import { openPipelineDb } from '../../../../../persistence/src/session/repositories/db.js';
+import { getRefineArtifactsRoot } from '../../../../../persistence/src/review-session/repositories/review-artifacts-root.js';
+import { getRefineSessionPaths } from '../../../../../persistence/src/review-session/repositories/review-session-paths.js';
+import { saveReviewState } from '../../../../../persistence/src/review-session/repositories/save-review-state.js';
+import type { ReviewSessionSnapshot } from '../../../../../persistence/src/review-session/types/review-session.js';
 
 /**
  * Exclude components whose names appear in `names` from the next preview/push.

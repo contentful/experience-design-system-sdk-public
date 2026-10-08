@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { findSlotCycles } from '../../src/controller/find-slot-cycles.js';
-import { groupNodesByCycleMembership } from '../../src/controller/group-nodes-by-cycle-membership.js';
-import { selectDescendantsRespectingCycles } from '../../src/controller/select-descendants-respecting-cycles.js';
-import { rejectAncestorsRespectingCycles } from '../../src/controller/reject-ancestors-respecting-cycles.js';
-import { expandSeedsToIncludeCycleGroups } from '../../src/controller/expand-seeds-to-include-cycle-groups.js';
+import { findSlotCycles } from '../../src/controller/cycles/find-slot-cycles.js';
+import { groupNodesByCycleMembership } from '../../src/controller/cycles/group-nodes-by-cycle-membership.js';
+import { selectDescendantsRespectingCycles } from '../../src/controller/selection/select-descendants-respecting-cycles.js';
+import { rejectAncestorsRespectingCycles } from '../../src/controller/selection/reject-ancestors-respecting-cycles.js';
+import { expandSeedsToIncludeCycleGroups } from '../../src/controller/selection/expand-seeds-to-include-cycle-groups.js';
 
 // A ↔ B cycle; C is a child of A that doesn't participate.
 const graph = [

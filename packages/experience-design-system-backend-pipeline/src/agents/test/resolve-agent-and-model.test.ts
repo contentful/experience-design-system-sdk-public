@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { resolveAgent } from '../helpers/resolve-agent.js';
-import { resolveModel } from '../helpers/resolve-model.js';
+import { resolveAgent } from '../helpers/resolution/resolve-agent.js';
+import { resolveModel } from '../helpers/resolution/resolve-model.js';
 
 describe('resolveAgent', () => {
   it('prefers the flag value when provided', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildComponentGraph } from '../../src/controller/build-component-graph.js';
+import { buildComponentGraph } from '../../src/controller/graph/build-component-graph.js';
 
 describe('buildComponentGraph', () => {
   it('maps CDF entries to graph nodes with slot allowedComponents', () => {

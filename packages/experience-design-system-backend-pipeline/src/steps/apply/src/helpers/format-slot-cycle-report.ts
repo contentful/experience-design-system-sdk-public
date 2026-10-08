@@ -1,6 +1,6 @@
 import type { SlotCycle } from '../../../composition/src/types/graph.js';
-import { formatCyclePath } from '../../../composition/src/helpers/format-cycle-path.js';
-import { suggestCycleBreakEdge } from '../../../composition/src/helpers/suggest-cycle-break-edge.js';
+import { formatCyclePath } from '../../../composition/src/helpers/cycles/format-cycle-path.js';
+import { suggestCycleBreakEdge } from '../../../composition/src/helpers/cycles/suggest-cycle-break-edge.js';
 
 /** Multi-line stderr-ready report of detected slot cycles with suggested fixes. */
 export function formatSlotCycleReport(cycles: SlotCycle[]): string[] {

@@ -1,4 +1,4 @@
-import { ApiClient } from '../services/api-client.js';
+import { ApiClient } from './api-client/api-client.js';
 import type { ApplyCredentials } from '../types/contract.js';
 
 export function createApiClient(credentials: ApplyCredentials): ApiClient {

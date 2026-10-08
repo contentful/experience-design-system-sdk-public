@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { MapTokenPropCall } from '../../../../../agents/types/tool-calls.js';
-import { openPipelineDb, getOrCreateSession, storeRawComponents } from '../../../../../persistence/session/db.js';
+import {
+  openPipelineDb,
+  getOrCreateSession,
+  storeRawComponents,
+} from '../../../../../persistence/src/session/repositories/db.js';
 import { applyMapTokenPropCalls } from '../../../src/controller/map-tokens/apply-map-token-prop-calls.js';
 import type { RawComponentDefinition } from '../../../../extraction/src/types/component.js';
 

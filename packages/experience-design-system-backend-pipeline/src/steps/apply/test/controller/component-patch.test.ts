@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { applyComponentPatch } from '../../src/controller/apply-component-patch.js';
-import { applyDotPath } from '../../src/controller/apply-dot-path.js';
-import { warnOnUnknownPatchComponents } from '../../src/controller/warn-on-unknown-patch-components.js';
+import { applyComponentPatch } from '../../src/controller/mutate/mutate-cdf-component.js';
+import { applyDotPath } from '../../src/controller/mutate/mutate-dot-path.js';
+import { warnOnUnknownPatchComponents } from '../../src/controller/mutate/warn-on-unknown-patch-components.js';
 
 describe('applyComponentPatch', () => {
   it('applies status + set to matched components, leaves others untouched', () => {

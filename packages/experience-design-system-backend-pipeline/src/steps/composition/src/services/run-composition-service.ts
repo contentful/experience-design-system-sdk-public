@@ -1,9 +1,9 @@
 import { runAgent } from '../../../../agents/index.js';
 import type { RawComponentDefinition } from '../../../extraction/src/types/component.js';
-import { resolveMapping } from '../helpers/resolve-mapping.js';
-import { selectCandidateFiles, capCandidatesToPromptBudget } from '../helpers/candidate-files.js';
-import { buildCompositionInputHash } from '../helpers/composition-cache-key.js';
-import { collectManifestDocEdges } from '../helpers/manifest-doc-evidence.js';
+import { resolveMapping } from '../helpers/edges/resolve-mapping.js';
+import { selectCandidateFiles, capCandidatesToPromptBudget } from '../helpers/candidates/candidate-files.js';
+import { buildCompositionInputHash } from '../helpers/candidates/composition-cache-key.js';
+import { collectManifestDocEdges } from '../helpers/edges/manifest-doc-evidence.js';
 import type { ResolveCompositionServiceOptions, ResolveCompositionServiceResult } from '../types/contract.js';
 
 export async function runCompositionService(

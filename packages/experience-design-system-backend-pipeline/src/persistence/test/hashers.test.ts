@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hashContent } from '../session/cache-keys.js';
+import { hashContent } from '../src/session/core/cache-keys.js';
 
 describe('hashContent', () => {
   it('is stable across invocations', () => {

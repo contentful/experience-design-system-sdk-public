@@ -5,7 +5,7 @@ import {
   createStep,
   updateStep,
   findLatestSessionForCommand,
-} from '../session/db.js';
+} from '../src/session/repositories/db.js';
 
 describe('step state machine', () => {
   it('creates a step, marks it complete, and makes it the latest for the command', () => {

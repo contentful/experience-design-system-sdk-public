@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { getPipelineDbPath, openPipelineDb } from '../session/db.js';
-import { configRoot } from '../session/config-root.js';
+import { getPipelineDbPath, openPipelineDb } from '../src/session/repositories/db.js';
+import { configRoot } from '../src/session/helpers/config-root.js';
 
 describe('openPipelineDb + schema', () => {
   let dbDir: string;

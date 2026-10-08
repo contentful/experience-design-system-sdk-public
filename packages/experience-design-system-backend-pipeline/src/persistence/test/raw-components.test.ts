@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { RawComponentDefinition } from '../../steps/extraction/src/types/component.js';
-import { openPipelineDb, getOrCreateSession, storeRawComponents, loadRawComponents } from '../session/db.js';
+import {
+  openPipelineDb,
+  getOrCreateSession,
+  storeRawComponents,
+  loadRawComponents,
+} from '../src/session/repositories/db.js';
 
 function sampleComponent(name = 'Button'): RawComponentDefinition {
   return {

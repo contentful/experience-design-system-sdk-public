@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { propagateDescendantIssuesToAncestors } from '../../src/controller/propagate-descendant-issues-to-ancestors.js';
-import { findWorstIssuedDescendant } from '../../src/controller/find-worst-issued-descendant.js';
+import { propagateDescendantIssuesToAncestors } from '../../src/controller/selection/propagate-descendant-issues-to-ancestors.js';
+import { findWorstIssuedDescendant } from '../../src/controller/selection/find-worst-issued-descendant.js';
 import type { Closure } from '../../src/types/graph.js';
 
 const closure: Closure = {
