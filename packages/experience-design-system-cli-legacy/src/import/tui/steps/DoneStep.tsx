@@ -35,9 +35,7 @@ function EntityRows({ entity, label }: { entity: EntityResult; label: string }):
           <Text color={PALETTE.success}>✓</Text> {plural(entity[action])} {action}
         </Text>
       ))}
-      {entity.failed > 0 && (
-        <Text color={PALETTE.error}>✗ {plural(entity.failed)} failed — check logs above</Text>
-      )}
+      {entity.failed > 0 && <Text color={PALETTE.error}>✗ {plural(entity.failed)} failed — check logs above</Text>}
     </>
   );
 }
@@ -126,7 +124,10 @@ export function DoneStep({
         <Box flexDirection="column" gap={1}>
           <Text color={PALETTE.success}>Your design system is now in Contentful Experiences.</Text>
           <LinkRow title="View your components here:" url={buildPostPushUrl(urlArgs)} />
-          <LinkRow title="View your design tokens here:" url={buildPostPushUrl({ ...urlArgs, view: 'design_tokens' })} />
+          <LinkRow
+            title="View your design tokens here:"
+            url={buildPostPushUrl({ ...urlArgs, view: 'design_tokens' })}
+          />
         </Box>
       )}
 

@@ -74,9 +74,7 @@ export function FinalizeDialog({
             <Text bold color={PALETTE.warning}>
               {'⚠ No components are accepted — nothing will be pushed.'}
             </Text>
-            <Text color={PALETTE.warning}>
-              {'Accept at least one component ([a] a row, [A] accept all) to push.'}
-            </Text>
+            <Text color={PALETTE.warning}>{'Accept at least one component ([a] a row, [A] accept all) to push.'}</Text>
             <Text> </Text>
           </>
         )}

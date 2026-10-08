@@ -247,9 +247,7 @@ export function CredentialsStep({
         <Text dimColor>[Enter] Next field / Submit</Text>
         <Text dimColor>[Tab] Switch field</Text>
         <Text dimColor>[q] Quit</Text>
-         {onSkip && (
-          <Text dimColor>[s] Skip — review locally only (no push, no live preview)</Text>
-      )}
+        {onSkip && <Text dimColor>[s] Skip — review locally only (no push, no live preview)</Text>}
       </Box>
     </Box>
   );

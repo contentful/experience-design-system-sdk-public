@@ -298,12 +298,7 @@ function InlinePropField({
 }): React.ReactElement {
   return (
     <Box width={width} gap={1} flexShrink={flexible ? 1 : 0} flexGrow={flexible ? 1 : 0} flexWrap="wrap">
-      <Text
-        color={focused ? PALETTE.warning : undefined}
-        bold={focused}
-        dimColor={!focused}
-        wrap="truncate-end"
-      >
+      <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused} wrap="truncate-end">
         {focused ? '› ' : '  '}
         {label}
       </Text>
@@ -567,7 +562,6 @@ function DescriptionField({
   compact?: boolean;
   paddingLeft?: number;
 }): React.ReactElement {
-  const cursor = cursorVisible ? '█' : ' ';
   if (compact) {
     return (
       <Box gap={1} flexWrap="wrap" width={width} flexShrink={0}>
@@ -588,7 +582,7 @@ function DescriptionField({
         {label}
       </Text>
       {editing ? (
-        <EditableDescription cursor={cursor} cursorVisible={cursorVisible} value={value} textCursor={textCursor} />
+        <EditableDescription cursorVisible={cursorVisible} value={value} textCursor={textCursor} />
       ) : (
         <Text wrap="wrap">{value || '—'}</Text>
       )}
@@ -597,12 +591,10 @@ function DescriptionField({
 }
 
 function EditableDescription({
-  cursor,
   cursorVisible,
   value,
   textCursor,
 }: {
-  cursor: string;
   cursorVisible: boolean;
   value: string;
   textCursor: number;
@@ -610,8 +602,8 @@ function EditableDescription({
   return (
     <Text wrap="wrap">
       {value.slice(0, textCursor)}
-      <Text inverse={cursorVisible}>{cursor}</Text>
-      {value.slice(textCursor)}
+      <Text inverse={cursorVisible}>{value[textCursor] ?? ' '}</Text>
+      {value.slice(textCursor + 1)}
     </Text>
   );
 }
