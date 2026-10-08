@@ -1,3 +1,7 @@
+// Services — non-pipeline backend (doctor + print)
+export * as doctor from './services/doctor/index.js';
+export * as print from './services/print/index.js';
+
 // Extraction
 export { extractComponents } from './steps/extraction/src/controller/extract-components-endpoint.js';
 export type {
@@ -18,6 +22,11 @@ export { mergeEdges } from './steps/composition/src/helpers/merge-edges.js';
 export { parseMapEdges } from './steps/composition/src/helpers/parse-map-edges.js';
 export { applyCompositionEdges } from './steps/composition/src/helpers/apply-mapping.js';
 export { buildCompositionInputHash } from './steps/composition/src/helpers/composition-cache-key.js';
+export { resolveCompositionSources } from './steps/composition/src/helpers/resolve-composition-sources.js';
+export type {
+  CompositionCliOptions,
+  ResolvedCompositionSources,
+} from './steps/composition/src/helpers/resolve-composition-sources.js';
 
 // Composition — graph & cycle analysis (operates on the composed-component graph)
 export { buildComponentGraph } from './steps/composition/src/controller/build-component-graph.js';
@@ -60,6 +69,8 @@ export type {
 // Selection — human-review controllers (bridge DB + review-session files)
 export { loadAndValidateForReview } from './steps/selection/src/controller/review/load-and-validate-for-review.js';
 export { mergePreviewValidationErrorsIntoReviewSession } from './steps/selection/src/controller/review/merge-preview-validation-errors-into-review-session.js';
+// Legacy-name alias used by cli-legacy wizard-422-helpers
+export { mergePreviewValidationErrorsIntoReviewSession as patchReviewStateWithValidationErrors } from './steps/selection/src/controller/review/merge-preview-validation-errors-into-review-session.js';
 export { rejectComponentsByName } from './steps/selection/src/controller/review/reject-components-by-name.js';
 
 // Review-session file I/O (used by TUI directly)
@@ -110,9 +121,14 @@ export type {
   WriteResult,
 } from './steps/apply/src/types/contract.js';
 export { hasBreakingChangesWithImpact } from './steps/apply/src/helpers/has-breaking-changes.js';
+export { toCdfTokens, toCdfTokens as toCDFTokens } from './steps/apply/src/helpers/token-utils.js';
 export { isEmptyPreview } from './steps/apply/src/helpers/is-empty-preview.js';
 export { buildPostPushUrl } from './steps/apply/src/helpers/contentful-urls.js';
 export { ApiError } from './steps/apply/src/types/api-error.js';
+export { ApiClient } from './steps/apply/src/services/api-client.js';
+// Legacy-name alias used by cli-legacy apply command
+export { ApiClient as ImportApiClient } from './steps/apply/src/services/api-client.js';
+export type { ApiClientOptions, RetryConfig } from './steps/apply/src/types/contract.js';
 export type { PreviewValidationError } from './steps/apply/src/types/contract.js';
 export { parsePreviewValidationErrors } from './steps/apply/src/helpers/parse-preview-errors.js';
 export { toApiHost, toConfiguredHost } from './steps/apply/src/helpers/host-utils.js';
@@ -134,6 +150,8 @@ export { warnOnUnknownPatchComponents } from './steps/apply/src/controller/warn-
 
 // Apply — preview output transforms
 export { annotatePreview, type PreviewAnnotation } from './steps/apply/src/controller/annotate-preview.js';
+// Legacy name used by TUI call sites — same impl, positional-args signature
+export { annotatePreview as applyPreviewAnnotations } from './steps/apply/src/helpers/annotate-preview.js';
 
 // Apply — server error parsing
 export { parseEdsiError, type ParsedEdsiError } from './steps/apply/src/controller/parse-edsi-error.js';
@@ -195,10 +213,33 @@ export type {
 // Generation — fuzzy match (public for TUI's reject dialog)
 export { findNearlyMatchingComponent } from './steps/generation/src/helpers/existing-entities/find-nearly-matching-component.js';
 
+// Generation — component cache helpers (shared cache-key normalization + precedence)
+export { normalizeComponentForCache } from './steps/generation/src/helpers/components/normalize-component-for-cache.js';
+export { lookupComponentCache } from './steps/generation/src/helpers/components/lookup-component-cache.js';
+export {
+  resolveComponentCache,
+  type ComponentCacheResolution,
+} from './steps/generation/src/helpers/components/resolve-component-cache.js';
+
+// Apply — shared pre-flight (read creds + validate CDF + build client)
+export {
+  resolveSharedInputs,
+  ResolveSharedInputsFailure,
+  type SharedInputs,
+} from './steps/apply/src/controller/resolve-shared-inputs.js';
+
 // Generation — map-tokens (apply parsed map_token_prop calls to a session)
 export { applyMapTokenPropCalls } from './steps/generation/src/controller/map-tokens/apply-map-token-prop-calls.js';
 export type { ApplyMapTokenPropCallsResult } from './steps/generation/src/types/map-tokens.js';
 export type { MapTokenPropCall, ParsedMapTokenPropToolCalls } from './agents/types/tool-calls.js';
+
+// Generation — map-tokens orchestrator (full flow: resolve defaults → cache → agent → apply)
+export { runMapTokens, MapTokensRunFailure } from './steps/generation/src/controller/map-tokens/run-map-tokens.js';
+export type {
+  MapTokensRunRequest,
+  MapTokensRunResult,
+  MapTokensRunError,
+} from './steps/generation/src/types/map-tokens-run.js';
 
 // Persistence — file collection + legacy SessionHandle (cache callbacks)
 export { collectFiles, openSession, generateSessionId } from './persistence/index.js';

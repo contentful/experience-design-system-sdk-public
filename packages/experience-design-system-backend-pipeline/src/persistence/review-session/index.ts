@@ -9,6 +9,8 @@ export { createReviewSessionSummary } from './create-review-session-summary.js';
 export { createReviewSessionDetail } from './create-review-session-detail.js';
 export { countValidationIssues } from './helpers/count-validation-issues.js';
 export { writeScopeDecisionsSnapshot } from './write-scope-decisions-snapshot.js';
+export { loadAcceptedNames } from './load-accepted-names.js';
+export { parsePrecomputedCachedNames } from './parse-precomputed-cached-names.js';
 export type {
   PreviewAnnotation,
   ReviewComponentStatus,

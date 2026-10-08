@@ -1,6 +1,34 @@
 // --- File collection (source-tree walker) ---
 export { collectFiles } from './helpers/collect-files.js';
 
+// --- Runs ledger (runs.json) ---
+export {
+  appendRun,
+  listRuns,
+  getRun,
+  updateRun,
+  buildSourceFingerprint,
+  detectSaveConflict,
+  buildTimestampedSubdir,
+  sha256Hex,
+  generateUlid,
+  RUNS_FILE_VERSION,
+  READABLE_VERSIONS,
+} from './runs/index.js';
+export type {
+  RunRecord,
+  RunsFile,
+  AppendInput,
+  ListOptions,
+  RunRecordV1,
+  RunRecordV2,
+  RunsFileV1,
+  RunsFileV2,
+  SourceFingerprint,
+  SourceFileEntry,
+  RawComponentsDb,
+} from './runs/index.js';
+
 // --- Review-session (per-session on-disk review state files) ---
 export {
   getRefineArtifactsRoot,
@@ -13,6 +41,8 @@ export {
   createReviewSessionDetail,
   countValidationIssues,
   writeScopeDecisionsSnapshot,
+  loadAcceptedNames,
+  parsePrecomputedCachedNames,
 } from './review-session/index.js';
 export type {
   LoadReviewInputOptions,
@@ -77,6 +107,9 @@ export type { RawComponentWithId } from './session/db.js';
 export { storeCDFComponents, loadCDFComponents, loadScopeComponents } from './session/db.js';
 export type { ScopeComponentRow } from './session/db.js';
 
+// --- DTCG token storage (read side) ---
+export { loadDTCGTokens } from './session/db.js';
+
 // --- Review metadata (DB) ---
 export {
   loadComponentReviewMetadata,
@@ -123,7 +156,7 @@ export {
 export type { CacheEntityType, CacheEntry, SelectDecision, SelectCacheEntry, ExtractCacheEntry } from './session/db.js';
 
 // --- Hashers ---
-export { hashContent } from './session/cache-keys.js';
+export { hashContent, hashFile, hashPromptForSkill } from './session/cache-keys.js';
 
 // --- Slot cycles + slot refs validation ---
 export {

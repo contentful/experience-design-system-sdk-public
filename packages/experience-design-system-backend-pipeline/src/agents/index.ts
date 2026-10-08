@@ -30,6 +30,8 @@ export { parseSelectToolCalls } from './parsers/parse-select-tool-calls.js';
 export { parseToolCalls } from './parsers/parse-tool-calls.js';
 export { parseTokenToolCalls } from './parsers/parse-token-tool-calls.js';
 export { parseMapTokenPropToolCalls } from './parsers/parse-map-token-prop-tool-calls.js';
+// Legacy-name alias used by cli-legacy map-tokens command
+export { parseMapTokenPropToolCalls as parseMapTokenPropToolCallLines } from './parsers/parse-map-token-prop-tool-calls.js';
 
 // --- Services (subprocess transport) ---
 export { runAgent } from './services/run-agent.js';
