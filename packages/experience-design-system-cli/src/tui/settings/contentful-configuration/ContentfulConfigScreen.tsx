@@ -1,19 +1,29 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
+import TextInput from 'ink-text-input';
 import { PALETTE } from '../../home/home.theme.js';
 import { readCredentials, writeCredentials, type V1Credentials } from './config-store.js';
 import { startDebugRun, finishDebugRun } from '../../debug-store.js';
 
-type Field = 'spaceId' | 'environmentId' | 'cmaToken' | 'host';
-type Stage = 'loading' | 'form' | 'saving' | 'saved';
+type Field = 'spaceId' | 'environmentId' | 'cmaToken' | 'host' | 'defaultComponentDir' | 'defaultTokenFile';
+type Stage = 'loading' | 'form' | 'saving';
 
-const FIELD_ORDER: Field[] = ['spaceId', 'environmentId', 'cmaToken', 'host'];
+const FIELD_ORDER: Field[] = [
+  'spaceId',
+  'environmentId',
+  'cmaToken',
+  'host',
+  'defaultComponentDir',
+  'defaultTokenFile',
+];
 function debugFields(config: V1Credentials | null): Record<string, unknown> {
   return {
     space_id: config?.spaceId ?? '',
     environment_id: config?.environmentId ?? '',
     cma_token: config?.cmaToken ?? '',
     host: config?.host ?? '',
+    default_component_dir: config?.defaultComponentDir ?? '',
+    default_token_file: config?.defaultTokenFile ?? '',
   };
 }
 
@@ -22,13 +32,21 @@ const FIELD_LABELS: Record<Field, string> = {
   environmentId: 'Environment ID',
   cmaToken: 'CMA Token',
   host: 'API Host (optional)',
+  defaultComponentDir: 'Default component directory (optional)',
+  defaultTokenFile: 'Default token file (optional)',
 };
 
 export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.ReactElement {
   const [stage, setStage] = useState<Stage>('loading');
   const [config, setConfig] = useState<V1Credentials | null>(null);
   const [activeField, setActiveField] = useState<Field>('spaceId');
-  const [message, setMessage] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  // The config as last written to disk, so leaving can log whether anything was saved.
+  const [lastSaved, setLastSaved] = useState<V1Credentials | null>(null);
+  // Fields are read-only until Enter opens one for editing; Enter again closes it. While editing, keys type
+  // into the field (so a "q" in a path is just a "q"), and Esc closes it and restores the previous value.
+  const [editing, setEditing] = useState(false);
+  const [valueBeforeEdit, setValueBeforeEdit] = useState('');
 
   useEffect(() => {
     readCredentials().then((cfg) => {
@@ -51,37 +69,60 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
   function setFieldValue(field: Field, value: string): void {
     if (!config) return;
     setConfig({ ...config, [field]: value });
+    setNotice(null);
   }
 
+  // Explicit save: stays on the screen and shows a confirmation. A failed save shows the error instead.
   function handleSave(): void {
     if (!config) return;
     setStage('saving');
-    setMessage(null);
+    setNotice(null);
     writeCredentials(config)
       .then(() => {
-        setStage('saved');
-        setMessage('Configuration saved');
+        setLastSaved(config);
+        setNotice({ kind: 'success', text: 'Configuration saved' });
+        setStage('form');
       })
       .catch((err: unknown) => {
-        setMessage(err instanceof Error ? err.message : 'Failed to save');
+        setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'Failed to save' });
         setStage('form');
       });
+  }
+
+  // Leaves without writing anything. Changes since the last save are dropped.
+  function quit(): void {
+    void finishDebugRun(
+      lastSaved
+        ? { outputs: debugFields(lastSaved), status: 'success', exitMethod: 'saved' }
+        : { outputs: {}, status: 'success', exitMethod: 'discarded' },
+    );
+    onDone();
   }
 
   useInput((input, key) => {
     if (stage === 'loading' || stage === 'saving') return;
 
-    if (stage === 'saved') {
-      if (key.return || key.escape || input === 'q') {
-        void finishDebugRun({ outputs: debugFields(config), status: 'success', exitMethod: 'saved' });
-        onDone();
+    if (editing) {
+      // <TextInput> handles typing, the cursor, left/right and Enter (onSubmit) itself.
+      if (key.escape) {
+        setFieldValue(activeField, valueBeforeEdit);
+        setEditing(false);
       }
       return;
     }
 
     if (key.escape || input === 'q') {
-      void finishDebugRun({ outputs: {}, status: 'success', exitMethod: 'discarded' });
-      onDone();
+      quit();
+      return;
+    }
+
+    if (input === 's') {
+      handleSave();
+      return;
+    }
+
+    if (input === 'c') {
+      setFieldValue(activeField, '');
       return;
     }
 
@@ -98,23 +139,8 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
     }
 
     if (key.return) {
-      const idx = FIELD_ORDER.indexOf(activeField);
-      if (idx < FIELD_ORDER.length - 1) {
-        setActiveField(FIELD_ORDER[idx + 1]!);
-      } else {
-        handleSave();
-      }
-      return;
-    }
-
-    if (key.backspace || key.delete) {
-      const current = fieldValue(activeField);
-      setFieldValue(activeField, current.slice(0, -1));
-      return;
-    }
-
-    if (input && !key.ctrl && !key.meta) {
-      setFieldValue(activeField, fieldValue(activeField) + input);
+      setValueBeforeEdit(fieldValue(activeField));
+      setEditing(true);
     }
   });
 
@@ -128,23 +154,9 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
     );
   }
 
-  if (stage === 'saved') {
-    return (
-      <Box flexDirection="column" paddingX={2} paddingY={1}>
-        <Text bold>Configuration</Text>
-        <Text> </Text>
-        <Text color={PALETTE.success}>✓ {message}</Text>
-        <Text> </Text>
-        <Text dimColor>[Enter] Back to Settings</Text>
-      </Box>
-    );
-  }
-
   return (
     <Box flexDirection="column" paddingX={2} paddingY={1}>
       <Text bold>Configuration</Text>
-      <Text> </Text>
-      <Text>Contentful API Credentials</Text>
       <Text> </Text>
       <Box flexDirection="column">
         {FIELD_ORDER.map((field) => {
@@ -155,19 +167,34 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
             <Box key={field} gap={1}>
               <Text color={isActive ? PALETTE.accent : undefined}>{isActive ? '❯' : ' '}</Text>
               <Text bold={isActive}>{FIELD_LABELS[field]}:</Text>
-              <Text>{display || <Text dimColor>(empty)</Text>}</Text>
+              {isActive && editing ? (
+                <TextInput
+                  value={value}
+                  onChange={(next) => setFieldValue(field, next)}
+                  onSubmit={() => setEditing(false)}
+                  mask={field === 'cmaToken' ? '•' : undefined}
+                />
+              ) : (
+                <Text>{display || <Text dimColor>(empty)</Text>}</Text>
+              )}
             </Box>
           );
         })}
       </Box>
-      {message && (
+      {notice && (
         <>
           <Text> </Text>
-          <Text color={PALETTE.error}>✗ {message}</Text>
+          <Text color={notice.kind === 'success' ? PALETTE.success : PALETTE.error}>
+            {notice.kind === 'success' ? '✓' : '✗'} {notice.text}
+          </Text>
         </>
       )}
       <Text> </Text>
-      <Text dimColor>[↑/↓] Switch field · [Enter] Save/Next · [Esc/q] Back</Text>
+      <Text dimColor>
+        {editing
+          ? '[type] Edit · [←/→] Move cursor · [Enter] Done · [Esc] Cancel edit'
+          : '[↑/↓] Switch field · [Enter] Edit · [c] Clear field · [s] Save · [Esc/q] Quit without saving'}
+      </Text>
     </Box>
   );
 }

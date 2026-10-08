@@ -10,10 +10,16 @@ interface TokenInputScreenProps {
   onConfirm: (tokensPath: string) => void;
   onSkip: () => void;
   onBack: () => void;
+  initialPath?: string;
 }
 
-export function TokenInputScreen({ onConfirm, onSkip, onBack }: TokenInputScreenProps): React.ReactElement {
-  const [tokenPath, setTokenPath] = useState('');
+export function TokenInputScreen({
+  onConfirm,
+  onSkip,
+  onBack,
+  initialPath = '',
+}: TokenInputScreenProps): React.ReactElement {
+  const [tokenPath, setTokenPath] = useState(initialPath);
   const [failure, setFailure] = useState<TokenPathFailure | null>(null);
 
   useTokenInputControls(tokenPath, onSkip, onBack);

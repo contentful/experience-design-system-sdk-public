@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { HomeScreen } from './src/tui/home/home.js';
 import { ImportScreen } from './src/tui/import/PageContainer.js';
 import { TokenInputScreen, WelcomeScreen } from './src/tui/import/steps/index.js';
@@ -11,6 +11,7 @@ import { ConfigurationScreen } from './src/tui/settings/contentful-configuration
 import { OptInAnalyticsScreen } from './src/tui/settings/opt-in-analytics/screen.js';
 import { UpgradeScreen } from './src/tui/upgrade/PageContainer.js';
 import { DebugModeScreen } from './src/tui/settings/debug-mode/screen.js';
+import { readCredentials } from './src/tui/settings/contentful-configuration/config-store.js';
 
 export type Screen =
   | 'start'
@@ -32,6 +33,19 @@ function App({ onLaunchImport, importExitCode }: AppProps): React.ReactElement {
   const [screen, setScreen] = useState<Screen>(returnedFromImport ? 'import' : 'start');
   const [showImportResult, setShowImportResult] = useState(returnedFromImport);
   const [projectPath, setProjectPath] = useState<string>();
+  const [importDefaults, setImportDefaults] = useState<{ componentDir: string; tokenFile: string }>();
+
+  // Read the saved defaults each time the import flow opens, so a change in Settings shows up right away.
+  // The screens only read their initial value on mount, so they wait for this to resolve.
+  useEffect(() => {
+    if (screen !== 'import') {
+      setImportDefaults(undefined);
+      return;
+    }
+    void readCredentials().then((saved) =>
+      setImportDefaults({ componentDir: saved.defaultComponentDir ?? '', tokenFile: saved.defaultTokenFile ?? '' }),
+    );
+  }, [screen]);
 
   const goToStart = (): void => setScreen('start');
   const goToSettings = (): void => setScreen('settings');
@@ -50,9 +64,15 @@ function App({ onLaunchImport, importExitCode }: AppProps): React.ReactElement {
   switch (screen) {
     case 'import':
       if (showImportResult) return <ImportScreen exitCode={importExitCode} onDone={finishImportResult} />;
-      if (projectPath === undefined) return <WelcomeScreen onContinue={setProjectPath} onQuit={leaveImport} />;
+      if (importDefaults === undefined) return <></>;
+      if (projectPath === undefined) {
+        return (
+          <WelcomeScreen onContinue={setProjectPath} onQuit={leaveImport} initialPath={importDefaults.componentDir} />
+        );
+      }
       return (
         <TokenInputScreen
+          initialPath={importDefaults.tokenFile}
           onConfirm={(tokens) => onLaunchImport?.({ project: projectPath, tokens })}
           onSkip={() => onLaunchImport?.({ project: projectPath })}
           onBack={() => setProjectPath(undefined)}

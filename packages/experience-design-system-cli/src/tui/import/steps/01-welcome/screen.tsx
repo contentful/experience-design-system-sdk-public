@@ -8,6 +8,7 @@ import { toProjectPath } from './logic.js';
 interface WelcomeScreenProps {
   onContinue: (projectPath: string) => void;
   onQuit: () => void;
+  initialPath?: string;
 }
 
 const RULE = '────────────────────────────────────────';
@@ -20,8 +21,8 @@ const OVERVIEW = [
   { label: 'Step 5', description: 'Push to Contentful' },
 ] as const;
 
-export function WelcomeScreen({ onContinue, onQuit }: WelcomeScreenProps): React.ReactElement {
-  const [projectPath, setProjectPath] = useState('');
+export function WelcomeScreen({ onContinue, onQuit, initialPath = '' }: WelcomeScreenProps): React.ReactElement {
+  const [projectPath, setProjectPath] = useState(initialPath);
 
   useWelcomeControls(projectPath, onQuit);
 
