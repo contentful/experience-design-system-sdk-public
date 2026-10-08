@@ -243,16 +243,14 @@ export function CredentialsStep({
         </Text>
       )}
 
-      <Box gap={3} marginTop={1}>
+      <Box gap={3}>
         <Text dimColor>[Enter] Next field / Submit</Text>
         <Text dimColor>[Tab] Switch field</Text>
         <Text dimColor>[q] Quit</Text>
-      </Box>
-      {onSkip && (
-        <Box marginTop={0}>
+         {onSkip && (
           <Text dimColor>[s] Skip — review locally only (no push, no live preview)</Text>
-        </Box>
       )}
+      </Box>
     </Box>
   );
 }
