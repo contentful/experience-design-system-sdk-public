@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { configRoot } from '../helpers/config-root.js';
 import { dirname, resolve } from 'node:path';
-import { escapeForRegExp, excerptAroundNames } from '../core/source-excerpt.js';
+import { escapeForRegExp, excerptAroundNames } from '../helpers/source-excerpt.js';
 import type {
   RawComponentDefinition,
   RawPropDefinition,
@@ -14,9 +14,9 @@ import type { CDFComponentEntry } from '../../../../steps/shared/index.js';
 import type { ToolCall, ComponentSourceRef } from '../../../../agents/index.js';
 import type { ComponentTypeSummary } from '../../../../steps/shared/index.js';
 import type { SlotCycle, SlotEdge } from '../../../../steps/composition/src/types/graph.js';
-import { deriveComponentId } from '../core/components/derive-component-id.js';
-import { mapContentfulTypeToCdfType, resolveCdfCategory } from '../core/cdf/cdf-mappers.js';
-import { indexRowsByKey } from '../core/shared/index-rows-by-key.js';
+import { deriveComponentId } from '../helpers/components/derive-component-id.js';
+import { mapContentfulTypeToCdfType, resolveCdfCategory } from '../helpers/cdf/cdf-mappers.js';
+import { indexRowsByKey } from '../helpers/shared/index-rows-by-key.js';
 import { getLatestCompletedSessionForCommand, type MatchHints as SessionMatchHints } from './sessions/read.js';
 import { updateSessionTimestamp } from './sessions/write.js';
 import { getSessionIdForStep } from './steps/read.js';
@@ -25,8 +25,8 @@ import { getOrCreateSessionForCommand, type SessionResolution } from '../service
 import { getRawTokenNamePaths, type RawTokenNamePathSource } from './tokens/read.js';
 import { type RawPropTokenPathSource } from './tokens/write.js';
 
-export { hashComponentShape as computeComponentInputHash } from '../core/components/hash-component-shape.js';
-export { hashTokenContent as computeTokenInputHash } from '../core/tokens/hash-token-content.js';
+export { hashComponentShape as computeComponentInputHash } from '../helpers/components/hash-component-shape.js';
+export { hashTokenContent as computeTokenInputHash } from '../helpers/tokens/hash-token-content.js';
 
 // Tokens — repositories/tokens/{read,write}.ts and services/tokens/*
 export {
@@ -2842,7 +2842,7 @@ let _cliCacheVersionCache: string | null = null;
 export async function getCliCacheVersion(): Promise<string> {
   if (_cliCacheVersionCache) return _cliCacheVersionCache;
   try {
-    const { hashContent } = await import('../core/cache-keys.js');
+    const { hashContent } = await import('../helpers/cache-keys.js');
     const { resolveSkillPath } = await import('../../../../agents/index.js');
     const skills: Array<'components' | 'tokens' | 'select'> = ['components', 'tokens', 'select'];
     const parts: string[] = [];

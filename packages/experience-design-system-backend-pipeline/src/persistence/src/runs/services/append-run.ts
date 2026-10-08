@@ -1,4 +1,4 @@
-import { generateUlid } from '../core/generate-ulid.js';
+import { generateUlid } from '../helpers/generate-ulid.js';
 import { readRunsFileMaybe } from '../repositories/read-runs-file.js';
 import { writeRunsFileAtomic } from '../repositories/write-runs-file.js';
 import type { AppendInput, RunRecord } from '../types/run-record.js';

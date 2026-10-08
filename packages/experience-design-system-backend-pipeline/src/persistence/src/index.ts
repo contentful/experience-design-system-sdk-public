@@ -162,7 +162,7 @@ export type {
 } from './session/repositories/db.js';
 
 // --- Hashers ---
-export { hashContent, hashFile, hashPromptForSkill } from './session/core/cache-keys.js';
+export { hashContent, hashFile, hashPromptForSkill } from './session/helpers/cache-keys.js';
 
 // --- Slot cycles + slot refs validation ---
 export {
@@ -184,8 +184,8 @@ export { replaceRawTokenNamePaths } from './session/services/tokens/replace-raw-
 export { replaceRawPropTokenPaths } from './session/services/tokens/replace-raw-prop-token-paths.js';
 
 // --- Pure helpers consumed by writers ---
-export { deriveComponentId } from './session/core/components/derive-component-id.js';
-export { hashComponentShape } from './session/core/components/hash-component-shape.js';
-export { hashTokenContent } from './session/core/tokens/hash-token-content.js';
-export { buildDtcgGroups } from './session/core/tokens/build-dtcg-groups.js';
-export { buildDtcgTokens } from './session/core/tokens/build-dtcg-tokens.js';
+export { deriveComponentId } from './session/helpers/components/derive-component-id.js';
+export { hashComponentShape } from './session/helpers/components/hash-component-shape.js';
+export { hashTokenContent } from './session/helpers/tokens/hash-token-content.js';
+export { buildDtcgGroups } from './session/helpers/tokens/build-dtcg-groups.js';
+export { buildDtcgTokens } from './session/helpers/tokens/build-dtcg-tokens.js';

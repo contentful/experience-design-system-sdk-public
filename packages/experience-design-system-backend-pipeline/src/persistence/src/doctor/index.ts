@@ -5,7 +5,7 @@ export { reportPnpm } from './controller/report-pnpm.js';
 export { reportDependencies } from './controller/report-dependencies.js';
 export { reportBuild } from './controller/report-build.js';
 export { reportAgent } from './controller/report-agent.js';
-export { checkNodeVersion, type NodeVersionCheck } from './services/check-node-version.js';
+export { checkNodeVersion, type NodeVersionCheck } from './helpers/check-node-version.js';
 export { checkPnpm, type PnpmCheck } from './services/check-pnpm.js';
 export { detectNodeVersionManagers, type NodeVersionManagers } from './services/detect-node-version-managers.js';
 export { installDependencies, type CommandCheck } from './services/install-dependencies.js';

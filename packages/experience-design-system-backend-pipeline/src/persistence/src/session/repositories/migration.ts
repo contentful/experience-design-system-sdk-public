@@ -3,7 +3,7 @@ import { readdirSync, readFileSync, renameSync, statSync } from 'node:fs';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { configRoot } from '../helpers/config-root.js';
-import { generateSessionId } from '../core/session-id.js';
+import { generateSessionId } from '../helpers/session-id.js';
 
 const MIGRATION_NAME = 'v1_import_and_reviews';
 

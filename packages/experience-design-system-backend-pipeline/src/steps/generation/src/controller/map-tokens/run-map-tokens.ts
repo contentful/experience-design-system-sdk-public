@@ -21,7 +21,7 @@ import {
   storeCache,
   updateStep,
 } from '../../../../../persistence/src/session/repositories/db.js';
-import { hashContent, hashPromptForSkill } from '../../../../../persistence/src/session/core/cache-keys.js';
+import { hashContent, hashPromptForSkill } from '../../../../../persistence/src/session/helpers/cache-keys.js';
 import { binaryExists } from '../../../../../persistence/src/doctor/helpers/binary-exists.js';
 import { applyMapTokenPropCalls } from './apply-map-token-prop-calls.js';
 import { countMappableProps } from '../../helpers/map-tokens/count-mappable-props.js';

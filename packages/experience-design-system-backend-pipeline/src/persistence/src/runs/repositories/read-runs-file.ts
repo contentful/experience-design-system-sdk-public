@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { runsFilePath } from '../../session/helpers/config-root.js';
-import { migrateRecord } from '../core/migrate-record.js';
+import { migrateRecord } from '../helpers/migrate-record.js';
 import {
   READABLE_VERSIONS,
   RUNS_FILE_VERSION,

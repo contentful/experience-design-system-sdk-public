@@ -1,6 +1,6 @@
 import { readFile, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { sha256Hex } from '../core/sha256-hex.js';
+import { sha256Hex } from '../helpers/sha256-hex.js';
 import type { RawComponentsDb, SourceFileEntry, SourceFingerprint } from '../types/source-fingerprint.js';
 
 function rowField(row: Record<string, unknown>, key: string): string | null {

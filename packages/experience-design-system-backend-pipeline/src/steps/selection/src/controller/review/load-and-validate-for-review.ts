@@ -1,7 +1,7 @@
 import { validateExtractedComponents } from '../../../../extraction/src/helpers/quality/validate.js';
 import { openPipelineDb } from '../../../../../persistence/src/session/repositories/db.js';
 import { loadRawComponents } from '../../../../../persistence/src/session/repositories/db.js';
-import { loadReviewInput } from '../../../../../persistence/src/review-session/core/load-review-input.js';
+import { loadReviewInput } from '../../../../../persistence/src/review-session/helpers/load-review-input.js';
 import type { ReviewSessionSnapshot } from '../../../../../persistence/src/review-session/types/review-session.js';
 
 /**

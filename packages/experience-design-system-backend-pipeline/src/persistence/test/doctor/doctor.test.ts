@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkNodeVersion } from '../../src/doctor/services/check-node-version.js';
+import { checkNodeVersion } from '../../src/doctor/helpers/check-node-version.js';
 import { installCommand, installHint } from '../../src/doctor/helpers/install-command.js';
 import { stderrLines } from '../../src/doctor/helpers/stderr-lines.js';
 import { AGENT_DEFS } from '../../src/doctor/constants/agent-defs.js';

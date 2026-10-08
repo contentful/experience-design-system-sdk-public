@@ -6,8 +6,8 @@ import { appendRun } from '../../src/runs/services/append-run.js';
 import { listRuns } from '../../src/runs/services/list-runs.js';
 import { getRun } from '../../src/runs/services/get-run.js';
 import { updateRun } from '../../src/runs/services/update-run.js';
-import { generateUlid } from '../../src/runs/core/generate-ulid.js';
-import { buildTimestampedSubdir } from '../../src/runs/core/build-timestamped-subdir.js';
+import { generateUlid } from '../../src/runs/helpers/generate-ulid.js';
+import { buildTimestampedSubdir } from '../../src/runs/helpers/build-timestamped-subdir.js';
 import { detectSaveConflict } from '../../src/runs/services/detect-save-conflict.js';
 import { writeFileSync, mkdirSync } from 'node:fs';
 

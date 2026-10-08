@@ -4,9 +4,9 @@ export { getRun } from './services/get-run.js';
 export { updateRun } from './services/update-run.js';
 export { buildSourceFingerprint } from './services/build-source-fingerprint.js';
 export { detectSaveConflict } from './services/detect-save-conflict.js';
-export { buildTimestampedSubdir } from './core/build-timestamped-subdir.js';
-export { sha256Hex } from './core/sha256-hex.js';
-export { generateUlid } from './core/generate-ulid.js';
+export { buildTimestampedSubdir } from './helpers/build-timestamped-subdir.js';
+export { sha256Hex } from './helpers/sha256-hex.js';
+export { generateUlid } from './helpers/generate-ulid.js';
 export { RUNS_FILE_VERSION, READABLE_VERSIONS } from './types/run-record.js';
 export type {
   RunRecord,

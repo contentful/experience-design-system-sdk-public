@@ -1,5 +1,5 @@
 import { homedir } from 'node:os';
-import { checkNodeVersion } from '../services/check-node-version.js';
+import { checkNodeVersion } from '../helpers/check-node-version.js';
 import { detectNodeVersionManagers } from '../services/detect-node-version-managers.js';
 import type { CheckOutcome, ReportLine } from '../types/report.js';
 

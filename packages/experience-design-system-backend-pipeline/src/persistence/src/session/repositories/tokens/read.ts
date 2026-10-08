@@ -1,7 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type { DTCGTokenEntry, DTCGTokenGroup } from '../../../../../steps/shared/index.js';
-import { buildDtcgGroups, type GroupRow, type TokenRow } from '../../core/tokens/build-dtcg-groups.js';
-import { buildDtcgTokens } from '../../core/tokens/build-dtcg-tokens.js';
+import { buildDtcgGroups, type GroupRow, type TokenRow } from '../../helpers/tokens/build-dtcg-groups.js';
+import { buildDtcgTokens } from '../../helpers/tokens/build-dtcg-tokens.js';
 
 export type RawTokenNamePaths = Record<string, string>;
 export type RawTokenNamePathSource = 'automatic' | 'manual';

@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { generateSessionId } from '../core/session-id.js';
+import { generateSessionId } from '../helpers/session-id.js';
 import { getSessionById, type MatchHints } from '../repositories/sessions/read.js';
 import { createSession } from '../repositories/sessions/write.js';
 
