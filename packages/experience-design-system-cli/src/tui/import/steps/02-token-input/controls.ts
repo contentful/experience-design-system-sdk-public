@@ -2,7 +2,7 @@ import { useInput } from 'ink';
 import { shouldGoBack } from './logic.js';
 
 export const TOKEN_INPUT_CONTROLS = [
-  { keys: 'Enter', label: 'Continue (skips if empty)' },
+  { keys: 'Enter', label: 'Continue' },
   { keys: 'Esc', label: 'Back' },
 ] as const;
 
