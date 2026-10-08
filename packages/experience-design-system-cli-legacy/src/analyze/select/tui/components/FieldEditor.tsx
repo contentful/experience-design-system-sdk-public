@@ -567,7 +567,6 @@ function DescriptionField({
   compact?: boolean;
   paddingLeft?: number;
 }): React.ReactElement {
-  const cursor = cursorVisible ? '█' : ' ';
   if (compact) {
     return (
       <Box gap={1} flexWrap="wrap" width={width} flexShrink={0}>
@@ -588,7 +587,7 @@ function DescriptionField({
         {label}
       </Text>
       {editing ? (
-        <EditableDescription cursor={cursor} cursorVisible={cursorVisible} value={value} textCursor={textCursor} />
+        <EditableDescription cursorVisible={cursorVisible} value={value} textCursor={textCursor} />
       ) : (
         <Text wrap="wrap">{value || '—'}</Text>
       )}
@@ -597,12 +596,10 @@ function DescriptionField({
 }
 
 function EditableDescription({
-  cursor,
   cursorVisible,
   value,
   textCursor,
 }: {
-  cursor: string;
   cursorVisible: boolean;
   value: string;
   textCursor: number;
