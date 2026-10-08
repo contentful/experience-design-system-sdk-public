@@ -15,6 +15,8 @@ function parseScope(value: string | undefined): Scope {
 }
 
 // cli is deliberately not scanned: its screens keep their logic separate even where two are identical.
+// backend-pipeline deliberately mirrors CLI code during the extraction transition (INTEG-5024–5030);
+// the duplication will be resolved when the CLI is wired to use the new package.
 const IGNORES = [
   '**/node_modules/**',
   '**/dist/**',
@@ -23,6 +25,7 @@ const IGNORES = [
   '**/experience-design-system-cli/src/tui/**',
   '**/experience-design-system-cli/src/api/**',
   '**/experience-design-system-cli/src/legacy/**',
+  '**/experience-design-system-backend-pipeline/**',
 ];
 
 function scanArgs(): string[] {
