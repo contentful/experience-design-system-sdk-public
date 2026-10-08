@@ -86,6 +86,33 @@ export type { PreviewValidationError } from './steps/apply/src/types/contract.js
 export { parsePreviewValidationErrors } from './steps/apply/src/helpers/parse-preview-errors.js';
 export { toApiHost, toConfiguredHost } from './steps/apply/src/helpers/host-utils.js';
 
+// Apply — pre-apply validation gates
+export { detectSlotCycles } from './steps/apply/src/controller/detect-slot-cycles.js';
+export { assertNoSlotCycles } from './steps/apply/src/controller/assert-no-slot-cycles.js';
+export { assertNoUnresolvedSlotReferences } from './steps/apply/src/controller/assert-no-unresolved-slot-references.js';
+export { formatSlotCycleReport } from './steps/apply/src/controller/format-slot-cycle-report.js';
+export { formatUnresolvedSlotReferences } from './steps/apply/src/controller/format-unresolved-slot-references.js';
+
+// Apply — inline CDF mutation (final-review edits)
+export {
+  applyComponentPatch,
+  type ComponentPatchOperation,
+} from './steps/apply/src/controller/apply-component-patch.js';
+export { applyDotPath } from './steps/apply/src/controller/apply-dot-path.js';
+export { warnOnUnknownPatchComponents } from './steps/apply/src/controller/warn-on-unknown-patch-components.js';
+
+// Apply — preview output transforms
+export { annotatePreview, type PreviewAnnotation } from './steps/apply/src/controller/annotate-preview.js';
+
+// Apply — server error parsing
+export { parseEdsiError, type ParsedEdsiError } from './steps/apply/src/controller/parse-edsi-error.js';
+export { formatEdsiError } from './steps/apply/src/controller/format-edsi-error.js';
+export { formatApiError, type ApiErrorLike } from './steps/apply/src/controller/format-api-error.js';
+export { stripLambdaLogPrefix } from './steps/apply/src/helpers/edsi-errors/strip-lambda-log-prefix.js';
+
+// Apply — token file reading
+export { readTokensFromPath } from './steps/apply/src/controller/read-tokens-from-path.js';
+
 // Persistence
 export { collectFiles, openSession, generateSessionId } from './persistence/index.js';
 export type { OpenSessionOptions, SelectionDecision, SessionHandle } from './persistence/index.js';
