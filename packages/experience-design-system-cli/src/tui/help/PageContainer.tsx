@@ -65,7 +65,7 @@ export function HelpScreen({ onDone }: { onDone: () => void }): React.ReactEleme
       <ControlHints
         hints={[
           { keys: '⏎', label: 'done' },
-          { keys: 'Esc/q', label: 'back to start' },
+          { keys: 'Esc/q', label: 'back' },
         ]}
       />
     </Box>
