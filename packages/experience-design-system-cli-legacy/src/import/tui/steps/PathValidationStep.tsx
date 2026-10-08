@@ -265,11 +265,8 @@ export function PathValidationStep({
       {componentFiles === 0 && tokenFiles > 0 && (
         <Text color={PALETTE.warning}>⚠ No component files found — only token files detected.</Text>
       )}
-
-      <Box marginTop={1}>
-        <Text>Does this look right?</Text>
-      </Box>
-
+      <Text>Does this look right?</Text>
+      
       <Box gap={3} marginTop={1}>
         <Text dimColor>[Enter] Yes, start extracting</Text>
         <Text dimColor>[s] Skip components</Text>

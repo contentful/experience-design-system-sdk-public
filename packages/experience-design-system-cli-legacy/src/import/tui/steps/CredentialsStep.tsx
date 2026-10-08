@@ -193,7 +193,7 @@ export function CredentialsStep({
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
       {summary && <Text color={PALETTE.success}>✓ {summary}</Text>}
 
-      <Box flexDirection="column" marginTop={1} gap={0}>
+      <Box flexDirection="column">
         <Text>
           {initialSpaceId && initialCmaToken
             ? 'Credentials pre-filled from the configuration settings.'
@@ -213,7 +213,7 @@ export function CredentialsStep({
         )}
       </Box>
 
-      <Box flexDirection="column" gap={0} marginTop={1}>
+      <Box flexDirection="column">
         {renderField('Space ID', spaceId, 'spaceId')}
         {renderField('Environment', environmentId, 'environmentId')}
         {renderField('CMA Token', cmaToken, 'cmaToken', true)}
