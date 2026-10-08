@@ -24,7 +24,7 @@ const OVERVIEW = [
 export function WelcomeScreen({ onContinue, onQuit, initialPath = '' }: WelcomeScreenProps): React.ReactElement {
   const [projectPath, setProjectPath] = useState(initialPath);
 
-  useWelcomeControls(projectPath, onQuit);
+  useWelcomeControls(onQuit);
 
   const submit = (value: string) => {
     const path = toProjectPath(value);

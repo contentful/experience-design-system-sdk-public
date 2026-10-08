@@ -22,7 +22,7 @@ export function TokenInputScreen({
   const [tokenPath, setTokenPath] = useState(initialPath);
   const [failure, setFailure] = useState<TokenPathFailure | null>(null);
 
-  useTokenInputControls(tokenPath, onSkip, onBack);
+  useTokenInputControls(onBack);
 
   const change = (value: string) => {
     setTokenPath(value);
