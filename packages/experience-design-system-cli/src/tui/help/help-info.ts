@@ -22,7 +22,6 @@ export async function readHelpInfo(): Promise<HelpInfo> {
       { label: 'Config folder', value: configRoot() },
       { label: 'Settings file', value: configFilePath() },
       { label: 'Debug logs', value: debugSessionsDir() },
-      { label: 'Move it with', value: process.env['EDS_HOME'] ? 'EDS_HOME (set)' : 'EDS_HOME (not set)' },
     ],
     troubleshooting: [
       { label: 'CLI version', value: readPackageVersion() },
