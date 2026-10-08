@@ -1,4 +1,4 @@
-import { readExperiencesCredentials } from '../../../persistence/src/credentials/services/read-credentials.js';
+import { readExperiencesCredentials } from '../../credentials/services/read-credentials.js';
 import { AGENT_DEFS, INSTALLABLE_AGENTS } from '../constants/agent-defs.js';
 import { binaryExists } from '../helpers/binary-exists.js';
 import { installCommand } from '../helpers/install-command.js';

@@ -1,5 +1,5 @@
-// Non-pipeline backend domains (same shape as a pipeline step)
-export * as doctor from './doctor/src/index.js';
+// Preflight env/auth checks (reads credentials + probes binaries; lives under persistence)
+export * as doctor from './persistence/src/doctor/index.js';
 
 // Generation — export CDF document / DTCG tree (reads session DB → in-memory artifacts)
 export {

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { checkNodeVersion } from '../src/services/check-node-version.js';
-import { installCommand, installHint } from '../src/helpers/install-command.js';
-import { stderrLines } from '../src/helpers/stderr-lines.js';
-import { AGENT_DEFS } from '../src/constants/agent-defs.js';
+import { checkNodeVersion } from '../../src/doctor/services/check-node-version.js';
+import { installCommand, installHint } from '../../src/doctor/helpers/install-command.js';
+import { stderrLines } from '../../src/doctor/helpers/stderr-lines.js';
+import { AGENT_DEFS } from '../../src/doctor/constants/agent-defs.js';
 
 describe('checkNodeVersion', () => {
   it('passes for the required major', () => {

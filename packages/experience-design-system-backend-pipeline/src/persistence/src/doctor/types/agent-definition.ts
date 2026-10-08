@@ -1,4 +1,4 @@
-import type { AgentName } from '../../../agents/types/agent-name.js';
+import type { AgentName } from '../../../../agents/types/agent-name.js';
 
 export interface AgentDefinition {
   name: string;
