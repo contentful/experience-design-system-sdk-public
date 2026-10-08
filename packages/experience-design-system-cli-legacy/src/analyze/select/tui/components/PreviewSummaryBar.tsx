@@ -44,7 +44,7 @@ export function PreviewSummaryBar({ preview, loading }: PreviewSummaryBarProps):
   }
 
   return (
-    <Box gap={1}>
+    <Box gap={1} marginBottom={1} marginTop={1}>
       <Text dimColor>Preview:</Text>
       {parts.map((part, i) => (
         <Text key={i} color={part.color}>
