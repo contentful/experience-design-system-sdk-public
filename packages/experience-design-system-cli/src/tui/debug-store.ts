@@ -62,6 +62,11 @@ function sessionDebugDir(): string {
   return join(debugSessionsDir(), SESSION_ID);
 }
 
+// Folder this terminal session writes its debug logs to (created only while Debug Mode is on).
+export function currentDebugSessionDir(): string {
+  return sessionDebugDir();
+}
+
 // Fire-and-forget so a user who never visits a wired flow still sees an (empty)
 // session directory the moment they boot — matches startDebugRun's fail-open style.
 void isDebugModeEnabled().then((enabled) => {
