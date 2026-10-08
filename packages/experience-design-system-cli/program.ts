@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { Command } from 'commander';
+import { extractWatchFlag, runDevWatch } from './src/dev/run-watch.js';
 import { forwardedImportArgs } from './src/legacy/forwarded-import-args.js';
 import { runLegacy } from './src/legacy/run-legacy.js';
 
@@ -53,7 +54,10 @@ export function createProgram(): Command {
     .helpOption(false)
     .argument('[args...]')
     .action(async () => {
-      const forwarded = forwardedImportArgs(process.argv.slice(2));
+      const { watch, rest: forwarded } = extractWatchFlag(forwardedImportArgs(process.argv.slice(2)));
+      if (watch) {
+        process.exit(await runDevWatch(forwarded));
+      }
       if (forwarded.length > 0) {
         process.exit(await runLegacy(['import', ...forwarded]));
       }

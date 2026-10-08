@@ -36,7 +36,8 @@
     "quality:baseline": "pnpm quality:knip:legacy:baseline && pnpm quality:knip:cli:baseline",
     "release": "node ./scripts/release.js",
     "prepare": "[ -n \"$CI\" ] || husky",
-    "postbuild": "[ -n \"$CI\" ] || node scripts/link-cli.js"
+    "postbuild": "[ -n \"$CI\" ] || node scripts/link-cli.js",
+    "dev": "pnpm -F @contentful/experience-design-system-cli dev"
   },
   "commitlint": {
     "extends": [
