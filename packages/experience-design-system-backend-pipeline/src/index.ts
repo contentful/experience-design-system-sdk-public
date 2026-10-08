@@ -19,6 +19,35 @@ export { parseMapEdges } from './steps/composition/src/helpers/parse-map-edges.j
 export { applyCompositionEdges } from './steps/composition/src/helpers/apply-mapping.js';
 export { buildCompositionInputHash } from './steps/composition/src/helpers/composition-cache-key.js';
 
+// Composition — graph & cycle analysis (operates on the composed-component graph)
+export { buildComponentGraph } from './steps/composition/src/controller/build-component-graph.js';
+export { findSlotCycles } from './steps/composition/src/controller/find-slot-cycles.js';
+export { groupNodesByCycleMembership } from './steps/composition/src/controller/group-nodes-by-cycle-membership.js';
+export { expandSeedsToIncludeCycleGroups } from './steps/composition/src/controller/expand-seeds-to-include-cycle-groups.js';
+export { selectDescendantsRespectingCycles } from './steps/composition/src/controller/select-descendants-respecting-cycles.js';
+export { rejectAncestorsRespectingCycles } from './steps/composition/src/controller/reject-ancestors-respecting-cycles.js';
+export { selectAllDescendants } from './steps/composition/src/controller/select-all-descendants.js';
+export { rejectAllAncestors } from './steps/composition/src/controller/reject-all-ancestors.js';
+export { expandMatchesByOneHop } from './steps/composition/src/controller/expand-matches-by-one-hop.js';
+export { findAllParents } from './steps/composition/src/controller/find-all-parents.js';
+export { propagateDescendantIssuesToAncestors } from './steps/composition/src/controller/propagate-descendant-issues-to-ancestors.js';
+export { findWorstIssuedDescendant } from './steps/composition/src/controller/find-worst-issued-descendant.js';
+export { suggestCycleBreakEdge } from './steps/composition/src/helpers/suggest-cycle-break-edge.js';
+export { formatCyclePath } from './steps/composition/src/helpers/format-cycle-path.js';
+export { formatCyclePathSegments } from './steps/composition/src/helpers/format-cycle-path-segments.js';
+export type {
+  ComponentGraphNode,
+  ComponentGraphInput,
+  SlotEdge,
+  SlotCycle,
+  CyclePathSegment,
+  CycleAwareRejectResult,
+  NodeStatus,
+  RenderStatus,
+  Closure,
+  ClosureNode,
+} from './steps/composition/src/types/graph.js';
+
 // Selection
 export { selectComponents } from './steps/selection/src/controller/select-components-endpoint.js';
 export type {
