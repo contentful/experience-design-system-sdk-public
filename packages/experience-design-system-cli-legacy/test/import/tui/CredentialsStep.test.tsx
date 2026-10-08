@@ -72,11 +72,12 @@ describe('CredentialsStep — rendering', () => {
 
     const frame = await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('pre-filled') || f.includes('Enter to continue'),
+      (f) => f.includes('pre-filled'),
       3000,
     );
 
-    expect(frame).toContain('Enter to continue');
+    expect(frame).toContain('pre-filled');
+    expect(frame).toContain('[Enter] Next field / Submit');
   });
 });
 

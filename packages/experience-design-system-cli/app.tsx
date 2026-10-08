@@ -99,6 +99,9 @@ interface AppInstance {
   waitUntilExit: () => Promise<unknown>;
 }
 
+// Erase the visible screen and move the cursor home; scrollback is kept.
+const CLEAR_SCREEN = '\u001B[2J\u001B[H';
+
 type RenderApp = (element: React.ReactElement) => AppInstance;
 
 async function renderUntilImportRequestedOrExit(
@@ -118,6 +121,12 @@ async function renderUntilImportRequestedOrExit(
   );
   await instance.waitUntilExit();
   await stopReadingTerminal();
+
+  // Ink keeps the last frame on screen after unmount. Wipe it so the v1 legacy
+  // wizard replaces this screen instead of rendering below it.
+  if (requestedImport !== undefined && process.stdout.isTTY) {
+    process.stdout.write(CLEAR_SCREEN);
+  }
 
   return requestedImport;
 }

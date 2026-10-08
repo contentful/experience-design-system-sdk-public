@@ -12,12 +12,12 @@ export type CounterStripCounters = {
 export function CounterStrip(props: { counters: CounterStripCounters; totalWidth: number }): React.ReactElement {
   const { counters, totalWidth } = props;
   const condensed = totalWidth < 60;
-  const labelGrp = condensed ? 'Cmp' : 'Composite';
+  const labelGrp = condensed ? 'Cmp' : 'Components with Slots';
   const labelRej = condensed ? 'Rej' : 'Rejected';
   const labelUnd = condensed ? 'Und' : 'Undecided';
   const sep = condensed ? ' | ' : '    ';
   return (
-    <Box marginTop={1}>
+    <Box>
       <Text>
         <Text dimColor>{labelGrp} </Text>
         <Text bold>{counters.groups}</Text>
@@ -27,6 +27,7 @@ export function CounterStrip(props: { counters: CounterStripCounters; totalWidth
         <Text dimColor>{sep}</Text>
         <Text dimColor>{labelUnd} </Text>
         <Text bold>{counters.undecided}</Text>
+        <Text dimColor>{sep}</Text>
       </Text>
     </Box>
   );

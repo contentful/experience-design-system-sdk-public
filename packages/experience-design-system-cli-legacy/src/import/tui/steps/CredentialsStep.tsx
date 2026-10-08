@@ -193,10 +193,10 @@ export function CredentialsStep({
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
       {summary && <Text color={PALETTE.success}>✓ {summary}</Text>}
 
-      <Box flexDirection="column" marginTop={1} gap={0}>
+      <Box flexDirection="column">
         <Text>
           {initialSpaceId && initialCmaToken
-            ? 'Credentials pre-filled from experiences setup. Press Enter to continue or edit any field to update.'
+            ? 'Credentials pre-filled from the configuration settings.'
             : 'Enter the Contentful space you want to import into.'}
         </Text>
         {!(initialSpaceId && initialCmaToken) && (
@@ -213,7 +213,7 @@ export function CredentialsStep({
         )}
       </Box>
 
-      <Box flexDirection="column" gap={0} marginTop={1}>
+      <Box flexDirection="column">
         {renderField('Space ID', spaceId, 'spaceId')}
         {renderField('Environment', environmentId, 'environmentId')}
         {renderField('CMA Token', cmaToken, 'cmaToken', true)}
@@ -243,16 +243,12 @@ export function CredentialsStep({
         </Text>
       )}
 
-      <Box gap={3} marginTop={1}>
+      <Box gap={3}>
         <Text dimColor>[Enter] Next field / Submit</Text>
         <Text dimColor>[Tab] Switch field</Text>
         <Text dimColor>[q] Quit</Text>
+        {onSkip && <Text dimColor>[s] Skip — review locally only (no push, no live preview)</Text>}
       </Box>
-      {onSkip && (
-        <Box marginTop={0}>
-          <Text dimColor>[s] Skip — review locally only (no push, no live preview)</Text>
-        </Box>
-      )}
     </Box>
   );
 }

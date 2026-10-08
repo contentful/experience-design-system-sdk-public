@@ -56,6 +56,9 @@ export type FieldEditorProps = {
   initialFocusTarget?: { kind: 'description' } | { kind: 'prop' | 'slot'; name: string };
   showHiddenProps?: boolean;
   showInlineRationales?: boolean;
+  /** Pinned inside the box above the rows, in row and field-edit modes. Counts as `headerHeight` rows. */
+  header?: React.ReactNode;
+  headerHeight?: number;
 };
 
 type FocusLevel = 'section' | 'prop' | 'slot' | 'field' | 'componentDescription';
@@ -263,11 +266,11 @@ function serializeState(state: EditorState, originalJson: string): string {
 function Picker({ value, active }: { value: string; active: boolean }): React.ReactElement {
   return (
     <Box>
-      {active && <Text color={PALETTE.info}>{'‹'}</Text>}
-      <Text color={active ? PALETTE.info : PALETTE.inverse} bold={active}>
+      {active && <Text color={PALETTE.warning}>{'‹'}</Text>}
+      <Text color={active ? PALETTE.warning : PALETTE.inverse} bold={active}>
         {value}
       </Text>
-      {active && <Text color={PALETTE.info}>{'›'}</Text>}
+      {active && <Text color={PALETTE.warning}>{'›'}</Text>}
     </Box>
   );
 }
@@ -275,21 +278,19 @@ function Picker({ value, active }: { value: string; active: boolean }): React.Re
 function Toggle({ value, active }: { value: boolean; active: boolean }): React.ReactElement {
   return (
     <Box>
-      <Text color={active ? PALETTE.info : value ? PALETTE.success : PALETTE.border}>{value ? '[✓]' : '[ ]'}</Text>
+      <Text color={active ? PALETTE.warning : value ? PALETTE.success : PALETTE.border}>{value ? '[✓]' : '[ ]'}</Text>
     </Box>
   );
 }
 
 function InlinePropField({
   label,
-  selected,
   focused = false,
   children,
   flexible = false,
   width,
 }: {
   label: string;
-  selected: boolean;
   focused?: boolean;
   children: React.ReactNode;
   flexible?: boolean;
@@ -297,12 +298,7 @@ function InlinePropField({
 }): React.ReactElement {
   return (
     <Box width={width} gap={1} flexShrink={flexible ? 1 : 0} flexGrow={flexible ? 1 : 0} flexWrap="wrap">
-      <Text
-        color={focused ? PALETTE.warning : undefined}
-        bold={focused}
-        dimColor={!selected && !focused}
-        wrap="truncate-end"
-      >
+      <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused} wrap="truncate-end">
         {focused ? '› ' : '  '}
         {label}
       </Text>
@@ -313,19 +309,17 @@ function InlinePropField({
 
 function RequiredField({
   value,
-  selected,
   focused,
   editingField,
   activeField,
 }: {
   value: boolean;
-  selected: boolean;
   focused: boolean;
   editingField: boolean;
   activeField: PropField | SlotField | null;
 }): React.ReactElement {
   return (
-    <InlinePropField label="req:" selected={selected} focused={focused}>
+    <InlinePropField label="req:" focused={focused}>
       <Toggle value={value} active={editingField && activeField === 'required'} />
     </InlinePropField>
   );
@@ -348,7 +342,7 @@ function DefaultValueRow({
       {active ? (
         <Picker value={display} active={true} />
       ) : (
-        <Text color={focused ? PALETTE.warning : PALETTE.inverse} wrap="wrap">
+        <Text color={focused ? PALETTE.inverse : PALETTE.inverse} wrap="wrap">
           {display}
         </Text>
       )}
@@ -527,7 +521,7 @@ function DefaultSubRow({
         <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused}>
           {focused ? '› ' : '  '}default:
         </Text>
-        <Box flexGrow={1} borderStyle="round" borderColor={PALETTE.info} paddingX={1}>
+        <Box flexGrow={1} borderStyle="round" borderColor={PALETTE.warning} paddingX={1}>
           <Text>{value.slice(0, textCursor)}</Text>
           <Text inverse={cursorVisible}>{value[textCursor] ?? cursor}</Text>
           <Text>{value.slice(textCursor + 1)}</Text>
@@ -540,7 +534,7 @@ function DefaultSubRow({
       <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused}>
         {focused ? '› ' : '  '}default:
       </Text>
-      <Text color={focused ? PALETTE.warning : value ? PALETTE.inverse : undefined} dimColor={!value && !focused}>
+      <Text color={focused ? PALETTE.inverse : value ? PALETTE.inverse : undefined} dimColor={!value && !focused}>
         {value || '(none)'}
       </Text>
     </Box>
@@ -568,7 +562,6 @@ function DescriptionField({
   compact?: boolean;
   paddingLeft?: number;
 }): React.ReactElement {
-  const cursor = cursorVisible ? '█' : ' ';
   if (compact) {
     return (
       <Box gap={1} flexWrap="wrap" width={width} flexShrink={0}>
@@ -589,7 +582,7 @@ function DescriptionField({
         {label}
       </Text>
       {editing ? (
-        <EditableDescription cursor={cursor} cursorVisible={cursorVisible} value={value} textCursor={textCursor} />
+        <EditableDescription cursorVisible={cursorVisible} value={value} textCursor={textCursor} />
       ) : (
         <Text wrap="wrap">{value || '—'}</Text>
       )}
@@ -598,12 +591,10 @@ function DescriptionField({
 }
 
 function EditableDescription({
-  cursor,
   cursorVisible,
   value,
   textCursor,
 }: {
-  cursor: string;
   cursorVisible: boolean;
   value: string;
   textCursor: number;
@@ -611,8 +602,8 @@ function EditableDescription({
   return (
     <Text wrap="wrap">
       {value.slice(0, textCursor)}
-      <Text inverse={cursorVisible}>{cursor}</Text>
-      {value.slice(textCursor)}
+      <Text inverse={cursorVisible}>{value[textCursor] ?? ' '}</Text>
+      {value.slice(textCursor + 1)}
     </Text>
   );
 }
@@ -666,30 +657,29 @@ function PropRow({
         paddingLeft={0}
       />
 
-      <Box gap={1} flexWrap="wrap" width={width} flexShrink={0}>
+      <Box flexDirection="column" width={width} flexShrink={0}>
         <RequiredField
           value={prop.required}
-          selected={selected}
           focused={activeField === 'required'}
           editingField={editingField}
           activeField={activeField}
         />
 
-        <InlinePropField label="type:" selected={selected} focused={activeField === 'type'}>
+        <InlinePropField label="type:" focused={activeField === 'type'}>
           {editingField && activeField === 'type' ? (
             <Picker value={prop.type} active={true} />
           ) : (
-            <Text color={selected ? PALETTE.warning : PALETTE.inverse}>{prop.type}</Text>
+            <Text color={selected ? PALETTE.inverse : PALETTE.inverse}>{prop.type}</Text>
           )}
         </InlinePropField>
       </Box>
 
       {prop.type === 'token' && (
-        <InlinePropField label="kind:" selected={selected} focused={activeField === 'tokenKind'} width={width}>
+        <InlinePropField label="kind:" focused={activeField === 'tokenKind'} width={width}>
           {editingField && activeField === 'tokenKind' ? (
             <Picker value={prop.tokenKind || DESIGN_TOKEN_TYPES[0]} active={true} />
           ) : (
-            <Text color={selected ? PALETTE.success : PALETTE.inverse} wrap="wrap">
+            <Text color={selected ? PALETTE.inverse : PALETTE.inverse} wrap="wrap">
               {prop.tokenKind || '—'}
             </Text>
           )}
@@ -701,11 +691,11 @@ function PropRow({
           <Text
             color={activeField === 'values' ? PALETTE.warning : undefined}
             bold={activeField === 'values'}
-            dimColor={!selected}
+            dimColor={activeField !== 'values'}
           >
             {activeField === 'values' ? '› ' : '  '}values:
           </Text>
-          <Text color={activeField === 'values' ? PALETTE.warning : selected ? PALETTE.inverse : undefined} wrap="wrap">
+          <Text color={activeField === 'values' ? PALETTE.inverse : selected ? PALETTE.inverse : undefined} wrap="wrap">
             [{prop.values.join(', ')}]
           </Text>
         </Box>
@@ -719,22 +709,22 @@ function PropRow({
         cursorVisible={cursorVisible}
       />
 
-      {selected && prop.type === 'token' && prop.category === 'design' && (
+      {prop.type === 'token' && prop.category === 'design' && (
         <Box gap={1} flexWrap="wrap" width={width} flexShrink={0}>
           <Text
             color={activeField === 'allowed' ? PALETTE.warning : undefined}
             bold={activeField === 'allowed'}
-            dimColor={!selected}
+            dimColor={activeField !== 'allowed'}
           >
             {activeField === 'allowed' ? '› ' : '  '}allowed:
           </Text>
           {editingField && activeField === 'allowed' ? (
-            <Box width={Math.max(1, width - 4)} borderStyle="round" borderColor={PALETTE.info} paddingX={1}>
+            <Box width={Math.max(1, width - 4)} borderStyle="round" borderColor={PALETTE.warning} paddingX={1}>
               <Text dimColor>press [t] to edit allowed tokens</Text>
             </Box>
           ) : (
             <Text
-              color={activeField === 'allowed' ? PALETTE.warning : prop.allowed.length > 0 ? PALETTE.info : undefined}
+              color={activeField === 'allowed' ? PALETTE.inverse : undefined}
               dimColor={prop.allowed.length === 0 && activeField !== 'allowed'}
               wrap="wrap"
             >
@@ -827,7 +817,6 @@ function SlotRow({
       <Box gap={1} flexWrap="wrap" width={width} flexShrink={0}>
         <RequiredField
           value={slot.required}
-          selected={selected}
           focused={activeField === 'required'}
           editingField={editingField}
           activeField={activeField}
@@ -839,7 +828,7 @@ function SlotRow({
           <Text
             color={activeField === 'allowedComponents' ? PALETTE.warning : undefined}
             bold={activeField === 'allowedComponents'}
-            dimColor={!selected}
+            dimColor={activeField !== 'allowedComponents'}
           >
             {activeField === 'allowedComponents' ? '› ' : '  '}allowed:
           </Text>
@@ -856,7 +845,7 @@ function SlotRow({
             <Text
               color={activeField === 'allowedComponents' ? PALETTE.warning : undefined}
               bold={activeField === 'allowedComponents'}
-              dimColor={!selected}
+              dimColor={activeField !== 'allowedComponents'}
             >
               {activeField === 'allowedComponents' ? '› ' : '  '}allowed:
             </Text>
@@ -929,7 +918,7 @@ type PropDisplayGroup = 'content' | 'design' | 'hidden';
 type SelectableRow = { kind: 'prop'; idx: number } | { kind: 'slot'; idx: number };
 
 function propFields(prop: PropState): PropField[] {
-  const fields: PropField[] = ['type', 'required'];
+  const fields: PropField[] = ['description', 'required', 'type'];
   if (prop.type === 'token') {
     fields.push('tokenKind');
   }
@@ -937,11 +926,10 @@ function propFields(prop: PropState): PropField[] {
   if (prop.type !== 'richtext' && prop.type !== 'media' && prop.type !== 'link') {
     fields.push('default');
   }
-  fields.push('description');
   if (prop.type === 'token' && prop.category === 'design') fields.push('allowed');
   return fields;
 }
-const SLOT_FIELDS: SlotField[] = ['required', 'allowedComponents', 'description'];
+const SLOT_FIELDS: SlotField[] = ['description', 'required', 'allowedComponents'];
 
 export function simulateGraphWithCandidate(
   projectSlotGraph: ComponentSlotInfo[],
@@ -1074,6 +1062,8 @@ export function FieldEditor({
   initialFocusTarget,
   showHiddenProps = true,
   showInlineRationales = true,
+  header,
+  headerHeight = 2,
 }: FieldEditorProps): React.ReactElement {
   const { state: initialState, error: parseError } = parseToState(value);
 
@@ -1953,27 +1943,27 @@ export function FieldEditor({
 
   const modeLabel = (() => {
     if (editingValue) {
-      return editingValue.mode === 'add' ? 'Enter to add · Esc to cancel' : 'Enter to save edit · Esc to cancel';
+      return editingValue.mode === 'add' ? 'Enter to add · [Esc] to cancel' : 'Enter to save edit · [Esc] to cancel';
     }
     if (focusLevel === 'field' && editingField && activeField === 'description') {
-      return 'Type to edit  ←→ cursor  ↑↓ cycle field  Esc row  Enter save';
+      return 'Type to edit  [←→] cursor  [↑↓] cycle field  [Esc] back  [Enter] save';
     }
     if (focusLevel === 'field' && editingField && (activeField === 'type' || activeField === 'tokenKind')) {
-      return '←→ cycle value  ↑↓/←→ cycle field  Esc row';
+      return '[←→] cycle value  [↑↓]/[←→] cycle field  [Esc] back  [Enter] save';
     }
     if (focusLevel === 'field' && editingField && activeField === 'required') {
-      return 'Space toggle  Enter save  Esc back';
+      return '[Space] toggle  [Enter] save  [Esc] back';
     }
     if (focusLevel === 'field' && editingField && (activeField === 'values' || activeField === 'allowedComponents')) {
-      return '[a]dd  [e]dit  [r]emove  ↑↓ navigate  Shift+↑/↓ reorder  Esc row';
+      return '[a] add  [e] edit  [r] remove  [↑↓] navigate  [Shift+↑/↓] reorder  [Esc] back';
     }
     if (focusLevel === 'field' && !editingField) {
-      return '↑↓/←→ navigate fields  Enter edit  Esc back';
+      return '[↑↓/←→] navigate fields  [Enter] edit  [Esc] back';
     }
     if (rationaleOpen) {
-      return '↑↓/Ctrl+u/d scroll  i/Esc close  rationale panel';
+      return '[↑↓] scroll  [i/Esc] close rationale panel';
     }
-    return `↑↓ navigate rows  Enter edit fields  s source  ${propRationaleKey} prop rationale  ${componentRationaleKey} component rationale  h help  Esc exit panel`;
+    return `[↑↓] navigate rows  [Enter] edit fields  [s] source  [${propRationaleKey}] prop rationale  [${componentRationaleKey}] component rationale  [h] help  [Esc] exit panel`;
   })();
 
   type Row =
@@ -2027,7 +2017,7 @@ export function FieldEditor({
     return `${base}-${selected ? 'selected' : 'normal'}`;
   };
   const rowHeight = (row: Row, index: number): number => rowHeights[rowKey(row, index)] ?? 1;
-  const contentHeight = Math.max(1, height - 2 - (hasEmptyProperties ? 1 : 0) - 1);
+  const contentHeight = Math.max(1, height - 2 - (hasEmptyProperties ? 1 : 0) - 1 - (header ? headerHeight : 0));
   const visibleEnd = (start: number): number => {
     if (focusLevel === 'field') return Math.min(rows.length, start + 1);
     let used = 0;
@@ -2133,7 +2123,7 @@ export function FieldEditor({
     }
     if (row.kind === 'prop') {
       const p = props[row.idx]!;
-      const isSelected = !inSlots && !inComponentDesc && row.idx === propIdx;
+      const isSelected = active && !inSlots && !inComponentDesc && row.idx === propIdx;
       const propMeta = metadata?.props?.[p.name];
       const commonRowProps = createCommonRowProps(
         isSelected,
@@ -2159,7 +2149,7 @@ export function FieldEditor({
       );
     }
     const s = slots[row.idx]!;
-    const isSelected = inSlots && row.idx === slotIdx;
+    const isSelected = active && inSlots && row.idx === slotIdx;
     const slotPickerCandidates =
       isSelected &&
       editingValue?.mode === 'add' &&
@@ -2206,6 +2196,8 @@ export function FieldEditor({
           }
         </Text>
       )}
+
+      {header}
 
       <Box flexDirection="column" width={innerWidth} flexShrink={0}>
         {focusLevel === 'field' && !inComponentDesc && currentProp ? (

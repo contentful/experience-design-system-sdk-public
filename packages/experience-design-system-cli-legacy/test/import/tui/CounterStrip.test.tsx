@@ -8,7 +8,7 @@ describe('CounterStrip', () => {
   it('renders full labels at wide widths', () => {
     const { lastFrame } = render(<CounterStrip counters={counters} totalWidth={120} />);
     const frame = lastFrame() ?? '';
-    expect(frame).toContain('Composite');
+    expect(frame).toContain('Components with Slots');
     expect(frame).toContain('Rejected');
     expect(frame).toContain('Undecided');
     expect(frame).not.toContain('Accepted');

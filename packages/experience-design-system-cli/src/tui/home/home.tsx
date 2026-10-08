@@ -21,7 +21,7 @@ const START_ITEMS: { label: string; screen: Screen }[] = [
 
 function upgradeItemDisplay(upgradeCheck: UpgradeCheckResult | undefined): { label: string; color?: string } {
   if (upgradeCheck?.status === 'update-available') {
-    return { label: `Upgrade Version (v${upgradeCheck.latest} available)`, color: PALETTE.success };
+    return { label: `Upgrade Version (v${upgradeCheck.latest} available)`, color: PALETTE.warning };
   }
   if (upgradeCheck?.status === 'up-to-date') {
     return { label: 'Upgrade Version (up to date)', color: PALETTE.muted };

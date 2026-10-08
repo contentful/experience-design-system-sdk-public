@@ -26,7 +26,7 @@ export type ReviewComponentPanelProps = ReviewDetailsEditorConfig & {
   selectedKey: string;
   selectedEntry: CDFComponentEntry;
   saveError: string | null;
-  sidebarFooter: React.ReactNode;
+  sidebarFooter?: React.ReactNode;
   livePreview: Pick<UseLivePreviewReturn, 'status' | 'disabled'>;
   livePreviewSpinner: string;
 };
@@ -145,6 +145,34 @@ function ReviewPanelFooter({
   );
 }
 
+/** Bold component name with the prop/slot counts and focus hint, drawn inside the detail box. */
+function ReviewComponentTitle({
+  selectedKey,
+  propCount,
+  slotCount,
+  sidebarFocused,
+}: {
+  selectedKey: string;
+  propCount: number;
+  slotCount: number;
+  sidebarFocused: boolean;
+}): React.ReactElement {
+  return (
+    <Box paddingLeft={2} paddingBottom={1}>
+      <Text bold wrap="truncate-end">
+        {selectedKey}
+      </Text>
+      <Box flexGrow={1} />
+      <Text dimColor wrap="truncate-end">
+        {propCount} prop{propCount !== 1 ? 's' : ''}
+        {slotCount > 0 ? ` · ${slotCount} slot${slotCount !== 1 ? 's' : ''}` : ''}
+        {'  '}
+        {sidebarFocused ? '[Tab] focus panel' : '[Tab] focus list'}
+      </Text>
+    </Box>
+  );
+}
+
 export function ReviewComponentPanel({
   selectedKey,
   selectedEntry,
@@ -164,23 +192,11 @@ export function ReviewComponentPanel({
 }: ReviewComponentPanelProps): React.ReactElement {
   const propCount = Object.keys(selectedEntry.$properties).length;
   const slotCount = selectedEntry.$slots ? Object.keys(selectedEntry.$slots).length : 0;
-  const contentHeight = Math.max(1, height - 3);
+  const contentHeight = Math.max(1, height - 2);
   const contentWidth = Math.max(1, width - 1);
   return (
     <FixedPanel width={width} height={height} borderStyle={undefined} paddingLeft={1}>
       <Box flexDirection="column" width={contentWidth} height={height} flexShrink={0} overflowY="hidden">
-        <Box width={contentWidth} height={1} flexShrink={0}>
-          <Text bold wrap="truncate-end">
-            {selectedKey}
-          </Text>
-          <Box flexGrow={1} />
-          <Text dimColor wrap="truncate-end">
-            {propCount} prop{propCount !== 1 ? 's' : ''}
-            {slotCount > 0 ? ` · ${slotCount} slot${slotCount !== 1 ? 's' : ''}` : ''}
-            {'  '}
-            {sidebarFocused ? '[Tab] focus panel' : '[Tab] focus list'}
-          </Text>
-        </Box>
         <Box width={contentWidth} height={contentHeight} flexShrink={0} overflowY="hidden">
           <ReviewDetailsEditor
             selectedKey={selectedKey}
@@ -193,6 +209,14 @@ export function ReviewComponentPanel({
             jsonValue={jsonValue}
             sidebarFocused={sidebarFocused}
             fieldEditor={fieldEditor}
+            header={
+              <ReviewComponentTitle
+                selectedKey={selectedKey}
+                propCount={propCount}
+                slotCount={slotCount}
+                sidebarFocused={sidebarFocused}
+              />
+            }
           />
         </Box>
         <Box width={contentWidth} height={1} flexShrink={0}>

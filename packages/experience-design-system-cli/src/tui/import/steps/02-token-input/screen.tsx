@@ -39,10 +39,10 @@ export function TokenInputScreen({ onConfirm, onBack, initialPath = '' }: TokenI
       <Text bold>Design tokens</Text>
       <Text dimColor>
         Point me to your raw token file (e.g. ~/design-tokens/tokens.json). You can use ~, relative, or absolute paths.
-        Claude will map it to DTCG format.
+        Claude will map it to Design Token Group Format (DTCG).
       </Text>
 
-      <Box flexDirection="column" marginTop={1}>
+      <Box flexDirection="column">
         <Box gap={1}>
           <Text color={PALETTE.accent}>?</Text>
           <Text>Token path:</Text>

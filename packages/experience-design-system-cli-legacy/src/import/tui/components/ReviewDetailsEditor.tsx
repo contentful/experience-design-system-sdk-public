@@ -35,6 +35,8 @@ export type ReviewDetailsEditorProps = Omit<
   | 'jsonScrollOffset'
 > & {
   reviewEditor: ReviewEditorPanelState;
+  /** Drawn inside the editor box, above the rows, in both row and field-edit modes. */
+  header?: React.ReactNode;
   fieldEditor: Omit<FieldEditorProps, 'active' | 'height' | 'metadata' | 'width'> & {
     key?: string;
   };
@@ -60,6 +62,7 @@ export function ReviewDetailsEditor({
   sidebarFocused,
   reviewEditor,
   fieldEditor,
+  header,
 }: ReviewDetailsEditorProps): React.ReactElement {
   const {
     panelOpen,
@@ -103,6 +106,7 @@ export function ReviewDetailsEditor({
           initialFocusTarget={sidebarFocused ? undefined : fieldEditor.initialFocusTarget}
           metadata={toFieldEditorMetadata(reviewMetadata)}
           showInlineRationales={false}
+          header={header}
         />
       }
     />

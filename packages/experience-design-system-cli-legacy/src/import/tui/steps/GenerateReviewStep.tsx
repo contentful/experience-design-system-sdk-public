@@ -1608,7 +1608,6 @@ function GenerateReviewStepView({
                 },
               )}
               saveError={reviewEditor.saveError}
-              sidebarFooter={hasGroupRoots ? '  [Space] expand/collapse group  [E/C] expand/collapse all' : ''}
               livePreview={livePreviewHook}
               livePreviewSpinner={livePreviewSpinner}
             />

@@ -30,6 +30,7 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    needs: [test]
     if: github.event_name == 'pull_request' || github.event_name == 'merge_group' || (github.event_name == 'push' && github.event.head_commit.author.name != 'contentful-automation[bot]')
     permissions:
       contents: read
@@ -100,11 +101,11 @@ jobs:
       - name: Set NX SHAs
         uses: nrwl/nx-set-shas@afb73a62d26e41464e9254689e1fd6122ee683c1 # v5.0.1
 
-      - name: Typecheck
-        run: pnpm typecheck
-
       - name: Run tests
         run: pnpm affected:test
+
+      - name: Typecheck
+        run: pnpm typecheck
 
       - name: Build
         run: pnpm affected:build
@@ -112,6 +113,7 @@ jobs:
   quality:
     name: Quality Ratchet (${{ matrix.name }})
     runs-on: ubuntu-latest
+    needs: [test]
     if: github.event_name == 'pull_request' || github.event_name == 'merge_group' || (github.event_name == 'push' && github.event.head_commit.author.name != 'contentful-automation[bot]')
     strategy:
       fail-fast: false
