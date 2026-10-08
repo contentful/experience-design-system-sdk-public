@@ -7,9 +7,9 @@ export function CompactControlBar({ hasGroupRoots, searchActive }: { hasGroupRoo
     <Box borderStyle="single" borderColor={PALETTE.border} paddingX={1} marginTop={1} flexWrap="wrap" columnGap={2}>
       {legendEntry('[↑/↓]', 'move')}
       {legendEntry('[a/r]', 'accept/reject')}
+      {legendEntry('[f]', 'continue/finalize')}
       {hasGroupRoots && legendEntry('[space/E/C]', 'expand/collapse')}
       {legendEntry('[/]', 'search', searchActive)}
-      {legendEntry('[f]', 'continue/finalize')}
       {legendEntry('[h]', 'help')}
       {legendEntry('[q]', 'quit')}
     </Box>

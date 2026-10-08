@@ -196,7 +196,7 @@ export function CredentialsStep({
       <Box flexDirection="column" marginTop={1} gap={0}>
         <Text>
           {initialSpaceId && initialCmaToken
-            ? 'Credentials pre-filled from experiences setup. Press Enter to continue or edit any field to update.'
+            ? 'Credentials pre-filled from the configuration settings.'
             : 'Enter the Contentful space you want to import into.'}
         </Text>
         {!(initialSpaceId && initialCmaToken) && (
