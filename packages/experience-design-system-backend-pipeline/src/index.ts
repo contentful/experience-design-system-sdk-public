@@ -57,6 +57,37 @@ export type {
   SelectionServiceResult,
 } from './steps/selection/src/types/contract.js';
 
+// Selection — human-review controllers (bridge DB + review-session files)
+export { loadAndValidateForReview } from './steps/selection/src/controller/review/load-and-validate-for-review.js';
+export { mergePreviewValidationErrorsIntoReviewSession } from './steps/selection/src/controller/review/merge-preview-validation-errors-into-review-session.js';
+export { rejectComponentsByName } from './steps/selection/src/controller/review/reject-components-by-name.js';
+
+// Review-session file I/O (used by TUI directly)
+export {
+  getRefineArtifactsRoot,
+  getRefineSessionPaths,
+  saveReviewState,
+  appendReviewEvent,
+  ensureRefineSession,
+  loadReviewInput,
+  createReviewSessionSummary,
+  createReviewSessionDetail,
+  countValidationIssues,
+  writeScopeDecisionsSnapshot,
+} from './persistence/index.js';
+export type {
+  LoadReviewInputOptions,
+  ReviewComponentStatus,
+  ReviewComponentRecord,
+  ReviewComponentDetail,
+  ReviewComponentSummary,
+  ReviewSessionSnapshot,
+  ReviewSessionDetail,
+  ReviewSessionSummary,
+  ReviewEvent,
+  ReviewSessionPaths,
+} from './persistence/index.js';
+
 // Generation
 export { generateCdfComponents } from './steps/generation/src/controller/generate-cdf-components-endpoint.js';
 export type {
@@ -164,9 +195,144 @@ export type {
 // Generation — fuzzy match (public for TUI's reject dialog)
 export { findNearlyMatchingComponent } from './steps/generation/src/helpers/existing-entities/find-nearly-matching-component.js';
 
-// Persistence
+// Generation — map-tokens (apply parsed map_token_prop calls to a session)
+export { applyMapTokenPropCalls } from './steps/generation/src/controller/map-tokens/apply-map-token-prop-calls.js';
+export type { ApplyMapTokenPropCallsResult } from './steps/generation/src/types/map-tokens.js';
+export type { MapTokenPropCall, ParsedMapTokenPropToolCalls } from './agents/types/tool-calls.js';
+
+// Persistence — file collection + legacy SessionHandle (cache callbacks)
 export { collectFiles, openSession, generateSessionId } from './persistence/index.js';
 export type { OpenSessionOptions, SelectionDecision, SessionHandle } from './persistence/index.js';
+
+// Persistence — DB infra + schema + migrations
+export {
+  openPipelineDb,
+  getPipelineDbPath,
+  runMigrationIfNeeded,
+  resolveExtractSessionId,
+} from './persistence/index.js';
+
+// Persistence — config paths + settings
+export {
+  configRoot,
+  configFilePath,
+  runsFilePath,
+  debugSessionsDir,
+  oldConfigDir,
+  readSettings,
+  writeSettings,
+  updateSettings,
+} from './persistence/index.js';
+export type { Settings } from './persistence/index.js';
+
+// Persistence — credentials store (shared config.json)
+export {
+  readExperiencesCredentials,
+  writeExperiencesCredentials,
+  experiencesCredentialsPath,
+  DEFAULT_CONFIGURED_HOST,
+} from './persistence/index.js';
+export type { ExperiencesCredentials } from './persistence/index.js';
+
+// Persistence — session + step state
+export { getOrCreateSession, createStep, updateStep, findLatestSessionForCommand } from './persistence/index.js';
+export type { CommandName, MatchHints } from './persistence/index.js';
+
+// Persistence — raw component storage
+export {
+  storeRawComponents,
+  loadRawComponents,
+  loadComponentSourceRef,
+  loadComponentSourceRefs,
+  renameEmptySlots,
+} from './persistence/index.js';
+export type { RawComponentWithId } from './persistence/index.js';
+
+// Persistence — CDF storage
+export { storeCDFComponents, loadCDFComponents, loadScopeComponents } from './persistence/index.js';
+export type { ScopeComponentRow } from './persistence/index.js';
+
+// Persistence — review metadata (DB)
+export {
+  loadComponentReviewMetadata,
+  loadComponentRationale,
+  applyToolCalls,
+  applyScopeDecisions,
+  markCacheHumanEdited,
+} from './persistence/index.js';
+export type {
+  ComponentReviewMetadata,
+  ComponentRationale,
+  ApplyToolCallsResult,
+  ApplyToolCallsOptions,
+} from './persistence/index.js';
+
+// Persistence — resume seeds
+export {
+  seedCDFFromPriorSession,
+  seedCDFFromPreviewResponse,
+  seedDefaultsFromChangedItems,
+  backfillUnclassifiedProps,
+} from './persistence/index.js';
+
+// Persistence — cache (lookup/store/copy, keys)
+export {
+  lookupCache,
+  lookupCacheByEntity,
+  storeCache,
+  storeCaches,
+  storeExtractCache,
+  lookupExtractCache,
+  storeCompositionCache,
+  lookupCompositionCache,
+  storeSelectCache,
+  lookupSelectCache,
+  copyComponentFromCache,
+  copyComponentsFromCache,
+  copyTokensFromCache,
+  copyMapTokensFromCache,
+  computeMapTokensInputHash,
+  computeComponentInputHash,
+  computeTokenInputHash,
+  hashContent,
+} from './persistence/index.js';
+export type {
+  CacheEntityType,
+  CacheEntry,
+  SelectDecision,
+  SelectCacheEntry,
+  ExtractCacheEntry,
+} from './persistence/index.js';
+
+// Persistence — slot cycles + unresolved slot refs
+export {
+  storeSlotCycles,
+  loadSlotCycles,
+  clearSlotCycles,
+  findUnknownSlotAllowedComponents,
+  filterUnknownSlotAllowedComponents,
+} from './persistence/index.js';
+export type { StoredSlotCycle, UnknownSlotAllowedComponent } from './persistence/index.js';
+
+// Persistence — scanned files tracking
+export { storeScannedFiles, loadScannedFiles } from './persistence/index.js';
+
+// Persistence — token writers
+export {
+  storeDtcgTokens,
+  applyTokenToolCalls,
+  replaceRawTokenNamePaths,
+  replaceRawPropTokenPaths,
+} from './persistence/index.js';
+
+// Persistence — pure helpers
+export {
+  deriveComponentId,
+  hashComponentShape,
+  hashTokenContent,
+  buildDtcgGroups,
+  buildDtcgTokens,
+} from './persistence/index.js';
 
 // Shared
 export type { CandidateFile } from './steps/shared/index.js';
