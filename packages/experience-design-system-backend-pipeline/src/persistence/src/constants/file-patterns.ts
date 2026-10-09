@@ -70,7 +70,3 @@ export const DENYLISTED_FILE_NAME_PATTERNS = [
   /^\.?prettierrc(\..+)?\.json$/,
   /^(readme|changelog|contributing|code_of_conduct|license|security)(\..+)?\.md$/i,
 ];
-
-export function isNoiseConfigFile(name: string): boolean {
-  return DENYLISTED_EXACT_FILE_NAMES.has(name) || DENYLISTED_FILE_NAME_PATTERNS.some((pattern) => pattern.test(name));
-}

@@ -1,10 +1,6 @@
 import path from 'node:path';
-import {
-  DENYLIST_GATED_EXTENSIONS,
-  EXCLUDED_SUFFIXES,
-  INCLUDED_EXTENSIONS,
-  isNoiseConfigFile,
-} from '../../constants/file-patterns.js';
+import { DENYLIST_GATED_EXTENSIONS, EXCLUDED_SUFFIXES, INCLUDED_EXTENSIONS } from '../../constants/file-patterns.js';
+import { isNoiseConfigFile } from './is-noise-config-file.js';
 
 /**
  * True when a filename should land in the walk output. Rules in order:

@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { CollectFilesOptions, CollectFilesOutcome, CollectFilesResult } from '../../types/collect-files-result.js';
 import { buildScanWarnings } from './build-scan-warnings.js';
 import { classifyStatError } from './classify-stat-error.js';
-import { emptyFileCounts } from './categorize-file.js';
+import { emptyFileCounts } from './empty-file-counts.js';
 import { walkProjectTree } from './walk-project-tree.js';
 
 /**
