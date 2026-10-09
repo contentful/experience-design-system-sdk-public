@@ -90,16 +90,16 @@ afterEach(() => {
 });
 
 describe('raw-tokens-only import with no --project', () => {
-  it('routes to the credentials step (not path-validation)', async () => {
+  it('skips straight past credentials and component extraction', async () => {
     const { lastFrame } = render(<WizardApp initialRawTokensPath="/tmp/fake-raw-tokens.json" />);
 
     const frame = await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Directory not found') || f.includes('Space ID'),
+      (f) => f.includes('Directory not found') || f.includes('Save to') || f.includes('Starting import'),
       3000,
     );
 
     expect(frame).not.toContain('Directory not found');
-    expect(frame).toContain('Space ID');
+    expect(frame).not.toContain('Space ID');
   });
 });

@@ -107,12 +107,9 @@ experiences import [flags]
 
 ### Wizard step machine
 
-The order below is the normal path. The Welcome, Token input and Path validation screens now live in the new CLI, so the wizard always starts at `credentials`.
+The order below is the normal path. The Welcome, Token input, Path validation and Credentials screens now live in the new CLI, which validates and saves the credentials before it starts the wizard. The wizard begins at `extracting`.
 
 ```
-credentials            — space ID, environment, CMA token and API host, prefilled from
-                         `experiences setup`; press [s] to skip and save files only
-  ↓
 extracting             — composite relationships enabled; the selection agent runs here
                          once components are extracted
   ↓
