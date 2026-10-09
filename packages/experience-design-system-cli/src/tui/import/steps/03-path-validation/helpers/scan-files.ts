@@ -1,35 +1,26 @@
 import { collectFiles } from '@contentful/experience-design-system-backend-pipeline';
-import type { FileCounts as LocalFileCounts, ScanResult } from '../logic.js';
-
-type CollectedFilesOutcome = ReturnType<typeof collectFiles>;
-type PipelineFileCounts = Extract<CollectedFilesOutcome, { ok: true }>['result']['counts'];
+import type { ScanResult } from '../logic.js';
 
 export function scanFiles(directory: string): ScanResult {
-  return toScanResult(collectFiles(directory));
-}
-
-function toScanResult(collectedFilesOutcome: CollectedFilesOutcome): ScanResult {
-  if (!collectedFilesOutcome.ok) {
-    return { ok: false, failure: collectedFilesOutcome.failure };
+  const outcome = collectFiles(directory);
+  if (!outcome.ok) {
+    return { ok: false, failure: outcome.failure };
   }
+  const { counts, filePaths, warnings } = outcome.result;
   return {
     ok: true,
-    counts: foldSvelteAndMdIntoOther(collectedFilesOutcome.result.counts),
-    filePaths: collectedFilesOutcome.result.filePaths,
-    warnings: collectedFilesOutcome.result.warnings,
-  };
-}
-
-function foldSvelteAndMdIntoOther(counts: PipelineFileCounts): LocalFileCounts {
-  return {
-    tsx: counts.tsx,
-    ts: counts.ts,
-    vue: counts.vue,
-    astro: counts.astro,
-    jsx: counts.jsx,
-    js: counts.js,
-    json: counts.json,
-    other: counts.other + counts.svelte + counts.md,
-    total: counts.total,
+    counts: {
+      tsx: counts.tsx,
+      ts: counts.ts,
+      vue: counts.vue,
+      astro: counts.astro,
+      jsx: counts.jsx,
+      js: counts.js,
+      json: counts.json,
+      other: counts.other + counts.svelte + counts.md,
+      total: counts.total,
+    },
+    filePaths,
+    warnings,
   };
 }
