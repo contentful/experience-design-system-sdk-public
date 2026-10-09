@@ -2,7 +2,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { collectFiles } from '../../src/helpers/collect-files.js';
+import { collectFiles } from '../../src/helpers/collect-files/index.js';
 
 let tmpDir: string;
 
