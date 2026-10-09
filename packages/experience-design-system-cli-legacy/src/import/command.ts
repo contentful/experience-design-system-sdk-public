@@ -10,7 +10,7 @@ import { checkAgentAuth, type AgentAuthStatus, type AgentName } from '@contentfu
 
 export function registerImportCommand(program: Command): void {
   const cmd = program
-    .command('import')
+    .command('import', { hidden: true })
     .description('Run the full pipeline: analyze → select → generate → push')
     .option('--project <path>', 'Path to the project root to analyze', '.');
   cmd.option(

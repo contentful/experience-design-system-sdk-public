@@ -41,7 +41,7 @@ Component-analysis data between pipeline steps flows through a local SQLite sess
 
 A separate JSON file at `~/.contentful/experience-design-system-cli/state/runs.json` records each successful wizard session (id, project path, save path, push target, component count). No command lists these records.
 
-When a token file is supplied (`--tokens` or the token-input step), the wizard performs token generation internally before it extracts and generates components. Token mapping needs the generated CDF and DTCG data in the same pipeline session.
+When a token file is supplied (the token-input screen), the wizard performs token generation internally before it extracts and generates components. Token mapping needs the generated CDF and DTCG data in the same pipeline session.
 
 ---
 
@@ -310,7 +310,7 @@ sequenceDiagram
     participant MT as map tokens
     participant CMS as Contentful ExO
 
-    Dev->>W: experiences import [--project ./src] [--tokens <path>]
+    Dev->>W: experiences import
     opt token file supplied
         W->>GT: classify tokens
         GT->>DB: Store DTCG token groups and leaves
@@ -437,17 +437,17 @@ Do not use agent SDKs or APIs — the import wizard invokes agents as subprocess
 
 ## The Import Command — Wizard
 
-`experiences import` requires an interactive terminal and has no headless mode. Its options are `--project`, `--tokens`, `--agent`, `--prompt <stage=value>` and `--no-cache`; `--model`, `--composition-map`, `--skip-map-tokens` and `--raw-tokens` were removed.
+`experiences import` requires an interactive terminal and has no headless mode. It takes no flags; the bundled legacy wizard it spawns accepts `--project`, `--tokens`, `--agent`, `--prompt <stage=value>` and `--no-cache`; `--model`, `--composition-map`, `--skip-map-tokens` and `--raw-tokens` were removed.
 
 `src/import/tui/WizardApp.tsx` renders a full-screen Ink TUI driven by an explicit step machine:
 
 ```
-welcome → token-input → path-validation → credentials → extracting (selection agent runs here)
+credentials → extracting (selection agent runs here)
         → scope-gate → generating → final-review → path-prompt
         → previewing → preview-gate → pushing → done
 ```
 
-`--project` starts at `token-input`; `--tokens` starts at `path-validation` (with `--project`) or `credentials` (without it). Choosing skip on `credentials` saves files only: the preview is bypassed and push is refused.
+The Welcome, Token input and Path validation screens live in the new CLI; the legacy wizard starts at `credentials` and receives the project path and token file from them. Choosing skip on `credentials` saves files only: the preview is bypassed and push is refused.
 
 A single human review gate (`scope-gate`) precedes generation. The final-review step edits names, `$description`, `$default`, `$allowedComponents` and `$values` inline with rationale and source panels, and re-runs the live preview after each save. After final-review the wizard always saves one combined `components.json` CDF, then previews and pushes it unless credentials were skipped.
 
@@ -474,7 +474,7 @@ The wizard and `apply` render Ink (React) component trees in a TTY. `experiences
 | Command           | TUI components                                                                                                                                                                                                                                                                                   |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `apply`           | `ServerPreviewView`, `ServerApplyView`                                                                                                                                                                                                                                                           |
-| `import` (wizard) | `WizardApp` + step components in `src/import/tui/steps/` (`WelcomeStep`, `TokenInputStep`, `PathValidationStep`, `CredentialsStep`, `ScopeGateStep`, `GenerateReviewStep`, `WizardPreviewStep`, `PreviewValidationErrorStep`, `PushingStep`, `DoneStep`, `ErrorStep`, `GateStep`, `RunningStep`) |
+| `import` (wizard) | `WizardApp` + step components in `src/import/tui/steps/` (`CredentialsStep`, `ScopeGateStep`, `GenerateReviewStep`, `WizardPreviewStep`, `PreviewValidationErrorStep`, `PushingStep`, `DoneStep`, `ErrorStep`, `GateStep`, `RunningStep`) |
 
 The TUI uses React hooks for state (`useState`, `useReducer`), Ink's `useInput` for keyboard, and a custom `useUndo` hook for the JSON editor.
 

@@ -15,7 +15,7 @@ Nx monorepo with six packages:
 
 The CLI extracts React/Vue/Astro/Stencil/Web Component definitions from customer codebases using the TypeScript compiler API (ts-morph), invokes a coding agent to produce CDF artifacts, validates them against JSON schemas, and provides interactive terminal UIs (Ink) for reviewing, finalizing, and pushing them to Contentful ExO.
 
-The supported import pipeline is internal to `experiences import`: **extract → selection agent → internal generation → validate → apply.** When a raw token source is supplied (`--tokens` or the token-input step), the wizard performs token generation internally before component extraction and generation, then runs token mapping after generation. The extraction and selection stages are implementation modules, not public commands.
+The supported import pipeline is internal to `experiences import`: **extract → selection agent → internal generation → validate → apply.** When a raw token source is supplied (the token-input screen), the wizard performs token generation internally before component extraction and generation, then runs token mapping after generation. The extraction and selection stages are implementation modules, not public commands.
 
 Unless stated otherwise, `src/...` paths below are relative to `packages/experience-design-system-cli-legacy`.
 
@@ -24,12 +24,12 @@ Legacy commands: `import`, `apply <file>`, `setup`, `doctor`, `build`. Hidden in
 ### Wizard step machine (`packages/experience-design-system-cli-legacy/src/import/tui/`)
 
 ```
-welcome → token-input → path-validation → credentials → extracting (selection agent runs here)
+credentials → extracting (selection agent runs here)
         → scope-gate → generating → final-review → path-prompt
         → previewing → preview-gate → pushing → done
 ```
 
-`--project` starts at `token-input`; `--tokens` starts at `path-validation` (with `--project`) or `credentials` (without it). Choosing `[s]` on `credentials` saves files only: the preview is bypassed and push is refused.
+The Welcome, Token input and Path validation screens now live in the new CLI (`packages/experience-design-system-cli/src/tui/import/steps/`); the legacy wizard starts at `credentials` and receives the project path and token file from them. Choosing `[s]` on `credentials` saves files only: the preview is bypassed and push is refused.
 
 A single human review gate (`scope-gate`) precedes generation. The final-review step edits names, `$description`, `$default`, `$allowedComponents` and `$values` inline, with source and rationale panels. After final-review the wizard always saves one combined `components.json` CDF and, unless credentials were skipped, previews and pushes it.
 
@@ -39,7 +39,7 @@ Each successful wizard run appends a record to `~/.contentful/experience-design-
 
 ### Import options
 
-`experiences import` accepts `--project`, `--tokens`, `--agent`, `--prompt <stage=value>` and `--no-cache`. `--model`, `--composition-map`, `--skip-map-tokens` and `--raw-tokens` were removed and are rejected. The model is passed as `--agent agent:model`; it resolves `--agent` → `credentials.json` → built-in default, and `EDS_AGENT_MODEL_<AGENT>` sets a per-agent model.
+The public `experiences import` takes no flags and opens the TUI. The bundled legacy wizard, which the TUI spawns after the first three screens, accepts `--project`, `--tokens`, `--agent`, `--prompt <stage=value>` and `--no-cache`. `--model`, `--composition-map`, `--skip-map-tokens` and `--raw-tokens` were removed and are rejected. The model is passed as `--agent agent:model`; it resolves `--agent` → `credentials.json` → built-in default, and `EDS_AGENT_MODEL_<AGENT>` sets a per-agent model.
 
 ## Build System
 
@@ -163,7 +163,7 @@ All TUI components are standard React functional components rendered by Ink. The
 - `src/analyze/select/tui/` — shared editor pieces (`TopBar`, `useImmediateInput`, theme `PALETTE`) reused by the wizard
 - `src/print/` — hidden `print` command and `validate` view
 - `src/apply/tui/` — `SummaryView`, `EntityDiffView`, `ServerApplyView`
-- `src/import/tui/` — the wizard: `WizardApp` and step components in `steps/` (`WelcomeStep`, `TokenInputStep`, `PathValidationStep`, `CredentialsStep`, `ScopeGateStep`, `GenerateReviewStep`, `WizardPreviewStep`, `PreviewValidationErrorStep`, `PushingStep`, `DoneStep`, `ErrorStep`, `GateStep`, `RunningStep`)
+- `src/import/tui/` — the wizard: `WizardApp` and step components in `steps/` (`CredentialsStep`, `ScopeGateStep`, `GenerateReviewStep`, `WizardPreviewStep`, `PreviewValidationErrorStep`, `PushingStep`, `DoneStep`, `ErrorStep`, `GateStep`, `RunningStep`)
 - `packages/experience-design-system-cli/src/tui/` — the new CLI's TUI; see `DSI_TUI_ARCHITECTURE.md` in that package
 
 When writing TUI tests, use `ink-testing-library`. Set `NO_COLOR=1` in the environment before running tests to suppress ANSI escape codes. Strip ANSI before snapshot assertions if the test renders raw strings.

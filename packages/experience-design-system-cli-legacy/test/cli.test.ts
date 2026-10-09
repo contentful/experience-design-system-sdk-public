@@ -27,10 +27,11 @@ describe('CLI entry point', () => {
   it('lists visible commands in the supported order', async () => {
     const { stdout, code } = await run('--help');
     expect(code).toBe(0);
-    const commands = ['build', 'help', 'import', 'apply', 'setup', 'doctor'];
+    const commands = ['build', 'help', 'apply', 'setup', 'doctor'];
     const positions = commands.map((command) => stdout.indexOf(`  ${command}`));
     expect(positions.every((position) => position >= 0)).toBe(true);
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    expect(stdout).not.toMatch(/^  import\b/m);
   });
 
   it('exits with error for unknown commands', async () => {
