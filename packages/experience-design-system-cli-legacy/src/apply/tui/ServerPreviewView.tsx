@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, Text } from 'ink';
+import { PALETTE } from '../../analyze/select/tui/theme.js';
 import type {
   ServerPreviewResponse,
   ChangedEntity,
@@ -54,7 +55,7 @@ export function ServerPreviewView({ preview, spaceId, environmentId }: ServerPre
           <Text color="green"> ❆ {components.new.length} components to create</Text>
           <Text color="yellow"> ~ {components.changed.length} components to update</Text>
           <Text color="yellow"> ⊘ {components.removed.length} components to skip</Text>
-          <Text dimColor> · {components.unchanged.length} components unchanged</Text>
+          <Text color={PALETTE.muted}> · {components.unchanged.length} components unchanged</Text>
           {components.changed.map((item, i) => (
             <Box key={i} flexDirection="column">
               <Box flexDirection="row">
@@ -74,7 +75,7 @@ export function ServerPreviewView({ preview, spaceId, environmentId }: ServerPre
           <Text color="green"> ❆ {tokens.new.length} to create</Text>
           <Text color="yellow"> ~ {tokens.changed.length} to update</Text>
           <Text color="yellow"> ⊘ {tokens.removed.length} to skip</Text>
-          <Text dimColor> · {tokens.unchanged.length} unchanged</Text>
+          <Text color={PALETTE.muted}> · {tokens.unchanged.length} unchanged</Text>
           {tokens.changed
             .filter((t) => t.hasPendingDraftChanges)
             .map((item, i) => (
@@ -87,7 +88,7 @@ export function ServerPreviewView({ preview, spaceId, environmentId }: ServerPre
         </Box>
       )}
 
-      <Text dimColor> Press Q to exit.</Text>
+      <Text color={PALETTE.muted}> Press Q to exit.</Text>
     </Box>
   );
 }

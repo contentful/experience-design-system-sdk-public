@@ -177,7 +177,7 @@ export function CredentialsStep({
   function renderField(label: string, value: string, field: Field, masked = false) {
     const isActive = activeField === field;
     const display = masked ? '•'.repeat(value.length) : value;
-    const fallback = field === 'host' ? DEFAULT_CONFIGURED_HOST : <Text dimColor>(empty)</Text>;
+    const fallback = field === 'host' ? DEFAULT_CONFIGURED_HOST : <Text color={PALETTE.muted}>(empty)</Text>;
     return (
       <Box gap={1}>
         <Text color={isActive ? PALETTE.info : undefined}>{'?'}</Text>
@@ -201,11 +201,11 @@ export function CredentialsStep({
         </Text>
         {!(initialSpaceId && initialCmaToken) && (
           <>
-            <Text dimColor>
+            <Text color={PALETTE.muted}>
               These credentials are used both to align agent suggestions with what already exists in the space and to
               push your import at the end. Press S to skip and run without space context (push will be disabled).
             </Text>
-            <Text dimColor>
+            <Text color={PALETTE.muted}>
               Tip: run experiences setup to save these to ~/.contentful/experience-design-system-cli/config.json so they
               pre-fill here automatically.
             </Text>
@@ -219,7 +219,9 @@ export function CredentialsStep({
         {renderField('CMA Token', cmaToken, 'cmaToken', true)}
         {renderField('API Host', host, 'host')}
       </Box>
-      {activeField === 'host' && <Text dimColor>Default: api.contentful.com · EU spaces: api.eu.contentful.com</Text>}
+      {activeField === 'host' && (
+        <Text color={PALETTE.muted}>Default: api.contentful.com · EU spaces: api.eu.contentful.com</Text>
+      )}
 
       {displayError && <Text color={PALETTE.error}>✗ {displayError}</Text>}
 
@@ -231,7 +233,9 @@ export function CredentialsStep({
         </Text>
       )}
 
-      {!validating && generatePrefetchStatus === 'running' && <Text dimColor>Component generation in progress...</Text>}
+      {!validating && generatePrefetchStatus === 'running' && (
+        <Text color={PALETTE.muted}>Component generation in progress...</Text>
+      )}
       {!validating && generatePrefetchStatus === 'complete' && (
         <Text color={PALETTE.success}>Component generation complete.</Text>
       )}
@@ -244,10 +248,10 @@ export function CredentialsStep({
       )}
 
       <Box gap={3}>
-        <Text dimColor>[Enter] Next field / Submit</Text>
-        <Text dimColor>[Tab] Switch field</Text>
-        <Text dimColor>[q] Quit</Text>
-        {onSkip && <Text dimColor>[s] Skip — review locally only (no push, no live preview)</Text>}
+        <Text>[Enter] Next field / Submit</Text>
+        <Text>[Tab] Switch field</Text>
+        <Text>[q] Quit</Text>
+        {onSkip && <Text>[s] Skip — review locally only (no push, no live preview)</Text>}
       </Box>
     </Box>
   );

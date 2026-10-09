@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, Text } from 'ink';
+import { PALETTE } from '../theme.js';
 
 type ScrollablePanelProps = {
   header: React.ReactNode;
@@ -33,7 +34,7 @@ export function ScrollablePanel({
         {overflowed && (
           <>
             <Box flexGrow={1} />
-            <Text dimColor={!active}>{`↕ ${visibleStart}-${visibleEnd}/${totalLines}`}</Text>
+            <Text color={active ? undefined : PALETTE.muted}>{`↕ ${visibleStart}-${visibleEnd}/${totalLines}`}</Text>
           </>
         )}
       </Box>

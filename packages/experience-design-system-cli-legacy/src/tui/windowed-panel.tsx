@@ -101,5 +101,5 @@ export function formatWindowIndicator(direction: WindowDirection, count: number)
 }
 
 export function WindowIndicator({ direction, count }: { direction: WindowDirection; count: number }): ReactElement {
-  return <Text dimColor>{formatWindowIndicator(direction, count)}</Text>;
+  return <Text color={PALETTE.muted}>{formatWindowIndicator(direction, count)}</Text>;
 }

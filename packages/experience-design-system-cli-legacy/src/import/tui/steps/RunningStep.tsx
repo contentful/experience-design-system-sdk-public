@@ -68,16 +68,16 @@ export function RunningStep({
                   <ProgressBar value={Math.round((detailProgress.done / detailProgress.total) * 100)} />
                 </ThemeProvider>
               </Box>
-              <Text dimColor>
+              <Text color={PALETTE.muted}>
                 {detailProgress.done}/{detailProgress.total}
               </Text>
             </Box>
-            <Text dimColor>{detail ?? 'Running...'}</Text>
+            <Text color={PALETTE.muted}>{detail ?? 'Running...'}</Text>
           </>
         ) : (
           <Box gap={1}>
             {detailComplete ? <Text color={PALETTE.success}>✓</Text> : spinner}
-            <Text dimColor>{detail ?? 'Running...'}</Text>
+            <Text color={PALETTE.muted}>{detail ?? 'Running...'}</Text>
           </Box>
         )}
       </Box>
@@ -91,16 +91,16 @@ export function RunningStep({
                     <ProgressBar value={Math.round((secondaryProgress.done / secondaryProgress.total) * 100)} />
                   </ThemeProvider>
                 </Box>
-                <Text dimColor>
+                <Text color={PALETTE.muted}>
                   {secondaryProgress.done}/{secondaryProgress.total}
                 </Text>
               </Box>
-              <Text dimColor>{secondaryDetail}</Text>
+              <Text color={PALETTE.muted}>{secondaryDetail}</Text>
             </>
           ) : (
             <Box gap={1}>
               {secondaryComplete ? <Text color={PALETTE.success}>✓</Text> : spinner}
-              <Text dimColor>{secondaryDetail}</Text>
+              <Text color={PALETTE.muted}>{secondaryDetail}</Text>
             </Box>
           )}
         </Box>
@@ -108,23 +108,23 @@ export function RunningStep({
       {tertiaryDetail !== undefined && (
         <Box gap={1}>
           {tertiaryComplete ? <Text color={PALETTE.success}>✓</Text> : spinner}
-          <Text dimColor>{tertiaryDetail}</Text>
+          <Text color={PALETTE.muted}>{tertiaryDetail}</Text>
         </Box>
       )}
       {quaternaryDetail !== undefined && (
         <Box gap={1}>
           {quaternaryComplete ? <Text color={PALETTE.success}>✓</Text> : spinner}
-          <Text dimColor>{quaternaryDetail}</Text>
+          <Text color={PALETTE.muted}>{quaternaryDetail}</Text>
         </Box>
       )}
       {quinaryDetail !== undefined && (
         <Box gap={1}>
           {quinaryComplete ? <Text color={PALETTE.success}>✓</Text> : spinner}
-          <Text dimColor>{quinaryDetail}</Text>
+          <Text color={PALETTE.muted}>{quinaryDetail}</Text>
         </Box>
       )}
       <Box marginTop={1}>
-        <Text dimColor>Elapsed: {elapsed}</Text>
+        <Text color={PALETTE.muted}>Elapsed: {elapsed}</Text>
       </Box>
     </Box>
   );

@@ -92,7 +92,7 @@ export function TokenInputStep({ onConfirm, onSkip, onQuit }: TokenInputStepProp
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
       <Text bold>Design tokens</Text>
-      <Text dimColor>
+      <Text color={PALETTE.muted}>
         Point me to your raw token file (e.g. ~/design-tokens/tokens.json). You can use ~, relative, or absolute paths.
         Claude will map it to DTCG format.
       </Text>
@@ -105,23 +105,23 @@ export function TokenInputStep({ onConfirm, onSkip, onQuit }: TokenInputStepProp
         </Box>
         {resolvedPath && resolvedPath !== inputValue.trim() && !error && (
           <Box marginLeft={2}>
-            <Text dimColor>→ {resolvedPath}</Text>
+            <Text color={PALETTE.muted}>→ {resolvedPath}</Text>
           </Box>
         )}
         {error && (
           <Box marginTop={0} flexDirection="column">
             <Text color={PALETTE.error}>✗ {error}</Text>
-            {resolvedPath && <Text dimColor> Resolved to: {resolvedPath}</Text>}
+            {resolvedPath && <Text color={PALETTE.muted}> Resolved to: {resolvedPath}</Text>}
           </Box>
         )}
       </Box>
 
       <Box gap={3} marginTop={1}>
-        <Text dimColor>[Enter] Submit / Skip if empty</Text>
-        <Text dimColor>[Tab] Exit typing</Text>
-        <Text dimColor>[Esc] Clear &amp; exit</Text>
-        <Text dimColor>[s] Skip</Text>
-        <Text dimColor>[q] Quit</Text>
+        <Text>[Enter] Submit / Skip if empty</Text>
+        <Text>[Tab] Exit typing</Text>
+        <Text>[Esc] Clear &amp; exit</Text>
+        <Text>[s] Skip</Text>
+        <Text>[q] Quit</Text>
       </Box>
     </Box>
   );

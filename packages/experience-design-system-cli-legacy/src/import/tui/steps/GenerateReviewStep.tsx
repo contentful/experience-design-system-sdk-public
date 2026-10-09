@@ -188,7 +188,7 @@ function CyclePathLine({
             {segment.text}
           </Text>
         ) : segment.kind === 'arrow' ? (
-          <Text key={index} dimColor>
+          <Text key={index} color={PALETTE.muted}>
             {segment.text}
           </Text>
         ) : (
@@ -218,10 +218,10 @@ function CycleDetailPanel({
     <Text key="cyc-title" bold color={PALETTE.warning}>
       {`SLOT DEPENDENCY CYCLES (${cycles.length})`}
     </Text>,
-    <Text key="cyc-sub" dimColor>
+    <Text key="cyc-sub" color={PALETTE.muted}>
       {'push will fail until these are resolved'}
     </Text>,
-    <Text key="cyc-guidance" dimColor>
+    <Text key="cyc-guidance" color={PALETTE.muted}>
       {'Reject a cycle member or remove a slot edge to break the cycle.'}
     </Text>,
     <Text key="cyc-space"> </Text>,
@@ -237,7 +237,7 @@ function CycleDetailPanel({
     );
     if (cycle.suggestedBreak) {
       lines.push(
-        <Text key={`cyc-fix-${index}`} dimColor>
+        <Text key={`cyc-fix-${index}`} color={PALETTE.muted}>
           {`    Suggested fix: remove [${cycle.suggestedBreak.slotName}] from ${cycle.suggestedBreak.fromComponent}`}
         </Text>,
       );
@@ -251,7 +251,7 @@ function CycleDetailPanel({
   return (
     <FixedPanel width={width} height={height} borderStyle="round" borderColor={PALETTE.warning} paddingLeft={1}>
       {visible}
-      <Text dimColor>{footer}</Text>
+      <Text color={PALETTE.muted}>{footer}</Text>
     </FixedPanel>
   );
 }
@@ -277,11 +277,11 @@ function BreakCyclePanel({
         {'BREAK CYCLE — remove a slot edge'}
       </Text>
       {cycle && <CyclePathLine segments={formatCyclePathSegments(cycle)} prefix="  " highlightComponents />}
-      <Text dimColor>
+      <Text color={PALETTE.muted}>
         {cycle ? 'Deleting an edge removes it from $allowedComponents (undo with Ctrl+Z).' : 'No cycle highlighted.'}
       </Text>
       <Text> </Text>
-      {edges.length > 0 && <Text dimColor>{'remove slot edge:'}</Text>}
+      {edges.length > 0 && <Text color={PALETTE.muted}>{'remove slot edge:'}</Text>}
       {edges.map((edge, index) => (
         <Text key={`${edge.fromComponent}-${edge.slotName}-${edge.toComponent}`} inverse={index === cursor}>
           {`${index === cursor ? figures.pointer : ' '} remove '${edge.toComponent}' from ${edge.fromComponent}.$slots.${edge.slotName}.$allowedComponents`}
@@ -292,7 +292,7 @@ function BreakCyclePanel({
           {'Delete this slot edge? [y] confirm  [n] cancel'}
         </Text>
       ) : (
-        <Text dimColor>{'[↑↓] move  [Enter] delete  [x/Esc] close'}</Text>
+        <Text>{'[↑↓] move  [Enter] delete  [x/Esc] close'}</Text>
       )}
     </FixedPanel>
   );
@@ -1450,18 +1450,18 @@ function GenerateReviewStepView({
             <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.warning} paddingX={1}>
               <Text bold color={PALETTE.warning}>{`Breaking changes — ${comp.componentName}`}</Text>
               {comp.impact && (
-                <Text dimColor>
+                <Text color={PALETTE.muted}>
                   {`  affects ${comp.impact.affectedExperiences} experience${comp.impact.affectedExperiences === 1 ? '' : 's'}, ${comp.impact.affectedFragments} fragment${comp.impact.affectedFragments === 1 ? '' : 's'}`}
                 </Text>
               )}
               {comp.changes.length === 0 ? (
-                <Text dimColor>{'  (no enumerated changes)'}</Text>
+                <Text color={PALETTE.muted}>{'  (no enumerated changes)'}</Text>
               ) : (
                 comp.changes.map((change, ci) => (
                   <Text key={`bd-detail-${ci}`}>{`  • ${formatBreakingChange(change, comp.current)}`}</Text>
                 ))
               )}
-              <Text dimColor>{'[D/Esc] close detail'}</Text>
+              <Text>{'[D/Esc] close detail'}</Text>
             </Box>
           );
         })()}
@@ -1492,7 +1492,7 @@ function GenerateReviewStepView({
               </Text>
               {members.length > 0 && <Text color={PALETTE.error}>{`  Cycle members: ${members.join(', ')}`}</Text>}
               {ancestors.length > 0 && <Text color={PALETTE.error}>{`  Ancestors: ${ancestors.join(', ')}`}</Text>}
-              <Text dimColor>
+              <Text color={PALETTE.muted}>
                 {undoSnapshot
                   ? '  [Ctrl+Z] undo · [r]/[a] manually toggle · [F] continue'
                   : '  [r]/[a] manually toggle · [F] continue'}
@@ -1633,7 +1633,7 @@ function GenerateReviewStepView({
             );
           })}
           {cycleRows.length > 3 && <Text color={PALETTE.warning}>{`  …${cycleRows.length - 3} more`}</Text>}
-          <Text dimColor>{'  press [c] for detail'}</Text>
+          <Text>{'  press [c] for detail'}</Text>
         </Box>
       )}
       <SearchMatchSummary

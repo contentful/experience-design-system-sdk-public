@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
+import { PALETTE } from '../../../analyze/select/tui/theme.js';
 
 type GateStepProps = {
   successMessage: string;
@@ -49,7 +50,7 @@ export function GateStep({
       <Text color={headerColor}>
         {headerIcon} {successMessage}
       </Text>
-      {summary && <Text dimColor>{summary}</Text>}
+      {summary && <Text color={PALETTE.muted}>{summary}</Text>}
 
       {context && (
         <Box marginTop={1}>
@@ -58,9 +59,9 @@ export function GateStep({
       )}
 
       <Box gap={3} marginTop={1}>
-        <Text dimColor>[Enter] {continueLabel}</Text>
-        {showSkip && onSkip && <Text dimColor>[a] {skipLabel}</Text>}
-        <Text dimColor>[q] Quit</Text>
+        <Text>[Enter] {continueLabel}</Text>
+        {showSkip && onSkip && <Text>[a] {skipLabel}</Text>}
+        <Text>[q] Quit</Text>
       </Box>
     </Box>
   );

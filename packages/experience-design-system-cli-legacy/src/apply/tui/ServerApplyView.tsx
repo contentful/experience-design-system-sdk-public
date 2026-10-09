@@ -8,6 +8,7 @@ import type {
 import { ServerPreviewView } from './ServerPreviewView.js';
 import { buildPostPushUrl } from '../../lib/contentful-urls.js';
 import { formatEdsiError } from '../../lib/error-parser.js';
+import { PALETTE } from '../../analyze/select/tui/theme.js';
 
 interface ServerPreviewConfirmProps {
   preview: ServerPreviewResponse;
@@ -95,7 +96,7 @@ export function ServerApplyProgress({
         <Box flexDirection="column">
           <Text color="red"> ✗ Error: {error}</Text>
           <Text> </Text>
-          <Text dimColor> Press Q to exit.</Text>
+          <Text color={PALETTE.muted}> Press Q to exit.</Text>
         </Box>
       )}
     </Box>
@@ -127,7 +128,7 @@ export function ServerApplyDone({ operation, spaceId, environmentId, host }: Ser
       <Text> </Text>
       <Text color="green"> ✓ {operation.summary.succeeded} succeeded</Text>
       {operation.summary.failed > 0 && <Text color="red"> ✗ {operation.summary.failed} failed</Text>}
-      {operation.summary.failed === 0 && <Text dimColor> All entities imported successfully.</Text>}
+      {operation.summary.failed === 0 && <Text color={PALETTE.muted}> All entities imported successfully.</Text>}
       {failures.length > 0 && (
         <Box flexDirection="column">
           <Text> </Text>
@@ -138,7 +139,7 @@ export function ServerApplyDone({ operation, spaceId, environmentId, host }: Ser
                 {' '}
                 ✗ {item.entityType}: {item.id}
               </Text>
-              {item.error && <Text dimColor> {formatItemError(item.error)}</Text>}
+              {item.error && <Text color={PALETTE.muted}> {formatItemError(item.error)}</Text>}
             </Box>
           ))}
         </Box>
@@ -146,9 +147,9 @@ export function ServerApplyDone({ operation, spaceId, environmentId, host }: Ser
       {operation.sys.status === 'succeeded' && operation.summary.succeeded > 0 && (
         <Box flexDirection="column">
           <Text> </Text>
-          <Text dimColor> View your design system:</Text>
+          <Text color={PALETTE.muted}> View your design system:</Text>
           <Text color="cyan"> {buildPostPushUrl({ host: host ?? 'api.contentful.com', spaceId, environmentId })}</Text>
-          <Text dimColor> View your design tokens:</Text>
+          <Text color={PALETTE.muted}> View your design tokens:</Text>
           <Text color="cyan">
             {' '}
             {buildPostPushUrl({ host: host ?? 'api.contentful.com', spaceId, environmentId, view: 'design_tokens' })}
@@ -156,7 +157,7 @@ export function ServerApplyDone({ operation, spaceId, environmentId, host }: Ser
         </Box>
       )}
       <Text> </Text>
-      <Text dimColor> Press Q to exit.</Text>
+      <Text color={PALETTE.muted}> Press Q to exit.</Text>
     </Box>
   );
 }

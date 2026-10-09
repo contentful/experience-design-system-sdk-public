@@ -298,7 +298,7 @@ function InlinePropField({
 }): React.ReactElement {
   return (
     <Box width={width} gap={1} flexShrink={flexible ? 1 : 0} flexGrow={flexible ? 1 : 0} flexWrap="wrap">
-      <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused} wrap="truncate-end">
+      <Text color={focused ? PALETTE.warning : PALETTE.muted} bold={focused} wrap="truncate-end">
         {focused ? '› ' : '  '}
         {label}
       </Text>
@@ -336,7 +336,7 @@ function DefaultValueRow({
 }): React.ReactElement {
   return (
     <Box gap={1} flexWrap="wrap" flexShrink={0}>
-      <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused}>
+      <Text color={focused ? PALETTE.warning : PALETTE.muted} bold={focused}>
         {focused ? '› ' : '  '}default:
       </Text>
       {active ? (
@@ -445,10 +445,10 @@ function EditableValueList({
       {values.length === 0 &&
         !editingValue &&
         (emptyPaddingLeft === undefined ? (
-          <Text dimColor>{emptyMessage}</Text>
+          <Text color={PALETTE.muted}>{emptyMessage}</Text>
         ) : (
           <Box paddingLeft={emptyPaddingLeft}>
-            <Text dimColor>{emptyMessage}</Text>
+            <Text color={PALETTE.muted}>{emptyMessage}</Text>
           </Box>
         ))}
       {values.map((value, index) => (
@@ -486,10 +486,10 @@ function DefaultSubRow({
   if (prop.type === 'richtext' || prop.type === 'media' || prop.type === 'link') {
     return (
       <Box gap={1} flexShrink={0}>
-        <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused}>
+        <Text color={focused ? PALETTE.warning : PALETTE.muted} bold={focused}>
           {focused ? '› ' : '  '}default:
         </Text>
-        <Text dimColor={!focused}>(not applicable)</Text>
+        <Text color={focused ? undefined : PALETTE.muted}>(not applicable)</Text>
       </Box>
     );
   }
@@ -503,10 +503,10 @@ function DefaultSubRow({
     if (prop.values.length === 0) {
       return (
         <Box gap={1} flexShrink={0}>
-          <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused}>
+          <Text color={focused ? PALETTE.warning : PALETTE.muted} bold={focused}>
             {focused ? '› ' : '  '}default:
           </Text>
-          <Text dimColor={!focused}>(no values defined)</Text>
+          <Text color={focused ? undefined : PALETTE.muted}>(no values defined)</Text>
         </Box>
       );
     }
@@ -518,7 +518,7 @@ function DefaultSubRow({
   if (active) {
     return (
       <Box flexDirection="row" flexShrink={0}>
-        <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused}>
+        <Text color={focused ? PALETTE.warning : PALETTE.muted} bold={focused}>
           {focused ? '› ' : '  '}default:
         </Text>
         <Box flexGrow={1} borderStyle="round" borderColor={PALETTE.warning} paddingX={1}>
@@ -531,12 +531,10 @@ function DefaultSubRow({
   }
   return (
     <Box gap={1} flexShrink={0}>
-      <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused}>
+      <Text color={focused ? PALETTE.warning : PALETTE.muted} bold={focused}>
         {focused ? '› ' : '  '}default:
       </Text>
-      <Text color={focused ? PALETTE.inverse : value ? PALETTE.inverse : undefined} dimColor={!value && !focused}>
-        {value || '(none)'}
-      </Text>
+      <Text color={focused || value ? PALETTE.inverse : PALETTE.muted}>{value || '(none)'}</Text>
     </Box>
   );
 }
@@ -565,11 +563,11 @@ function DescriptionField({
   if (compact) {
     return (
       <Box gap={1} flexWrap="wrap" width={width} flexShrink={0}>
-        <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused}>
+        <Text color={focused ? PALETTE.warning : PALETTE.muted} bold={focused}>
           {focused ? '› ' : '  '}
           {label}
         </Text>
-        <Text wrap="truncate-end" dimColor={!value}>
+        <Text wrap="truncate-end" color={value ? undefined : PALETTE.muted}>
           {value || '—'}
         </Text>
       </Box>
@@ -577,7 +575,7 @@ function DescriptionField({
   }
   return (
     <Box paddingLeft={paddingLeft} flexDirection="column" width={width} flexShrink={0}>
-      <Text color={focused ? PALETTE.warning : undefined} bold={focused} dimColor={!focused}>
+      <Text color={focused ? PALETTE.warning : PALETTE.muted} bold={focused}>
         {focused ? '› ' : '  '}
         {label}
       </Text>
@@ -688,11 +686,7 @@ function PropRow({
 
       {prop.type === 'enum' && (
         <Box gap={1} flexWrap="wrap" width={width} flexShrink={0}>
-          <Text
-            color={activeField === 'values' ? PALETTE.warning : undefined}
-            bold={activeField === 'values'}
-            dimColor={activeField !== 'values'}
-          >
+          <Text color={activeField === 'values' ? PALETTE.warning : PALETTE.muted} bold={activeField === 'values'}>
             {activeField === 'values' ? '› ' : '  '}values:
           </Text>
           <Text color={activeField === 'values' ? PALETTE.inverse : selected ? PALETTE.inverse : undefined} wrap="wrap">
@@ -711,21 +705,18 @@ function PropRow({
 
       {prop.type === 'token' && prop.category === 'design' && (
         <Box gap={1} flexWrap="wrap" width={width} flexShrink={0}>
-          <Text
-            color={activeField === 'allowed' ? PALETTE.warning : undefined}
-            bold={activeField === 'allowed'}
-            dimColor={activeField !== 'allowed'}
-          >
+          <Text color={activeField === 'allowed' ? PALETTE.warning : PALETTE.muted} bold={activeField === 'allowed'}>
             {activeField === 'allowed' ? '› ' : '  '}allowed:
           </Text>
           {editingField && activeField === 'allowed' ? (
             <Box width={Math.max(1, width - 4)} borderStyle="round" borderColor={PALETTE.warning} paddingX={1}>
-              <Text dimColor>press [t] to edit allowed tokens</Text>
+              <Text>press [t] to edit allowed tokens</Text>
             </Box>
           ) : (
             <Text
-              color={activeField === 'allowed' ? PALETTE.inverse : undefined}
-              dimColor={prop.allowed.length === 0 && activeField !== 'allowed'}
+              color={
+                activeField === 'allowed' ? PALETTE.inverse : prop.allowed.length === 0 ? PALETTE.muted : undefined
+              }
               wrap="wrap"
             >
               {prop.allowed.length > 0 ? prop.allowed.join(', ') : '(any)'}
@@ -736,7 +727,7 @@ function PropRow({
 
       {selected && showRationale && rationale && rationale.trim().length > 0 && (
         <Box paddingLeft={2} key={rowKey ? `rationale-${rowKey}` : undefined}>
-          <Text dimColor>
+          <Text color={PALETTE.muted}>
             {(() => {
               const max = Math.max(8, width - 8);
               const text = `~ ${rationale}`;
@@ -749,10 +740,8 @@ function PropRow({
       {selected && prop.type === 'enum' && activeField === 'values' && (
         <Box paddingLeft={2} flexDirection="column">
           <Box>
-            <Text dimColor>values:</Text>
-            {activeField === 'values' && (
-              <Text dimColor>{'  [a] add  [e] edit  [r] remove  [↑↓] navigate  [K/J] reorder'}</Text>
-            )}
+            <Text color={PALETTE.muted}>values:</Text>
+            {activeField === 'values' && <Text>{'  [a] add  [e] edit  [r] remove  [↑↓] navigate  [K/J] reorder'}</Text>}
           </Box>
           <EditableValueList
             values={prop.values}
@@ -826,14 +815,13 @@ function SlotRow({
       {!(selected && editingField && activeField === 'allowedComponents') && (
         <Box gap={1} flexWrap="wrap" width={width} flexShrink={0}>
           <Text
-            color={activeField === 'allowedComponents' ? PALETTE.warning : undefined}
+            color={activeField === 'allowedComponents' ? PALETTE.warning : PALETTE.muted}
             bold={activeField === 'allowedComponents'}
-            dimColor={activeField !== 'allowedComponents'}
           >
             {activeField === 'allowedComponents' ? '› ' : '  '}allowed:
           </Text>
           {slot.allowedComponents.length === 0 ? (
-            <Text dimColor>(any)</Text>
+            <Text color={PALETTE.muted}>(any)</Text>
           ) : (
             <Text wrap="wrap">{slot.allowedComponents.join(', ')}</Text>
           )}
@@ -843,14 +831,13 @@ function SlotRow({
         <Box flexDirection="column">
           <Box>
             <Text
-              color={activeField === 'allowedComponents' ? PALETTE.warning : undefined}
+              color={activeField === 'allowedComponents' ? PALETTE.warning : PALETTE.muted}
               bold={activeField === 'allowedComponents'}
-              dimColor={activeField !== 'allowedComponents'}
             >
               {activeField === 'allowedComponents' ? '› ' : '  '}allowed:
             </Text>
             {editingField && activeField === 'allowedComponents' && (
-              <Text dimColor>
+              <Text color={PALETTE.muted}>
                 {slot.allowedComponents.length > 0
                   ? '  [a] add  [e] edit  [r] remove  [←→] cycle  [↑↓] navigate  [K/J] reorder'
                   : '  [a] add  [e] edit  [r] remove  [↑↓] navigate  [K/J] reorder'}
@@ -874,7 +861,9 @@ function SlotRow({
             pickerCandidates !== null && (
               <Box paddingLeft={2} flexDirection="column">
                 {pickerCandidates.length === 0 ? (
-                  <Text dimColor>{'(no valid components to add — all remaining candidates would create cycles)'}</Text>
+                  <Text color={PALETTE.muted}>
+                    {'(no valid components to add — all remaining candidates would create cycles)'}
+                  </Text>
                 ) : (
                   (() => {
                     const filtered =
@@ -882,7 +871,7 @@ function SlotRow({
                         ? pickerCandidates
                         : pickerCandidates.filter((n) => n.toLowerCase().includes(valueText.toLowerCase()));
                     if (filtered.length === 0) {
-                      return <Text dimColor>{'(no candidates match — Enter to add as free text)'}</Text>;
+                      return <Text color={PALETTE.muted}>{'(no candidates match — Enter to add as free text)'}</Text>;
                     }
                     const cursor = pickerCursor % filtered.length;
                     const MAX_VISIBLE = 5;
@@ -890,12 +879,12 @@ function SlotRow({
                     const slice = filtered.slice(start, start + MAX_VISIBLE);
                     return (
                       <Box flexDirection="column">
-                        <Text dimColor>{'  candidates (↑↓ cycle, Enter to add):'}</Text>
+                        <Text color={PALETTE.muted}>{'  candidates (↑↓ cycle, Enter to add):'}</Text>
                         {slice.map((name, i) => {
                           const absIdx = start + i;
                           const isCursor = absIdx === cursor;
                           return (
-                            <Text key={name} color={isCursor ? PALETTE.info : undefined} dimColor={!isCursor}>
+                            <Text key={name} color={isCursor ? PALETTE.info : PALETTE.muted}>
                               {isCursor ? `  ${figures.pointer} ${name}` : `    ${name}`}
                             </Text>
                           );
@@ -1919,7 +1908,7 @@ export function FieldEditor({
           FIELD EDITOR — parse error
         </Text>
         <Text color={PALETTE.error}>{parseErr}</Text>
-        <Text dimColor>Cannot display structured editor. Fix the JSON first.</Text>
+        <Text color={PALETTE.muted}>Cannot display structured editor. Fix the JSON first.</Text>
       </Box>
     );
   }
@@ -1933,8 +1922,8 @@ export function FieldEditor({
         <Text color={PALETTE.warning}>
           {"⚠ No properties classified for this component. The LLM didn't find anything to classify."}
         </Text>
-        <Text dimColor>You can add fields manually below or reject this component.</Text>
-        <Text dimColor>Enter to save · Esc to discard</Text>
+        <Text color={PALETTE.muted}>You can add fields manually below or reject this component.</Text>
+        <Text color={PALETTE.muted}>Enter to save · Esc to discard</Text>
       </Box>
     );
   }
@@ -2265,22 +2254,22 @@ export function FieldEditor({
           if (!start || !end || !src) {
             return (
               <Box flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1}>
-                <Text dimColor bold>{`source: ${headerPath}`}</Text>
-                <Text dimColor>(no source location captured for this prop)</Text>
-                <Text dimColor>[s] close</Text>
+                <Text color={PALETTE.muted} bold>{`source: ${headerPath}`}</Text>
+                <Text color={PALETTE.muted}>(no source location captured for this prop)</Text>
+                <Text>[s] close</Text>
               </Box>
             );
           }
           const lines = src.split('\n').slice(Math.max(0, start - 1), end);
           return (
             <Box flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1}>
-              <Text dimColor bold>{`${headerPath}: lines ${start}–${end}`}</Text>
+              <Text color={PALETTE.muted} bold>{`${headerPath}: lines ${start}–${end}`}</Text>
               {lines.map((ln, i) => (
-                <Text key={`source-line-${i}`} dimColor>
+                <Text key={`source-line-${i}`} color={PALETTE.muted}>
                   {ln}
                 </Text>
               ))}
-              <Text dimColor>[s] close · [Esc] close</Text>
+              <Text>[s] close · [Esc] close</Text>
             </Box>
           );
         })()}
@@ -2314,12 +2303,12 @@ export function FieldEditor({
           <Text>{'  ' + componentRationaleKey.padEnd(16) + ' toggle component rationale panel'}</Text>
           <Text>{'  ?                toggle this overlay'}</Text>
           <Text> </Text>
-          <Text dimColor>press ? or Esc to close</Text>
+          <Text color={PALETTE.muted}>press ? or Esc to close</Text>
         </Box>
       )}
       {validationError && <Text color={PALETTE.error}>{'✗ ' + validationError}</Text>}
       <Box paddingTop={1}>
-        <Text dimColor>{modeLabel}</Text>
+        <Text color={PALETTE.muted}>{modeLabel}</Text>
       </Box>
     </FixedPanel>
   );

@@ -5,6 +5,7 @@ import { dirname, basename, join } from 'node:path';
 import { useImmediateInput } from '../analyze/select/tui/hooks/useImmediateInput.js';
 import { normalizePath } from '../import/path-utils.js';
 import { useBlinkingCursor } from '../tui/use-blinking-cursor.js';
+import { PALETTE } from '../analyze/select/tui/theme.js';
 
 export type PathPromptProps = {
   defaultPath: string;
@@ -79,13 +80,13 @@ export function PathPrompt({
       <Box gap={1}>
         <Text color="cyan">?</Text>
         <Text bold>{label}:</Text>
-        <Text dimColor={isPlaceholder}>{shown}</Text>
+        <Text color={isPlaceholder ? PALETTE.muted : undefined}>{shown}</Text>
         <Text>{cursor}</Text>
       </Box>
       <Box gap={3}>
-        <Text dimColor>[Enter] Confirm</Text>
-        <Text dimColor>[Tab] Autocomplete</Text>
-        <Text dimColor>[Esc] Cancel</Text>
+        <Text>[Enter] Confirm</Text>
+        <Text>[Tab] Autocomplete</Text>
+        <Text>[Esc] Cancel</Text>
       </Box>
     </Box>
   );

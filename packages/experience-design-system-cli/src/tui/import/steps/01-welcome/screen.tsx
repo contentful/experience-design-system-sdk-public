@@ -49,7 +49,7 @@ export function WelcomeScreen({ onContinue, onQuit, initialPath = '' }: WelcomeS
         <Text dimColor>{RULE}</Text>
       </Box>
 
-      <Box flexDirection="column" gap={1} >
+      <Box flexDirection="column" gap={1}>
         <Text>Where is your component library?</Text>
         <Box gap={1}>
           <Text color={PALETTE.accent}>?</Text>

@@ -9,7 +9,7 @@ describe('PALETTE (Contentful semantic palette)', () => {
     expect(PALETTE.warning).toBe('#FFDA00');
     expect(PALETTE.fg).toBe('#000000');
     expect(PALETTE.inverse).toBe('#FFFFFF');
-    expect(PALETTE.muted).toBe('#A6B5C7');
+    expect(PALETTE.muted).toBe('#8B8D91');
     expect(PALETTE.border).toBe('#C4D1DE');
     expect(PALETTE.subtle).toBe('#DDE5EC');
     expect(PALETTE.bg).toBe('#EFF2F6');

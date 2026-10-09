@@ -170,7 +170,7 @@ export function PathValidationStep({
   if (!counts && !error) {
     return (
       <Box flexDirection="column" paddingX={2} paddingY={1}>
-        <Text dimColor>
+        <Text color={PALETTE.muted}>
           Scanning <Text bold>{projectPath}</Text>...
         </Text>
       </Box>
@@ -184,14 +184,14 @@ export function PathValidationStep({
         <Box flexDirection="column">
           <Text color={PALETTE.error}>✗ {lines[0]}</Text>
           {lines.slice(1).map((line, i) => (
-            <Text key={i} dimColor>
+            <Text key={i} color={PALETTE.muted}>
               {line}
             </Text>
           ))}
         </Box>
         <Box gap={3} marginTop={1}>
-          <Text dimColor>[e / Enter] Try a different path</Text>
-          <Text dimColor>[q] Quit</Text>
+          <Text>[e / Enter] Try a different path</Text>
+          <Text>[q] Quit</Text>
         </Box>
       </Box>
     );
@@ -252,7 +252,7 @@ export function PathValidationStep({
           </Text>
         )}
         {c.other > 0 && (
-          <Text dimColor>
+          <Text color={PALETTE.muted}>
             {'  • '}
             {String(c.other).padStart(3)} other (ignored)
           </Text>
@@ -268,10 +268,10 @@ export function PathValidationStep({
       <Text>Does this look right?</Text>
 
       <Box gap={3} marginTop={1}>
-        <Text dimColor>[Enter] Yes, start extracting</Text>
-        <Text dimColor>[s] Skip components</Text>
-        <Text dimColor>[e] Change path</Text>
-        <Text dimColor>[q] Quit</Text>
+        <Text>[Enter] Yes, start extracting</Text>
+        <Text>[s] Skip components</Text>
+        <Text>[e] Change path</Text>
+        <Text>[q] Quit</Text>
       </Box>
     </Box>
   );

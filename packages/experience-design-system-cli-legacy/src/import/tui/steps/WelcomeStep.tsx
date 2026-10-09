@@ -39,29 +39,29 @@ export function WelcomeStep({ onContinue, onQuit }: WelcomeStepProps): React.Rea
       <Text bold color={PALETTE.success}>
         👋 Hey! Let&apos;s import your design system into Contentful.
       </Text>
-      <Text dimColor>I&apos;ll walk you through 5 steps to get your components into Contentful ExO.</Text>
+      <Text color={PALETTE.muted}>I&apos;ll walk you through 5 steps to get your components into Contentful ExO.</Text>
 
       <Box flexDirection="column" marginTop={1} gap={0}>
         <Text dimColor>────────────────────────────────────────</Text>
         <Box gap={1}>
           <Text bold>Step 1</Text>
-          <Text dimColor>Extract components from your codebase</Text>
+          <Text color={PALETTE.muted}>Extract components from your codebase</Text>
         </Box>
         <Box gap={1}>
           <Text bold>Step 2</Text>
-          <Text dimColor>Review what was extracted</Text>
+          <Text color={PALETTE.muted}>Review what was extracted</Text>
         </Box>
         <Box gap={1}>
           <Text bold>Step 3</Text>
-          <Text dimColor>Generate CDF definitions with Claude</Text>
+          <Text color={PALETTE.muted}>Generate CDF definitions with Claude</Text>
         </Box>
         <Box gap={1}>
           <Text bold>Step 4</Text>
-          <Text dimColor>Review generated definitions</Text>
+          <Text color={PALETTE.muted}>Review generated definitions</Text>
         </Box>
         <Box gap={1}>
           <Text bold>Step 5</Text>
-          <Text dimColor>Push to Contentful</Text>
+          <Text color={PALETTE.muted}>Push to Contentful</Text>
         </Box>
         <Text dimColor>────────────────────────────────────────</Text>
       </Box>
@@ -76,8 +76,8 @@ export function WelcomeStep({ onContinue, onQuit }: WelcomeStepProps): React.Rea
       </Box>
 
       <Box marginTop={1} gap={3}>
-        <Text dimColor>[Enter] Continue</Text>
-        <Text dimColor>[q] Quit</Text>
+        <Text>[Enter] Continue</Text>
+        <Text>[q] Quit</Text>
       </Box>
     </Box>
   );

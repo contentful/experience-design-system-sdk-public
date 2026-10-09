@@ -642,7 +642,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
             <PreviewBadge badge={badge} highlighted={isSelected} />
             {selectionStateByKey !== undefined &&
               (selGlyph && !isSynthetic ? (
-                <Text color={selColor} dimColor={isSelected ? false : selDim} bold={selBold}>
+                <Text color={!isSelected && selDim ? PALETTE.muted : selColor} bold={selBold}>
                   {' ' + selGlyph}
                 </Text>
               ) : (
@@ -657,18 +657,17 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
                 <Text>{'    '}</Text>
               ))}
             <Text
-              color={isSelected ? PALETTE.info : labelStyle.color}
+              color={isSelected ? PALETTE.info : labelStyle.dim ? PALETTE.muted : labelStyle.color}
               bold={isSelected || labelStyle.bold}
               inverse={false}
               underline={isSelected && !focused}
-              dimColor={isSelected ? false : labelStyle.dim}
               wrap={wrapLabels ? 'wrap' : 'truncate'}
             >
               {' '}
               {row.label}
             </Text>
             {inheritanceStyle.glyph && (
-              <Text color={inheritanceStyle.color} bold={inheritanceStyle.bold} dimColor={inheritanceStyle.dim}>
+              <Text color={inheritanceStyle.dim ? PALETTE.muted : inheritanceStyle.color} bold={inheritanceStyle.bold}>
                 {' ' + inheritanceStyle.glyph}
               </Text>
             )}

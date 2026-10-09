@@ -18,7 +18,7 @@ export function StepLayout({ helpText, children, prompt }: StepLayoutProps): Rea
       {prompt && <Box marginTop={1}>{prompt}</Box>}
       {helpText && (
         <Box marginTop={1}>
-          <Text dimColor>{helpText}</Text>
+          <Text color={PALETTE.muted}>{helpText}</Text>
         </Box>
       )}
     </Box>

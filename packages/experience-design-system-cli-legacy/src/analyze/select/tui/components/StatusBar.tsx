@@ -18,10 +18,10 @@ export function StatusBar({ accepted, rejected, reviewed, needsReview }: StatusB
     <Box gap={2} flexWrap="wrap">
       <Text color={PALETTE.success}>{accepted} accepted</Text>
       <Text color={PALETTE.error}>{rejected} rejected</Text>
-      <Text dimColor>{needsReview} pending</Text>
+      <Text color={PALETTE.muted}>{needsReview} pending</Text>
       <Text color={PALETTE.info}>{reviewed} reviewed</Text>
-      <Text dimColor>·</Text>
-      <Text dimColor>[A] accept all</Text>
+      <Text color={PALETTE.muted}>·</Text>
+      <Text>[A] accept all</Text>
       <Text bold={allResolved} color={allResolved ? PALETTE.success : PALETTE.fg}>
         [F] finalize
       </Text>

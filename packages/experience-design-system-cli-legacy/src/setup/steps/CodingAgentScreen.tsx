@@ -6,6 +6,7 @@ import { AGENT_DEFS, INSTALLABLE_AGENTS, installHint, type AgentDefinition } fro
 import { readExperiencesCredentials, writeExperiencesCredentials } from '../../credentials-store.js';
 import { binaryExists, runSpawn } from '../lib/shell.js';
 import { StepLayout, StepSuccess, StepWarning, type StepDone } from './StepLayout.js';
+import { PALETTE } from '../../analyze/select/tui/theme.js';
 
 const AGENT_HELP = 'Experiences import requires a coding agent to generate component definitions.';
 
@@ -165,7 +166,7 @@ export function CodingAgentScreen({ onDone, deps }: CodingAgentScreenProps): Rea
         {[
           ...notes,
           <StepWarning key="no-key">No OPENAI_API_KEY — using ChatGPT account authentication.</StepWarning>,
-          <Text key="tip" dimColor>
+          <Text key="tip" color={PALETTE.muted}>
             Tip: run codex then type /model to browse all available models.
           </Text>,
         ]}
@@ -187,5 +188,5 @@ export function CodingAgentScreen({ onDone, deps }: CodingAgentScreenProps): Rea
     );
   }
 
-  return <Text dimColor>Looking for a coding agent…</Text>;
+  return <Text color={PALETTE.muted}>Looking for a coding agent…</Text>;
 }

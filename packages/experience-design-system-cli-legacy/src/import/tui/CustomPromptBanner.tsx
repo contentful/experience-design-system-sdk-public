@@ -14,7 +14,7 @@ export function CustomPromptBanner({ generatePromptPath }: CustomPromptBannerPro
         WARNING: Custom prompt active
       </Text>
       {generatePromptPath ? <Text color={PALETTE.warning}>components: {generatePromptPath}</Text> : null}
-      <Text color={PALETTE.warning} dimColor>
+      <Text color={PALETTE.warning}>
         Bundled invariants (utility-wrapper rejection, description content rules) do NOT apply.
       </Text>
     </Box>

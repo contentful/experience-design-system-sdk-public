@@ -2,6 +2,7 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import { HighlightedLine, type HighlightPart } from './HighlightedLine.js';
 import { ScrollablePanel } from './ScrollablePanel.js';
+import { PALETTE } from '../theme.js';
 
 type JsonPanelProps = {
   label: string;
@@ -82,7 +83,7 @@ export function JsonPanel({ label, value, scrollOffset, width, height, active }:
   return (
     <ScrollablePanel
       header={
-        <Text bold dimColor={!active}>
+        <Text bold color={active ? undefined : PALETTE.muted}>
           {label}
         </Text>
       }

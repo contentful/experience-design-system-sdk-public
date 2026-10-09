@@ -59,7 +59,7 @@ export function RationalePanel({
   return (
     <ScrollablePanel
       header={
-        <Text bold dimColor={!active}>
+        <Text bold color={active ? undefined : PALETTE.muted}>
           {`RATIONALE — ${componentName}`}
         </Text>
       }

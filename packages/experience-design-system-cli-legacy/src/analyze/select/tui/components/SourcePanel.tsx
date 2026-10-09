@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import { HighlightedLine, type HighlightPart } from './HighlightedLine.js';
+import { PALETTE } from '../theme.js';
 
 type SourcePanelProps = {
   sourceCode: string | null;
@@ -63,9 +64,9 @@ export function SourcePanel({
   if (!sourceCode) {
     return (
       <Box flexDirection="column" width={width} height={height + 2} borderStyle="single">
-        <Text dimColor>{header}</Text>
+        <Text color={PALETTE.muted}>{header}</Text>
         <Box justifyContent="center" alignItems="center" height={height}>
-          <Text dimColor>[No source available]</Text>
+          <Text>[No source available]</Text>
         </Box>
       </Box>
     );
@@ -82,8 +83,8 @@ export function SourcePanel({
   return (
     <Box flexDirection="column" width={width} height={height + 2} borderStyle="single">
       <Box justifyContent="space-between">
-        <Text dimColor>{header}</Text>
-        <Text dimColor>
+        <Text color={PALETTE.muted}>{header}</Text>
+        <Text color={PALETTE.muted}>
           {showScrollUp ? '▲' : ' '}
           {showScrollDown ? '▼' : ' '}
           {showScrollLeft ? '◀' : ' '}

@@ -10,7 +10,7 @@ export const PALETTE = {
   warning: '#FFDA00',
   fg: '#000000',
   inverse: '#FFFFFF',
-  muted: '#A6B5C7',
+  muted: '#8B8D91',
   border: '#C4D1DE',
   subtle: '#DDE5EC',
   bg: '#EFF2F6',

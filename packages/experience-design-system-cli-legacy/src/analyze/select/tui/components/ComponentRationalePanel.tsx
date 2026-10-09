@@ -99,7 +99,7 @@ export function ComponentRationalePanel({
       borderColor={active ? PALETTE.inverse : undefined}
     >
       <Box>
-        <Text bold dimColor={!active}>
+        <Text bold color={active ? undefined : PALETTE.muted}>
           {`Component rationale: ${data.name}`}
         </Text>
       </Box>
@@ -108,9 +108,9 @@ export function ComponentRationalePanel({
       ))}
       <Box>
         {overflowed ? (
-          <Text dimColor>{`${visibleStart}-${visibleEnd}/${totalLines}    [↑↓] scroll    [I/Esc] close`}</Text>
+          <Text>{`${visibleStart}-${visibleEnd}/${totalLines}    [↑↓] scroll    [I/Esc] close`}</Text>
         ) : (
-          <Text dimColor>{'[I/Esc] close'}</Text>
+          <Text>{'[I/Esc] close'}</Text>
         )}
       </Box>
     </Box>

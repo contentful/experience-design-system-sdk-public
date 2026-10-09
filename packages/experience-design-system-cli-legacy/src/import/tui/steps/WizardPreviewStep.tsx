@@ -341,22 +341,17 @@ export function WizardPreviewStep({
             focused={false}
           >
             {activeLines.slice(boundedScrollOffset, boundedScrollOffset + viewportHeight).map((line) => (
-              <Text
-                key={line.key}
-                color={line.color === 'gray' ? undefined : line.color}
-                dimColor={line.color === 'gray'}
-                wrap="truncate-end"
-              >
+              <Text key={line.key} color={line.color === 'gray' ? PALETTE.muted : line.color} wrap="truncate-end">
                 {line.text}
               </Text>
             ))}
-            <Text dimColor wrap="truncate-end">
+            <Text color={PALETTE.muted} wrap="truncate-end">
               {formatPreviewScrollIndicator(activeLines.length, boundedScrollOffset, viewportHeight)}
             </Text>
           </WindowedPanel>
         </>
       ) : (
-        <Text dimColor>Nothing to push — everything is already up to date.</Text>
+        <Text color={PALETTE.muted}>Nothing to push — everything is already up to date.</Text>
       )}
 
       {breakingWithImpact && (
@@ -370,11 +365,11 @@ export function WizardPreviewStep({
       <SpaceEnvironment spaceId={spaceId} environmentId={environmentId} />
 
       <Box gap={3} marginTop={1}>
-        <Text dimColor>[Enter] Push to Contentful</Text>
-        <Text dimColor>[d] {diffExpanded ? 'Hide' : 'Show'} diff</Text>
-        {diffExpanded && <Text dimColor>[↑↓] Scroll [f/b] Page</Text>}
-        {onEdit && <Text dimColor>[e] Edit definitions</Text>}
-        <Text dimColor>[q] Cancel</Text>
+        <Text>[Enter] Push to Contentful</Text>
+        <Text>[d] {diffExpanded ? 'Hide' : 'Show'} diff</Text>
+        {diffExpanded && <Text>[↑↓] Scroll [f/b] Page</Text>}
+        {onEdit && <Text>[e] Edit definitions</Text>}
+        <Text>[q] Cancel</Text>
       </Box>
     </Box>
   );

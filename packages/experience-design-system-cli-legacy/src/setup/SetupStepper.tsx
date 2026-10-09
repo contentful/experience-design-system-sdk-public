@@ -41,8 +41,8 @@ export function SetupStepper({ activeStep, columns }: SetupStepperProps): React.
         const state: StepState = step < activeStep ? 'complete' : step === activeStep ? 'active' : 'pending';
         return (
           <React.Fragment key={step}>
-            {wide && index > 0 && <Text dimColor>{WIDE_SEPARATOR}</Text>}
-            <Text bold={state === 'active'} dimColor={state === 'pending'} color={stepColor(state)}>
+            {wide && index > 0 && <Text color={PALETTE.muted}>{WIDE_SEPARATOR}</Text>}
+            <Text bold={state === 'active'} color={state === 'pending' ? PALETTE.muted : stepColor(state)}>
               {stepLabel(step, title, state, wide)}
             </Text>
           </React.Fragment>

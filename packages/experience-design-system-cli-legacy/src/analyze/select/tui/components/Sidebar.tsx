@@ -28,7 +28,7 @@ export function PreviewBadge({
   highlighted?: boolean;
 }): React.ReactElement {
   return badge ? (
-    <Text color={badge.color} bold={badge.bold} dimColor={highlighted ? false : badge.dim}>
+    <Text color={!highlighted && badge.dim ? PALETTE.muted : badge.color} bold={badge.bold}>
       {badge.char}
     </Text>
   ) : (
@@ -134,7 +134,7 @@ export function Sidebar({
       borderStyle="single"
       borderColor={focused ? PALETTE.info : PALETTE.border}
     >
-      {showScrollUp && !collapsed && <Text dimColor>▲</Text>}
+      {showScrollUp && !collapsed && <Text color={PALETTE.muted}>▲</Text>}
       {visible.map((component) => {
         const isSelected = component.id === selectedId;
         const icon = statusIcon(component.status, component.validationErrorCount, component.validationWarningCount);
@@ -165,7 +165,7 @@ export function Sidebar({
           </Box>
         );
       })}
-      {showScrollDown && !collapsed && <Text dimColor>▼</Text>}
+      {showScrollDown && !collapsed && <Text color={PALETTE.muted}>▼</Text>}
     </Box>
   );
 }

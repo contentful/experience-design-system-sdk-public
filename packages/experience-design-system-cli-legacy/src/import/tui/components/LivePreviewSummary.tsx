@@ -29,8 +29,8 @@ export function LivePreviewSummary({
   for (const annotation of previewAnnotations.values()) counts[annotation] += 1;
   const hasCounts = counts.new + counts.changed + counts.removed + counts.breaking > 0;
 
-  if (disabled) return <Text dimColor>{'Preview: disabled (creds rejected)'}</Text>;
-  if (status === 'running' && !hasCounts) return <Text dimColor>{`Preview: ${spinner} running...`}</Text>;
+  if (disabled) return <Text color={PALETTE.muted}>{'Preview: disabled (creds rejected)'}</Text>;
+  if (status === 'running' && !hasCounts) return <Text color={PALETTE.muted}>{`Preview: ${spinner} running...`}</Text>;
   if (!hasCounts) return null;
 
   return (
@@ -40,8 +40,8 @@ export function LivePreviewSummary({
       <Text>{' · '}</Text>
       <Text color={PALETTE.warning}>{`${counts.changed} changed`}</Text>
       <Text>{' · '}</Text>
-      <Text dimColor>{`${counts.removed} removed`}</Text>
-      {showRemovedListHint && removedCount > 0 && <Text dimColor>{' ([d] removed list)'}</Text>}
+      <Text color={PALETTE.muted}>{`${counts.removed} removed`}</Text>
+      {showRemovedListHint && removedCount > 0 && <Text>{' ([d] removed list)'}</Text>}
       <Text>{' · '}</Text>
       <Text color={PALETTE.error} bold>
         {`${counts.breaking} breaking`}

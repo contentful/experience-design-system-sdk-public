@@ -6,6 +6,7 @@ import { RationalePanel, type RationaleRow } from '../../../analyze/select/tui/c
 import { TokenReviewPanel, type TokenPropSuggestion } from '../../../analyze/select/tui/components/TokenReviewPanel.js';
 import type { ComponentRationale, ComponentReviewMetadata } from '../../../session/db.js';
 import { FixedPanel } from '../../../tui/windowed-panel.js';
+import { PALETTE } from '../../../analyze/select/tui/theme.js';
 
 type ReviewPanel = 'none' | 'prop-rationale' | 'component-rationale' | 'source' | 'token-review';
 
@@ -109,17 +110,17 @@ export function ReviewDetailsPanel({
     const lines = source ? source.split('\n').slice(panelScrollOffset, panelScrollOffset + sourceLineCount) : [];
     return (
       <FixedPanel width={width} height={height} borderStyle="single" borderColor={sourceBorderColor} paddingLeft={1}>
-        <Text dimColor bold wrap="truncate-end">{`source: ${headerPath}`}</Text>
+        <Text color={PALETTE.muted} bold wrap="truncate-end">{`source: ${headerPath}`}</Text>
         {source ? (
           lines.map((line, index) => (
-            <Text key={`source-line-${index}`} dimColor wrap="truncate-end">
+            <Text key={`source-line-${index}`} color={PALETTE.muted} wrap="truncate-end">
               {line}
             </Text>
           ))
         ) : (
-          <Text dimColor>{'(no source captured)'}</Text>
+          <Text color={PALETTE.muted}>{'(no source captured)'}</Text>
         )}
-        <Text dimColor wrap="truncate-end">
+        <Text color={PALETTE.muted} wrap="truncate-end">
           {'[s/Esc] close'}
         </Text>
       </FixedPanel>
