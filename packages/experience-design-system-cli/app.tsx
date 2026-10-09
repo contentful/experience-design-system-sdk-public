@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { HomeScreen } from './src/tui/home/home.js';
 import { ImportScreen } from './src/tui/import/PageContainer.js';
-import { TokenInputScreen, WelcomeScreen } from './src/tui/import/steps/index.js';
+import { PathValidationScreen, TokenInputScreen, WelcomeScreen } from './src/tui/import/steps/index.js';
 import type { SpawnV1ImportOptions } from './src/tui/import/spawn-v1-import.js';
 import { spawnV1Import } from './src/tui/import/spawn-v1-import.js';
 import { startReadingTerminal, stopReadingTerminal } from './src/tui/import/terminal-input.js';
@@ -33,6 +33,7 @@ function App({ onLaunchImport, importExitCode }: AppProps): React.ReactElement {
   const [screen, setScreen] = useState<Screen>(returnedFromImport ? 'import' : 'start');
   const [showImportResult, setShowImportResult] = useState(returnedFromImport);
   const [projectPath, setProjectPath] = useState<string>();
+  const [tokensPath, setTokensPath] = useState<string>();
   const [importDefaults, setImportDefaults] = useState<{ componentDir: string; tokenFile: string }>();
 
   // Read the saved defaults each time the import flow opens, so a change in Settings shows up right away.
@@ -50,14 +51,19 @@ function App({ onLaunchImport, importExitCode }: AppProps): React.ReactElement {
   const goToStart = (): void => setScreen('start');
   const goToSettings = (): void => setScreen('settings');
 
+  const resetImport = (): void => {
+    setProjectPath(undefined);
+    setTokensPath(undefined);
+  };
+
   const finishImportResult = (): void => {
     setShowImportResult(false);
-    setProjectPath(undefined);
+    resetImport();
     goToStart();
   };
 
   const leaveImport = (): void => {
-    setProjectPath(undefined);
+    resetImport();
     goToStart();
   };
 
@@ -70,11 +76,21 @@ function App({ onLaunchImport, importExitCode }: AppProps): React.ReactElement {
           <WelcomeScreen onContinue={setProjectPath} onQuit={leaveImport} initialPath={importDefaults.componentDir} />
         );
       }
+      if (tokensPath === undefined) {
+        return (
+          <TokenInputScreen
+            initialPath={importDefaults.tokenFile}
+            onConfirm={setTokensPath}
+            onBack={() => setProjectPath(undefined)}
+          />
+        );
+      }
       return (
-        <TokenInputScreen
-          initialPath={importDefaults.tokenFile}
-          onConfirm={(tokens) => onLaunchImport?.({ project: projectPath, tokens })}
-          onBack={() => setProjectPath(undefined)}
+        <PathValidationScreen
+          projectPath={projectPath}
+          onConfirm={(project) => onLaunchImport?.({ project, tokens: tokensPath })}
+          onChangePath={resetImport}
+          onBack={() => setTokensPath(undefined)}
         />
       );
     case 'help':
