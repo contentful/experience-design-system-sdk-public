@@ -107,15 +107,9 @@ experiences import [flags]
 
 ### Wizard step machine
 
-The order below is the normal path. The first step depends on how the wizard is started: `--project` jumps straight to `token-input`, and `--tokens` jumps to `path-validation` (with `--project`) or `credentials` (without it).
+The order below is the normal path. The Welcome, Token input and Path validation screens now live in the new CLI, so the wizard always starts at `credentials`.
 
 ```
-welcome                — project path
-  ↓
-token-input            — optional raw token file; Enter on an empty field skips
-  ↓                       (token-generation and token-reuse-gate run here when a file is given)
-path-validation        — confirms the project path and how many files will be scanned
-  ↓
 credentials            — space ID, environment, CMA token and API host, prefilled from
                          `experiences setup`; press [s] to skip and save files only
   ↓
@@ -223,7 +217,7 @@ You can turn this off two ways:
 - Per invocation:
 
   ```bash
-  DISABLE_ANALYTICS=1 experiences import --project ./my-app
+  DISABLE_ANALYTICS=1 experiences import
   ```
 
   Setting `DISABLE_ANALYTICS` to any value disables collection for that invocation. This is additive with the persisted opt-out — it can only disable, never re-enable, collection that setup has turned off.

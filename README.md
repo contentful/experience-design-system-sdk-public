@@ -47,12 +47,6 @@ experiences import
 
 In an interactive terminal this launches a full-screen TUI that walks you through the project path, an optional token file, credentials, extraction and AI selection, a manual scope review, generation, final review, and push. Credentials are pre-filled from `experiences setup`.
 
-Pass `--project` to skip the welcome screen, and `--tokens` to import a token file alongside your components:
-
-```bash
-experiences import --project /path/to/your/component-library --tokens ./tokens.scss
-```
-
 ## How it works
 
 The CLI runs your component library through four stages:
