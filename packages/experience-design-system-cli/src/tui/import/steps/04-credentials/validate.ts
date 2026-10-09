@@ -26,6 +26,7 @@ function messageFrom(body: string): string | undefined {
   }
 }
 
+// TODO: move this to the backend package (ImportApiClient.validateToken) once v2 depends on it (INTEG-4964).
 export async function validateCredentials(values: CredentialValues): Promise<ValidationResult> {
   const base = toApiHost(values.host);
 
