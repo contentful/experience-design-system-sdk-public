@@ -34,18 +34,6 @@ interface Key {
   return: boolean;
 }
 
-export const IGNORED_DIRECTORIES = new Set([
-  'node_modules',
-  'dist',
-  'build',
-  '.next',
-  '.nuxt',
-  'coverage',
-  'storybook-static',
-  'out',
-  '.git',
-]);
-
 const CATEGORY_BY_EXTENSION = new Map<string, FileCategory>([
   ['tsx', 'tsx'],
   ['ts', 'ts'],
