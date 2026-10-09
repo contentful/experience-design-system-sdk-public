@@ -89,7 +89,7 @@ function registerBuildCommand(program: Command): void {
 }
 
 function configureRootHelpOrder(program: Command): void {
-  const order = ['build', 'help', 'import', 'apply', 'setup', 'doctor'];
+  const order = ['build', 'help', 'apply', 'setup', 'doctor'];
   const rank = new Map(order.map((name, index) => [name, index]));
 
   program.configureHelp({

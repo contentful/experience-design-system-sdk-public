@@ -16,15 +16,12 @@ import { appendRun, updateRun } from '../../runs/store.js';
 import { buildSourceFingerprint } from '../../runs/fingerprint.js';
 import { TopBar } from '../../analyze/select/tui/components/TopBar.js';
 import { CustomPromptBanner } from './CustomPromptBanner.js';
-import { WelcomeStep } from './steps/WelcomeStep.js';
-import { PathValidationStep } from './steps/PathValidationStep.js';
 import { RunningStep } from './steps/RunningStep.js';
 import { GateStep } from './steps/GateStep.js';
 import { CredentialsStep } from './steps/CredentialsStep.js';
 import { WizardPreviewStep } from './steps/WizardPreviewStep.js';
 import { DoneStep } from './steps/DoneStep.js';
 import { ErrorStep } from './steps/ErrorStep.js';
-import { TokenInputStep } from './steps/TokenInputStep.js';
 import { PreviewValidationErrorStep } from './steps/PreviewValidationErrorStep.js';
 import { PushingStep } from './steps/PushingStep.js';
 import { type PushProgress } from './push-progress.js';
@@ -66,7 +63,6 @@ import { ScopeGateStep, type ScopeComponent } from './steps/ScopeGateStep.js';
 import { GenerateReviewStep } from './steps/GenerateReviewStep.js';
 import { runScopeGate } from './runScopeGate.js';
 import { checkAgentAuth, type AgentAuthStatus, type AgentName } from '@contentful/experience-design-system-generation';
-import { normalizePath } from '../path-utils.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../../host-utils.js';
 import { fetchAndPersistExistingContentfulEntities } from '../../helpers/fetch-and-persist-existing-contentful-entities.js';
 import {
@@ -89,13 +85,10 @@ import { useScreenTransitionClear } from '../../tui/render-with-goodbye.js';
 const SAVE_CONFIRMATION_DELAY_MS = 1000;
 
 type WizardStep =
-  | 'welcome'
-  | 'token-input'
   | 'token-reuse-gate'
   | 'checking-claude-auth'
   | 'credential-test-gate'
   | 'validating-credentials'
-  | 'path-validation'
   | 'extracting'
   | 'scope-gate'
   | 'generating'
@@ -445,13 +438,7 @@ export function WizardApp({
 
   const rawTokensEntryReady = !!initialRawTokensPath;
   const effectiveNoCache = resolveNoCacheForGenerate({ cliNoCache: noCache });
-  const initialStepResolved: WizardStep = rawTokensEntryReady
-    ? initialProjectPath
-      ? 'path-validation'
-      : 'credentials'
-    : initialProjectPath
-      ? 'token-input'
-      : 'welcome';
+  const initialStepResolved: WizardStep = 'credentials';
   const initialOutDir = initialProjectPath ? join(resolve(initialProjectPath), '.contentful') : '';
 
   const [state, setState] = useState<WizardState>({
@@ -674,8 +661,7 @@ export function WizardApp({
     const tokenCount = parsePrintTokensCount(r.stdout);
     if (!state.projectPath) {
       // No --project was ever provided (raw-tokens-only run) — there is no
-      // directory to validate. Take the same branch PathValidationStep's
-      // own "skip components" path takes.
+      // directory to scan, so go straight to credentials with components skipped.
       update({
         tokensPath,
         tokenSessionId,
@@ -2108,10 +2094,9 @@ export function WizardApp({
     if (state.rawTokensPath) {
       if (tokenReuseChecked.current) return; // already checked or user chose regenerate
       tokenReuseChecked.current = true;
-      const tokenNextStep: WizardStep = state.projectPath ? 'path-validation' : 'credentials';
       const existingTokensPath = join(state.outDir, 'tokens.json');
       if (effectiveNoCache) {
-        tokenGenerationPromiseRef.current = runAgentAuthCheck(tokenNextStep).then((ok) =>
+        tokenGenerationPromiseRef.current = runAgentAuthCheck('credentials').then((ok) =>
           ok ? runGenerateTokens(state.rawTokensPath, state.outDir) : false,
         );
         return;
@@ -2130,7 +2115,7 @@ export function WizardApp({
             tokenSourceChanged: sourceChanged,
           });
         } catch {
-          tokenGenerationPromiseRef.current = runAgentAuthCheck(tokenNextStep).then((ok) =>
+          tokenGenerationPromiseRef.current = runAgentAuthCheck('credentials').then((ok) =>
             ok ? runGenerateTokens(state.rawTokensPath, state.outDir) : false,
           );
         }
@@ -2157,29 +2142,6 @@ export function WizardApp({
 
   const stepContent = (() => {
     switch (state.step) {
-      case 'welcome':
-        return (
-          <WelcomeStep
-            onContinue={(path) => {
-              const projectPath = normalizePath(path);
-              const outDir = join(projectPath, '.contentful');
-              update({ step: 'token-input', projectPath, outDir });
-            }}
-            onQuit={() => process.exit(0)}
-          />
-        );
-
-      case 'token-input':
-        return (
-          <TokenInputStep
-            onConfirm={(rawTokensPath) => {
-              update({ rawTokensPath, step: 'path-validation', tokenGenerationStatus: 'idle' });
-            }}
-            onSkip={() => update({ step: 'path-validation' })}
-            onQuit={() => process.exit(0)}
-          />
-        );
-
       case 'token-reuse-gate':
         return (
           <GateStep
@@ -2197,16 +2159,15 @@ export function WizardApp({
             showSkip={true}
             onContinue={() =>
               update({
-                step: state.projectPath ? 'path-validation' : 'credentials',
+                step: 'credentials',
                 tokenSessionId: null,
                 tokenGenerationStatus: 'complete',
               })
             }
             onSkip={async () => {
               update({ tokenSourceChanged: null });
-              const tokenNextStep: WizardStep = state.projectPath ? 'path-validation' : 'credentials';
-              update({ step: tokenNextStep });
-              if (await runAgentAuthCheck(tokenNextStep)) {
+              update({ step: 'credentials' });
+              if (await runAgentAuthCheck('credentials')) {
                 tokenGenerationPromiseRef.current = runGenerateTokens(state.rawTokensPath, state.outDir, true);
               }
             }}
@@ -2221,22 +2182,6 @@ export function WizardApp({
             totalSteps={totalSteps}
             title={`Checking ${state.agent}`}
             description={`Verifying ${state.agent} is installed and authenticated...`}
-          />
-        );
-
-      case 'path-validation':
-        return (
-          <PathValidationStep
-            projectPath={state.projectPath}
-            onConfirm={(path) => {
-              update({ projectPath: path, step: 'credentials' });
-              startExtract(path, false);
-            }}
-            onSkipComponents={() => {
-              update({ step: 'credentials', skipComponents: true, acceptedCount: 0 });
-            }}
-            onChangePath={() => update({ step: 'welcome' })}
-            onQuit={() => process.exit(0)}
           />
         );
 

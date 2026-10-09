@@ -69,7 +69,7 @@ Each flow owns its styling. The home menu keeps its palette in `src/tui/home/hom
 
 ### The Import flow
 
-`src/tui/import/` is the Import menu item. The Import menu item shows the Welcome step (`steps/01-welcome`) and collects the project path. `app.tsx` then stops reading stdin and spawns the bundled legacy `import` with `--project <path>`, so the legacy wizard starts after its own Welcome step. `PageContainer.tsx` shows the result when it exits with inherited stdio (`spawn-v1-import.ts`, `terminal-input.ts`), then resumes the menu. `src/legacy/legacy-cli-path.ts` locates the bundled legacy CLI (`legacy/bin/cli.js` in an installed package, the sibling `experience-design-system-cli-legacy` package in the monorepo). This package must never import legacy code.
+`src/tui/import/` is the Import menu item. The Import menu item shows the Welcome step (`steps/01-welcome`) and collects the project path, then the Token input step (`steps/02-token-input`) and collects the token file, then the Path validation step (`steps/03-path-validation`), which scans the project folder and asks the user to confirm it. `app.tsx` then stops reading stdin and spawns the bundled legacy `import` with `--project <path> --tokens <file>`, so the legacy wizard starts at its own steps after these. `PageContainer.tsx` shows the result when it exits with inherited stdio (`spawn-v1-import.ts`, `terminal-input.ts`), then resumes the menu. `src/legacy/legacy-cli-path.ts` locates the bundled legacy CLI (`legacy/bin/cli.js` in an installed package, the sibling `experience-design-system-cli-legacy` package in the monorepo). This package must never import legacy code.
 
 ### Multi-step flows
 
