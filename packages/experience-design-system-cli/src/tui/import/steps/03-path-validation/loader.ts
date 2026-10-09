@@ -20,7 +20,7 @@ function toScanResult(outcome: CollectFilesOutcome): ScanResult {
   }
   return {
     ok: true,
-    counts: toLocalCounts(outcome.result.counts),
+    counts: foldSvelteAndMdIntoOther(outcome.result.counts),
     filePaths: outcome.result.filePaths,
     warnings: outcome.result.warnings,
   };
@@ -31,7 +31,7 @@ function toScanResult(outcome: CollectFilesOutcome): ScanResult {
  * does not render those rows yet. Fold them into `other` for display so the
  * total stays consistent with what the user sees.
  */
-function toLocalCounts(counts: PipelineFileCounts): LocalFileCounts {
+function foldSvelteAndMdIntoOther(counts: PipelineFileCounts): LocalFileCounts {
   return {
     tsx: counts.tsx,
     ts: counts.ts,
