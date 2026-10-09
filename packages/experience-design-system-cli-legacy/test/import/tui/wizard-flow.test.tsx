@@ -116,141 +116,35 @@ afterEach(() => {
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe('WizardApp TUI flow', () => {
-  it('starts at the credentials step', async () => {
+  it('hands straight off to extraction without asking for credentials', async () => {
     const { lastFrame } = render(<WizardApp initialProjectPath="/tmp/test-project" />);
 
     const frame = await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Space ID'),
+      (f) => f.includes('Starting import') || f.includes('Scanning') || f.includes('No components found'),
       3000,
     );
 
-    expect(frame).toContain('Space ID');
+    expect(frame).not.toContain('Space ID');
   });
-});
 
-describe('WizardApp TUI — EU host support', () => {
-  it('silently validates prefilled credentials as soon as the credentials step opens', async () => {
+  it('never validates credentials itself, because the new CLI already did', async () => {
     const { lastFrame } = render(
       <WizardApp
-        initialRawTokensPath="/tmp/tokens.json"
+        initialProjectPath="/tmp/test-project"
         initialSpaceId="space1"
         initialEnvironmentId="master"
         initialCmaToken="token1"
-      />,
-    );
-
-    await waitForFrame(
-      () => lastFrame(),
-      () => mockValidateToken.mock.calls.length > 0,
-      3000,
-    );
-
-    expect(mockValidateToken).toHaveBeenCalled();
-    expect(lastFrame()).toContain('Credentials pre-filled');
-  });
-
-  it('ignores a background validation response after the operator edits a credential', async () => {
-    let resolveValidation!: () => void;
-    mockValidateToken.mockImplementation(
-      () =>
-        new Promise<void>((resolve) => {
-          resolveValidation = resolve;
-        }),
-    );
-
-    const { lastFrame, stdin } = render(
-      <WizardApp
-        initialRawTokensPath="/tmp/tokens.json"
-        initialSpaceId="space1"
-        initialEnvironmentId="master"
-        initialCmaToken="token1"
-      />,
-    );
-
-    await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('Credentials pre-filled'),
-      3000,
-    );
-    stdin.write('x');
-    await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('space1x'),
-      3000,
-    );
-
-    resolveValidation();
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
-    expect(lastFrame()).toContain('Credentials pre-filled');
-    expect(lastFrame()).not.toContain('Push components');
-  });
-
-  it('renders without crash when initialHost is provided', async () => {
-    const { lastFrame } = render(
-      <WizardApp
-        initialSpaceId="eu-space"
-        initialEnvironmentId="master"
-        initialCmaToken="eu-token"
-        initialHost="https://api.eu.contentful.com"
-      />,
-    );
-
-    const frame = await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('Space ID'),
-      3000,
-    );
-
-    // A crash would produce an empty frame
-    expect(frame).toContain('Space ID');
-  });
-
-  it('ImportApiClient mock is in place and receives the right host when validateCredentials fires', async () => {
-    // The wizard opens on credentials, so prefilled credentials are validated straight away
-    // and the client must be built against the configured host.
-    const { ImportApiClient } = await import('../../../src/apply/api-client.js');
-    const MockClient = vi.mocked(ImportApiClient);
-    MockClient.mockClear();
-
-    const { lastFrame } = render(
-      <WizardApp
-        initialRawTokensPath="/tmp/tokens.json"
-        initialSpaceId="eu-space"
-        initialEnvironmentId="master"
-        initialCmaToken="eu-token"
         initialHost="https://api.eu.contentful.com"
       />,
     );
 
     await waitForFrame(
       () => lastFrame(),
-      () => MockClient.mock.calls.length > 0,
+      (f) => f.includes('Starting import') || f.includes('Scanning') || f.includes('No components found'),
       3000,
     );
 
-    expect(JSON.stringify(MockClient.mock.calls[0])).toContain('api.eu.contentful.com');
-  });
-
-  it('renders without crash when host prop is provided as runtime fallback', async () => {
-    // The configured host prop (or EDS_HOST fallback) is used when state.host is empty.
-    // This test confirms the prop is accepted and the wizard mounts without error.
-    const { lastFrame } = render(
-      <WizardApp
-        initialSpaceId="space1"
-        initialEnvironmentId="master"
-        initialCmaToken="tok"
-        host="https://api.eu.contentful.com"
-      />,
-    );
-
-    const frame = await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('Space ID'),
-      3000,
-    );
-
-    expect(frame).toContain('Space ID');
+    expect(mockValidateToken).not.toHaveBeenCalled();
   });
 });

@@ -20,6 +20,7 @@ interface PipelineResult {
 export interface SpawnV1ImportOptions {
   project?: string;
   tokens?: string;
+  skipCredentials?: boolean;
   onProgress?: (line: string) => void;
 }
 
@@ -51,6 +52,7 @@ export async function spawnV1Import(options: SpawnV1ImportOptions = {}): Promise
   return new Promise((resolvePromise) => {
     const child = spawn('node', [cliPath, ...args], {
       stdio: 'inherit',
+      env: options.skipCredentials ? { ...process.env, EDS_IMPORT_SKIP_CREDENTIALS: '1' } : process.env,
     });
 
     child.on('close', (code) => {
