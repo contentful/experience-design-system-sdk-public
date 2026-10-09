@@ -29,7 +29,7 @@ export function buildPreviewSummaryLines(preview: ServerPreviewResponse): Previe
     lines.push({
       key: 'summary-components-new',
       color: PALETTE.success,
-      text: ` ＋ ${components.new.length} will be created`,
+      text: ` ＋ ${components.new.length} components will be created`,
     });
     for (const [index, item] of (components.new as unknown as Array<Record<string, unknown>>).entries()) {
       const name = (item.key as string) ?? (item.$name as string) ?? 'unknown';
@@ -41,7 +41,7 @@ export function buildPreviewSummaryLines(preview: ServerPreviewResponse): Previe
     lines.push({
       key: 'summary-components-changed',
       color: PALETTE.warning,
-      text: ` ～ ${components.changed.length} will be updated`,
+      text: ` ～ ${components.changed.length} components will be updated`,
     });
     for (const [index, item] of components.changed.entries()) {
       const isBreaking = item.changeClassification?.classification === 'breaking';
@@ -57,7 +57,7 @@ export function buildPreviewSummaryLines(preview: ServerPreviewResponse): Previe
     lines.push({
       key: 'summary-components-removed',
       color: PALETTE.warning,
-      text: ` ⊘ ${components.removed.length} will be skipped`,
+      text: ` ⊘ ${components.removed.length} components will be skipped`,
     });
     for (const [index, item] of components.removed.entries()) {
       lines.push({ key: `summary-components-removed-${index}`, color: PALETTE.warning, text: ` ⊘ ${item.name}` });

@@ -76,6 +76,26 @@ npm install -g packages/experience-design-system-cli
 experience-design-system-cli --help
 ```
 
+### Live reload while working on the TUI
+
+From a checkout, run the TUI in watch mode instead of rebuilding by hand:
+
+```bash
+experiences import --watch          # after a first `pnpm build`, which links the command
+pnpm dev                            # same thing from the repo root
+pnpm dev import --project ./src     # extra arguments are passed to the app
+```
+
+It rebuilds `dist/` whenever the source changes and restarts the app, so you land back on the Start screen after each
+save. Notes:
+
+- It is a restart, not hot module replacement: Ink has no Fast Refresh, so screen state is lost.
+- It writes `dist/index.js` and `dist/app.js` in place and never deletes `dist/` or `legacy/` (unlike `pnpm build`).
+- Pressing `q` quits the app but leaves the watcher running; save a file to start it again. Ctrl+C stops everything.
+- Changes in `packages/experience-design-system-cli-legacy` are not picked up, because the Import option runs the
+  bundled copy in `legacy/`. Run `pnpm build` after editing legacy.
+- `--watch` only works from a checkout. The published package does not include the dev script.
+
 ### Testing the import wizard against a real codebase
 
 ```bash

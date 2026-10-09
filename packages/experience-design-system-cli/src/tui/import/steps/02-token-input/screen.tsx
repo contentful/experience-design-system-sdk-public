@@ -4,25 +4,19 @@ import TextInput from 'ink-text-input';
 import { PALETTE } from '../../../home/home.theme.js';
 import { TOKEN_INPUT_CONTROLS, useTokenInputControls } from './controls.js';
 import { toTokenPath } from './logic.js';
-import { validateTokenPath, type TokenPathFailure } from './validate-path.js';
+import { validateTokenPath } from './validate-path.js';
 
 interface TokenInputScreenProps {
   onConfirm: (tokensPath: string) => void;
-  onSkip: () => void;
   onBack: () => void;
   initialPath?: string;
 }
 
-export function TokenInputScreen({
-  onConfirm,
-  onSkip,
-  onBack,
-  initialPath = '',
-}: TokenInputScreenProps): React.ReactElement {
+export function TokenInputScreen({ onConfirm, onBack, initialPath = '' }: TokenInputScreenProps): React.ReactElement {
   const [tokenPath, setTokenPath] = useState(initialPath);
-  const [failure, setFailure] = useState<TokenPathFailure | null>(null);
+  const [failure, setFailure] = useState<{ error: string; resolvedPath?: string } | null>(null);
 
-  useTokenInputControls(tokenPath, onSkip, onBack);
+  useTokenInputControls(onBack);
 
   const change = (value: string) => {
     setTokenPath(value);
@@ -32,7 +26,7 @@ export function TokenInputScreen({
   const submit = (value: string) => {
     const rawPath = toTokenPath(value);
     if (!rawPath) {
-      onSkip();
+      setFailure({ error: 'Enter the path to your token file.' });
       return;
     }
     const check = validateTokenPath(rawPath);
@@ -45,10 +39,10 @@ export function TokenInputScreen({
       <Text bold>Design tokens</Text>
       <Text dimColor>
         Point me to your raw token file (e.g. ~/design-tokens/tokens.json). You can use ~, relative, or absolute paths.
-        Claude will map it to DTCG format.
+        Claude will map it to Design Token Group Format (DTCG).
       </Text>
 
-      <Box flexDirection="column" marginTop={1}>
+      <Box flexDirection="column">
         <Box gap={1}>
           <Text color={PALETTE.accent}>?</Text>
           <Text>Token path:</Text>
@@ -57,7 +51,7 @@ export function TokenInputScreen({
         {failure && (
           <Box flexDirection="column">
             <Text color={PALETTE.error}>✗ {failure.error}</Text>
-            <Text dimColor> Resolved to: {failure.resolvedPath}</Text>
+            {failure.resolvedPath && <Text dimColor> Resolved to: {failure.resolvedPath}</Text>}
           </Box>
         )}
       </Box>

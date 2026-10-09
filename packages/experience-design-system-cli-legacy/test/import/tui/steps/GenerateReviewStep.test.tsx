@@ -212,6 +212,44 @@ describe('GenerateReviewStep — form by default (Fix 1)', () => {
   });
 });
 
+describe('GenerateReviewStep — panel layout', () => {
+  const strip = (s: string) => s.replace(/\u001b\[[0-9;]*m/g, '');
+
+  it('starts both panel borders on the same row and puts the component title inside the detail box', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Button', entry: CATEGORIZED_ENTRY }]);
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+
+    const lines = strip(lastFrame() ?? '').split('\n');
+    const topRow = lines.findIndex((l) => [...l.matchAll(/┌/g)].length >= 2);
+    expect(topRow).toBeGreaterThanOrEqual(0);
+    // Nothing is drawn above the borders: the title is not outside the box.
+    expect(lines.slice(0, topRow).join('')).not.toMatch(/\[Tab\]/);
+    // The title sits right under the detail box's top border, padded, above the description.
+    const titleLine = lines[topRow + 1] ?? '';
+    expect(titleLine).toMatch(/│\s{2}Button\b/);
+    expect(titleLine).toContain('[Tab]');
+  });
+
+  it('keeps the component title visible while a prop is being edited', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Button', entry: CATEGORIZED_ENTRY }]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    stdin.write('\t');
+    await tick();
+    stdin.write('\r');
+    await tick();
+
+    expect(strip(lastFrame() ?? '')).toMatch(/│\s{2}Button\b[^\n]*\[Tab\] focus list/);
+  });
+});
+
 describe('GenerateReviewStep — hidden properties', () => {
   it('does not expose the removed hidden-property toggle', async () => {
     const dbMod = await import('../../../../src/session/db.js');
@@ -1896,7 +1934,7 @@ describe('GenerateReviewStep — composite-components grouped sidebar (subtask C
     expect(frame).toMatch(/Card/);
   });
 
-  it('legend advertises [Space] and [E/C] group-toggle bindings when at least one group root exists', async () => {
+  it('legend advertises the [space/E/C] group-toggle binding when at least one group root exists', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
       { key: 'Card', entry: withSlot('Card', ['Heading']) },
@@ -1908,8 +1946,8 @@ describe('GenerateReviewStep — composite-components grouped sidebar (subtask C
     await tick();
 
     const frame = (lastFrame() ?? '').replace(/\[[0-9;]*m/g, '').replace(/\s+/g, ' ');
-    expect(frame).toMatch(/\[Space\][^\n]*expand\/collapse group/);
-    expect(frame).toMatch(/\[E\/C\][^\n]*expand\/collapse/);
+    expect(frame).toContain('[space/E/C]');
+    expect(frame).toMatch(/\[space\/E\/C\][^\n]*expand\/collapse/);
   });
 
   it('legend omits group-toggle bindings when the manifest is flat (no group roots)', async () => {
@@ -1923,8 +1961,7 @@ describe('GenerateReviewStep — composite-components grouped sidebar (subtask C
     );
     await tick();
     const frame = lastFrame() ?? '';
-    expect(frame).not.toContain('[Space] expand/collapse');
-    expect(frame).not.toContain('[E/C] expand/collapse');
+    expect(frame).not.toContain('[space/E/C]');
   });
 
   it('[C] collapses every group root; [E] expands every group root; both idempotent', async () => {
@@ -3553,9 +3590,14 @@ describe('GenerateReviewStep — [i] jump-and-filter (T5b)', () => {
     );
     await tick();
 
-    const frame = (lastFrame() ?? '').replace(/\[[0-9;]*m/g, '').replace(/\s+/g, ' ');
-    expect(frame).not.toMatch(/\[i\][^\n]*focus lineage/);
-    expect(frame).not.toMatch(/\[p\][^\n]*rationale/);
+    // The compact legend is the boxed control bar at the bottom. The editor's own
+    // footer legitimately lists [p] prop rationale, so only look at the bar.
+    const lines = (lastFrame() ?? '').replace(/\[[0-9;]*m/g, '').split('\n');
+    const barStart = lines.findLastIndex((l) => l.includes('┌') && !l.includes('─'.repeat(40)));
+    const bar = (barStart >= 0 ? lines.slice(barStart) : lines.slice(-4)).join('\n');
+    expect(bar).toContain('[q]');
+    expect(bar).not.toMatch(/\[i\][^\n]*focus lineage/);
+    expect(bar).not.toMatch(/\[p\][^\n]*rationale/);
   });
 });
 

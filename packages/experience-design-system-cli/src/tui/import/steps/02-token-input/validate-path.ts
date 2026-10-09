@@ -2,7 +2,7 @@ import { statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 
-export interface TokenPathFailure {
+interface TokenPathFailure {
   error: string;
   resolvedPath: string;
 }

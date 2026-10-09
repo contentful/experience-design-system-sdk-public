@@ -2186,8 +2186,8 @@ export function WizardApp({
             successMessage="Existing tokens.json found"
             summary={
               state.tokenSourceChanged
-                ? `Source file has been modified since tokens were last generated.\n  ${state.tokensPath}`
-                : `Source file has not changed since tokens were last generated.\n  ${state.tokensPath}`
+                ? `Source file has been modified since tokens were last generated.\n\nTokens Path: ${state.tokensPath}`
+                : `Source file has not changed since tokens were last generated.\n\nTokens Path: ${state.tokensPath}`
             }
             context={
               state.tokenSourceChanged ? 'The source tokens file changed — regenerating is recommended.' : undefined
@@ -2483,7 +2483,7 @@ export function WizardApp({
             stepNumber={stepNum}
             totalSteps={totalSteps}
             title="Generating definitions"
-            description={`${formatAcceptanceSummary({ accepted: state.acceptedCount, autoRejected: state.autoRejectedCount })} ${displayAgent} is mapping your selected components to CDF format.${hasTokens ? ' Using your design tokens for prop resolution.' : ''}`}
+            description={`${formatAcceptanceSummary({ accepted: state.acceptedCount, autoRejected: state.autoRejectedCount })}\n${displayAgent} is mapping your selected components to Contentful's Component Definition Format (CDF).${hasTokens ? ' Using your design tokens for prop resolution.' : ''}`}
             detail={progressDetail}
             detailProgress={p ? { done: p.done, total: p.total } : undefined}
             secondaryDetail={mapTokensDetail}

@@ -207,7 +207,7 @@ export function PathValidationStep({
         Scanning <Text bold>{projectPath}</Text>...
       </Text>
 
-      <Box flexDirection="column" gap={0} marginTop={1}>
+      <Box flexDirection="column" gap={0}>
         <Text color={PALETTE.success}>✓ Found {c.total} files:</Text>
         {c.tsx > 0 && (
           <Text>
@@ -265,10 +265,7 @@ export function PathValidationStep({
       {componentFiles === 0 && tokenFiles > 0 && (
         <Text color={PALETTE.warning}>⚠ No component files found — only token files detected.</Text>
       )}
-
-      <Box marginTop={1}>
-        <Text>Does this look right?</Text>
-      </Box>
+      <Text>Does this look right?</Text>
 
       <Box gap={3} marginTop={1}>
         <Text dimColor>[Enter] Yes, start extracting</Text>
