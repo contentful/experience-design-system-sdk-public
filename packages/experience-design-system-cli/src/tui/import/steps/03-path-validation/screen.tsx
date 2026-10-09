@@ -8,7 +8,7 @@ import { describeFailure, phaseOf, summarize, type ScanResult, type SummaryRow }
 
 interface PathValidationScreenProps {
   projectPath: string;
-  onConfirm: (projectPath: string) => void;
+  onConfirm: (result: { projectPath: string; filePaths: string[] }) => void;
   onChangePath: () => void;
   onBack: () => void;
 }
@@ -77,7 +77,13 @@ export function PathValidationScreen({
 
   const phase = phaseOf(scan);
 
-  usePathValidationControls(phase, { onConfirm: () => onConfirm(resolvedPath), onChangePath, onBack });
+  usePathValidationControls(phase, {
+    onConfirm: () => {
+      if (scan?.ok) onConfirm({ projectPath: resolvedPath, filePaths: scan.filePaths });
+    },
+    onChangePath,
+    onBack,
+  });
 
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
