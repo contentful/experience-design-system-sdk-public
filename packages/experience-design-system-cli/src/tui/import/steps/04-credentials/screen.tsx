@@ -92,8 +92,7 @@ export function CredentialsScreen({
         {!prefilled && (
           <>
             <Text dimColor>
-              Used to align suggestions with what already exists in the space and to push your import at the end.
-              Skipping runs without space context and disables push.
+We use it to check what components already exist and to push your import. If you skip, files are saved locally and nothing is pushed.
             </Text>
             <Text dimColor>Tip: save these under Settings → Configuration so they pre-fill here.</Text>
           </>
