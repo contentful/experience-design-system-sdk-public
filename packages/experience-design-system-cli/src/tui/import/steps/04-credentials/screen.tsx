@@ -3,8 +3,8 @@ import { Box, Text } from 'ink';
 import TextInput from 'ink-text-input';
 import { PALETTE } from '../../../home/home.theme.js';
 import { CREDENTIALS_CONTROLS, useCredentialsControls } from './controls.js';
+import { DEFAULT_CONFIGURED_HOST } from '@contentful/experience-design-system-backend-pipeline';
 import {
-  DEFAULT_HOST,
   FIELDS,
   isUnchanged,
   missingField,
@@ -109,7 +109,7 @@ export function CredentialsScreen({
               value={values[field]}
               focus={active === field && !validating}
               mask={field === 'cmaToken' ? '•' : undefined}
-              placeholder={field === 'host' ? DEFAULT_HOST : undefined}
+              placeholder={field === 'host' ? DEFAULT_CONFIGURED_HOST : undefined}
               onChange={change(field)}
               onSubmit={() => void submit(field)}
             />

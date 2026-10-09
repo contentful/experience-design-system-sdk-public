@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { toApiHost, toConfiguredHost } from '@contentful/experience-design-system-backend-pipeline';
 import {
   isUnchanged,
   keyAction,
   missingField,
   nextField,
   normalize,
-  toApiHost,
-  toConfiguredHost,
 } from '../../src/tui/import/steps/04-credentials/logic.js';
 
 const noKey = { escape: false, tab: false, ctrl: false };
@@ -34,10 +33,10 @@ describe('nextField', () => {
 });
 
 describe('hosts', () => {
-  it('stores hosts without scheme or trailing slash and defaults when empty', () => {
+  it('stores hosts without scheme or trailing slash, undefined when empty', () => {
     expect(toConfiguredHost('https://api.eu.contentful.com/')).toBe('api.eu.contentful.com');
-    expect(toConfiguredHost('  ')).toBe('api.contentful.com');
-    expect(toConfiguredHost(undefined)).toBe('api.contentful.com');
+    expect(toConfiguredHost('  ')).toBeUndefined();
+    expect(toConfiguredHost(undefined)).toBeUndefined();
   });
 
   it('builds an API url, keeping an explicit scheme', () => {
