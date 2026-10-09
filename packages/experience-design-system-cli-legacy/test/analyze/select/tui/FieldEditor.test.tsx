@@ -552,9 +552,9 @@ describe('FieldEditor — wrapped enum-values (Fix 3)', () => {
     await navigateToValuesField(stdin);
 
     const frame = lastFrame() ?? '';
-    expect(frame).toMatch(/\[a\]dd/);
-    expect(frame).toMatch(/\[e\]dit/);
-    expect(frame).toMatch(/\[r\]emove/);
+    expect(frame).toMatch(/\[a\] add/);
+    expect(frame).toMatch(/\[e\] edit/);
+    expect(frame).toMatch(/\[r\] remove/);
     expect(frame).toMatch(/\[K\/J\] reorder/);
   });
 
@@ -1165,10 +1165,10 @@ describe('FieldEditor — Feature 5: $allowedComponents per-slot editor', () => 
     );
     await navigateToAllowedComponents(stdin);
     const frame = lastFrame() ?? '';
-    expect(frame).toMatch(/\[a\]dd/);
-    expect(frame).toMatch(/\[e\]dit/);
-    expect(frame).toMatch(/\[r\]emove/);
-    expect(frame).toMatch(/\[K\/J\] reorder/);
+    expect(frame).toMatch(/\[a\] add/);
+    expect(frame).toMatch(/\[e\] edit/);
+    expect(frame).toMatch(/\[r\] remove/);
+    expect(frame).toMatch(/\[K\/J\][\s│]+reorder/);
     expect(frame).toContain('Card');
     expect(frame).toContain('Hero');
   });
@@ -1295,7 +1295,7 @@ describe('FieldEditor — Feature 5: $allowedComponents per-slot editor', () => 
     await tick();
     stdin.write('\r');
     await tick();
-    expect(lastFrame() ?? '').toMatch(/\[a\]dd/);
+    expect(lastFrame() ?? '').toMatch(/\[a\] add/);
     stdin.write('\x1b');
     await tick();
     stdin.write('\x1b[B');
@@ -1318,7 +1318,7 @@ describe('FieldEditor — Feature 5: $allowedComponents per-slot editor', () => 
     await tick();
     stdin.write('\r');
     await tick();
-    expect(lastFrame() ?? '').toMatch(/\[a\]dd/);
+    expect(lastFrame() ?? '').toMatch(/\[a\] add/);
     // CONTAINER's slot has 2 allowedComponents (Card, Hero): first down moves the
     // value cursor to the last entry, second down escapes the field → 'description'.
     stdin.write('\x1b');
@@ -2725,7 +2725,7 @@ describe('FieldEditor — INTEG-4401: cycle existing $allowedComponents entries 
     await navigateToAllowedComponentsRow(stdin);
     const frame = lastFrame() ?? '';
     expect(frame).toContain('[←→] cycle');
-    expect(frame).toContain('[a]dd');
+    expect(frame).toContain('[a] add');
   });
 
   it('regression: ← / → is a no-op when projectSlotGraph is omitted (free-text-only)', async () => {
