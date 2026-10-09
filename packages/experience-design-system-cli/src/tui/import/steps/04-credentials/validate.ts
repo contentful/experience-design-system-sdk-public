@@ -21,11 +21,10 @@ export async function validateCredentials(values: CredentialValues): Promise<Val
 
 function toUserError(error: unknown, host: string): string {
   if (error instanceof ApiError) {
-    const detail = formatApiError({ error });
     if (error.status === 404 && error.message.startsWith('preflight failed:')) {
-      return `Not found. Check the space ID, environment and API host.\n${detail}`;
+      return 'Not found. Check the space ID, environment and API host.';
     }
-    return detail;
+    return formatApiError({ error });
   }
   if (error instanceof Error) return `Could not reach ${host}: ${error.message}`;
   return String(error);
