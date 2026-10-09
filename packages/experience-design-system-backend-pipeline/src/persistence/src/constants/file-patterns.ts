@@ -1,22 +1,14 @@
-/**
- * Source extensions the extractor framework-adapters know how to parse.
- * Mirrors legacy's `SCANNED_FILE_EXTENSIONS`.
- */
+/** Source extensions the extractor framework-adapters know how to parse. */
 export const INCLUDED_EXTENSIONS = new Set(['.astro', '.js', '.jsx', '.svelte', '.ts', '.tsx', '.vue']);
 
 /**
  * Extensions scanned but gated by name-level denylisting below. These carry
  * design-adjacent evidence (Figma `manifest.json`, `AGENTS.md`-style docs)
- * that non-LLM extractors deterministically parse. Mirrors legacy's
- * `DENYLIST_GATED_EXTENSIONS`.
+ * that non-LLM extractors deterministically parse.
  */
 export const DENYLIST_GATED_EXTENSIONS = new Set(['.json', '.md']);
 
-/**
- * Suffixes that always disqualify a file (tests, stories, type declarations).
- * Mirrors legacy's `IGNORED_FILE_SUFFIXES` plus `.d.ts` and the `.js`/`.jsx`
- * flavors of stories/tests/specs.
- */
+/** Suffixes that always disqualify a file (tests, stories, type declarations). */
 export const EXCLUDED_SUFFIXES = [
   '.d.ts',
   '.stories.ts',
@@ -37,11 +29,7 @@ export const EXCLUDED_SUFFIXES = [
   '.spec.jsx',
 ];
 
-/**
- * Directories skipped entirely during the walk. Union of legacy's
- * `IGNORED_DIRECTORY_NAMES` plus `.nx` (Nx workspace cache dir not present
- * in legacy's list but common in this repo).
- */
+/** Directories skipped entirely during the walk. */
 export const IGNORED_DIRS = new Set([
   '.changeset',
   '.git',
@@ -63,10 +51,7 @@ export const IGNORED_DIRS = new Set([
   'storybook-static',
 ]);
 
-/**
- * Exact filenames inside `DENYLIST_GATED_EXTENSIONS` that are known-noise
- * and always skipped. Mirrors legacy's `DENYLISTED_EXACT_FILE_NAMES`.
- */
+/** Exact filenames inside `DENYLIST_GATED_EXTENSIONS` that are known-noise and always skipped. */
 export const DENYLISTED_EXACT_FILE_NAMES = new Set([
   'package.json',
   'package-lock.json',
@@ -78,11 +63,7 @@ export const DENYLISTED_EXACT_FILE_NAMES = new Set([
   'jsconfig.json',
 ]);
 
-/**
- * Config-file families that vary by suffix (`tsconfig.build.json`,
- * `.eslintrc.cjs.json`, …) plus common repo docs. Mirrors legacy's
- * `DENYLISTED_FILE_NAME_PATTERNS`.
- */
+/** Config-file families that vary by suffix (`tsconfig.build.json`, `.eslintrc.cjs.json`, …) plus common repo docs. */
 export const DENYLISTED_FILE_NAME_PATTERNS = [
   /^tsconfig(\..+)?\.json$/,
   /^\.?eslintrc(\..+)?\.json$/,
@@ -90,6 +71,6 @@ export const DENYLISTED_FILE_NAME_PATTERNS = [
   /^(readme|changelog|contributing|code_of_conduct|license|security)(\..+)?\.md$/i,
 ];
 
-export function isDenylistedNoiseFile(name: string): boolean {
+export function isNoiseConfigFile(name: string): boolean {
   return DENYLISTED_EXACT_FILE_NAMES.has(name) || DENYLISTED_FILE_NAME_PATTERNS.some((pattern) => pattern.test(name));
 }
