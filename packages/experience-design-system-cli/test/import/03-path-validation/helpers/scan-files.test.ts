@@ -2,7 +2,11 @@ import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { scanFiles } from '../../../../src/tui/import/steps/03-path-validation/helpers/scan-files.js';
+import {
+  foldSvelteAndMdIntoOther,
+  scanFiles,
+  toScanResult,
+} from '../../../../src/tui/import/steps/03-path-validation/helpers/scan-files.js';
 
 describe('scanFiles', () => {
   let root: string;
@@ -59,5 +63,89 @@ describe('scanFiles', () => {
 
   it('returns zero counts for an empty directory', () => {
     expect(scanFiles(root)).toMatchObject({ ok: true, counts: { total: 0 } });
+  });
+});
+
+describe('toScanResult', () => {
+  it('maps a successful outcome to an ok ScanResult with folded counts, filePaths and warnings', () => {
+    expect(
+      toScanResult({
+        ok: true,
+        result: {
+          counts: {
+            tsx: 2,
+            ts: 1,
+            vue: 0,
+            astro: 0,
+            jsx: 0,
+            js: 0,
+            json: 1,
+            svelte: 1,
+            md: 1,
+            other: 0,
+            total: 6,
+          },
+          filePaths: ['/a/Button.tsx', '/a/notes.md'],
+          warnings: ['one warning'],
+        },
+      }),
+    ).toEqual({
+      ok: true,
+      counts: { tsx: 2, ts: 1, vue: 0, astro: 0, jsx: 0, js: 0, json: 1, other: 2, total: 6 },
+      filePaths: ['/a/Button.tsx', '/a/notes.md'],
+      warnings: ['one warning'],
+    });
+  });
+
+  it('forwards a failure outcome unchanged', () => {
+    expect(toScanResult({ ok: false, failure: 'not-found' })).toEqual({ ok: false, failure: 'not-found' });
+  });
+});
+
+describe('foldSvelteAndMdIntoOther', () => {
+  it('adds svelte and md counts into other and keeps everything else as-is', () => {
+    expect(
+      foldSvelteAndMdIntoOther({
+        tsx: 10,
+        ts: 4,
+        vue: 2,
+        astro: 1,
+        jsx: 0,
+        js: 3,
+        json: 5,
+        svelte: 6,
+        md: 2,
+        other: 1,
+        total: 34,
+      }),
+    ).toEqual({
+      tsx: 10,
+      ts: 4,
+      vue: 2,
+      astro: 1,
+      jsx: 0,
+      js: 3,
+      json: 5,
+      other: 9,
+      total: 34,
+    });
+  });
+
+  it('does not change other when there are no svelte or md files', () => {
+    expect(
+      foldSvelteAndMdIntoOther({
+        tsx: 1,
+        ts: 0,
+        vue: 0,
+        astro: 0,
+        jsx: 0,
+        js: 0,
+        json: 0,
+        svelte: 0,
+        md: 0,
+        other: 1,
+        total: 2,
+      }).other,
+    ).toBe(1);
   });
 });
