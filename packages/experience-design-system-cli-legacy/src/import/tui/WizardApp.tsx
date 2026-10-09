@@ -9,7 +9,6 @@ import { execFile, spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import { buildRunTeaserLine } from './run-teaser.js';
 import { getDebugLogger } from '../../lib/debug-logger.js';
-import { readExperiencesCredentials, writeExperiencesCredentials } from '../../credentials-store.js';
 import { PathPrompt } from '../../runs/path-prompt.js';
 import { detectSaveConflict, buildTimestampedSubdir } from '../../runs/save-path-resolver.js';
 import { appendRun, updateRun } from '../../runs/store.js';
@@ -18,7 +17,6 @@ import { TopBar } from '../../analyze/select/tui/components/TopBar.js';
 import { CustomPromptBanner } from './CustomPromptBanner.js';
 import { RunningStep } from './steps/RunningStep.js';
 import { GateStep } from './steps/GateStep.js';
-import { CredentialsStep } from './steps/CredentialsStep.js';
 import { WizardPreviewStep } from './steps/WizardPreviewStep.js';
 import { DoneStep } from './steps/DoneStep.js';
 import { ErrorStep } from './steps/ErrorStep.js';
@@ -161,8 +159,6 @@ type WizardState = {
   previewValidationMissingNames: string[];
   credentialsValidating: boolean;
   credentialsBackgroundValidating: boolean;
-  generatePrefetchStatus: 'idle' | 'running' | 'complete' | 'failed';
-  generatePrefetchError: string | null;
   mapTokensEligible: boolean | null;
   credentialsSkipped: boolean;
   /**
@@ -384,8 +380,6 @@ export function WizardApp({
 }: WizardAppProps = {}): React.ReactElement {
   const defaultConfiguredHost = toConfiguredHost(host || process.env['EDS_HOST']) ?? DEFAULT_CONFIGURED_HOST;
   const resolveWizardHost = (hostValue?: string): string => hostValue || defaultConfiguredHost;
-  const credentialKey = (spaceId: string, environmentId: string, cmaToken: string, hostValue: string): string =>
-    [spaceId.trim(), environmentId.trim(), cmaToken.trim(), resolveWizardHost(hostValue)].join('\u0000');
   const { columns: terminalWidth } = useTerminalSize();
   const clearScreenOnTransition = useScreenTransitionClear();
   const logInit = useRef(false);
@@ -409,18 +403,11 @@ export function WizardApp({
   // the async preview/push closures see the confirmed value.
   const allowEmptyDeleteAllRef = useRef(false);
 
-  const generateChildRef = useRef<import('node:child_process').ChildProcess | null>(null);
   const generationCachePreflightRef = useRef<{
     sessionId: string;
     promise: Promise<Set<string>>;
   } | null>(null);
   const selectionToReviewStartedAtRef = useRef<number | null>(null);
-  const credentialsValidationIdRef = useRef(0);
-  const pendingCredentialValidationRef = useRef<{
-    key: string;
-    promise: Promise<boolean>;
-  } | null>(null);
-  const validatedCredentialsKeyRef = useRef<string | null>(null);
   const tokenGenerationPromiseRef = useRef<Promise<boolean> | null>(null);
   const extractPromiseRef = useRef<Promise<void> | null>(null);
   const extractStartedRef = useRef(false);
@@ -488,8 +475,6 @@ export function WizardApp({
     previewValidationMissingNames: [],
     credentialsValidating: false,
     credentialsBackgroundValidating: false,
-    generatePrefetchStatus: 'idle',
-    generatePrefetchError: null,
     mapTokensEligible: null,
     credentialsSkipped: false,
     existingEntitiesPath: null,
@@ -1017,25 +1002,6 @@ export function WizardApp({
     });
   };
 
-  const cancelGeneratePrefetch = (): void => {
-    const child = generateChildRef.current;
-    if (child && !child.killed) {
-      try {
-        child.kill('SIGTERM');
-      } catch {
-        // best-effort
-      }
-    }
-    generateChildRef.current = null;
-    generatePromiseRef.current = null;
-    setState((prev) => ({
-      ...prev,
-      generatePrefetchStatus: 'idle',
-      generatePrefetchError: null,
-      generateProgress: null,
-    }));
-  };
-
   const buildGenerateOptions = (
     extractSessionId: string,
     tokensPath: string,
@@ -1205,71 +1171,6 @@ export function WizardApp({
     state.existingEntitiesPath,
   ]);
 
-  const startGeneratePrefetch = (
-    extractSessionId: string,
-    tokensPath: string,
-  ): Promise<{
-    exitCode: number;
-    signal: NodeJS.Signals | null;
-    stdout: string;
-    stderr: string;
-  }> => {
-    const args = buildGenerateArgs(extractSessionId, tokensPath);
-    let progressCursor: GenerateProgressState = null;
-    const { child, donePromise } = spawnGenerateChild({
-      command: 'node',
-      args,
-      onStderr: (chunk) => {
-        const nextProgress = parseGenerateStderrChunk(chunk, progressCursor);
-        if (nextProgress !== progressCursor) {
-          progressCursor = nextProgress;
-          setState((prev) => ({ ...prev, generateProgress: nextProgress }));
-        }
-      },
-    });
-    generateChildRef.current = child;
-    generatePromiseRef.current = donePromise;
-    setState((prev) => ({
-      ...prev,
-      generatePrefetchStatus: 'running',
-      generatePrefetchError: null,
-    }));
-    donePromise
-      .then((result) => {
-        generateChildRef.current = null;
-        if (result.signal === 'SIGTERM') {
-          return;
-        }
-        if (result.exitCode !== 0) {
-          const tail = result.stderr.trim().split('\n').slice(-3).join('\n') || `exit ${result.exitCode}`;
-          setState((prev) => ({
-            ...prev,
-            generatePrefetchStatus: 'failed',
-            generatePrefetchError: tail,
-            generateProgress: null,
-          }));
-          return;
-        }
-        const { generateSessionId, generatedCount } = parseGenerateResult(result, 0);
-        setState((prev) => ({
-          ...prev,
-          generateSessionId,
-          generatedCount,
-          generateProgress: null,
-          generatePrefetchStatus: 'complete',
-        }));
-      })
-      .catch(() => {
-        generateChildRef.current = null;
-        setState((prev) => ({
-          ...prev,
-          generatePrefetchStatus: 'failed',
-          generatePrefetchError: 'subprocess error',
-        }));
-      });
-    return donePromise;
-  };
-
   const runGenerate = async (
     extractSessionId: string,
     tokensPath: string,
@@ -1393,152 +1294,7 @@ export function WizardApp({
     void runPreview(sid, tp, state.spaceId, state.environmentId, state.cmaToken, state.host);
   };
 
-  const advanceWithCredentials = async (spaceId: string, environmentId: string, cmaToken: string, host: string) => {
-    const resolvedHost = resolveWizardHost(host);
-    const key = credentialKey(spaceId, environmentId, cmaToken, resolvedHost);
-
-    if (validatedCredentialsKeyRef.current === key) {
-      await advanceAfterCredentialsValidated();
-      return;
-    }
-
-    const pending = pendingCredentialValidationRef.current;
-    if (pending?.key === key) {
-      if (await pending.promise) await advanceAfterCredentialsValidated();
-      return;
-    }
-
-    await validateCredentials(spaceId, environmentId, cmaToken, resolvedHost);
-  };
-
-  const confirmCredentials = async (spaceId: string, environmentId: string, cmaToken: string, host: string) => {
-    const resolvedHost = resolveWizardHost(host);
-    try {
-      const stored = await readExperiencesCredentials();
-      await writeExperiencesCredentials({
-        ...stored,
-        spaceId,
-        environmentId,
-        cmaToken,
-        host: resolvedHost,
-      });
-      advanceWithCredentials(spaceId, environmentId, cmaToken, resolvedHost);
-    } catch (e) {
-      const message = e instanceof Error ? e.message : 'Unable to save credentials';
-      update({
-        spaceId,
-        environmentId,
-        cmaToken,
-        host: resolvedHost,
-        credentialsError: `Failed to save credentials: ${message}`,
-        step: 'credentials',
-      });
-    }
-  };
-
-  const validateCredentials = async (
-    spaceId: string,
-    environmentId: string,
-    cmaToken: string,
-    host: string,
-    options: { background?: boolean; validationId?: number } = {},
-  ): Promise<boolean> => {
-    const validationId = options.validationId ?? ++credentialsValidationIdRef.current;
-    const isCurrent = (): boolean => credentialsValidationIdRef.current === validationId;
-    const key = credentialKey(spaceId, environmentId, cmaToken, host);
-    update({
-      step: 'credentials',
-      credentialsValidating: true,
-      credentialsBackgroundValidating: options.background === true,
-      credentialsError: '',
-    });
-    try {
-      const resolvedHost = resolveWizardHost(host);
-      const client = new ImportApiClient({
-        cmaToken,
-        spaceId,
-        environmentId,
-        host: resolvedHost,
-      });
-      await client.validateToken();
-      if (!isCurrent()) return false;
-      validatedCredentialsKeyRef.current = key;
-      update({
-        spaceId,
-        environmentId,
-        cmaToken,
-        host: resolvedHost,
-        credentialsValidating: false,
-        credentialsBackgroundValidating: false,
-      });
-      if (options.background) return true;
-      await advanceAfterCredentialsValidated(validationId);
-      return true;
-    } catch (e) {
-      if (!isCurrent()) return false;
-      if (e instanceof ApiError && (e.status === 401 || e.status === 403 || e.status === 404)) {
-        cancelGeneratePrefetch();
-        update({
-          step: 'credentials',
-          credentialsValidating: false,
-          credentialsBackgroundValidating: false,
-          credentialsError: formatApiError(e, process.env['EDSI_VERBOSE_ERRORS'] === '1'),
-        });
-        return false;
-      }
-      const msg = e instanceof Error ? e.message : 'Credential check failed';
-      cancelGeneratePrefetch();
-      update({
-        step: 'error',
-        errorStep: 'validating-credentials',
-        errorMessage: msg,
-        errorAllowCredentialRetry: false,
-        credentialsValidating: false,
-        credentialsBackgroundValidating: false,
-      });
-      return false;
-    }
-  };
-
-  const handleCredentialValuesChange = (): void => {
-    credentialsValidationIdRef.current += 1;
-    pendingCredentialValidationRef.current = null;
-    validatedCredentialsKeyRef.current = null;
-    if (state.credentialsValidating) {
-      update({ credentialsValidating: false, credentialsBackgroundValidating: false, credentialsError: '' });
-    }
-  };
-
-  useEffect(() => {
-    if (state.step !== 'credentials' || state.credentialsSkipped) return;
-    if (!state.spaceId.trim() || !state.environmentId.trim() || !state.cmaToken.trim()) return;
-
-    const validationId = ++credentialsValidationIdRef.current;
-    const key = credentialKey(state.spaceId, state.environmentId, state.cmaToken, state.host);
-    const promise = validateCredentials(state.spaceId, state.environmentId, state.cmaToken, state.host, {
-      background: true,
-      validationId,
-    });
-    pendingCredentialValidationRef.current = { key, promise };
-    void promise.then(
-      () => {
-        if (pendingCredentialValidationRef.current?.promise === promise) pendingCredentialValidationRef.current = null;
-      },
-      () => {
-        if (pendingCredentialValidationRef.current?.promise === promise) pendingCredentialValidationRef.current = null;
-      },
-    );
-
-    return () => {
-      credentialsValidationIdRef.current += 1;
-      pendingCredentialValidationRef.current = null;
-    };
-  }, [state.step]);
-
-  const advanceAfterCredentialsValidated = async (validationId?: number) => {
-    const isCurrent = (): boolean => validationId === undefined || credentialsValidationIdRef.current === validationId;
-    if (!isCurrent()) return;
-    if (!isCurrent()) return;
+  const advanceAfterCredentialsValidated = async () => {
     credentialsReadyRef.current = true;
     // Under the front-of-flow ordering, credentials are collected right after
     // path-validation and before extract. When we get here without an extract
@@ -1718,7 +1474,11 @@ export function WizardApp({
             });
             return;
           }
-          update({ step: 'credentials', credentialsError: e.message });
+          update({
+            step: 'error',
+            errorStep: 'apply preview',
+            errorMessage: `${e.message}\n\nRe-run the import and enter credentials again.`,
+          });
           return;
         }
         if (e.status === 404) {
@@ -2090,6 +1850,7 @@ export function WizardApp({
   };
 
   const tokenReuseChecked = useRef(false);
+  const [tokenReuseSettled, setTokenReuseSettled] = useState(!state.rawTokensPath);
   useEffect(() => {
     if (state.rawTokensPath) {
       if (tokenReuseChecked.current) return; // already checked or user chose regenerate
@@ -2099,6 +1860,7 @@ export function WizardApp({
         tokenGenerationPromiseRef.current = runAgentAuthCheck('credentials').then((ok) =>
           ok ? runGenerateTokens(state.rawTokensPath, state.outDir) : false,
         );
+        setTokenReuseSettled(true);
         return;
       }
       (async () => {
@@ -2118,10 +1880,19 @@ export function WizardApp({
           tokenGenerationPromiseRef.current = runAgentAuthCheck('credentials').then((ok) =>
             ok ? runGenerateTokens(state.rawTokensPath, state.outDir) : false,
           );
+          setTokenReuseSettled(true);
         }
       })();
     }
   }, [state.rawTokensPath]);
+
+  const credentialsHandedOff = useRef(false);
+  useEffect(() => {
+    if (state.step !== 'credentials' || !tokenReuseSettled || credentialsHandedOff.current) return;
+    credentialsHandedOff.current = true;
+    if (process.env['EDS_IMPORT_SKIP_CREDENTIALS'] === '1') update({ credentialsSkipped: true });
+    void advanceAfterCredentialsValidated();
+  }, [state.step, tokenReuseSettled]);
 
   const noQuitSteps: WizardStep[] = [
     'checking-claude-auth',
@@ -2157,15 +1928,17 @@ export function WizardApp({
             continueLabel="Reuse existing tokens"
             skipLabel="Regenerate tokens"
             showSkip={true}
-            onContinue={() =>
+            onContinue={() => {
+              setTokenReuseSettled(true);
               update({
                 step: 'credentials',
                 tokenSessionId: null,
                 tokenGenerationStatus: 'complete',
-              })
-            }
+              });
+            }}
             onSkip={async () => {
               update({ tokenSourceChanged: null });
+              setTokenReuseSettled(true);
               update({ step: 'credentials' });
               if (await runAgentAuthCheck('credentials')) {
                 tokenGenerationPromiseRef.current = runGenerateTokens(state.rawTokensPath, state.outDir, true);
@@ -2508,40 +2281,11 @@ export function WizardApp({
 
       case 'credentials':
         return (
-          <CredentialsStep
-            initialSpaceId={state.spaceId}
-            initialEnvironmentId={state.environmentId}
-            initialCmaToken={state.cmaToken}
-            initialHost={state.host}
-            error={state.credentialsError || undefined}
-            validating={state.credentialsValidating}
-            backgroundValidating={state.credentialsBackgroundValidating}
-            generatePrefetchStatus={state.generatePrefetchStatus}
-            generatePrefetchError={state.generatePrefetchError}
-            onConfirm={(spaceId, environmentId, cmaToken, host) => {
-              void confirmCredentials(spaceId, environmentId, cmaToken, host);
-            }}
-            onValuesChange={handleCredentialValuesChange}
-            onContinue={(spaceId, environmentId, cmaToken, host) => {
-              void confirmCredentials(spaceId, environmentId, cmaToken, host);
-            }}
-            onRetryPrefetch={
-              state.generatePrefetchStatus === 'failed' && sessionRef.current.extractSessionId
-                ? () => {
-                    const sid = sessionRef.current.extractSessionId!;
-                    void startGeneratePrefetch(sid, state.tokensPath);
-                  }
-                : undefined
-            }
-            onSkip={() => {
-              update({ credentialsSkipped: true, credentialsError: '' });
-              credentialsReadyRef.current = true;
-              void advanceAfterCredentialsValidated();
-            }}
-            onQuit={() => {
-              cancelGeneratePrefetch();
-              process.exit(0);
-            }}
+          <RunningStep
+            stepNumber={1}
+            totalSteps={totalSteps}
+            title="Starting import"
+            description="Using the credentials you just confirmed..."
           />
         );
 
@@ -2680,9 +2424,6 @@ export function WizardApp({
             stepName={state.errorStep}
             message={state.errorMessage}
             onExit={() => process.exit(1)}
-            onRetryCredentials={
-              state.errorAllowCredentialRetry ? () => update({ step: 'credentials', credentialsError: '' }) : undefined
-            }
             onAcknowledgeBreakingChanges={
               state.errorAllowBreakingChangeAcknowledgment && state.cdf
                 ? () =>

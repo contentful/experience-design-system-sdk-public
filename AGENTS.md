@@ -24,12 +24,12 @@ Legacy commands: `import`, `apply <file>`, `setup`, `doctor`, `build`. Hidden in
 ### Wizard step machine (`packages/experience-design-system-cli-legacy/src/import/tui/`)
 
 ```
-credentials → extracting (selection agent runs here)
+extracting (selection agent runs here)
         → scope-gate → generating → final-review → path-prompt
         → previewing → preview-gate → pushing → done
 ```
 
-The Welcome, Token input and Path validation screens now live in the new CLI (`packages/experience-design-system-cli/src/tui/import/steps/`); the legacy wizard starts at `credentials` and receives the project path and token file from them. Choosing `[s]` on `credentials` saves files only: the preview is bypassed and push is refused.
+The Welcome, Token input, Path validation and Credentials screens live in the new CLI (`packages/experience-design-system-cli/src/tui/import/steps/`), which validates and saves the credentials before it spawns the legacy wizard. The wizard starts straight at `extracting` and receives the project path and token file from the new CLI; choosing skip on the Credentials screen sets `EDS_IMPORT_SKIP_CREDENTIALS=1`, which saves files only. Choosing `[s]` on `credentials` saves files only: the preview is bypassed and push is refused.
 
 A single human review gate (`scope-gate`) precedes generation. The final-review step edits names, `$description`, `$default`, `$allowedComponents` and `$values` inline, with source and rationale panels. After final-review the wizard always saves one combined `components.json` CDF and, unless credentials were skipped, previews and pushes it.
 
@@ -163,7 +163,7 @@ All TUI components are standard React functional components rendered by Ink. The
 - `src/analyze/select/tui/` — shared editor pieces (`TopBar`, `useImmediateInput`, theme `PALETTE`) reused by the wizard
 - `src/print/` — hidden `print` command and `validate` view
 - `src/apply/tui/` — `SummaryView`, `EntityDiffView`, `ServerApplyView`
-- `src/import/tui/` — the wizard: `WizardApp` and step components in `steps/` (`CredentialsStep`, `ScopeGateStep`, `GenerateReviewStep`, `WizardPreviewStep`, `PreviewValidationErrorStep`, `PushingStep`, `DoneStep`, `ErrorStep`, `GateStep`, `RunningStep`)
+- `src/import/tui/` — the wizard: `WizardApp` and step components in `steps/` (`ScopeGateStep`, `GenerateReviewStep`, `WizardPreviewStep`, `PreviewValidationErrorStep`, `PushingStep`, `DoneStep`, `ErrorStep`, `GateStep`, `RunningStep`)
 - `packages/experience-design-system-cli/src/tui/` — the new CLI's TUI; see `DSI_TUI_ARCHITECTURE.md` in that package
 
 When writing TUI tests, use `ink-testing-library`. Set `NO_COLOR=1` in the environment before running tests to suppress ANSI escape codes. Strip ANSI before snapshot assertions if the test renders raw strings.
