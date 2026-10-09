@@ -8,7 +8,7 @@ import {
   mergeCounts,
   phaseOf,
   summarize,
-} from '../../src/tui/import/steps/03-path-validation/logic.js';
+} from '../../../src/tui/import/steps/03-path-validation/logic.js';
 
 const noKey = { escape: false, return: false };
 
@@ -91,7 +91,7 @@ describe('summarize', () => {
 describe('phaseOf', () => {
   it('is scanning until a result arrives, then ready or failed', () => {
     expect(phaseOf(undefined)).toBe('scanning');
-    expect(phaseOf({ ok: true, counts: emptyCounts() })).toBe('ready');
+    expect(phaseOf({ ok: true, counts: emptyCounts(), filePaths: [], warnings: [] })).toBe('ready');
     expect(phaseOf({ ok: false, failure: 'not-found' })).toBe('failed');
   });
 });

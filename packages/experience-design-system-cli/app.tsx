@@ -44,7 +44,7 @@ function App({ onLaunchImport, importExitCode }: AppProps): React.ReactElement {
   const [showImportResult, setShowImportResult] = useState(returnedFromImport);
   const [projectPath, setProjectPath] = useState<string>();
   const [tokensPath, setTokensPath] = useState<string>();
-  const [pathConfirmed, setPathConfirmed] = useState(false);
+  const [scannedFiles, setScannedFiles] = useState<string[]>();
   const [importDefaults, setImportDefaults] = useState<{
     componentDir: string;
     tokenFile: string;
@@ -67,9 +67,14 @@ function App({ onLaunchImport, importExitCode }: AppProps): React.ReactElement {
     );
   }, [screen]);
 
-  const finishCredentials = async (result: CredentialsResult, project: string, tokens: string): Promise<void> => {
+  const finishCredentials = async (
+    result: CredentialsResult,
+    projectPath: string,
+    tokens: string,
+    filePaths: string[],
+  ): Promise<void> => {
     if (!result.skipped) await writeCredentials({ ...result.credentials });
-    onLaunchImport?.({ project, tokens, skipCredentials: result.skipped });
+    onLaunchImport?.({ projectPath, tokens, filePaths, skipCredentials: result.skipped });
   };
 
   const goToStart = (): void => setScreen('start');
@@ -78,7 +83,7 @@ function App({ onLaunchImport, importExitCode }: AppProps): React.ReactElement {
   const resetImport = (): void => {
     setProjectPath(undefined);
     setTokensPath(undefined);
-    setPathConfirmed(false);
+    setScannedFiles(undefined);
   };
 
   const finishImportResult = (): void => {
@@ -110,11 +115,11 @@ function App({ onLaunchImport, importExitCode }: AppProps): React.ReactElement {
           />
         );
       }
-      if (!pathConfirmed) {
+      if (scannedFiles === undefined) {
         return (
           <PathValidationScreen
             projectPath={projectPath}
-            onConfirm={() => setPathConfirmed(true)}
+            onConfirm={({ filePaths }) => setScannedFiles(filePaths)}
             onChangePath={resetImport}
             onBack={() => setTokensPath(undefined)}
           />
@@ -123,8 +128,8 @@ function App({ onLaunchImport, importExitCode }: AppProps): React.ReactElement {
       return (
         <CredentialsScreen
           initial={importDefaults.credentials}
-          onBack={() => setPathConfirmed(false)}
-          onDone={(result) => void finishCredentials(result, projectPath, tokensPath)}
+          onBack={() => setScannedFiles(undefined)}
+          onDone={(result) => void finishCredentials(result, projectPath, tokensPath, scannedFiles)}
         />
       );
     case 'help':
