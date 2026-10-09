@@ -15,6 +15,7 @@ const FENCE_LANG_BY_EXT: Record<string, string> = {
   css: 'css',
   json: 'json',
   json5: 'json',
+  html: 'html',
 };
 
 export function inferFenceLang(filename: string | undefined): string {
