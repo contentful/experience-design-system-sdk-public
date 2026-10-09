@@ -31,7 +31,7 @@
   "dependencies": {
     "@contentful/experience-design-system-client": "workspace:*",
     "@vue/compiler-sfc": "^3.5.31",
-    "ajv": "^8.17.1",
+    "ajv": "^8.20.0",
     "contentful-management": "^12.17.0",
     "svelte": "^5.56.4",
     "ts-morph": "^27.0.2",
