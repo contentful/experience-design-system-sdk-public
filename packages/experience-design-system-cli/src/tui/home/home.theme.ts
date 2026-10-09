@@ -10,7 +10,6 @@ const BRAND = {
 
 export const PALETTE = {
   accent: BRAND.blue,
-  heading: BRAND.white,
   success: BRAND.green,
   error: BRAND.orange,
   warning: BRAND.yellow,

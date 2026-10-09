@@ -82,9 +82,7 @@ export function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => voi
   return (
     <Box flexDirection="column" paddingX={2} paddingY={1}>
       <Box flexDirection="column" alignItems="center">
-        <Text bold color={PALETTE.heading}>
-          {HEADING}
-        </Text>
+        <Text bold>{HEADING}</Text>
         <Text>
           {brandBar(HEADING.length).map((segment, i) => (
             <Text key={i} color={segment.color}>
