@@ -1,5 +1,10 @@
-import { ApiError, formatApiError, ImportApiClient } from '@contentful/experience-design-system-backend-pipeline';
-import { toApiHost, type CredentialValues } from './logic.js';
+import {
+  ApiError,
+  formatApiError,
+  ImportApiClient,
+  toApiHost,
+} from '@contentful/experience-design-system-backend-pipeline';
+import type { CredentialValues } from './logic.js';
 
 export type ValidationResult = { ok: true } | { ok: false; error: string };
 

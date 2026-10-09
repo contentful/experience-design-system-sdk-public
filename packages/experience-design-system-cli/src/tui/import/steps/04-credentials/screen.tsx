@@ -3,8 +3,8 @@ import { Box, Text } from 'ink';
 import TextInput from 'ink-text-input';
 import { PALETTE } from '../../../home/home.theme.js';
 import { CREDENTIALS_CONTROLS, useCredentialsControls } from './controls.js';
+import { DEFAULT_CONFIGURED_HOST } from '@contentful/experience-design-system-backend-pipeline';
 import {
-  DEFAULT_CONFIGURED_HOST,
   FIELDS,
   isUnchanged,
   missingField,
