@@ -2,12 +2,7 @@ export const FIELDS = ['spaceId', 'environmentId', 'cmaToken', 'host'] as const;
 
 export type CredentialField = (typeof FIELDS)[number];
 
-export interface CredentialValues {
-  spaceId: string;
-  environmentId: string;
-  cmaToken: string;
-  host: string;
-}
+export type CredentialValues = Record<CredentialField, string>;
 
 export const DEFAULT_HOST = 'api.contentful.com';
 
