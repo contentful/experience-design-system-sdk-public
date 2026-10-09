@@ -3,7 +3,7 @@ import { Box, Text } from 'ink';
 import { PALETTE } from '../theme.js';
 
 type ScrollablePanelProps = {
-  header: React.ReactNode;
+  title: string;
   width: number;
   height: number;
   active: boolean;
@@ -15,7 +15,7 @@ type ScrollablePanelProps = {
 };
 
 export function ScrollablePanel({
-  header,
+  title,
   width,
   height,
   active,
@@ -30,7 +30,9 @@ export function ScrollablePanel({
   return (
     <Box flexDirection="column" width={width} height={height + 2} borderStyle="single" borderColor={borderColor}>
       <Box>
-        {header}
+        <Text bold color={active ? undefined : PALETTE.muted}>
+          {title}
+        </Text>
         {overflowed && (
           <>
             <Box flexGrow={1} />
