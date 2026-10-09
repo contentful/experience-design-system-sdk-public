@@ -89,7 +89,7 @@ describe('collectFiles — excluded suffixes', () => {
 });
 
 describe('collectFiles — ignored dirs', () => {
-  it('skips the full legacy ignore list (node_modules, dist, demo, examples, .nuxt, storybook-static, out, …)', () => {
+  it('skips the full ignore list (node_modules, dist, demo, examples, .nuxt, storybook-static, out, …)', () => {
     for (const dir of [
       'node_modules/some-pkg',
       'dist',
