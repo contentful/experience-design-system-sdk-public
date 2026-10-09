@@ -33,7 +33,7 @@
     "@contentful/experience-design-system-types": "workspace:*",
     "@inkjs/ui": "^2.0.0",
     "@segment/analytics-node": "^3.0.0",
-    "@vue/compiler-sfc": "^3.5.31",
+    "@vue/compiler-sfc": "^3.5.43",
     "commander": "^13.1.0",
     "contentful-management": "^12.17.0",
     "figures": "6.1.0",
