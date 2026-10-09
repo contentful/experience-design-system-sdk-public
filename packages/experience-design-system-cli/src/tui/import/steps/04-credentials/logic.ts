@@ -1,11 +1,5 @@
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '@contentful/experience-design-system-backend-pipeline';
 
-export {
-  toApiHost,
-  toConfiguredHost,
-  DEFAULT_CONFIGURED_HOST,
-} from '@contentful/experience-design-system-backend-pipeline';
-
 export const FIELDS = ['spaceId', 'environmentId', 'cmaToken', 'host'] as const;
 
 export type CredentialField = (typeof FIELDS)[number];

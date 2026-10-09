@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { toApiHost, toConfiguredHost } from '@contentful/experience-design-system-backend-pipeline';
 import {
   isUnchanged,
   keyAction,
   missingField,
   nextField,
   normalize,
-  toApiHost,
-  toConfiguredHost,
 } from '../../src/tui/import/steps/04-credentials/logic.js';
 
 const noKey = { escape: false, tab: false, ctrl: false };
