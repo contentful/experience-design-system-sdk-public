@@ -91,7 +91,7 @@ describe('summarize', () => {
 describe('phaseOf', () => {
   it('is scanning until a result arrives, then ready or failed', () => {
     expect(phaseOf(undefined)).toBe('scanning');
-    expect(phaseOf({ ok: true, counts: emptyCounts() })).toBe('ready');
+    expect(phaseOf({ ok: true, counts: emptyCounts(), filePaths: [], warnings: [] })).toBe('ready');
     expect(phaseOf({ ok: false, failure: 'not-found' })).toBe('failed');
   });
 });

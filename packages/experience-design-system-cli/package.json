@@ -37,6 +37,7 @@
     "dev": "node scripts/dev.mjs"
   },
   "dependencies": {
+    "@contentful/experience-design-system-backend-pipeline": "workspace:*",
     "@contentful/experience-design-system-types": "workspace:*",
     "@inkjs/ui": "^2.0.0",
     "@segment/analytics-node": "^3.0.0",

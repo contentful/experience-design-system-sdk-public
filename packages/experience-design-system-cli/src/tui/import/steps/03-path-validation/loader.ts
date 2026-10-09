@@ -1,51 +1,46 @@
-import type { Dirent } from 'node:fs';
-import { readdir, stat } from 'node:fs/promises';
-import { join } from 'node:path';
-import {
-  IGNORED_DIRECTORIES,
-  addFile,
-  emptyCounts,
-  failureFromErrorCode,
-  mergeCounts,
-  type FileCounts,
-  type ScanResult,
-} from './logic.js';
+import { collectFiles } from '@contentful/experience-design-system-backend-pipeline';
+import type { FileCounts as LocalFileCounts, ScanResult } from './logic.js';
 
-async function isFile(path: string): Promise<boolean> {
-  try {
-    return (await stat(path)).isFile();
-  } catch {
-    return false;
-  }
-}
+type CollectFilesOutcome = ReturnType<typeof collectFiles>;
+type PipelineFileCounts = Extract<CollectFilesOutcome, { ok: true }>['result']['counts'];
 
-async function countEntry(directory: string, entry: Dirent): Promise<FileCounts> {
-  const path = join(directory, entry.name);
-  if (entry.isDirectory()) return countFiles(path);
-  if (entry.isFile() || (entry.isSymbolicLink() && (await isFile(path)))) return addFile(emptyCounts(), entry.name);
-  return emptyCounts();
-}
-
-async function countFiles(directory: string): Promise<FileCounts> {
-  let entries: Dirent[];
-  try {
-    entries = await readdir(directory, { withFileTypes: true });
-  } catch {
-    return emptyCounts();
-  }
-  const counts = await Promise.all(
-    entries.filter((entry) => !IGNORED_DIRECTORIES.has(entry.name)).map((entry) => countEntry(directory, entry)),
-  );
-  return counts.reduce(mergeCounts, emptyCounts());
-}
-
+/**
+ * Scan the project path using the pipeline's walker so counts shown here
+ * match exactly what extract will later walk. Keeps the file list on the ok
+ * variant so downstream screens can consume `filePaths` without re-walking.
+ */
 export async function scanProject(directory: string): Promise<ScanResult> {
-  try {
-    const stats = await stat(directory);
-    if (stats.isFile()) return { ok: false, failure: 'is-file' };
-    if (!stats.isDirectory()) return { ok: false, failure: 'not-directory' };
-  } catch (error) {
-    return { ok: false, failure: failureFromErrorCode((error as NodeJS.ErrnoException).code) };
+  const outcome = collectFiles(directory);
+  return toScanResult(outcome);
+}
+
+function toScanResult(outcome: CollectFilesOutcome): ScanResult {
+  if (!outcome.ok) {
+    return { ok: false, failure: outcome.failure };
   }
-  return { ok: true, counts: await countFiles(directory) };
+  return {
+    ok: true,
+    counts: toLocalCounts(outcome.result.counts),
+    filePaths: outcome.result.filePaths,
+    warnings: outcome.result.warnings,
+  };
+}
+
+/**
+ * The pipeline tracks `svelte` and `md` as their own buckets; this screen
+ * does not render those rows yet. Fold them into `other` for display so the
+ * total stays consistent with what the user sees.
+ */
+function toLocalCounts(counts: PipelineFileCounts): LocalFileCounts {
+  return {
+    tsx: counts.tsx,
+    ts: counts.ts,
+    vue: counts.vue,
+    astro: counts.astro,
+    jsx: counts.jsx,
+    js: counts.js,
+    json: counts.json,
+    other: counts.other + counts.svelte + counts.md,
+    total: counts.total,
+  };
 }
