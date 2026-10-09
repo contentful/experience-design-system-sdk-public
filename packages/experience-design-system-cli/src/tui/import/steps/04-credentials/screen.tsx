@@ -92,7 +92,8 @@ export function CredentialsScreen({
         {!prefilled && (
           <>
             <Text dimColor>
-We use it to check what components already exist and to push your import. If you skip, files are saved locally and nothing is pushed.
+              We use it to check what components already exist and to push your import. If you skip, files are saved
+              locally and nothing is pushed.
             </Text>
             <Text dimColor>Tip: save these under Settings → Configuration so they pre-fill here.</Text>
           </>
