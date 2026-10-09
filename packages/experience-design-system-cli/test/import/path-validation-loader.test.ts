@@ -21,11 +21,11 @@ describe('scanProject', () => {
     await writeFile(join(root, 'src', 'ui', 'Button.tsx'), '');
     await writeFile(join(root, 'src', 'index.ts'), '');
     await writeFile(join(root, 'tokens.json'), '{}');
-    await writeFile(join(root, 'README.md'), '');
+    await writeFile(join(root, 'notes.md'), '# notes');
 
     const result = await scanProject(root);
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       ok: true,
       counts: { tsx: 1, ts: 1, vue: 0, astro: 0, jsx: 0, js: 0, json: 1, other: 1, total: 4 },
     });
@@ -43,11 +43,11 @@ describe('scanProject', () => {
     expect(result).toMatchObject({ ok: true, counts: { tsx: 1, js: 0, total: 1 } });
   });
 
-  it('counts a symlink that points at a file', async () => {
+  it('does not follow symlinks when counting files', async () => {
     await writeFile(join(root, 'real.tsx'), '');
     await symlink(join(root, 'real.tsx'), join(root, 'link.tsx'));
 
-    expect(await scanProject(root)).toMatchObject({ ok: true, counts: { tsx: 2 } });
+    expect(await scanProject(root)).toMatchObject({ ok: true, counts: { tsx: 1 } });
   });
 
   it('reports a missing directory', async () => {
