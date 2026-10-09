@@ -35,7 +35,9 @@ describe('validateCredentials', () => {
 
   it('rejects an invalid token', async () => {
     respond(new Response('', { status: 401 }));
-    expect(await validateCredentials(values)).toEqual({ ok: false, error: 'CMA token is invalid or revoked.' });
+    const result = await validateCredentials(values);
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.error).toContain('CMA token is invalid or revoked');
   });
 
   it('reports an unreachable host', async () => {
@@ -43,6 +45,7 @@ describe('validateCredentials', () => {
     const result = await validateCredentials(values);
     expect(result.ok).toBe(false);
     expect(!result.ok && result.error).toContain('api.contentful.com');
+    expect(!result.ok && result.error).toContain('getaddrinfo ENOTFOUND');
   });
 
   it('rejects an access-denied preflight with the server message', async () => {
