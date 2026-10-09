@@ -14,7 +14,7 @@ function Section({ title, rows }: { title: string; rows: HelpRow[] }): React.Rea
       {rows.map((row) => (
         <Box key={row.label} gap={1}>
           <Box width={14} flexShrink={0}>
-            <Text dimColor>{row.label}</Text>
+            <Text color={PALETTE.muted}>{row.label}</Text>
           </Box>
           <Text>{row.value}</Text>
         </Box>
@@ -54,7 +54,7 @@ export function HelpScreen({ onDone }: { onDone: () => void }): React.ReactEleme
         <>
           <Section title="Where things are stored" rows={info.storage} />
           <Section title="Troubleshooting" rows={info.troubleshooting} />
-          <Text dimColor>
+          <Text color={PALETTE.muted}>
             Hit a problem? Turn on Debug Mode in Settings, reproduce it, then share the session folder above. The CMA
             token is redacted from those logs.
           </Text>

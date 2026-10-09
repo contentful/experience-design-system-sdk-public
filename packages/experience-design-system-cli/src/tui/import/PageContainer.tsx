@@ -13,7 +13,6 @@ export function ImportScreen({ exitCode, onDone }: { exitCode?: number; onDone: 
 
   return (
     <Box flexDirection="column" paddingX={2} paddingY={1}>
-      <Text bold>Import</Text>
       <Text> </Text>
       {isSuccess ? (
         <Text color={PALETTE.success}>✓ Import complete</Text>
@@ -21,7 +20,7 @@ export function ImportScreen({ exitCode, onDone }: { exitCode?: number; onDone: 
         <Text color={PALETTE.error}>✗ Import failed: process exited with code {exitCode ?? 'unknown'}</Text>
       )}
       <Text> </Text>
-      <Text dimColor>[Enter] Back to Start</Text>
+      <Text>[Enter] Back to Start</Text>
     </Box>
   );
 }

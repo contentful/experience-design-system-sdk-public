@@ -4,10 +4,8 @@ const BRAND = {
   orange: '#E44F20',
   yellow: '#FFDA00',
   white: '#FFFFFF',
-  slate: '#A6B5C7',
+  slate: '#8B8D91',
   steel: '#C4D1DE',
-  mist: '#DDE5EC',
-  fog: '#EFF2F6',
 } as const;
 
 export const PALETTE = {

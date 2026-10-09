@@ -107,8 +107,7 @@ export function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => voi
               <Text
                 key={item.label}
                 bold={focused && !dimmed}
-                dimColor={dimmed}
-                color={focused && !dimmed ? PALETTE.accent : display.color}
+                color={dimmed ? PALETTE.muted : focused ? PALETTE.accent : display.color}
               >
                 {focused ? `${FOCUS_MARKER} ` : '  '}
                 {display.label}
