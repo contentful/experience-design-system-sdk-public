@@ -8,7 +8,7 @@ import {
   mergeCounts,
   phaseOf,
   summarize,
-} from '../../src/tui/import/steps/03-path-validation/logic.js';
+} from '../../../src/tui/import/steps/03-path-validation/logic.js';
 
 const noKey = { escape: false, return: false };
 
