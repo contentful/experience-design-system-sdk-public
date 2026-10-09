@@ -1,6 +1,6 @@
 {
   "name": "@contentful/experience-design-system-backend-pipeline",
-  "version": "2.38.0",
+  "version": "2.35.0",
   "description": "Composition, selection, apply, and file-service pipeline for the Contentful Experience Design System SDK",
   "license": "MIT",
   "type": "module",
