@@ -751,7 +751,7 @@ function PropRow({
           <Box>
             <Text dimColor>values:</Text>
             {activeField === 'values' && (
-              <Text dimColor>{'  [a]dd  [e]dit  [r]emove  [↑↓] navigate  [K/J] reorder'}</Text>
+              <Text dimColor>{'  [a] add  [e] edit  [r] remove  [↑↓] navigate  [K/J] reorder'}</Text>
             )}
           </Box>
           <EditableValueList
@@ -852,8 +852,8 @@ function SlotRow({
             {editingField && activeField === 'allowedComponents' && (
               <Text dimColor>
                 {slot.allowedComponents.length > 0
-                  ? '  [a]dd  [e]dit  [r]emove  [←→] cycle  [↑↓] navigate  [K/J] reorder'
-                  : '  [a]dd  [e]dit  [r]emove  [↑↓] navigate  [K/J] reorder'}
+                  ? '  [a] add  [e] edit  [r] remove  [←→] cycle  [↑↓] navigate  [K/J] reorder'
+                  : '  [a] add  [e] edit  [r] remove  [↑↓] navigate  [K/J] reorder'}
               </Text>
             )}
           </Box>
