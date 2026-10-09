@@ -267,7 +267,7 @@ function Picker({ value, active }: { value: string; active: boolean }): React.Re
   return (
     <Box>
       {active && <Text color={PALETTE.warning}>{'‹'}</Text>}
-      <Text color={active ? PALETTE.warning : PALETTE.inverse} bold={active}>
+      <Text color={active ? PALETTE.warning : undefined} bold={active}>
         {value}
       </Text>
       {active && <Text color={PALETTE.warning}>{'›'}</Text>}
@@ -339,13 +339,7 @@ function DefaultValueRow({
       <Text color={focused ? PALETTE.warning : PALETTE.muted} bold={focused}>
         {focused ? '› ' : '  '}default:
       </Text>
-      {active ? (
-        <Picker value={display} active={true} />
-      ) : (
-        <Text color={focused ? PALETTE.inverse : PALETTE.inverse} wrap="wrap">
-          {display}
-        </Text>
-      )}
+      {active ? <Picker value={display} active={true} /> : <Text wrap="wrap">{display}</Text>}
     </Box>
   );
 }
@@ -412,9 +406,7 @@ function EditableListItem({
   }
   return (
     <Box gap={1} paddingLeft={2}>
-      <Text color={active ? PALETTE.info : PALETTE.inverse}>
-        {active ? `${figures.pointer} ${value}` : `  ${value}`}
-      </Text>
+      <Text color={active ? PALETTE.info : undefined}>{active ? `${figures.pointer} ${value}` : `  ${value}`}</Text>
     </Box>
   );
 }
@@ -534,7 +526,7 @@ function DefaultSubRow({
       <Text color={focused ? PALETTE.warning : PALETTE.muted} bold={focused}>
         {focused ? '› ' : '  '}default:
       </Text>
-      <Text color={focused || value ? PALETTE.inverse : PALETTE.muted}>{value || '(none)'}</Text>
+      <Text color={focused || value ? undefined : PALETTE.muted}>{value || '(none)'}</Text>
     </Box>
   );
 }
@@ -667,7 +659,7 @@ function PropRow({
           {editingField && activeField === 'type' ? (
             <Picker value={prop.type} active={true} />
           ) : (
-            <Text color={selected ? PALETTE.inverse : PALETTE.inverse}>{prop.type}</Text>
+            <Text>{prop.type}</Text>
           )}
         </InlinePropField>
       </Box>
@@ -677,9 +669,7 @@ function PropRow({
           {editingField && activeField === 'tokenKind' ? (
             <Picker value={prop.tokenKind || DESIGN_TOKEN_TYPES[0]} active={true} />
           ) : (
-            <Text color={selected ? PALETTE.inverse : PALETTE.inverse} wrap="wrap">
-              {prop.tokenKind || '—'}
-            </Text>
+            <Text wrap="wrap">{prop.tokenKind || '—'}</Text>
           )}
         </InlinePropField>
       )}
@@ -689,9 +679,7 @@ function PropRow({
           <Text color={activeField === 'values' ? PALETTE.warning : PALETTE.muted} bold={activeField === 'values'}>
             {activeField === 'values' ? '› ' : '  '}values:
           </Text>
-          <Text color={activeField === 'values' ? PALETTE.inverse : selected ? PALETTE.inverse : undefined} wrap="wrap">
-            [{prop.values.join(', ')}]
-          </Text>
+          <Text wrap="wrap">[{prop.values.join(', ')}]</Text>
         </Box>
       )}
 
@@ -714,9 +702,7 @@ function PropRow({
             </Box>
           ) : (
             <Text
-              color={
-                activeField === 'allowed' ? PALETTE.inverse : prop.allowed.length === 0 ? PALETTE.muted : undefined
-              }
+              color={activeField !== 'allowed' && prop.allowed.length === 0 ? PALETTE.muted : undefined}
               wrap="wrap"
             >
               {prop.allowed.length > 0 ? prop.allowed.join(', ') : '(any)'}

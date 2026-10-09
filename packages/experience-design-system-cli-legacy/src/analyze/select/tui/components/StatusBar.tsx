@@ -22,7 +22,7 @@ export function StatusBar({ accepted, rejected, reviewed, needsReview }: StatusB
       <Text color={PALETTE.info}>{reviewed} reviewed</Text>
       <Text color={PALETTE.muted}>·</Text>
       <Text>[A] accept all</Text>
-      <Text bold={allResolved} color={allResolved ? PALETTE.success : PALETTE.fg}>
+      <Text bold={allResolved} color={allResolved ? PALETTE.success : undefined}>
         [F] finalize
       </Text>
     </Box>
