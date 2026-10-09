@@ -773,13 +773,15 @@ function ScopeGateStepView({
 
   return (
     <Box flexDirection="column" paddingX={2}>
-      <CounterStrip counters={counters} totalWidth={totalWidth} />
-      {hasAnyAi && (
-        <Text color={PALETTE.muted}>
-          {`${aiExcludedCount} component${aiExcludedCount === 1 ? '' : 's'} flagged by AI`}
-          {aiRows.length > 0 && <Text color={PALETTE.info}>{' — press [x] to see why'}</Text>}
-        </Text>
-      )}
+      <Box flexDirection="row" flexWrap="wrap">
+        <CounterStrip counters={counters} totalWidth={totalWidth} />
+        {hasAnyAi && (
+          <Text color={PALETTE.muted}>
+            {`${aiExcludedCount} component${aiExcludedCount === 1 ? '' : 's'} flagged by AI`}
+            {aiRows.length > 0 && <Text color={PALETTE.info}>{' — press [x] to see why'}</Text>}
+          </Text>
+        )}
+      </Box>
       {hasCycles && (
         <Box marginTop={1}>
           <Text color={PALETTE.muted}>

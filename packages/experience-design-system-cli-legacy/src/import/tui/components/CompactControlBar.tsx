@@ -4,7 +4,7 @@ import { legendEntry } from './LegendEntry.js';
 
 export function CompactControlBar({ hasGroupRoots, searchActive }: { hasGroupRoots: boolean; searchActive: boolean }) {
   return (
-    <Box borderStyle="single" borderColor={PALETTE.border} paddingX={1} marginTop={1} flexWrap="wrap" columnGap={2}>
+    <Box borderStyle="single" borderColor={PALETTE.border} paddingX={1} flexWrap="wrap" columnGap={2}>
       {legendEntry('[↑/↓]', 'move')}
       {legendEntry('[a/r]', 'accept/reject')}
       {legendEntry('[f]', 'continue/finalize')}
