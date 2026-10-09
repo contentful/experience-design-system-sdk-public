@@ -8,7 +8,7 @@ export function legendEntry(keyBracket: string, label: string, active = false): 
       <Text color={active ? PALETTE.warning : PALETTE.info} inverse={active}>
         {keyBracket}
       </Text>
-      <Text color={active ? PALETTE.warning : undefined} inverse={active} dimColor={!active}>
+      <Text color={active ? PALETTE.warning : undefined} inverse={active}>
         {' ' + label}
       </Text>
     </Text>

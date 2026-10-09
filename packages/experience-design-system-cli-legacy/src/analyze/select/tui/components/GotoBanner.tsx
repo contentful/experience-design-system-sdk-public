@@ -88,13 +88,13 @@ export function GotoBanner({
       flexShrink={0}
     >
       <Text bold>{title}</Text>
-      {moreAbove > 0 && <Text dimColor>{`  ▲ ${moreAbove} more`}</Text>}
+      {moreAbove > 0 && <Text color={PALETTE.muted}>{`  ▲ ${moreAbove} more`}</Text>}
       {visible.map((row, vi) => {
         const i = start + vi;
         return renderRow(row, i, i === highlightIndex);
       })}
-      {moreBelow > 0 && <Text dimColor>{`  ▼ ${moreBelow} more`}</Text>}
-      {footerHint !== undefined && <Text dimColor>{footerHint}</Text>}
+      {moreBelow > 0 && <Text color={PALETTE.muted}>{`  ▼ ${moreBelow} more`}</Text>}
+      {footerHint !== undefined && <Text color={PALETTE.muted}>{footerHint}</Text>}
     </Box>
   );
 }

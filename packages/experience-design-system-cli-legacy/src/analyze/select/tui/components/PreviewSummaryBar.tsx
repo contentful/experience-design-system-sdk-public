@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import type { ServerPreviewResponse } from '@contentful/experience-design-system-types';
+import { PALETTE } from '../theme.js';
 
 type PreviewSummaryBarProps = {
   preview: ServerPreviewResponse | null;
@@ -15,7 +16,7 @@ export function PreviewSummaryBar({ preview, loading }: PreviewSummaryBarProps):
   if (loading && !preview) {
     return (
       <Box gap={1}>
-        <Text dimColor>↻ Loading preview...</Text>
+        <Text color={PALETTE.muted}>↻ Loading preview...</Text>
       </Box>
     );
   }
@@ -38,20 +39,20 @@ export function PreviewSummaryBar({ preview, loading }: PreviewSummaryBarProps):
   if (parts.length === 0 && !loading) {
     return (
       <Box gap={1}>
-        <Text dimColor>Preview: no changes detected</Text>
+        <Text color={PALETTE.muted}>Preview: no changes detected</Text>
       </Box>
     );
   }
 
   return (
     <Box gap={1} marginBottom={1} marginTop={1}>
-      <Text dimColor>Preview:</Text>
+      <Text color={PALETTE.muted}>Preview:</Text>
       {parts.map((part, i) => (
         <Text key={i} color={part.color}>
           {part.label}
         </Text>
       ))}
-      {loading && <Text dimColor>↻</Text>}
+      {loading && <Text color={PALETTE.muted}>↻</Text>}
     </Box>
   );
 }

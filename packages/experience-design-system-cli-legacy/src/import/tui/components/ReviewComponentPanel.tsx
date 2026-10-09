@@ -100,7 +100,7 @@ export function ReviewEmptyComponentsWarning({
 export function ReviewNoSelection(): React.ReactElement {
   return (
     <Box flexGrow={1} paddingLeft={1} flexDirection="column">
-      <Text dimColor>No component selected</Text>
+      <Text color={PALETTE.muted}>No component selected</Text>
     </Box>
   );
 }
@@ -163,7 +163,7 @@ function ReviewComponentTitle({
         {selectedKey}
       </Text>
       <Box flexGrow={1} />
-      <Text dimColor wrap="truncate-end">
+      <Text color={PALETTE.muted} wrap="truncate-end">
         {propCount} prop{propCount !== 1 ? 's' : ''}
         {slotCount > 0 ? ` · ${slotCount} slot${slotCount !== 1 ? 's' : ''}` : ''}
         {'  '}
@@ -225,7 +225,7 @@ export function ReviewComponentPanel({
           </Text>
         </Box>
         <Box width={contentWidth} height={1} flexShrink={0}>
-          <Text dimColor wrap="truncate-end">
+          <Text color={PALETTE.muted} wrap="truncate-end">
             <ReviewPanelFooter
               reviewEditor={reviewEditor}
               sidebarFocused={sidebarFocused}

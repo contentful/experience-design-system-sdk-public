@@ -31,17 +31,17 @@ export function SearchMatchSummary({
           <Text>
             {`/${query}`}
             <Text color={PALETTE.info}>{'▎'}</Text>
-            {query && <Text dimColor>{formatSearchMatchSummary(matches, total)}</Text>}
-            <Text dimColor>{'  · [Esc] leave'}</Text>
+            {query && <Text color={PALETTE.muted}>{formatSearchMatchSummary(matches, total)}</Text>}
+            <Text>{'  · [Esc] leave'}</Text>
           </Text>
           {autocompleteCandidates.length > 1 && (
-            <Text dimColor>{`  possibilities: ${autocompleteCandidates.join(' · ').slice(0, 120)}`}</Text>
+            <Text color={PALETTE.muted}>{`  possibilities: ${autocompleteCandidates.join(' · ').slice(0, 120)}`}</Text>
           )}
         </Box>
       )}
       {!open && query && (
         <Box marginTop={marginTop}>
-          <Text dimColor>{`/${query}${formatSearchMatchSummary(matches, total)} · [Esc] clear`}</Text>
+          <Text>{`/${query}${formatSearchMatchSummary(matches, total)} · [Esc] clear`}</Text>
         </Box>
       )}
     </>

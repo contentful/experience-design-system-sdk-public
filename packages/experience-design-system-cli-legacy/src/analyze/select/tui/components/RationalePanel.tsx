@@ -1,6 +1,5 @@
 import React from 'react';
 import { PALETTE } from '../theme.js';
-import { Text } from 'ink';
 import { wrapText } from './wrap-text.js';
 import { RationaleLine, type RationaleLineData } from './RationaleLine.js';
 import { ScrollablePanel } from './ScrollablePanel.js';
@@ -58,11 +57,7 @@ export function RationalePanel({
 
   return (
     <ScrollablePanel
-      header={
-        <Text bold dimColor={!active}>
-          {`RATIONALE — ${componentName}`}
-        </Text>
-      }
+      title={`RATIONALE — ${componentName}`}
       width={width}
       height={height}
       active={active}

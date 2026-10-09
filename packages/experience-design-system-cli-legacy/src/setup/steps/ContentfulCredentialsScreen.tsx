@@ -9,6 +9,7 @@ import {
 } from '../../credentials-store.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../../host-utils.js';
 import { StepLayout, StepValue, StepWarning, type StepDone } from './StepLayout.js';
+import { PALETTE } from '../../analyze/select/tui/theme.js';
 
 const ENV_KEYS = ['CONTENTFUL_SPACE_ID', 'CONTENTFUL_ENVIRONMENT_ID', 'CONTENTFUL_MANAGEMENT_TOKEN', 'EDS_HOST'];
 
@@ -46,7 +47,7 @@ export function ContentfulCredentialsScreen({ onDone }: { onDone: StepDone }): R
     void readExperiencesCredentials().then(setStored);
   }, []);
 
-  if (!stored) return <Text dimColor>Reading saved credentials…</Text>;
+  if (!stored) return <Text color={PALETTE.muted}>Reading saved credentials…</Text>;
 
   const currentHost = stored.host ?? DEFAULT_CONFIGURED_HOST;
   const hasAny = Boolean(stored.spaceId || stored.environmentId || stored.cmaToken);

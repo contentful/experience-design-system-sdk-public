@@ -159,7 +159,7 @@ export function SetupScreen({
           <Text bold>experiences setup</Text>
         </Box>
         <Box flexShrink={0}>
-          <Text dimColor>v{version}</Text>
+          <Text color={PALETTE.muted}>v{version}</Text>
         </Box>
       </Box>
       <Box marginTop={1}>
@@ -187,7 +187,7 @@ function SetupSummary({ outcome, notice }: { outcome: SetupOutcome; notice: stri
         }
         if (result.status === 'skipped') {
           return (
-            <Text key={result.name} dimColor>
+            <Text key={result.name} color={PALETTE.muted}>
               – {result.name} — skipped
             </Text>
           );
@@ -210,8 +210,10 @@ function SetupSummary({ outcome, notice }: { outcome: SetupOutcome; notice: stri
           {formatSetupCompletionMessage(outcome.results)}
         </Text>
       </Box>
-      {requiredFailed > 0 && <Text dimColor>Complete the steps above, then re-run experiences setup.</Text>}
-      <Text dimColor>Run experiences doctor any time to re-check.</Text>
+      {requiredFailed > 0 && (
+        <Text color={PALETTE.muted}>Complete the steps above, then re-run experiences setup.</Text>
+      )}
+      <Text color={PALETTE.muted}>Run experiences doctor any time to re-check.</Text>
     </Box>
   );
 }

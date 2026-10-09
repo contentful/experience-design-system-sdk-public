@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, Text } from 'ink';
+import { PALETTE } from '../analyze/select/tui/theme.js';
 
 type CompletionRow = {
   label: string;
@@ -25,15 +26,15 @@ export function CommandCompletionView({
       <Box flexDirection="column" marginTop={1}>
         {rows.map((row) => (
           <Text key={row.label}>
-            <Text dimColor>{row.label} </Text>
+            <Text color={PALETTE.muted}>{row.label} </Text>
             <Text>{row.value}</Text>
           </Text>
         ))}
       </Box>
       <Box marginTop={1}>
-        <Text dimColor>Run </Text>
+        <Text color={PALETTE.muted}>Run </Text>
         <Text>{command}</Text>
-        <Text dimColor> {instruction}</Text>
+        <Text color={PALETTE.muted}> {instruction}</Text>
       </Box>
     </Box>
   );

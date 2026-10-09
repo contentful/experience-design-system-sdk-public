@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Text } from 'ink';
+import { Box } from 'ink';
 import { HighlightedLine, type HighlightPart } from './HighlightedLine.js';
 import { ScrollablePanel } from './ScrollablePanel.js';
 
@@ -81,11 +81,7 @@ export function JsonPanel({ label, value, scrollOffset, width, height, active }:
 
   return (
     <ScrollablePanel
-      header={
-        <Text bold dimColor={!active}>
-          {label}
-        </Text>
-      }
+      title={label}
       width={width}
       height={height}
       active={active}

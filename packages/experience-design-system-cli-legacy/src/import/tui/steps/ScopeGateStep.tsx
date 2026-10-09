@@ -773,16 +773,18 @@ function ScopeGateStepView({
 
   return (
     <Box flexDirection="column" paddingX={2}>
-      <CounterStrip counters={counters} totalWidth={totalWidth} />
-      {hasAnyAi && (
-        <Text dimColor>
-          {`${aiExcludedCount} component${aiExcludedCount === 1 ? '' : 's'} flagged by AI`}
-          {aiRows.length > 0 && <Text color={PALETTE.info}>{' — press [x] to see why'}</Text>}
-        </Text>
-      )}
+      <Box flexDirection="row" flexWrap="wrap">
+        <CounterStrip counters={counters} totalWidth={totalWidth} />
+        {hasAnyAi && (
+          <Text color={PALETTE.muted}>
+            {`${aiExcludedCount} component${aiExcludedCount === 1 ? '' : 's'} flagged by AI`}
+            {aiRows.length > 0 && <Text color={PALETTE.info}>{' — press [x] to see why'}</Text>}
+          </Text>
+        )}
+      </Box>
       {hasCycles && (
         <Box marginTop={1}>
-          <Text dimColor>
+          <Text color={PALETTE.muted}>
             If you must have components with cycles, select them together into the generate step and then use the editor
             to fix them.
           </Text>
@@ -869,7 +871,7 @@ function ScopeGateStepView({
               </Text>
             );
           })}
-          <Text dimColor>[↑/↓] move · [Enter] jump · [c/Esc] close</Text>
+          <Text>[↑/↓] move · [Enter] jump · [c/Esc] close</Text>
         </Box>
       )}
 
@@ -884,7 +886,7 @@ function ScopeGateStepView({
           {pendingRejectCascade.descendants.length > 0 && (
             <Text>{`- Deselect descendants: ${pendingRejectCascade.descendants.join(', ')}`}</Text>
           )}
-          <Text dimColor>[y] confirm · [n]/[Esc] cancel</Text>
+          <Text>[y] confirm · [n]/[Esc] cancel</Text>
         </Box>
       )}
 
@@ -986,7 +988,7 @@ function AddedColumn<T extends AddedColumnEntry>(props: AddedColumnProps<T>): Re
     <WindowedPanel width={width} height={height} title={title} focused={focused}>
       <WindowIndicator direction="up" count={window.above} />
       {entries.length === 0 ? (
-        <Text dimColor>(none)</Text>
+        <Text color={PALETTE.muted}>(none)</Text>
       ) : (
         entries.slice(window.start, window.end).map((entry, vi) => {
           const i = window.start + vi;

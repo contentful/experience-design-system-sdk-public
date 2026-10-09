@@ -20,7 +20,7 @@ export function RationaleLine({ line, active }: { line: RationaleLineData; activ
   if (line.kind === 'heading') {
     return (
       <Box>
-        <Text bold color={PALETTE.info} dimColor={!active}>
+        <Text bold color={active ? PALETTE.info : PALETTE.muted}>
           {line.text}
         </Text>
       </Box>
@@ -31,17 +31,17 @@ export function RationaleLine({ line, active }: { line: RationaleLineData; activ
     return (
       <Box>
         {line.prefix && <Text>{line.prefix}</Text>}
-        <Text bold color={line.color} dimColor={!active}>
+        <Text bold color={active ? line.color : PALETTE.muted}>
           {line.text}
         </Text>
-        {line.suffix && <Text dimColor>{line.suffix}</Text>}
+        {line.suffix && <Text color={PALETTE.muted}>{line.suffix}</Text>}
       </Box>
     );
   }
 
   return (
     <Box>
-      <Text dimColor={!active || line.dim}>{line.text}</Text>
+      <Text color={!active || line.dim ? PALETTE.muted : undefined}>{line.text}</Text>
     </Box>
   );
 }

@@ -94,31 +94,33 @@ export function TokenReviewPanel({
         borderStyle="single"
         borderColor={active ? PALETTE.inverse : undefined}
       >
-        <Text bold dimColor={!active} wrap="truncate">
+        <Text bold color={active ? undefined : PALETTE.muted} wrap="truncate">
           {`TOKEN REVIEW — ${componentName} · ${current.propName} (edit allowed)`}
         </Text>
-        <Text dimColor wrap="truncate">
+        <Text color={PALETTE.muted} wrap="truncate">
           {`select which tokens are allowed (${rangeLabel})`}
         </Text>
         <Text> </Text>
-        {current.paths.length === 0 && <Text dimColor>{'(no compatible tokens found for this token kind)'}</Text>}
+        {current.paths.length === 0 && (
+          <Text color={PALETTE.muted}>{'(no compatible tokens found for this token kind)'}</Text>
+        )}
         {visiblePaths.map((path, i) => {
           const pathIndex = scrollStart + i;
           const checked = editSelection.has(path);
           const focused = pathIndex === editCursor;
           return (
             <Box key={path}>
-              <Text color={focused ? PALETTE.info : undefined} bold={focused} dimColor={!active} wrap="truncate">
+              <Text color={focused ? PALETTE.info : active ? undefined : PALETTE.muted} bold={focused} wrap="truncate">
                 {`  [${checked ? 'x' : ' '}] ${path}`}
               </Text>
             </Box>
           );
         })}
         <Text> </Text>
-        <Text dimColor wrap="truncate">
+        <Text color={PALETTE.muted} wrap="truncate">
           {'[↑/↓] move  [Space] toggle'}
         </Text>
-        <Text dimColor wrap="truncate">
+        <Text color={PALETTE.muted} wrap="truncate">
           {'[Ctrl+S] save  [Esc] cancel'}
         </Text>
       </Box>
@@ -133,24 +135,24 @@ export function TokenReviewPanel({
       borderStyle="single"
       borderColor={active ? PALETTE.inverse : undefined}
     >
-      <Text bold dimColor={!active}>{`TOKEN REVIEW — ${componentName}`}</Text>
-      {suggestions.length === 0 && <Text dimColor>{'(no token suggestions for this component)'}</Text>}
+      <Text bold color={active ? undefined : PALETTE.muted}>{`TOKEN REVIEW — ${componentName}`}</Text>
+      {suggestions.length === 0 && <Text color={PALETTE.muted}>{'(no token suggestions for this component)'}</Text>}
       {suggestions.map((s, i) => {
         const focused = i === selectedRow;
         return (
           <Box key={s.propName} flexDirection="column">
             <Box>
-              <Text color={focused ? PALETTE.info : undefined} bold={focused} dimColor={!active}>
+              <Text color={focused ? PALETTE.info : active ? undefined : PALETTE.muted} bold={focused}>
                 {`${focused ? figures.pointer : ' '} ${s.propName}`}
               </Text>
             </Box>
-            <Text dimColor>{`  suggested: ${s.suggested.join(', ')}`}</Text>
-            <Text dimColor>{`  allowed: ${s.allowed.join(', ')}`}</Text>
+            <Text color={PALETTE.muted}>{`  suggested: ${s.suggested.join(', ')}`}</Text>
+            <Text color={PALETTE.muted}>{`  allowed: ${s.allowed.join(', ')}`}</Text>
           </Box>
         );
       })}
       <Text> </Text>
-      <Text dimColor>{'[↑/↓] move  [Enter] edit allowed  [Esc] close'}</Text>
+      <Text>{'[↑/↓] move  [Enter] edit allowed  [Esc] close'}</Text>
     </Box>
   );
 }

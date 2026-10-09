@@ -36,20 +36,20 @@ export function WelcomeScreen({ onContinue, onQuit, initialPath = '' }: WelcomeS
       <Text bold color={PALETTE.success}>
         👋 Hey! Let&apos;s import your design system into Contentful.
       </Text>
-      <Text dimColor>I&apos;ll walk you through 5 steps to get your components into Contentful ExO.</Text>
+      <Text color={PALETTE.muted}>I&apos;ll walk you through 5 steps to get your components into Contentful ExO.</Text>
 
-      <Box flexDirection="column" marginTop={1}>
+      <Box flexDirection="column">
         <Text dimColor>{RULE}</Text>
         {OVERVIEW.map((item) => (
           <Box key={item.label} gap={1}>
             <Text bold>{item.label}</Text>
-            <Text dimColor>{item.description}</Text>
+            <Text color={PALETTE.muted}>{item.description}</Text>
           </Box>
         ))}
         <Text dimColor>{RULE}</Text>
       </Box>
 
-      <Box flexDirection="column" marginTop={1}>
+      <Box flexDirection="column" gap={1}>
         <Text>Where is your component library?</Text>
         <Box gap={1}>
           <Text color={PALETTE.accent}>?</Text>
@@ -58,9 +58,9 @@ export function WelcomeScreen({ onContinue, onQuit, initialPath = '' }: WelcomeS
         </Box>
       </Box>
 
-      <Box marginTop={1} gap={3}>
+      <Box gap={3}>
         {WELCOME_CONTROLS.map((control) => (
-          <Text key={control.keys} dimColor>
+          <Text key={control.keys}>
             [{control.keys}] {control.label}
           </Text>
         ))}

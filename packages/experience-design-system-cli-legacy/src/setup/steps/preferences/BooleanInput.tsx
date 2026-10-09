@@ -7,6 +7,7 @@ import {
   type ExperiencesCredentials,
 } from '../../../credentials-store.js';
 import { StepLayout, type StepDone } from '../StepLayout.js';
+import { PALETTE } from '../../../analyze/select/tui/theme.js';
 
 type BooleanPreferenceProps = {
   helpText: string;
@@ -42,7 +43,7 @@ export function BooleanInput({
     void readExperiencesCredentials().then(setStored);
   }, []);
 
-  if (!stored) return <Text dimColor>Reading saved preferences…</Text>;
+  if (!stored) return <Text color={PALETTE.muted}>Reading saved preferences…</Text>;
 
   const current = read(stored) ?? fallback;
 

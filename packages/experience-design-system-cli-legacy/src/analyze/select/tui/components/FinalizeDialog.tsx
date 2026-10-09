@@ -66,7 +66,7 @@ export function FinalizeDialog({
           <Text> · </Text>
           <Text color={PALETTE.error}>{rejected} rejected</Text>
           <Text> · </Text>
-          <Text dimColor>{needsReview} unresolved</Text>
+          <Text color={PALETTE.muted}>{needsReview} unresolved</Text>
         </Text>
         <Text> </Text>
         {noneAccepted && (
@@ -89,7 +89,7 @@ export function FinalizeDialog({
         )}
         <Box flexDirection="column" height={2}>
           {previewStatus === 'running' ? (
-            <Text dimColor>Previewing deletions against the target space…</Text>
+            <Text color={PALETTE.muted}>Previewing deletions against the target space…</Text>
           ) : previewStatus === 'error' ? (
             <Text color={PALETTE.warning}>{'⚠ Could not preview deletions (the push will still proceed).'}</Text>
           ) : (
@@ -102,14 +102,14 @@ export function FinalizeDialog({
             <Text bold color={PALETTE.error}>
               {removedComponentsHeader(removed.length, false)}
             </Text>
-            {hasMoreAbove && <Text dimColor>{'↑ more above'}</Text>}
+            {hasMoreAbove && <Text color={PALETTE.muted}>{'↑ more above'}</Text>}
             {windowed.map((rc) => (
               <Text key={rc.id} color={PALETTE.error}>
                 {removedComponentLine(rc)}
               </Text>
             ))}
-            {hasMoreBelow && <Text dimColor>{'↓ more below'}</Text>}
-            {removed.length > FINALIZE_REMOVED_WINDOW && <Text dimColor>{'[↑↓] scroll deletions'}</Text>}
+            {hasMoreBelow && <Text color={PALETTE.muted}>{'↓ more below'}</Text>}
+            {removed.length > FINALIZE_REMOVED_WINDOW && <Text>{'[↑↓] scroll deletions'}</Text>}
             <Text> </Text>
           </>
         )}

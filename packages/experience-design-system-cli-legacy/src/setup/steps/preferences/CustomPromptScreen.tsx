@@ -7,6 +7,7 @@ import {
   type ExperiencesCredentials,
 } from '../../../credentials-store.js';
 import { StepLayout, type StepDone } from '../StepLayout.js';
+import { PALETTE } from '../../../analyze/select/tui/theme.js';
 
 const CUSTOM_PROMPTS_HELP = 'Replaces the built-in instructions the coding agent follows when it generates components.';
 
@@ -46,7 +47,7 @@ export function CustomPromptsScreen({ onDone }: { onDone: StepDone }): React.Rea
     void readExperiencesCredentials().then(setStored);
   }, []);
 
-  if (!stored) return <Text dimColor>Reading saved prompt paths…</Text>;
+  if (!stored) return <Text color={PALETTE.muted}>Reading saved prompt paths…</Text>;
 
   const submit = (answer: string): void => {
     const next = applyCustomSkillPath(stored, parseCustomSkillPath(answer));

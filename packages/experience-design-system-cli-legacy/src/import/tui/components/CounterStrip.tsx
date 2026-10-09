@@ -1,5 +1,6 @@
 import { Box, Text } from 'ink';
 import React from 'react';
+import { PALETTE } from '../../../analyze/select/tui/theme.js';
 
 export type CounterStripCounters = {
   accepted: number;
@@ -19,15 +20,15 @@ export function CounterStrip(props: { counters: CounterStripCounters; totalWidth
   return (
     <Box>
       <Text>
-        <Text dimColor>{labelGrp} </Text>
+        <Text color={PALETTE.muted}>{labelGrp} </Text>
         <Text bold>{counters.groups}</Text>
-        <Text dimColor>{sep}</Text>
-        <Text dimColor>{labelRej} </Text>
+        <Text color={PALETTE.muted}>{sep}</Text>
+        <Text color={PALETTE.muted}>{labelRej} </Text>
         <Text bold>{counters.rejected}</Text>
-        <Text dimColor>{sep}</Text>
-        <Text dimColor>{labelUnd} </Text>
+        <Text color={PALETTE.muted}>{sep}</Text>
+        <Text color={PALETTE.muted}>{labelUnd} </Text>
         <Text bold>{counters.undecided}</Text>
-        <Text dimColor>{sep}</Text>
+        <Text color={PALETTE.muted}>{sep}</Text>
       </Text>
     </Box>
   );

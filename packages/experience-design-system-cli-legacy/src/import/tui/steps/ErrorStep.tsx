@@ -41,13 +41,13 @@ export function ErrorStep({
       <Box gap={3} marginTop={1}>
         {onAcknowledgeBreakingChanges ? (
           <>
-            <Text dimColor>[Enter] Acknowledge and apply</Text>
-            <Text dimColor>[Esc / q] Exit</Text>
+            <Text>[Enter] Acknowledge and apply</Text>
+            <Text>[Esc / q] Exit</Text>
           </>
         ) : (
-          <Text dimColor>[Enter / q] Exit</Text>
+          <Text>[Enter / q] Exit</Text>
         )}
-        {onRetryCredentials && <Text dimColor>[r] Re-enter credentials</Text>}
+        {onRetryCredentials && <Text>[r] Re-enter credentials</Text>}
       </Box>
     </Box>
   );

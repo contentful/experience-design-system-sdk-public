@@ -176,7 +176,7 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
                   mask={field === 'cmaToken' ? '•' : undefined}
                 />
               ) : (
-                <Text>{display || <Text dimColor>(empty)</Text>}</Text>
+                <Text>{display || <Text color={PALETTE.muted}>(empty)</Text>}</Text>
               )}
             </Box>
           );

@@ -43,7 +43,7 @@ function EntityRows({ entity, label }: { entity: EntityResult; label: string }):
 function LinkRow({ title, url }: { title: string; url: string }): React.ReactElement {
   return (
     <Box flexDirection="column">
-      <Text dimColor>{title}</Text>
+      <Text color={PALETTE.muted}>{title}</Text>
       <Text color={PALETTE.link}>{url}</Text>
     </Box>
   );
@@ -89,14 +89,14 @@ export function DoneStep({
       )}
 
       {totalPushed === 0 && totalFailed === 0 && !summary ? (
-        <Text dimColor>Nothing was pushed — everything was already up to date.</Text>
+        <Text color={PALETTE.muted}>Nothing was pushed — everything was already up to date.</Text>
       ) : (
         <Box flexDirection="column">
           <EntityRows entity={componentTypes} label="Component Type" />
           <EntityRows entity={designTokens} label="Design Token" />
           {summary && (
             <Box marginTop={1}>
-              <Text dimColor>
+              <Text color={PALETTE.muted}>
                 Push result: {summary.succeeded}/{summary.total} succeeded
                 {summary.failed > 0 && <Text color={PALETTE.error}>, {summary.failed} failed</Text>}
               </Text>
@@ -131,7 +131,7 @@ export function DoneStep({
         </Box>
       )}
 
-      <Text dimColor>[Enter / q] Exit</Text>
+      <Text>[Enter / q] Exit</Text>
     </Box>
   );
 }

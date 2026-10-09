@@ -37,7 +37,7 @@ export function TokenInputScreen({ onConfirm, onBack, initialPath = '' }: TokenI
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
       <Text bold>Design tokens</Text>
-      <Text dimColor>
+      <Text color={PALETTE.muted}>
         Point me to your raw token file (e.g. ~/design-tokens/tokens.json). You can use ~, relative, or absolute paths.
         Claude will map it to Design Token Group Format (DTCG).
       </Text>
@@ -51,14 +51,14 @@ export function TokenInputScreen({ onConfirm, onBack, initialPath = '' }: TokenI
         {failure && (
           <Box flexDirection="column">
             <Text color={PALETTE.error}>✗ {failure.error}</Text>
-            {failure.resolvedPath && <Text dimColor> Resolved to: {failure.resolvedPath}</Text>}
+            {failure.resolvedPath && <Text color={PALETTE.muted}> Resolved to: {failure.resolvedPath}</Text>}
           </Box>
         )}
       </Box>
 
       <Box marginTop={1} gap={3}>
         {TOKEN_INPUT_CONTROLS.map((control) => (
-          <Text key={control.keys} dimColor>
+          <Text key={control.keys}>
             [{control.keys}] {control.label}
           </Text>
         ))}

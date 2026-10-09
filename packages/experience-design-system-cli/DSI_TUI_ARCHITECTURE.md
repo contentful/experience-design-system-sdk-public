@@ -119,7 +119,7 @@ export function ConfirmScreen({
   return (
     <Box flexDirection="column" paddingX={2}>
       <Text bold>Continue?</Text>
-      <Text dimColor>Enter to confirm, Esc to go back</Text>
+      <Text>[Enter] Confirm · [Esc] Back</Text>
     </Box>
   );
 }

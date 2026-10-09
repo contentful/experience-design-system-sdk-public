@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import React from 'react';
 import { Box, Text } from 'ink';
 import { findPkgRoot } from '../../../../lib/cli-path.js';
+import { PALETTE } from '../theme.js';
 
 // Read via findPkgRoot() rather than a hardcoded-depth require — this file's
 // depth under dist/ changes once the CLI is bundled into a single dist/src/index.js.
@@ -18,7 +19,7 @@ export function TopBar({ subcommand, hints }: TopBarProps): React.ReactElement {
   return (
     <Box justifyContent="space-between">
       <Text bold>{'experience-design-system-cli  ' + subcommand}</Text>
-      <Text dimColor>
+      <Text color={PALETTE.muted}>
         {hints.map((h) => `[${h.key}] ${h.label}`).join('  ')}
         {'  v' + VERSION}
       </Text>

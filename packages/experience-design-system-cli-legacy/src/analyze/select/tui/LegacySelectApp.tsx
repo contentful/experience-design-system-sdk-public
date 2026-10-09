@@ -605,7 +605,7 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
                 onScrollChange={setJsonScrollOffset}
               />
             ) : (
-              <Text dimColor>No component selected</Text>
+              <Text color={PALETTE.muted}>No component selected</Text>
             )}
           </Box>
         </Box>
@@ -658,14 +658,14 @@ function FinalizedScreen({
         )}
         {result.excluded > 0 && (
           <Box gap={1}>
-            <Text dimColor>·</Text>
-            <Text dimColor>{result.excluded} excluded (unresolved)</Text>
+            <Text color={PALETTE.muted}>·</Text>
+            <Text color={PALETTE.muted}>{result.excluded} excluded (unresolved)</Text>
           </Box>
         )}
       </Box>
-      <Text dimColor>Decisions saved. Ready for the next step.</Text>
+      <Text color={PALETTE.muted}>Decisions saved. Ready for the next step.</Text>
       <Box marginTop={1}>
-        <Text dimColor>[Enter / q] Exit</Text>
+        <Text>[Enter / q] Exit</Text>
       </Box>
     </Box>
   );

@@ -28,7 +28,7 @@ export function countReviewStatuses(entries: ReadonlyArray<ReviewStatusEntry>): 
 export function ReviewLoadingState(): React.ReactElement {
   return (
     <Box paddingX={2} paddingY={1}>
-      <Text dimColor>Loading generated definitions...</Text>
+      <Text color={PALETTE.muted}>Loading generated definitions...</Text>
     </Box>
   );
 }
@@ -38,7 +38,7 @@ export function ReviewLoadError({ message }: { message: string }): React.ReactEl
     <Box flexDirection="column" paddingX={2} paddingY={1}>
       <Text color={PALETTE.error}>{message}</Text>
       <Text> </Text>
-      <Text dimColor>[q / Enter / Esc] Quit</Text>
+      <Text>[q / Enter / Esc] Quit</Text>
     </Box>
   );
 }

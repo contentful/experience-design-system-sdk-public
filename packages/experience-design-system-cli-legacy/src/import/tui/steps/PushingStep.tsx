@@ -5,6 +5,7 @@ import type { PushProgress } from '../push-progress.js';
 import { StepHeader } from '../components/StepHeader.js';
 import { useTimedSpinner } from '../../../tui/use-timed-spinner.js';
 import { INK_UI_THEME } from '../../../analyze/select/tui/theme.js';
+import { PALETTE } from '../../../analyze/select/tui/theme.js';
 
 type PushingStepProps = {
   stepNumber: number;
@@ -28,7 +29,7 @@ export function PushingStep({ stepNumber, totalSteps, progress }: PushingStepPro
 
       {operationId && (
         <Box gap={1}>
-          <Text dimColor>Operation:</Text>
+          <Text color={PALETTE.muted}>Operation:</Text>
           <Text>{operationId}</Text>
         </Box>
       )}
@@ -41,7 +42,7 @@ export function PushingStep({ stepNumber, totalSteps, progress }: PushingStepPro
                 <ProgressBar value={Math.round((progress.processed / progress.total) * 100)} />
               </ThemeProvider>
             </Box>
-            <Text dimColor>
+            <Text color={PALETTE.muted}>
               {progress.processed}/{progress.total} entities
             </Text>
           </Box>
@@ -50,13 +51,13 @@ export function PushingStep({ stepNumber, totalSteps, progress }: PushingStepPro
 
       {showCurrent && (
         <Box gap={1}>
-          <Text dimColor>Now processing:</Text>
+          <Text color={PALETTE.muted}>Now processing:</Text>
           <Text>{showCurrent}</Text>
         </Box>
       )}
 
       <Box marginTop={1}>
-        <Text dimColor>Elapsed: {elapsed}</Text>
+        <Text color={PALETTE.muted}>Elapsed: {elapsed}</Text>
       </Box>
     </Box>
   );

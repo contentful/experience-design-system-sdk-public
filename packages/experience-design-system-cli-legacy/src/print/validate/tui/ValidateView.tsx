@@ -4,6 +4,7 @@ import type { ValidationDiagnostic } from '../validators/format-errors.js';
 import { TopBar } from '../../../analyze/select/tui/components/TopBar.js';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
 import { handleListScrollInput } from '../../../analyze/select/tui/hooks/list-scroll-input.js';
+import { PALETTE } from '../../../analyze/select/tui/theme.js';
 
 export type ValidateViewEntry = {
   filePath: string;
@@ -48,7 +49,7 @@ export function ValidateView({ results, onExit }: ValidateViewProps): React.Reac
             <Box key={r.filePath}>
               <Text color={r.valid ? 'green' : 'red'}>{r.valid ? '✓' : '✗'}</Text>
               <Text>{' ' + r.filePath.split('/').pop()}</Text>
-              <Text dimColor>{'   ' + r.format + '   '}</Text>
+              <Text color={PALETTE.muted}>{'   ' + r.format + '   '}</Text>
               <Text color={r.valid ? 'green' : 'red'}>{summaryText}</Text>
             </Box>
           );
@@ -73,12 +74,12 @@ export function ValidateView({ results, onExit }: ValidateViewProps): React.Reac
         )}
       </Box>
       <Box borderStyle="single" paddingX={1} justifyContent="space-between">
-        <Text dimColor>
+        <Text color={PALETTE.muted}>
           {allValid
             ? 'All files valid'
             : invalidResults.length + ' file' + (invalidResults.length === 1 ? '' : 's') + ' invalid'}
         </Text>
-        <Text dimColor>{allValid ? '[q]' : 'scroll ↑↓ [q]'}</Text>
+        <Text>{allValid ? '[q]' : 'scroll ↑↓ [q]'}</Text>
       </Box>
     </Box>
   );

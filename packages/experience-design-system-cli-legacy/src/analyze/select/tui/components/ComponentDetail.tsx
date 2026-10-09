@@ -7,6 +7,7 @@ import { JsonEditor } from './JsonEditor.js';
 import { SourcePanel } from './SourcePanel.js';
 import { terminalPanelHeight } from '../../../../tui/windowed-panel.js';
 import { useTerminalSize } from '../../../../tui/use-terminal-size.js';
+import { PALETTE } from '../theme.js';
 
 type ComponentDetailProps = {
   component: ReviewComponentDetail;
@@ -90,7 +91,7 @@ export function ComponentDetail({
         })()}
         <Text color={confColor}>{' — ' + confLabel}</Text>
         <Box flexGrow={1} />
-        <Text dimColor>
+        <Text color={PALETTE.muted}>
           {sourceVisible ? '[s] hide src' : '[s] src'}
           {editMode ? '' : '  [e] edit'}
         </Text>
@@ -137,7 +138,7 @@ export function ComponentDetail({
           </>
         )}
       </Box>
-      {!editMode && <Text dimColor>{'  [a] accept  [r] reject  [e] edit  [A] accept all  [↑↓] scroll'}</Text>}
+      {!editMode && <Text>{'  [a] accept  [r] reject  [e] edit  [A] accept all  [↑↓] scroll'}</Text>}
     </Box>
   );
 }
