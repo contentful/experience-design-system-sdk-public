@@ -3,7 +3,7 @@ import { Box, Text } from 'ink';
 import { PALETTE } from '../../../home/home.theme.js';
 import { resolveUserPath } from '../../resolve-user-path.js';
 import { controlsFor, usePathValidationControls } from './controls.js';
-import { scanProject } from './loader.js';
+import { scanFiles } from './helpers/scan-files.js';
 import { describeFailure, phaseOf, summarize, type ScanResult, type SummaryRow } from './logic.js';
 
 interface PathValidationScreenProps {
@@ -65,14 +65,7 @@ export function PathValidationScreen({
   const [scan, setScan] = useState<ScanResult>();
 
   useEffect(() => {
-    let cancelled = false;
-    setScan(undefined);
-    void scanProject(resolvedPath).then((result) => {
-      if (!cancelled) setScan(result);
-    });
-    return () => {
-      cancelled = true;
-    };
+    setScan(scanFiles(resolvedPath));
   }, [resolvedPath]);
 
   const phase = phaseOf(scan);
