@@ -19,14 +19,10 @@ export const EXCLUDED_SUFFIXES = [
   '.story.tsx',
   '.story.js',
   '.story.jsx',
-  '.test.ts',
-  '.test.tsx',
-  '.test.js',
-  '.test.jsx',
   '.spec.ts',
   '.spec.tsx',
-  '.spec.js',
-  '.spec.jsx',
+  '.test.ts',
+  '.test.tsx',
 ];
 
 /** Directories skipped entirely during the walk. */
