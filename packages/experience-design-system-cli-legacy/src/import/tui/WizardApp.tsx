@@ -358,10 +358,6 @@ export function WizardApp({
   // the async preview/push closures see the confirmed value.
   const allowEmptyDeleteAllRef = useRef(false);
 
-  const generationCachePreflightRef = useRef<{
-    sessionId: string;
-    promise: Promise<Set<string>>;
-  } | null>(null);
   const selectionToReviewStartedAtRef = useRef<number | null>(null);
   const credentialsReadyRef = useRef(false);
   const agentAuthVerifiedRef = useRef(false);
@@ -931,7 +927,6 @@ export function WizardApp({
           })
         : null;
     const cachePromise = Promise.resolve(new Set(handedOffCachedNames));
-    generationCachePreflightRef.current = { sessionId, promise: cachePromise };
     await runScopeGate({
       sessionId,
       decisions,
@@ -1586,7 +1581,6 @@ export function WizardApp({
   useEffect(() => {
     if (state.step !== 'credentials' || credentialsHandedOff.current) return;
     credentialsHandedOff.current = true;
-    if (process.env['EDS_IMPORT_SKIP_CREDENTIALS'] === '1') update({ credentialsSkipped: true });
     void advanceAfterCredentialsValidated();
   }, [state.step]);
 

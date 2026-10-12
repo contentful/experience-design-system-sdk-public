@@ -119,6 +119,17 @@ describe('useScopeGateFlow', () => {
     });
   });
 
+  it('only reports cached names that were accepted, since the wizard only looks at those and the handoff has a size limit', async () => {
+    const { seen } = mount({ input, checkCache: () => Promise.resolve(['Button', 'Card', 'Helper']) });
+    await tick();
+    deciding(seen.current).confirm({ accepted: ['Button', 'Card'], rejected: ['Helper'] });
+    await tick();
+    expect(seen.current).toEqual({
+      status: 'confirmed',
+      scope: { accepted: ['Button', 'Card'], rejected: ['Helper'], cachedNames: ['Button', 'Card'] },
+    });
+  });
+
   it('reports an empty cache when the check found nothing', async () => {
     const { seen } = mount({ input, checkCache: () => Promise.resolve([]) });
     await tick();

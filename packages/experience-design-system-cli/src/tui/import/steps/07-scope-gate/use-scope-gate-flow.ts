@@ -49,7 +49,10 @@ export function useScopeGateFlow(
     if (!confirmed || !cacheCheck.current) return;
     let current = true;
     void cacheCheck.current.then((cachedNames) => {
-      if (current) setScope({ ...confirmed, cachedNames });
+      // The wizard only compares the components that were accepted, and the handoff travels in one environment
+      // variable, so leave out the cached components that were not.
+      const accepted = new Set(confirmed.accepted);
+      if (current) setScope({ ...confirmed, cachedNames: cachedNames.filter((name) => accepted.has(name)) });
     });
     return () => {
       current = false;
