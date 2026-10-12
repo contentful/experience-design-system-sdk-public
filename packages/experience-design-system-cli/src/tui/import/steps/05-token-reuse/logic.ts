@@ -1,10 +1,10 @@
 import { access, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 
-// What the import does with the generated token catalog (`<project>/.contentful/tokens.json`). The legacy wizard reads
-// this from EDS_IMPORT_TOKENS: reuse keeps the file, regenerate rebuilds it with the cache off, and generate builds it
-// the normal way (cache allowed) when there was nothing to ask about.
-export type TokenStrategy = 'reuse' | 'regenerate' | 'generate';
+// What the import does with the generated token catalog (`<project>/.contentful/tokens.json`): reuse keeps the file,
+// regenerate rebuilds it with the cache off, and generate builds it the normal way (cache allowed) when there was
+// nothing to ask about. The legacy wizard receives the choice in the import handoff.
+export type { TokenStrategy } from '../06-extraction/types.js';
 
 export type TokensState = { kind: 'none' } | { kind: 'cached'; tokensPath: string; sourceChanged: boolean };
 

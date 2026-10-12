@@ -1,6 +1,7 @@
 import { render } from 'ink-testing-library';
 import { EventEmitter } from 'node:events';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { HANDOFF_ENV, serializeHandoff } from '@contentful/experience-design-system-types/handoff';
 import { waitForFrame } from '../../helpers/wait-for-frame.js';
 
 const mockValidateToken = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
@@ -106,7 +107,26 @@ beforeEach(async () => {
   WizardApp = mod.WizardApp;
 });
 
+// What the CLI hands the wizard once it has finished the early stages.
+const startedByTheCli = (): void => {
+  process.env[HANDOFF_ENV] = serializeHandoff({
+    credentialsSkipped: false,
+    tokens: { strategy: 'generate' },
+    extraction: {
+      sessionId: 'extract-session',
+      outDir: '/tmp/test-project/.contentful',
+      tokensPath: '',
+      tokenSessionId: null,
+      tokenCount: 0,
+      existingEntitiesPath: null,
+      existingEntitiesStatus: 'idle',
+      compositionPhase: 'done',
+    },
+  });
+};
+
 afterEach(() => {
+  delete process.env[HANDOFF_ENV];
   mockExit.mockClear();
   mockValidateToken.mockReset();
   mockValidateToken.mockResolvedValue(undefined);
@@ -116,19 +136,35 @@ afterEach(() => {
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe('WizardApp TUI flow', () => {
-  it('hands straight off to extraction without asking for credentials', async () => {
+  it('goes straight on from where the CLI left off, without asking for credentials', async () => {
+    startedByTheCli();
     const { lastFrame } = render(<WizardApp initialProjectPath="/tmp/test-project" />);
 
     const frame = await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Starting import') || f.includes('Scanning') || f.includes('No components found'),
+      (f) => f.includes('Starting import') || f.includes('extract session') || f.includes('failed'),
       3000,
     );
 
     expect(frame).not.toContain('Space ID');
+    expect(frame).not.toContain('start import failed');
+  });
+
+  it('refuses to start when the CLI did not hand it anything, and says so', async () => {
+    const { lastFrame } = render(<WizardApp initialProjectPath="/tmp/test-project" />);
+
+    const frame = await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('failed'),
+      3000,
+    );
+
+    expect(frame).toContain('start import failed');
+    expect(frame).toContain('must be started by the CLI');
   });
 
   it('never validates credentials itself, because the new CLI already did', async () => {
+    startedByTheCli();
     const { lastFrame } = render(
       <WizardApp
         initialProjectPath="/tmp/test-project"
@@ -141,7 +177,7 @@ describe('WizardApp TUI flow', () => {
 
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Starting import') || f.includes('Scanning') || f.includes('No components found'),
+      (f) => f.includes('Starting import') || f.includes('extract session') || f.includes('failed'),
       3000,
     );
 

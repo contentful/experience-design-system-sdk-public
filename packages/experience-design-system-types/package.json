@@ -16,6 +16,11 @@
       "types": "./dist/src/config/index.d.ts",
       "import": "./dist/src/config/index.js",
       "node": "./dist/src/config/index.js"
+    },
+    "./handoff": {
+      "types": "./dist/src/handoff/index.d.ts",
+      "import": "./dist/src/handoff/index.js",
+      "node": "./dist/src/handoff/index.js"
     }
   },
   "publishConfig": {

@@ -98,6 +98,9 @@ importers:
       '@contentful/experience-design-system-backend-pipeline':
         specifier: workspace:*
         version: link:../experience-design-system-backend-pipeline
+      '@contentful/experience-design-system-generation':
+        specifier: workspace:*
+        version: link:../experience-design-system-generation
       '@contentful/experience-design-system-types':
         specifier: workspace:*
         version: link:../experience-design-system-types

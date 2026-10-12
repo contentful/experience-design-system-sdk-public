@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { appendFileSync, writeFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { execFile, spawn } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import { buildRunTeaserLine } from './run-teaser.js';
 import { getDebugLogger } from '../../lib/debug-logger.js';
@@ -17,6 +17,7 @@ import { TopBar } from '../../analyze/select/tui/components/TopBar.js';
 import { CustomPromptBanner } from './CustomPromptBanner.js';
 import { RunningStep } from './steps/RunningStep.js';
 import { GateStep } from './steps/GateStep.js';
+import { readHandoff } from './handoff.js';
 import { WizardPreviewStep } from './steps/WizardPreviewStep.js';
 import { DoneStep } from './steps/DoneStep.js';
 import { ErrorStep } from './steps/ErrorStep.js';
@@ -62,7 +63,6 @@ import { GenerateReviewStep } from './steps/GenerateReviewStep.js';
 import { runScopeGate } from './runScopeGate.js';
 import { checkAgentAuth, type AgentAuthStatus, type AgentName } from '@contentful/experience-design-system-generation';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../../host-utils.js';
-import { fetchAndPersistExistingContentfulEntities } from '../../helpers/fetch-and-persist-existing-contentful-entities.js';
 import {
   shouldGenerateAfterScopeGate,
   shouldGenerateAfterCredentialsValidated,
@@ -75,8 +75,6 @@ import {
   resolveCycleGateAction,
 } from './wizard-state-transitions.js';
 import { findCliPath } from '../../lib/cli-path.js';
-import { parsePromptOverrides, resolvePromptOverride } from '../../lib/prompt-overrides.js';
-import { runSelectionAgent } from './run-selection-agent.js';
 import { useTerminalSize } from '../../tui/use-terminal-size.js';
 import { useScreenTransitionClear } from '../../tui/render-with-goodbye.js';
 
@@ -86,7 +84,6 @@ type WizardStep =
   | 'checking-claude-auth'
   | 'credential-test-gate'
   | 'validating-credentials'
-  | 'extracting'
   | 'scope-gate'
   | 'generating'
   | 'mapping-tokens'
@@ -118,7 +115,6 @@ type WizardState = {
   outDir: string;
   rawTokensPath: string;
   tokensPath: string;
-  skipComponents: boolean;
   tokenSessionId: string | null;
   tokenGenerationStatus: 'idle' | 'running' | 'complete' | 'failed';
   mapTokensStatus: 'idle' | 'running' | 'complete' | 'failed';
@@ -131,12 +127,6 @@ type WizardState = {
   generatedAcceptedCount: number;
   generateProgress: { done: number; total: number; current: string } | null;
   selectionAgentStatus: 'idle' | 'running' | 'complete';
-  extractProgress: {
-    scanned: number;
-    filesProcessed: number;
-    totalFiles: number;
-    componentsFound: number;
-  } | null;
   compositionPhase: string | null;
   componentsPath: string;
   spaceId: string;
@@ -200,22 +190,6 @@ export function buildGenerateComponentsArgs(opts: {
   return args;
 }
 
-export function buildGenerateTokensArgs(opts: {
-  rawTokensPath: string;
-  agent: string;
-  model?: string;
-  bedrock?: boolean;
-  noCache?: boolean;
-  promptOverrides?: string[];
-}): string[] {
-  const args = [findCliPath(), '__generate', 'tokens', '--agent', opts.agent, '--raw-tokens', opts.rawTokensPath];
-  if (opts.model) args.push('--model', opts.model);
-  if (opts.bedrock) args.push('--bedrock');
-  if (opts.noCache) args.push('--no-cache');
-  for (const prompt of opts.promptOverrides ?? []) args.push('--prompt', prompt);
-  return args;
-}
-
 export function buildMapTokensArgs(opts: {
   sessionId: string;
   agent: string;
@@ -267,29 +241,6 @@ function runCli(args: string[]): Promise<{ exitCode: number; stdout: string; std
 }
 
 type SpawnedCliResult = { exitCode: number; stdout: string; stderr: string };
-
-function runSpawnedCli(
-  args: string[],
-  onStderr?: (chunk: string) => void,
-  onStdout?: (chunk: string) => void,
-): Promise<SpawnedCliResult> {
-  return new Promise((res) => {
-    const child = spawn('node', args);
-    let stdout = '';
-    let stderr = '';
-    child.stdout.on('data', (d: Buffer) => {
-      const chunk = String(d);
-      stdout += chunk;
-      onStdout?.(chunk);
-    });
-    child.stderr.on('data', (d: Buffer) => {
-      const chunk = String(d);
-      stderr += chunk;
-      onStderr?.(chunk);
-    });
-    child.on('exit', (code) => res({ exitCode: code ?? 0, stdout, stderr }));
-  });
-}
 
 function buildGenerateProcessArgs(opts: Parameters<typeof buildGenerateComponentsArgs>[0]): string[] {
   return [findCliPath(), ...buildGenerateComponentsArgs(opts)];
@@ -406,14 +357,10 @@ export function WizardApp({
     promise: Promise<Set<string>>;
   } | null>(null);
   const selectionToReviewStartedAtRef = useRef<number | null>(null);
-  const tokenGenerationPromiseRef = useRef<Promise<boolean> | null>(null);
-  const extractPromiseRef = useRef<Promise<void> | null>(null);
-  const extractStartedRef = useRef(false);
   const credentialsReadyRef = useRef(false);
   const agentAuthVerifiedRef = useRef(false);
   const scopeGateCompletedRef = useRef(false);
   const scopeComponentsRef = useRef<{ sessionId: string; components: ScopeComponent[] } | null>(null);
-  const existingEntitiesPromiseRef = useRef<Promise<boolean> | null>(null);
   const generatePromiseRef = useRef<Promise<{
     exitCode: number;
     signal: NodeJS.Signals | null;
@@ -423,7 +370,10 @@ export function WizardApp({
 
   const rawTokensEntryReady = !!initialRawTokensPath;
   const effectiveNoCache = resolveNoCacheForGenerate({ cliNoCache: noCache });
-  const initialStepResolved: WizardStep = 'credentials';
+  // The CLI has already done the early stages and tells the wizard what it did. A missing or broken handoff is shown as
+  // an error: the wizard can no longer do those stages itself.
+  const [startedFrom] = useState(() => readHandoff());
+  const initialStepResolved: WizardStep = startedFrom.ok ? 'credentials' : 'error';
   const initialOutDir = initialProjectPath ? join(resolve(initialProjectPath), '.contentful') : '';
 
   const [state, setState] = useState<WizardState>({
@@ -435,7 +385,6 @@ export function WizardApp({
     outDir: initialOutDir,
     rawTokensPath: rawTokensEntryReady ? initialRawTokensPath! : '',
     tokensPath: '',
-    skipComponents: false,
     tokenSessionId: null,
     tokenGenerationStatus: 'idle',
     mapTokensStatus: 'idle',
@@ -448,7 +397,6 @@ export function WizardApp({
     generatedAcceptedCount: 0,
     generateProgress: null,
     selectionAgentStatus: 'idle',
-    extractProgress: null,
     compositionPhase: null,
     componentsPath: '',
     spaceId: initialSpaceId,
@@ -473,12 +421,14 @@ export function WizardApp({
     credentialsValidating: false,
     credentialsBackgroundValidating: false,
     mapTokensEligible: null,
-    credentialsSkipped: false,
     existingEntitiesPath: null,
     existingEntitiesStatus: 'idle',
     lastRunId: null,
     finalizeErrorBanner: null,
     finalReviewPassed: false,
+    ...(startedFrom.ok
+      ? startedFrom.state
+      : { credentialsSkipped: false, errorStep: 'start import', errorMessage: startedFrom.error }),
   });
 
   useEffect(() => {
@@ -600,66 +550,6 @@ export function WizardApp({
     return true;
   };
 
-  const runGenerateTokens = async (
-    rawTokensPath: string,
-    outDir: string,
-    forceRegenerate = false,
-  ): Promise<boolean> => {
-    update({ tokenGenerationStatus: 'running' });
-    const tokenArgs = buildGenerateTokensArgs({
-      rawTokensPath,
-      agent: state.agent,
-      ...(state.agentModel ? { model: state.agentModel } : {}),
-      ...(state.bedrock ? { bedrock: true } : {}),
-      noCache: effectiveNoCache || forceRegenerate,
-      promptOverrides,
-    });
-    const result = await runSpawnedCli(tokenArgs);
-    if (result.exitCode !== 0) {
-      update({
-        step: 'error',
-        tokenGenerationStatus: 'failed',
-        errorStep: 'generate tokens',
-        errorMessage: result.stderr.trim() || 'Unknown error',
-      });
-      return false;
-    }
-    const sessionMatch = /^session=(.+)$/m.exec(result.stdout);
-    const tokenSessionId = sessionMatch ? sessionMatch[1]!.trim() : null;
-
-    const tokensPath = join(outDir, 'tokens.json');
-    const printArgs = ['print', 'tokens', '--out', tokensPath];
-    if (tokenSessionId) printArgs.push('--session', tokenSessionId);
-    const r = await runCli(printArgs);
-    if (r.exitCode !== 0) {
-      update({
-        step: 'error',
-        tokenGenerationStatus: 'failed',
-        errorStep: 'print tokens',
-        errorMessage: r.stderr.trim() || 'Unknown error',
-      });
-      return false;
-    }
-    const tokenCount = parsePrintTokensCount(r.stdout);
-    if (!state.projectPath) {
-      // No --project was ever provided (raw-tokens-only run) — there is no
-      // directory to scan, so go straight to credentials with components skipped.
-      update({
-        tokensPath,
-        tokenSessionId,
-        tokenCount,
-        tokenGenerationStatus: 'complete',
-        skipComponents: true,
-        acceptedCount: 0,
-        outDir: state.outDir || join(process.cwd(), '.contentful'),
-      });
-      update({ step: 'credentials' });
-      return true;
-    }
-    update({ tokensPath, tokenSessionId, tokenCount, tokenGenerationStatus: 'complete' });
-    return true;
-  };
-
   const runMapTokens = async (sessionId: string, silent = false): Promise<boolean> => {
     const timer = startWizardTimer('token-mapping', {
       sessionId,
@@ -760,243 +650,6 @@ export function WizardApp({
       rawTokenCount,
     });
     return true;
-  };
-
-  const startExistingEntitiesFetch = (projectPath: string, outDir: string): Promise<boolean> | null => {
-    if (state.credentialsSkipped || !state.spaceId || !state.environmentId || !state.cmaToken || !projectPath) {
-      return null;
-    }
-    const startedAt = Date.now();
-    getDebugLogger().event('wizard', 'existing-entities.fetch.start', {
-      spaceId: state.spaceId,
-      environmentId: state.environmentId,
-      host: state.host,
-      outDir,
-    });
-    update({ existingEntitiesStatus: 'running' });
-    const promise = (async (): Promise<boolean> => {
-      try {
-        await mkdir(outDir, { recursive: true });
-        const result = await fetchAndPersistExistingContentfulEntities({
-          spaceId: state.spaceId,
-          environmentId: state.environmentId,
-          cmaToken: state.cmaToken,
-          ...(state.host ? { host: state.host } : {}),
-          outDir,
-        });
-        if (result.ok) {
-          getDebugLogger().event('wizard', 'existing-entities.fetch.ok', {
-            durationMs: result.durationMs,
-            components: result.entities.components.length,
-            tokens: result.entities.tokens.length,
-          });
-          update({ existingEntitiesPath: result.path, existingEntitiesStatus: 'complete' });
-          return true;
-        }
-        getDebugLogger().event('wizard', 'existing-entities.fetch.error', {
-          durationMs: result.durationMs,
-          error: result.error,
-        });
-        update({ existingEntitiesStatus: 'failed' });
-        return false;
-      } catch (error) {
-        getDebugLogger().event('wizard', 'existing-entities.fetch.error', {
-          durationMs: Date.now() - startedAt,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        update({ existingEntitiesStatus: 'failed' });
-        return false;
-      }
-    })();
-    existingEntitiesPromiseRef.current = promise;
-    return promise;
-  };
-
-  const runExtract = async (projectPath: string, showProgress = true) => {
-    const outDir = join(resolve(projectPath), '.contentful');
-    const existingEntitiesExpected =
-      !state.credentialsSkipped && Boolean(state.spaceId && state.environmentId && state.cmaToken && projectPath);
-    update({
-      ...(showProgress ? { step: 'extracting' as WizardStep } : {}),
-      outDir,
-      extractProgress: null,
-      compositionPhase: 'resolving',
-      // Put every extraction-stage task on the first frame. The selection
-      // agent cannot start until extraction emits its session, but it is
-      // already part of this stage and should not appear later as a new row.
-      selectionAgentStatus: state.agent ? 'running' : 'complete',
-      existingEntitiesStatus: existingEntitiesExpected ? 'running' : 'idle',
-    });
-    const existingEntitiesPromise = startExistingEntitiesFetch(projectPath, outDir);
-    const extractArgs = [findCliPath(), '__extract', '--project', projectPath];
-    if (effectiveNoCache) extractArgs.push('--composition-refresh', '--no-cache');
-    for (const p of promptOverrides ?? []) extractArgs.push('--prompt', p);
-    // Composition resolution uses the same agent the user picked for the run.
-    if (state.agent) extractArgs.push('--agent', state.agent);
-    if (state.bedrock) extractArgs.push('--bedrock');
-    let selectionPromptText: string | undefined;
-    let selectionPromptPath: string | undefined;
-    try {
-      const { overrides, errors } = parsePromptOverrides(promptOverrides ?? []);
-      if (errors.length > 0) throw new Error(errors.join('; '));
-      const selectOverride = overrides.get('select');
-      if (selectOverride?.kind === 'text') selectionPromptText = selectOverride.value;
-      if (selectOverride?.kind === 'path') {
-        selectionPromptPath = resolve(selectOverride.value);
-        await resolvePromptOverride(selectOverride);
-      }
-    } catch (error) {
-      update({
-        step: 'error',
-        errorStep: 'selection agent',
-        errorMessage: error instanceof Error ? error.message : String(error),
-      });
-      return;
-    }
-
-    let selectionPromise: Promise<void> | null = null;
-    let selectionError: unknown;
-    let selectionStarted = false;
-    const startSelection = (sessionId: string): void => {
-      if (selectionStarted || !state.agent) return;
-      selectionStarted = true;
-      selectionPromise = (async () => {
-        if (existingEntitiesPromise) await existingEntitiesPromise;
-        await runSelectionAgent({
-          sessionId,
-          agent: state.agent as AgentName,
-          ...(state.agentModel ? { model: state.agentModel } : {}),
-          ...(selectionPromptText !== undefined ? { promptText: selectionPromptText } : {}),
-          ...(selectionPromptPath ? { promptPath: selectionPromptPath } : {}),
-          noCache: effectiveNoCache,
-        });
-      })()
-        .catch((error: unknown) => {
-          selectionError = error;
-        })
-        .finally(() => update({ selectionAgentStatus: 'complete' }));
-    };
-
-    let stderrBuffer = '';
-    let stdoutBuffer = '';
-    const r = await runSpawnedCli(
-      extractArgs,
-      (chunk) => {
-        stderrBuffer += chunk;
-        const lines = stderrBuffer.split('\n');
-        stderrBuffer = lines.pop() ?? '';
-        for (const line of lines) {
-          const scanMatch = /^progress=scan:(\d+)$/.exec(line.trim());
-          if (scanMatch) {
-            const scanned = Number(scanMatch[1]);
-            setState((prev) => ({
-              ...prev,
-              extractProgress: {
-                scanned,
-                filesProcessed: prev.extractProgress?.filesProcessed ?? 0,
-                totalFiles: prev.extractProgress?.totalFiles ?? 0,
-                componentsFound: prev.extractProgress?.componentsFound ?? 0,
-              },
-            }));
-            continue;
-          }
-          const scanDoneMatch = /^progress=scan-done:(\d+)$/.exec(line.trim());
-          if (scanDoneMatch) {
-            const scanned = Number(scanDoneMatch[1]);
-            setState((prev) => ({
-              ...prev,
-              extractProgress: {
-                scanned,
-                filesProcessed: prev.extractProgress?.filesProcessed ?? 0,
-                totalFiles: scanned,
-                componentsFound: prev.extractProgress?.componentsFound ?? 0,
-              },
-            }));
-            continue;
-          }
-          const extractMatch = /^progress=extract:(\d+)\/(\d+):(\d+)$/.exec(line.trim());
-          if (extractMatch) {
-            const filesProcessed = Number(extractMatch[1]);
-            const totalFiles = Number(extractMatch[2]);
-            const componentsFound = Number(extractMatch[3]);
-            setState((prev) => ({
-              ...prev,
-              extractProgress: {
-                scanned: prev.extractProgress?.scanned ?? 0,
-                filesProcessed,
-                totalFiles,
-                componentsFound,
-              },
-            }));
-            continue;
-          }
-          const compositionMatch = /^progress=composition:(.+)$/.exec(line.trim());
-          if (compositionMatch) {
-            setState((prev) => ({ ...prev, compositionPhase: compositionMatch[1]!.trim() }));
-          }
-        }
-      },
-      (chunk) => {
-        stdoutBuffer += chunk;
-        const lines = stdoutBuffer.split('\n');
-        stdoutBuffer = lines.pop() ?? '';
-        for (const line of lines) {
-          const sessionMatch = /^session=(.+)$/.exec(line.trim());
-          if (sessionMatch) startSelection(sessionMatch[1]!.trim());
-        }
-      },
-    );
-    const sessionMatch = /^session=(.+)$/m.exec(r.stdout);
-    if (!selectionStarted && sessionMatch) startSelection(sessionMatch[1]!.trim());
-    if (selectionPromise) await selectionPromise;
-    if (!selectionStarted && existingEntitiesPromise) await existingEntitiesPromise;
-    if (r.exitCode !== 0) {
-      update({
-        step: 'error',
-        errorStep: 'analyze extract',
-        errorMessage: r.stderr.trim() || 'Unknown error',
-      });
-      return;
-    }
-    const extractSessionId = sessionMatch ? sessionMatch[1]!.trim() : null;
-    const countMatch = /Extracted (\d+) components?/.exec(r.stderr);
-    const extractedCount = countMatch ? Number(countMatch[1]) : 0;
-    if (extractedCount === 0) {
-      update({
-        step: 'error',
-        errorStep: 'analyze extract',
-        errorMessage: `No components found in ${projectPath}.\n\nMake sure this path contains TypeScript/React/Vue component files (.tsx, .ts, .vue, etc.).`,
-      });
-      return;
-    }
-    if (selectionError) {
-      update({
-        step: 'error',
-        errorStep: 'selection agent',
-        errorMessage: selectionError instanceof Error ? selectionError.message : String(selectionError),
-      });
-      return;
-    }
-    if (state.rawTokensPath && tokenGenerationPromiseRef.current) {
-      const tokenGenerationSucceeded = await tokenGenerationPromiseRef.current;
-      tokenGenerationPromiseRef.current = null;
-      if (!tokenGenerationSucceeded) return;
-    }
-    update({
-      extractSessionId,
-      selectionAgentStatus: 'complete',
-      ...(credentialsReadyRef.current ? { step: 'scope-gate' as WizardStep } : {}),
-    });
-  };
-
-  const startExtract = (projectPath: string, showProgress = true): void => {
-    if (extractStartedRef.current) return;
-    extractStartedRef.current = true;
-    const promise = runExtract(projectPath, showProgress);
-    extractPromiseRef.current = promise;
-    void promise.finally(() => {
-      extractPromiseRef.current = null;
-    });
   };
 
   const buildGenerateOptions = (
@@ -1111,7 +764,7 @@ export function WizardApp({
 
   useEffect(() => {
     if (
-      (state.step !== 'extracting' && state.step !== 'scope-gate') ||
+      state.step !== 'scope-gate' ||
       !state.extractSessionId ||
       state.existingEntitiesStatus === 'running' ||
       state.existingEntitiesStatus === 'idle' ||
@@ -1293,17 +946,18 @@ export function WizardApp({
 
   const advanceAfterCredentialsValidated = async () => {
     credentialsReadyRef.current = true;
-    // Under the front-of-flow ordering, credentials are collected right after
-    // path-validation and before extract. When we get here without an extract
-    // session, the user hasn't started the pipeline yet — kick it off.
-    if (!sessionRef.current.extractSessionId && state.projectPath) {
-      if (extractPromiseRef.current) update({ step: 'extracting' });
-      else startExtract(state.projectPath);
+    // The CLI has already run extraction, so there is always a session by the time the wizard starts. Until the scope
+    // decisions are made, the next step is the scope gate.
+    if (!sessionRef.current.extractSessionId) {
+      update({
+        step: 'error',
+        errorStep: 'start import',
+        errorMessage: 'Internal error: the CLI did not hand over an extract session.',
+      });
       return;
     }
-    if (!scopeGateCompletedRef.current && sessionRef.current.extractSessionId) {
-      if (extractPromiseRef.current) update({ step: 'extracting' });
-      else update({ step: 'scope-gate' });
+    if (!scopeGateCompletedRef.current) {
+      update({ step: 'scope-gate' });
       return;
     }
     if (
@@ -1846,28 +1500,6 @@ export function WizardApp({
     }
   };
 
-  // v2 asks about the existing tokens.json itself and passes its answer in EDS_IMPORT_TOKENS:
-  //   reuse       keep tokens.json as it is
-  //   regenerate  build it again with the cache off
-  //   generate    nothing was asked; build it the normal way
-  const tokenStrategyApplied = useRef(false);
-  useEffect(() => {
-    if (!state.rawTokensPath || tokenStrategyApplied.current) return;
-    tokenStrategyApplied.current = true;
-    const strategy = process.env['EDS_IMPORT_TOKENS'];
-    if (strategy === 'reuse') {
-      update({
-        tokensPath: join(state.outDir, 'tokens.json'),
-        tokenSessionId: null,
-        tokenGenerationStatus: 'complete',
-      });
-      return;
-    }
-    tokenGenerationPromiseRef.current = runAgentAuthCheck('credentials').then((ok) =>
-      ok ? runGenerateTokens(state.rawTokensPath, state.outDir, strategy === 'regenerate') : false,
-    );
-  }, [state.rawTokensPath]);
-
   const credentialsHandedOff = useRef(false);
   useEffect(() => {
     if (state.step !== 'credentials' || credentialsHandedOff.current) return;
@@ -1879,7 +1511,6 @@ export function WizardApp({
   const noQuitSteps: WizardStep[] = [
     'checking-claude-auth',
     'validating-credentials',
-    'extracting',
     'generating',
     'mapping-tokens',
     'printing',
@@ -1890,8 +1521,7 @@ export function WizardApp({
 
   const hasTokens = !!state.tokensPath;
   const hasTokenStage = hasTokens || !!state.rawTokensPath;
-  const hasComponents = !state.skipComponents;
-  const totalSteps = 3 + (hasTokenStage ? 1 : 0) + (hasComponents ? 2 : 0) + (state.mapTokensEligible === true ? 1 : 0);
+  const totalSteps = 3 + (hasTokenStage ? 1 : 0) + 2 + (state.mapTokensEligible === true ? 1 : 0);
 
   const stepContent = (() => {
     switch (state.step) {
@@ -1904,86 +1534,6 @@ export function WizardApp({
             description={`Verifying ${state.agent} is installed and authenticated...`}
           />
         );
-
-      case 'extracting': {
-        const ep = state.extractProgress;
-        const compositionComplete = state.compositionPhase === 'done' || state.compositionPhase === 'cache-hit';
-        const tokenGenerationComplete = !state.rawTokensPath || state.tokenGenerationStatus === 'complete';
-        const extractionTasksComplete =
-          ep !== null &&
-          ep.totalFiles > 0 &&
-          compositionComplete &&
-          state.selectionAgentStatus === 'complete' &&
-          tokenGenerationComplete &&
-          state.existingEntitiesStatus !== 'running';
-
-        // Once extraction, composition, and selection are all cached, there is
-        // no useful intermediate screen to show. Keep this screen only while
-        // the existing-entity fetch is still doing work; it is intentionally
-        // independent of the local pipeline caches.
-        if (extractionTasksComplete) return null;
-
-        let extractDetail: string;
-        let extractComplete = false;
-        if (ep && ep.totalFiles > 0) {
-          extractDetail = `Scanned ${ep.scanned} file${ep.scanned === 1 ? '' : 's'}`;
-          extractComplete = true;
-        } else if (ep) {
-          extractDetail = `Scanning ${ep.scanned} file${ep.scanned === 1 ? '' : 's'}`;
-        } else {
-          extractDetail = 'Scanning files...';
-        }
-        const selectionDetail =
-          state.selectionAgentStatus === 'complete'
-            ? 'Selection agent complete'
-            : `Filtering component selection via ${state.agent}...`;
-        const compositionDetail =
-          state.compositionPhase === 'cache-hit'
-            ? 'Composition mapping (cached)'
-            : compositionComplete
-              ? 'Composition mapping complete'
-              : state.compositionPhase?.startsWith('agent:')
-                ? `Mapping composition via ${state.compositionPhase.slice('agent:'.length)}...`
-                : `Mapping composition via ${state.agent}...`;
-        return (
-          <RunningStep
-            stepNumber={hasTokenStage ? 2 : 1}
-            totalSteps={totalSteps}
-            title="Extracting context"
-            description="Extracting context from your source files."
-            detail={extractDetail}
-            detailComplete={extractComplete}
-            secondaryDetail={compositionDetail}
-            secondaryComplete={compositionComplete}
-            tertiaryDetail={selectionDetail}
-            tertiaryComplete={state.selectionAgentStatus === 'complete'}
-            quaternaryDetail={
-              state.existingEntitiesStatus === 'running'
-                ? 'Fetching existing components and tokens...'
-                : state.existingEntitiesStatus === 'complete'
-                  ? 'Existing components and tokens ready'
-                  : state.existingEntitiesStatus === 'failed'
-                    ? 'Existing entities unavailable; continuing without them'
-                    : undefined
-            }
-            quaternaryComplete={
-              state.existingEntitiesStatus === 'complete' || state.existingEntitiesStatus === 'failed'
-            }
-            quinaryDetail={
-              state.rawTokensPath
-                ? state.tokenGenerationStatus === 'running'
-                  ? `Generating token definitions via ${state.agent}...`
-                  : state.tokenGenerationStatus === 'complete'
-                    ? 'Token definitions ready'
-                    : state.tokenGenerationStatus === 'failed'
-                      ? 'Token definition generation failed'
-                      : `Generating token definitions via ${state.agent}...`
-                : undefined
-            }
-            quinaryComplete={state.tokenGenerationStatus === 'complete'}
-          />
-        );
-      }
 
       case 'scope-gate': {
         if (!state.extractSessionId) {
@@ -2315,9 +1865,7 @@ export function WizardApp({
         return (
           <GateStep
             successMessage="Files saved"
-            summary={[
-              (hasComponents || hasTokens) && state.componentsPath ? `components.json → ${state.componentsPath}` : null,
-            ]
+            summary={[state.componentsPath ? `components.json → ${state.componentsPath}` : null]
               .filter(Boolean)
               .join('\n')}
             context={

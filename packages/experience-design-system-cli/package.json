@@ -25,7 +25,8 @@
   "files": [
     "bin/",
     "dist/",
-    "legacy/"
+    "legacy/",
+    "skills/"
   ],
   "scripts": {
     "build": "nx build experience-design-system-cli",
@@ -38,6 +39,7 @@
   },
   "dependencies": {
     "@contentful/experience-design-system-backend-pipeline": "workspace:*",
+    "@contentful/experience-design-system-generation": "workspace:*",
     "@contentful/experience-design-system-types": "workspace:*",
     "@inkjs/ui": "^2.0.0",
     "@segment/analytics-node": "^3.0.0",

@@ -1,0 +1,252 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  getOrCreateSession,
+  loadRawComponents,
+  openPipelineDb,
+  storeRawComponents,
+} from '@contentful/experience-design-system-backend-pipeline';
+
+// The agent itself is scripted: it prints the tool calls a real agent would, and records the prompt it was given.
+const agent = vi.hoisted(() => ({
+  invocations: [] as Array<{ prompt: string }>,
+  result: { stdout: '', stderr: '', exitCode: 0, timedOut: false } as {
+    stdout: string;
+    stderr: string;
+    exitCode: number;
+    timedOut: boolean;
+  },
+}));
+
+vi.mock('@contentful/experience-design-system-generation', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@contentful/experience-design-system-generation')>();
+  return {
+    ...actual,
+    createLocalCliAgentInvoker: () => ({
+      invoke: async (options: { prompt: string }) => {
+        agent.invocations.push({ prompt: options.prompt });
+        return agent.result;
+      },
+    }),
+  };
+});
+
+import { runSelection } from '../../../src/tui/import/steps/06-extraction/selection.js';
+
+const component = (name: string) => ({
+  name,
+  source: `src/${name}.tsx`,
+  framework: 'react' as const,
+  props: [{ name: 'title', type: 'string', required: false, category: 'content' as const }],
+  slots: [],
+});
+
+const lines = (...calls: Array<Record<string, unknown>>): string =>
+  calls.map((call) => JSON.stringify(call)).join('\n');
+
+describe('runSelection', () => {
+  let dir: string;
+  let previousDbPath: string | undefined;
+  let sessionId: string;
+
+  const seed = (names: string[]): void => {
+    const db = openPipelineDb();
+    try {
+      sessionId = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' }).sessionId;
+      storeRawComponents(db, sessionId, names.map(component));
+    } finally {
+      db.close();
+    }
+  };
+
+  const statuses = (): Record<string, { status: string; reason: string | null }> => {
+    const db = openPipelineDb();
+    try {
+      const rows = db
+        .prepare('SELECT name, status, reject_reason FROM raw_components WHERE session_id = ?')
+        .all(sessionId) as Array<{ name: string; status: string; reject_reason: string | null }>;
+      return Object.fromEntries(rows.map((row) => [row.name, { status: row.status, reason: row.reject_reason }]));
+    } finally {
+      db.close();
+    }
+  };
+
+  const options = (overrides: Partial<Parameters<typeof runSelection>[0]> = {}) => ({
+    sessionId,
+    agent: 'claude' as const,
+    noCache: false,
+    ...overrides,
+  });
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'selection-'));
+    previousDbPath = process.env.EDS_PIPELINE_DB_PATH;
+    process.env.EDS_PIPELINE_DB_PATH = join(dir, 'pipeline.db');
+    agent.invocations.length = 0;
+    agent.result = { stdout: '', stderr: '', exitCode: 0, timedOut: false };
+  });
+
+  afterEach(async () => {
+    if (previousDbPath === undefined) delete process.env.EDS_PIPELINE_DB_PATH;
+    else process.env.EDS_PIPELINE_DB_PATH = previousDbPath;
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('records what the agent accepted and rejected, with the reason for a rejection', async () => {
+    seed(['Card', 'Hero']);
+    agent.result.stdout = lines(
+      { tool: 'select_component', name: 'Card' },
+      { tool: 'reject_component', name: 'Hero', reason: 'internal layout helper' },
+    );
+
+    await runSelection(options());
+
+    expect(statuses()).toEqual({
+      Card: { status: 'accepted', reason: null },
+      Hero: { status: 'rejected', reason: 'internal layout helper' },
+    });
+  });
+
+  it('puts every component in the prompt', async () => {
+    seed(['Card', 'Hero']);
+    agent.result.stdout = lines({ tool: 'select_component', name: 'Card' }, { tool: 'select_component', name: 'Hero' });
+
+    await runSelection(options());
+
+    expect(agent.invocations).toHaveLength(1);
+    expect(agent.invocations[0]?.prompt).toContain('Card');
+    expect(agent.invocations[0]?.prompt).toContain('Hero');
+  });
+
+  it('leaves a component alone when the agent says nothing about it', async () => {
+    seed(['Card', 'Hero']);
+    const before = statuses();
+    agent.result.stdout = lines({ tool: 'select_component', name: 'Card' });
+
+    await runSelection(options());
+
+    expect(statuses().Card?.status).toBe('accepted');
+    expect(statuses().Hero).toEqual(before.Hero);
+  });
+
+  it('does nothing when the session has no components', async () => {
+    seed([]);
+    await runSelection(options());
+    expect(agent.invocations).toHaveLength(0);
+  });
+
+  it('does not ask the agent again for components it already decided', async () => {
+    seed(['Card', 'Hero']);
+    agent.result.stdout = lines(
+      { tool: 'select_component', name: 'Card' },
+      { tool: 'reject_component', name: 'Hero', reason: 'helper' },
+    );
+    await runSelection(options());
+    expect(agent.invocations).toHaveLength(1);
+
+    const second = openPipelineDb();
+    second
+      .prepare("UPDATE raw_components SET status = 'extracted', reject_reason = NULL WHERE session_id = ?")
+      .run(sessionId);
+    second.close();
+
+    await runSelection(options());
+
+    expect(agent.invocations).toHaveLength(1);
+    expect(statuses()).toEqual({
+      Card: { status: 'accepted', reason: null },
+      Hero: { status: 'rejected', reason: 'helper' },
+    });
+  });
+
+  it('only asks the agent about the components it has not decided yet', async () => {
+    seed(['Card']);
+    agent.result.stdout = lines({ tool: 'select_component', name: 'Card' });
+    await runSelection(options());
+
+    const db = openPipelineDb();
+    storeRawComponents(db, sessionId, [component('Card'), component('Hero')]);
+    db.close();
+    agent.result.stdout = lines({ tool: 'reject_component', name: 'Hero', reason: 'new helper' });
+
+    await runSelection(options());
+
+    expect(agent.invocations).toHaveLength(2);
+    expect(agent.invocations[1]?.prompt).toContain('Hero');
+    expect(agent.invocations[1]?.prompt).not.toContain('src/Card.tsx');
+  });
+
+  it('asks the agent about everything again with the cache off', async () => {
+    seed(['Card']);
+    agent.result.stdout = lines({ tool: 'select_component', name: 'Card' });
+    await runSelection(options());
+    await runSelection(options({ noCache: true }));
+    expect(agent.invocations).toHaveLength(2);
+  });
+
+  it('asks again when the agent or model changes, since the cached answer was not made by it', async () => {
+    seed(['Card']);
+    agent.result.stdout = lines({ tool: 'select_component', name: 'Card' });
+    await runSelection(options());
+    await runSelection(options({ agent: 'codex' }));
+    await runSelection(options({ model: 'other' }));
+    expect(agent.invocations).toHaveLength(3);
+  });
+
+  it('asks again when the prompt changes', async () => {
+    seed(['Card']);
+    agent.result.stdout = lines({ tool: 'select_component', name: 'Card' });
+    await runSelection(options({ promptText: 'first prompt' }));
+    await runSelection(options({ promptText: 'second prompt' }));
+    expect(agent.invocations).toHaveLength(2);
+  });
+
+  it('fails without touching the database when the agent times out', async () => {
+    seed(['Card']);
+    const before = statuses();
+    agent.result = { stdout: '', stderr: '', exitCode: 0, timedOut: true };
+
+    await expect(runSelection(options())).rejects.toThrow('selection agent timed out');
+
+    expect(statuses()).toEqual(before);
+  });
+
+  it('fails without touching the database when the agent exits with an error', async () => {
+    seed(['Card']);
+    const before = statuses();
+    agent.result = { stdout: '', stderr: 'boom', exitCode: 2, timedOut: false };
+
+    await expect(runSelection(options())).rejects.toThrow('selection agent exited with code 2');
+
+    expect(statuses()).toEqual(before);
+  });
+
+  it('writes nothing, and caches nothing, when the update fails part way through', async () => {
+    seed(['Card', 'Hero']);
+    agent.result.stdout = lines({ tool: 'select_component', name: 'Card' }, { tool: 'select_component', name: 'Hero' });
+    const db = openPipelineDb();
+    db.exec(
+      `CREATE TRIGGER fail_on_hero BEFORE UPDATE ON raw_components WHEN NEW.name = 'Hero' BEGIN SELECT RAISE(ABORT, 'forced failure'); END`,
+    );
+    db.close();
+    const before = statuses();
+
+    await expect(runSelection(options())).rejects.toThrow(/forced failure/);
+
+    expect(statuses()).toEqual(before);
+    const check = openPipelineDb();
+    const cached = check.prepare('SELECT COUNT(*) AS n FROM select_cache').get() as { n: number };
+    check.close();
+    expect(cached.n).toBe(0);
+  });
+
+  it('can read the components it was given back out of the session', () => {
+    seed(['Card']);
+    const db = openPipelineDb();
+    const names = loadRawComponents(db, sessionId).map((c) => c.name);
+    db.close();
+    expect(names).toEqual(['Card']);
+  });
+});

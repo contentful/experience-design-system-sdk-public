@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { findLegacyCliPath } from '../../legacy/legacy-cli-path.js';
 import { importOptionArgs, type ImportOptions } from '../../commands/import-options.js';
-import type { TokenStrategy } from './steps/05-token-reuse/logic.js';
+import { HANDOFF_ENV, serializeHandoff, type ImportHandoff } from '@contentful/experience-design-system-types/handoff';
 
 interface StepResult {
   step: string;
@@ -23,8 +23,8 @@ export interface SpawnV1ImportOptions extends Partial<ImportOptions> {
   projectPath?: string;
   tokens?: string;
   filePaths?: string[];
-  skipCredentials?: boolean;
-  tokenStrategy?: TokenStrategy;
+  /** What the CLI already settled and did; the legacy wizard starts from it. */
+  handoff?: ImportHandoff;
   onProgress?: (line: string) => void;
 }
 
@@ -51,13 +51,9 @@ export function buildArgs(options: SpawnV1ImportOptions): string[] {
   return args;
 }
 
-// The answers v2 already collected, handed to the legacy wizard as environment variables.
+// The answers and results v2 already has, handed to the legacy wizard in one environment variable.
 export function buildEnv(options: SpawnV1ImportOptions, base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  return {
-    ...base,
-    ...(options.skipCredentials ? { EDS_IMPORT_SKIP_CREDENTIALS: '1' } : {}),
-    ...(options.tokenStrategy ? { EDS_IMPORT_TOKENS: options.tokenStrategy } : {}),
-  };
+  return { ...base, ...(options.handoff ? { [HANDOFF_ENV]: serializeHandoff(options.handoff) } : {}) };
 }
 
 export async function spawnV1Import(options: SpawnV1ImportOptions = {}): Promise<SpawnV1ImportResult> {

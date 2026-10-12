@@ -4,11 +4,17 @@ import { HomeScreen } from './src/tui/home/home.js';
 import { ImportScreen } from './src/tui/import/PageContainer.js';
 import {
   CredentialsScreen,
+  ExtractionScreen,
   PathValidationScreen,
   TokenInputScreen,
   TokenReuseScreen,
   WelcomeScreen,
 } from './src/tui/import/steps/index.js';
+import { ErrorStep } from './src/tui/import/shared/index.js';
+import { resolveAgentChoice, stepNumbers } from './src/tui/import/steps/06-extraction/logic.js';
+import { readSettings } from '@contentful/experience-design-system-types/config';
+import { useExtraction } from './src/tui/import/steps/06-extraction/use-extraction.js';
+import type { ExtractionInput } from './src/tui/import/steps/06-extraction/types.js';
 import { inspectTokens, type TokenStrategy } from './src/tui/import/steps/05-token-reuse/logic.js';
 import { resolveUserPath } from './src/tui/import/resolve-user-path.js';
 import type { CredentialsResult } from './src/tui/import/steps/04-credentials/screen.js';
@@ -40,7 +46,15 @@ export type Screen =
 
 interface PendingLaunch {
   launch: SpawnV1ImportOptions;
+  credentials: CredentialsResult;
   cached?: { tokensPath: string; sourceChanged: boolean };
+}
+
+interface ExtractionRun {
+  launch: SpawnV1ImportOptions;
+  credentialsSkipped: boolean;
+  tokenStrategy: TokenStrategy;
+  input: ExtractionInput;
 }
 
 interface AppProps {
@@ -58,6 +72,9 @@ function App({ importOptions, onLaunchImport, importExitCode }: AppProps): React
   const [scannedFiles, setScannedFiles] = useState<string[]>();
   // Set once credentials are done while the token catalog is checked; shown as the token reuse screen when it needs a choice.
   const [pendingLaunch, setPendingLaunch] = useState<PendingLaunch>();
+  // Set once the token step has an answer; the extraction stage runs for it before the legacy wizard starts.
+  const [extractionRun, setExtractionRun] = useState<ExtractionRun>();
+  const extraction = useExtraction(extractionRun?.input);
   const [importDefaults, setImportDefaults] = useState<{
     componentDir: string;
     tokenFile: string;
@@ -87,13 +104,7 @@ function App({ importOptions, onLaunchImport, importExitCode }: AppProps): React
     filePaths: string[],
   ): Promise<void> => {
     if (!result.skipped) await writeCredentials({ ...result.credentials });
-    const launch: SpawnV1ImportOptions = {
-      projectPath,
-      tokens,
-      filePaths,
-      skipCredentials: result.skipped,
-      ...importOptions,
-    };
+    const launch: SpawnV1ImportOptions = { projectPath, tokens, filePaths, ...importOptions };
     // legacy keeps its output next to the project, so the existing token catalog is looked up there
     const state = await inspectTokens({
       rawTokensPath: tokens,
@@ -101,16 +112,55 @@ function App({ importOptions, onLaunchImport, importExitCode }: AppProps): React
       cache: importOptions.cache,
     });
     if (state.kind === 'cached') {
-      setPendingLaunch({ launch, cached: { tokensPath: state.tokensPath, sourceChanged: state.sourceChanged } });
+      setPendingLaunch({
+        launch,
+        credentials: result,
+        cached: { tokensPath: state.tokensPath, sourceChanged: state.sourceChanged },
+      });
       return;
     }
-    onLaunchImport?.({ ...launch, tokenStrategy: 'generate' });
+    await startExtraction(launch, 'generate', result);
   };
 
   const chooseTokenStrategy = (pending: PendingLaunch, tokenStrategy: TokenStrategy): void => {
     setPendingLaunch(undefined);
-    onLaunchImport?.({ ...pending.launch, tokenStrategy });
+    void startExtraction(pending.launch, tokenStrategy, pending.credentials);
   };
+
+  const startExtraction = async (
+    launch: SpawnV1ImportOptions,
+    tokenStrategy: TokenStrategy,
+    credentials: CredentialsResult,
+  ): Promise<void> => {
+    const { agent, agentModel } = resolveAgentChoice(launch.agent, await readSettings());
+    setExtractionRun({
+      // the wizard gets the same agent, so its later steps use what the stage used
+      launch: { ...launch, agent: agentModel ? `${agent}:${agentModel}` : agent },
+      credentialsSkipped: credentials.skipped,
+      tokenStrategy,
+      input: {
+        projectPath: resolveUserPath(launch.projectPath ?? ''),
+        rawTokensPath: launch.tokens ?? '',
+        tokenStrategy,
+        credentials: credentials.skipped ? null : credentials.credentials,
+        agent,
+        ...(agentModel ? { agentModel } : {}),
+        promptOverrides: launch.prompt ?? [],
+        noCache: launch.cache === false,
+      },
+    });
+  };
+
+  // A finished stage launches the legacy wizard exactly once, with what the stage produced.
+  useEffect(() => {
+    if (!extractionRun || extraction?.status !== 'done' || !extraction.result.ok) return;
+    const { launch, credentialsSkipped, tokenStrategy } = extractionRun;
+    setExtractionRun(undefined);
+    onLaunchImport?.({
+      ...launch,
+      handoff: { credentialsSkipped, tokens: { strategy: tokenStrategy }, extraction: extraction.result.extraction },
+    });
+  }, [extraction, extractionRun]);
 
   const goToStart = (): void => setScreen('start');
   const goToSettings = (): void => setScreen('settings');
@@ -120,6 +170,7 @@ function App({ importOptions, onLaunchImport, importExitCode }: AppProps): React
     setTokensPath(undefined);
     setScannedFiles(undefined);
     setPendingLaunch(undefined);
+    setExtractionRun(undefined);
   };
 
   const finishImportResult = (): void => {
@@ -160,6 +211,23 @@ function App({ importOptions, onLaunchImport, importExitCode }: AppProps): React
             onBack={() => setTokensPath(undefined)}
           />
         );
+      }
+      if (extractionRun) {
+        if (extraction?.status === 'done' && !extraction.result.ok) {
+          return (
+            <ErrorStep stepName={extraction.result.step} message={extraction.result.message} onExit={leaveImport} />
+          );
+        }
+        if (extraction?.status === 'running') {
+          return (
+            <ExtractionScreen
+              progress={extraction.progress}
+              agent={extractionRun.input.agent}
+              {...stepNumbers({ hasRawTokens: extractionRun.input.rawTokensPath !== '' })}
+            />
+          );
+        }
+        return <></>;
       }
       if (pendingLaunch?.cached) {
         return (
