@@ -87,6 +87,7 @@ describe('toScanResult', () => {
           },
           filePaths: ['/a/Button.tsx', '/a/notes.md'],
           warnings: ['one warning'],
+          rootPath: '/a',
         },
       }),
     ).toEqual({
@@ -98,7 +99,10 @@ describe('toScanResult', () => {
   });
 
   it('forwards a failure outcome unchanged', () => {
-    expect(toScanResult({ ok: false, failure: 'not-found' })).toEqual({ ok: false, failure: 'not-found' });
+    expect(toScanResult({ ok: false, failure: 'not-found', rootPath: '/a' })).toEqual({
+      ok: false,
+      failure: 'not-found',
+    });
   });
 });
 
