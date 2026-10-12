@@ -1,4 +1,3 @@
-import { useEffect, useRef } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -13,20 +12,10 @@ const mapInvocations: string[][] = [];
 
 vi.mock('../../../src/import/tui/runScopeGate.js', () => ({
   runScopeGate: async ({ onAdvanceToGenerate }: { onAdvanceToGenerate: (result: unknown) => Promise<void> }) => {
-    await onAdvanceToGenerate({ sessionId: 'extract-session', acceptedCount: 1 });
-  },
-}));
-
-vi.mock('../../../src/import/tui/steps/ScopeGateStep.js', () => ({
-  ScopeGateStep: ({ onConfirm }: { onConfirm: (decisions: Record<string, unknown>) => void }) => {
-    const confirmed = useRef(false);
-    useEffect(() => {
-      if (!confirmed.current) {
-        confirmed.current = true;
-        onConfirm({ accepted: ['Card'], rejected: [] });
-      }
-    }, [onConfirm]);
-    return <></>;
+    await onAdvanceToGenerate({
+      sessionId: 'extract-session',
+      acceptedCount: 1,
+    });
   },
 }));
 
@@ -85,7 +74,10 @@ vi.mock('node:child_process', async (importOriginal) => {
 
 vi.mock('@contentful/experience-design-system-generation', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@contentful/experience-design-system-generation')>();
-  return { ...actual, checkAgentAuth: vi.fn().mockResolvedValue('authenticated') };
+  return {
+    ...actual,
+    checkAgentAuth: vi.fn().mockResolvedValue('authenticated'),
+  };
 });
 
 const RAW: RawComponentDefinition[] = [
@@ -93,7 +85,14 @@ const RAW: RawComponentDefinition[] = [
     name: 'Card',
     source: 'src/Card.tsx',
     framework: 'react',
-    props: [{ name: 'background', type: 'string', required: false, category: 'design' }],
+    props: [
+      {
+        name: 'background',
+        type: 'string',
+        required: false,
+        category: 'design',
+      },
+    ],
     slots: [],
   },
 ];
@@ -110,7 +109,13 @@ function seedGeneratedSession(dbPath: string): void {
           key: 'Card',
           entry: {
             $type: 'component',
-            $properties: { background: { $type: 'token', $category: 'design', '$token.kind': 'color' } },
+            $properties: {
+              background: {
+                $type: 'token',
+                $category: 'design',
+                '$token.kind': 'color',
+              },
+            },
           },
         },
       ]);
@@ -144,7 +149,9 @@ describe('WizardApp reused token catalog', () => {
     await writeFile(join(projectPath, 'Card.tsx'), 'export function Card() { return null; }');
     await writeFile(
       join(outDir, 'tokens.json'),
-      JSON.stringify({ colors: { primary: { $type: 'color', $value: '#06f' } } }),
+      JSON.stringify({
+        colors: { primary: { $type: 'color', $value: '#06f' } },
+      }),
       {
         flag: 'w',
       },
@@ -152,7 +159,9 @@ describe('WizardApp reused token catalog', () => {
       await mkdir(outDir, { recursive: true });
       await writeFile(
         join(outDir, 'tokens.json'),
-        JSON.stringify({ colors: { primary: { $type: 'color', $value: '#06f' } } }),
+        JSON.stringify({
+          colors: { primary: { $type: 'color', $value: '#06f' } },
+        }),
       );
     });
     seedGeneratedSession(process.env.EDS_PIPELINE_DB_PATH);
@@ -172,6 +181,8 @@ describe('WizardApp reused token catalog', () => {
         existingEntitiesStatus: 'idle',
         compositionPhase: 'done',
       },
+      // and confirmed the scope at the gate the CLI shows, so the wizard starts from the decisions
+      scope: { accepted: ['Card'], rejected: [], cachedNames: [] },
     });
 
     const { WizardApp } = await import('../../../src/import/tui/WizardApp.js');

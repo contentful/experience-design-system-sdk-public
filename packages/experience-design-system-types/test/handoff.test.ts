@@ -41,6 +41,37 @@ describe('ImportHandoff', () => {
     expect(parseHandoff(serializeHandoff(nullable))).toEqual({ ok: true, handoff: nullable });
   });
 
+  describe('the scope the user confirmed', () => {
+    const scope = { accepted: ['Button', 'Card'], rejected: ['Helper'], cachedNames: ['Button'] };
+    const confirmed: ImportHandoff = { ...handoff, scope };
+
+    it('reads back exactly what was written', () => {
+      expect(parseHandoff(serializeHandoff(confirmed))).toEqual({ ok: true, handoff: confirmed });
+    });
+
+    it('is absent before the gate has been confirmed', () => {
+      const parsed = parseHandoff(serializeHandoff(handoff));
+      expect(parsed.ok && parsed.handoff.scope).toBeUndefined();
+    });
+
+    it('allows nothing accepted, rejected or cached', () => {
+      const empty: ImportHandoff = { ...handoff, scope: { accepted: [], rejected: [], cachedNames: [] } };
+      expect(parseHandoff(serializeHandoff(empty))).toEqual({ ok: true, handoff: empty });
+    });
+
+    it.each(['accepted', 'rejected', 'cachedNames'] as const)('rejects a scope missing %s', (field) => {
+      const { [field]: _removed, ...partial } = scope;
+      const result = parseHandoff(JSON.stringify({ ...handoff, scope: partial }));
+      expect(result.ok).toBe(false);
+      expect(!result.ok && result.error).toContain(`scope.${field}`);
+    });
+
+    it('rejects names that are not strings', () => {
+      const result = parseHandoff(JSON.stringify({ ...handoff, scope: { ...scope, accepted: ['Button', 3] } }));
+      expect(result.ok).toBe(false);
+    });
+  });
+
   describe('rejects a handoff that cannot be trusted, saying what is wrong', () => {
     const fails = (raw: string | undefined) => {
       const result = parseHandoff(raw);

@@ -29,7 +29,9 @@ describe('wizard combined CDF output', () => {
 
     expect(cdf.$schema).toBe('https://contentful.com/schemas/cdf');
     expect(cdf.Button).toMatchObject({ $type: 'component' });
-    expect(cdf.colors).toMatchObject({ brand: { $type: 'color', $value: '#09f' } });
+    expect(cdf.colors).toMatchObject({
+      brand: { $type: 'color', $value: '#09f' },
+    });
   });
 });
 
@@ -96,24 +98,32 @@ describe('wizard generate-components cache', () => {
     expect(source).not.toContain('Checking cached definitions');
   });
 
+  // These read the wizard's source, so they compare it with the whitespace squeezed out: formatting must not decide
+  // whether a test passes.
+  const squeeze = (text: string): string => text.replace(/\s+/g, '');
+
   it('does not enter the generation screen when cached definitions are restored', async () => {
-    const source = await readFile(wizardAppPath, 'utf8');
-    const scopeGateBlock = source.slice(source.indexOf('onAdvanceToGenerate'), source.indexOf('onAdvanceToPushFlow'));
-    expect(scopeGateBlock).toContain('void finishCachedGeneration(sid, acceptedCount);');
-    expect(scopeGateBlock).toContain(
-      "step: 'generating',\n                            generateProgress: null,\n                            acceptedCount,",
+    const source = squeeze(await readFile(wizardAppPath, 'utf8'));
+    const scopeBlock = source.slice(source.indexOf('onAdvanceToGenerate'), source.indexOf('onAdvanceToPushFlow'));
+    expect(scopeBlock).toContain(squeeze('void finishCachedGeneration(sid, acceptedCount);'));
+    // a miss does enter the generating screen (a trailing comma is formatting, so it is not part of the check)
+    expect(scopeBlock).toContain(squeeze("update({ step: 'generating', generateProgress: null, acceptedCount"));
+    expect(scopeBlock).toContain(
+      squeeze('void runGenerate(sid, state.tokensPath, acceptedCount, false, restoredCachedNames);'),
     );
-    expect(scopeGateBlock).toContain(
-      'void runGenerate(sid, state.tokensPath, acceptedCount, false, restoredCachedNames);',
-    );
-    const cacheBranch = scopeGateBlock.slice(
-      scopeGateBlock.indexOf('if (cacheHit)'),
-      scopeGateBlock.indexOf('} else {'),
-    );
-    expect(cacheBranch).not.toContain("step: 'generating'");
+    const cacheBranch = scopeBlock.slice(scopeBlock.indexOf('if(cacheHit)'), scopeBlock.indexOf('}else{'));
+    expect(cacheBranch).not.toContain("step:'generating'");
     expect(source).not.toContain('GENERATION_SCREEN_DELAY_MS');
-    expect(source).toContain('const promise = checkGenerateCacheComponents(sessionId, state.tokensPath, true);');
-    expect(source).toContain('await cachePromise;');
+  });
+
+  it('compares the accepted names against the cache check the CLI already finished, and does not start its own', async () => {
+    const source = squeeze(await readFile(wizardAppPath, 'utf8'));
+    // the CLI ran the check while the gate was open and restored the cache before starting the wizard
+    expect(source).toContain(squeeze('const cachePromise = Promise.resolve(new Set(handedOffCachedNames));'));
+    // so the wizard has no background check of its own any more
+    expect(source).not.toContain("'generation-cache-preflight'");
+    // a result that is not a full hit is checked again after the decisions are saved, as before
+    expect(source).toContain(squeeze('cachedNames = await checkGenerateCacheComponents(sid, state.tokensPath, true);'));
   });
 });
 

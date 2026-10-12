@@ -30,16 +30,31 @@ const ExtractionSchema = z.object({
   compositionPhase: z.enum(['done', 'cache-hit']),
 });
 
+const ScopeSchema = z.object({
+  /** The components the user kept at the scope gate. The wizard saves these, then generates them. */
+  accepted: z.array(z.string()),
+  /** Everything else at the gate, which counts as rejected. */
+  rejected: z.array(z.string()),
+  /**
+   * Components the generation cache already holds, found by the check that ran while the gate was open and which has
+   * finished (and restored them) before the wizard starts. Empty when the cache is off or the check failed.
+   */
+  cachedNames: z.array(z.string()),
+});
+
 const ImportHandoffSchema = z.object({
   /** The user skipped the credentials screen, so nothing is fetched from or pushed to Contentful. */
   credentialsSkipped: z.boolean(),
   tokens: TokensSchema,
   /** Present once the CLI has run the extraction stage; the wizard then starts at the scope gate. */
   extraction: z.optional(ExtractionSchema),
+  /** Present once the user has confirmed the scope gate; the wizard then saves the decisions and starts generating. */
+  scope: z.optional(ScopeSchema),
 });
 
 export type ImportHandoff = z.infer<typeof ImportHandoffSchema>;
 export type ExtractionHandoff = NonNullable<ImportHandoff['extraction']>;
+export type ScopeHandoff = NonNullable<ImportHandoff['scope']>;
 
 export type ParsedHandoff = { ok: true; handoff: ImportHandoff } | { ok: false; error: string };
 

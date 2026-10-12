@@ -20,6 +20,22 @@ export interface HandoffState {
   existingEntitiesPath?: string | null;
 }
 
+/** What the user confirmed at the scope gate, which the CLI now shows. The wizard saves it, then generates. */
+export interface HandoffScope {
+  decisions: { accepted: string[]; rejected: string[] };
+  /** Components the cache check (finished and restored before the wizard started) found already generated. */
+  cachedNames: string[];
+}
+
+export function scopeFromHandoff(handoff: ImportHandoff): HandoffScope | null {
+  const { scope } = handoff;
+  if (!scope) return null;
+  return {
+    decisions: { accepted: scope.accepted, rejected: scope.rejected },
+    cachedNames: scope.cachedNames,
+  };
+}
+
 export function stateFromHandoff(handoff: ImportHandoff): HandoffState {
   const { extraction } = handoff;
   return {
@@ -41,11 +57,23 @@ export function stateFromHandoff(handoff: ImportHandoff): HandoffState {
   };
 }
 
-export type StartFromHandoff = { ok: true; handoff: ImportHandoff; state: HandoffState } | { ok: false; error: string };
+export type StartFromHandoff =
+  | {
+      ok: true;
+      handoff: ImportHandoff;
+      state: HandoffState;
+      scope: HandoffScope | null;
+    }
+  | { ok: false; error: string };
 
 /** Reads the handoff the CLI passed. A missing or broken one is an error to show, never a guess at a start. */
 export function readHandoff(env: NodeJS.ProcessEnv = process.env): StartFromHandoff {
   const parsed = parseHandoff(env[HANDOFF_ENV]);
   if (!parsed.ok) return parsed;
-  return { ok: true, handoff: parsed.handoff, state: stateFromHandoff(parsed.handoff) };
+  return {
+    ok: true,
+    handoff: parsed.handoff,
+    state: stateFromHandoff(parsed.handoff),
+    scope: scopeFromHandoff(parsed.handoff),
+  };
 }

@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { PALETTE } from '../../analyze/select/tui/theme.js';
-import { Box, Text } from 'ink';
+import { Box } from 'ink';
 import { join, resolve } from 'node:path';
 import { appendFileSync, writeFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
@@ -50,7 +49,6 @@ import type {
 import {
   openPipelineDb,
   loadCDFComponents,
-  loadScopeComponents,
   loadDTCGTokens,
   copyTokensFromCache,
   storeDTCGTokens,
@@ -58,7 +56,6 @@ import {
   seedDefaultsFromChangedItems,
   backfillUnclassifiedProps,
 } from '../../session/db.js';
-import { ScopeGateStep, type ScopeComponent } from './steps/ScopeGateStep.js';
 import { GenerateReviewStep } from './steps/GenerateReviewStep.js';
 import { runScopeGate } from './runScopeGate.js';
 import { checkAgentAuth, type AgentAuthStatus, type AgentName } from '@contentful/experience-design-system-generation';
@@ -84,7 +81,6 @@ type WizardStep =
   | 'checking-claude-auth'
   | 'credential-test-gate'
   | 'validating-credentials'
-  | 'scope-gate'
   | 'generating'
   | 'mapping-tokens'
   | 'final-review'
@@ -100,8 +96,18 @@ type WizardStep =
   | 'preview-validation-error';
 
 type PushResult = {
-  componentTypes: { created: number; updated: number; removed: number; failed: number };
-  designTokens: { created: number; updated: number; removed: number; failed: number };
+  componentTypes: {
+    created: number;
+    updated: number;
+    removed: number;
+    failed: number;
+  };
+  designTokens: {
+    created: number;
+    updated: number;
+    removed: number;
+    failed: number;
+  };
   summary?: { total: number; succeeded: number; failed: number };
   failures?: Array<{ entityType: string; entityId: string; message: string }>;
 };
@@ -360,7 +366,6 @@ export function WizardApp({
   const credentialsReadyRef = useRef(false);
   const agentAuthVerifiedRef = useRef(false);
   const scopeGateCompletedRef = useRef(false);
-  const scopeComponentsRef = useRef<{ sessionId: string; components: ScopeComponent[] } | null>(null);
   const generatePromiseRef = useRef<Promise<{
     exitCode: number;
     signal: NodeJS.Signals | null;
@@ -428,7 +433,11 @@ export function WizardApp({
     finalReviewPassed: false,
     ...(startedFrom.ok
       ? startedFrom.state
-      : { credentialsSkipped: false, errorStep: 'start import', errorMessage: startedFrom.error }),
+      : {
+          credentialsSkipped: false,
+          errorStep: 'start import',
+          errorMessage: startedFrom.error,
+        }),
   });
 
   useEffect(() => {
@@ -503,7 +512,9 @@ export function WizardApp({
       nextStep,
     });
     if (agentAuthVerifiedRef.current) {
-      finishWizardTimer('agent-auth-validation', timer, { status: 'already-verified' });
+      finishWizardTimer('agent-auth-validation', timer, {
+        status: 'already-verified',
+      });
       if (!deferStep) update({ step: nextStep });
       return true;
     }
@@ -611,7 +622,12 @@ export function WizardApp({
       return true;
     }
 
-    if (!silent) update({ mapTokensEligible: true, mapTokensStatus: 'running', step: 'generating' });
+    if (!silent)
+      update({
+        mapTokensEligible: true,
+        mapTokensStatus: 'running',
+        step: 'generating',
+      });
     const args = buildMapTokensArgs({
       sessionId,
       agent: state.agent,
@@ -694,7 +710,9 @@ export function WizardApp({
       noCache: effectiveNoCache,
     });
     if (effectiveNoCache) {
-      finishWizardTimer('generation-cache-status', timer, { status: 'skipped' });
+      finishWizardTimer('generation-cache-status', timer, {
+        status: 'skipped',
+      });
       return false;
     }
     const result = await runCli([...buildGenerateCliArgs(extractSessionId, tokensPath), '--cache-status']);
@@ -718,7 +736,9 @@ export function WizardApp({
       noCache: effectiveNoCache,
     });
     if (effectiveNoCache) {
-      finishWizardTimer('generation-cache-components', timer, { status: 'skipped' });
+      finishWizardTimer('generation-cache-components', timer, {
+        status: 'skipped',
+      });
       return new Set();
     }
     const args = [...buildGenerateCliArgs(extractSessionId, tokensPath), '--cache-status'];
@@ -761,65 +781,6 @@ export function WizardApp({
       return new Set();
     }
   };
-
-  useEffect(() => {
-    if (
-      state.step !== 'scope-gate' ||
-      !state.extractSessionId ||
-      state.existingEntitiesStatus === 'running' ||
-      state.existingEntitiesStatus === 'idle' ||
-      state.selectionAgentStatus !== 'complete' ||
-      (state.compositionPhase !== 'done' && state.compositionPhase !== 'cache-hit') ||
-      (state.rawTokensPath && state.tokenGenerationStatus !== 'complete') ||
-      effectiveNoCache
-    ) {
-      return;
-    }
-    const sessionId = state.extractSessionId;
-    if (generationCachePreflightRef.current?.sessionId === sessionId) return;
-    const timer = startWizardTimer('generation-cache-preflight', { sessionId });
-    const db = openPipelineDb();
-    let generatedNames: Set<string> | null = null;
-    try {
-      const rows = db.prepare('SELECT name, status FROM raw_components WHERE session_id = ?').all(sessionId) as Array<{
-        name: string;
-        status: string;
-      }>;
-      if (rows.length > 0 && rows.every((row) => row.status === 'generated')) {
-        generatedNames = new Set(rows.map((row) => row.name));
-      }
-    } finally {
-      db.close();
-    }
-    if (generatedNames) {
-      generationCachePreflightRef.current = { sessionId, promise: Promise.resolve(generatedNames) };
-      finishWizardTimer('generation-cache-preflight', timer, {
-        status: 'complete',
-        source: 'session-db',
-        cachedCount: generatedNames.size,
-      });
-      return;
-    }
-    const promise = checkGenerateCacheComponents(sessionId, state.tokensPath, true);
-    generationCachePreflightRef.current = { sessionId, promise };
-    void promise.then((cachedNames) => {
-      finishWizardTimer('generation-cache-preflight', timer, {
-        status: 'complete',
-        source: 'cache-status',
-        cachedCount: cachedNames.size,
-      });
-    });
-  }, [
-    state.step,
-    state.extractSessionId,
-    state.tokensPath,
-    state.rawTokensPath,
-    state.tokenGenerationStatus,
-    state.selectionAgentStatus,
-    state.compositionPhase,
-    state.existingEntitiesStatus,
-    state.existingEntitiesPath,
-  ]);
 
   const runGenerate = async (
     extractSessionId: string,
@@ -944,6 +905,89 @@ export function WizardApp({
     void runPreview(sid, tp, state.spaceId, state.environmentId, state.cmaToken, state.host);
   };
 
+  // What happens once the scope is confirmed. The CLI shows the gate now and hands over the decisions, together with the
+  // components its cache check found (that check finished, and restored them, before this wizard started). The order is
+  // the one the gate always had: the cache is restored first, then the decisions are saved, because both write to the
+  // same database.
+  const confirmScope = async (
+    decisions: { accepted: string[]; rejected: string[] },
+    handedOffCachedNames: string[],
+  ): Promise<void> => {
+    const sessionId = sessionRef.current.extractSessionId;
+    if (!sessionId) {
+      update({
+        step: 'error',
+        errorStep: 'start import',
+        errorMessage: 'Internal error: the CLI did not hand over an extract session.',
+      });
+      return;
+    }
+    selectionToReviewStartedAtRef.current =
+      decisions.accepted.length > 0
+        ? startWizardTimer('selection-to-review', {
+            sessionId,
+            acceptedCount: decisions.accepted.length,
+            rejectedCount: decisions.rejected.length,
+          })
+        : null;
+    const cachePromise = Promise.resolve(new Set(handedOffCachedNames));
+    generationCachePreflightRef.current = { sessionId, promise: cachePromise };
+    await runScopeGate({
+      sessionId,
+      decisions,
+      onAdvanceToGenerate: async ({ sessionId: sid, acceptedCount }) => {
+        scopeGateCompletedRef.current = true;
+        if (shouldGenerateAfterScopeGate({ acceptedCount })) {
+          // Leave straight for the auth check. The persisted decisions change accepted rows to `generated`.
+          const authPromise = runAgentAuthCheck('generating', true);
+          if (await authPromise) {
+            const comparisonStartedAt = startWizardTimer('generation-cache-set-comparison', {
+              sessionId: sid,
+              acceptedCount: decisions.accepted.length,
+            });
+            let cachedNames = await cachePromise;
+            const acceptedNames = decisions.accepted;
+            let cacheHit =
+              !effectiveNoCache && acceptedNames.length > 0 && acceptedNames.every((name) => cachedNames.has(name));
+            // The check ran before the decisions were saved. Always refresh a non-hit after that, so a partial result
+            // cannot trigger generation.
+            if (!cacheHit && !effectiveNoCache && acceptedNames.length > 0) {
+              cachedNames = await checkGenerateCacheComponents(sid, state.tokensPath, true);
+              cacheHit = acceptedNames.every((name) => cachedNames.has(name));
+            }
+            finishWizardTimer('generation-cache-set-comparison', comparisonStartedAt, {
+              status: 'complete',
+              cacheHit,
+              cachedCount: cachedNames.size,
+              acceptedCount: acceptedNames.length,
+            });
+            if (cacheHit) {
+              void finishCachedGeneration(sid, acceptedCount);
+            } else {
+              const acceptedNameSet = new Set(acceptedNames);
+              const restoredCachedNames = [...cachedNames].filter((name) => acceptedNameSet.has(name));
+              update({
+                step: 'generating',
+                generateProgress: null,
+                acceptedCount,
+              });
+              void runGenerate(sid, state.tokensPath, acceptedCount, false, restoredCachedNames);
+            }
+          } else {
+            finishSelectionToReviewTimer('error');
+          }
+          return;
+        }
+        void runSaveAndPush();
+      },
+      onAdvanceToPushFlow: (count) => {
+        scopeGateCompletedRef.current = true;
+        update({ acceptedCount: count, autoRejectedCount: 0 });
+        advanceToPushFlow(count);
+      },
+    });
+  };
+
   const advanceAfterCredentialsValidated = async () => {
     credentialsReadyRef.current = true;
     // The CLI has already run extraction, so there is always a session by the time the wizard starts. Until the scope
@@ -957,7 +1001,16 @@ export function WizardApp({
       return;
     }
     if (!scopeGateCompletedRef.current) {
-      update({ step: 'scope-gate' });
+      // The CLI shows the scope gate, so the wizard is only ever started with the decisions already made.
+      if (!startedFrom.ok || !startedFrom.scope) {
+        update({
+          step: 'error',
+          errorStep: 'start import',
+          errorMessage: 'Internal error: the CLI did not hand over the scope decisions.',
+        });
+        return;
+      }
+      await confirmScope(startedFrom.scope.decisions, startedFrom.scope.cachedNames);
       return;
     }
     if (
@@ -969,7 +1022,11 @@ export function WizardApp({
       void runSaveAndPush();
       return;
     }
-    if (shouldGenerateAfterCredentialsValidated({ acceptedCount: state.acceptedCount })) {
+    if (
+      shouldGenerateAfterCredentialsValidated({
+        acceptedCount: state.acceptedCount,
+      })
+    ) {
       const sid = sessionRef.current.extractSessionId;
       if (!sid) {
         update({
@@ -1046,7 +1103,9 @@ export function WizardApp({
       if (tokensPath) {
         tokens = await readTokensFromPath('tokens', tokensPath);
       }
-      let cdf = buildCDF(components, toCDFTokens(tokens), { deleteAll: allowEmptyDeleteAllRef.current })!;
+      let cdf = buildCDF(components, toCDFTokens(tokens), {
+        deleteAll: allowEmptyDeleteAllRef.current,
+      })!;
       let preview = await client.previewImport(cdf);
 
       if (extractSessionId) {
@@ -1075,7 +1134,9 @@ export function WizardApp({
 
           if (needsRepreview) {
             components = loadCDFComponents(db, extractSessionId);
-            cdf = buildCDF(components, toCDFTokens(tokens), { deleteAll: allowEmptyDeleteAllRef.current })!;
+            cdf = buildCDF(components, toCDFTokens(tokens), {
+              deleteAll: allowEmptyDeleteAllRef.current,
+            })!;
             preview = await client.previewImport(cdf);
           }
         } finally {
@@ -1228,7 +1289,11 @@ export function WizardApp({
       return;
     }
 
-    update({ step: 'pushing', pushProgress: null, errorAllowBreakingChangeAcknowledgment: false });
+    update({
+      step: 'pushing',
+      pushProgress: null,
+      errorAllowBreakingChangeAcknowledgment: false,
+    });
     try {
       const resolvedHost = resolveWizardHost(host);
       const client = new ImportApiClient({
@@ -1237,7 +1302,9 @@ export function WizardApp({
         environmentId,
         host: resolvedHost,
       });
-      let operation = await client.applyImport(cdf, { acknowledgeBreakingChanges });
+      let operation = await client.applyImport(cdf, {
+        acknowledgeBreakingChanges,
+      });
       try {
         logStep({
           applyResponse: {
@@ -1264,7 +1331,12 @@ export function WizardApp({
             const lastDone = items.length > 0 ? items[items.length - 1] : null;
             const current = lastDone && lastDone.status === 'succeeded' ? lastDone.id : null;
             update({
-              pushProgress: { kind: 'progress', processed: done, total: s.total, current },
+              pushProgress: {
+                kind: 'progress',
+                processed: done,
+                total: s.total,
+                current,
+              },
             });
           }
           try {
@@ -1393,7 +1465,12 @@ export function WizardApp({
   const runPrintFiles = async (
     extractSessionId: string | null,
     outDir: string,
-    opts: { skipGate?: boolean; tokenSessionId?: string | null; tokensPath?: string; allowEmpty?: boolean } = {},
+    opts: {
+      skipGate?: boolean;
+      tokenSessionId?: string | null;
+      tokensPath?: string;
+      allowEmpty?: boolean;
+    } = {},
   ): Promise<{ ok: boolean }> => {
     update({ step: 'printing' });
     const componentsPath = join(outDir, 'components.json');
@@ -1409,7 +1486,9 @@ export function WizardApp({
       }
       if (!opts.tokenSessionId && opts.tokensPath) tokens = await readTokensFromPath('tokens', opts.tokensPath);
 
-      const cdf = buildSavedCDF(components, tokens, { deleteAll: opts.allowEmpty });
+      const cdf = buildSavedCDF(components, tokens, {
+        deleteAll: opts.allowEmpty,
+      });
       await writeFile(componentsPath, `${JSON.stringify(cdf, null, 2)}\n`);
       process.stderr.write(
         `wrote ${componentsPath} (${components.length} component${components.length === 1 ? '' : 's'}, ${tokens.length} token${tokens.length === 1 ? '' : 's'})\n`,
@@ -1433,7 +1512,10 @@ export function WizardApp({
     await startSaveFlow({ skipGate: true, andPush: true }, statePatch);
   };
 
-  const pendingSaveOptionsRef = useRef<{ skipGate?: boolean; andPush?: boolean }>({});
+  const pendingSaveOptionsRef = useRef<{
+    skipGate?: boolean;
+    andPush?: boolean;
+  }>({});
 
   const startSaveFlow = async (
     opts: { skipGate?: boolean; andPush?: boolean } = {},
@@ -1534,149 +1616,6 @@ export function WizardApp({
             description={`Verifying ${state.agent} is installed and authenticated...`}
           />
         );
-
-      case 'scope-gate': {
-        if (!state.extractSessionId) {
-          return (
-            <Box paddingX={2} paddingY={1}>
-              <Text color={PALETTE.error}>Error: extract session ID missing — please re-run.</Text>
-            </Box>
-          );
-        }
-        const sessionId = state.extractSessionId;
-        const db = openPipelineDb();
-        let loadedComponents: ScopeComponent[];
-        try {
-          loadedComponents = loadScopeComponents(db, sessionId);
-        } finally {
-          db.close();
-        }
-        const remembered = scopeComponentsRef.current;
-        if (loadedComponents.length > 0 && remembered?.sessionId !== sessionId) {
-          scopeComponentsRef.current = { sessionId, components: loadedComponents };
-        }
-        // Confirming the scope changes accepted rows to `generated` before the
-        // async cache/auth transition completes. A resize can render this case
-        // again while those rows are no longer returned by loadScopeComponents;
-        // keep the last valid list for this session instead of showing the
-        // unrecoverable empty-session error.
-        const rememberedForSession =
-          scopeComponentsRef.current?.sessionId === sessionId ? scopeComponentsRef.current.components : null;
-        const components =
-          scopeGateCompletedRef.current && rememberedForSession
-            ? rememberedForSession
-            : loadedComponents.length > 0
-              ? loadedComponents
-              : (rememberedForSession ?? []);
-        return (
-          <ScopeGateStep
-            components={components}
-            onConfirm={(decisions) => {
-              void (async () => {
-                selectionToReviewStartedAtRef.current =
-                  decisions.accepted.length > 0
-                    ? startWizardTimer('selection-to-review', {
-                        sessionId,
-                        acceptedCount: decisions.accepted.length,
-                        rejectedCount: decisions.rejected.length,
-                      })
-                    : null;
-                const preflight = generationCachePreflightRef.current;
-                const cachePromise =
-                  preflight?.sessionId === sessionId
-                    ? preflight.promise
-                    : checkGenerateCacheComponents(sessionId, state.tokensPath, true);
-                if (!preflight || preflight.sessionId !== sessionId) {
-                  generationCachePreflightRef.current = { sessionId, promise: cachePromise };
-                }
-                // Let the cache restore finish while the selection screen is
-                // still visible. Scope decisions are applied only afterward,
-                // so the two SQLite writers cannot race.
-                const cacheWaitStartedAt = startWizardTimer('selection-cache-restoration-wait', {
-                  sessionId,
-                  preflight: Boolean(preflight?.sessionId === sessionId),
-                });
-                try {
-                  const cachedNames = await cachePromise;
-                  finishWizardTimer('selection-cache-restoration-wait', cacheWaitStartedAt, {
-                    status: 'complete',
-                    cachedCount: cachedNames.size,
-                  });
-                } catch (error) {
-                  finishWizardTimer('selection-cache-restoration-wait', cacheWaitStartedAt, {
-                    status: 'error',
-                    error: error instanceof Error ? error.message : String(error),
-                  });
-                  finishSelectionToReviewTimer('error');
-                  throw error;
-                }
-                await runScopeGate({
-                  sessionId,
-                  decisions,
-                  onAdvanceToGenerate: async ({ sessionId: sid, acceptedCount }) => {
-                    scopeGateCompletedRef.current = true;
-                    if (shouldGenerateAfterScopeGate({ acceptedCount })) {
-                      // Leave the scope-gate view before awaiting auth. The
-                      // persisted decisions change accepted rows to `generated`,
-                      // so rendering the gate during that await briefly makes
-                      // its component query appear empty.
-                      const authPromise = runAgentAuthCheck('generating', true);
-                      if (await authPromise) {
-                        const comparisonStartedAt = startWizardTimer('generation-cache-set-comparison', {
-                          sessionId: sid,
-                          acceptedCount: decisions?.accepted.length ?? 0,
-                        });
-                        let cachedNames = await cachePromise;
-                        const acceptedNames = decisions?.accepted ?? [];
-                        let cacheHit =
-                          !effectiveNoCache &&
-                          acceptedNames.length > 0 &&
-                          acceptedNames.every((name) => cachedNames.has(name));
-                        // The preflight may have read a stale review snapshot
-                        // while the scope decision was being persisted. Always
-                        // refresh a non-hit after that transaction completes so
-                        // a partial preflight set cannot trigger generation.
-                        if (!cacheHit && !effectiveNoCache && acceptedNames.length > 0) {
-                          cachedNames = await checkGenerateCacheComponents(sid, state.tokensPath, true);
-                          cacheHit = acceptedNames.every((name) => cachedNames.has(name));
-                        }
-                        finishWizardTimer('generation-cache-set-comparison', comparisonStartedAt, {
-                          status: 'complete',
-                          cacheHit,
-                          cachedCount: cachedNames.size,
-                          acceptedCount: acceptedNames.length,
-                        });
-                        if (cacheHit) {
-                          void finishCachedGeneration(sid, acceptedCount);
-                        } else {
-                          const acceptedNameSet = new Set(acceptedNames);
-                          const restoredCachedNames = [...cachedNames].filter((name) => acceptedNameSet.has(name));
-                          update({
-                            step: 'generating',
-                            generateProgress: null,
-                            acceptedCount,
-                          });
-                          void runGenerate(sid, state.tokensPath, acceptedCount, false, restoredCachedNames);
-                        }
-                      } else {
-                        finishSelectionToReviewTimer('error');
-                      }
-                      return;
-                    }
-                    void runSaveAndPush();
-                  },
-                  onAdvanceToPushFlow: (count) => {
-                    scopeGateCompletedRef.current = true;
-                    update({ acceptedCount: count, autoRejectedCount: 0 });
-                    advanceToPushFlow(count);
-                  },
-                });
-              })();
-            }}
-            onQuit={() => process.exit(0)}
-          />
-        );
-      }
 
       case 'generating': {
         const p = state.generateProgress;
