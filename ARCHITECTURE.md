@@ -447,7 +447,7 @@ extracting (selection agent runs here)
         → previewing → preview-gate → pushing → done
 ```
 
-The Welcome, Token input, Path validation and Credentials screens live in the new CLI (`packages/experience-design-system-cli/src/tui/import/steps/`), which validates and saves the credentials before it spawns the legacy wizard. The wizard starts straight at `extracting` and receives the project path and token file from the new CLI; choosing skip on the Credentials screen sets `EDS_IMPORT_SKIP_CREDENTIALS=1`, which saves files only. Choosing skip on `credentials` saves files only: the preview is bypassed and push is refused.
+The Welcome, Token input, Path validation and Credentials screens live in the new CLI (`packages/experience-design-system-cli/src/tui/import/steps/`), which validates and saves the credentials before it spawns the legacy wizard. The new CLI also runs extraction, shows the scope gate and starts the wizard with what it did in one `EDS_IMPORT_HANDOFF` variable (see `@contentful/experience-design-system-types/handoff`); choosing skip on the Credentials screen sets `credentialsSkipped` in it, which saves files only. Choosing skip on `credentials` saves files only: the preview is bypassed and push is refused.
 
 A single human review gate (`scope-gate`) precedes generation. The final-review step edits names, `$description`, `$default`, `$allowedComponents` and `$values` inline with rationale and source panels, and re-runs the live preview after each save. After final-review the wizard always saves one combined `components.json` CDF, then previews and pushes it unless credentials were skipped.
 
@@ -474,7 +474,7 @@ The wizard and `apply` render Ink (React) component trees in a TTY. `experiences
 | Command           | TUI components                                                                                                                                                                                                                                                                                   |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `apply`           | `ServerPreviewView`, `ServerApplyView`                                                                                                                                                                                                                                                           |
-| `import` (wizard) | `WizardApp` + step components in `src/import/tui/steps/` (`ScopeGateStep`, `GenerateReviewStep`, `WizardPreviewStep`, `PreviewValidationErrorStep`, `PushingStep`, `DoneStep`, `ErrorStep`, `GateStep`, `RunningStep`) |
+| `import` (wizard) | `WizardApp` + step components in `src/import/tui/steps/` (`GenerateReviewStep`, `WizardPreviewStep`, `PreviewValidationErrorStep`, `PushingStep`, `DoneStep`, `ErrorStep`, `GateStep`, `RunningStep`) |
 
 The TUI uses React hooks for state (`useState`, `useReducer`), Ink's `useInput` for keyboard, and a custom `useUndo` hook for the JSON editor.
 

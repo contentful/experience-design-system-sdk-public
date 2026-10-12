@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { HANDOFF_ENV, serializeHandoff, type ImportHandoff } from '@contentful/experience-design-system-types/handoff';
-import { readHandoff, stateFromHandoff } from '../../../src/import/tui/handoff.js';
+import { readHandoff, scopeFromHandoff, stateFromHandoff } from '../../../src/import/tui/handoff.js';
 
 const extraction = {
   sessionId: 'sess-1',
@@ -80,5 +80,30 @@ describe('readHandoff', () => {
     const result = readHandoff({ [HANDOFF_ENV]: '{"credentialsSkipped":"yes"}' });
     expect(result.ok).toBe(false);
     expect(!result.ok && result.error).toMatch(/invalid/);
+  });
+});
+
+describe('scopeFromHandoff', () => {
+  const scope = { accepted: ['Button', 'Card'], rejected: ['Helper'], cachedNames: ['Button'] };
+
+  it('is the decisions and the components the cache already holds', () => {
+    expect(scopeFromHandoff({ ...handoff, scope })).toEqual({
+      decisions: { accepted: ['Button', 'Card'], rejected: ['Helper'] },
+      cachedNames: ['Button'],
+    });
+  });
+
+  it('is nothing before the gate has been confirmed', () => {
+    expect(scopeFromHandoff(handoff)).toBeNull();
+  });
+
+  it('comes with the handoff the wizard reads', () => {
+    const read = readHandoff({ [HANDOFF_ENV]: serializeHandoff({ ...handoff, scope }) });
+    expect(read.ok && read.scope?.decisions.accepted).toEqual(['Button', 'Card']);
+  });
+
+  it('is nothing when the wizard was started without one', () => {
+    const read = readHandoff({ [HANDOFF_ENV]: serializeHandoff(handoff) });
+    expect(read.ok && read.scope).toBeNull();
   });
 });

@@ -10,10 +10,13 @@ import {
   TokenReuseScreen,
   WelcomeScreen,
 } from './src/tui/import/steps/index.js';
-import { ErrorStep } from './src/tui/import/shared/index.js';
+import { ErrorStep, RunningStep } from './src/tui/import/shared/index.js';
 import { resolveAgentChoice, stepNumbers } from './src/tui/import/steps/06-extraction/logic.js';
 import { readSettings } from '@contentful/experience-design-system-types/config';
 import { useExtraction } from './src/tui/import/steps/06-extraction/use-extraction.js';
+import { ScopeGateScreen } from './src/tui/import/steps/07-scope-gate/screen.js';
+import { useScopeGateFlow } from './src/tui/import/steps/07-scope-gate/use-scope-gate-flow.js';
+import type { ExtractionHandoff } from '@contentful/experience-design-system-types/handoff';
 import type { ExtractionInput } from './src/tui/import/steps/06-extraction/types.js';
 import { inspectTokens, type TokenStrategy } from './src/tui/import/steps/05-token-reuse/logic.js';
 import { resolveUserPath } from './src/tui/import/resolve-user-path.js';
@@ -57,6 +60,15 @@ interface ExtractionRun {
   input: ExtractionInput;
 }
 
+// Set once extraction has produced a session; the scope gate runs for it before the legacy wizard starts.
+interface ScopeRun {
+  launch: SpawnV1ImportOptions;
+  credentialsSkipped: boolean;
+  tokenStrategy: TokenStrategy;
+  input: ExtractionInput;
+  extraction: ExtractionHandoff;
+}
+
 interface AppProps {
   importOptions: ImportOptions;
   onLaunchImport?: (options: SpawnV1ImportOptions) => void;
@@ -75,6 +87,21 @@ function App({ importOptions, onLaunchImport, importExitCode }: AppProps): React
   // Set once the token step has an answer; the extraction stage runs for it before the legacy wizard starts.
   const [extractionRun, setExtractionRun] = useState<ExtractionRun>();
   const extraction = useExtraction(extractionRun?.input);
+  const [scopeRun, setScopeRun] = useState<ScopeRun>();
+  const scopeFlow = useScopeGateFlow(
+    scopeRun && {
+      sessionId: scopeRun.extraction.sessionId,
+      cache: {
+        sessionId: scopeRun.extraction.sessionId,
+        tokensPath: scopeRun.extraction.tokensPath,
+        agent: scopeRun.input.agent,
+        ...(scopeRun.input.agentModel ? { agentModel: scopeRun.input.agentModel } : {}),
+        promptOverrides: scopeRun.input.promptOverrides,
+        existingEntitiesPath: scopeRun.extraction.existingEntitiesPath,
+        noCache: scopeRun.input.noCache,
+      },
+    },
+  );
   const [importDefaults, setImportDefaults] = useState<{
     componentDir: string;
     tokenFile: string;
@@ -151,16 +178,28 @@ function App({ importOptions, onLaunchImport, importExitCode }: AppProps): React
     });
   };
 
-  // A finished stage launches the legacy wizard exactly once, with what the stage produced.
+  // A finished extraction opens the scope gate, once, with what the stage produced.
   useEffect(() => {
     if (!extractionRun || extraction?.status !== 'done' || !extraction.result.ok) return;
-    const { launch, credentialsSkipped, tokenStrategy } = extractionRun;
     setExtractionRun(undefined);
+    setScopeRun({ ...extractionRun, extraction: extraction.result.extraction });
+  }, [extraction, extractionRun]);
+
+  // A confirmed scope launches the legacy wizard exactly once, with the extraction and the decisions.
+  useEffect(() => {
+    if (!scopeRun || scopeFlow?.status !== 'confirmed') return;
+    const { launch, credentialsSkipped, tokenStrategy, extraction: produced } = scopeRun;
+    setScopeRun(undefined);
     onLaunchImport?.({
       ...launch,
-      handoff: { credentialsSkipped, tokens: { strategy: tokenStrategy }, extraction: extraction.result.extraction },
+      handoff: {
+        credentialsSkipped,
+        tokens: { strategy: tokenStrategy },
+        extraction: produced,
+        scope: scopeFlow.scope,
+      },
     });
-  }, [extraction, extractionRun]);
+  }, [scopeFlow, scopeRun]);
 
   const goToStart = (): void => setScreen('start');
   const goToSettings = (): void => setScreen('settings');
@@ -171,6 +210,7 @@ function App({ importOptions, onLaunchImport, importExitCode }: AppProps): React
     setScannedFiles(undefined);
     setPendingLaunch(undefined);
     setExtractionRun(undefined);
+    setScopeRun(undefined);
   };
 
   const finishImportResult = (): void => {
@@ -228,6 +268,30 @@ function App({ importOptions, onLaunchImport, importExitCode }: AppProps): React
           );
         }
         return <></>;
+      }
+      if (scopeRun && scopeFlow) {
+        if (scopeFlow.status === 'failed') {
+          return <ErrorStep stepName="scope gate" message={scopeFlow.message} onExit={leaveImport} />;
+        }
+        if (scopeFlow.status === 'deciding') {
+          return (
+            <ScopeGateScreen
+              components={scopeFlow.load.components}
+              onConfirm={scopeFlow.confirm}
+              onQuit={leaveImport}
+            />
+          );
+        }
+        // Confirmed before the cache check finished. It is the step after extraction in the same count.
+        const numbers = stepNumbers({ hasRawTokens: scopeRun.input.rawTokensPath !== '' });
+        return (
+          <RunningStep
+            stepNumber={numbers.stepNumber + 1}
+            totalSteps={numbers.totalSteps}
+            title="Preparing"
+            description="Checking which components are already generated..."
+          />
+        );
       }
       if (pendingLaunch?.cached) {
         return (
