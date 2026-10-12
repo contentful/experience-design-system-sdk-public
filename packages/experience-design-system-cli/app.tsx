@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import React, { useEffect, useState } from 'react';
 import { HomeScreen } from './src/tui/home/home.js';
 import { ImportScreen } from './src/tui/import/PageContainer.js';
@@ -5,8 +6,11 @@ import {
   CredentialsScreen,
   PathValidationScreen,
   TokenInputScreen,
+  TokenReuseScreen,
   WelcomeScreen,
 } from './src/tui/import/steps/index.js';
+import { inspectTokens, type TokenStrategy } from './src/tui/import/steps/05-token-reuse/logic.js';
+import { resolveUserPath } from './src/tui/import/resolve-user-path.js';
 import type { CredentialsResult } from './src/tui/import/steps/04-credentials/screen.js';
 import type { ImportOptions } from './src/commands/import-options.js';
 import type { SpawnV1ImportOptions } from './src/tui/import/spawn-v1-import.js';
@@ -34,6 +38,11 @@ export type Screen =
   | 'settings-debug-mode'
   | 'upgrade';
 
+interface PendingLaunch {
+  launch: SpawnV1ImportOptions;
+  cached?: { tokensPath: string; sourceChanged: boolean };
+}
+
 interface AppProps {
   importOptions: ImportOptions;
   onLaunchImport?: (options: SpawnV1ImportOptions) => void;
@@ -47,6 +56,8 @@ function App({ importOptions, onLaunchImport, importExitCode }: AppProps): React
   const [projectPath, setProjectPath] = useState<string>();
   const [tokensPath, setTokensPath] = useState<string>();
   const [scannedFiles, setScannedFiles] = useState<string[]>();
+  // Set once credentials are done while the token catalog is checked; shown as the token reuse screen when it needs a choice.
+  const [pendingLaunch, setPendingLaunch] = useState<PendingLaunch>();
   const [importDefaults, setImportDefaults] = useState<{
     componentDir: string;
     tokenFile: string;
@@ -76,7 +87,29 @@ function App({ importOptions, onLaunchImport, importExitCode }: AppProps): React
     filePaths: string[],
   ): Promise<void> => {
     if (!result.skipped) await writeCredentials({ ...result.credentials });
-    onLaunchImport?.({ projectPath, tokens, filePaths, skipCredentials: result.skipped, ...importOptions });
+    const launch: SpawnV1ImportOptions = {
+      projectPath,
+      tokens,
+      filePaths,
+      skipCredentials: result.skipped,
+      ...importOptions,
+    };
+    // legacy keeps its output next to the project, so the existing token catalog is looked up there
+    const state = await inspectTokens({
+      rawTokensPath: tokens,
+      outDir: join(resolveUserPath(projectPath), '.contentful'),
+      cache: importOptions.cache,
+    });
+    if (state.kind === 'cached') {
+      setPendingLaunch({ launch, cached: { tokensPath: state.tokensPath, sourceChanged: state.sourceChanged } });
+      return;
+    }
+    onLaunchImport?.({ ...launch, tokenStrategy: 'generate' });
+  };
+
+  const chooseTokenStrategy = (pending: PendingLaunch, tokenStrategy: TokenStrategy): void => {
+    setPendingLaunch(undefined);
+    onLaunchImport?.({ ...pending.launch, tokenStrategy });
   };
 
   const goToStart = (): void => setScreen('start');
@@ -86,6 +119,7 @@ function App({ importOptions, onLaunchImport, importExitCode }: AppProps): React
     setProjectPath(undefined);
     setTokensPath(undefined);
     setScannedFiles(undefined);
+    setPendingLaunch(undefined);
   };
 
   const finishImportResult = (): void => {
@@ -124,6 +158,17 @@ function App({ importOptions, onLaunchImport, importExitCode }: AppProps): React
             onConfirm={({ filePaths }) => setScannedFiles(filePaths)}
             onChangePath={resetImport}
             onBack={() => setTokensPath(undefined)}
+          />
+        );
+      }
+      if (pendingLaunch?.cached) {
+        return (
+          <TokenReuseScreen
+            tokensPath={pendingLaunch.cached.tokensPath}
+            sourceChanged={pendingLaunch.cached.sourceChanged}
+            onReuse={() => chooseTokenStrategy(pendingLaunch, 'reuse')}
+            onRegenerate={() => chooseTokenStrategy(pendingLaunch, 'regenerate')}
+            onQuit={leaveImport}
           />
         );
       }

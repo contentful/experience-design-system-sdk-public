@@ -124,6 +124,8 @@ describe('WizardApp reused token catalog', () => {
   let previousDbPath: string | undefined;
 
   afterEach(async () => {
+    delete process.env.EDS_IMPORT_TOKENS;
+    delete process.env.EDS_IMPORT_SKIP_CREDENTIALS;
     if (previousDbPath === undefined) delete process.env.EDS_PIPELINE_DB_PATH;
     else process.env.EDS_PIPELINE_DB_PATH = previousDbPath;
     await rm(dir, { recursive: true, force: true });
@@ -155,20 +157,15 @@ describe('WizardApp reused token catalog', () => {
     });
     seedGeneratedSession(process.env.EDS_PIPELINE_DB_PATH);
 
+    // v2 asked about the existing tokens.json and the user chose to reuse it; it skipped the credentials push.
+    process.env.EDS_IMPORT_TOKENS = 'reuse';
+    process.env.EDS_IMPORT_SKIP_CREDENTIALS = '1';
+
     const { WizardApp } = await import('../../../src/import/tui/WizardApp.js');
     const app = render(
       <WizardApp initialProjectPath={projectPath} initialRawTokensPath={join(dir, 'raw-tokens.json')} />,
     );
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    // Frame 1: token-reuse-gate — press Enter to reuse the pre-generated tokens.
-    app.stdin.write('\r');
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    // Frame 2: path-validation — press Enter to confirm the project path.
-    app.stdin.write('\r');
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    // Frame 3: set-credentials — press 's' to skip (test doesn't exercise space context).
-    app.stdin.write('s');
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await new Promise((resolve) => setTimeout(resolve, 400));
 
     expect(app.lastFrame()).toContain('FINAL_REVIEW');
     expect(mapInvocations).toHaveLength(1);
