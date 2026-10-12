@@ -20,10 +20,10 @@ export function createProgram(): Command {
     .description('Contentful Experiences design system import CLI')
     .version(pkg.version, '--version', 'Print version number');
 
-  registerImportCommand(program, async () => {
+  registerImportCommand(program, async (options) => {
     const { render } = await import('ink');
     const { runApp } = await import('./app.js');
-    await runApp(render);
+    await runApp(render, options);
   });
   registerForwardedCommands(program);
 
