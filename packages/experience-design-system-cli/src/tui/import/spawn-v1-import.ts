@@ -18,8 +18,9 @@ interface PipelineResult {
 }
 
 export interface SpawnV1ImportOptions {
-  project?: string;
+  projectPath?: string;
   tokens?: string;
+  filePaths?: string[];
   skipCredentials?: boolean;
   onProgress?: (line: string) => void;
 }
@@ -34,8 +35,8 @@ export interface SpawnV1ImportResult {
 function buildArgs(options: SpawnV1ImportOptions): string[] {
   const args = ['import'];
 
-  if (options.project) {
-    args.push('--project', options.project);
+  if (options.projectPath) {
+    args.push('--project', options.projectPath);
   }
 
   if (options.tokens) {
