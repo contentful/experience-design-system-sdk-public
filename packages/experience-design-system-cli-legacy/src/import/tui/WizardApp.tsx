@@ -3,7 +3,7 @@ import { PALETTE } from '../../analyze/select/tui/theme.js';
 import { Box, Text } from 'ink';
 import { join, resolve } from 'node:path';
 import { appendFileSync, writeFileSync } from 'node:fs';
-import { access, stat, writeFile } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { execFile, spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
@@ -83,7 +83,6 @@ import { useScreenTransitionClear } from '../../tui/render-with-goodbye.js';
 const SAVE_CONFIRMATION_DELAY_MS = 1000;
 
 type WizardStep =
-  | 'token-reuse-gate'
   | 'checking-claude-auth'
   | 'credential-test-gate'
   | 'validating-credentials'
@@ -119,7 +118,6 @@ type WizardState = {
   outDir: string;
   rawTokensPath: string;
   tokensPath: string;
-  tokenSourceChanged: boolean | null;
   skipComponents: boolean;
   tokenSessionId: string | null;
   tokenGenerationStatus: 'idle' | 'running' | 'complete' | 'failed';
@@ -437,7 +435,6 @@ export function WizardApp({
     outDir: initialOutDir,
     rawTokensPath: rawTokensEntryReady ? initialRawTokensPath! : '',
     tokensPath: '',
-    tokenSourceChanged: null,
     skipComponents: false,
     tokenSessionId: null,
     tokenGenerationStatus: 'idle',
@@ -1849,50 +1846,35 @@ export function WizardApp({
     }
   };
 
-  const tokenReuseChecked = useRef(false);
-  const [tokenReuseSettled, setTokenReuseSettled] = useState(!state.rawTokensPath);
+  // v2 asks about the existing tokens.json itself and passes its answer in EDS_IMPORT_TOKENS:
+  //   reuse       keep tokens.json as it is
+  //   regenerate  build it again with the cache off
+  //   generate    nothing was asked; build it the normal way
+  const tokenStrategyApplied = useRef(false);
   useEffect(() => {
-    if (state.rawTokensPath) {
-      if (tokenReuseChecked.current) return; // already checked or user chose regenerate
-      tokenReuseChecked.current = true;
-      const existingTokensPath = join(state.outDir, 'tokens.json');
-      if (effectiveNoCache) {
-        tokenGenerationPromiseRef.current = runAgentAuthCheck('credentials').then((ok) =>
-          ok ? runGenerateTokens(state.rawTokensPath, state.outDir) : false,
-        );
-        setTokenReuseSettled(true);
-        return;
-      }
-      (async () => {
-        try {
-          await access(existingTokensPath);
-          const [tokensStat, sourceStat] = await Promise.all([
-            stat(existingTokensPath),
-            stat(state.rawTokensPath).catch(() => null),
-          ]);
-          const sourceChanged = sourceStat ? sourceStat.mtimeMs > tokensStat.mtimeMs : false;
-          update({
-            step: 'token-reuse-gate',
-            tokensPath: existingTokensPath,
-            tokenSourceChanged: sourceChanged,
-          });
-        } catch {
-          tokenGenerationPromiseRef.current = runAgentAuthCheck('credentials').then((ok) =>
-            ok ? runGenerateTokens(state.rawTokensPath, state.outDir) : false,
-          );
-          setTokenReuseSettled(true);
-        }
-      })();
+    if (!state.rawTokensPath || tokenStrategyApplied.current) return;
+    tokenStrategyApplied.current = true;
+    const strategy = process.env['EDS_IMPORT_TOKENS'];
+    if (strategy === 'reuse') {
+      update({
+        tokensPath: join(state.outDir, 'tokens.json'),
+        tokenSessionId: null,
+        tokenGenerationStatus: 'complete',
+      });
+      return;
     }
+    tokenGenerationPromiseRef.current = runAgentAuthCheck('credentials').then((ok) =>
+      ok ? runGenerateTokens(state.rawTokensPath, state.outDir, strategy === 'regenerate') : false,
+    );
   }, [state.rawTokensPath]);
 
   const credentialsHandedOff = useRef(false);
   useEffect(() => {
-    if (state.step !== 'credentials' || !tokenReuseSettled || credentialsHandedOff.current) return;
+    if (state.step !== 'credentials' || credentialsHandedOff.current) return;
     credentialsHandedOff.current = true;
     if (process.env['EDS_IMPORT_SKIP_CREDENTIALS'] === '1') update({ credentialsSkipped: true });
     void advanceAfterCredentialsValidated();
-  }, [state.step, tokenReuseSettled]);
+  }, [state.step]);
 
   const noQuitSteps: WizardStep[] = [
     'checking-claude-auth',
@@ -1913,41 +1895,6 @@ export function WizardApp({
 
   const stepContent = (() => {
     switch (state.step) {
-      case 'token-reuse-gate':
-        return (
-          <GateStep
-            successMessage="Existing tokens.json found"
-            summary={
-              state.tokenSourceChanged
-                ? `Source file has been modified since tokens were last generated.\n\nTokens Path: ${state.tokensPath}`
-                : `Source file has not changed since tokens were last generated.\n\nTokens Path: ${state.tokensPath}`
-            }
-            context={
-              state.tokenSourceChanged ? 'The source tokens file changed — regenerating is recommended.' : undefined
-            }
-            continueLabel="Reuse existing tokens"
-            skipLabel="Regenerate tokens"
-            showSkip={true}
-            onContinue={() => {
-              setTokenReuseSettled(true);
-              update({
-                step: 'credentials',
-                tokenSessionId: null,
-                tokenGenerationStatus: 'complete',
-              });
-            }}
-            onSkip={async () => {
-              update({ tokenSourceChanged: null });
-              setTokenReuseSettled(true);
-              update({ step: 'credentials' });
-              if (await runAgentAuthCheck('credentials')) {
-                tokenGenerationPromiseRef.current = runGenerateTokens(state.rawTokensPath, state.outDir, true);
-              }
-            }}
-            onQuit={() => process.exit(0)}
-          />
-        );
-
       case 'checking-claude-auth':
         return (
           <RunningStep
