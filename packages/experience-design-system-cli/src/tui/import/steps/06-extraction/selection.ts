@@ -1,55 +1,73 @@
+import { resolve } from 'node:path';
 import {
   buildPrompt,
   createLocalCliAgentInvoker,
   parseSelectToolCallLines,
+  resolveSkillPath,
   type AgentName,
 } from '@contentful/experience-design-system-generation';
-import { getDebugLogger } from '../../lib/debug-logger.js';
-import { invokeAgentWithOutput } from '../../lib/agent-output.js';
 import {
   computeComponentInputHash,
   getCliCacheVersion,
+  hashContent,
+  hashFile,
+  invokeAgentWithOutput,
   loadRawComponents,
   lookupSelectCache,
   openPipelineDb,
   storeSelectCache,
-} from '../../session/db.js';
-import { hashPromptForSkill } from '../../session/cache-keys.js';
+} from '@contentful/experience-design-system-backend-pipeline';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 5 * 60 * 1000);
 
-export async function runSelectionAgent(options: {
+type Decision = { decision: 'accepted' | 'rejected'; reason: string | null };
+
+/**
+ * The key the select cache stores decisions under: the prompt text, the agent and the model, so a cached answer is never
+ * reused for a run made with a different prompt, agent or model. This is the legacy `hashPromptForSkill('select', …)`.
+ * The skill file is found through the generation package, which ships it; backend-pipeline's own copy of that function
+ * looks for a skills/ directory inside backend-pipeline, which does not exist, and throws.
+ */
+async function hashSelectPrompt(
+  options: Pick<SelectionOptions, 'agent' | 'model' | 'promptPath' | 'promptText'>,
+): Promise<string> {
+  const promptHash = options.promptText
+    ? hashContent(options.promptText)
+    : options.promptPath
+      ? await hashFile(resolve(options.promptPath))
+      : await hashFile(resolveSkillPath('select'));
+  return hashContent(`${promptHash}|${options.agent}|${options.model ?? ''}`);
+}
+
+export interface SelectionOptions {
   sessionId: string;
   agent: AgentName;
   model?: string;
   promptText?: string;
   promptPath?: string;
-  noCache?: boolean;
-}): Promise<void> {
+  noCache: boolean;
+}
+
+/**
+ * The selection agent run, as the legacy wizard ran it.
+ *
+ * Reads the extracted components from the session database and skips the ones already decided (cache keyed by
+ * component hash, prompt hash and CLI version). It asks the agent about the rest, then writes accepted or rejected to
+ * raw_components and stores the new decisions in the cache in one transaction. Throws on a timeout, a non-zero exit,
+ * or a database error.
+ */
+export async function runSelection(options: SelectionOptions): Promise<void> {
   const db = openPipelineDb();
-  let components: Awaited<ReturnType<typeof loadRawComponents>>;
-  const cachedDecisions = new Map<string, { decision: 'accepted' | 'rejected'; reason: string | null }>();
+  let components: ReturnType<typeof loadRawComponents>;
+  const cachedDecisions = new Map<string, Decision>();
   const cliVersion = await getCliCacheVersion();
-  const promptHash = await hashPromptForSkill(
-    'select',
-    options.agent,
-    options.model,
-    options.promptPath,
-    [],
-    options.promptText,
-  );
+  const promptHash = await hashSelectPrompt(options);
   try {
     components = loadRawComponents(db, options.sessionId);
     if (!options.noCache) {
       for (const component of components) {
-        const componentHash = computeComponentInputHash(component);
-        const cached = lookupSelectCache(db, componentHash, promptHash, cliVersion);
-        if (cached) {
-          cachedDecisions.set(component.name, {
-            decision: cached.decision,
-            reason: cached.reason,
-          });
-        }
+        const cached = lookupSelectCache(db, computeComponentInputHash(component), promptHash, cliVersion);
+        if (cached) cachedDecisions.set(component.name, { decision: cached.decision, reason: cached.reason });
       }
     }
   } finally {
@@ -62,9 +80,7 @@ export async function runSelectionAgent(options: {
   let calls: Array<{ name: string; tool: 'select_component' | 'reject_component'; reason?: string }> = [];
 
   if (componentsToRun.length > 0) {
-    const invoker = createLocalCliAgentInvoker({
-      onDebugEvent: (name, payload) => getDebugLogger().event('agent', name, payload),
-    });
+    const invoker = createLocalCliAgentInvoker({});
 
     const prompt = await buildPrompt({
       skill: 'select',

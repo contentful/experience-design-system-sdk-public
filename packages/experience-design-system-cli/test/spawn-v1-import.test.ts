@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { HANDOFF_ENV, parseHandoff } from '@contentful/experience-design-system-types/handoff';
 import { buildArgs, buildEnv } from '../src/tui/import/spawn-v1-import.js';
 
 describe('buildArgs', () => {
@@ -45,23 +46,33 @@ describe('buildArgs', () => {
 });
 
 describe('buildEnv', () => {
-  it('adds nothing for a plain launch', () => {
+  const handoff = {
+    credentialsSkipped: false,
+    tokens: { strategy: 'generate' as const },
+    extraction: {
+      sessionId: 'sess-1',
+      outDir: '/p/.contentful',
+      tokensPath: '/p/.contentful/tokens.json',
+      tokenSessionId: 'tok-1',
+      tokenCount: 12,
+      existingEntitiesPath: '/p/.contentful/.existing-entities.json',
+      existingEntitiesStatus: 'complete' as const,
+      compositionPhase: 'done' as const,
+    },
+  };
+
+  it('adds nothing for a launch with no handoff', () => {
     expect(buildEnv({}, { PATH: '/bin' })).toEqual({ PATH: '/bin' });
   });
 
-  it('marks skipped credentials', () => {
-    expect(buildEnv({ skipCredentials: true }, {})).toEqual({ EDS_IMPORT_SKIP_CREDENTIALS: '1' });
+  it('passes everything the CLI settled to legacy in one variable that reads back unchanged', () => {
+    const env = buildEnv({ handoff }, { HOME: '/h' });
+    expect(env.HOME).toBe('/h');
+    expect(parseHandoff(env[HANDOFF_ENV])).toEqual({ ok: true, handoff });
   });
 
-  it.each(['reuse', 'regenerate', 'generate'] as const)('passes the %s token strategy to legacy', (tokenStrategy) => {
-    expect(buildEnv({ tokenStrategy }, {})).toEqual({ EDS_IMPORT_TOKENS: tokenStrategy });
-  });
-
-  it('keeps the rest of the environment', () => {
-    expect(buildEnv({ skipCredentials: true, tokenStrategy: 'reuse' }, { HOME: '/h' })).toEqual({
-      HOME: '/h',
-      EDS_IMPORT_SKIP_CREDENTIALS: '1',
-      EDS_IMPORT_TOKENS: 'reuse',
-    });
+  it('no longer sets the separate skip-credentials and token variables', () => {
+    const env = buildEnv({ handoff: { ...handoff, credentialsSkipped: true } }, {});
+    expect(Object.keys(env)).toEqual([HANDOFF_ENV]);
   });
 });

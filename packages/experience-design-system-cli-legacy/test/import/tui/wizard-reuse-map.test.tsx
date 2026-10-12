@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { HANDOFF_ENV, serializeHandoff } from '@contentful/experience-design-system-types/handoff';
 import { render } from 'ink-testing-library';
 import { Text } from 'ink';
 import { getOrCreateSession, openPipelineDb, storeCDFComponents, storeRawComponents } from '../../../src/session/db.js';
@@ -124,8 +125,7 @@ describe('WizardApp reused token catalog', () => {
   let previousDbPath: string | undefined;
 
   afterEach(async () => {
-    delete process.env.EDS_IMPORT_TOKENS;
-    delete process.env.EDS_IMPORT_SKIP_CREDENTIALS;
+    delete process.env[HANDOFF_ENV];
     if (previousDbPath === undefined) delete process.env.EDS_PIPELINE_DB_PATH;
     else process.env.EDS_PIPELINE_DB_PATH = previousDbPath;
     await rm(dir, { recursive: true, force: true });
@@ -157,9 +157,22 @@ describe('WizardApp reused token catalog', () => {
     });
     seedGeneratedSession(process.env.EDS_PIPELINE_DB_PATH);
 
-    // v2 asked about the existing tokens.json and the user chose to reuse it; it skipped the credentials push.
-    process.env.EDS_IMPORT_TOKENS = 'reuse';
-    process.env.EDS_IMPORT_SKIP_CREDENTIALS = '1';
+    // The CLI asked about the existing tokens.json, the user chose to reuse it, and the CLI then ran extraction. The
+    // credentials push was skipped.
+    process.env[HANDOFF_ENV] = serializeHandoff({
+      credentialsSkipped: true,
+      tokens: { strategy: 'reuse' },
+      extraction: {
+        sessionId: 'extract-session',
+        outDir,
+        tokensPath: join(outDir, 'tokens.json'),
+        tokenSessionId: null,
+        tokenCount: 1,
+        existingEntitiesPath: null,
+        existingEntitiesStatus: 'idle',
+        compositionPhase: 'done',
+      },
+    });
 
     const { WizardApp } = await import('../../../src/import/tui/WizardApp.js');
     const app = render(

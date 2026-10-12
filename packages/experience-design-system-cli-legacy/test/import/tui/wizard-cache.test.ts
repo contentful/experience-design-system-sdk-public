@@ -3,7 +3,6 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
-  buildGenerateTokensArgs,
   buildGenerateComponentsArgs,
   buildSavedCDF,
   buildMapTokensArgs,
@@ -34,24 +33,7 @@ describe('wizard combined CDF output', () => {
   });
 });
 
-describe('wizard generate-tokens cache', () => {
-  it('defaults to cache-on (no --no-cache flag)', () => {
-    const args = buildGenerateTokensArgs({
-      rawTokensPath: '/tmp/raw-tokens.scss',
-      agent: 'claude',
-    });
-    expect(args).not.toContain('--no-cache');
-  });
-
-  it('passes --no-cache when noCache is true', () => {
-    const args = buildGenerateTokensArgs({
-      rawTokensPath: '/tmp/raw-tokens.scss',
-      agent: 'claude',
-      noCache: true,
-    });
-    expect(args).toContain('--no-cache');
-  });
-
+describe('wizard generate-components cache', () => {
   it('passes precomputed cached component names to generation', () => {
     const args = buildGenerateComponentsArgs({
       sessionId: 'abc-123',
@@ -62,18 +44,6 @@ describe('wizard generate-tokens cache', () => {
     expect(args).toContain('["Button","Card"]');
   });
 
-  it('forwards prompt overrides to token generation', () => {
-    const args = buildGenerateTokensArgs({
-      rawTokensPath: '/tmp/raw-tokens.scss',
-      agent: 'claude',
-      promptOverrides: ['tokens=./tokens.md'],
-    });
-    expect(args).toContain('--prompt');
-    expect(args).toContain('tokens=./tokens.md');
-  });
-});
-
-describe('wizard generate-components cache', () => {
   it('defaults to cache-on (no --no-cache flag)', () => {
     const args = buildGenerateComponentsArgs({
       sessionId: 'abc-123',
