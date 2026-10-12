@@ -25,7 +25,8 @@
   "files": [
     "bin/",
     "dist/",
-    "legacy/"
+    "legacy/",
+    "skills/"
   ],
   "scripts": {
     "build": "nx build experience-design-system-cli",
