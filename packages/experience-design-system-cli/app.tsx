@@ -8,6 +8,7 @@ import {
   WelcomeScreen,
 } from './src/tui/import/steps/index.js';
 import type { CredentialsResult } from './src/tui/import/steps/04-credentials/screen.js';
+import type { ImportOptions } from './src/commands/import-options.js';
 import type { SpawnV1ImportOptions } from './src/tui/import/spawn-v1-import.js';
 import { spawnV1Import } from './src/tui/import/spawn-v1-import.js';
 import { startReadingTerminal, stopReadingTerminal } from './src/tui/import/terminal-input.js';
@@ -34,11 +35,12 @@ export type Screen =
   | 'upgrade';
 
 interface AppProps {
+  importOptions: ImportOptions;
   onLaunchImport?: (options: SpawnV1ImportOptions) => void;
   importExitCode?: number;
 }
 
-function App({ onLaunchImport, importExitCode }: AppProps): React.ReactElement {
+function App({ importOptions, onLaunchImport, importExitCode }: AppProps): React.ReactElement {
   const returnedFromImport = importExitCode !== undefined;
   const [screen, setScreen] = useState<Screen>(returnedFromImport ? 'import' : 'start');
   const [showImportResult, setShowImportResult] = useState(returnedFromImport);
@@ -74,7 +76,7 @@ function App({ onLaunchImport, importExitCode }: AppProps): React.ReactElement {
     filePaths: string[],
   ): Promise<void> => {
     if (!result.skipped) await writeCredentials({ ...result.credentials });
-    onLaunchImport?.({ projectPath, tokens, filePaths, skipCredentials: result.skipped });
+    onLaunchImport?.({ projectPath, tokens, filePaths, skipCredentials: result.skipped, ...importOptions });
   };
 
   const goToStart = (): void => setScreen('start');
@@ -161,12 +163,14 @@ type RenderApp = (element: React.ReactElement) => AppInstance;
 
 async function renderUntilImportRequestedOrExit(
   renderApp: RenderApp,
+  importOptions: ImportOptions,
   importExitCode: number | undefined,
 ): Promise<SpawnV1ImportOptions | undefined> {
   let requestedImport: SpawnV1ImportOptions | undefined;
 
   const instance: AppInstance = renderApp(
     <App
+      importOptions={importOptions}
       importExitCode={importExitCode}
       onLaunchImport={(options) => {
         requestedImport = options;
@@ -186,13 +190,13 @@ async function renderUntilImportRequestedOrExit(
   return requestedImport;
 }
 
-export async function runApp(renderApp: RenderApp): Promise<void> {
+export async function runApp(renderApp: RenderApp, importOptions: ImportOptions): Promise<void> {
   let importExitCode: number | undefined;
 
-  let requestedImport = await renderUntilImportRequestedOrExit(renderApp, importExitCode);
+  let requestedImport = await renderUntilImportRequestedOrExit(renderApp, importOptions, importExitCode);
   while (requestedImport !== undefined) {
     importExitCode = (await spawnV1Import(requestedImport)).exitCode;
     startReadingTerminal();
-    requestedImport = await renderUntilImportRequestedOrExit(renderApp, importExitCode);
+    requestedImport = await renderUntilImportRequestedOrExit(renderApp, importOptions, importExitCode);
   }
 }

@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { findLegacyCliPath } from '../../legacy/legacy-cli-path.js';
+import { importOptionArgs, type ImportOptions } from '../../commands/import-options.js';
 
 interface StepResult {
   step: string;
@@ -17,7 +18,7 @@ interface PipelineResult {
   cycleError?: { report: string[] };
 }
 
-export interface SpawnV1ImportOptions {
+export interface SpawnV1ImportOptions extends Partial<ImportOptions> {
   projectPath?: string;
   tokens?: string;
   filePaths?: string[];
@@ -32,7 +33,7 @@ export interface SpawnV1ImportResult {
   stderr: string;
 }
 
-function buildArgs(options: SpawnV1ImportOptions): string[] {
+export function buildArgs(options: SpawnV1ImportOptions): string[] {
   const args = ['import'];
 
   if (options.projectPath) {
@@ -42,6 +43,8 @@ function buildArgs(options: SpawnV1ImportOptions): string[] {
   if (options.tokens) {
     args.push('--tokens', options.tokens);
   }
+
+  args.push(...importOptionArgs({ agent: options.agent, prompt: options.prompt ?? [], cache: options.cache ?? true }));
 
   return args;
 }
