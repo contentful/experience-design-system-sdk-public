@@ -41,34 +41,71 @@ describe('ImportHandoff', () => {
     expect(parseHandoff(serializeHandoff(nullable))).toEqual({ ok: true, handoff: nullable });
   });
 
-  describe('the scope the user confirmed', () => {
-    const scope = { accepted: ['Button', 'Card'], rejected: ['Helper'], cachedNames: ['Button'] };
-    const confirmed: ImportHandoff = { ...handoff, scope };
+  describe('what generation produced', () => {
+    const review = {
+      route: 'review',
+      sessionId: 'gen-1',
+      acceptedCount: 5,
+      generatedCount: 4,
+      mapTokensEligible: true,
+    };
+    const push = { route: 'push', acceptedCount: 0 };
+    const withGeneration = (generation: unknown): string => JSON.stringify({ ...handoff, generation });
 
-    it('reads back exactly what was written', () => {
-      expect(parseHandoff(serializeHandoff(confirmed))).toEqual({ ok: true, handoff: confirmed });
+    it('reads back a generated session exactly as written', () => {
+      const generated = { ...handoff, generation: review } as ImportHandoff;
+      expect(parseHandoff(serializeHandoff(generated))).toEqual({ ok: true, handoff: generated });
     });
 
-    it('is absent before the gate has been confirmed', () => {
+    it('reads back "nothing accepted" exactly as written', () => {
+      const nothing = { ...handoff, generation: push } as ImportHandoff;
+      expect(parseHandoff(serializeHandoff(nothing))).toEqual({ ok: true, handoff: nothing });
+    });
+
+    it('is absent before generation has run', () => {
       const parsed = parseHandoff(serializeHandoff(handoff));
-      expect(parsed.ok && parsed.handoff.scope).toBeUndefined();
+      expect(parsed.ok && parsed.handoff.generation).toBeUndefined();
     });
 
-    it('allows nothing accepted, rejected or cached', () => {
-      const empty: ImportHandoff = { ...handoff, scope: { accepted: [], rejected: [], cachedNames: [] } };
-      expect(parseHandoff(serializeHandoff(empty))).toEqual({ ok: true, handoff: empty });
-    });
-
-    it.each(['accepted', 'rejected', 'cachedNames'] as const)('rejects a scope missing %s', (field) => {
-      const { [field]: _removed, ...partial } = scope;
-      const result = parseHandoff(JSON.stringify({ ...handoff, scope: partial }));
+    it('needs a route', () => {
+      const { route: _removed, ...noRoute } = review;
+      const result = parseHandoff(withGeneration(noRoute));
       expect(result.ok).toBe(false);
-      expect(!result.ok && result.error).toContain(`scope.${field}`);
+      expect(!result.ok && result.error).toContain('generation.route');
     });
 
-    it('rejects names that are not strings', () => {
-      const result = parseHandoff(JSON.stringify({ ...handoff, scope: { ...scope, accepted: ['Button', 3] } }));
+    it('rejects a route it does not know', () => {
+      expect(parseHandoff(withGeneration({ ...review, route: 'done' })).ok).toBe(false);
+    });
+
+    it('has a session when it goes to review', () => {
+      const result = parseHandoff(withGeneration({ ...review, sessionId: '' }));
       expect(result.ok).toBe(false);
+      expect(!result.ok && result.error).toContain('generation.sessionId');
+    });
+
+    it.each(['sessionId', 'acceptedCount', 'generatedCount', 'mapTokensEligible'] as const)(
+      'rejects a review missing %s',
+      (field) => {
+        const { [field]: _removed, ...partial } = review;
+        const result = parseHandoff(withGeneration(partial));
+        expect(result.ok).toBe(false);
+        expect(!result.ok && result.error).toContain(`generation.${field}`);
+      },
+    );
+
+    it('rejects counts that are not numbers', () => {
+      expect(parseHandoff(withGeneration({ ...review, acceptedCount: '5' })).ok).toBe(false);
+    });
+
+    it('only goes to push when nothing was accepted', () => {
+      expect(parseHandoff(withGeneration({ route: 'push', acceptedCount: 3 })).ok).toBe(false);
+    });
+
+    it('does not accept a push that claims a generated session', () => {
+      const result = parseHandoff(withGeneration({ ...push, sessionId: 'gen-1' }));
+      expect(result.ok).toBe(true);
+      expect(result.ok && 'sessionId' in (result.handoff.generation ?? {})).toBe(false);
     });
   });
 

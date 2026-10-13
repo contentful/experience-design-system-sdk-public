@@ -18,26 +18,23 @@ export interface HandoffState {
   selectionAgentStatus?: 'complete';
   existingEntitiesStatus?: 'idle' | 'complete' | 'failed';
   existingEntitiesPath?: string | null;
+  acceptedCount?: number;
+  autoRejectedCount?: number;
+  generateSessionId?: string;
+  generatedCount?: number;
+  mapTokensEligible?: boolean;
+  mapTokensStatus?: 'complete';
 }
 
-/** What the user confirmed at the scope gate, which the CLI now shows. The wizard saves it, then generates. */
-export interface HandoffScope {
-  decisions: { accepted: string[]; rejected: string[] };
-  /** Components the cache check (finished and restored before the wizard started) found already generated. */
-  cachedNames: string[];
-}
+/** Where the wizard goes first: the review screen with the generated definitions, or straight to saving and pushing. */
+export type StartRoute = 'review' | 'push';
 
-export function scopeFromHandoff(handoff: ImportHandoff): HandoffScope | null {
-  const { scope } = handoff;
-  if (!scope) return null;
-  return {
-    decisions: { accepted: scope.accepted, rejected: scope.rejected },
-    cachedNames: scope.cachedNames,
-  };
+export function routeFromHandoff(handoff: ImportHandoff): StartRoute | null {
+  return handoff.generation?.route ?? null;
 }
 
 export function stateFromHandoff(handoff: ImportHandoff): HandoffState {
-  const { extraction } = handoff;
+  const { extraction, generation } = handoff;
   return {
     credentialsSkipped: handoff.credentialsSkipped,
     ...(extraction
@@ -54,6 +51,18 @@ export function stateFromHandoff(handoff: ImportHandoff): HandoffState {
           existingEntitiesPath: extraction.existingEntitiesPath,
         }
       : {}),
+    ...(generation?.route === 'review'
+      ? {
+          acceptedCount: generation.acceptedCount,
+          autoRejectedCount: 0,
+          generateSessionId: generation.sessionId,
+          generatedCount: generation.generatedCount,
+          mapTokensEligible: generation.mapTokensEligible,
+          mapTokensStatus: 'complete' as const,
+        }
+      : generation?.route === 'push'
+        ? { acceptedCount: 0, autoRejectedCount: 0 }
+        : {}),
   };
 }
 
@@ -62,7 +71,7 @@ export type StartFromHandoff =
       ok: true;
       handoff: ImportHandoff;
       state: HandoffState;
-      scope: HandoffScope | null;
+      route: StartRoute | null;
     }
   | { ok: false; error: string };
 
@@ -74,6 +83,6 @@ export function readHandoff(env: NodeJS.ProcessEnv = process.env): StartFromHand
     ok: true,
     handoff: parsed.handoff,
     state: stateFromHandoff(parsed.handoff),
-    scope: scopeFromHandoff(parsed.handoff),
+    route: routeFromHandoff(parsed.handoff),
   };
 }

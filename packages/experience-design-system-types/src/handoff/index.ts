@@ -30,17 +30,25 @@ const ExtractionSchema = z.object({
   compositionPhase: z.enum(['done', 'cache-hit']),
 });
 
-const ScopeSchema = z.object({
-  /** The components the user kept at the scope gate. The wizard saves these, then generates them. */
-  accepted: z.array(z.string()),
-  /** Everything else at the gate, which counts as rejected. */
-  rejected: z.array(z.string()),
-  /**
-   * Components the generation cache already holds, found by the check that ran while the gate was open and which has
-   * finished (and restored them) before the wizard starts. Empty when the cache is off or the check failed.
-   */
-  cachedNames: z.array(z.string()),
-});
+const GenerationSchema = z.discriminatedUnion('route', [
+  /** At least one component was accepted: the definitions were generated and the wizard opens the review screen. */
+  z.object({
+    route: z.literal('review'),
+    /** The session the generated definitions are in. The review screen opens it, and saving and pushing read it. */
+    sessionId: NonEmpty,
+    /** How many components the user accepted at the scope gate. */
+    acceptedCount: z.number(),
+    /** How many definitions were generated, which can differ from the accepted count. */
+    generatedCount: z.number(),
+    /**
+     * Whether token mapping was worth running (there were design props that are tokens, and tokens to map them from).
+     * The step count the wizard shows depends on it.
+     */
+    mapTokensEligible: z.boolean(),
+  }),
+  /** Nothing was accepted: nothing is generated and the wizard goes straight to the push flow, as it always did. */
+  z.object({ route: z.literal('push'), acceptedCount: z.literal(0) }),
+]);
 
 const ImportHandoffSchema = z.object({
   /** The user skipped the credentials screen, so nothing is fetched from or pushed to Contentful. */
@@ -48,13 +56,16 @@ const ImportHandoffSchema = z.object({
   tokens: TokensSchema,
   /** Present once the CLI has run the extraction stage; the wizard then starts at the scope gate. */
   extraction: z.optional(ExtractionSchema),
-  /** Present once the user has confirmed the scope gate; the wizard then saves the decisions and starts generating. */
-  scope: z.optional(ScopeSchema),
+  /**
+   * Present once the CLI has shown the scope gate, saved the decisions and generated the definitions; the wizard then
+   * starts at the review screen (or goes straight to pushing when nothing was accepted).
+   */
+  generation: z.optional(GenerationSchema),
 });
 
 export type ImportHandoff = z.infer<typeof ImportHandoffSchema>;
 export type ExtractionHandoff = NonNullable<ImportHandoff['extraction']>;
-export type ScopeHandoff = NonNullable<ImportHandoff['scope']>;
+export type GenerationHandoff = NonNullable<ImportHandoff['generation']>;
 
 export type ParsedHandoff = { ok: true; handoff: ImportHandoff } | { ok: false; error: string };
 

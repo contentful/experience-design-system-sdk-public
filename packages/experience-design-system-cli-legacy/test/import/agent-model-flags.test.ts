@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_AGENT, parseAgentModel, resolveAgent, resolveModel } from '../../src/import/agent-model-resolve.js';
-import { buildGenerateComponentsArgs } from '../../src/import/tui/WizardApp.js';
 
 /**
  * `experiences import --agent <name[:model]>` must override stored credentials
@@ -47,28 +46,5 @@ describe('agent/model resolution chain', () => {
 
   it('returns undefined when neither flag nor stored model is set', () => {
     expect(resolveModel(undefined, undefined)).toBeUndefined();
-  });
-});
-
-describe('wizard subprocess arg builders thread --model through', () => {
-  it('buildGenerateComponentsArgs appends --model when provided', () => {
-    const args = buildGenerateComponentsArgs({
-      sessionId: 's1',
-      agent: 'codex',
-      model: 'gpt-5',
-    });
-    expect(args).toContain('--model');
-    const idx = args.indexOf('--model');
-    expect(args[idx + 1]).toBe('gpt-5');
-  });
-
-  it('buildGenerateComponentsArgs omits --model when not provided', () => {
-    const args = buildGenerateComponentsArgs({ sessionId: 's1', agent: 'claude' });
-    expect(args).not.toContain('--model');
-  });
-
-  it('threads --bedrock through buildGenerateComponentsArgs', () => {
-    expect(buildGenerateComponentsArgs({ sessionId: 's1', agent: 'claude', bedrock: true })).toContain('--bedrock');
-    expect(buildGenerateComponentsArgs({ sessionId: 's1', agent: 'claude' })).not.toContain('--bedrock');
   });
 });
