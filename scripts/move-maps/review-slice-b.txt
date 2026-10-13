@@ -1,0 +1,17 @@
+analyze/select/tui/components/FieldEditor.tsx|components/FieldEditor.tsx
+analyze/select/tui/components/TokenReviewPanel.tsx|components/TokenReviewPanel.tsx
+analyze/select/tui/components/ComponentRationalePanel.tsx|components/ComponentRationalePanel.tsx
+analyze/select/tui/components/RationalePanel.tsx|components/RationalePanel.tsx
+analyze/select/tui/components/RationaleLine.tsx|components/RationaleLine.tsx
+analyze/select/tui/components/JsonPanel.tsx|components/JsonPanel.tsx
+analyze/select/tui/components/SourcePanel.tsx|components/SourcePanel.tsx
+analyze/select/tui/components/FinalizeDialog.tsx|components/FinalizeDialog.tsx
+analyze/select/tui/components/QuitDialog.tsx|components/QuitDialog.tsx
+analyze/select/tui/components/wrap-text.ts|components/wrap-text.ts
+analyze/select/tui/components/removed-components-text.ts|components/removed-components-text.ts
+import/tui/components/ReviewDetailsEditor.tsx|components/ReviewDetailsEditor.tsx
+import/tui/components/ReviewStatus.tsx|components/ReviewStatus.tsx
+import/tui/steps/review-details-panel.tsx|review-details-panel.tsx
+import/tui/steps/review-json-panel.ts|review-json-panel.ts
+analyze/select/tui/components/HighlightedLine.tsx|components/HighlightedLine.tsx
+analyze/select/tui/components/ScrollablePanel.tsx|components/ScrollablePanel.tsx
