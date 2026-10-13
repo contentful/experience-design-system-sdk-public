@@ -2,7 +2,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { buildCompositionInputHash } from '../../../steps/composition/src/helpers/candidates/composition-cache-key.js';
 import { collectManifestDocEdges } from '../../../steps/composition/src/helpers/edges/manifest-doc-evidence.js';
 import { resolveMapping } from '../../../steps/composition/src/helpers/edges/resolve-mapping.js';
-import { lookupCompositionCache, storeCompositionCache } from '../../../persistence/src/session/cache/composition.js';
+import { lookupCompositionCache, storeCompositionCache } from '../../../persistence/src/session/repositories/db.js';
 import { runAgent } from '../../../agents/services/run-agent.js';
 import { resolveCompositionAgentName } from './resolve-composition-agent-name.js';
 import { selectCompositionPromptFiles } from './select-composition-prompt-files.js';
