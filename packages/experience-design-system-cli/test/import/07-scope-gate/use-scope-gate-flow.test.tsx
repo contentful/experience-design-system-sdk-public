@@ -92,50 +92,38 @@ describe('useScopeGateFlow', () => {
     expect(checkCache).toHaveBeenCalledTimes(1);
   });
 
-  it('reports the scope with the cached names once the check has finished', async () => {
-    const { seen } = mount({ input, checkCache: () => Promise.resolve(['Button']) });
+  it('hands on the decisions together with the cache check once the user confirms', async () => {
+    const { seen } = mount({ input, checkCache: () => Promise.resolve(['Button', 'Helper']) });
     await tick();
     deciding(seen.current).confirm({ accepted: ['Button'], rejected: ['Card'] });
     await tick();
-    expect(seen.current).toEqual({
-      status: 'confirmed',
-      scope: { accepted: ['Button'], rejected: ['Card'], cachedNames: ['Button'] },
-    });
+    const flow = seen.current;
+    if (flow?.status !== 'confirmed') throw new Error(`expected confirmed, got ${flow?.status}`);
+    expect(flow.decisions).toEqual({ accepted: ['Button'], rejected: ['Card'] });
+    await expect(flow.cachedNames).resolves.toEqual(['Button', 'Helper']);
   });
 
-  it('does not report the scope while the check is still running, so the wizard cannot start before the cache is restored', async () => {
+  it('confirms straight away, without waiting for the check, since generation does the waiting', async () => {
     const check = deferred<string[]>();
     const { seen } = mount({ input, checkCache: () => check.promise });
     await tick();
     deciding(seen.current).confirm({ accepted: ['Button'], rejected: [] });
     await tick();
-    expect(seen.current?.status).toBe('preparing');
+    expect(seen.current?.status).toBe('confirmed');
 
     check.resolve(['Button']);
-    await tick();
-    expect(seen.current).toEqual({
-      status: 'confirmed',
-      scope: { accepted: ['Button'], rejected: [], cachedNames: ['Button'] },
-    });
+    const flow = seen.current;
+    if (flow?.status !== 'confirmed') throw new Error('expected confirmed');
+    await expect(flow.cachedNames).resolves.toEqual(['Button']);
   });
 
-  it('only reports cached names that were accepted, since the wizard only looks at those and the handoff has a size limit', async () => {
-    const { seen } = mount({ input, checkCache: () => Promise.resolve(['Button', 'Card', 'Helper']) });
+  it('hands over the one check it started, not a second one', async () => {
+    const checkCache = vi.fn().mockResolvedValue([]);
+    const { seen } = mount({ input, checkCache });
     await tick();
-    deciding(seen.current).confirm({ accepted: ['Button', 'Card'], rejected: ['Helper'] });
+    deciding(seen.current).confirm({ accepted: ['Button'], rejected: [] });
     await tick();
-    expect(seen.current).toEqual({
-      status: 'confirmed',
-      scope: { accepted: ['Button', 'Card'], rejected: ['Helper'], cachedNames: ['Button', 'Card'] },
-    });
-  });
-
-  it('reports an empty cache when the check found nothing', async () => {
-    const { seen } = mount({ input, checkCache: () => Promise.resolve([]) });
-    await tick();
-    deciding(seen.current).confirm({ accepted: ['Card'], rejected: ['Button'] });
-    await tick();
-    expect(seen.current).toMatchObject({ status: 'confirmed', scope: { cachedNames: [] } });
+    expect(checkCache).toHaveBeenCalledTimes(1);
   });
 
   it('reports the error and never starts the check when the components could not be loaded', async () => {

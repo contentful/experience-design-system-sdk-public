@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseGenerateStderrChunk } from '../../../src/import/tui/wizard-generate-progress.js';
+import { applyGenerateStderr as parseGenerateStderrChunk } from '../../../src/tui/import/steps/08-generation/logic.js';
 
 type State = { done: number; total: number; current: string } | null;
 

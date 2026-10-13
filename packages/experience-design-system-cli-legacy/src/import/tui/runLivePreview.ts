@@ -42,9 +42,8 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 
 /**
  * Pure async helper used by `useLivePreview` to re-fire `previewImport` after a
- * FieldEditor save in the wizard's final-review step. Mirrors the round-1
- * `runScopeGate` shape: a side-effect-bearing pure orchestrator that owns no
- * React state.
+ * FieldEditor save in the wizard's final-review step. A side-effect-bearing
+ * pure orchestrator that owns no React state.
  *
  * Skips silently (returns `{ response: null }`) when any of `spaceId`,
  * `environmentId`, or `cmaToken` is missing — live preview is an enhancement

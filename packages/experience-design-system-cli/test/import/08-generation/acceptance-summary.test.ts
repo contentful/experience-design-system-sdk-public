@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatAcceptanceSummary } from '../../src/import/tui/WizardApp.js';
+import { formatAcceptanceSummary } from '../../../src/tui/import/steps/08-generation/logic.js';
 
 describe('formatAcceptanceSummary (wizard "Generating definitions" step)', () => {
   it('shows accepted count without exclusion when none were auto-rejected', () => {

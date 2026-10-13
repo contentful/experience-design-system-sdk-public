@@ -10,12 +10,15 @@ import {
   TokenReuseScreen,
   WelcomeScreen,
 } from './src/tui/import/steps/index.js';
-import { ErrorStep, RunningStep } from './src/tui/import/shared/index.js';
+import { ErrorStep } from './src/tui/import/shared/index.js';
 import { resolveAgentChoice, stepNumbers } from './src/tui/import/steps/06-extraction/logic.js';
 import { readSettings } from '@contentful/experience-design-system-types/config';
 import { useExtraction } from './src/tui/import/steps/06-extraction/use-extraction.js';
 import { ScopeGateScreen } from './src/tui/import/steps/07-scope-gate/screen.js';
 import { useScopeGateFlow } from './src/tui/import/steps/07-scope-gate/use-scope-gate-flow.js';
+import { GenerationScreen } from './src/tui/import/steps/08-generation/screen.js';
+import { useGeneration } from './src/tui/import/steps/08-generation/use-generation.js';
+import type { GenerationInput } from './src/tui/import/steps/08-generation/types.js';
 import type { ExtractionHandoff } from '@contentful/experience-design-system-types/handoff';
 import type { ExtractionInput } from './src/tui/import/steps/06-extraction/types.js';
 import { inspectTokens, type TokenStrategy } from './src/tui/import/steps/05-token-reuse/logic.js';
@@ -58,6 +61,8 @@ interface ExtractionRun {
   credentialsSkipped: boolean;
   tokenStrategy: TokenStrategy;
   input: ExtractionInput;
+  /** A custom prompt for `generate components`, saved in the config. Read now, used when generation starts. */
+  generatePromptPath?: string;
 }
 
 // Set once extraction has produced a session; the scope gate runs for it before the legacy wizard starts.
@@ -66,6 +71,7 @@ interface ScopeRun {
   credentialsSkipped: boolean;
   tokenStrategy: TokenStrategy;
   input: ExtractionInput;
+  generatePromptPath?: string;
   extraction: ExtractionHandoff;
 }
 
@@ -102,6 +108,9 @@ function App({ importOptions, onLaunchImport, importExitCode }: AppProps): React
       },
     },
   );
+  // The user's choices are made; generation runs for them before the legacy wizard starts.
+  const [generationInput, setGenerationInput] = useState<GenerationInput>();
+  const generation = useGeneration(generationInput);
   const [importDefaults, setImportDefaults] = useState<{
     componentDir: string;
     tokenFile: string;
@@ -159,8 +168,12 @@ function App({ importOptions, onLaunchImport, importExitCode }: AppProps): React
     tokenStrategy: TokenStrategy,
     credentials: CredentialsResult,
   ): Promise<void> => {
-    const { agent, agentModel } = resolveAgentChoice(launch.agent, await readSettings());
+    const settings = await readSettings();
+    const { agent, agentModel } = resolveAgentChoice(launch.agent, settings);
+    const generatePromptPath =
+      typeof settings.generatePromptPath === 'string' ? settings.generatePromptPath : undefined;
     setExtractionRun({
+      ...(generatePromptPath ? { generatePromptPath } : {}),
       // the wizard gets the same agent, so its later steps use what the stage used
       launch: { ...launch, agent: agentModel ? `${agent}:${agentModel}` : agent },
       credentialsSkipped: credentials.skipped,
@@ -185,21 +198,43 @@ function App({ importOptions, onLaunchImport, importExitCode }: AppProps): React
     setScopeRun({ ...extractionRun, extraction: extraction.result.extraction });
   }, [extraction, extractionRun]);
 
-  // A confirmed scope launches the legacy wizard exactly once, with the extraction and the decisions.
+  // A confirmed scope starts generation, once. The cache check that ran at the gate is handed over so generation can
+  // wait for it before it saves the decisions.
   useEffect(() => {
-    if (!scopeRun || scopeFlow?.status !== 'confirmed') return;
+    if (!scopeRun || scopeFlow?.status !== 'confirmed' || generationInput) return;
+    const { extraction: produced, input, generatePromptPath } = scopeRun;
+    setGenerationInput({
+      sessionId: produced.sessionId,
+      decisions: scopeFlow.decisions,
+      cachedNames: scopeFlow.cachedNames,
+      tokensPath: produced.tokensPath,
+      tokenSessionId: produced.tokenSessionId,
+      existingEntitiesPath: produced.existingEntitiesPath,
+      agent: input.agent,
+      ...(input.agentModel ? { agentModel: input.agentModel } : {}),
+      promptOverrides: input.promptOverrides,
+      noCache: input.noCache,
+      hasTokens: produced.tokensPath !== '',
+      ...(generatePromptPath ? { generatePromptPath } : {}),
+    });
+  }, [scopeFlow, scopeRun, generationInput]);
+
+  // Finished generation launches the legacy wizard exactly once, with everything the CLI did.
+  useEffect(() => {
+    if (!scopeRun || generation?.status !== 'done' || !generation.result.ok) return;
     const { launch, credentialsSkipped, tokenStrategy, extraction: produced } = scopeRun;
     setScopeRun(undefined);
+    setGenerationInput(undefined);
     onLaunchImport?.({
       ...launch,
       handoff: {
         credentialsSkipped,
         tokens: { strategy: tokenStrategy },
         extraction: produced,
-        scope: scopeFlow.scope,
+        generation: generation.result.generation,
       },
     });
-  }, [scopeFlow, scopeRun]);
+  }, [generation, scopeRun]);
 
   const goToStart = (): void => setScreen('start');
   const goToSettings = (): void => setScreen('settings');
@@ -211,6 +246,7 @@ function App({ importOptions, onLaunchImport, importExitCode }: AppProps): React
     setPendingLaunch(undefined);
     setExtractionRun(undefined);
     setScopeRun(undefined);
+    setGenerationInput(undefined);
   };
 
   const finishImportResult = (): void => {
@@ -282,16 +318,30 @@ function App({ importOptions, onLaunchImport, importExitCode }: AppProps): React
             />
           );
         }
-        // Confirmed before the cache check finished. It is the step after extraction in the same count.
-        const numbers = stepNumbers({ hasRawTokens: scopeRun.input.rawTokensPath !== '' });
-        return (
-          <RunningStep
-            stepNumber={numbers.stepNumber + 1}
-            totalSteps={numbers.totalSteps}
-            title="Preparing"
-            description="Checking which components are already generated..."
-          />
-        );
+        if (generation?.status === 'done' && !generation.result.ok) {
+          return (
+            <ErrorStep stepName={generation.result.step} message={generation.result.message} onExit={leaveImport} />
+          );
+        }
+        if (generation?.status === 'running') {
+          // the generating step comes right after extraction; the count grows by one once token mapping is known to run
+          const hasRawTokens = scopeRun.input.rawTokensPath !== '';
+          const counted = stepNumbers({
+            hasRawTokens,
+            mapTokensEligible: generation.progress.mapTokensEligible,
+          });
+          return (
+            <GenerationScreen
+              progress={generation.progress}
+              agent={scopeRun.input.agent}
+              acceptedCount={scopeFlow.decisions.accepted.length}
+              hasTokens={scopeRun.extraction.tokensPath !== ''}
+              stepNumber={hasRawTokens ? 4 : 3}
+              totalSteps={counted.totalSteps}
+            />
+          );
+        }
+        return <></>;
       }
       if (pendingLaunch?.cached) {
         return (

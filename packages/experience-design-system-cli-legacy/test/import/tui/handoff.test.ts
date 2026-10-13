@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { HANDOFF_ENV, serializeHandoff, type ImportHandoff } from '@contentful/experience-design-system-types/handoff';
-import { readHandoff, scopeFromHandoff, stateFromHandoff } from '../../../src/import/tui/handoff.js';
+import { readHandoff, routeFromHandoff, stateFromHandoff } from '../../../src/import/tui/handoff.js';
 
 const extraction = {
   sessionId: 'sess-1',
@@ -83,27 +83,59 @@ describe('readHandoff', () => {
   });
 });
 
-describe('scopeFromHandoff', () => {
-  const scope = { accepted: ['Button', 'Card'], rejected: ['Helper'], cachedNames: ['Button'] };
+describe('what generation left behind', () => {
+  const review = {
+    route: 'review',
+    sessionId: 'gen-1',
+    acceptedCount: 5,
+    generatedCount: 4,
+    mapTokensEligible: true,
+  } as const;
+  const push = { route: 'push', acceptedCount: 0 } as const;
 
-  it('is the decisions and the components the cache already holds', () => {
-    expect(scopeFromHandoff({ ...handoff, scope })).toEqual({
-      decisions: { accepted: ['Button', 'Card'], rejected: ['Helper'] },
-      cachedNames: ['Button'],
+  it('seeds the state the generate stage used to leave for the review screen', () => {
+    expect(stateFromHandoff({ ...handoff, generation: review })).toMatchObject({
+      acceptedCount: 5,
+      autoRejectedCount: 0,
+      generateSessionId: 'gen-1',
+      generatedCount: 4,
+      mapTokensEligible: true,
+      mapTokensStatus: 'complete',
     });
   });
 
-  it('is nothing before the gate has been confirmed', () => {
-    expect(scopeFromHandoff(handoff)).toBeNull();
+  it('seeds the state the scope gate used to leave when nothing was accepted', () => {
+    const state = stateFromHandoff({ ...handoff, generation: push });
+    expect(state).toMatchObject({ acceptedCount: 0, autoRejectedCount: 0 });
+    expect(state.generateSessionId).toBeUndefined();
+  });
+
+  it('seeds nothing about generation before it has run', () => {
+    const state = stateFromHandoff(handoff);
+    expect(state.generateSessionId).toBeUndefined();
+    expect(state.acceptedCount).toBeUndefined();
+  });
+
+  it('starts at the review when definitions were generated', () => {
+    expect(routeFromHandoff({ ...handoff, generation: review })).toBe('review');
+  });
+
+  it('goes straight to pushing when nothing was accepted', () => {
+    expect(routeFromHandoff({ ...handoff, generation: push })).toBe('push');
+  });
+
+  it('has no route before generation has run', () => {
+    expect(routeFromHandoff(handoff)).toBeNull();
   });
 
   it('comes with the handoff the wizard reads', () => {
-    const read = readHandoff({ [HANDOFF_ENV]: serializeHandoff({ ...handoff, scope }) });
-    expect(read.ok && read.scope?.decisions.accepted).toEqual(['Button', 'Card']);
+    const read = readHandoff({ [HANDOFF_ENV]: serializeHandoff({ ...handoff, generation: review }) });
+    expect(read.ok && read.route).toBe('review');
+    expect(read.ok && read.state.generateSessionId).toBe('gen-1');
   });
 
   it('is nothing when the wizard was started without one', () => {
     const read = readHandoff({ [HANDOFF_ENV]: serializeHandoff(handoff) });
-    expect(read.ok && read.scope).toBeNull();
+    expect(read.ok && read.route).toBeNull();
   });
 });

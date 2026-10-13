@@ -6,7 +6,6 @@ import { readExperiencesCredentials } from '../credentials-store.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
 import { buildCompositionForwardingOptions } from './composition-options.js';
 import { getInteractiveTerminalSupport, requireInteractiveTerminal } from '../lib/terminal-capabilities.js';
-import { checkAgentAuth, type AgentAuthStatus, type AgentName } from '@contentful/experience-design-system-generation';
 
 export function registerImportCommand(program: Command): void {
   const cmd = program
@@ -64,19 +63,14 @@ export function registerImportCommand(program: Command): void {
           initialModel?: string;
           bedrock?: boolean;
           initialProjectPath?: string;
-          promptOverrides?: string[];
-          noCache?: boolean;
-          skipMapTokens?: boolean;
           livePreview?: boolean;
           generatePromptPath?: string;
           initialRawTokensPath?: string;
-          initialAgentAuth?: Promise<AgentAuthStatus>;
         };
         const creds = await readExperiencesCredentials();
         const parsedAgentModel = parseAgentModel(opts.agent);
         const resolvedAgent = resolveAgent(parsedAgentModel.agent, creds.agent);
         const resolvedModel = resolveModel(parsedAgentModel.model, creds.agentModel);
-        const initialAgentAuth = checkAgentAuth(resolvedAgent as AgentName);
         const { waitUntilExit } = renderWithGoodbye(
           createElement<WizardProps>(WizardApp, {
             initialSpaceId: creds.spaceId,
@@ -87,12 +81,9 @@ export function registerImportCommand(program: Command): void {
             ...(resolvedModel ? { initialModel: resolvedModel } : {}),
             initialProjectPath: opts.project !== '.' ? normalizePath(opts.project) : undefined,
             ...buildCompositionForwardingOptions(opts),
-            noCache: opts.cache === false,
-            skipMapTokens: false,
             livePreview: true,
             generatePromptPath: creds.generatePromptPath,
             ...(opts.tokens ? { initialRawTokensPath: normalizePath(opts.tokens) } : {}),
-            initialAgentAuth,
           }),
         );
         await waitUntilExit();

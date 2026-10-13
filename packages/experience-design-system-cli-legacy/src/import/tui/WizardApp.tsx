@@ -4,7 +4,6 @@ import { join, resolve } from 'node:path';
 import { appendFileSync, writeFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { execFile } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import { buildRunTeaserLine } from './run-teaser.js';
 import { getDebugLogger } from '../../lib/debug-logger.js';
@@ -35,8 +34,6 @@ import { findSlotCycles } from '../../analyze/cycle-detection.js';
 import { buildComponentGraph } from '../../analyze/slot-graph.js';
 import { formatApiError, formatEdsiError } from '../../lib/error-parser.js';
 import { handlePreview422, applySkipValidationErrors, clearedValidationErrorState } from './wizard-422-helpers.js';
-import { parseGenerateStderrChunk, type GenerateProgressState } from './wizard-generate-progress.js';
-import { spawnGenerateChild } from './spawn-generate.js';
 import { readTokensFromPath, hasBreakingChangesWithImpact, toCDFTokens } from '../../apply/tokens.js';
 import { isEmptyPreview } from '../../apply/preview-utils.js';
 import { buildCDF, validateCDF, validateSlotReferences } from '@contentful/experience-design-system-types';
@@ -50,39 +47,27 @@ import {
   openPipelineDb,
   loadCDFComponents,
   loadDTCGTokens,
-  copyTokensFromCache,
-  storeDTCGTokens,
   seedCDFFromPreviewResponse,
   seedDefaultsFromChangedItems,
   backfillUnclassifiedProps,
 } from '../../session/db.js';
 import { GenerateReviewStep } from './steps/GenerateReviewStep.js';
-import { runScopeGate } from './runScopeGate.js';
-import { checkAgentAuth, type AgentAuthStatus, type AgentName } from '@contentful/experience-design-system-generation';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../../host-utils.js';
 import {
-  shouldGenerateAfterScopeGate,
-  shouldGenerateAfterCredentialsValidated,
   shouldBypassPreview,
   buildSkippedPreviewTransition,
   shouldRefusePush,
   buildSkippedPushTransition,
-  shouldSkipFinalReviewAfterCredentials,
-  resolveNoCacheForGenerate,
   resolveCycleGateAction,
 } from './wizard-state-transitions.js';
-import { findCliPath } from '../../lib/cli-path.js';
 import { useTerminalSize } from '../../tui/use-terminal-size.js';
 import { useScreenTransitionClear } from '../../tui/render-with-goodbye.js';
 
 const SAVE_CONFIRMATION_DELAY_MS = 1000;
 
 type WizardStep =
-  | 'checking-claude-auth'
   | 'credential-test-gate'
   | 'validating-credentials'
-  | 'generating'
-  | 'mapping-tokens'
   | 'final-review'
   | 'credentials'
   | 'previewing'
@@ -168,56 +153,6 @@ type WizardState = {
   finalReviewPassed: boolean;
 };
 
-export function buildGenerateComponentsArgs(opts: {
-  sessionId: string;
-  tokensPath?: string;
-  agent: string;
-  model?: string;
-  bedrock?: boolean;
-  noCache?: boolean;
-  generatePromptPath?: string;
-  promptOverrides?: string[];
-  existingEntitiesPath?: string;
-  restoreCache?: boolean;
-  cachedComponents?: string[];
-}): string[] {
-  const args = ['__generate', 'components', '--agent', opts.agent, '--session', opts.sessionId];
-  if (opts.tokensPath) args.push('--tokens', opts.tokensPath);
-  if (opts.model) args.push('--model', opts.model);
-  if (opts.bedrock) args.push('--bedrock');
-  if (opts.noCache) args.push('--no-cache');
-  if (opts.generatePromptPath) args.push('--generate-prompt-path', opts.generatePromptPath);
-  for (const prompt of opts.promptOverrides ?? []) args.push('--prompt', prompt);
-  if (opts.existingEntitiesPath) args.push('--existing-entities-path', opts.existingEntitiesPath);
-  if (opts.restoreCache) args.push('--restore-cache');
-  if (opts.cachedComponents && opts.cachedComponents.length > 0) {
-    args.push('--cached-components', JSON.stringify(opts.cachedComponents));
-  }
-  return args;
-}
-
-export function buildMapTokensArgs(opts: {
-  sessionId: string;
-  agent: string;
-  model?: string;
-  noCache?: boolean;
-  skipAgent?: boolean;
-  promptOverrides?: string[];
-  existingEntitiesPath?: string;
-}): string[] {
-  const args = ['map', 'tokens', '--session', opts.sessionId, '--agent', opts.agent];
-  if (opts.model) args.push('--model', opts.model);
-  if (opts.noCache) args.push('--no-cache');
-  if (opts.skipAgent) args.push('--skip-agent');
-  for (const prompt of opts.promptOverrides ?? []) args.push('--prompt', prompt);
-  if (opts.existingEntitiesPath) args.push('--existing-entities-path', opts.existingEntitiesPath);
-  return args;
-}
-
-export function shouldRunMapTokens(opts: { mappablePropCount: number; rawTokenCount: number }): boolean {
-  return opts.mappablePropCount > 0 && opts.rawTokenCount > 0;
-}
-
 export function buildSavedCDF(
   components: Array<{ key: string; entry: CDFComponentEntry }>,
   tokens: DTCGTokenEntry[],
@@ -230,44 +165,6 @@ export function buildSavedCDF(
     throw new Error(`generated CDF failed validation: ${validation.errors.map((error) => error.message).join(', ')}`);
   }
   return cdf;
-}
-
-export function formatAcceptanceSummary(opts: { accepted: number; autoRejected: number }): string {
-  const acceptedClause = `${opts.accepted} component${opts.accepted === 1 ? '' : 's'} accepted`;
-  if (opts.autoRejected === 0) return `${acceptedClause}.`;
-  return `${acceptedClause}, ${opts.autoRejected} excluded due to validation errors.`;
-}
-
-function runCli(args: string[]): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  return new Promise((res) => {
-    execFile('node', [findCliPath(), ...args], (error, stdout, stderr) => {
-      res({ exitCode: error?.code ? Number(error.code) : 0, stdout, stderr });
-    });
-  });
-}
-
-type SpawnedCliResult = { exitCode: number; stdout: string; stderr: string };
-
-function buildGenerateProcessArgs(opts: Parameters<typeof buildGenerateComponentsArgs>[0]): string[] {
-  return [findCliPath(), ...buildGenerateComponentsArgs(opts)];
-}
-
-function parseGenerateResult(
-  result: Pick<SpawnedCliResult, 'stdout' | 'stderr'>,
-  fallbackCount: number,
-): {
-  generateSessionId: string | null;
-  generatedCount: number;
-  renamedSlotsCount: number;
-} {
-  const sessionMatch = /^session=(.+)$/m.exec(result.stdout);
-  const countMatch = /(\d+) components?/.exec(result.stderr);
-  const renamedMatch = /^renamed-slots:\s*(\d+)$/m.exec(result.stdout);
-  return {
-    generateSessionId: sessionMatch ? sessionMatch[1]!.trim() : null,
-    generatedCount: countMatch ? Number(countMatch[1]) : fallbackCount,
-    renamedSlotsCount: renamedMatch ? Number(renamedMatch[1]) : 0,
-  };
 }
 
 export function parsePrintTokensCount(stdout: string): number {
@@ -283,19 +180,6 @@ function logStep(entry: Record<string, unknown>): void {
   getDebugLogger().event('wizard', 'step', entry);
 }
 
-function startWizardTimer(name: string, payload: Record<string, unknown> = {}): number {
-  const startedAt = Date.now();
-  getDebugLogger().event('wizard', `${name}.start`, payload);
-  return startedAt;
-}
-
-function finishWizardTimer(name: string, startedAt: number, payload: Record<string, unknown> = {}): void {
-  getDebugLogger().event('wizard', `${name}.complete`, {
-    ...payload,
-    durationMs: Date.now() - startedAt,
-  });
-}
-
 export type WizardAppProps = {
   initialSpaceId?: string;
   initialEnvironmentId?: string;
@@ -306,13 +190,9 @@ export type WizardAppProps = {
   bedrock?: boolean;
   initialProjectPath?: string;
   host?: string;
-  promptOverrides?: string[];
-  noCache?: boolean;
   livePreview?: boolean;
   generatePromptPath?: string;
-  skipMapTokens?: boolean;
   initialRawTokensPath?: string;
-  initialAgentAuth?: Promise<AgentAuthStatus>;
 };
 
 export function WizardApp({
@@ -325,20 +205,15 @@ export function WizardApp({
   bedrock = false,
   initialProjectPath,
   host,
-  promptOverrides,
-  noCache = false,
   livePreview = true,
   generatePromptPath,
-  skipMapTokens = false,
   initialRawTokensPath,
-  initialAgentAuth,
 }: WizardAppProps = {}): React.ReactElement {
   const defaultConfiguredHost = toConfiguredHost(host || process.env['EDS_HOST']) ?? DEFAULT_CONFIGURED_HOST;
   const resolveWizardHost = (hostValue?: string): string => hostValue || defaultConfiguredHost;
   const { columns: terminalWidth } = useTerminalSize();
   const clearScreenOnTransition = useScreenTransitionClear();
   const logInit = useRef(false);
-  const initialAgentAuthRef = useRef<Promise<AgentAuthStatus> | null>(initialAgentAuth ?? null);
   if (!logInit.current) {
     writeFileSync(WIZARD_LOG, `--- experiences import session ${new Date().toISOString()} ---\n`);
     logInit.current = true;
@@ -358,19 +233,10 @@ export function WizardApp({
   // the async preview/push closures see the confirmed value.
   const allowEmptyDeleteAllRef = useRef(false);
 
-  const selectionToReviewStartedAtRef = useRef<number | null>(null);
   const credentialsReadyRef = useRef(false);
-  const agentAuthVerifiedRef = useRef(false);
   const scopeGateCompletedRef = useRef(false);
-  const generatePromiseRef = useRef<Promise<{
-    exitCode: number;
-    signal: NodeJS.Signals | null;
-    stdout: string;
-    stderr: string;
-  }> | null>(null);
 
   const rawTokensEntryReady = !!initialRawTokensPath;
-  const effectiveNoCache = resolveNoCacheForGenerate({ cliNoCache: noCache });
   // The CLI has already done the early stages and tells the wizard what it did. A missing or broken handoff is shown as
   // an error: the wizard can no longer do those stages itself.
   const [startedFrom] = useState(() => readHandoff());
@@ -494,398 +360,6 @@ export function WizardApp({
     setState((prev) => ({ ...prev, ...partial }));
   };
 
-  const finishSelectionToReviewTimer = (mode: 'cached' | 'generated' | 'error'): void => {
-    const startedAt = selectionToReviewStartedAtRef.current;
-    if (startedAt === null) return;
-    selectionToReviewStartedAtRef.current = null;
-    finishWizardTimer('selection-to-review', startedAt, { mode });
-  };
-
-  const runAgentAuthCheck = async (nextStep: WizardStep, deferStep = false): Promise<boolean> => {
-    const timer = startWizardTimer('agent-auth-validation', {
-      agent: state.agent,
-      deferred: deferStep,
-      nextStep,
-    });
-    if (agentAuthVerifiedRef.current) {
-      finishWizardTimer('agent-auth-validation', timer, {
-        status: 'already-verified',
-      });
-      if (!deferStep) update({ step: nextStep });
-      return true;
-    }
-    const authCheckStepNumber = state.tokensPath ? 4 : 3;
-    const prefetchedAuth = initialAgentAuthRef.current;
-    initialAgentAuthRef.current = null;
-    if (!prefetchedAuth && !deferStep) update({ step: 'checking-claude-auth', authCheckStepNumber });
-    let status: AgentAuthStatus;
-    try {
-      status = await (prefetchedAuth ?? checkAgentAuth(state.agent as AgentName));
-    } catch (error) {
-      finishWizardTimer('agent-auth-validation', timer, {
-        status: 'error',
-        error: error instanceof Error ? error.message : String(error),
-      });
-      throw error;
-    }
-    finishWizardTimer('agent-auth-validation', timer, {
-      status,
-      prefetched: Boolean(prefetchedAuth),
-    });
-    if (status === 'not-found') {
-      update({
-        step: 'error',
-        errorStep: `${state.agent} auth check`,
-        errorMessage: `The \`${state.agent}\` CLI was not found on your PATH.\n\nInstall it, then re-run \`experiences import\`.`,
-      });
-      return false;
-    }
-    if (status === 'unauthenticated') {
-      update({
-        step: 'error',
-        errorStep: `${state.agent} auth check`,
-        errorMessage:
-          `${state.agent} is not authenticated.\n\n` +
-          `Run \`${state.agent}\` in your terminal to log in, then re-run \`experiences import\`.\n\n` +
-          'If you are using AWS Bedrock, run:\n' +
-          '  aws sso login --profile <your-profile>',
-      });
-      return false;
-    }
-    agentAuthVerifiedRef.current = true;
-    if (!deferStep) update({ step: nextStep });
-    return true;
-  };
-
-  const runMapTokens = async (sessionId: string, silent = false): Promise<boolean> => {
-    const timer = startWizardTimer('token-mapping', {
-      sessionId,
-      silent,
-      noCache: effectiveNoCache,
-      skipAgent: skipMapTokens,
-    });
-    let mappablePropCount = 0;
-    let rawTokenCount = 0;
-    try {
-      const db = openPipelineDb();
-      try {
-        // Raw-token generation happens before component extraction, so a
-        // normal wizard run can have a separate token session. The map-tokens
-        // command operates on one session; copy that token universe into the
-        // generated-component session while leaving the recorded token session
-        // intact for save/push.
-        if (state.tokenSessionId && state.tokenSessionId !== sessionId) {
-          copyTokensFromCache(db, state.tokenSessionId, sessionId);
-        } else if (!state.tokenSessionId && state.tokensPath) {
-          // Reusing an existing tokens.json has no token session to copy. The
-          // map-tokens command consumes the session DB, so restore the saved
-          // catalog into the generated session before checking eligibility.
-          const tokens = await readTokensFromPath('tokens', state.tokensPath);
-          storeDTCGTokens(db, sessionId, [], tokens);
-        }
-        const cdfEntries = loadCDFComponents(db, sessionId);
-        mappablePropCount = cdfEntries.reduce(
-          (count, { entry }) =>
-            count +
-            Object.values(entry.$properties).filter((prop) => prop.$type === 'token' && prop.$category === 'design')
-              .length,
-          0,
-        );
-        rawTokenCount = loadDTCGTokens(db, sessionId).tokens.length;
-      } finally {
-        db.close();
-      }
-    } catch (error) {
-      update({
-        step: 'error',
-        errorStep: 'map tokens',
-        errorMessage: error instanceof Error ? error.message : String(error),
-      });
-      finishWizardTimer('token-mapping', timer, {
-        status: 'error',
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return false;
-    }
-
-    if (!shouldRunMapTokens({ mappablePropCount, rawTokenCount })) {
-      if (!silent) update({ mapTokensEligible: false, mapTokensStatus: 'complete' });
-      finishWizardTimer('token-mapping', timer, {
-        status: 'skipped',
-        mappablePropCount,
-        rawTokenCount,
-      });
-      return true;
-    }
-
-    if (!silent)
-      update({
-        mapTokensEligible: true,
-        mapTokensStatus: 'running',
-        step: 'generating',
-      });
-    const args = buildMapTokensArgs({
-      sessionId,
-      agent: state.agent,
-      ...(state.agentModel ? { model: state.agentModel } : {}),
-      noCache: effectiveNoCache,
-      skipAgent: skipMapTokens,
-      promptOverrides,
-      ...(state.existingEntitiesPath ? { existingEntitiesPath: state.existingEntitiesPath } : {}),
-    });
-
-    const result = await runCli(args);
-    if (result.exitCode !== 0) {
-      update({
-        step: 'error',
-        mapTokensStatus: 'failed',
-        errorStep: 'map tokens',
-        errorMessage: result.stderr.trim() || 'Unknown error',
-      });
-      finishWizardTimer('token-mapping', timer, {
-        status: 'error',
-        exitCode: result.exitCode,
-        mappablePropCount,
-        rawTokenCount,
-      });
-      return false;
-    }
-
-    // The command can still report "Nothing to map" if the database changes
-    // between eligibility detection and subprocess startup. Treat that as a
-    // successful no-op and continue to final review.
-    if (!silent) update({ mapTokensStatus: 'complete' });
-    finishWizardTimer('token-mapping', timer, {
-      status: 'complete',
-      exitCode: result.exitCode,
-      mappablePropCount,
-      rawTokenCount,
-    });
-    return true;
-  };
-
-  const buildGenerateOptions = (
-    extractSessionId: string,
-    tokensPath: string,
-    generatePromptPath?: string,
-    cachedComponents?: string[],
-  ) => ({
-    sessionId: extractSessionId,
-    tokensPath,
-    agent: state.agent,
-    ...(state.agentModel ? { model: state.agentModel } : {}),
-    ...(state.bedrock ? { bedrock: true } : {}),
-    noCache: effectiveNoCache,
-    ...(state.existingEntitiesPath ? { existingEntitiesPath: state.existingEntitiesPath } : {}),
-    ...(generatePromptPath ? { generatePromptPath } : {}),
-    promptOverrides,
-    ...(cachedComponents && cachedComponents.length > 0 ? { cachedComponents } : {}),
-  });
-
-  const buildGenerateArgs = (
-    extractSessionId: string,
-    tokensPath: string,
-    generatePromptPath?: string,
-    cachedComponents?: string[],
-  ): string[] =>
-    buildGenerateProcessArgs(buildGenerateOptions(extractSessionId, tokensPath, generatePromptPath, cachedComponents));
-
-  const buildGenerateCliArgs = (
-    extractSessionId: string,
-    tokensPath: string,
-    generatePromptPath?: string,
-    cachedComponents?: string[],
-  ): string[] =>
-    buildGenerateComponentsArgs(
-      buildGenerateOptions(extractSessionId, tokensPath, generatePromptPath, cachedComponents),
-    );
-
-  const checkGenerateCache = async (extractSessionId: string, tokensPath: string): Promise<boolean> => {
-    const timer = startWizardTimer('generation-cache-status', {
-      sessionId: extractSessionId,
-      noCache: effectiveNoCache,
-    });
-    if (effectiveNoCache) {
-      finishWizardTimer('generation-cache-status', timer, {
-        status: 'skipped',
-      });
-      return false;
-    }
-    const result = await runCli([...buildGenerateCliArgs(extractSessionId, tokensPath), '--cache-status']);
-    const hit = result.exitCode === 0 && /^cache-status=hit$/m.test(result.stdout);
-    finishWizardTimer('generation-cache-status', timer, {
-      status: hit ? 'hit' : 'miss',
-      exitCode: result.exitCode,
-      ...(result.exitCode !== 0 ? { stderrTail: result.stderr.trim().slice(-500) } : {}),
-    });
-    return hit;
-  };
-
-  const checkGenerateCacheComponents = async (
-    extractSessionId: string,
-    tokensPath: string,
-    restoreCache = false,
-  ): Promise<Set<string>> => {
-    const timer = startWizardTimer('generation-cache-components', {
-      sessionId: extractSessionId,
-      restoreCache,
-      noCache: effectiveNoCache,
-    });
-    if (effectiveNoCache) {
-      finishWizardTimer('generation-cache-components', timer, {
-        status: 'skipped',
-      });
-      return new Set();
-    }
-    const args = [...buildGenerateCliArgs(extractSessionId, tokensPath), '--cache-status'];
-    if (restoreCache) args.push('--restore-cache');
-    const result = await runCli(args);
-    if (result.exitCode !== 0) {
-      finishWizardTimer('generation-cache-components', timer, {
-        status: 'error',
-        exitCode: result.exitCode,
-        stderrTail: result.stderr.trim().slice(-500),
-      });
-      return new Set();
-    }
-    const line = /^cache-components=(.+)$/m.exec(result.stdout)?.[1];
-    if (!line) {
-      finishWizardTimer('generation-cache-components', timer, {
-        status: 'missing-output',
-        exitCode: result.exitCode,
-        cachedCount: 0,
-      });
-      return new Set();
-    }
-    try {
-      const names: unknown = JSON.parse(line);
-      const cachedNames = new Set(
-        Array.isArray(names) ? names.filter((name): name is string => typeof name === 'string') : [],
-      );
-      finishWizardTimer('generation-cache-components', timer, {
-        status: 'complete',
-        exitCode: result.exitCode,
-        cachedCount: cachedNames.size,
-      });
-      return cachedNames;
-    } catch {
-      finishWizardTimer('generation-cache-components', timer, {
-        status: 'invalid-output',
-        exitCode: result.exitCode,
-        cachedCount: 0,
-      });
-      return new Set();
-    }
-  };
-
-  const runGenerate = async (
-    extractSessionId: string,
-    tokensPath: string,
-    acceptedCount: number,
-    suppressScreen = false,
-    cachedComponents: string[] = [],
-  ) => {
-    const timer = startWizardTimer('component-generation', {
-      sessionId: extractSessionId,
-      acceptedCount,
-      suppressScreen,
-      noCache: effectiveNoCache,
-    });
-    const args = buildGenerateArgs(extractSessionId, tokensPath, generatePromptPath, cachedComponents);
-    let progressCursor: GenerateProgressState = state.generateProgress;
-    const { donePromise } = spawnGenerateChild({
-      command: 'node',
-      args,
-      onStderr: (chunk) => {
-        const nextProgress = parseGenerateStderrChunk(chunk, progressCursor);
-        if (nextProgress !== progressCursor) {
-          progressCursor = nextProgress;
-          if (!suppressScreen) update({ generateProgress: nextProgress });
-        }
-      },
-    });
-    const result = await donePromise;
-
-    if (result.exitCode !== 0) {
-      finishWizardTimer('component-generation', timer, {
-        status: 'error',
-        exitCode: result.exitCode,
-      });
-      finishSelectionToReviewTimer('error');
-      update({
-        step: 'error',
-        errorStep: 'generate components',
-        errorMessage: result.stderr.trim() || 'Unknown error',
-      });
-      return;
-    }
-    const { generateSessionId, generatedCount, renamedSlotsCount } = parseGenerateResult(result, acceptedCount);
-    const mappedSessionId = generateSessionId ?? extractSessionId;
-    finishWizardTimer('component-generation', timer, {
-      status: 'complete',
-      exitCode: result.exitCode,
-      generatedCount,
-      renamedSlotsCount,
-    });
-    if (!suppressScreen) {
-      update({
-        acceptedCount,
-        autoRejectedCount: 0,
-        generateSessionId: mappedSessionId,
-        generatedCount,
-        generateProgress: null,
-      });
-      if (await runMapTokens(mappedSessionId)) {
-        finishSelectionToReviewTimer('generated');
-        update({ step: 'final-review' });
-      } else {
-        finishSelectionToReviewTimer('error');
-      }
-      return;
-    }
-
-    // The scope-gate path remains in place until generation and token mapping
-    // finish, then transitions directly to the review screen in one render.
-    const mapped = await runMapTokens(mappedSessionId, true);
-    if (mapped) {
-      finishSelectionToReviewTimer('generated');
-      update(
-        {
-          acceptedCount,
-          autoRejectedCount: 0,
-          generateSessionId: mappedSessionId,
-          generatedCount,
-          generateProgress: null,
-          mapTokensStatus: 'complete',
-          step: 'final-review',
-        },
-        { clearScreen: false },
-      );
-    } else {
-      finishSelectionToReviewTimer('error');
-    }
-  };
-
-  const finishCachedGeneration = async (sessionId: string, acceptedCount: number): Promise<void> => {
-    if (await runMapTokens(sessionId, true)) {
-      finishSelectionToReviewTimer('cached');
-      update(
-        {
-          acceptedCount,
-          autoRejectedCount: 0,
-          generateSessionId: sessionId,
-          generatedCount: acceptedCount,
-          generateProgress: null,
-          mapTokensStatus: 'complete',
-          step: 'final-review',
-        },
-        { clearScreen: false },
-      );
-    } else {
-      finishSelectionToReviewTimer('error');
-    }
-  };
-
   const advanceToPushFlow = (generatedAcceptedCount: number) => {
     update({ generatedAcceptedCount });
     void runSaveAndPush();
@@ -901,162 +375,25 @@ export function WizardApp({
     void runPreview(sid, tp, state.spaceId, state.environmentId, state.cmaToken, state.host);
   };
 
-  // What happens once the scope is confirmed. The CLI shows the gate now and hands over the decisions, together with the
-  // components its cache check found (that check finished, and restored them, before this wizard started). The order is
-  // the one the gate always had: the cache is restored first, then the decisions are saved, because both write to the
-  // same database.
-  const confirmScope = async (
-    decisions: { accepted: string[]; rejected: string[] },
-    handedOffCachedNames: string[],
-  ): Promise<void> => {
-    const sessionId = sessionRef.current.extractSessionId;
-    if (!sessionId) {
-      update({
-        step: 'error',
-        errorStep: 'start import',
-        errorMessage: 'Internal error: the CLI did not hand over an extract session.',
-      });
-      return;
-    }
-    selectionToReviewStartedAtRef.current =
-      decisions.accepted.length > 0
-        ? startWizardTimer('selection-to-review', {
-            sessionId,
-            acceptedCount: decisions.accepted.length,
-            rejectedCount: decisions.rejected.length,
-          })
-        : null;
-    const cachePromise = Promise.resolve(new Set(handedOffCachedNames));
-    await runScopeGate({
-      sessionId,
-      decisions,
-      onAdvanceToGenerate: async ({ sessionId: sid, acceptedCount }) => {
-        scopeGateCompletedRef.current = true;
-        if (shouldGenerateAfterScopeGate({ acceptedCount })) {
-          // Leave straight for the auth check. The persisted decisions change accepted rows to `generated`.
-          const authPromise = runAgentAuthCheck('generating', true);
-          if (await authPromise) {
-            const comparisonStartedAt = startWizardTimer('generation-cache-set-comparison', {
-              sessionId: sid,
-              acceptedCount: decisions.accepted.length,
-            });
-            let cachedNames = await cachePromise;
-            const acceptedNames = decisions.accepted;
-            let cacheHit =
-              !effectiveNoCache && acceptedNames.length > 0 && acceptedNames.every((name) => cachedNames.has(name));
-            // The check ran before the decisions were saved. Always refresh a non-hit after that, so a partial result
-            // cannot trigger generation.
-            if (!cacheHit && !effectiveNoCache && acceptedNames.length > 0) {
-              cachedNames = await checkGenerateCacheComponents(sid, state.tokensPath, true);
-              cacheHit = acceptedNames.every((name) => cachedNames.has(name));
-            }
-            finishWizardTimer('generation-cache-set-comparison', comparisonStartedAt, {
-              status: 'complete',
-              cacheHit,
-              cachedCount: cachedNames.size,
-              acceptedCount: acceptedNames.length,
-            });
-            if (cacheHit) {
-              void finishCachedGeneration(sid, acceptedCount);
-            } else {
-              const acceptedNameSet = new Set(acceptedNames);
-              const restoredCachedNames = [...cachedNames].filter((name) => acceptedNameSet.has(name));
-              update({
-                step: 'generating',
-                generateProgress: null,
-                acceptedCount,
-              });
-              void runGenerate(sid, state.tokensPath, acceptedCount, false, restoredCachedNames);
-            }
-          } else {
-            finishSelectionToReviewTimer('error');
-          }
-          return;
-        }
-        void runSaveAndPush();
-      },
-      onAdvanceToPushFlow: (count) => {
-        scopeGateCompletedRef.current = true;
-        update({ acceptedCount: count, autoRejectedCount: 0 });
-        advanceToPushFlow(count);
-      },
-    });
-  };
-
+  // The CLI has already done everything up to the review: it ran extraction, showed the scope gate, saved the decisions
+  // and generated the definitions. All that is left to decide is where the wizard begins.
   const advanceAfterCredentialsValidated = async () => {
     credentialsReadyRef.current = true;
-    // The CLI has already run extraction, so there is always a session by the time the wizard starts. Until the scope
-    // decisions are made, the next step is the scope gate.
-    if (!sessionRef.current.extractSessionId) {
+    if (!startedFrom.ok || !startedFrom.route || !sessionRef.current.extractSessionId) {
       update({
         step: 'error',
         errorStep: 'start import',
-        errorMessage: 'Internal error: the CLI did not hand over an extract session.',
+        errorMessage: 'Internal error: the CLI did not hand over the generated definitions.',
       });
       return;
     }
-    if (!scopeGateCompletedRef.current) {
-      // The CLI shows the scope gate, so the wizard is only ever started with the decisions already made.
-      if (!startedFrom.ok || !startedFrom.scope) {
-        update({
-          step: 'error',
-          errorStep: 'start import',
-          errorMessage: 'Internal error: the CLI did not hand over the scope decisions.',
-        });
-        return;
-      }
-      await confirmScope(startedFrom.scope.decisions, startedFrom.scope.cachedNames);
+    scopeGateCompletedRef.current = true;
+    if (startedFrom.route === 'push') {
+      // Nothing was accepted, so there is nothing to review: go straight on to saving and pushing.
+      advanceToPushFlow(0);
       return;
     }
-    if (
-      shouldSkipFinalReviewAfterCredentials({
-        generateSessionId: state.generateSessionId,
-        finalReviewPassed: state.finalReviewPassed,
-      })
-    ) {
-      void runSaveAndPush();
-      return;
-    }
-    if (
-      shouldGenerateAfterCredentialsValidated({
-        acceptedCount: state.acceptedCount,
-      })
-    ) {
-      const sid = sessionRef.current.extractSessionId;
-      if (!sid) {
-        update({
-          step: 'error',
-          errorStep: 'post-credentials',
-          errorMessage: 'Internal error: extract session ID missing after credential validation.',
-        });
-        return;
-      }
-      const inflight = generatePromiseRef.current;
-      if (inflight) {
-        update({ step: 'generating' });
-        const result = await inflight;
-        generatePromiseRef.current = null;
-        if (result.exitCode === 0 && result.signal !== 'SIGTERM') {
-          const sessionMatch = /^session=(.+)$/m.exec(result.stdout);
-          const generatedSessionId = sessionMatch ? sessionMatch[1]!.trim() : sid;
-          update({ generateSessionId: generatedSessionId });
-          if (await runMapTokens(generatedSessionId)) update({ step: 'final-review' });
-          return;
-        }
-      }
-      if (await runAgentAuthCheck('generating', true)) {
-        const cacheHit = await checkGenerateCache(sid, state.tokensPath);
-        if (cacheHit) {
-          update({ step: 'generating' });
-          void finishCachedGeneration(sid, state.acceptedCount);
-        } else {
-          update({ step: 'generating' });
-          void runGenerate(sid, state.tokensPath, state.acceptedCount);
-        }
-      }
-      return;
-    }
-    void runSaveAndPush();
+    update({ step: 'final-review' });
   };
 
   const runPreview = async (
@@ -1584,15 +921,7 @@ export function WizardApp({
     void advanceAfterCredentialsValidated();
   }, [state.step]);
 
-  const noQuitSteps: WizardStep[] = [
-    'checking-claude-auth',
-    'validating-credentials',
-    'generating',
-    'mapping-tokens',
-    'printing',
-    'previewing',
-    'pushing',
-  ];
+  const noQuitSteps: WizardStep[] = ['validating-credentials', 'printing', 'previewing', 'pushing'];
   const hints = noQuitSteps.includes(state.step) ? [] : [{ key: 'q', label: 'quit' }];
 
   const hasTokens = !!state.tokensPath;
@@ -1601,57 +930,6 @@ export function WizardApp({
 
   const stepContent = (() => {
     switch (state.step) {
-      case 'checking-claude-auth':
-        return (
-          <RunningStep
-            stepNumber={state.authCheckStepNumber}
-            totalSteps={totalSteps}
-            title={`Checking ${state.agent}`}
-            description={`Verifying ${state.agent} is installed and authenticated...`}
-          />
-        );
-
-      case 'generating': {
-        const p = state.generateProgress;
-        const stepNum = hasTokenStage ? 4 : 3;
-        const displayAgent = state.agent.charAt(0).toUpperCase() + state.agent.slice(1);
-        const progressDetail = p ? `${p.current}` : `Starting up ${displayAgent}...`;
-        const mapTokensDetail =
-          state.mapTokensStatus === 'running'
-            ? skipMapTokens
-              ? 'Resolving token defaults...'
-              : `Mapping token restrictions via ${displayAgent}...`
-            : state.mapTokensStatus === 'complete'
-              ? skipMapTokens
-                ? 'Token defaults ready'
-                : 'Token restrictions ready'
-              : undefined;
-        return (
-          <RunningStep
-            stepNumber={stepNum}
-            totalSteps={totalSteps}
-            title="Generating definitions"
-            description={`${formatAcceptanceSummary({ accepted: state.acceptedCount, autoRejected: state.autoRejectedCount })}\n${displayAgent} is mapping your selected components to Contentful's Component Definition Format (CDF).${hasTokens ? ' Using your design tokens for prop resolution.' : ''}`}
-            detail={progressDetail}
-            detailProgress={p ? { done: p.done, total: p.total } : undefined}
-            secondaryDetail={mapTokensDetail}
-            secondaryComplete={state.mapTokensStatus === 'complete'}
-          />
-        );
-      }
-      case 'mapping-tokens': {
-        const stepNum = hasTokenStage ? 5 : 4;
-        return (
-          <RunningStep
-            stepNumber={stepNum}
-            totalSteps={totalSteps}
-            title="Mapping design tokens"
-            description="Finding the design tokens that are valid for each generated token property."
-            detail={skipMapTokens ? 'Resolving token defaults...' : `Running ${state.agent}...`}
-          />
-        );
-      }
-
       case 'final-review': {
         return (
           <GenerateReviewStep
