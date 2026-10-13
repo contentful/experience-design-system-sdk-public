@@ -18,3 +18,5 @@ export type TokenPropSuggestion = {
   suggested: string[];
   allowed: string[];
 };
+
+export type PreviewAnnotation = 'new' | 'changed' | 'removed' | 'breaking';

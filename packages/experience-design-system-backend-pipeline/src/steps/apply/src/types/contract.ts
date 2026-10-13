@@ -48,6 +48,8 @@ export interface ApiClientOptions {
   cmaToken: string;
   spaceId: string;
   environmentId: string;
+  /** Sent as `X-Contentful-User-Agent`. Defaults to this package's own name, so callers that care how Contentful sees their traffic (the CLI) pass their own. */
+  userAgent?: string;
   retry?: {
     maxAttempts?: number;
     initialDelayMs?: number;
