@@ -1,42 +1,37 @@
 import { mkdir } from 'node:fs/promises';
 import { relative } from 'node:path';
-import {
-  evaluateExtractionQuality,
-  preClassifyComponent,
-  preClassifyProp,
-} from '@contentful/experience-design-system-extraction';
-import { extractComponents } from '../steps/extraction/src/controller/extract-components-endpoint.js';
-import { resolveMapping } from '../steps/composition/src/helpers/edges/resolve-mapping.js';
-import { resolveCompositionSources } from '../steps/composition/src/helpers/edges/resolve-composition-sources.js';
+import { evaluateExtractionQuality, preClassifyComponent } from '@contentful/experience-design-system-extraction';
+import { resolveMapping } from '../../steps/composition/src/helpers/edges/resolve-mapping.js';
+import { resolveCompositionSources } from '../../steps/composition/src/helpers/edges/resolve-composition-sources.js';
 import {
   selectCandidateFiles,
   capCandidatesToPromptBudget,
-} from '../steps/composition/src/helpers/candidates/candidate-files.js';
-import { buildCompositionInputHash } from '../steps/composition/src/helpers/candidates/composition-cache-key.js';
-import { collectManifestDocEdges } from '../steps/composition/src/helpers/edges/manifest-doc-evidence.js';
-import { findSlotCycles } from '../steps/composition/src/helpers/cycles/find-slot-cycles.js';
-import { suggestCycleBreakEdge } from '../steps/composition/src/helpers/cycles/suggest-cycle-break-edge.js';
-import { parsePromptOverrides } from '../agents/helpers/prompt-overrides/parse-prompt-overrides.js';
-import { resolvePromptOverride } from '../agents/helpers/prompt-overrides/resolve-prompt-override.js';
-import { runAgent } from '../agents/services/run-agent.js';
+} from '../../steps/composition/src/helpers/candidates/candidate-files.js';
+import { buildCompositionInputHash } from '../../steps/composition/src/helpers/candidates/composition-cache-key.js';
+import { collectManifestDocEdges } from '../../steps/composition/src/helpers/edges/manifest-doc-evidence.js';
+import { findSlotCycles } from '../../steps/composition/src/helpers/cycles/find-slot-cycles.js';
+import { suggestCycleBreakEdge } from '../../steps/composition/src/helpers/cycles/suggest-cycle-break-edge.js';
+import { parsePromptOverrides } from '../../agents/helpers/prompt-overrides/parse-prompt-overrides.js';
+import { resolvePromptOverride } from '../../agents/helpers/prompt-overrides/resolve-prompt-override.js';
+import { runAgent } from '../../agents/services/run-agent.js';
 import {
   createStep,
   getCliCacheVersion,
   getOrCreateSession,
-  lookupExtractCache,
   openPipelineDb,
-  storeExtractCache,
   storeRawComponents,
   storeScannedFiles,
   storeSlotCycles,
   updateStep,
-} from '../persistence/src/session/repositories/db.js';
-import { lookupCompositionCache, storeCompositionCache } from '../persistence/src/session/cache/composition.js';
-import { hashFile } from '../persistence/src/session/helpers/cache-keys.js';
+} from '../../persistence/src/session/repositories/db.js';
+import { lookupCompositionCache, storeCompositionCache } from '../../persistence/src/session/cache/composition.js';
+import { emitPreClassificationExclusions } from './helpers/emit-pre-classification-exclusions.js';
+import { extractComponentsWithCache } from './helpers/extract-components-with-cache.js';
+import { persistExtractCache } from './helpers/persist-extract-cache.js';
 import { readCandidateFiles } from './helpers/read-candidate-files.js';
 import { resolveCompositionAgentName } from './helpers/resolve-composition-agent-name.js';
 import { retryDatabaseWrite } from './helpers/retry-database-write.js';
-import type { EdgeConflict } from '../steps/composition/src/helpers/edges/merge-edges.js';
+import type { EdgeConflict } from '../../steps/composition/src/helpers/edges/merge-edges.js';
 import type { RunExtractAndComposeSessionRequest, RunExtractAndComposeSessionResponse } from './types.js';
 
 export type {
@@ -90,48 +85,18 @@ export async function runExtractAndComposeSession(
 
   const db = openPipelineDb();
   try {
-    // Extract cache lookup — mirrors extract-command.ts:303-346.
     const cacheVersion = await getCliCacheVersion();
-    const cachedByPath = new Map<string, ReturnType<typeof lookupExtractCache>>();
-    if (!noCache && sourceFiles.length > 0) {
-      const hashes = await Promise.all(sourceFiles.map(async (p) => [p, await hashFile(p)] as const));
-      for (const [p, h] of hashes) cachedByPath.set(p, lookupExtractCache(db, h, cacheVersion));
-    }
 
-    const allFilesCached = !noCache && sourceFiles.length > 0 && sourceFiles.every((p) => cachedByPath.get(p) !== null);
-
-    let extraction: Awaited<ReturnType<typeof extractComponents>>;
-    let extractionCacheHits = 0;
-    if (allFilesCached) {
-      const cachedComponents = sourceFiles.flatMap((p) => cachedByPath.get(p)!.components);
-      extractionCacheHits = sourceFiles.length;
-      extraction = { components: cachedComponents, warnings: [], exclusions: [] };
-      onProgress?.({
-        kind: 'extract',
-        done: sourceFiles.length,
-        total: sourceFiles.length,
-        componentsSoFar: cachedComponents.length,
-      });
-      onDebugEvent?.('analyze', {
-        kind: 'extract.cache-hit',
-        files: sourceFiles.length,
-        components: cachedComponents.length,
-      });
-    } else {
-      extraction = await extractComponents({
-        filePaths: sourceFiles,
-        projectRoot: projectPath,
-        opts: { resolveUnreachable },
-        onProgress: ({ filesProcessed, componentsFound }) => {
-          onProgress?.({
-            kind: 'extract',
-            done: filesProcessed,
-            total: sourceFiles.length,
-            componentsSoFar: componentsFound,
-          });
-        },
-      });
-    }
+    const { extraction, cacheHits } = await extractComponentsWithCache({
+      db,
+      sourceFiles,
+      projectPath,
+      cacheVersion,
+      noCache,
+      resolveUnreachable,
+      onProgress,
+      onDebugEvent,
+    });
 
     await mkdir(outDir, { recursive: true });
 
@@ -149,51 +114,19 @@ export async function runExtractAndComposeSession(
 
     const stepId = createStep(db, sessionId, 'analyze extract', { project: projectPath });
 
-    // Persist extract cache on cache-miss path — extract-command.ts:363-381.
-    if (extractionCacheHits === 0 && !noCache) {
-      const componentsBySourcePath = new Map<string, typeof extraction.components>();
-      for (const component of extraction.components) {
-        if (!component.sourcePath) continue;
-        const existing = componentsBySourcePath.get(component.sourcePath) ?? [];
-        existing.push(component);
-        componentsBySourcePath.set(component.sourcePath, existing);
-      }
-      for (const filePath of sourceFiles) {
-        storeExtractCache(
-          db,
-          filePath,
-          await hashFile(filePath),
-          cacheVersion,
-          componentsBySourcePath.get(filePath) ?? [],
-        );
-      }
+    if (cacheHits === 0 && !noCache) {
+      await persistExtractCache(db, sourceFiles, extraction.components, cacheVersion);
     }
 
-    // Pre-classification + exclusion logging — extract-command.ts:382-399.
+    emitPreClassificationExclusions(extraction, onExclusion);
+
     const classifiedComponents = extraction.components.map(preClassifyComponent);
-    for (const exclusion of extraction.exclusions ?? []) {
-      onExclusion?.({ ...exclusion });
-    }
-    for (const component of extraction.components) {
-      for (const prop of component.props) {
-        if (preClassifyProp(prop)?.category === 'exclude') {
-          onExclusion?.({
-            itemType: 'prop',
-            name: prop.name,
-            source: component.source,
-            component: component.name,
-            reason: 'deterministic pre-classification excluded this wiring prop',
-            stage: 'pre-classify',
-          });
-        }
-      }
-    }
-
-    // Quality evaluation + first raw-components write — extract-command.ts:400-409.
     const { components: initialValidatedComponents, warnings: filterWarnings } =
       await evaluateExtractionQuality(classifiedComponents);
     let validatedComponents = initialValidatedComponents;
 
+    // First raw-components write — before composition so downstream stages can
+    // start working while the (potentially agent-backed) mapper continues.
     storeRawComponents(db, sessionId, validatedComponents);
 
     // Composition mapping — extract-command.ts:411-541.

@@ -1,6 +1,6 @@
-import type { RawComponentDefinition } from '../steps/extraction/src/types/component.js';
-import type { EdgeConflict } from '../steps/composition/src/helpers/edges/merge-edges.js';
-import type { AgentDebugEvent } from '../agents/types/agent-run.js';
+import type { RawComponentDefinition } from '../../steps/extraction/src/types/component.js';
+import type { EdgeConflict } from '../../steps/composition/src/helpers/edges/merge-edges.js';
+import type { AgentDebugEvent } from '../../agents/types/agent-run.js';
 
 /**
  * Structured progress events emitted during extraction and composition.

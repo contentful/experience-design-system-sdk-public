@@ -1,7 +1,7 @@
 /**
  * Retry a database write when SQLite reports the DB is locked/busy. Backs off
  * from 250ms up to 2s, up to `attempts` times. Any other error throws
- * immediately.
+ * immediately — only SQLITE_BUSY / SQLITE_LOCKED trigger the retry.
  */
 export async function retryDatabaseWrite<T>(operation: () => T, attempts = 8): Promise<T> {
   for (let attempt = 1; ; attempt++) {
