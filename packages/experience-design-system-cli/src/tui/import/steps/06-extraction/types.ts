@@ -6,6 +6,8 @@ export type TokenStrategy = ImportHandoff['tokens']['strategy'];
 
 export interface ExtractionInput {
   projectPath: string;
+  /** Absolute source files from the path-validation step (collectFiles output). */
+  filePaths: string[];
   /** Raw tokens file the user pointed at (always set: v2 asks for one). */
   rawTokensPath: string;
   /** From the token reuse step. 'reuse' skips token generation entirely. */

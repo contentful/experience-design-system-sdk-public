@@ -2,14 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   agentAuthMessage,
   applyProgressEvent,
-  findSession,
   initialProgress,
   isFullCacheHit,
   noComponentsMessage,
-  parseExtractedCount,
   parsePrintTokensCount,
-  parseProgressLine,
-  parseSessionLine,
   progressRows,
   resolveAgentChoice,
   stepNumbers,
@@ -25,67 +21,7 @@ const base = (overrides: Partial<ExtractionProgress> = {}): ExtractionProgress =
   ...overrides,
 });
 
-describe('parseProgressLine', () => {
-  it('reads the running scan count', () => {
-    expect(parseProgressLine('progress=scan:12')).toEqual({ kind: 'scan', scanned: 12 });
-  });
-
-  it('reads the finished scan total', () => {
-    expect(parseProgressLine('progress=scan-done:40')).toEqual({ kind: 'scan-done', total: 40 });
-  });
-
-  it('reads the total file count from an extract line', () => {
-    expect(parseProgressLine('progress=extract:3/40:7')).toEqual({ kind: 'extract', totalFiles: 40 });
-  });
-
-  it.each(['resolving', 'cache-hit', 'done', 'agent:claude', 'agent:codex'])(
-    'reads the composition phase %s',
-    (phase) => {
-      expect(parseProgressLine(`progress=composition:${phase}`)).toEqual({ kind: 'composition', phase });
-    },
-  );
-
-  it('ignores a composition phase it does not know', () => {
-    expect(parseProgressLine('progress=composition:something-new')).toBeNull();
-  });
-
-  it('tolerates surrounding whitespace', () => {
-    expect(parseProgressLine('  progress=scan:5  ')).toEqual({ kind: 'scan', scanned: 5 });
-  });
-
-  it.each(['', 'Warning: composition — x', 'progress=generate:1/2:Card', 'progress=scan:abc', 'session=abc'])(
-    'ignores %j',
-    (line) => {
-      expect(parseProgressLine(line)).toBeNull();
-    },
-  );
-});
-
-describe('session and count lines', () => {
-  it('reads the session id from a stdout line', () => {
-    expect(parseSessionLine('session=abc-123')).toBe('abc-123');
-    expect(parseSessionLine('  session=abc-123 ')).toBe('abc-123');
-  });
-
-  it('is null for any other line, or an empty id', () => {
-    expect(parseSessionLine('progress=scan:1')).toBeNull();
-    expect(parseSessionLine('session=')).toBeNull();
-  });
-
-  it('finds the first session line in a whole stdout', () => {
-    expect(findSession('generate complete\nskill: tokens\nsession=tok-1\n')).toBe('tok-1');
-    expect(findSession('nothing here\n')).toBeNull();
-  });
-
-  it('reads the extracted component count, singular or plural', () => {
-    expect(parseExtractedCount('Scanned 40 source files in /p\nExtracted 7 components\n')).toBe(7);
-    expect(parseExtractedCount('Extracted 1 component')).toBe(1);
-  });
-
-  it('counts zero when the extract command never printed a count', () => {
-    expect(parseExtractedCount('Error: boom')).toBe(0);
-  });
-
+describe('parsePrintTokensCount', () => {
   it('reads the token count from print tokens', () => {
     expect(parsePrintTokensCount('Wrote tokens.json (12 tokens)')).toBe(12);
     expect(parsePrintTokensCount('Wrote tokens.json (1 token)')).toBe(1);
@@ -120,19 +56,15 @@ describe('initialProgress', () => {
 });
 
 describe('applyProgressEvent', () => {
-  it('follows the scan from running to finished', () => {
-    const running = applyProgressEvent(base(), { kind: 'scan', scanned: 12 });
-    expect(running.scan).toEqual({ scanned: 12, total: null });
-    expect(applyProgressEvent(running, { kind: 'scan-done', total: 40 }).scan).toEqual({ scanned: 40, total: 40 });
+  it('tracks the extract progress with done, total, and components-so-far', () => {
+    const after = applyProgressEvent(base(), { kind: 'extract', done: 3, total: 40, componentsSoFar: 7 });
+    expect(after.scan).toEqual({ scanned: 3, total: 40 });
   });
 
-  it('keeps the total when a later scan count arrives', () => {
-    const done = applyProgressEvent(base(), { kind: 'scan-done', total: 40 });
-    expect(applyProgressEvent(done, { kind: 'scan', scanned: 41 }).scan).toEqual({ scanned: 41, total: 40 });
-  });
-
-  it('takes the total from an extract line when the scan never finished', () => {
-    expect(applyProgressEvent(base(), { kind: 'extract', totalFiles: 9 }).scan).toEqual({ scanned: 0, total: 9 });
+  it('advances the scan as more extract events arrive', () => {
+    const first = applyProgressEvent(base(), { kind: 'extract', done: 1, total: 40, componentsSoFar: 0 });
+    const next = applyProgressEvent(first, { kind: 'extract', done: 40, total: 40, componentsSoFar: 12 });
+    expect(next.scan).toEqual({ scanned: 40, total: 40 });
   });
 
   it('records the composition phase and leaves the other rows alone', () => {
@@ -143,7 +75,7 @@ describe('applyProgressEvent', () => {
 
   it('does not change the progress it was given', () => {
     const before = base();
-    applyProgressEvent(before, { kind: 'scan', scanned: 3 });
+    applyProgressEvent(before, { kind: 'extract', done: 1, total: 10, componentsSoFar: 0 });
     expect(before.scan).toBeNull();
   });
 });

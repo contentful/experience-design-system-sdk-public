@@ -190,6 +190,7 @@ function App({ importOptions }: AppProps): React.ReactElement {
       tokenStrategy,
       input: {
         projectPath: resolveUserPath(launch.projectPath ?? ''),
+        filePaths: launch.filePaths ?? [],
         rawTokensPath: launch.tokens ?? '',
         tokenStrategy,
         credentials: credentials.skipped ? null : credentials.credentials,

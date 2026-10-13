@@ -485,3 +485,13 @@ export type {
   ExtractorProgress,
 } from './steps/extraction/src/types/component.js';
 export { stripScoringFields } from './steps/extraction/src/types/component.js';
+
+// Orchestrators — multi-step pipeline flows exposed as single functions.
+// Callers (legacy CLI, v2 TUI) use these to drive the pipeline without
+// duplicating orchestration logic.
+export { runExtractAndComposeSession } from './orchestrators/run-extract-and-compose-session.js';
+export type {
+  RunExtractAndComposeSessionRequest,
+  RunExtractAndComposeSessionResponse,
+  ExtractAndComposeProgress,
+} from './orchestrators/run-extract-and-compose-session.js';

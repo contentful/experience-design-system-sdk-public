@@ -1,19 +1,14 @@
 import { mkdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { fetchAndPersistExistingContentfulEntities } from '@contentful/experience-design-system-backend-pipeline';
-import { checkAgentAuth, type AgentName } from '@contentful/experience-design-system-generation';
-import { parsePromptOverrides, resolvePromptOverride } from '@contentful/experience-design-system-backend-pipeline';
 import {
-  agentAuthMessage,
-  applyProgressEvent,
-  findSession,
-  initialProgress,
-  noComponentsMessage,
-  parseExtractedCount,
-  parseProgressLine,
-  parseSessionLine,
-} from './logic.js';
-import { runTokenGeneration, spawnExtract, type TokenGenerationResult } from './processes.js';
+  fetchAndPersistExistingContentfulEntities,
+  parsePromptOverrides,
+  resolvePromptOverride,
+  runExtractAndComposeSession,
+} from '@contentful/experience-design-system-backend-pipeline';
+import { checkAgentAuth, type AgentName } from '@contentful/experience-design-system-generation';
+import { agentAuthMessage, applyProgressEvent, initialProgress, noComponentsMessage } from './logic.js';
+import { runTokenGeneration, type TokenGenerationResult } from './processes.js';
 import { runSelection } from './selection.js';
 import type { ExtractionHandoff } from '@contentful/experience-design-system-types/handoff';
 import type { ExtractionInput, ExtractionProgress, ExtractionResult } from './types.js';
@@ -24,26 +19,35 @@ type Failure = Extract<ExtractionResult, { ok: false }>;
 export interface ExtractionDeps {
   checkAgentAuth: typeof checkAgentAuth;
   fetchEntities: (credentials: NonNullable<ExtractionInput['credentials']>, outDir: string) => Promise<string | null>;
-  spawnExtract: typeof spawnExtract;
+  runExtractAndComposeSession: typeof runExtractAndComposeSession;
   runTokenGeneration: typeof runTokenGeneration;
   runSelection: typeof runSelection;
 }
 
-const realDeps: ExtractionDeps = { checkAgentAuth, fetchEntities, spawnExtract, runTokenGeneration, runSelection };
+const realDeps: ExtractionDeps = {
+  checkAgentAuth,
+  fetchEntities,
+  runExtractAndComposeSession,
+  runTokenGeneration,
+  runSelection,
+};
 
 const fail = (step: Failure['step'], message: string): Failure => ({ ok: false, step, message });
 const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 /**
- * Runs the stage. The jobs overlap exactly as they do in the legacy wizard:
+ * Runs the stage. The jobs overlap exactly as they did when extract was a
+ * subprocess:
  *
- *   entities fetch ───────┐
- *   __extract ── session= ┴─ selection agent (waits for the fetch) ──┐
- *        └──────────────────────────────── exits (composition done) ─┴─ result
- *   __generate tokens → print tokens   (only when the tokens are not being reused)
+ *   entities fetch ───────────────────┐
+ *   extract + compose (in-process)    │
+ *     └─ onSessionCreated(id) ────────┴─ selection agent (waits for fetch) ──┐
+ *     └──────────────────────── returns (composition done) ─────────────────┴─ result
+ *   token generation            (only when the tokens are not being reused)
  *
- * Selection starts the moment the session id is printed, so it overlaps with composition. When more than one job
- * fails, the error reported is the first of: extract, no components, selection, token generation.
+ * Selection starts the moment the orchestrator mints the sessionId, so it
+ * overlaps with composition. When more than one job fails, the error reported
+ * is the first of: extract, no components, selection, token generation.
  */
 export async function runExtraction(
   input: ExtractionInput,
@@ -74,7 +78,7 @@ export async function runExtraction(
     return fail('selection agent', errorMessage(error));
   }
 
-  // Token generation runs at the same time as everything else, as the wizard started it from an effect.
+  // Token generation runs at the same time as everything else.
   const tokenGeneration: Promise<TokenGenerationResult | null> =
     input.rawTokensPath !== '' && input.tokenStrategy !== 'reuse'
       ? deps
@@ -123,46 +127,39 @@ export async function runExtraction(
       .finally(() => update({ selection: 'complete' }));
   };
 
-  const extracted = await deps.spawnExtract(
-    {
+  let extracted: Awaited<ReturnType<typeof runExtractAndComposeSession>>;
+  try {
+    extracted = await deps.runExtractAndComposeSession({
       projectPath: input.projectPath,
+      outDir,
+      filePaths: input.filePaths,
       agent: input.agent,
+      ...(input.agentModel ? { agentModel: input.agentModel } : {}),
       promptOverrides: input.promptOverrides,
       noCache: input.noCache,
-    },
-    {
-      onStderrLine: (line) => {
-        const event = parseProgressLine(line);
-        if (event) update(applyProgressEvent(progress, event));
-      },
-      onStdoutLine: (line) => {
-        const sessionId = parseSessionLine(line);
-        if (sessionId) startSelection(sessionId);
-      },
-    },
-  );
+      onProgress: (event) => update(applyProgressEvent(progress, event)),
+      onSessionCreated: (sessionId) => startSelection(sessionId),
+    });
+  } catch (error) {
+    return fail('analyze extract', errorMessage(error));
+  }
 
-  const sessionId = findSession(extracted.stdout);
-  if (!selection && sessionId) startSelection(sessionId);
   if (selection) await selection;
   if (!selection && entities) await entities;
 
-  if (extracted.exitCode !== 0) return fail('analyze extract', extracted.stderr.trim() || 'Unknown error');
-  if (parseExtractedCount(extracted.stderr) === 0)
-    return fail('analyze extract', noComponentsMessage(input.projectPath));
+  if (extracted.components.length === 0) return fail('analyze extract', noComponentsMessage(input.projectPath));
   if (selectionError) return fail('selection agent', errorMessage(selectionError));
 
   const tokens = await tokenGeneration;
   if (tokens && !tokens.ok) return fail(tokens.step, tokens.message);
 
-  if (!sessionId) return fail('analyze extract', 'The extract command did not report a session.');
-
   // A reused catalog is already on disk. With no token source there is no file, and the later steps read an empty path as
   // "no tokens" (generating with --tokens pointing at a missing file fails).
   const hasTokenSource = input.rawTokensPath !== '' || input.tokenStrategy === 'reuse';
 
+
   const extraction: ExtractionHandoff = {
-    sessionId,
+    sessionId: extracted.sessionId,
     outDir,
     tokensPath: tokens?.ok ? tokens.tokensPath : hasTokenSource ? join(outDir, 'tokens.json') : '',
     tokenSessionId: tokens?.ok ? tokens.tokenSessionId : null,
@@ -172,7 +169,7 @@ export async function runExtraction(
       progress.existingEntities === 'complete' || progress.existingEntities === 'failed'
         ? progress.existingEntities
         : 'idle',
-    compositionPhase: progress.composition === 'cache-hit' ? 'cache-hit' : 'done',
+    compositionPhase: extracted.compositionPhase,
   };
   return { ok: true, extraction };
 }

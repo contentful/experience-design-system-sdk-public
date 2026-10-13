@@ -1,64 +1,11 @@
 import { parseAgentModel, resolveAgent, resolveModel } from '@contentful/experience-design-system-backend-pipeline';
-import type { CompositionPhase, ExtractionProgress } from './types.js';
+import type { ExtractAndComposeProgress } from '@contentful/experience-design-system-backend-pipeline';
+import type { ExtractionProgress } from './types.js';
 
-/** One line of the extract subprocess's stderr, decoded. Lines it does not recognise are ignored. */
-export type ProgressEvent =
-  | { kind: 'scan'; scanned: number }
-  | { kind: 'scan-done'; total: number }
-  | { kind: 'extract'; totalFiles: number }
-  | { kind: 'composition'; phase: CompositionPhase };
+/** Structured progress events emitted by the orchestrator (extraction + composition). */
+export type ProgressEvent = ExtractAndComposeProgress;
 
-const SCAN = /^progress=scan:(\d+)$/;
-const SCAN_DONE = /^progress=scan-done:(\d+)$/;
-const EXTRACT = /^progress=extract:(\d+)\/(\d+):(\d+)$/;
-const COMPOSITION = /^progress=composition:(.+)$/;
-const SESSION = /^session=(.+)$/;
-const EXTRACTED = /Extracted (\d+) components?/;
 const PRINT_TOKENS_COUNT = /\((\d+)\s+token/;
-
-function isCompositionPhase(phase: string): phase is CompositionPhase {
-  return phase === 'resolving' || phase === 'cache-hit' || phase === 'done' || phase.startsWith('agent:');
-}
-
-/** `progress=scan:12`, `progress=scan-done:40`, `progress=extract:3/40:7`, `progress=composition:cache-hit`. */
-export function parseProgressLine(line: string): ProgressEvent | null {
-  const text = line.trim();
-
-  const scan = SCAN.exec(text);
-  if (scan) return { kind: 'scan', scanned: Number(scan[1]) };
-
-  const scanDone = SCAN_DONE.exec(text);
-  if (scanDone) return { kind: 'scan-done', total: Number(scanDone[1]) };
-
-  const extract = EXTRACT.exec(text);
-  if (extract) return { kind: 'extract', totalFiles: Number(extract[2]) };
-
-  const composition = COMPOSITION.exec(text);
-  const phase = composition?.[1]?.trim();
-  if (phase && isCompositionPhase(phase)) return { kind: 'composition', phase };
-
-  return null;
-}
-
-/** `session=<id>` on the extract subprocess's stdout. It arrives before composition finishes, which is when selection starts. */
-export function parseSessionLine(line: string): string | null {
-  return SESSION.exec(line.trim())?.[1]?.trim() || null;
-}
-
-/** The first `session=<id>` anywhere in a command's stdout. */
-export function findSession(stdout: string): string | null {
-  for (const line of stdout.split('\n')) {
-    const session = parseSessionLine(line);
-    if (session) return session;
-  }
-  return null;
-}
-
-/** `Extracted 7 components` in the extract command's stderr; 0 when it never printed one. */
-export function parseExtractedCount(stderr: string): number {
-  const match = EXTRACTED.exec(stderr);
-  return match ? Number(match[1]) : 0;
-}
 
 /** `(12 tokens` in the output of `print tokens`. */
 export function parsePrintTokensCount(stdout: string): number {
@@ -87,12 +34,8 @@ export function initialProgress(input: {
 
 export function applyProgressEvent(progress: ExtractionProgress, event: ProgressEvent): ExtractionProgress {
   switch (event.kind) {
-    case 'scan':
-      return { ...progress, scan: { scanned: event.scanned, total: progress.scan?.total ?? null } };
-    case 'scan-done':
-      return { ...progress, scan: { scanned: event.total, total: event.total } };
     case 'extract':
-      return { ...progress, scan: { scanned: progress.scan?.scanned ?? 0, total: event.totalFiles } };
+      return { ...progress, scan: { scanned: event.done, total: event.total } };
     case 'composition':
       return { ...progress, composition: event.phase };
   }
