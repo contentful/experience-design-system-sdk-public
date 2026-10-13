@@ -18,7 +18,8 @@
     "registry": "https://npm.pkg.github.com/"
   },
   "files": [
-    "dist/"
+    "dist/",
+    "prompts/"
   ],
   "scripts": {
     "build": "nx build experience-design-system-backend-pipeline",
