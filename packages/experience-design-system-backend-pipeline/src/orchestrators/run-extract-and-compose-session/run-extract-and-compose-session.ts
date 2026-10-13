@@ -1,19 +1,7 @@
 import { mkdir } from 'node:fs/promises';
 import { relative } from 'node:path';
 import { evaluateExtractionQuality, preClassifyComponent } from '@contentful/experience-design-system-extraction';
-import { resolveMapping } from '../../steps/composition/src/helpers/edges/resolve-mapping.js';
 import { resolveCompositionSources } from '../../steps/composition/src/helpers/edges/resolve-composition-sources.js';
-import {
-  selectCandidateFiles,
-  capCandidatesToPromptBudget,
-} from '../../steps/composition/src/helpers/candidates/candidate-files.js';
-import { buildCompositionInputHash } from '../../steps/composition/src/helpers/candidates/composition-cache-key.js';
-import { collectManifestDocEdges } from '../../steps/composition/src/helpers/edges/manifest-doc-evidence.js';
-import { findSlotCycles } from '../../steps/composition/src/helpers/cycles/find-slot-cycles.js';
-import { suggestCycleBreakEdge } from '../../steps/composition/src/helpers/cycles/suggest-cycle-break-edge.js';
-import { parsePromptOverrides } from '../../agents/helpers/prompt-overrides/parse-prompt-overrides.js';
-import { resolvePromptOverride } from '../../agents/helpers/prompt-overrides/resolve-prompt-override.js';
-import { runAgent } from '../../agents/services/run-agent.js';
 import {
   createStep,
   getCliCacheVersion,
@@ -21,17 +9,15 @@ import {
   openPipelineDb,
   storeRawComponents,
   storeScannedFiles,
-  storeSlotCycles,
   updateStep,
 } from '../../persistence/src/session/repositories/db.js';
-import { lookupCompositionCache, storeCompositionCache } from '../../persistence/src/session/cache/composition.js';
 import { emitPreClassificationExclusions } from './helpers/emit-pre-classification-exclusions.js';
 import { extractComponentsWithCache } from './helpers/extract-components-with-cache.js';
 import { persistExtractCache } from './helpers/persist-extract-cache.js';
-import { readCandidateFiles } from './helpers/read-candidate-files.js';
-import { resolveCompositionAgentName } from './helpers/resolve-composition-agent-name.js';
+import { persistSlotCycles } from './helpers/persist-slot-cycles.js';
+import { resolveComposition } from './helpers/resolve-composition.js';
+import { resolveCompositionPrompt } from './helpers/resolve-composition-prompt.js';
 import { retryDatabaseWrite } from './helpers/retry-database-write.js';
-import type { EdgeConflict } from '../../steps/composition/src/helpers/edges/merge-edges.js';
 import type { RunExtractAndComposeSessionRequest, RunExtractAndComposeSessionResponse } from './types.js';
 
 export type {
@@ -87,6 +73,9 @@ export async function runExtractAndComposeSession(
   try {
     const cacheVersion = await getCliCacheVersion();
 
+    // Fail-fast on bad prompt-override syntax before any DB writes or agent calls.
+    const compositionPrompt = await resolveCompositionPrompt(promptOverrides);
+
     const { extraction, cacheHits } = await extractComponentsWithCache({
       db,
       sourceFiles,
@@ -123,103 +112,31 @@ export async function runExtractAndComposeSession(
     const classifiedComponents = extraction.components.map(preClassifyComponent);
     const { components: initialValidatedComponents, warnings: filterWarnings } =
       await evaluateExtractionQuality(classifiedComponents);
-    let validatedComponents = initialValidatedComponents;
 
     // First raw-components write — before composition so downstream stages can
     // start working while the (potentially agent-backed) mapper continues.
-    storeRawComponents(db, sessionId, validatedComponents);
-
-    // Composition mapping — extract-command.ts:411-541.
-    let compositionPhase: 'done' | 'cache-hit' = 'done';
-    const compositionWarnings: string[] = [];
-    const conflicts: EdgeConflict[] = [];
+    storeRawComponents(db, sessionId, initialValidatedComponents);
 
     const sources = resolveCompositionSources({ noCache, compositionRefresh });
-
-    const { overrides: overridesMap, errors: promptErrors } = parsePromptOverrides(promptOverrides);
-    if (promptErrors.length > 0) throw new Error(`Prompt override error(s): ${promptErrors.join('; ')}`);
-    const compositionOverride = overridesMap.get('composition');
-    const compositionPrompt = compositionOverride ? await resolvePromptOverride(compositionOverride) : undefined;
-
-    onProgress?.({ kind: 'composition', phase: 'resolving' });
-    const allFiles = await readCandidateFiles(validatedComponents, sourceFiles);
-    const selectedCandidates = selectCandidateFiles(allFiles).map((c) => ({ path: c.path, content: c.content }));
-    const capped = capCandidatesToPromptBudget(selectedCandidates);
-    const promptFiles = capped.kept;
-    if (capped.dropped.length > 0) {
-      compositionWarnings.push(
-        `composition — ${capped.dropped.length} candidate file(s) omitted from the agent prompt to fit the context budget; resolution runs on the ${promptFiles.length} highest-value files.`,
-      );
-    }
-    const runtimeFiles = allFiles.map((c) => ({ path: c.path, content: c.content }));
-
-    const resolverAgent = resolveCompositionAgentName(agent);
-    const componentNameSet = new Set(validatedComponents.map((c) => c.name));
-
-    let lastAgentExitCode = 0;
-    const spawnAgent = async (prompt: string): Promise<string> => {
-      const res = await runAgent({
-        agent: resolverAgent,
-        prompt,
-        timeoutMs: 120_000,
-        promptViaStdin: true,
-        bedrock,
-        onDebugEvent: (name, payload) => onDebugEvent?.('agent', { event: name, ...payload }),
-      });
-      lastAgentExitCode = res.exitCode;
-      if (res.exitCode !== 0 && res.stderr.trim()) {
-        compositionWarnings.push(`composition — agent exited ${res.exitCode}: ${res.stderr.trim()}`);
-      }
-      return res.stdout;
-    };
-
-    const extraEdges = collectManifestDocEdges(runtimeFiles, validatedComponents, componentNameSet);
-    const agentCacheKey = buildCompositionInputHash({ files: promptFiles, agent: resolverAgent });
-
-    let didHitCompositionCache = false;
-    const result = await resolveMapping({
-      components: validatedComponents,
-      ...(extraEdges.length > 0 ? { extraEdges } : {}),
+    const composition = await resolveComposition({
+      db,
+      components: initialValidatedComponents,
+      sourceFiles,
+      cacheVersion,
+      noCache,
+      compositionRefresh,
       forceAgent: sources.forceAgent,
-      files: promptFiles,
-      ...(compositionPrompt ? { promptOverride: compositionPrompt } : {}),
-      runAgentFn: async ({ prompt }) => {
-        if (!noCache && !compositionRefresh) {
-          const cached = lookupCompositionCache(db, agentCacheKey, cacheVersion);
-          if (cached !== null) {
-            didHitCompositionCache = true;
-            onProgress?.({ kind: 'composition', phase: 'cache-hit' });
-            return cached;
-          }
-        }
-        onProgress?.({ kind: 'composition', phase: `agent:${resolverAgent}` });
-        const stdout = await spawnAgent(prompt);
-        if (lastAgentExitCode === 0) storeCompositionCache(db, agentCacheKey, cacheVersion, stdout);
-        return stdout;
-      },
+      compositionPrompt,
+      agent,
+      bedrock,
+      onProgress,
+      onDebugEvent,
     });
-    compositionPhase = didHitCompositionCache ? 'cache-hit' : 'done';
-    onProgress?.({ kind: 'composition', phase: 'done' });
 
-    for (const w of result.warnings) compositionWarnings.push(`composition — ${w}`);
-    for (const c of result.conflicts) {
-      compositionWarnings.push(`composition conflict on ${c.parent}→${c.child}: kept ${c.winner}, dropped ${c.loser}`);
-      conflicts.push(c);
-    }
-
-    validatedComponents = result.components as typeof validatedComponents;
-
-    // Final writes — extract-command.ts:543-563.
-    await retryDatabaseWrite(() => storeRawComponents(db, sessionId, validatedComponents, { preserveStatus: true }));
-
-    const cycleInput = validatedComponents.map((c) => ({
-      name: c.name,
-      slots: c.slots.map((s) => ({ name: s.name, allowedComponents: s.allowedComponents })),
-    }));
-    const cycles = findSlotCycles(cycleInput);
-    const withBreaks = cycles.map((cycle) => ({ ...cycle, suggestedBreak: suggestCycleBreakEdge(cycle, cycles) }));
-    await retryDatabaseWrite(() => storeSlotCycles(db, sessionId, withBreaks));
-
+    // Final writes — raw components (preserving selection decisions), slot
+    // cycles, scanned files, step completion.
+    await retryDatabaseWrite(() => storeRawComponents(db, sessionId, composition.components, { preserveStatus: true }));
+    await persistSlotCycles(db, sessionId, composition.components);
     storeScannedFiles(
       db,
       sessionId,
@@ -228,15 +145,15 @@ export async function runExtractAndComposeSession(
     await retryDatabaseWrite(() => updateStep(db, stepId, 'complete', { sessionId }));
 
     // TODO(analytics): lift to backend-pipeline so this fires for both callers.
-    //   enrichCommandResult({ extracted_component_count: validatedComponents.length });
+    //   enrichCommandResult({ extracted_component_count: composition.components.length });
 
     return {
       sessionId,
-      compositionPhase,
-      components: validatedComponents,
+      compositionPhase: composition.phase,
+      components: composition.components,
       warnings: [...extraction.warnings, ...filterWarnings],
-      conflicts,
-      compositionWarnings,
+      conflicts: composition.conflicts,
+      compositionWarnings: composition.warnings,
       scannedFileCount: sourceFiles.length,
     };
   } finally {
