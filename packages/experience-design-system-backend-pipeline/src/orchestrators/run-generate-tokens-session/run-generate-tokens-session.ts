@@ -81,7 +81,7 @@ export async function runGenerateTokensSession(
     });
     await onSessionCreated?.(tokenSessionId);
 
-    const tokenPromptHash = await hashPromptForSkill('tokens', agent, agentModel);
+    const tokenPromptHash = await hashPromptForSkill('tokens', agent, agentModel, skillPath);
     const warnings: string[] = [];
 
     onProgress?.({ kind: 'resolving' });
