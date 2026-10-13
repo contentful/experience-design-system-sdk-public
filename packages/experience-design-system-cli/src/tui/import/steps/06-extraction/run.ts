@@ -157,10 +157,14 @@ export async function runExtraction(
 
   if (!sessionId) return fail('analyze extract', 'The extract command did not report a session.');
 
+  // A reused catalog is already on disk. With no token source there is no file, and the later steps read an empty path as
+  // "no tokens" (generating with --tokens pointing at a missing file fails).
+  const hasTokenSource = input.rawTokensPath !== '' || input.tokenStrategy === 'reuse';
+
   const extraction: ExtractionHandoff = {
     sessionId,
     outDir,
-    tokensPath: tokens?.ok ? tokens.tokensPath : join(outDir, 'tokens.json'),
+    tokensPath: tokens?.ok ? tokens.tokensPath : hasTokenSource ? join(outDir, 'tokens.json') : '',
     tokenSessionId: tokens?.ok ? tokens.tokenSessionId : null,
     tokenCount: tokens?.ok ? tokens.tokenCount : 0,
     existingEntitiesPath,
