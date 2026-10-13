@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef } from 'react';
 import { useStdin } from 'ink';
 
-type ImmediateInputKey = {
+export type ImmediateInputKey = {
   upArrow: boolean;
   downArrow: boolean;
   leftArrow: boolean;
