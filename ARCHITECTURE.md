@@ -437,7 +437,7 @@ Do not use agent SDKs or APIs — the import wizard invokes agents as subprocess
 
 ## The Import Command — Wizard
 
-`experiences import` requires an interactive terminal and has no headless mode. It takes no flags; the bundled legacy wizard it spawns accepts `--project`, `--tokens`, `--agent`, `--prompt <stage=value>` and `--no-cache`; `--model`, `--composition-map`, `--skip-map-tokens` and `--raw-tokens` were removed.
+`experiences import` requires an interactive terminal and has no headless mode. It takes `--agent`, `--prompt <stage=value>` and `--no-cache`, and asks for the project and tokens file on its own screens; `--model`, `--composition-map`, `--skip-map-tokens` and `--raw-tokens` were removed.
 
 `src/import/tui/WizardApp.tsx` renders a full-screen Ink TUI driven by an explicit step machine:
 
@@ -447,7 +447,7 @@ extracting (selection agent runs here)
         → previewing → preview-gate → pushing → done
 ```
 
-The Welcome, Token input, Path validation and Credentials screens live in the new CLI (`packages/experience-design-system-cli/src/tui/import/steps/`), which validates and saves the credentials before it spawns the legacy wizard. The new CLI also runs extraction, shows the scope gate and starts the wizard with what it did in one `EDS_IMPORT_HANDOFF` variable (see `@contentful/experience-design-system-types/handoff`); choosing skip on the Credentials screen sets `credentialsSkipped` in it, which saves files only. Choosing skip on `credentials` saves files only: the preview is bypassed and push is refused.
+The Welcome, Token input, Path validation and Credentials screens live in the new CLI (`packages/experience-design-system-cli/src/tui/import/steps/`), which validates and saves the credentials. The new CLI also runs extraction, shows the scope gate, generates the definitions and then runs the review, save, preview and push itself (`steps/09-review`, `steps/10-flow`) in the same process, from what the earlier stages produced (`ImportHandoff` in `@contentful/experience-design-system-types/handoff`); choosing skip on the Credentials screen sets `credentialsSkipped` in it, which saves files only. Choosing skip on `credentials` saves files only: the preview is bypassed and push is refused.
 
 A single human review gate (`scope-gate`) precedes generation. The final-review step edits names, `$description`, `$default`, `$allowedComponents` and `$values` inline with rationale and source panels, and re-runs the live preview after each save. After final-review the wizard always saves one combined `components.json` CDF, then previews and pushes it unless credentials were skipped.
 

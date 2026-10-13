@@ -25,9 +25,10 @@ import { inspectTokens, type TokenStrategy } from './src/tui/import/steps/05-tok
 import { resolveUserPath } from './src/tui/import/resolve-user-path.js';
 import type { CredentialsResult } from './src/tui/import/steps/04-credentials/screen.js';
 import type { ImportOptions } from './src/commands/import-options.js';
-import type { SpawnV1ImportOptions } from './src/tui/import/spawn-v1-import.js';
-import { spawnV1Import } from './src/tui/import/spawn-v1-import.js';
-import { startReadingTerminal, stopReadingTerminal } from './src/tui/import/terminal-input.js';
+import { buildFlowStart } from './src/tui/import/steps/10-flow/flow/build-flow-start.js';
+import type { FlowStart } from './src/tui/import/steps/10-flow/flow/controller.js';
+import { FlowScreen } from './src/tui/import/steps/10-flow/flow/screen.js';
+import { useFlow } from './src/tui/import/steps/10-flow/flow/use-flow.js';
 import { HelpScreen } from './src/tui/help/PageContainer.js';
 import { SettingsScreen } from './src/tui/settings/PageContainer.js';
 import { ConfigurationScreen } from './src/tui/settings/contentful-configuration/ContentfulConfigScreen.js';
@@ -50,14 +51,21 @@ export type Screen =
   | 'settings-debug-mode'
   | 'upgrade';
 
+/** What the import was started with: the paths the screens collected and the flags from the command line. */
+interface ImportLaunch extends Partial<ImportOptions> {
+  projectPath?: string;
+  tokens?: string;
+  filePaths?: string[];
+}
+
 interface PendingLaunch {
-  launch: SpawnV1ImportOptions;
+  launch: ImportLaunch;
   credentials: CredentialsResult;
   cached?: { tokensPath: string; sourceChanged: boolean };
 }
 
 interface ExtractionRun {
-  launch: SpawnV1ImportOptions;
+  launch: ImportLaunch;
   credentialsSkipped: boolean;
   tokenStrategy: TokenStrategy;
   input: ExtractionInput;
@@ -65,9 +73,9 @@ interface ExtractionRun {
   generatePromptPath?: string;
 }
 
-// Set once extraction has produced a session; the scope gate runs for it before the legacy wizard starts.
+// Set once extraction has produced a session; the scope gate runs for it before the review starts.
 interface ScopeRun {
-  launch: SpawnV1ImportOptions;
+  launch: ImportLaunch;
   credentialsSkipped: boolean;
   tokenStrategy: TokenStrategy;
   input: ExtractionInput;
@@ -77,14 +85,13 @@ interface ScopeRun {
 
 interface AppProps {
   importOptions: ImportOptions;
-  onLaunchImport?: (options: SpawnV1ImportOptions) => void;
-  importExitCode?: number;
 }
 
-function App({ importOptions, onLaunchImport, importExitCode }: AppProps): React.ReactElement {
-  const returnedFromImport = importExitCode !== undefined;
-  const [screen, setScreen] = useState<Screen>(returnedFromImport ? 'import' : 'start');
-  const [showImportResult, setShowImportResult] = useState(returnedFromImport);
+function App({ importOptions }: AppProps): React.ReactElement {
+  const [screen, setScreen] = useState<Screen>('start');
+  // Set when the import has ended, with the exit code the result screen shows.
+  const [importExitCode, setImportExitCode] = useState<number>();
+  const showImportResult = importExitCode !== undefined;
   const [projectPath, setProjectPath] = useState<string>();
   const [tokensPath, setTokensPath] = useState<string>();
   const [scannedFiles, setScannedFiles] = useState<string[]>();
@@ -111,6 +118,9 @@ function App({ importOptions, onLaunchImport, importExitCode }: AppProps): React
   // The user's choices are made; generation runs for them before the legacy wizard starts.
   const [generationInput, setGenerationInput] = useState<GenerationInput>();
   const generation = useGeneration(generationInput);
+  // Set once generation has finished; the review, save, preview and push run for it.
+  const [flowStart, setFlowStart] = useState<FlowStart>();
+  const flow = useFlow(flowStart);
   const [importDefaults, setImportDefaults] = useState<{
     componentDir: string;
     tokenFile: string;
@@ -140,7 +150,7 @@ function App({ importOptions, onLaunchImport, importExitCode }: AppProps): React
     filePaths: string[],
   ): Promise<void> => {
     if (!result.skipped) await writeCredentials({ ...result.credentials });
-    const launch: SpawnV1ImportOptions = { projectPath, tokens, filePaths, ...importOptions };
+    const launch: ImportLaunch = { projectPath, tokens, filePaths, ...importOptions };
     // legacy keeps its output next to the project, so the existing token catalog is looked up there
     const state = await inspectTokens({
       rawTokensPath: tokens,
@@ -164,7 +174,7 @@ function App({ importOptions, onLaunchImport, importExitCode }: AppProps): React
   };
 
   const startExtraction = async (
-    launch: SpawnV1ImportOptions,
+    launch: ImportLaunch,
     tokenStrategy: TokenStrategy,
     credentials: CredentialsResult,
   ): Promise<void> => {
@@ -174,7 +184,7 @@ function App({ importOptions, onLaunchImport, importExitCode }: AppProps): React
       typeof settings.generatePromptPath === 'string' ? settings.generatePromptPath : undefined;
     setExtractionRun({
       ...(generatePromptPath ? { generatePromptPath } : {}),
-      // the wizard gets the same agent, so its later steps use what the stage used
+      // the later steps get the same agent, so they use what the stage used
       launch: { ...launch, agent: agentModel ? `${agent}:${agentModel}` : agent },
       credentialsSkipped: credentials.skipped,
       tokenStrategy,
@@ -219,21 +229,25 @@ function App({ importOptions, onLaunchImport, importExitCode }: AppProps): React
     });
   }, [scopeFlow, scopeRun, generationInput]);
 
-  // Finished generation launches the legacy wizard exactly once, with everything the CLI did.
+  // Finished generation starts the review and everything after it, exactly once, with everything the stages did.
   useEffect(() => {
     if (!scopeRun || generation?.status !== 'done' || !generation.result.ok) return;
-    const { launch, credentialsSkipped, tokenStrategy, extraction: produced } = scopeRun;
+    const { credentialsSkipped, tokenStrategy, extraction: produced, input, generatePromptPath } = scopeRun;
     setScopeRun(undefined);
     setGenerationInput(undefined);
-    onLaunchImport?.({
-      ...launch,
-      handoff: {
-        credentialsSkipped,
-        tokens: { strategy: tokenStrategy },
-        extraction: produced,
-        generation: generation.result.generation,
-      },
-    });
+    setFlowStart(
+      buildFlowStart({
+        extraction: input,
+        saved: importDefaults?.credentials,
+        handoff: {
+          credentialsSkipped,
+          tokens: { strategy: tokenStrategy },
+          extraction: produced,
+          generation: generation.result.generation,
+        },
+        generatePromptPath,
+      }),
+    );
   }, [generation, scopeRun]);
 
   const goToStart = (): void => setScreen('start');
@@ -247,10 +261,11 @@ function App({ importOptions, onLaunchImport, importExitCode }: AppProps): React
     setExtractionRun(undefined);
     setScopeRun(undefined);
     setGenerationInput(undefined);
+    setFlowStart(undefined);
   };
 
   const finishImportResult = (): void => {
-    setShowImportResult(false);
+    setImportExitCode(undefined);
     resetImport();
     goToStart();
   };
@@ -263,6 +278,16 @@ function App({ importOptions, onLaunchImport, importExitCode }: AppProps): React
   switch (screen) {
     case 'import':
       if (showImportResult) return <ImportScreen exitCode={importExitCode} onDone={finishImportResult} />;
+      if (flow && flowStart) {
+        return (
+          <FlowScreen
+            state={flow.state}
+            controller={flow.controller}
+            generatePromptPath={flowStart.generatePromptPath}
+            onExit={setImportExitCode}
+          />
+        );
+      }
       if (importDefaults === undefined) return <></>;
       if (projectPath === undefined) {
         return (
@@ -378,52 +403,9 @@ function App({ importOptions, onLaunchImport, importExitCode }: AppProps): React
   }
 }
 
-interface AppInstance {
-  unmount: () => void;
-  waitUntilExit: () => Promise<unknown>;
-}
-
-// Erase the visible screen and move the cursor home; scrollback is kept.
-const CLEAR_SCREEN = '\u001B[2J\u001B[H';
-
-type RenderApp = (element: React.ReactElement) => AppInstance;
-
-async function renderUntilImportRequestedOrExit(
-  renderApp: RenderApp,
+export async function runApp(
+  renderApp: (element: React.ReactElement) => { waitUntilExit: () => Promise<unknown> },
   importOptions: ImportOptions,
-  importExitCode: number | undefined,
-): Promise<SpawnV1ImportOptions | undefined> {
-  let requestedImport: SpawnV1ImportOptions | undefined;
-
-  const instance: AppInstance = renderApp(
-    <App
-      importOptions={importOptions}
-      importExitCode={importExitCode}
-      onLaunchImport={(options) => {
-        requestedImport = options;
-        instance.unmount();
-      }}
-    />,
-  );
-  await instance.waitUntilExit();
-  await stopReadingTerminal();
-
-  // Ink keeps the last frame on screen after unmount. Wipe it so the v1 legacy
-  // wizard replaces this screen instead of rendering below it.
-  if (requestedImport !== undefined && process.stdout.isTTY) {
-    process.stdout.write(CLEAR_SCREEN);
-  }
-
-  return requestedImport;
-}
-
-export async function runApp(renderApp: RenderApp, importOptions: ImportOptions): Promise<void> {
-  let importExitCode: number | undefined;
-
-  let requestedImport = await renderUntilImportRequestedOrExit(renderApp, importOptions, importExitCode);
-  while (requestedImport !== undefined) {
-    importExitCode = (await spawnV1Import(requestedImport)).exitCode;
-    startReadingTerminal();
-    requestedImport = await renderUntilImportRequestedOrExit(renderApp, importOptions, importExitCode);
-  }
+): Promise<void> {
+  await renderApp(<App importOptions={importOptions} />).waitUntilExit();
 }

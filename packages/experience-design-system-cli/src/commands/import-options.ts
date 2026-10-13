@@ -1,5 +1,4 @@
-// The flags `experiences import` hands to the legacy wizard. Legacy accepts the same three, so they are forwarded as
-// typed in. `--project` and `--tokens` are not here: the TUI collects those on its own screens.
+// The flags `experiences import` takes. `--project` and `--tokens` are not here: the TUI collects those on its own screens.
 export interface ImportOptions {
   agent?: string;
   prompt: string[];
@@ -19,12 +18,4 @@ export function toImportOptions(raw: RawImportOptions): ImportOptions {
     prompt: raw.prompt ?? [],
     cache: raw.cache !== false,
   };
-}
-
-export function importOptionArgs(options: ImportOptions): string[] {
-  return [
-    ...(options.agent ? ['--agent', options.agent] : []),
-    ...options.prompt.flatMap((value) => ['--prompt', value]),
-    ...(options.cache ? [] : ['--no-cache']),
-  ];
 }

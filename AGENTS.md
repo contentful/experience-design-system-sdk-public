@@ -29,9 +29,9 @@ extracting (selection agent runs here)
         → previewing → preview-gate → pushing → done
 ```
 
-The Welcome, Token input, Path validation and Credentials screens live in the new CLI (`packages/experience-design-system-cli/src/tui/import/steps/`), which validates and saves the credentials before it spawns the legacy wizard. The new CLI also runs extraction, shows the scope gate and starts the wizard with what it did in one `EDS_IMPORT_HANDOFF` variable (see `@contentful/experience-design-system-types/handoff`); choosing skip on the Credentials screen sets `credentialsSkipped` in it, which saves files only. Choosing `[s]` on `credentials` saves files only: the preview is bypassed and push is refused.
+The Welcome, Token input, Path validation and Credentials screens live in the new CLI (`packages/experience-design-system-cli/src/tui/import/steps/`), which validates and saves the credentials. The new CLI also runs extraction, shows the scope gate, generates the definitions and then runs the review, save, preview and push itself (`steps/09-review`, `steps/10-flow`) in the same process, from what the earlier stages produced (`ImportHandoff` in `@contentful/experience-design-system-types/handoff`); choosing skip on the Credentials screen sets `credentialsSkipped` in it, which saves files only. Choosing `[s]` on `credentials` saves files only: the preview is bypassed and push is refused.
 
-A single human review gate (`scope-gate`) precedes generation. The final-review step edits names, `$description`, `$default`, `$allowedComponents` and `$values` inline, with source and rationale panels. After final-review the wizard always saves one combined `components.json` CDF and, unless credentials were skipped, previews and pushes it.
+A single human review gate (`scope-gate`) precedes generation. The final-review step edits names, `$description`, `$default`, `$allowedComponents` and `$values` inline, with source and rationale panels. After final-review the flow always saves one combined `components.json` CDF and, unless credentials were skipped, previews and pushes it.
 
 ### Run records
 
@@ -39,7 +39,7 @@ Each successful wizard run appends a record to `~/.contentful/experience-design-
 
 ### Import options
 
-The public `experiences import` takes no flags and opens the TUI. The bundled legacy wizard, which the TUI spawns after the first three screens, accepts `--project`, `--tokens`, `--agent`, `--prompt <stage=value>` and `--no-cache`. `--model`, `--composition-map`, `--skip-map-tokens` and `--raw-tokens` were removed and are rejected. The model is passed as `--agent agent:model`; it resolves `--agent` → `credentials.json` → built-in default, and `EDS_AGENT_MODEL_<AGENT>` sets a per-agent model.
+The public `experiences import` opens the TUI and takes `--agent`, `--prompt <stage=value>` and `--no-cache`; the project and tokens file are collected on the TUI's own screens. The bundled legacy `import` command (still shipped with the legacy package, no longer launched by the TUI) also accepts `--project` and `--tokens`. `--model`, `--composition-map`, `--skip-map-tokens` and `--raw-tokens` were removed and are rejected. The model is passed as `--agent agent:model`; it resolves `--agent` → `credentials.json` → built-in default, and `EDS_AGENT_MODEL_<AGENT>` sets a per-agent model.
 
 ## Build System
 
@@ -155,7 +155,7 @@ The apply flow validates the target, builds a `ManifestPayload` through the shar
 
 `src/import/tui/WizardApp.tsx` is the import wizard. There is no headless mode: `experiences import` requires an interactive terminal. State transitions live in `wizard-state-transitions.ts`; the step components are in `src/import/tui/steps/`. `WizardApp` reads pipeline-DB state itself and passes it directly to the step components; `GenerateReviewStep` guards its own missing-session/empty-components case (the scope gate is shown by the new CLI). `runLivePreview.ts` re-runs the diff after each FieldEditor save. Extraction and generation run as `__extract` and `__generate` subprocesses.
 
-The new CLI's Import option (`packages/experience-design-system-cli/src/tui/import/`) spawns the bundled legacy `import` (`spawn-v1-import.ts`, `src/legacy/`) rather than reimplementing the wizard.
+The new CLI's Import option (`packages/experience-design-system-cli/src/tui/import/`) runs the whole import in-process. The bundled legacy CLI (`src/legacy/`) is only used to forward the `apply`, `setup`, `doctor`, `print`, `map`, `__extract` and `__generate` commands.
 
 ## TUI Components
 

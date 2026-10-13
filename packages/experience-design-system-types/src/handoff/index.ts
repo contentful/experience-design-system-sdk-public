@@ -1,10 +1,10 @@
 import * as z from 'zod/mini';
 
-// What the new CLI has already done when it starts the legacy import wizard. It is passed once, in one environment
-// variable, and holds paths, ids and statuses only: no credentials (the wizard reads those from the config file).
+// What the CLI's earlier import stages produced, as the later ones receive it: paths, ids and statuses only, no
+// credentials. The CLI now runs every stage in one process and passes this in memory; the environment variable name is
+// kept because the legacy `import` command, which is still shipped, reads the same document from it.
 //
-// Every stage that moves from the wizard to the CLI adds its results here as another optional section, and the wizard
-// stops producing them itself. When the wizard is deleted, so is this file.
+// When the legacy `import` command is removed, so is the environment variable.
 export const HANDOFF_ENV = 'EDS_IMPORT_HANDOFF';
 
 const NonEmpty = z.string().check(z.minLength(1));
@@ -75,8 +75,7 @@ export function serializeHandoff(handoff: ImportHandoff): string {
 
 /** Reads the handoff from the variable's value. Never throws: a bad handoff comes back as an error to show. */
 export function parseHandoff(raw: string | undefined): ParsedHandoff {
-  if (!raw)
-    return { ok: false, error: `${HANDOFF_ENV} is not set. The legacy import wizard must be started by the CLI.` };
+  if (!raw) return { ok: false, error: `${HANDOFF_ENV} is not set. The import flow must be started by the CLI.` };
 
   let json: unknown;
   try {
