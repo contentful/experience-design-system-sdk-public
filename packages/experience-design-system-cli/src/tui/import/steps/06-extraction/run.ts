@@ -9,11 +9,13 @@ import {
   runGenerateTokensSession,
   type AgentName,
 } from '@contentful/experience-design-system-backend-pipeline';
-import { resolveSkillPath } from '@contentful/experience-design-system-generation';
+import { findSkillPath } from './find-skill-path.js';
 import { agentAuthMessage, applyProgressEvent, initialProgress, noComponentsMessage } from './logic.js';
 import { runSelection } from './selection.js';
 import type { ExtractionHandoff } from '@contentful/experience-design-system-types/handoff';
 import type { ExtractionInput, ExtractionProgress, ExtractionResult } from './types.js';
+
+const TOKENS_SKILL_PATH = findSkillPath('generate-tokens.md');
 
 type Failure = Extract<ExtractionResult, { ok: false }>;
 
@@ -94,7 +96,7 @@ export async function runExtraction(
             agent: input.agent as AgentName,
             ...(input.agentModel ? { agentModel: input.agentModel } : {}),
             promptOverrides: input.promptOverrides,
-            skillPath: resolveSkillPath('tokens'),
+            skillPath: TOKENS_SKILL_PATH,
             // the regenerate answer forces the cache off for this run only
             noCache: input.noCache || input.tokenStrategy === 'regenerate',
           })

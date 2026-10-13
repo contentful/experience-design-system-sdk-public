@@ -14,7 +14,9 @@ import {
   parseSelectToolCalls,
   storeSelectCache,
 } from '@contentful/experience-design-system-backend-pipeline';
-import { resolveSkillPath } from '@contentful/experience-design-system-generation';
+import { findSkillPath } from './find-skill-path.js';
+
+const SELECT_SKILL_PATH = findSkillPath('select-components.md');
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 5 * 60 * 1000);
 
@@ -33,7 +35,7 @@ async function hashSelectPrompt(
     ? hashContent(options.promptText)
     : options.promptPath
       ? await hashFile(resolve(options.promptPath))
-      : await hashFile(resolveSkillPath('select'));
+      : await hashFile(SELECT_SKILL_PATH);
   return hashContent(`${promptHash}|${options.agent}|${options.model ?? ''}`);
 }
 
@@ -87,7 +89,7 @@ export async function runSelection(options: SelectionOptions): Promise<void> {
       outDir: process.cwd(),
       ...(options.promptText !== undefined
         ? { skillContentOverride: options.promptText }
-        : { skillPathOverride: options.promptPath ?? resolveSkillPath('select') }),
+        : { skillPathOverride: options.promptPath ?? SELECT_SKILL_PATH }),
     });
     const { result } = await invokeAgentWithOutput(
       invoker,
