@@ -19,7 +19,7 @@ export interface WindowedPanelProps {
   children: ReactNode;
 }
 
-interface FixedPanelProps {
+export interface FixedPanelProps {
   width: number;
   height?: number;
   minHeight?: BoxProps['minHeight'];
@@ -32,7 +32,7 @@ interface FixedPanelProps {
 }
 
 /** Shared panel frame that clips content instead of resizing its layout slot. */
-function FixedPanel({
+export function FixedPanel({
   width,
   height,
   minHeight,
