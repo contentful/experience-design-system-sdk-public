@@ -1,12 +1,13 @@
 import { mkdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import {
+  checkAgentAuth,
   fetchAndPersistExistingContentfulEntities,
   parsePromptOverrides,
   resolvePromptOverride,
   runExtractAndComposeSession,
+  type AgentName,
 } from '@contentful/experience-design-system-backend-pipeline';
-import { checkAgentAuth, type AgentName } from '@contentful/experience-design-system-generation';
 import { agentAuthMessage, applyProgressEvent, initialProgress, noComponentsMessage } from './logic.js';
 import { runTokenGeneration, type TokenGenerationResult } from './processes.js';
 import { runSelection } from './selection.js';

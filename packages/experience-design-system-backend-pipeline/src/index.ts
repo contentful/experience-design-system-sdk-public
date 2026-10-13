@@ -238,6 +238,8 @@ export { AGENT_NAMES, type AgentName } from './agents/types/agent-name.js';
 export { DEFAULT_AGENT_NAME } from './agents/constants/models.js';
 export { isAgentName } from './agents/helpers/resolution/is-agent-name.js';
 export { agentSupportsBedrock } from './agents/helpers/bedrock/agent-supports-bedrock.js';
+export { checkAgentAuth } from './agents/services/check-agent-auth.js';
+export type { AgentAuthStatus } from './agents/types/agent-run.js';
 
 // Generation — Contentful Management client factory
 export { buildContentfulManagementClient } from './steps/generation/src/controller/client/build-contentful-management-client.js';
