@@ -4,6 +4,7 @@ import {
   ImportApiClient,
   toApiHost,
 } from '@contentful/experience-design-system-backend-pipeline';
+import { cliUserAgent } from '../../../user-agent.js';
 import type { CredentialValues } from './logic.js';
 
 export type ValidationResult = { ok: true } | { ok: false; error: string };
@@ -15,6 +16,7 @@ export async function validateCredentials(values: CredentialValues): Promise<Val
     spaceId: values.spaceId,
     environmentId: values.environmentId,
     cmaToken: values.cmaToken,
+    userAgent: cliUserAgent(),
   });
   try {
     await client.validateToken();

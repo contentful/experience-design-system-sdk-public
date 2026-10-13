@@ -8,7 +8,8 @@ import {
   type ComponentReviewMetadata,
 } from '@contentful/experience-design-system-backend-pipeline';
 import { createHistoryStack, type HistorySnapshot, type HistoryStack } from './history.js';
-import type { ReviewSessionLoadResult } from './session.js';
+import { finalizeReviewSession, type ReviewSessionLoadResult } from './session.js';
+import { useReviewFinalizePreview } from './use-finalize-preview.js';
 import type { CdfReviewEntry, TokenReviewToken } from './types.js';
 
 type UseReviewSessionOptions<TExtra> = {
@@ -187,4 +188,52 @@ export function useReviewHistory({ loading, components, createSnapshot, applySna
   };
 
   return { historySeededRef, pushHistorySnapshot, handleUndo, handleRedo, resetHistory };
+}
+
+export type UseReviewFinalizeOptions = {
+  showFinalize: boolean;
+  extractSessionId: string;
+  tokensPath: string;
+  spaceId: string;
+  environmentId: string;
+  cmaToken: string;
+  host: string;
+  components: CdfReviewEntry[];
+  onFinalize: (accepted: number, rejected: number, unresolved: number) => void;
+};
+
+/**
+ * Shared by both the composite and atomic generate-review steps: the Finalize
+ * dialog's scoped preview (`useReviewFinalizePreview`) plus the confirm
+ * handler that reclassifies rejected/unresolved components and reports the
+ * final counts back to the wizard.
+ */
+export function useReviewFinalize({
+  showFinalize,
+  extractSessionId,
+  tokensPath,
+  spaceId,
+  environmentId,
+  cmaToken,
+  host,
+  components,
+  onFinalize,
+}: UseReviewFinalizeOptions) {
+  const finalizePreview = useReviewFinalizePreview({
+    open: showFinalize,
+    extractSessionId,
+    tokensPath,
+    spaceId,
+    environmentId,
+    cmaToken,
+    host,
+    components,
+  });
+
+  const handleFinalizeConfirm = () => {
+    const counts = finalizeReviewSession(extractSessionId, components);
+    onFinalize(counts.accepted, counts.rejected, counts.unresolved);
+  };
+
+  return { finalizePreview, handleFinalizeConfirm };
 }

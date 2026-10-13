@@ -5,6 +5,10 @@
  * The map file has one `legacy/path|v2/path` per line, both relative to their package's `src`. For every pair it
  * compares the two files after dropping `import` statements and prints what differs. Exits 1 if anything does, so a
  * reviewer reads this output instead of the whole file.
+ *
+ * A change that is meant is listed on the same line, after a second `|`, as `-old line` / `+new line` entries joined by
+ * ` ¦ `, and then shows as `allowed`. Anything not listed still fails, and so does a listed change that no longer
+ * appears, so the list cannot go stale.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -50,20 +54,29 @@ if (!mapFile) {
 }
 
 let identical = 0;
+let allowedFiles = 0;
 let changed = 0;
 for (const entry of readFileSync(mapFile, 'utf8').split('\n').filter(Boolean)) {
-  const [from, to] = entry.split('|');
+  const [from, to, allowance] = entry.split('|');
   const diff = differences(
     withoutImports(readFileSync(join(LEGACY, from), 'utf8')),
     withoutImports(readFileSync(join(V2, to), 'utf8')),
   );
-  if (diff.length === 0) {
+  const allowed = new Set((allowance ?? '').split(' ¦ ').filter(Boolean));
+  const unexpected = diff.filter((line) => !allowed.has(line));
+  const missing = [...allowed].filter((line) => !diff.includes(line)).map((line) => `listed but not found: ${line}`);
+  if (diff.length === 0 && missing.length === 0) {
     identical += 1;
     console.log(`same     ${to}`);
+  } else if (unexpected.length === 0 && missing.length === 0) {
+    allowedFiles += 1;
+    console.log(`allowed  ${to}\n${diff.map((line) => `           ${line}`).join('\n')}`);
   } else {
     changed += 1;
-    console.log(`CHANGED  ${to}\n${diff.map((line) => `           ${line}`).join('\n')}`);
+    console.log(`CHANGED  ${to}\n${[...unexpected, ...missing].map((line) => `           ${line}`).join('\n')}`);
   }
 }
-console.log(`\n${identical} identical apart from imports, ${changed} changed`);
+console.log(
+  `\n${identical} identical apart from imports, ${allowedFiles} with listed changes, ${changed} changed`,
+);
 process.exit(changed === 0 ? 0 : 1);
