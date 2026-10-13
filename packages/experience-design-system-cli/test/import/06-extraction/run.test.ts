@@ -57,15 +57,15 @@ function makeDeps(overrides: Partial<ExtractionDeps> = {}, log: string[] = []): 
       return '/proj/.contentful/.existing-entities.json';
     }),
     runExtractAndComposeSession: vi.fn(defaultSession) as ExtractionDeps['runExtractAndComposeSession'],
-    runTokenGeneration: vi.fn(async () => {
+    runGenerateTokensSession: vi.fn(async () => {
       log.push('tokens:start');
       return {
-        ok: true as const,
         tokensPath: '/proj/.contentful/tokens.json',
         tokenSessionId: 'tok-1',
         tokenCount: 12,
+        warnings: [],
       };
-    }),
+    }) as ExtractionDeps['runGenerateTokensSession'],
     runSelection: vi.fn(async () => {
       log.push('selection');
     }),
@@ -251,24 +251,24 @@ describe('runExtraction — what is skipped', () => {
     const deps = makeDeps();
     const result = await runExtraction(input({ tokenStrategy: 'reuse' }), () => {}, deps);
 
-    expect(deps.runTokenGeneration).not.toHaveBeenCalled();
+    expect(deps.runGenerateTokensSession).not.toHaveBeenCalled();
     expect(result.ok && result.extraction.tokenSessionId).toBeNull();
   });
 
   it('does not generate tokens when no raw tokens file was given', async () => {
     const deps = makeDeps();
     await runExtraction(input({ rawTokensPath: '' }), () => {}, deps);
-    expect(deps.runTokenGeneration).not.toHaveBeenCalled();
+    expect(deps.runGenerateTokensSession).not.toHaveBeenCalled();
   });
 
   it('forces the token cache off for a regenerate, and only for a regenerate', async () => {
     const regenerate = makeDeps();
     await runExtraction(input({ tokenStrategy: 'regenerate' }), () => {}, regenerate);
-    expect(regenerate.runTokenGeneration).toHaveBeenCalledWith(expect.objectContaining({ noCache: true }));
+    expect(regenerate.runGenerateTokensSession).toHaveBeenCalledWith(expect.objectContaining({ noCache: true }));
 
     const normal = makeDeps();
     await runExtraction(input({ tokenStrategy: 'generate' }), () => {}, normal);
-    expect(normal.runTokenGeneration).toHaveBeenCalledWith(expect.objectContaining({ noCache: false }));
+    expect(normal.runGenerateTokensSession).toHaveBeenCalledWith(expect.objectContaining({ noCache: false }));
   });
 
   it('passes the cache setting to extraction and selection', async () => {
@@ -330,15 +330,13 @@ describe('runExtraction — failures', () => {
 
   it('reports a token generation failure with the step that failed', async () => {
     const deps = makeDeps({
-      runTokenGeneration: vi.fn(async () => ({
-        ok: false as const,
-        step: 'print tokens' as const,
-        message: 'disk full',
-      })),
+      runGenerateTokensSession: vi.fn(async () => {
+        throw new Error('disk full');
+      }) as ExtractionDeps['runGenerateTokensSession'],
     });
     expect(await runExtraction(input(), () => {}, deps)).toEqual({
       ok: false,
-      step: 'print tokens',
+      step: 'generate tokens',
       message: 'disk full',
     });
   });
@@ -354,11 +352,9 @@ describe('runExtraction — failures', () => {
     const everythingFails = (overrides: Partial<ExtractionDeps>): ExtractionDeps =>
       makeDeps({
         runSelection: vi.fn().mockRejectedValue(new Error('selection broke')),
-        runTokenGeneration: vi.fn(async () => ({
-          ok: false as const,
-          step: 'generate tokens' as const,
-          message: 'tokens broke',
-        })),
+        runGenerateTokensSession: vi.fn(async () => {
+          throw new Error('tokens broke');
+        }) as ExtractionDeps['runGenerateTokensSession'],
         ...overrides,
       });
 

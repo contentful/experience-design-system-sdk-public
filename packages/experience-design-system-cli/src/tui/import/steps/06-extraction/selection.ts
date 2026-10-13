@@ -1,13 +1,9 @@
 import { resolve } from 'node:path';
 import {
-  buildPrompt,
-  createLocalCliAgentInvoker,
-  parseSelectToolCallLines,
-  resolveSkillPath,
   type AgentName,
-} from '@contentful/experience-design-system-generation';
-import {
+  buildPrompt,
   computeComponentInputHash,
+  createLocalCliAgentInvoker,
   getCliCacheVersion,
   hashContent,
   hashFile,
@@ -15,8 +11,10 @@ import {
   loadRawComponents,
   lookupSelectCache,
   openPipelineDb,
+  parseSelectToolCalls,
   storeSelectCache,
 } from '@contentful/experience-design-system-backend-pipeline';
+import { resolveSkillPath } from '@contentful/experience-design-system-generation';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 5 * 60 * 1000);
 
@@ -87,8 +85,9 @@ export async function runSelection(options: SelectionOptions): Promise<void> {
       mode: 'autonomous',
       rawComponentsInline: JSON.stringify(componentsToRun, null, 2),
       outDir: process.cwd(),
-      ...(options.promptText !== undefined ? { skillContentOverride: options.promptText } : {}),
-      ...(options.promptText === undefined && options.promptPath ? { skillPathOverride: options.promptPath } : {}),
+      ...(options.promptText !== undefined
+        ? { skillContentOverride: options.promptText }
+        : { skillPathOverride: options.promptPath ?? resolveSkillPath('select') }),
     });
     const { result } = await invokeAgentWithOutput(
       invoker,
@@ -98,7 +97,7 @@ export async function runSelection(options: SelectionOptions): Promise<void> {
     if (result.timedOut) throw new Error('selection agent timed out');
     if (result.exitCode !== 0) throw new Error(`selection agent exited with code ${result.exitCode}`);
 
-    const parsed = parseSelectToolCallLines(result.stdout);
+    const parsed = parseSelectToolCalls(result.stdout);
     for (const warning of parsed.warnings) process.stderr.write(`Warning: selection agent: ${warning}\n`);
     calls = parsed.calls;
   }

@@ -6,22 +6,27 @@ import {
   parsePromptOverrides,
   resolvePromptOverride,
   runExtractAndComposeSession,
+  runGenerateTokensSession,
   type AgentName,
 } from '@contentful/experience-design-system-backend-pipeline';
+import { resolveSkillPath } from '@contentful/experience-design-system-generation';
 import { agentAuthMessage, applyProgressEvent, initialProgress, noComponentsMessage } from './logic.js';
-import { runTokenGeneration, type TokenGenerationResult } from './processes.js';
 import { runSelection } from './selection.js';
 import type { ExtractionHandoff } from '@contentful/experience-design-system-types/handoff';
 import type { ExtractionInput, ExtractionProgress, ExtractionResult } from './types.js';
 
 type Failure = Extract<ExtractionResult, { ok: false }>;
 
+type TokenGenerationResult =
+  | { ok: true; tokensPath: string; tokenSessionId: string | null; tokenCount: number }
+  | { ok: false; step: 'generate tokens'; message: string };
+
 /** The outside world the stage talks to, so the order of events can be tested without a network, an agent or a CLI. */
 export interface ExtractionDeps {
   checkAgentAuth: typeof checkAgentAuth;
   fetchEntities: (credentials: NonNullable<ExtractionInput['credentials']>, outDir: string) => Promise<string | null>;
   runExtractAndComposeSession: typeof runExtractAndComposeSession;
-  runTokenGeneration: typeof runTokenGeneration;
+  runGenerateTokensSession: typeof runGenerateTokensSession;
   runSelection: typeof runSelection;
 }
 
@@ -29,7 +34,7 @@ const realDeps: ExtractionDeps = {
   checkAgentAuth,
   fetchEntities,
   runExtractAndComposeSession,
-  runTokenGeneration,
+  runGenerateTokensSession,
   runSelection,
 };
 
@@ -83,18 +88,32 @@ export async function runExtraction(
   const tokenGeneration: Promise<TokenGenerationResult | null> =
     input.rawTokensPath !== '' && input.tokenStrategy !== 'reuse'
       ? deps
-          .runTokenGeneration({
+          .runGenerateTokensSession({
             rawTokensPath: input.rawTokensPath,
             outDir,
-            agent: input.agent,
-            agentModel: input.agentModel,
+            agent: input.agent as AgentName,
+            ...(input.agentModel ? { agentModel: input.agentModel } : {}),
             promptOverrides: input.promptOverrides,
+            skillPath: resolveSkillPath('tokens'),
             // the regenerate answer forces the cache off for this run only
             noCache: input.noCache || input.tokenStrategy === 'regenerate',
           })
-          .then((result) => {
-            update({ tokens: result.ok ? 'complete' : 'failed' });
-            return result;
+          .then((result): TokenGenerationResult => {
+            update({ tokens: 'complete' });
+            return {
+              ok: true,
+              tokensPath: result.tokensPath,
+              tokenSessionId: result.tokenSessionId,
+              tokenCount: result.tokenCount,
+            };
+          })
+          .catch((error: unknown): TokenGenerationResult => {
+            update({ tokens: 'failed' });
+            return {
+              ok: false,
+              step: 'generate tokens',
+              message: error instanceof Error ? error.message : String(error),
+            };
           })
       : Promise.resolve(null);
 

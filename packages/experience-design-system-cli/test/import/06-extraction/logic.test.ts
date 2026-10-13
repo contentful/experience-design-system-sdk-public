@@ -5,7 +5,6 @@ import {
   initialProgress,
   isFullCacheHit,
   noComponentsMessage,
-  parsePrintTokensCount,
   progressRows,
   resolveAgentChoice,
   stepNumbers,
@@ -19,14 +18,6 @@ const base = (overrides: Partial<ExtractionProgress> = {}): ExtractionProgress =
   existingEntities: 'idle',
   tokens: 'idle',
   ...overrides,
-});
-
-describe('parsePrintTokensCount', () => {
-  it('reads the token count from print tokens', () => {
-    expect(parsePrintTokensCount('Wrote tokens.json (12 tokens)')).toBe(12);
-    expect(parsePrintTokensCount('Wrote tokens.json (1 token)')).toBe(1);
-    expect(parsePrintTokensCount('nothing')).toBe(0);
-  });
 });
 
 describe('initialProgress', () => {

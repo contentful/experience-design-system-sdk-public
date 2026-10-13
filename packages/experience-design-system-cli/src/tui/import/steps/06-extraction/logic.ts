@@ -5,14 +5,6 @@ import type { ExtractionProgress } from './types.js';
 /** Structured progress events emitted by the orchestrator (extraction + composition). */
 export type ProgressEvent = ExtractAndComposeProgress;
 
-const PRINT_TOKENS_COUNT = /\((\d+)\s+token/;
-
-/** `(12 tokens` in the output of `print tokens`. */
-export function parsePrintTokensCount(stdout: string): number {
-  const match = PRINT_TOKENS_COUNT.exec(stdout);
-  return match ? Number(match[1]) : 0;
-}
-
 /**
  * Every job the stage will run starts on the first frame, so no row appears later as a surprise. A job that does not
  * apply stays 'idle' and has no row: existing entities need credentials, token definitions need a raw tokens file, and

@@ -241,6 +241,14 @@ export { agentSupportsBedrock } from './agents/helpers/bedrock/agent-supports-be
 export { checkAgentAuth } from './agents/services/check-agent-auth.js';
 export type { AgentAuthStatus } from './agents/types/agent-run.js';
 
+// Agents — prompt builder, invoker, skill resolution, tool-call parsers. Used by
+// in-process callers (v2 TUI step 06 selection) and lifted step orchestrators.
+export { buildPrompt } from './agents/prompts/build-prompt.js';
+export { resolveSkillPath } from './agents/prompts/resolve-skill-path.js';
+export { createLocalCliAgentInvoker } from './agents/invoker/create-local-cli-agent-invoker.js';
+export { parseSelectToolCalls } from './agents/parsers/parse-select-tool-calls.js';
+export { parseTokenToolCalls } from './agents/parsers/parse-token-tool-calls.js';
+
 // Generation — Contentful Management client factory
 export { buildContentfulManagementClient } from './steps/generation/src/controller/client/build-contentful-management-client.js';
 
@@ -504,3 +512,9 @@ export type {
   RunExtractAndComposeSessionResponse,
   ExtractAndComposeProgress,
 } from './orchestrators/run-extract-and-compose-session/run-extract-and-compose-session.js';
+export { runGenerateTokensSession } from './orchestrators/run-generate-tokens-session/run-generate-tokens-session.js';
+export type {
+  RunGenerateTokensSessionRequest,
+  RunGenerateTokensSessionResponse,
+  GenerateTokensProgress,
+} from './orchestrators/run-generate-tokens-session/run-generate-tokens-session.js';
