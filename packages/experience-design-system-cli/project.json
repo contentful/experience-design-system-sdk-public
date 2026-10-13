@@ -18,7 +18,8 @@
           "rm -rf packages/experience-design-system-cli/legacy",
           "nx run experience-design-system-cli:compile",
           "nx run experience-design-system-cli:compile-app",
-          "nx run experience-design-system-cli:copy-legacy"
+          "nx run experience-design-system-cli:copy-legacy",
+          "nx run experience-design-system-cli:copy-prompts"
         ]
       }
     },
@@ -114,6 +115,15 @@
           "cp -r packages/experience-design-system-generation/skills packages/experience-design-system-cli/skills",
           "cp -r packages/experience-design-system-cli-legacy/bin packages/experience-design-system-cli-legacy/dist packages/experience-design-system-cli-legacy/prompts packages/experience-design-system-cli-legacy/skills packages/experience-design-system-cli/legacy/",
           "cp packages/experience-design-system-cli/package.json packages/experience-design-system-cli/legacy/package.json"
+        ]
+      }
+    },
+    "copy-prompts": {
+      "executor": "nx:run-commands",
+      "options": {
+        "parallel": false,
+        "commands": [
+          "cp -r packages/experience-design-system-backend-pipeline/prompts packages/experience-design-system-cli/dist/prompts"
         ]
       }
     }
