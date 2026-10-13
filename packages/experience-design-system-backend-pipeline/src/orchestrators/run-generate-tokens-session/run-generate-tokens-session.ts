@@ -1,5 +1,5 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { basename, join, resolve as pathResolve } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { basename, resolve as pathResolve } from 'node:path';
 import { buildPrompt } from '../../agents/prompts/build-prompt.js';
 import { createLocalCliAgentInvoker } from '../../agents/invoker/create-local-cli-agent-invoker.js';
 import { invokeAgentWithOutput } from '../../agents/services/invoke-agent-with-output.js';
@@ -9,15 +9,14 @@ import {
   computeTokenInputHash,
   copyTokensFromCache,
   getOrCreateSession,
-  loadDTCGTokens,
   lookupCache,
   openPipelineDb,
   storeCache,
 } from '../../persistence/src/session/repositories/db.js';
 import { hashPromptForSkill } from '../../persistence/src/session/helpers/cache-keys.js';
-import { rebuildDTCGTree } from '../../steps/shared/dtcg/helpers/rebuild-dtcg-tree.js';
 import { parsePromptOverrides } from '../../agents/helpers/prompt-overrides/parse-prompt-overrides.js';
 import { resolvePromptOverride } from '../../agents/helpers/prompt-overrides/resolve-prompt-override.js';
+import { writeTokensFile } from './helpers/write-tokens-file.js';
 import type { RunGenerateTokensSessionRequest, RunGenerateTokensSessionResponse } from './types.js';
 
 export type {
@@ -147,22 +146,4 @@ export async function runGenerateTokensSession(
   } finally {
     db.close();
   }
-}
-
-async function writeTokensFile(
-  db: ReturnType<typeof openPipelineDb>,
-  sessionId: string,
-  outDir: string,
-  onProgress: RunGenerateTokensSessionRequest['onProgress'],
-): Promise<{ tokensPath: string; tokenCount: number }> {
-  onProgress?.({ kind: 'writing-file' });
-  const result = loadDTCGTokens(db, sessionId);
-  if (result.tokens.length === 0) {
-    throw new Error(`generate tokens: no tokens persisted for session ${sessionId}`);
-  }
-  const tree = rebuildDTCGTree(result.groups, result.tokens);
-  const tokensPath = join(outDir, 'tokens.json');
-  await mkdir(outDir, { recursive: true });
-  await writeFile(tokensPath, `${JSON.stringify(tree, null, 2)}\n`);
-  return { tokensPath, tokenCount: result.tokens.length };
 }
