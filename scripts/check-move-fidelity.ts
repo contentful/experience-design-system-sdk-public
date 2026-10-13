@@ -1,7 +1,7 @@
 /**
  * Checks that files moved from the legacy CLI into the v2 CLI are copies, apart from their imports.
  *
- * Usage: tsx scripts/check-move-fidelity.ts <map-file>
+ * Usage: [MOVE_TARGET=<step dir>] tsx scripts/check-move-fidelity.ts <map-file>   (the step dir defaults to 09-review)
  * The map file has one `legacy/path|v2/path` per line, both relative to their package's `src`. For every pair it
  * compares the two files after dropping `import` statements and prints what differs. Exits 1 if anything does, so a
  * reviewer reads this output instead of the whole file.
@@ -15,12 +15,13 @@ import { join } from 'node:path';
 
 const ROOT = join(import.meta.dirname, '..', 'packages');
 const LEGACY = join(ROOT, 'experience-design-system-cli-legacy', 'src');
-const V2 = join(ROOT, 'experience-design-system-cli', 'src', 'tui', 'import', 'steps', '09-review');
+const STEPS = join(ROOT, 'experience-design-system-cli', 'src', 'tui', 'import', 'steps');
+const V2 = join(STEPS, process.env['MOVE_TARGET'] ?? '09-review');
 
-/** Removes import statements, single- and multi-line, and `import type`. */
+/** Removes import statements, single- and multi-line, and `import type`, and re-exports (`export { x } from '…'`), whose only difference is the path they now point at. */
 function withoutImports(source: string): string[] {
   return source
-    .replace(/^import\s[^;]*?from\s+['"][^'"]+['"];?\s*$/gms, '')
+    .replace(/^(?:import|export)\s[^;]*?from\s+['"][^'"]+['"];?\s*$/gms, '')
     .replace(/^import\s+['"][^'"]+['"];?\s*$/gm, '')
     .split('\n')
     .map((line) => line.replace(/\s+$/, ''))
@@ -57,7 +58,8 @@ let identical = 0;
 let allowedFiles = 0;
 let changed = 0;
 for (const entry of readFileSync(mapFile, 'utf8').split('\n').filter(Boolean)) {
-  const [from, to, allowance] = entry.split('|');
+  const [from, to, ...rest] = entry.split('|');
+  const allowance = rest.join('|'); // allowed lines may contain '|' themselves, e.g. a union type
   const diff = differences(
     withoutImports(readFileSync(join(LEGACY, from), 'utf8')),
     withoutImports(readFileSync(join(V2, to), 'utf8')),
