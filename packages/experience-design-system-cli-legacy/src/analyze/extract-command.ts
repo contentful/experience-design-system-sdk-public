@@ -2,13 +2,13 @@ import { readdir, stat } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
 import type { Command } from 'commander';
 import { addAgentModelOptions } from '../lib/agent-model-options.js';
-import { runExtractAndComposeSession } from '@contentful/experience-design-system-backend-pipeline';
 import {
   agentSupportsBedrock,
   DEFAULT_AGENT_NAME,
   isAgentName,
+  runExtractAndComposeSession,
   type AgentName,
-} from '@contentful/experience-design-system-generation';
+} from '@contentful/experience-design-system-backend-pipeline';
 import {
   bindAnalyticsSessionId,
   emitSessionStarted,

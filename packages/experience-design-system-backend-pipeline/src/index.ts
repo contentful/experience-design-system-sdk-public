@@ -232,6 +232,13 @@ export {
   formatToolCall,
 } from './agents/index.js';
 
+// Agents — identity + capabilities. Native in backend-pipeline; callers should
+// prefer these over `@contentful/experience-design-system-generation`.
+export { AGENT_NAMES, type AgentName } from './agents/types/agent-name.js';
+export { DEFAULT_AGENT_NAME } from './agents/constants/models.js';
+export { isAgentName } from './agents/helpers/resolution/is-agent-name.js';
+export { agentSupportsBedrock } from './agents/helpers/bedrock/agent-supports-bedrock.js';
+
 // Generation — Contentful Management client factory
 export { buildContentfulManagementClient } from './steps/generation/src/controller/client/build-contentful-management-client.js';
 
