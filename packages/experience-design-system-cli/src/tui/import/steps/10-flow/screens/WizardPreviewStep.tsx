@@ -162,7 +162,7 @@ function appendChangedPreviewLine(
   lines.push({ key: `${keyPrefix}-b-${name}`, color: PALETTE.error, text: ` ⚠ BREAKING: ${reasons}` });
 }
 
-export function buildPreviewDiffLines(preview: ServerPreviewResponse): PreviewDiffLine[] {
+function buildPreviewDiffLines(preview: ServerPreviewResponse): PreviewDiffLine[] {
   const lines: PreviewDiffLine[] = [];
   const { components, tokens } = preview;
 

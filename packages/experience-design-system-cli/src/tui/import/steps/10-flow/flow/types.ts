@@ -6,7 +6,7 @@ import type { PushProgress } from '../support/push-progress.js';
  * The steps of the import after the review, as the wizard had them. The ones that came before (credentials, extraction,
  * the scope gate, generation) are v2 stages of their own now.
  */
-export type FlowStep =
+type FlowStep =
   | 'final-review'
   | 'previewing'
   | 'preview-gate'

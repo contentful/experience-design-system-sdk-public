@@ -1,6 +1,6 @@
 import/tui/steps/DoneStep.tsx|screens/DoneStep.tsx
 import/tui/steps/PushingStep.tsx|screens/PushingStep.tsx
-import/tui/steps/WizardPreviewStep.tsx|screens/WizardPreviewStep.tsx
+import/tui/steps/WizardPreviewStep.tsx|screens/WizardPreviewStep.tsx|- export function buildPreviewDiffLines(preview: ServerPreviewResponse): PreviewDiffLine[] { ¦ + function buildPreviewDiffLines(preview: ServerPreviewResponse): PreviewDiffLine[] {
 import/tui/steps/preview-diff.ts|support/preview-diff.ts
 runs/path-prompt.tsx|screens/PathPrompt.tsx
 import/tui/components/StepHeader.tsx|components/StepHeader.tsx
