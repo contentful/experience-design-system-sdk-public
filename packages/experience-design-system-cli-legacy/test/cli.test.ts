@@ -47,53 +47,6 @@ describe('CLI entry point', () => {
   });
 });
 
-describe('experiences import flag surface', () => {
-  it('does not expose --auto-accept-scope in --help', async () => {
-    const { stdout, code } = await run('import', '--help');
-    expect(code).toBe(0);
-    expect(stdout).not.toContain('--auto-accept-scope');
-  });
-
-  it('exposes --no-cache in experiences import --help', async () => {
-    const { stdout, code } = await run('import', '--help');
-    expect(code).toBe(0);
-    expect(stdout).toContain('--no-cache');
-  });
-
-  it('does not expose --no-auto-filter in experiences import --help', async () => {
-    const { stdout, code } = await run('import', '--help');
-    expect(code).toBe(0);
-    expect(stdout).not.toContain('--no-auto-filter');
-  });
-
-  it('does not expose --auto-filter in experiences import --help', async () => {
-    const { stdout, code } = await run('import', '--help');
-    expect(code).toBe(0);
-    expect(stdout).not.toContain('--auto-filter');
-  });
-
-  it('does not expose --no-live-preview in --help', async () => {
-    const { stdout, code } = await run('import', '--help');
-    expect(code).toBe(0);
-    expect(stdout).not.toContain('--no-live-preview');
-  });
-
-  it('rejects removed debug flags', async () => {
-    const debug = await run('import', '--debug', '--project', '/tmp');
-    const noDebug = await run('import', '--no-debug', '--project', '/tmp');
-    expect(debug.code).not.toBe(0);
-    expect(debug.stderr).toContain("unknown option '--debug'");
-    expect(noDebug.code).not.toBe(0);
-    expect(noDebug.stderr).toContain("unknown option '--no-debug'");
-  });
-
-  it('fails loud when import runs without a TTY', async () => {
-    const { code, stderr } = await run('import', '--project', '/tmp');
-    expect(code).not.toBe(0);
-    expect(stderr).toMatch(/TTY/i);
-  });
-});
-
 describe('experiences setup', () => {
   it('rejects command flags', async () => {
     const { stderr, code } = await run('setup', '--help');

@@ -34,7 +34,6 @@
     "quality:jscpd:legacy:report": "tsx scripts/quality/jscpd-ratchet.ts report legacy",
     "quality:jscpd:report": "pnpm quality:jscpd:legacy:report",
     "quality:baseline": "pnpm quality:knip:legacy:baseline && pnpm quality:knip:cli:baseline",
-    "check:move-fidelity": "tsx scripts/check-move-fidelity.ts",
     "release": "node ./scripts/release.js",
     "prepare": "[ -n \"$CI\" ] || husky",
     "postbuild": "[ -n \"$CI\" ] || node scripts/link-cli.js",

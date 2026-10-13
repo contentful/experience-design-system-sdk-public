@@ -7,7 +7,6 @@ import { registerInternalGenerateCommand } from './generate/command.js';
 import { registerApplyCommand } from './apply/command.js';
 import { registerPrintCommand } from './print/command.js';
 import { registerMapTokensCommand } from './map-tokens/command.js';
-import { registerImportCommand } from './import/command.js';
 import { registerDoctorCommand } from './doctor/command.js';
 import { registerSetupCommand } from './setup/command.js';
 import { registerInternalExtractCommand } from './analyze/extract-command.js';
@@ -120,7 +119,6 @@ export function createProgram(): Command {
 
   registerBuildCommand(program);
   program.helpCommand('help [command]', 'display help for command');
-  registerImportCommand(program);
   registerApplyCommand(program);
   registerSetupCommand(program);
   registerDoctorCommand(program);

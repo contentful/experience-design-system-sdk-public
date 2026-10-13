@@ -89,7 +89,7 @@ describe('generate — session output format (INTEG-4409)', () => {
 
     expect(code).toBe(0);
 
-    // Contract with WizardApp.tsx:1010 (`runGenerate`) and :948 (`spawnGenerateChild`).
+    // Contract with the CLI, which reads the session id from this line of `__generate` output.
     const wizardRegex = /^session=(.+)$/m;
     const match = wizardRegex.exec(stdout);
     expect(match, `stdout did not match ${wizardRegex} — got:\n${stdout}`).not.toBeNull();
