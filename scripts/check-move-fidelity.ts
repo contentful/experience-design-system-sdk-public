@@ -17,10 +17,10 @@ const ROOT = join(import.meta.dirname, '..', 'packages');
 const LEGACY = join(ROOT, 'experience-design-system-cli-legacy', 'src');
 const V2 = join(ROOT, 'experience-design-system-cli', 'src', 'tui', 'import', 'steps', '09-review');
 
-/** Removes import statements, single- and multi-line, and `import type`. */
+/** Removes import statements, single- and multi-line, and `import type`, and re-exports (`export { x } from '…'`), whose only difference is the path they now point at. */
 function withoutImports(source: string): string[] {
   return source
-    .replace(/^import\s[^;]*?from\s+['"][^'"]+['"];?\s*$/gms, '')
+    .replace(/^(?:import|export)\s[^;]*?from\s+['"][^'"]+['"];?\s*$/gms, '')
     .replace(/^import\s+['"][^'"]+['"];?\s*$/gm, '')
     .split('\n')
     .map((line) => line.replace(/\s+$/, ''))

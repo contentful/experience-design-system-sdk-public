@@ -246,3 +246,36 @@ export function formatCyclePath(cycle: SlotCycle, maxHops = 8): string {
   const tail = parts[parts.length - 1];
   return `${head}${arrow}…${arrow}${tail}`;
 }
+
+export interface CyclePathSegment {
+  kind: 'component' | 'slot' | 'arrow';
+  text: string;
+}
+
+export function formatCyclePathSegments(cycle: SlotCycle, maxHops = 8): CyclePathSegment[] {
+  const raw: CyclePathSegment[] = [];
+  for (let i = 0; i < cycle.edges.length; i += 1) {
+    raw.push({ kind: 'component', text: cycle.path[i] });
+    raw.push({ kind: 'slot', text: `[${cycle.edges[i].slotName}]` });
+  }
+  raw.push({ kind: 'component', text: cycle.path[cycle.path.length - 1] });
+
+  const withArrows = (segs: CyclePathSegment[]): CyclePathSegment[] => {
+    const out: CyclePathSegment[] = [];
+    for (let i = 0; i < segs.length; i += 1) {
+      if (i > 0) out.push({ kind: 'arrow', text: ' → ' });
+      out.push(segs[i]);
+    }
+    return out;
+  };
+
+  if (cycle.edges.length <= maxHops) {
+    return withArrows(raw);
+  }
+
+  const keepHops = Math.max(1, maxHops - 1);
+  const keepTokens = keepHops * 2;
+  const head = raw.slice(0, keepTokens);
+  const tail = raw[raw.length - 1];
+  return withArrows([...head, { kind: 'component', text: '…' }, tail]);
+}
