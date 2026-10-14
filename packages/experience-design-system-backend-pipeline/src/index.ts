@@ -518,3 +518,15 @@ export type {
   RunGenerateTokensSessionResponse,
   GenerateTokensProgress,
 } from './orchestrators/run-generate-tokens-session/run-generate-tokens-session.js';
+export {
+  runGenerateComponentsSession,
+  checkGenerateComponentsCache,
+} from './orchestrators/run-generate-components-session/run-generate-components-session.js';
+export type {
+  RunGenerateComponentsSessionRequest,
+  RunGenerateComponentsSessionResponse,
+  GenerateComponentsProgress,
+  GeneratedComponentResult,
+  CheckGenerateComponentsCacheRequest,
+  CheckGenerateComponentsCacheResponse,
+} from './orchestrators/run-generate-components-session/run-generate-components-session.js';

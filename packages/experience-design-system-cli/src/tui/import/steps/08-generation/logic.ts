@@ -1,53 +1,7 @@
 import type { GenerationProgress } from './types.js';
 
-// Ported from legacy `wizard-generate-progress.ts` and the small parsing functions in `WizardApp.tsx`, with their tests.
-
 export function initialProgress(): GenerationProgress {
   return { components: null, mapTokens: 'idle', mapTokensEligible: null };
-}
-
-const PROGRESS_LINE = /^progress=generate:(\d+)\/(\d+):(.+)$/;
-const STARTED_LINE = /\[(\d+)\/(\d+)\]\s+(.+)/;
-
-/**
- * Folds a chunk of `__generate components` stderr into the progress. Two line shapes carry it:
- *  1. `progress=generate:<done>/<total>:<name>`, emitted when a component finishes. `done` is the count of finished
- *     components and never goes down.
- *  2. `[<index>/<total>] <name>`, emitted when a component starts (and again on a retry). With more than one worker its
- *     index is the worker's starting position, not a count of completions, so it must only change `current`.
- */
-export function applyGenerateStderr(
-  chunk: string,
-  previous: GenerationProgress['components'],
-): GenerationProgress['components'] {
-  let state = previous;
-  for (const line of chunk.split('\n')) {
-    const finished = PROGRESS_LINE.exec(line);
-    if (finished) {
-      state = { done: Number(finished[1]), total: Number(finished[2]), current: finished[3]!.trim() };
-      continue;
-    }
-    const started = STARTED_LINE.exec(line);
-    if (started) {
-      state = { done: state?.done ?? 0, total: Number(started[2]), current: started[3]!.trim() };
-    }
-  }
-  return state;
-}
-
-/** The session, the component count and the renamed-slot count from the command's output. */
-export function parseGenerateResult(
-  output: { stdout: string; stderr: string },
-  fallbackCount: number,
-): { generateSessionId: string | null; generatedCount: number; renamedSlotsCount: number } {
-  const session = /^session=(.+)$/m.exec(output.stdout);
-  const count = /(\d+) components?/.exec(output.stderr);
-  const renamed = /^renamed-slots:\s*(\d+)$/m.exec(output.stdout);
-  return {
-    generateSessionId: session ? session[1]!.trim() : null,
-    generatedCount: count ? Number(count[1]) : fallbackCount,
-    renamedSlotsCount: renamed ? Number(renamed[1]) : 0,
-  };
 }
 
 /** Token mapping runs only when there is something to map and tokens to map it from. */
