@@ -20,7 +20,7 @@ export interface ExtractionInput {
   noCache: boolean;
 }
 
-export type CompositionPhase = 'resolving' | 'cache-hit' | 'done' | `agent:${string}`;
+type CompositionPhase = 'resolving' | 'cache-hit' | 'done' | `agent:${string}`;
 type JobStatus = 'idle' | 'running' | 'complete' | 'failed';
 
 /** Everything the extracting screen shows. One field per row. */
