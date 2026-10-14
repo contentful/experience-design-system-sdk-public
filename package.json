@@ -2,7 +2,7 @@
   "name": "@contentful/experience-design-system-sdk",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@10.27.0",
+  "packageManager": "pnpm@12.11.2",
   "workspaces": [
     "./packages/*",
     "./tools/*"
@@ -68,12 +68,5 @@
     "lint-staged": "^16.4.0",
     "nx": "^22.7.8",
     "tsx": "^4.22.4"
-  },
-  "pnpm": {
-    "overrides": {
-      "picomatch@<4.0.4": ">=4.0.4",
-      "brace-expansion@<5.0.9": ">=5.0.9",
-      "@contentful/rich-text-types": "https://registry.npmjs.org/@contentful/rich-text-types/-/rich-text-types-16.8.5.tgz"
-    }
   }
 }
