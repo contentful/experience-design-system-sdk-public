@@ -190,7 +190,6 @@ settings:
 overrides:
   picomatch@<4.0.4: '>=4.0.4'
   brace-expansion@<5.0.9: '>=5.0.9'
-  '@contentful/rich-text-types': 16.8.5
 
 importers:
 
@@ -1215,9 +1214,9 @@ packages:
     resolution: {integrity: sha512-ZJoS8oSq2CAZEpc/YI9SulLrdiIyXeHb/OGqGrkUP6Q7YV+0ouNAa7GjqRdXeQPncHQIDz/jbCTlHScvYvO/gA==}
     engines: {node: '>=v18'}
 
-  '@contentful/rich-text-types@16.8.5':
-    resolution: {integrity: sha512-q18RJuJCOuYveGiCIjE5xLCQc5lZ3L2Qgxrlg/H2YEobDFqdtmklazRi1XwEWaK3tMg6yVXBzKKkQfLB4qW14A==, tarball: https://npm.pkg.github.com/download/@contentful/rich-text-types/16.8.5/832c8b428612f5181908bc1033c6ef9f48f1ce83}
-    engines: {node: '>=6.0.0'}
+  '@contentful/rich-text-types@17.2.7':
+    resolution: {integrity: sha512-aIdozk8vk5gsYcallOrwEiL6+GSlMXZorDOmiVELfpbVaXMJPJPlf2CBw3LUzviAqCw0UPQcKHHCwG7SdY7u5w==}
+    engines: {node: '>=20.0.0'}
 
   '@conventional-changelog/git-client@2.7.0':
     resolution: {integrity: sha512-j7A8/LBEQ+3rugMzPXoKYzyUPpw/0CBQCyvtTR7Lmu4olG4yRC/Tfkq79Mr3yuPs0SUitlO2HwGP3gitMJnRFw==}
@@ -5023,7 +5022,7 @@ snapshots:
       conventional-commits-parser: 6.4.0
       picocolors: 1.1.1
 
-  '@contentful/rich-text-types@16.8.5': {}
+  '@contentful/rich-text-types@17.2.7': {}
 
   '@conventional-changelog/git-client@2.7.0(conventional-commits-parser@6.4.0)':
     dependencies:
@@ -6208,7 +6207,7 @@ snapshots:
 
   contentful-management@12.19.2(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0):
     dependencies:
-      '@contentful/rich-text-types': 16.8.5
+      '@contentful/rich-text-types': 17.2.7
       axios: 1.20.0(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
       contentful-sdk-core: 10.0.0
       fast-copy: 4.1.2
