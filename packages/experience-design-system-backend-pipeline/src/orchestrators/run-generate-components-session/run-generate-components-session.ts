@@ -3,13 +3,14 @@ import type { AgentName } from '../../agents/types/agent-name.js';
 import { loadRawComponents, openPipelineDb } from '../../persistence/src/session/repositories/db.js';
 import { hashContent, hashPromptForSkill } from '../../persistence/src/session/helpers/cache-keys.js';
 import { loadAcceptedNames } from '../../persistence/src/index.js';
-import { readExistingContentfulEntitiesFromSession } from '../../steps/generation/src/controller/existing-entities/read-from-session.js';
 import { summarizeForMapTokens } from '../../steps/generation/src/controller/existing-entities/summarize-for-map-tokens.js';
-import type { ExistingContentfulEntities } from '../../steps/generation/src/types/existing-entities.js';
+import { buildEmptySessionResponse } from './helpers/build-empty-session-response.js';
 import { collectDuplicateNames } from './helpers/collect-duplicate-names.js';
 import { filterDroppedAllowedComponents } from './helpers/filter-dropped-allowed-components.js';
+import { readExistingEntities } from './helpers/read-existing-entities.js';
 import { resolveGeneratePrompt } from './helpers/resolve-generate-prompt.js';
 import { runOneGenerateComponent } from './helpers/run-one-generate-component.js';
+import { runWithPool } from './helpers/run-with-pool.js';
 import type { RunGenerateComponentsSessionRequest, RunGenerateComponentsSessionResponse } from './types.js';
 
 export type {
@@ -71,7 +72,7 @@ export async function runGenerateComponentsSession(
     const acceptedNames = await loadAcceptedNames(request.sessionId);
     const acceptedSet = acceptedNames ? new Set(acceptedNames) : undefined;
     let components = loadRawComponents(db, request.sessionId, acceptedSet ?? undefined);
-    if (components.length === 0) return emptySessionResponse(request.sessionId);
+    if (components.length === 0) return buildEmptySessionResponse(request.sessionId);
 
     const allowedComponentNames = new Set([
       ...components.map((c) => c.name),
@@ -130,41 +131,4 @@ export async function runGenerateComponentsSession(
   } finally {
     db.close();
   }
-}
-
-async function readExistingEntities(
-  request: RunGenerateComponentsSessionRequest,
-): Promise<ExistingContentfulEntities | null | undefined> {
-  if (request.existingContentfulEntities !== undefined) return request.existingContentfulEntities;
-  if (!request.existingEntitiesPath) return undefined;
-  return readExistingContentfulEntitiesFromSession({ path: request.existingEntitiesPath });
-}
-
-async function runWithPool<T, R>(
-  items: T[],
-  concurrency: number,
-  worker: (item: T, index: number) => Promise<R>,
-): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let next = 0;
-  async function run(): Promise<void> {
-    while (next < items.length) {
-      const i = next++;
-      results[i] = await worker(items[i]!, i);
-    }
-  }
-  await Promise.all(Array.from({ length: concurrency }, run));
-  return results;
-}
-
-function emptySessionResponse(sessionId: string): RunGenerateComponentsSessionResponse {
-  return {
-    sessionId,
-    results: [],
-    allOk: true,
-    renamedSlotsCount: 0,
-    duplicateNames: [],
-    droppedAllowedComponents: [],
-    emptySession: true,
-  };
 }

@@ -1,5 +1,4 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { readExistingContentfulEntitiesFromSession } from '../../steps/generation/src/controller/existing-entities/read-from-session.js';
 import { summarizeForMapTokens } from '../../steps/generation/src/controller/existing-entities/summarize-for-map-tokens.js';
 import { resolveComponentCache } from '../../steps/generation/src/helpers/components/resolve-component-cache.js';
 import { normalizeComponentForCache } from '../../steps/generation/src/helpers/components/normalize-component-for-cache.js';
@@ -16,6 +15,7 @@ import { hashContent, hashPromptForSkill } from '../../persistence/src/session/h
 import { loadAcceptedNames } from '../../persistence/src/index.js';
 import type { AgentName } from '../../agents/types/agent-name.js';
 import type { ExistingContentfulEntities } from '../../steps/generation/src/types/existing-entities.js';
+import { readExistingEntities } from './helpers/read-existing-entities.js';
 import { resolveGeneratePrompt } from './helpers/resolve-generate-prompt.js';
 
 export interface CheckGenerateComponentsCacheRequest {
@@ -99,14 +99,6 @@ export async function checkGenerateComponentsCache(
   } finally {
     db.close();
   }
-}
-
-async function readExistingEntities(
-  request: CheckGenerateComponentsCacheRequest,
-): Promise<ExistingContentfulEntities | null | undefined> {
-  if (request.existingContentfulEntities !== undefined) return request.existingContentfulEntities;
-  if (!request.existingEntitiesPath) return undefined;
-  return readExistingContentfulEntitiesFromSession({ path: request.existingEntitiesPath });
 }
 
 function restoreCached(
