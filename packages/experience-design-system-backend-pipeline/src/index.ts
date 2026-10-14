@@ -424,3 +424,34 @@ export type {
   CheckGenerateComponentsCacheRequest,
   CheckGenerateComponentsCacheResponse,
 } from './orchestrators/run-generate-components-session/run-generate-components-session.js';
+
+// Analytics (telemetry for `experiences import` / legacy wrapper commands).
+// `exitWithAnalytics` stays in cli-legacy because it calls `process.exit`.
+export {
+  ANALYTICS_SESSION_ENV,
+  IMPORT_PIPELINE_ENV,
+  analyticsEnabled,
+  bindAnalyticsSessionId,
+  cliVersion,
+  completeActiveCommand,
+  emitSessionStarted,
+  enrichCommandResult,
+  failActiveCommand,
+  flushAnalytics,
+  isPipelineAnalyticsChild,
+  noteCommandStart,
+  recordApplyOutcome,
+  recordContentfulContext,
+  setCliVersion,
+  setCommandContext,
+  setPersistedAnalyticsDisabled,
+} from './analytics/index.js';
+export type {
+  CommandCompletion,
+  CommandContext,
+  CommandFailure,
+  DsiCliCommand,
+  EntryCommand,
+  OsName,
+  AnalyticsWriteResult,
+} from './analytics/index.js';

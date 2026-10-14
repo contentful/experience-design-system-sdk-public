@@ -102,7 +102,7 @@ export async function runGeneration(
     update({ mapTokens: 'running' });
     try {
       const mapTokensOptions = await buildMapTokensOptions(input);
-      await deps.runMapTokens({
+      const mapResult = await deps.runMapTokens({
         sessionId: input.sessionId,
         agent: input.agent as AgentName,
         ...(input.agentModel ? { model: input.agentModel } : {}),
@@ -110,6 +110,9 @@ export async function runGeneration(
         skillPathOverride: MAP_TOKENS_SKILL_PATH,
         ...mapTokensOptions,
       });
+      if (mapResult.diagnostics.length > 0) {
+        process.stderr.write(`Unresolved token defaults:\n${mapResult.diagnostics.map((d) => `  ${d}`).join('\n')}\n`);
+      }
     } catch (error) {
       const message =
         error instanceof MapTokensRunFailure ? error.message : error instanceof Error ? error.message : String(error);

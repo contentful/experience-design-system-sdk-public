@@ -17,6 +17,7 @@ import { hashPromptForSkill } from '../../persistence/src/session/helpers/cache-
 import { parsePromptOverrides } from '../../agents/helpers/prompt-overrides/parse-prompt-overrides.js';
 import { resolvePromptOverride } from '../../agents/helpers/prompt-overrides/resolve-prompt-override.js';
 import { writeTokensFile } from './helpers/write-tokens-file.js';
+import { bindAnalyticsSessionId } from '../../analytics/index.js';
 import type { RunGenerateTokensSessionRequest, RunGenerateTokensSessionResponse } from './types.js';
 
 export type {
@@ -79,6 +80,8 @@ export async function runGenerateTokensSession(
       outDir,
     });
     await onSessionCreated?.(tokenSessionId);
+
+    await bindAnalyticsSessionId(tokenSessionId);
 
     const tokenPromptHash = await hashPromptForSkill('tokens', agent, agentModel, skillPath);
     const warnings: string[] = [];

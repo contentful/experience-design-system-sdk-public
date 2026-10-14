@@ -1,13 +1,4 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { Analytics } from '@segment/analytics-node';
-import { findPkgRoot } from '../lib/cli-path.js';
-
-// Read via findPkgRoot() rather than a hardcoded-depth require — this file's
-// depth under dist/ changes once the CLI is bundled into a single dist/src/index.js.
-const pkg = JSON.parse(readFileSync(join(findPkgRoot(), 'package.json'), 'utf8')) as {
-  version: string;
-};
 
 // Anonymous usage telemetry for the CLI. Disabled when DISABLE_ANALYTICS is set
 // or when the setup preference opts out. Never blocks command execution.
@@ -18,9 +9,19 @@ const DEFAULT_WRITE_KEY = '6DmxiEPN3SV1vbRTTMcNqDzCvkfwT06N';
 
 let analyticsClient: Analytics | null = null;
 let persistedDisabled = false;
+let cliVersionString = '0.0.0-unknown';
+
+/**
+ * Caller sets the CLI version string at startup. Each entry point (legacy's
+ * `program.ts` or v2's TUI entry) resolves its own package.json version — bp
+ * stays agnostic because the two caller packages ship on different cadences.
+ */
+export function setCliVersion(version: string): void {
+  cliVersionString = version;
+}
 
 export function cliVersion(): string {
-  return pkg.version;
+  return cliVersionString;
 }
 
 // Set once per invocation from the persisted `experiences setup` preference
@@ -31,13 +32,13 @@ export function setPersistedAnalyticsDisabled(disabled: boolean): void {
 }
 
 export function analyticsEnabled(): boolean {
-  return !persistedDisabled && !process.env.DISABLE_ANALYTICS;
+  return !persistedDisabled && !process.env['DISABLE_ANALYTICS'];
 }
 
 // SEGMENT_WRITE_KEY overrides the default so engineers can point a local run at
 // their own staging connection.
 function resolveWriteKey(): string {
-  const key = (process.env.SEGMENT_WRITE_KEY ?? '').trim();
+  const key = (process.env['SEGMENT_WRITE_KEY'] ?? '').trim();
   return key.length > 0 ? key : DEFAULT_WRITE_KEY;
 }
 
@@ -93,4 +94,5 @@ export async function flushAnalytics(): Promise<void> {
 export function resetAnalyticsClientForTests(): void {
   analyticsClient = null;
   persistedDisabled = false;
+  cliVersionString = '0.0.0-unknown';
 }

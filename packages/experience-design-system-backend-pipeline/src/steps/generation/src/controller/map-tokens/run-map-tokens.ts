@@ -29,6 +29,7 @@ import { loadRawDefaults } from '../../helpers/map-tokens/load-raw-defaults.js';
 import { loadTokenLeaves } from '../../helpers/map-tokens/load-token-leaves.js';
 import { rebuildDTCGTree } from '../../../../shared/dtcg/helpers/rebuild-dtcg-tree.js';
 import { resolveTokenDefaults } from '../../helpers/token-defaults/resolve-token-defaults.js';
+import { bindAnalyticsSessionId } from '../../../../../analytics/index.js';
 import type { MapTokensRunRequest, MapTokensRunResult } from '../../types/map-tokens-run.js';
 
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
@@ -79,13 +80,20 @@ export async function runMapTokens(request: MapTokensRunRequest): Promise<MapTok
       throw new MapTokensRunFailure({ type: 'no-session' });
     }
 
+    await bindAnalyticsSessionId(sessionId);
+
     const tokenLeaves = loadTokenLeaves(db, sessionId);
     const knownTokenPaths = new Set(tokenLeaves.map((t) => t.path));
 
+    const diagnostics: string[] = [];
     if (request.tokenMapInline) {
       const validMappings: Record<string, string> = {};
       for (const [rawName, path] of Object.entries(request.tokenMapInline)) {
-        if (knownTokenPaths.has(path)) validMappings[rawName] = path;
+        if (knownTokenPaths.has(path)) {
+          validMappings[rawName] = path;
+        } else {
+          diagnostics.push(`Token map '${rawName}' -> '${path}': path not found in session tokens — skipped.`);
+        }
       }
       replaceRawTokenNamePaths(db, sessionId, validMappings, 'manual');
     }
@@ -95,6 +103,7 @@ export async function runMapTokens(request: MapTokensRunRequest): Promise<MapTok
       rawDefaults.map((row) => ({ rawDefault: row.default_reference, tokenKind: row.cdf_token_kind })),
       tokenLeaves,
     );
+    for (const diagnostic of defaultResolution.diagnostics) diagnostics.push(diagnostic.message);
 
     const manualMappings = new Map(
       loadRawTokenNamePathRows(db, sessionId)
@@ -103,7 +112,14 @@ export async function runMapTokens(request: MapTokensRunRequest): Promise<MapTok
     );
     const automaticMappings: Record<string, string> = {};
     for (const [rawName, path] of Object.entries(defaultResolution.mappings)) {
-      if (manualMappings.get(rawName) === undefined) automaticMappings[rawName] = path;
+      const manualPath = manualMappings.get(rawName);
+      if (manualPath === undefined) {
+        automaticMappings[rawName] = path;
+      } else if (manualPath !== path) {
+        diagnostics.push(
+          `Token default '${rawName}' automatically resolves to '${path}', but manual mapping '${manualPath}' is retained.`,
+        );
+      }
     }
     replaceRawTokenNamePaths(db, sessionId, automaticMappings, 'automatic');
 
@@ -116,7 +132,7 @@ export async function runMapTokens(request: MapTokensRunRequest): Promise<MapTok
     const { groups, tokens } = loadDTCGTokens(db, sessionId);
     const tokenCount = tokens.length;
     if (mappablePropCount === 0 || tokenCount === 0) {
-      return { type: 'nothing-to-map', sessionId, mappablePropCount, tokenCount };
+      return { type: 'nothing-to-map', sessionId, mappablePropCount, tokenCount, diagnostics };
     }
 
     const generatedCdf = Object.fromEntries(cdfEntries.map((c) => [c.key, c.entry]));
@@ -140,7 +156,7 @@ export async function runMapTokens(request: MapTokensRunRequest): Promise<MapTok
 
     if (request.printPrompt) {
       const prompt = await buildMapPrompt();
-      return { type: 'printed-prompt', sessionId, prompt };
+      return { type: 'printed-prompt', sessionId, prompt, diagnostics };
     }
 
     if (request.skipAgent) {
@@ -150,7 +166,7 @@ export async function runMapTokens(request: MapTokensRunRequest): Promise<MapTok
         skipAgent: 'true',
       });
       updateStep(db, stepId, 'complete', { applied: '0', skipAgent: 'true' });
-      return { type: 'skipped', sessionId, stepId };
+      return { type: 'skipped', sessionId, stepId, diagnostics };
     }
 
     const agent = request.agent as AgentName;
@@ -171,7 +187,7 @@ export async function runMapTokens(request: MapTokensRunRequest): Promise<MapTok
         const applied = copyMapTokensFromCache(db, cached.sourceSessionId, sessionId);
         const stepId = createStep(db, sessionId, 'map tokens', { agent, model: request.model ?? '' });
         updateStep(db, stepId, 'complete', { cached: 'true', applied: String(applied) });
-        return { type: 'cached', sessionId, applied, stepId };
+        return { type: 'cached', sessionId, applied, stepId, diagnostics };
       }
     }
 
@@ -204,7 +220,7 @@ export async function runMapTokens(request: MapTokensRunRequest): Promise<MapTok
     }
     updateStep(db, stepId, 'complete', { applied: String(applied), warnings: String(warnings.length) });
 
-    return { type: 'applied', sessionId, applied, warnings, stepId };
+    return { type: 'applied', sessionId, applied, warnings, stepId, diagnostics };
   } finally {
     db.close();
   }

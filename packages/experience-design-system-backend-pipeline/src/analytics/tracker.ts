@@ -54,8 +54,8 @@ export function noteCommandStart(commandChain: string): void {
 }
 
 /** Bind a session id, preferring a pipeline parent id when present. */
-export async function bindAnalyticsSessionId(sessionId: string | undefined, context?: CommandContext): Promise<string> {
-  const id = resolveAnalyticsSessionId(sessionId);
+export async function bindAnalyticsSessionId(explicit: string | undefined, context?: CommandContext): Promise<string> {
+  const id = resolveAnalyticsSessionId(explicit);
   await bindAnalyticsSession(id, context);
   return id;
 }

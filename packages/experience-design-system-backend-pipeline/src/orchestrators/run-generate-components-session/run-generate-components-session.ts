@@ -11,6 +11,7 @@ import { readExistingEntities } from './helpers/read-existing-entities.js';
 import { resolveGeneratePrompt } from './helpers/resolve-generate-prompt.js';
 import { runOneGenerateComponent } from './helpers/run-one-generate-component.js';
 import { runWithPool } from './helpers/run-with-pool.js';
+import { bindAnalyticsSessionId } from '../../analytics/index.js';
 import type { RunGenerateComponentsSessionRequest, RunGenerateComponentsSessionResponse } from './types.js';
 
 export type {
@@ -47,6 +48,8 @@ export async function runGenerateComponentsSession(
     existingTokensHash,
     prompt.text,
   );
+
+  await bindAnalyticsSessionId(request.sessionId);
 
   const db = openPipelineDb();
   try {

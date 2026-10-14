@@ -14,7 +14,7 @@ export type EntryCommand = 'analyze_extract' | 'import';
 
 export type OsName = 'macOS' | 'Linux' | 'Windows' | 'Android' | 'other';
 
-export type WriteResult = {
+export type AnalyticsWriteResult = {
   created_count: number;
   updated_count: number;
   failed_count: number;
@@ -30,8 +30,8 @@ export type CommandCompletion = CommandContext & {
   dsi_operation_id?: string;
   extracted_component_count?: number;
   accepted_component_count?: number;
-  component_type_result?: WriteResult;
-  design_token_result?: WriteResult;
+  component_type_result?: AnalyticsWriteResult;
+  design_token_result?: AnalyticsWriteResult;
 };
 
 export type CommandFailure = CommandContext & {

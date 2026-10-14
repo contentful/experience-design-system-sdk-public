@@ -9,13 +9,7 @@ import {
   runExtractAndComposeSession,
   type AgentName,
 } from '@contentful/experience-design-system-backend-pipeline';
-import {
-  bindAnalyticsSessionId,
-  emitSessionStarted,
-  enrichCommandResult,
-  exitWithAnalytics,
-  isPipelineAnalyticsChild,
-} from '../analytics/index.js';
+import { exitWithAnalytics } from '../analytics/index.js';
 import { getDebugLogger } from '../lib/debug-logger.js';
 
 interface AnalyzeExtractOptions {
@@ -256,11 +250,7 @@ export function registerInternalExtractCommand(program: Command): void {
             process.stderr.write(`progress=composition:${event.phase}\n`);
           }
         },
-        onSessionCreated: async (sessionId) => {
-          await bindAnalyticsSessionId(sessionId);
-          if (!isPipelineAnalyticsChild()) {
-            await emitSessionStarted('analyze_extract');
-          }
+        onSessionCreated: (sessionId) => {
           process.stdout.write(`session=${sessionId}\n`);
         },
         onDebugEvent: (name, payload) => getDebugLogger().event('agent', name, payload),
@@ -276,7 +266,6 @@ export function registerInternalExtractCommand(program: Command): void {
     for (const w of result.compositionWarnings) {
       process.stderr.write(`Warning: ${w}\n`);
     }
-    enrichCommandResult({ extracted_component_count: result.components.length });
 
     const summaryLines = [
       `Scanned ${pluralize(result.scannedFileCount, 'source file')} in ${sourceDirectory}`,

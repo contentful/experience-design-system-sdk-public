@@ -1,4 +1,4 @@
-import { generateSessionId } from '../session/session-id.js';
+import { generateSessionId } from '../persistence/src/index.js';
 import { ANALYTICS_SESSION_ENV } from './constants.js';
 
 /** Prefer the pipeline parent session, then an explicit id, then a new slug. */
