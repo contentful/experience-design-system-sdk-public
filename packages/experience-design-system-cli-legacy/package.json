@@ -30,10 +30,12 @@
     "lint:fix": "nx lint:fix experience-design-system-cli-legacy"
   },
   "dependencies": {
+    "@contentful/experience-design-system-backend-pipeline": "workspace:*",
     "@contentful/experience-design-system-types": "workspace:*",
     "@inkjs/ui": "^2.0.0",
     "@segment/analytics-node": "^3.0.0",
     "@vue/compiler-sfc": "^3.5.31",
+    "ajv": "^8.17.1",
     "commander": "^13.1.0",
     "contentful-management": "^12.17.0",
     "figures": "6.1.0",
@@ -42,7 +44,8 @@
     "react-devtools-core": "^4.19.1",
     "svelte": "^5.56.4",
     "ts-morph": "^27.0.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@contentful/experience-design-system-client": "workspace:*",

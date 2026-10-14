@@ -232,6 +232,23 @@ export {
   formatToolCall,
 } from './agents/index.js';
 
+// Agents — identity + capabilities. Native in backend-pipeline; callers should
+// prefer these over `@contentful/experience-design-system-generation`.
+export { AGENT_NAMES, type AgentName } from './agents/types/agent-name.js';
+export { DEFAULT_AGENT_NAME } from './agents/constants/models.js';
+export { isAgentName } from './agents/helpers/resolution/is-agent-name.js';
+export { agentSupportsBedrock } from './agents/helpers/bedrock/agent-supports-bedrock.js';
+export { checkAgentAuth } from './agents/services/check-agent-auth.js';
+export type { AgentAuthStatus } from './agents/types/agent-run.js';
+
+// Agents — prompt builder, invoker, skill resolution, tool-call parsers. Used by
+// in-process callers (v2 TUI step 06 selection) and lifted step orchestrators.
+export { buildPrompt } from './agents/prompts/build-prompt.js';
+export { resolveSkillPath } from './agents/prompts/resolve-skill-path.js';
+export { createLocalCliAgentInvoker } from './agents/invoker/create-local-cli-agent-invoker.js';
+export { parseSelectToolCalls } from './agents/parsers/parse-select-tool-calls.js';
+export { parseTokenToolCalls } from './agents/parsers/parse-token-tool-calls.js';
+
 // Generation — Contentful Management client factory
 export { buildContentfulManagementClient } from './steps/generation/src/controller/client/build-contentful-management-client.js';
 
@@ -485,3 +502,19 @@ export type {
   ExtractorProgress,
 } from './steps/extraction/src/types/component.js';
 export { stripScoringFields } from './steps/extraction/src/types/component.js';
+
+// Orchestrators — multi-step pipeline flows exposed as single functions.
+// Callers (legacy CLI, v2 TUI) use these to drive the pipeline without
+// duplicating orchestration logic.
+export { runExtractAndComposeSession } from './orchestrators/run-extract-and-compose-session/run-extract-and-compose-session.js';
+export type {
+  RunExtractAndComposeSessionRequest,
+  RunExtractAndComposeSessionResponse,
+  ExtractAndComposeProgress,
+} from './orchestrators/run-extract-and-compose-session/run-extract-and-compose-session.js';
+export { runGenerateTokensSession } from './orchestrators/run-generate-tokens-session/run-generate-tokens-session.js';
+export type {
+  RunGenerateTokensSessionRequest,
+  RunGenerateTokensSessionResponse,
+  GenerateTokensProgress,
+} from './orchestrators/run-generate-tokens-session/run-generate-tokens-session.js';

@@ -20,8 +20,8 @@ const agent = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('@contentful/experience-design-system-generation', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@contentful/experience-design-system-generation')>();
+vi.mock('@contentful/experience-design-system-backend-pipeline', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@contentful/experience-design-system-backend-pipeline')>();
   return {
     ...actual,
     createLocalCliAgentInvoker: () => ({

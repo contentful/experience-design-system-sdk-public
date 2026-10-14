@@ -6,6 +6,8 @@ export type TokenStrategy = ImportHandoff['tokens']['strategy'];
 
 export interface ExtractionInput {
   projectPath: string;
+  /** Absolute source files from the path-validation step (collectFiles output). */
+  filePaths: string[];
   /** Raw tokens file the user pointed at (always set: v2 asks for one). */
   rawTokensPath: string;
   /** From the token reuse step. 'reuse' skips token generation entirely. */
@@ -18,7 +20,7 @@ export interface ExtractionInput {
   noCache: boolean;
 }
 
-export type CompositionPhase = 'resolving' | 'cache-hit' | 'done' | `agent:${string}`;
+type CompositionPhase = 'resolving' | 'cache-hit' | 'done' | `agent:${string}`;
 type JobStatus = 'idle' | 'running' | 'complete' | 'failed';
 
 /** Everything the extracting screen shows. One field per row. */

@@ -1,9 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
+import type {
+  RunExtractAndComposeSessionRequest,
+  RunExtractAndComposeSessionResponse,
+} from '@contentful/experience-design-system-backend-pipeline';
 import { runExtraction, type ExtractionDeps } from '../../../src/tui/import/steps/06-extraction/run.js';
 import type { ExtractionInput, ExtractionProgress } from '../../../src/tui/import/steps/06-extraction/types.js';
 
 const input = (overrides: Partial<ExtractionInput> = {}): ExtractionInput => ({
   projectPath: '/proj',
+  filePaths: ['/proj/src/a.tsx', '/proj/src/b.tsx', '/proj/src/c.tsx'],
   rawTokensPath: '/raw-tokens.json',
   tokenStrategy: 'generate',
   credentials: { spaceId: 's', environmentId: 'e', cmaToken: 't', host: 'api.contentful.com' },
@@ -13,10 +18,37 @@ const input = (overrides: Partial<ExtractionInput> = {}): ExtractionInput => ({
   ...overrides,
 });
 
-type Handlers = { onStderrLine: (line: string) => void; onStdoutLine: (line: string) => void };
+type Session = (req: RunExtractAndComposeSessionRequest) => Promise<RunExtractAndComposeSessionResponse>;
 
-/** Deps that succeed; each test overrides the one thing it is about. The log records the order things happened in. */
+const successResponse = (
+  overrides: Partial<RunExtractAndComposeSessionResponse> = {},
+): RunExtractAndComposeSessionResponse => ({
+  sessionId: 'sess-1',
+  compositionPhase: 'done',
+  components: [
+    { name: 'A', framework: 'react', source: 'a.tsx', props: [], slots: [] } as never,
+    { name: 'B' } as never,
+    { name: 'C' } as never,
+  ],
+  warnings: [],
+  conflicts: [],
+  compositionWarnings: [],
+  scannedFileCount: 3,
+  ...overrides,
+});
+
+/** Default-success deps; each test overrides the one thing it is about. */
 function makeDeps(overrides: Partial<ExtractionDeps> = {}, log: string[] = []): ExtractionDeps {
+  const defaultSession: Session = async (req) => {
+    log.push('extract:start');
+    req.onProgress?.({ kind: 'extract', done: 3, total: 3, componentsSoFar: 3 });
+    req.onProgress?.({ kind: 'composition', phase: 'agent:claude' });
+    await req.onSessionCreated?.('sess-1');
+    log.push('extract:session');
+    req.onProgress?.({ kind: 'composition', phase: 'done' });
+    log.push('extract:exit');
+    return successResponse();
+  };
   return {
     checkAgentAuth: vi.fn().mockResolvedValue('authenticated'),
     fetchEntities: vi.fn(async () => {
@@ -24,26 +56,16 @@ function makeDeps(overrides: Partial<ExtractionDeps> = {}, log: string[] = []): 
       log.push('entities:done');
       return '/proj/.contentful/.existing-entities.json';
     }),
-    spawnExtract: vi.fn(async (_command: unknown, handlers: Handlers) => {
-      log.push('extract:start');
-      handlers.onStderrLine('progress=scan:3');
-      handlers.onStderrLine('progress=scan-done:3');
-      handlers.onStderrLine('progress=composition:agent:claude');
-      handlers.onStdoutLine('session=sess-1');
-      log.push('extract:session');
-      handlers.onStderrLine('progress=composition:done');
-      log.push('extract:exit');
-      return { exitCode: 0, stdout: 'session=sess-1\n', stderr: 'Extracted 3 components\n' };
-    }) as ExtractionDeps['spawnExtract'],
-    runTokenGeneration: vi.fn(async () => {
+    runExtractAndComposeSession: vi.fn(defaultSession) as ExtractionDeps['runExtractAndComposeSession'],
+    runGenerateTokensSession: vi.fn(async () => {
       log.push('tokens:start');
       return {
-        ok: true as const,
         tokensPath: '/proj/.contentful/tokens.json',
         tokenSessionId: 'tok-1',
         tokenCount: 12,
+        warnings: [],
       };
-    }),
+    }) as ExtractionDeps['runGenerateTokensSession'],
     runSelection: vi.fn(async () => {
       log.push('selection');
     }),
@@ -67,17 +89,17 @@ describe('runExtraction — the tokens path it hands over', () => {
 
   it('is the existing catalog when it was reused even though there is no raw tokens file to generate from', async () => {
     // reuse is what sets the path here: nothing is generated, so it would otherwise count as having no token source
-    const deps = makeDeps({ runTokenGeneration: vi.fn() });
+    const deps = makeDeps({ runGenerateTokensSession: vi.fn() });
     const result = await runExtraction(input({ rawTokensPath: '', tokenStrategy: 'reuse' }), () => {}, deps);
     expect(result.ok && result.extraction.tokensPath).toBe('/proj/.contentful/tokens.json');
-    expect(deps.runTokenGeneration).not.toHaveBeenCalled();
+    expect(deps.runGenerateTokensSession).not.toHaveBeenCalled();
   });
 
   it('is empty when there is no token source at all, so later steps do not look for a file that does not exist', async () => {
-    const deps = makeDeps({ runTokenGeneration: vi.fn() });
+    const deps = makeDeps({ runGenerateTokensSession: vi.fn() });
     const result = await runExtraction(input({ rawTokensPath: '' }), () => {}, deps);
     expect(result.ok && result.extraction.tokensPath).toBe('');
-    expect(deps.runTokenGeneration).not.toHaveBeenCalled();
+    expect(deps.runGenerateTokensSession).not.toHaveBeenCalled();
   });
 
   it('has no token session or tokens counted when there is no token source', async () => {
@@ -107,11 +129,10 @@ describe('runExtraction — the happy path', () => {
 
   it('reports the composition cache hit to the wizard', async () => {
     const deps = makeDeps({
-      spawnExtract: vi.fn(async (_c: unknown, handlers: Handlers) => {
-        handlers.onStderrLine('progress=composition:cache-hit');
-        handlers.onStdoutLine('session=sess-1');
-        return { exitCode: 0, stdout: 'session=sess-1\n', stderr: 'Extracted 1 component\n' };
-      }) as ExtractionDeps['spawnExtract'],
+      runExtractAndComposeSession: vi.fn(async (req) => {
+        await req.onSessionCreated?.('sess-1');
+        return successResponse({ compositionPhase: 'cache-hit' });
+      }) as ExtractionDeps['runExtractAndComposeSession'],
     });
     const result = await runExtraction(input(), () => {}, deps);
     expect(result.ok && result.extraction.compositionPhase).toBe('cache-hit');
@@ -138,9 +159,9 @@ describe('runExtraction — the happy path', () => {
 });
 
 describe('runExtraction — ordering', () => {
-  it('starts selection as soon as the session is printed, while the extract command is still running', async () => {
-    // The extract mock stays "running" until selection has started. If selection only began after the command
-    // exited, this would never be released and the run would hang.
+  it('starts selection as soon as onSessionCreated fires, while extraction is still running', async () => {
+    // The orchestrator mock holds the extraction promise open until selection has run.
+    // If selection only began after extract returned, this would never be released and the run would hang.
     let selectionStarted: () => void = () => {};
     const selectionRan = new Promise<void>((resolve) => (selectionStarted = resolve));
     const log: string[] = [];
@@ -150,12 +171,12 @@ describe('runExtraction — ordering', () => {
           log.push('selection');
           selectionStarted();
         }),
-        spawnExtract: vi.fn(async (_command: unknown, handlers: Handlers) => {
-          handlers.onStdoutLine('session=sess-1');
+        runExtractAndComposeSession: vi.fn(async (req) => {
+          await req.onSessionCreated?.('sess-1');
           await selectionRan;
           log.push('extract:exit');
-          return { exitCode: 0, stdout: 'session=sess-1\n', stderr: 'Extracted 3 components\n' };
-        }) as ExtractionDeps['spawnExtract'],
+          return successResponse();
+        }) as ExtractionDeps['runExtractAndComposeSession'],
       },
       log,
     );
@@ -208,15 +229,6 @@ describe('runExtraction — ordering', () => {
     await runExtraction(input(), () => {}, makeDeps({}, log));
     expect(log.indexOf('tokens:start')).toBeLessThan(log.indexOf('extract:exit'));
   });
-
-  it('still starts selection when the session only shows up in the final output', async () => {
-    const deps = makeDeps({
-      spawnExtract: vi.fn(async () => ({ exitCode: 0, stdout: 'session=late\n', stderr: 'Extracted 1 component\n' })),
-    });
-    const result = await runExtraction(input(), () => {}, deps);
-    expect(deps.runSelection).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'late' }));
-    expect(result.ok && result.extraction.sessionId).toBe('late');
-  });
 });
 
 describe('runExtraction — what is skipped', () => {
@@ -239,32 +251,31 @@ describe('runExtraction — what is skipped', () => {
     const deps = makeDeps();
     const result = await runExtraction(input({ tokenStrategy: 'reuse' }), () => {}, deps);
 
-    expect(deps.runTokenGeneration).not.toHaveBeenCalled();
+    expect(deps.runGenerateTokensSession).not.toHaveBeenCalled();
     expect(result.ok && result.extraction.tokenSessionId).toBeNull();
   });
 
   it('does not generate tokens when no raw tokens file was given', async () => {
     const deps = makeDeps();
     await runExtraction(input({ rawTokensPath: '' }), () => {}, deps);
-    expect(deps.runTokenGeneration).not.toHaveBeenCalled();
+    expect(deps.runGenerateTokensSession).not.toHaveBeenCalled();
   });
 
   it('forces the token cache off for a regenerate, and only for a regenerate', async () => {
     const regenerate = makeDeps();
     await runExtraction(input({ tokenStrategy: 'regenerate' }), () => {}, regenerate);
-    expect(regenerate.runTokenGeneration).toHaveBeenCalledWith(expect.objectContaining({ noCache: true }));
+    expect(regenerate.runGenerateTokensSession).toHaveBeenCalledWith(expect.objectContaining({ noCache: true }));
 
     const normal = makeDeps();
     await runExtraction(input({ tokenStrategy: 'generate' }), () => {}, normal);
-    expect(normal.runTokenGeneration).toHaveBeenCalledWith(expect.objectContaining({ noCache: false }));
+    expect(normal.runGenerateTokensSession).toHaveBeenCalledWith(expect.objectContaining({ noCache: false }));
   });
 
   it('passes the cache setting to extraction and selection', async () => {
     const deps = makeDeps();
     await runExtraction(input({ noCache: true, promptOverrides: ['x=y'] }), () => {}, deps);
-    expect(deps.spawnExtract).toHaveBeenCalledWith(
+    expect(deps.runExtractAndComposeSession).toHaveBeenCalledWith(
       expect.objectContaining({ noCache: true, promptOverrides: ['x=y'] }),
-      expect.anything(),
     );
     expect(deps.runSelection).toHaveBeenCalledWith(expect.objectContaining({ noCache: true }));
   });
@@ -278,34 +289,30 @@ describe('runExtraction — failures', () => {
       const result = await runExtraction(input(), () => {}, deps);
 
       expect(result).toMatchObject({ ok: false, step: 'claude auth check' });
-      expect(deps.spawnExtract).not.toHaveBeenCalled();
+      expect(deps.runExtractAndComposeSession).not.toHaveBeenCalled();
       expect(deps.fetchEntities).not.toHaveBeenCalled();
     },
   );
 
-  it('reports the extract error output when the command fails', async () => {
+  it('reports the extract error when the orchestrator throws', async () => {
     const deps = makeDeps({
-      spawnExtract: vi.fn(async () => ({
-        exitCode: 1,
-        stdout: '',
-        stderr: 'Error: source directory does not exist\n',
-      })),
+      runExtractAndComposeSession: vi.fn(async () => {
+        throw new Error('source directory does not exist');
+      }) as ExtractionDeps['runExtractAndComposeSession'],
     });
     expect(await runExtraction(input(), () => {}, deps)).toEqual({
       ok: false,
       step: 'analyze extract',
-      message: 'Error: source directory does not exist',
+      message: 'source directory does not exist',
     });
-  });
-
-  it('says "Unknown error" when the command fails without saying why', async () => {
-    const deps = makeDeps({ spawnExtract: vi.fn(async () => ({ exitCode: 2, stdout: '', stderr: '' })) });
-    expect(await runExtraction(input(), () => {}, deps)).toMatchObject({ ok: false, message: 'Unknown error' });
   });
 
   it('reports no components found when the count is zero', async () => {
     const deps = makeDeps({
-      spawnExtract: vi.fn(async () => ({ exitCode: 0, stdout: 'session=s\n', stderr: 'Extracted 0 components\n' })),
+      runExtractAndComposeSession: vi.fn(async (req) => {
+        await req.onSessionCreated?.('sess-1');
+        return successResponse({ components: [] });
+      }) as ExtractionDeps['runExtractAndComposeSession'],
     });
     const result = await runExtraction(input(), () => {}, deps);
     expect(result).toMatchObject({ ok: false, step: 'analyze extract' });
@@ -323,15 +330,13 @@ describe('runExtraction — failures', () => {
 
   it('reports a token generation failure with the step that failed', async () => {
     const deps = makeDeps({
-      runTokenGeneration: vi.fn(async () => ({
-        ok: false as const,
-        step: 'print tokens' as const,
-        message: 'disk full',
-      })),
+      runGenerateTokensSession: vi.fn(async () => {
+        throw new Error('disk full');
+      }) as ExtractionDeps['runGenerateTokensSession'],
     });
     expect(await runExtraction(input(), () => {}, deps)).toEqual({
       ok: false,
-      step: 'print tokens',
+      step: 'generate tokens',
       message: 'disk full',
     });
   });
@@ -343,28 +348,21 @@ describe('runExtraction — failures', () => {
     expect(result.ok && result.extraction.existingEntitiesPath).toBeNull();
   });
 
-  it('fails clearly if the extract command never printed a session', async () => {
-    const deps = makeDeps({
-      spawnExtract: vi.fn(async () => ({ exitCode: 0, stdout: '', stderr: 'Extracted 2 components\n' })),
-    });
-    expect(await runExtraction(input(), () => {}, deps)).toMatchObject({ ok: false, step: 'analyze extract' });
-  });
-
   describe('when more than one thing fails, the user sees the first of: extract, no components, selection, tokens', () => {
     const everythingFails = (overrides: Partial<ExtractionDeps>): ExtractionDeps =>
       makeDeps({
         runSelection: vi.fn().mockRejectedValue(new Error('selection broke')),
-        runTokenGeneration: vi.fn(async () => ({
-          ok: false as const,
-          step: 'generate tokens' as const,
-          message: 'tokens broke',
-        })),
+        runGenerateTokensSession: vi.fn(async () => {
+          throw new Error('tokens broke');
+        }) as ExtractionDeps['runGenerateTokensSession'],
         ...overrides,
       });
 
     it('extract beats everything', async () => {
       const deps = everythingFails({
-        spawnExtract: vi.fn(async () => ({ exitCode: 1, stdout: 'session=s\n', stderr: 'extract broke' })),
+        runExtractAndComposeSession: vi.fn(async () => {
+          throw new Error('extract broke');
+        }) as ExtractionDeps['runExtractAndComposeSession'],
       });
       expect(await runExtraction(input(), () => {}, deps)).toMatchObject({
         step: 'analyze extract',
@@ -374,7 +372,10 @@ describe('runExtraction — failures', () => {
 
     it('no components beats selection and tokens', async () => {
       const deps = everythingFails({
-        spawnExtract: vi.fn(async () => ({ exitCode: 0, stdout: 'session=s\n', stderr: 'Extracted 0 components' })),
+        runExtractAndComposeSession: vi.fn(async (req) => {
+          await req.onSessionCreated?.('sess-1');
+          return successResponse({ components: [] });
+        }) as ExtractionDeps['runExtractAndComposeSession'],
       });
       expect(await runExtraction(input(), () => {}, deps)).toMatchObject({ step: 'analyze extract' });
     });
