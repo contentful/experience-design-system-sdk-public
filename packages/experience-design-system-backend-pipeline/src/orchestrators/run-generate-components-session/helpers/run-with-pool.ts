@@ -1,8 +1,3 @@
-/**
- * Runs `worker` over `items` with at most `concurrency` in flight at once.
- * Results come back in the same order as `items`. Mirrors the legacy
- * `__generate components` worker pool.
- */
 export async function runWithPool<T, R>(
   items: T[],
   concurrency: number,

@@ -4,12 +4,10 @@ export function initialProgress(): GenerationProgress {
   return { components: null, mapTokens: 'idle', mapTokensEligible: null };
 }
 
-/** Token mapping runs only when there is something to map and tokens to map it from. */
 export function shouldRunMapTokens(counts: { mappablePropCount: number; rawTokenCount: number }): boolean {
   return counts.mappablePropCount > 0 && counts.rawTokenCount > 0;
 }
 
-/** "5 components accepted." or, with some left out, "5 components accepted, 2 excluded due to validation errors." */
 export function formatAcceptanceSummary(counts: { accepted: number; autoRejected: number }): string {
   const accepted = `${counts.accepted} component${counts.accepted === 1 ? '' : 's'} accepted`;
   if (counts.autoRejected === 0) return `${accepted}.`;
@@ -18,7 +16,6 @@ export function formatAcceptanceSummary(counts: { accepted: number; autoRejected
 
 const capitalize = (name: string): string => name.charAt(0).toUpperCase() + name.slice(1);
 
-/** The screen's description: what was accepted, what is happening to it, and whether the tokens are used. */
 export function describeGeneration(input: { acceptedCount: number; agent: string; hasTokens: boolean }): string {
   const agent = capitalize(input.agent);
   return (
@@ -28,7 +25,6 @@ export function describeGeneration(input: { acceptedCount: number; agent: string
   );
 }
 
-/** The rows the generating screen shows for this progress. */
 export function progressRows(
   progress: GenerationProgress,
   agent: string,

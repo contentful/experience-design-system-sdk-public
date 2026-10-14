@@ -6,12 +6,6 @@ export interface ReadExistingEntitiesRequest {
   existingEntitiesPath?: string | null;
 }
 
-/**
- * Resolves the existing-Contentful-entities projection the generate/map-tokens
- * agents receive. The pre-materialized value wins when the caller passed one;
- * otherwise reads the on-disk `.existing-entities.json` the credentials step
- * wrote. Returns `undefined` when neither source is available.
- */
 export async function readExistingEntities(
   request: ReadExistingEntitiesRequest,
 ): Promise<ExistingContentfulEntities | null | undefined> {

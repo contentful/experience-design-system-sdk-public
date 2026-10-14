@@ -12,9 +12,13 @@ import {
   type GenerateComponentsProgress,
   type RunGenerateComponentsSessionResponse,
 } from '@contentful/experience-design-system-backend-pipeline';
+import { findSkillPath } from '../06-extraction/find-skill-path.js';
 import { agentAuthMessage } from '../06-extraction/logic.js';
 import { prepareMapTokens } from './map-tokens.js';
 import { saveDecisions } from './save-decisions.js';
+
+const COMPONENTS_SKILL_PATH = findSkillPath('generate-components.md');
+const MAP_TOKENS_SKILL_PATH = findSkillPath('map-tokens.md');
 import type { GenerationInput, GenerationProgress, GenerationResult, GenerationStepName } from './types.js';
 
 type Failure = Extract<GenerationResult, { ok: false }>;
@@ -38,16 +42,6 @@ const realDeps: GenerationDeps = {
 const fail = (step: GenerationStepName, message: string): Failure => ({ ok: false, step, message });
 const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
-/**
- * The whole stage, in the order the wizard ran it:
- *  1. Wait for the cache check that ran while the scope gate was open, then save the decisions. Both write to the
- *     pipeline database and the cache has to be restored first. With nothing accepted the stage ends here.
- *  2. Generate the accepted components in-process. The orchestrator handles per-component cache lookup, so the names
- *     from the cache check are forwarded as `precomputedCachedNames` to skip a redundant lookup.
- *  3. Map tokens onto the generated session. Skipped when there is nothing to map.
- * A failed token mapping after a successful generation is an error to show. It neither retries nor throws away what was
- * generated.
- */
 export async function runGeneration(
   input: GenerationInput,
   onProgress: (progress: GenerationProgress) => void,
@@ -82,6 +76,7 @@ export async function runGeneration(
       agent: input.agent,
       ...(input.agentModel ? { agentModel: input.agentModel } : {}),
       promptOverrides: appendGeneratePromptOverride(input),
+      skillPath: COMPONENTS_SKILL_PATH,
       noCache: input.noCache,
       existingEntitiesPath: input.existingEntitiesPath,
       precomputedCachedNames: new Set(handedOverNames),
@@ -112,6 +107,7 @@ export async function runGeneration(
         agent: input.agent as AgentName,
         ...(input.agentModel ? { model: input.agentModel } : {}),
         cache: !input.noCache,
+        skillPathOverride: MAP_TOKENS_SKILL_PATH,
         ...mapTokensOptions,
       });
     } catch (error) {
@@ -163,11 +159,6 @@ function appendGeneratePromptOverride(input: GenerationInput): string[] {
   return [...input.promptOverrides, `generate=${input.generatePromptPath}`];
 }
 
-/**
- * Folds a structured generate progress event into the `components` row shown on
- * screen. Mirrors the old stderr parser's semantics: `done` only climbs when a
- * component completes.
- */
 function applyProgressEvent(
   event: GenerateComponentsProgress,
   previous: GenerationProgress['components'],

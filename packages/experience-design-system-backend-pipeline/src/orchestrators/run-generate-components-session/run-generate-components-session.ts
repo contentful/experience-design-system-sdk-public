@@ -27,30 +27,11 @@ export {
 
 const DEFAULT_COMPONENT_CONCURRENCY = Number(process.env['EDS_GENERATE_CONCURRENCY'] ?? 10);
 
-/**
- * Runs `generate components` in-process against a pipeline session.
- *
- * Does, in order, everything legacy `__generate components` does between
- * `openPipelineDb()` and the final summary emit, minus the two early branches
- * (`--dry-run`, `--cache-status`). The cache-status branch is callable
- * separately via `checkGenerateComponentsCache` so step 07's cache-check can
- * run while the user sits at the scope gate.
- *
- * Writes to the session DB:
- *   - raw_components status / rationale (via applyToolCalls)
- *   - raw_props, raw_slots, raw_prop_allowed_values, raw_slot_allowed_components
- *   - cdf_components (via applyToolCalls)
- *   - generation_cache rows (one per non-cached component)
- *
- * The caller owns:
- *   - Argument parsing + flag resolution
- *   - Analytics session binding / event emission
- *   - Final summary / exit code / stderr lines
- */
 export async function runGenerateComponentsSession(
   request: RunGenerateComponentsSessionRequest,
 ): Promise<RunGenerateComponentsSessionResponse> {
   const prompt = await resolveGeneratePrompt(request.promptOverrides);
+  const effectiveSkillPath = prompt.path ?? request.skillPath;
   const existingEntities = await readExistingEntities(request);
   const existingTokensInline = existingEntities
     ? JSON.stringify(summarizeForMapTokens({ entities: existingEntities }))
@@ -62,7 +43,7 @@ export async function runGenerateComponentsSession(
     'components',
     agent,
     request.agentModel,
-    prompt.path,
+    effectiveSkillPath,
     existingTokensHash,
     prompt.text,
   );
@@ -102,7 +83,7 @@ export async function runGenerateComponentsSession(
           tokenMapInline: request.tokenMapInline,
           verbose: request.verbose ?? false,
           noCache: request.noCache,
-          skillPathOverride: prompt.path,
+          skillPathOverride: effectiveSkillPath,
           skillContentOverride: prompt.text,
           promptHash,
           existingContentfulEntities: existingEntities,

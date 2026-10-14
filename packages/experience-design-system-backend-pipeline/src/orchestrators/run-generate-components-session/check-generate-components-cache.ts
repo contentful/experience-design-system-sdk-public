@@ -17,28 +17,20 @@ export interface CheckGenerateComponentsCacheRequest {
   existingEntitiesPath?: string | null;
   existingContentfulEntities?: ExistingContentfulEntities | null;
   noCache: boolean;
-  /**
-   * When true: restore cached components back into the session DB so the next
-   * run can skip them. Mirrors legacy `--restore-cache`.
-   */
+
   restoreCache: boolean;
 }
 
 export interface CheckGenerateComponentsCacheResponse {
   sessionId: string;
-  /** Names of components whose cache entries resolved (and were restored, if requested). */
+
   cachedComponentNames: string[];
-  /** True when every raw component in the session was cached. */
+
   fullyCached: boolean;
-  /** True when the cache was disabled (`noCache` set) — the result is always empty then. */
+
   cacheDisabled: boolean;
 }
 
-/**
- * Mirrors legacy `__generate components --cache-status --restore-cache`.
- * Opens its own DB handle so step 07's cache-check (which runs while the user
- * sits at the scope gate) can call it independently from runs that generate.
- */
 export async function checkGenerateComponentsCache(
   request: CheckGenerateComponentsCacheRequest,
 ): Promise<CheckGenerateComponentsCacheResponse> {

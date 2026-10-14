@@ -1,6 +1,5 @@
 import type { GeneratedComponentResult } from '../types.js';
 
-/** The result shape for a component whose agent run exhausted retries. */
 export function buildFailedComponentResult(
   componentName: string,
   error: string,

@@ -10,11 +10,6 @@ export interface FilterDroppedAllowedComponentsResult {
   dropped: Array<{ componentName: string; slotName: string; allowedComponent: string }>;
 }
 
-/**
- * Removes `allowedComponents` references to names outside the current scope,
- * mirrors legacy pre-run filter. Returns refreshed component list and dropped
- * references so the caller can surface warnings.
- */
 export function filterDroppedAllowedComponents(
   db: DatabaseSync,
   sessionId: string,

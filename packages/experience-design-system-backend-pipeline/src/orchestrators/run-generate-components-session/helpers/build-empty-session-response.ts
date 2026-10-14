@@ -1,6 +1,5 @@
 import type { RunGenerateComponentsSessionResponse } from '../types.js';
 
-/** Response shape when the session has no raw components to generate from. */
 export function buildEmptySessionResponse(sessionId: string): RunGenerateComponentsSessionResponse {
   return {
     sessionId,

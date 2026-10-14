@@ -1,6 +1,5 @@
 import type { GeneratedComponentResult } from '../types.js';
 
-/** The result shape for a component served from the cache (no agent invocation). */
 export function buildCachedComponentResult(componentName: string, warnings: string[] = []): GeneratedComponentResult {
   return {
     componentName,

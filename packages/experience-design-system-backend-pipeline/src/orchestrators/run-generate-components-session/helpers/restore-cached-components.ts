@@ -14,11 +14,6 @@ export type RestoreCandidate = {
   resolution: NonNullable<ReturnType<typeof resolveComponentCache>>;
 };
 
-/**
- * Copies cached CDF entries back into the target session and re-keys the cache
- * rows under the normalized component hash. Skips any component already marked
- * `generated` so manual edits persist.
- */
 export function restoreCachedComponents(
   db: DatabaseSync,
   sessionId: string,

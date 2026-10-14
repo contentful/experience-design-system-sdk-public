@@ -10,13 +10,6 @@ export interface CacheCheckInput {
   noCache: boolean;
 }
 
-/**
- * Runs the generation cache check in-process while the scope gate is open.
- * Restores cached CDF entries into the pipeline database as a side-effect so
- * the generate run that follows can skip them. A failed check is
- * indistinguishable from "nothing cached", as in legacy. INTEG-5050 tracks
- * surfacing it.
- */
 export async function checkGenerationCache(input: CacheCheckInput): Promise<string[]> {
   if (input.noCache) return [];
   try {
