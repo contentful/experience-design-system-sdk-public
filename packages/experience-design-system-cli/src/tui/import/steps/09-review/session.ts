@@ -4,6 +4,7 @@ import {
   loadCDFComponents,
   loadDTCGTokens,
   openPipelineDb,
+  removeSlotAllowedComponents,
 } from '@contentful/experience-design-system-backend-pipeline';
 import type { HistorySnapshot } from './history.js';
 import type { CdfReviewEntry, ReviewComponentStatus, TokenReviewToken } from './types.js';
@@ -116,6 +117,7 @@ export function finalizeReviewSession(extractSessionId: string, components: CdfR
         db.exec('ROLLBACK');
         throw error;
       }
+      removeSlotAllowedComponents(db, extractSessionId, [], toReject);
     } finally {
       db.close();
     }

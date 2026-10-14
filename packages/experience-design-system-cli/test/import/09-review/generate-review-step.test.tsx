@@ -922,7 +922,7 @@ describe('GenerateReviewStep — strict opt-in finalize semantics', () => {
     stdin.write('y');
     await tick();
 
-    const rejectedNames = runSpy.mock.calls.map((args) => args[1]).sort();
+    const rejectedNames = [...new Set(runSpy.mock.calls.map((args) => args[1]))].sort();
     expect(rejectedNames).toEqual(['Bbb', 'Ccc']);
     expect(onFinalize).toHaveBeenCalledWith(1, 0, 2);
   });
@@ -952,7 +952,7 @@ describe('GenerateReviewStep — strict opt-in finalize semantics', () => {
     stdin.write('y');
     await tick();
 
-    const rejectedNames = runSpy.mock.calls.map((args) => args[1]);
+    const rejectedNames = [...new Set(runSpy.mock.calls.map((args) => args[1]))];
     expect(rejectedNames).toEqual(['Bbb']);
     expect(onFinalize).toHaveBeenCalledWith(1, 1, 0);
   });
@@ -1840,12 +1840,14 @@ describe('GenerateReviewStep — composite-components grouped sidebar (subtask C
     expect(idxRoot).toBeLessThan(idxStandalone);
   });
 
-  it('ancestor of a rejected leaf renders an aggregate error glyph on its collapsed root row', async () => {
+  it('[r] on a nested leaf removes it from the parent slot and leaves both components unrejected', async () => {
     const dbMod = await import('@contentful/experience-design-system-backend-pipeline');
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
       { key: 'Card', entry: withSlot('Card', ['Body']) },
       { key: 'Body', entry: leaf('Body') },
     ]);
+    const storeSpy = vi.mocked(dbMod.storeCDFComponents);
+    storeSpy.mockClear();
     const { lastFrame, stdin } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
     );
@@ -1854,13 +1856,10 @@ describe('GenerateReviewStep — composite-components grouped sidebar (subtask C
     await tick();
     stdin.write('r');
     await tick();
-    stdin.write('k');
-    await tick();
-    stdin.write(' ');
-    await tick();
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('✗');
-    expect(frame).toMatch(/Card/);
+    expect(lastFrame() ?? '').not.toContain('✗');
+    const stored = storeSpy.mock.calls.flatMap((call) => call[2] as Array<{ key: string; entry: Entry }>);
+    expect(stored.find((row) => row.key === 'Card')?.entry.$slots?.children?.$allowedComponents).toEqual([]);
+    expect(stored.find((row) => row.key === 'Body')).toBeUndefined();
   });
 
   it('pressing Enter on a leaf (isOwn true) does not move selection', async () => {
@@ -2630,7 +2629,7 @@ describe('GenerateReviewStep — Task #37 mount-time cycle auto-reject', () => {
     expect(frame).toMatch(/\[y \/ Enter\]/);
   });
 
-  it('[r] on an accepted row cascades reject UP to ancestors', async () => {
+  it('[r] on a nested row removes the slot edge and does not reject ancestors', async () => {
     const dbMod = await import('@contentful/experience-design-system-backend-pipeline');
     const article = {
       $type: 'component' as const,
@@ -2671,8 +2670,8 @@ describe('GenerateReviewStep — Task #37 mount-time cycle auto-reject', () => {
     await tick();
     expect(onFinalize).toHaveBeenCalledTimes(1);
     const [acceptedCount, rejectedCount] = onFinalize.mock.calls[0];
-    expect(acceptedCount).toBe(0);
-    expect(rejectedCount).toBe(3);
+    expect(acceptedCount).toBe(3);
+    expect(rejectedCount).toBe(0);
   });
 });
 

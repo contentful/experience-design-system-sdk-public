@@ -900,33 +900,54 @@ function GenerateReviewStepView({
     return cycle ? enumerateCycleBreaks(cycle, components) : [];
   }, [cycleRows, cyclesCursor, components]);
 
-  const handleBreakEdge = (edge: BreakEdge): void => {
-    const target = components.find((component) => component.key === edge.fromComponent);
-    const slot = target?.entry.$slots?.[edge.slotName];
-    if (!target || !slot || !Array.isArray(slot.$allowedComponents)) return;
-    const nextEntry: CDFComponentEntry = {
-      ...target.entry,
-      $slots: {
-        ...target.entry.$slots,
-        [edge.slotName]: {
-          ...slot,
-          $allowedComponents: slot.$allowedComponents.filter((value) => value !== edge.toComponent),
-        },
-      },
-    };
+  const saveSlotChange = (parentKey: string, nextEntry: CDFComponentEntry, historyLabel: string): void => {
     const next = components.map((component) =>
-      component.key === target.key ? { ...component, entry: nextEntry } : component,
+      component.key === parentKey ? { ...component, entry: nextEntry } : component,
     );
     setComponents(next);
     const db = openPipelineDb();
     try {
-      storeCDFComponents(db, extractSessionId, [{ key: target.key, entry: nextEntry }]);
+      storeCDFComponents(db, extractSessionId, [{ key: parentKey, entry: nextEntry }]);
     } finally {
       db.close();
     }
     recomputeCycles(next);
     livePreviewHook.trigger();
-    pushHistorySnapshot(next, 'break-cycle-edge');
+    pushHistorySnapshot(next, historyLabel);
+  };
+
+  const handleBreakEdge = (edge: BreakEdge): void => {
+    const target = components.find((component) => component.key === edge.fromComponent);
+    const slot = target?.entry.$slots?.[edge.slotName];
+    if (!target || !slot || !Array.isArray(slot.$allowedComponents)) return;
+    saveSlotChange(
+      target.key,
+      {
+        ...target.entry,
+        $slots: {
+          ...target.entry.$slots,
+          [edge.slotName]: {
+            ...slot,
+            $allowedComponents: slot.$allowedComponents.filter((value) => value !== edge.toComponent),
+          },
+        },
+      },
+      'break-cycle-edge',
+    );
+  };
+
+  const handleRemoveSlotChild = (parentKey: string, childKey: string): void => {
+    const parent = components.find((component) => component.key === parentKey);
+    if (!parent?.entry.$slots) return;
+    const slots = Object.fromEntries(
+      Object.entries(parent.entry.$slots).map(([slotName, slot]) => [
+        slotName,
+        Array.isArray(slot.$allowedComponents)
+          ? { ...slot, $allowedComponents: slot.$allowedComponents.filter((value) => value !== childKey) }
+          : slot,
+      ]),
+    );
+    saveSlotChange(parentKey, { ...parent.entry, $slots: slots }, 'remove-slot-child');
   };
 
   const handleRejectComponent = (key: string): void => {
@@ -1279,6 +1300,11 @@ function GenerateReviewStepView({
     if (input === 'r') {
       const current = components[selectedIdx];
       if (!current) return;
+      const row = visibleRowsMemo[cursorRowIdx];
+      if (row?.kind === 'group-child' && row.parentName) {
+        handleRemoveSlotChild(row.parentName, current.key);
+        return;
+      }
       handleRejectComponent(current.key);
       return;
     }

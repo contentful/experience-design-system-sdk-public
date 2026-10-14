@@ -96,6 +96,71 @@ describe('the generation stage and the pipeline database', () => {
       expect(statuses(second).Button).not.toBe('generated');
     });
 
+    describe('slot references', () => {
+      const withSlot = (name: string, ...allowed: string[]) => ({
+        ...raw(name),
+        slots: [{ name: 'children', allowedComponents: allowed }] as never,
+      });
+      const allowedBy = (sessionId: string): Record<string, string[]> => {
+        const db = openPipelineDb();
+        try {
+          const rows = db
+            .prepare(
+              `SELECT c.name AS name, a.allowed_component AS allowed
+               FROM raw_slot_allowed_components a
+               JOIN raw_components c ON c.session_id = a.session_id AND c.component_id = a.component_id
+               WHERE a.session_id = ? ORDER BY c.name, a.position`,
+            )
+            .all(sessionId) as Array<{ name: string; allowed: string }>;
+          const out: Record<string, string[]> = {};
+          for (const row of rows) (out[row.name] ??= []).push(row.allowed);
+          return out;
+        } finally {
+          db.close();
+        }
+      };
+      const seed = (): string => {
+        const sessionId = newSession();
+        const db = openPipelineDb();
+        storeRawComponents(db, sessionId, [
+          withSlot('Flex', 'Text', 'Button'),
+          withSlot('Card', 'Text'),
+          raw('Text'),
+          raw('Button'),
+        ]);
+        db.close();
+        return sessionId;
+      };
+
+      it('removes a slot edge the user took out, from that parent only, and keeps the child accepted', async () => {
+        const sessionId = seed();
+
+        await saveDecisions({
+          sessionId,
+          decisions: {
+            accepted: ['Flex', 'Card', 'Text', 'Button'],
+            rejected: [],
+            excludedSlotEdges: [{ parent: 'Flex', child: 'Text' }],
+          },
+        });
+
+        expect(allowedBy(sessionId)).toEqual({ Flex: ['Button'], Card: ['Text'] });
+        expect(statuses(sessionId).Text).toBe('generated');
+      });
+
+      it('removes a rejected component from every slot while its parents stay accepted', async () => {
+        const sessionId = seed();
+
+        await saveDecisions({
+          sessionId,
+          decisions: { accepted: ['Flex', 'Card', 'Button'], rejected: ['Text'] },
+        });
+
+        expect(allowedBy(sessionId)).toEqual({ Flex: ['Button'] });
+        expect(statuses(sessionId)).toMatchObject({ Flex: 'generated', Card: 'generated', Text: 'rejected' });
+      });
+    });
+
     it('closes the database even when saving fails', async () => {
       // a session with no components still saves; a database that cannot be written would throw, and the next open must work
       const sessionId = newSession();

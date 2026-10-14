@@ -195,6 +195,48 @@ describe('the review session and the pipeline database', () => {
       expect(counts).toEqual({ accepted: 1, rejected: 1, unresolved: 1 });
     });
 
+    it('removes rejected and unresolved components from every slot, and keeps the parents and accepted children', () => {
+      const sessionId = newSession();
+      const db = openPipelineDb();
+      const slotted = (name: string, ...allowed: string[]) => ({
+        ...raw(name),
+        slots: [{ name: 'children', allowedComponents: allowed }] as never,
+      });
+      storeRawComponents(db, sessionId, [
+        slotted('Flex', 'Text', 'Button', 'Icon'),
+        slotted('Card', 'Text'),
+        raw('Text'),
+        raw('Button'),
+        raw('Icon'),
+      ]);
+      db.close();
+
+      finalizeReviewSession(sessionId, [
+        review('Flex', 'accepted'),
+        review('Card', 'accepted'),
+        review('Text', 'rejected'),
+        review('Button', 'accepted'),
+        review('Icon', 'needs-review'),
+      ]);
+
+      const read = openPipelineDb();
+      try {
+        const rows = read
+          .prepare(
+            `SELECT c.name AS name, a.allowed_component AS allowed
+             FROM raw_slot_allowed_components a
+             JOIN raw_components c ON c.session_id = a.session_id AND c.component_id = a.component_id
+             WHERE a.session_id = ? ORDER BY c.name, a.position`,
+          )
+          .all(sessionId) as Array<{ name: string; allowed: string }>;
+        const allowedBy: Record<string, string[]> = {};
+        for (const row of rows) (allowedBy[row.name] ??= []).push(row.allowed);
+        expect(allowedBy).toEqual({ Flex: ['Button'] });
+      } finally {
+        read.close();
+      }
+    });
+
     it('only touches the session it was given', () => {
       const mine = newSession();
       const other = newSession();

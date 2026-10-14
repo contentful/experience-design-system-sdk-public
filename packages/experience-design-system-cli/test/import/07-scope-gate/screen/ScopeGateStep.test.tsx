@@ -193,7 +193,7 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       { name: 'Card', componentId: 'c0' },
     ];
 
-    it('rejecting a child cascades to ancestors (blast radius 1 → no prompt)', () => {
+    it('rejecting a nested child only removes the slot edge (no cascade, no prompt)', () => {
       const onConfirm = vi.fn();
       const { stdin } = render(<ScopeGateStep components={ARTICLE_CARD} onConfirm={onConfirm} onQuit={() => {}} />);
       stdin.write('A');
@@ -201,8 +201,9 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       stdin.write('r');
       stdin.write('f');
       const arg = onConfirm.mock.calls[0][0];
-      expect(arg.rejected).toEqual(expect.arrayContaining(['Card', 'Article']));
-      expect(arg.accepted).toEqual([]);
+      expect(arg.rejected).toEqual([]);
+      expect(arg.accepted).toEqual(expect.arrayContaining(['Card', 'Article']));
+      expect(arg.excludedSlotEdges).toEqual([{ parent: 'Article', child: 'Card' }]);
     });
 
     it('accepting a root cascades to descendants', () => {
@@ -215,7 +216,7 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       expect(arg.rejected).toEqual([]);
     });
 
-    it('reject cascade with blast-radius ≥ 2 shows confirm; [y] applies', () => {
+    it('rejecting a root with ancestors still shows the cascade confirm; [y] applies', () => {
       const TWO_PARENTS = [
         {
           name: 'Article',
@@ -234,7 +235,7 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
         <ScopeGateStep components={TWO_PARENTS} onConfirm={onConfirm} onQuit={() => {}} />,
       );
       stdin.write('A');
-      stdin.write('\x1b[B');
+      for (let i = 0; i < 4; i++) stdin.write('\x1b[B');
       stdin.write('r');
       const frame = lastFrame() ?? '';
       expect(frame).toContain('Rejecting Card will:');
@@ -272,7 +273,7 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       expect(arg.accepted).toEqual(expect.arrayContaining(['Article', 'Newsletter', 'Card']));
     });
 
-    it('group-child rows are individually selectable', () => {
+    it('group-child rows are individually deselectable without rejecting the component or its parent', () => {
       const onConfirm = vi.fn();
       const setup = [
         {
@@ -289,8 +290,85 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       stdin.write('r');
       stdin.write('f');
       const arg = onConfirm.mock.calls[0][0];
-      expect(arg.rejected).toEqual(expect.arrayContaining(['Text', 'Card']));
-      expect(arg.accepted).toEqual(expect.arrayContaining(['Standalone']));
+      expect(arg.rejected).toEqual([]);
+      expect(arg.accepted).toEqual(expect.arrayContaining(['Text', 'Card', 'Standalone']));
+      expect(arg.excludedSlotEdges).toEqual([{ parent: 'Card', child: 'Text' }]);
+    });
+  });
+
+  describe('removing a child from one parent slot', () => {
+    const TWO_PARENTS = [
+      { name: 'Article', componentId: 'a0', slots: [{ name: 'body', allowedComponents: ['Card'] }] },
+      { name: 'Newsletter', componentId: 'n0', slots: [{ name: 'items', allowedComponents: ['Card'] }] },
+      { name: 'Card', componentId: 'c0' },
+    ];
+    const treeOf = (frame: string): string => stripAnsi(frame);
+
+    it('removes only the edge under the cursor, so the same child under the other parent stays', () => {
+      const onConfirm = vi.fn();
+      const { stdin } = render(<ScopeGateStep components={TWO_PARENTS} onConfirm={onConfirm} onQuit={() => {}} />);
+      stdin.write('A');
+      stdin.write('\x1b[B');
+      stdin.write('r');
+      stdin.write('f');
+      const arg = onConfirm.mock.calls[0][0];
+      expect(arg.excludedSlotEdges).toEqual([{ parent: 'Article', child: 'Card' }]);
+      expect(arg.rejected).toEqual([]);
+    });
+
+    it('takes the child out of that parent in the tree, and Ctrl+Z puts it back', () => {
+      const { stdin, lastFrame } = render(
+        <ScopeGateStep components={TWO_PARENTS} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      stdin.write('A');
+      expect(treeOf(lastFrame() ?? '')).toContain('▾ Article (1 dep)');
+      stdin.write('\x1b[B');
+      stdin.write('r');
+      expect(treeOf(lastFrame() ?? '')).not.toContain('Article (1 dep)');
+      expect(treeOf(lastFrame() ?? '')).toContain('▾ Newsletter (1 dep)');
+      stdin.write('\x1a');
+      expect(treeOf(lastFrame() ?? '')).toContain('▾ Article (1 dep)');
+    });
+
+    it('undoes the removals one at a time, newest first', () => {
+      const onConfirm = vi.fn();
+      const { stdin } = render(<ScopeGateStep components={TWO_PARENTS} onConfirm={onConfirm} onQuit={() => {}} />);
+      stdin.write('A');
+      stdin.write('\x1b[B');
+      stdin.write('r');
+      stdin.write('\x1b[A');
+      stdin.write('\x1b[B');
+      stdin.write('r');
+      stdin.write('f');
+      expect(onConfirm.mock.calls[0][0].excludedSlotEdges).toHaveLength(2);
+
+      onConfirm.mockClear();
+      stdin.write('\x1a');
+      stdin.write('f');
+      expect(onConfirm.mock.calls[0][0].excludedSlotEdges).toEqual([{ parent: 'Article', child: 'Card' }]);
+    });
+
+    it('does nothing on Ctrl+Z when nothing was removed', () => {
+      const onConfirm = vi.fn();
+      const { stdin } = render(<ScopeGateStep components={TWO_PARENTS} onConfirm={onConfirm} onQuit={() => {}} />);
+      stdin.write('A');
+      stdin.write('\x1a');
+      stdin.write('f');
+      expect(onConfirm.mock.calls[0][0].excludedSlotEdges).toEqual([]);
+    });
+
+    it('drops a removed edge from the confirmed list when its parent is rejected afterwards', () => {
+      const onConfirm = vi.fn();
+      const { stdin } = render(<ScopeGateStep components={TWO_PARENTS} onConfirm={onConfirm} onQuit={() => {}} />);
+      stdin.write('A');
+      stdin.write('\x1b[B');
+      stdin.write('r');
+      stdin.write('\x1b[B');
+      stdin.write('r');
+      stdin.write('f');
+      const arg = onConfirm.mock.calls[0][0];
+      expect(arg.rejected).toEqual(['Article']);
+      expect(arg.excludedSlotEdges).toEqual([]);
     });
   });
 
@@ -682,7 +760,7 @@ describe('ScopeGateStep — tri-state (deselect-descendants) semantics', () => {
     expect(after).toContain('[ ]');
   });
 
-  it('rejecting an accepted leaf rejects target + ancestors, leaves siblings accepted', () => {
+  it('rejecting a nested leaf removes only its slot edge, leaving parent and siblings accepted', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(
       <ScopeGateStep components={ROOT_WITH_TWO_CHILDREN} onConfirm={onConfirm} onQuit={() => {}} />,
@@ -692,11 +770,12 @@ describe('ScopeGateStep — tri-state (deselect-descendants) semantics', () => {
     stdin.write('r');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
-    expect(arg.rejected).toEqual(expect.arrayContaining(['Icon', 'Card']));
-    expect(arg.accepted).toContain('Text');
+    expect(arg.rejected).toEqual([]);
+    expect(arg.accepted).toEqual(expect.arrayContaining(['Card', 'Text', 'Icon']));
+    expect(arg.excludedSlotEdges).toEqual([{ parent: 'Card', child: 'Icon' }]);
   });
 
-  it('confirm prompt renders BOTH ancestor and descendant lists when both non-empty', () => {
+  it('confirm prompt lists the descendants that a root-level reject deselects', () => {
     const MIDDLE = [
       {
         name: 'Root',
@@ -712,12 +791,10 @@ describe('ScopeGateStep — tri-state (deselect-descendants) semantics', () => {
     ];
     const { stdin, lastFrame } = render(<ScopeGateStep components={MIDDLE} onConfirm={() => {}} onQuit={() => {}} />);
     stdin.write('A');
-    stdin.write('\x1b[B');
     stdin.write('r');
     const frame = lastFrame() ?? '';
-    expect(frame).toContain('Rejecting Mid will:');
-    expect(frame).toContain('Reject ancestors: Root');
-    expect(frame).toContain('Deselect descendants: Leaf');
+    expect(frame).toContain('Rejecting Root will:');
+    expect(frame).toContain('Deselect descendants: Leaf, Mid');
   });
 
   it('on confirm after reject-cascade, deselected descendants land in decisions.rejected', () => {

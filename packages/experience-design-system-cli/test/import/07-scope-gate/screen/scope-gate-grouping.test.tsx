@@ -147,7 +147,7 @@ describe('ScopeGateStep — closure-aware selection', () => {
     expect(arg.rejected).toEqual(expect.arrayContaining(['Card', 'Text']));
   });
 
-  it('Rejecting an accepted group-child cascades to ancestors (blast radius 1 = no prompt)', () => {
+  it('Rejecting an accepted group-child only removes its slot edge; the parent and child stay accepted', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(
       <ScopeGateStep
@@ -161,7 +161,8 @@ describe('ScopeGateStep — closure-aware selection', () => {
     stdin.write('r');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
-    expect(arg.rejected).toEqual(expect.arrayContaining(['Text', 'Card']));
-    expect(arg.accepted).toEqual([]);
+    expect(arg.rejected).toEqual([]);
+    expect(arg.accepted).toEqual(expect.arrayContaining(['Text', 'Card']));
+    expect(arg.excludedSlotEdges).toEqual([{ parent: 'Card', child: 'Text' }]);
   });
 });
