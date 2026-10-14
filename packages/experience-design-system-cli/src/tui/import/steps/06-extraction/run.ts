@@ -179,7 +179,6 @@ export async function runExtraction(
   // "no tokens" (generating with --tokens pointing at a missing file fails).
   const hasTokenSource = input.rawTokensPath !== '' || input.tokenStrategy === 'reuse';
 
-
   const extraction: ExtractionHandoff = {
     sessionId: extracted.sessionId,
     outDir,

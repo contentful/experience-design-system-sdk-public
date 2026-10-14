@@ -89,17 +89,17 @@ describe('runExtraction — the tokens path it hands over', () => {
 
   it('is the existing catalog when it was reused even though there is no raw tokens file to generate from', async () => {
     // reuse is what sets the path here: nothing is generated, so it would otherwise count as having no token source
-    const deps = makeDeps({ runTokenGeneration: vi.fn() });
+    const deps = makeDeps({ runGenerateTokensSession: vi.fn() });
     const result = await runExtraction(input({ rawTokensPath: '', tokenStrategy: 'reuse' }), () => {}, deps);
     expect(result.ok && result.extraction.tokensPath).toBe('/proj/.contentful/tokens.json');
-    expect(deps.runTokenGeneration).not.toHaveBeenCalled();
+    expect(deps.runGenerateTokensSession).not.toHaveBeenCalled();
   });
 
   it('is empty when there is no token source at all, so later steps do not look for a file that does not exist', async () => {
-    const deps = makeDeps({ runTokenGeneration: vi.fn() });
+    const deps = makeDeps({ runGenerateTokensSession: vi.fn() });
     const result = await runExtraction(input({ rawTokensPath: '' }), () => {}, deps);
     expect(result.ok && result.extraction.tokensPath).toBe('');
-    expect(deps.runTokenGeneration).not.toHaveBeenCalled();
+    expect(deps.runGenerateTokensSession).not.toHaveBeenCalled();
   });
 
   it('has no token session or tokens counted when there is no token source', async () => {

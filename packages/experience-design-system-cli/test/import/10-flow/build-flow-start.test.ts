@@ -6,6 +6,7 @@ import type { ExtractionInput } from '../../../src/tui/import/steps/06-extractio
 const handoff: ImportHandoff = { credentialsSkipped: false, tokens: { strategy: 'generate' } };
 const extraction = (overrides: Partial<ExtractionInput> = {}): ExtractionInput => ({
   projectPath: '/proj',
+  filePaths: [],
   rawTokensPath: '/proj/theme.css',
   tokenStrategy: 'generate',
   credentials: { spaceId: 'sp-1', environmentId: 'staging', cmaToken: 'cma-1', host: 'api.eu.contentful.com' },
