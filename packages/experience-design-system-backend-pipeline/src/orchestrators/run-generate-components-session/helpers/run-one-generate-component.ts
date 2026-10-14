@@ -19,6 +19,8 @@ import { resolveComponentCache } from '../../../steps/generation/src/helpers/com
 import { summarizeForGenerateAgent } from '../../../steps/generation/src/controller/existing-entities/summarize-for-generate.js';
 import type { ExistingContentfulEntities } from '../../../steps/generation/src/types/existing-entities.js';
 import type { GeneratedComponentResult, GenerateComponentsProgress } from '../types.js';
+import { buildCachedComponentResult } from './build-cached-component-result.js';
+import { buildFailedComponentResult } from './build-failed-component-result.js';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env['EDS_AGENT_TIMEOUT_MS'] ?? 5 * 60 * 1000);
 const RETRY_BACKOFF_MS = Number(process.env['EDS_RETRY_BACKOFF_MS'] ?? 5_000);
@@ -92,7 +94,7 @@ export async function runOneGenerateComponent(
 
   if (!noCache && precomputedCachedNames.has(component.name)) {
     onProgress?.({ kind: 'component:cached', index, total, name: component.name, pinned: false });
-    return cachedResult(component.name);
+    return buildCachedComponentResult(component.name);
   }
 
   if (!noCache) {
@@ -111,14 +113,16 @@ export async function runOneGenerateComponent(
         promptHash,
       );
       onProgress?.({ kind: 'component:cached', index, total, name: component.name, pinned: false });
-      return cachedResult(component.name);
+      return buildCachedComponentResult(component.name);
     }
     if (resolution?.humanEdited) {
       copyComponentFromCache(db, resolution.entry.sourceSessionId, sessionId, component.component_id, true, {
         allowedComponentNames,
       });
       onProgress?.({ kind: 'component:cached', index, total, name: component.name, pinned: true });
-      return cachedResult(component.name, [`${component.name}: source changed but human edits preserved`]);
+      return buildCachedComponentResult(component.name, [
+        `${component.name}: source changed but human edits preserved`,
+      ]);
     }
   }
 
@@ -175,7 +179,7 @@ export async function runOneGenerateComponent(
     if (result.timedOut) {
       const error = `timed out after ${DEFAULT_TIMEOUT_MS / 60000} minutes`;
       onProgress?.({ kind: 'component:failed', index, total, name: component.name, error });
-      return failed(component.name, error, renames.length);
+      return buildFailedComponentResult(component.name, error, renames.length);
     }
 
     if (result.exitCode !== 0) {
@@ -226,32 +230,5 @@ export async function runOneGenerateComponent(
   }
 
   onProgress?.({ kind: 'component:failed', index, total, name: component.name, error: lastError });
-  return failed(component.name, lastError, renames.length);
-}
-
-function cachedResult(componentName: string, warnings: string[] = []): GeneratedComponentResult {
-  return {
-    componentName,
-    classified: 0,
-    excluded: 0,
-    slots: 0,
-    warnings,
-    failed: false,
-    cached: true,
-    renamedSlotsCount: 0,
-  };
-}
-
-function failed(componentName: string, error: string, renamedSlotsCount: number): GeneratedComponentResult {
-  return {
-    componentName,
-    classified: 0,
-    excluded: 0,
-    slots: 0,
-    warnings: [],
-    failed: true,
-    error,
-    cached: false,
-    renamedSlotsCount,
-  };
+  return buildFailedComponentResult(component.name, lastError, renames.length);
 }

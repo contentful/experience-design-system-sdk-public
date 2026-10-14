@@ -1,22 +1,13 @@
-import type { DatabaseSync } from 'node:sqlite';
 import { summarizeForMapTokens } from '../../steps/generation/src/controller/existing-entities/summarize-for-map-tokens.js';
 import { resolveComponentCache } from '../../steps/generation/src/helpers/components/resolve-component-cache.js';
-import { normalizeComponentForCache } from '../../steps/generation/src/helpers/components/normalize-component-for-cache.js';
-import {
-  computeComponentInputHash,
-  copyComponentsFromCache,
-  loadRawComponents,
-  openPipelineDb,
-  renameEmptySlots,
-  storeCaches,
-  type RawComponentWithId,
-} from '../../persistence/src/session/repositories/db.js';
+import { loadRawComponents, openPipelineDb } from '../../persistence/src/session/repositories/db.js';
 import { hashContent, hashPromptForSkill } from '../../persistence/src/session/helpers/cache-keys.js';
 import { loadAcceptedNames } from '../../persistence/src/index.js';
 import type { AgentName } from '../../agents/types/agent-name.js';
 import type { ExistingContentfulEntities } from '../../steps/generation/src/types/existing-entities.js';
 import { readExistingEntities } from './helpers/read-existing-entities.js';
 import { resolveGeneratePrompt } from './helpers/resolve-generate-prompt.js';
+import { restoreCachedComponents } from './helpers/restore-cached-components.js';
 
 export interface CheckGenerateComponentsCacheRequest {
   sessionId: string;
@@ -88,7 +79,9 @@ export async function checkGenerateComponentsCache(
       return resolution ? [{ component, resolution }] : [];
     });
 
-    if (request.restoreCache) restoreCached(db, request.sessionId, cachedComponents, promptHash, allowedComponentNames);
+    if (request.restoreCache) {
+      restoreCachedComponents(db, request.sessionId, cachedComponents, promptHash, allowedComponentNames);
+    }
 
     return {
       sessionId: request.sessionId,
@@ -99,43 +92,4 @@ export async function checkGenerateComponentsCache(
   } finally {
     db.close();
   }
-}
-
-function restoreCached(
-  db: DatabaseSync,
-  sessionId: string,
-  cachedComponents: Array<{
-    component: RawComponentWithId;
-    resolution: NonNullable<ReturnType<typeof resolveComponentCache>>;
-  }>,
-  promptHash: string,
-  allowedComponentNames: ReadonlySet<string>,
-): void {
-  const restorations: Array<{ sourceSessionId: string; targetSessionId: string; componentId: string }> = [];
-  const rekeyed: Array<{ component: RawComponentWithId; cached: { sourceSessionId: string; humanEdited: boolean } }> =
-    [];
-  const componentStatus = db.prepare('SELECT status FROM raw_components WHERE session_id = ? AND component_id = ?');
-  for (const { component, resolution } of cachedComponents) {
-    const current = componentStatus.get(sessionId, component.component_id) as { status: string } | undefined;
-    if (current?.status === 'generated') continue;
-    renameEmptySlots(db, sessionId, component.component_id, component.name, component.slots.length);
-    restorations.push({
-      sourceSessionId: resolution.entry.sourceSessionId,
-      targetSessionId: sessionId,
-      componentId: component.component_id,
-    });
-    rekeyed.push({ component, cached: resolution.entry });
-  }
-  copyComponentsFromCache(db, restorations, { allowedComponentNames });
-  storeCaches(
-    db,
-    rekeyed.map(({ component, cached }) => ({
-      inputHash: computeComponentInputHash(normalizeComponentForCache(component)),
-      entityType: 'component' as const,
-      entityId: component.component_id,
-      sourceSessionId: cached.sourceSessionId,
-      humanEdited: cached.humanEdited,
-      promptHash,
-    })),
-  );
 }
