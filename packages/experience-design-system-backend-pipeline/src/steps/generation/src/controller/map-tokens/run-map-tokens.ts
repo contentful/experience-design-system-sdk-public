@@ -159,7 +159,7 @@ export async function runMapTokens(request: MapTokensRunRequest): Promise<MapTok
       'map-tokens',
       agent,
       request.model,
-      undefined,
+      request.skillPathOverride,
       request.existingEntitiesInline ? [hashContent(request.existingEntitiesInline)] : [],
       request.skillContentOverride,
     );
