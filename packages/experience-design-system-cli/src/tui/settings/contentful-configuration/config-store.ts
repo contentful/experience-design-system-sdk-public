@@ -7,6 +7,7 @@ export type V1Credentials = {
   host?: string;
   defaultComponentDir?: string;
   defaultTokenFile?: string;
+  contentfulBaseDir?: string;
   [key: string]: string | undefined;
 };
 
@@ -19,6 +20,7 @@ export async function readCredentials(): Promise<V1Credentials> {
     host: (store.host as string) || '',
     defaultComponentDir: (store.defaultComponentDir as string) || '',
     defaultTokenFile: (store.defaultTokenFile as string) || '',
+    contentfulBaseDir: (store.contentfulBaseDir as string) || '',
   };
 }
 

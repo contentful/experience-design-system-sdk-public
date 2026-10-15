@@ -30,6 +30,8 @@ export function useExtraction(input: ExtractionInput | undefined): ExtractionSta
         reuseTokens: input.tokenStrategy === 'reuse',
       }),
     });
+    // Loaded on first use because the debug store reads the settings and may create a folder as soon as it is imported.
+    void import('../../../debug-store.js').then((store) => store.startImportDebugSession(input.projectPath));
     void runExtraction(input, (progress) => {
       if (current.current === input) setState({ status: 'running', progress });
     }).then((result) => {

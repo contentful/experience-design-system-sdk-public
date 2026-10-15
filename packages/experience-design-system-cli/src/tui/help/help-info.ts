@@ -1,4 +1,4 @@
-import { configFilePath, configRoot, debugSessionsDir } from '@contentful/experience-design-system-types/config';
+import { configFilePath, configRoot } from '@contentful/experience-design-system-types/config';
 import { currentDebugSessionDir } from '../debug-store.js';
 import { readDebugModeSetting } from '../settings/debug-mode/debug-mode-store.js';
 import { readPackageVersion } from '../upgrade/version.js';
@@ -21,7 +21,6 @@ export async function readHelpInfo(): Promise<HelpInfo> {
     storage: [
       { label: 'Config folder', value: configRoot() },
       { label: 'Settings file', value: configFilePath() },
-      { label: 'Debug logs', value: debugSessionsDir() },
     ],
     troubleshooting: [
       { label: 'CLI version', value: readPackageVersion() },
@@ -30,7 +29,9 @@ export async function readHelpInfo(): Promise<HelpInfo> {
       { label: 'Debug Mode', value: debugMode.enabled ? 'on' : 'off' },
       {
         label: 'This session',
-        value: debugMode.enabled ? currentDebugSessionDir() : 'no logs written while Debug Mode is off',
+        value: !debugMode.enabled
+          ? 'no logs written while Debug Mode is off'
+          : (currentDebugSessionDir() ?? 'not started: set "Where to put .contentful" in Settings, or start an import'),
       },
     ],
   };

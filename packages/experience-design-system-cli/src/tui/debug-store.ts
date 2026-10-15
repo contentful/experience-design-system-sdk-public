@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { existsSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
-import { debugSessionsDir } from '@contentful/experience-design-system-types/config';
+import { join, resolve } from 'node:path';
+import { readSettings } from '@contentful/experience-design-system-types/config';
 import { readPackageVersion } from './upgrade/version.js';
 import { readDebugModeSetting } from './settings/debug-mode/debug-mode-store.js';
 
@@ -37,13 +37,22 @@ function slugify(value: string): string {
     .replace(/^-|-$/g, '');
 }
 
+// Where the user asked `.contentful` to live (Settings > Contentful Configuration). Empty means the structure is only
+// created once the import knows its project.
+async function readBaseDir(): Promise<string | undefined> {
+  try {
+    const dir = (await readSettings())['contentfulBaseDir'];
+    return typeof dir === 'string' && dir !== '' ? resolve(dir) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 // MM-DD-YYYY-session-N: N increments per terminal session started that day (1, 2, 3, ...),
 // so runs from the same day group together and still sort in the order they happened.
-function generateSessionId(): string {
+function nextSessionId(contentfulDir: string): string {
   const today = datePrefix();
-
-  const root = debugSessionsDir();
-  const existing = existsSync(root) ? readdirSync(root) : [];
+  const existing = existsSync(contentfulDir) ? readdirSync(contentfulDir) : [];
   const seqPattern = new RegExp(`^${today}-session-(\\d+)$`);
   const maxSeq = existing.reduce((max, entry) => {
     const match = seqPattern.exec(entry);
@@ -53,25 +62,33 @@ function generateSessionId(): string {
   return `${today}-session-${maxSeq + 1}`;
 }
 
-// Computed once, at module load, rather than lazily — this module is pulled in via
-// app.tsx's static imports as soon as the TUI boots, so "once per module load" is
-// "once per terminal session."
-const SESSION_ID = generateSessionId();
+// This terminal session's folder: <base>/.contentful/<session>/. Set once, from the configured base directory at boot
+// or, when none is configured, from the project the import is started for.
+let sessionDir: string | undefined;
 
-function sessionDebugDir(): string {
-  return join(debugSessionsDir(), SESSION_ID);
+function startSession(base: string): string {
+  const contentfulDir = join(base, '.contentful');
+  sessionDir ??= join(contentfulDir, nextSessionId(contentfulDir));
+  return sessionDir;
 }
 
-// Folder this terminal session writes its debug logs to (created only while Debug Mode is on).
-export function currentDebugSessionDir(): string {
-  return sessionDebugDir();
+// Folder this terminal session writes its debug logs to, or undefined until it is known.
+export function currentDebugSessionDir(): string | undefined {
+  return sessionDir && join(sessionDir, 'debug');
+}
+
+/** Starts the session in the project the import was started for, unless a base directory already started it. */
+export async function startImportDebugSession(projectPath: string): Promise<void> {
+  if (!(await isDebugModeEnabled())) return;
+  const dir = join(startSession(resolve(projectPath)), 'debug');
+  await mkdir(dir, { recursive: true });
 }
 
 // Fire-and-forget so a user who never visits a wired flow still sees an (empty)
 // session directory the moment they boot — matches startDebugRun's fail-open style.
-void isDebugModeEnabled().then((enabled) => {
-  if (!enabled) return undefined;
-  return mkdir(sessionDebugDir(), { recursive: true });
+void Promise.all([isDebugModeEnabled(), readBaseDir()]).then(([enabled, base]) => {
+  if (!enabled || !base) return undefined;
+  return mkdir(join(startSession(base), 'debug'), { recursive: true });
 });
 
 async function isDebugModeEnabled(): Promise<boolean> {
@@ -131,8 +148,11 @@ export async function finishDebugRun({
   const durationMs = Date.now() - run.startedAt;
   const content = renderMarkdown(run, { outputs: redact(outputs), status, exitMethod, durationMs });
 
+  // Without a configured base directory nothing is logged until the import has started the session.
+  const root = currentDebugSessionDir();
+  if (!root) return;
   const flowSegments = run.flow.split('/');
-  const dir = join(sessionDebugDir(), ...flowSegments);
+  const dir = join(root, ...flowSegments);
 
   await mkdir(dir, { recursive: true });
   const filename = nextAttemptFilename(dir, run.menuOption);

@@ -6,7 +6,14 @@ import { readCredentials, writeCredentials, type V1Credentials } from './config-
 import { startDebugRun, finishDebugRun } from '../../debug-store.js';
 import { ControlHints } from '../../control-hints.js';
 
-type Field = 'spaceId' | 'environmentId' | 'cmaToken' | 'host' | 'defaultComponentDir' | 'defaultTokenFile';
+type Field =
+  | 'spaceId'
+  | 'environmentId'
+  | 'cmaToken'
+  | 'host'
+  | 'defaultComponentDir'
+  | 'defaultTokenFile'
+  | 'contentfulBaseDir';
 type Stage = 'loading' | 'form' | 'saving';
 
 const FIELD_ORDER: Field[] = [
@@ -16,6 +23,7 @@ const FIELD_ORDER: Field[] = [
   'host',
   'defaultComponentDir',
   'defaultTokenFile',
+  'contentfulBaseDir',
 ];
 function debugFields(config: V1Credentials | null): Record<string, unknown> {
   return {
@@ -25,6 +33,7 @@ function debugFields(config: V1Credentials | null): Record<string, unknown> {
     host: config?.host ?? '',
     default_component_dir: config?.defaultComponentDir ?? '',
     default_token_file: config?.defaultTokenFile ?? '',
+    contentful_base_dir: config?.contentfulBaseDir ?? '',
   };
 }
 
@@ -35,6 +44,7 @@ const FIELD_LABELS: Record<Field, string> = {
   host: 'API Host (optional)',
   defaultComponentDir: 'Default component directory (optional)',
   defaultTokenFile: 'Default token file (optional)',
+  contentfulBaseDir: 'Where to put .contentful (optional)',
 };
 
 export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.ReactElement {
