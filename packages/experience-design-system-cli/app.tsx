@@ -411,6 +411,12 @@ export async function runApp(
   renderApp: (element: React.ReactElement) => { waitUntilExit: () => Promise<unknown>; clear?: () => void },
   importOptions: ImportOptions,
 ): Promise<void> {
-  const instance = renderApp(<App importOptions={importOptions} inkClear={() => instance.clear?.()} />);
+  const inkClear = (): void => {
+    // ink.clear() resets ink's own frame-height bookkeeping but doesn't erase stale terminal characters.
+    // \x1b[H moves cursor home, \x1b[0J erases from cursor to end of screen — leaves scrollback intact.
+    instance.clear?.();
+    process.stdout.write('\x1b[H\x1b[0J');
+  };
+  const instance = renderApp(<App importOptions={importOptions} inkClear={inkClear} />);
   await instance.waitUntilExit();
 }
