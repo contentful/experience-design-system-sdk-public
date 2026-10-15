@@ -85,9 +85,10 @@ interface ScopeRun {
 
 interface AppProps {
   importOptions: ImportOptions;
+  inkClear: () => void;
 }
 
-function App({ importOptions }: AppProps): React.ReactElement {
+function App({ importOptions, inkClear }: AppProps): React.ReactElement {
   const [screen, setScreen] = useState<Screen>('start');
   // Set when the import has ended, with the exit code the result screen shows.
   const [importExitCode, setImportExitCode] = useState<number>();
@@ -234,6 +235,7 @@ function App({ importOptions }: AppProps): React.ReactElement {
   useEffect(() => {
     if (!scopeRun || generation?.status !== 'done' || !generation.result.ok) return;
     const { credentialsSkipped, tokenStrategy, extraction: produced, input, generatePromptPath } = scopeRun;
+    inkClear();
     setScopeRun(undefined);
     setGenerationInput(undefined);
     setFlowStart(
@@ -286,6 +288,7 @@ function App({ importOptions }: AppProps): React.ReactElement {
             controller={flow.controller}
             generatePromptPath={flowStart.generatePromptPath}
             onExit={setImportExitCode}
+            onStepChange={inkClear}
           />
         );
       }
@@ -405,8 +408,15 @@ function App({ importOptions }: AppProps): React.ReactElement {
 }
 
 export async function runApp(
-  renderApp: (element: React.ReactElement) => { waitUntilExit: () => Promise<unknown> },
+  renderApp: (element: React.ReactElement) => { waitUntilExit: () => Promise<unknown>; clear?: () => void },
   importOptions: ImportOptions,
 ): Promise<void> {
-  await renderApp(<App importOptions={importOptions} />).waitUntilExit();
+  const inkClear = (): void => {
+    // ink.clear() resets ink's own frame-height bookkeeping but doesn't erase stale terminal characters.
+    // \x1b[H moves cursor home, \x1b[0J erases from cursor to end of screen — leaves scrollback intact.
+    instance.clear?.();
+    process.stdout.write('\x1b[H\x1b[0J');
+  };
+  const instance = renderApp(<App importOptions={importOptions} inkClear={inkClear} />);
+  await instance.waitUntilExit();
 }

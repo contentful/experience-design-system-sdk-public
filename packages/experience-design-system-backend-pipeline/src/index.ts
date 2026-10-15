@@ -1,15 +1,12 @@
-// Generation — export CDF document / DTCG tree (reads session DB → in-memory artifacts)
 export {
   exportCdfDocument,
   ExportCdfDocumentFailure,
-  // legacy-name aliases
   printComponents,
   PrintComponentsFailure,
 } from './steps/generation/src/controller/export/export-cdf-document.js';
 export {
   exportDtcgTree,
   ExportDtcgTreeFailure,
-  // legacy-name aliases
   printTokens,
   PrintTokensFailure,
 } from './steps/generation/src/controller/export/export-dtcg-tree.js';
@@ -20,7 +17,6 @@ export type {
   ExportDtcgTreeRequest,
   ExportDtcgTreeResult,
   ExportDtcgTreeError,
-  // legacy-name aliases
   PrintComponentsRequest,
   PrintComponentsResult,
   PrintComponentsError,
@@ -28,24 +24,18 @@ export type {
   PrintTokensResult,
   PrintTokensError,
 } from './steps/generation/src/controller/export/types-export.js';
-
-// Shared validators (used by CLI's `print validate` command, apply pre-flight, and anywhere else)
 export { validateCDFFile } from './steps/shared/cdf/validators/validate-cdf-file.js';
 export { validateDTCGTokenFile } from './steps/shared/dtcg/validators/validate-dtcg-token-file.js';
 export { formatDiagnostics } from './steps/shared/cdf/validators/format-diagnostics.js';
 export { readJsonFile } from './steps/shared/cdf/validators/read-json-file.js';
 export type { ValidationResult, ValidationDiagnostic } from './steps/shared/cdf/validators/types-validation.js';
 export { rebuildDTCGTree } from './steps/shared/dtcg/helpers/rebuild-dtcg-tree.js';
-
-// Extraction
 export { extractComponents } from './steps/extraction/src/controller/extract-components-endpoint.js';
 export type {
   ExtractComponentsRequest,
   ExtractComponentsResponse,
   ExtractionEndpointProgress,
 } from './steps/extraction/src/types/contract.js';
-
-// Composition
 export { composeComponents } from './steps/composition/src/controller/endpoint/compose-components-endpoint.js';
 export type { ComposeComponentsRequest, ComposeComponentsResponse } from './steps/composition/src/types/contract.js';
 export type { CompositionEdge, EdgeProvenance } from './steps/composition/src/helpers/edges/interchange-schema.js';
@@ -58,10 +48,7 @@ export {
 export { collectManifestDocEdges } from './steps/composition/src/helpers/edges/manifest-doc-evidence.js';
 export { mergeEdges } from './steps/composition/src/helpers/edges/merge-edges.js';
 export { parseMapEdges } from './steps/composition/src/helpers/edges/parse-map-edges.js';
-export {
-  applyCompositionEdges,
-  applyMapping, // legacy-name alias
-} from './steps/composition/src/helpers/edges/apply-mapping.js';
+export { applyCompositionEdges, applyMapping } from './steps/composition/src/helpers/edges/apply-mapping.js';
 export { resolveMapping } from './steps/composition/src/helpers/edges/resolve-mapping.js';
 export { loadPrompt } from './steps/composition/src/helpers/prompt/prompt-loader.js';
 export { buildCompositionInputHash } from './steps/composition/src/helpers/candidates/composition-cache-key.js';
@@ -70,8 +57,6 @@ export type {
   CompositionCliOptions,
   ResolvedCompositionSources,
 } from './steps/composition/src/helpers/edges/resolve-composition-sources.js';
-
-// Composition — graph & cycle analysis (operates on the composed-component graph)
 export { buildComponentGraph } from './steps/composition/src/controller/graph/build-component-graph.js';
 export { findSlotCycles } from './steps/composition/src/controller/cycles/find-slot-cycles.js';
 export { groupNodesByCycleMembership } from './steps/composition/src/controller/cycles/group-nodes-by-cycle-membership.js';
@@ -90,7 +75,7 @@ export { formatCyclePathSegments } from './steps/composition/src/helpers/cycles/
 export type {
   ComponentGraphNode,
   ComponentGraphInput,
-  ComponentGraphInput as SlotGraphInput, // legacy-name alias
+  ComponentGraphInput as SlotGraphInput,
   SlotEdge,
   SlotCycle,
   CyclePathSegment,
@@ -100,8 +85,6 @@ export type {
   Closure,
   ClosureNode,
 } from './steps/composition/src/types/graph.js';
-
-// Selection
 export { selectComponents } from './steps/selection/src/controller/select-components-endpoint.js';
 export type {
   SelectComponentsEndpointRequest,
@@ -109,15 +92,10 @@ export type {
   ComponentSelection,
   SelectionServiceResult,
 } from './steps/selection/src/types/contract.js';
-
-// Selection — human-review controllers (bridge DB + review-session files)
 export { loadAndValidateForReview } from './steps/selection/src/controller/review/load-and-validate-for-review.js';
 export { mergePreviewValidationErrorsIntoReviewSession } from './steps/selection/src/controller/review/merge-preview-validation-errors-into-review-session.js';
-// Legacy-name alias used by cli-legacy wizard-422-helpers
 export { mergePreviewValidationErrorsIntoReviewSession as patchReviewStateWithValidationErrors } from './steps/selection/src/controller/review/merge-preview-validation-errors-into-review-session.js';
 export { rejectComponentsByName } from './steps/selection/src/controller/review/reject-components-by-name.js';
-
-// Review-session file I/O (used by TUI directly)
 export {
   getRefineArtifactsRoot,
   getRefineSessionPaths,
@@ -142,16 +120,12 @@ export type {
   ReviewEvent,
   ReviewSessionPaths,
 } from './persistence/src/index.js';
-
-// Generation
 export { generateCdfComponents } from './steps/generation/src/controller/generate-cdf-components-endpoint.js';
 export type {
   GenerateCdfComponentsRequest,
   GenerateCdfComponentsResponse,
   CdfGenerationFailure,
 } from './steps/generation/src/types/contract.js';
-
-// Apply
 export { applyComponents } from './steps/apply/src/controller/endpoint/apply-components-endpoint.js';
 export type {
   ApplyEndpointRequest,
@@ -170,51 +144,37 @@ export { isEmptyPreview } from './steps/apply/src/helpers/is-empty-preview.js';
 export { buildPostPushUrl } from './steps/apply/src/helpers/contentful-urls.js';
 export { ApiError } from './steps/apply/src/types/api-error.js';
 export { ApiClient } from './steps/apply/src/helpers/api-client/api-client.js';
-// Legacy-name alias used by cli-legacy apply command
 export { ApiClient as ImportApiClient } from './steps/apply/src/helpers/api-client/api-client.js';
 export type { ApiClientOptions, RetryConfig } from './steps/apply/src/types/contract.js';
 export type { PreviewValidationError } from './steps/apply/src/types/contract.js';
 export { parsePreviewValidationErrors } from './steps/apply/src/helpers/parse-preview-errors.js';
 export { toApiHost, toConfiguredHost } from './steps/apply/src/helpers/host-utils.js';
-
-// Apply — pre-apply validation gates
 export { detectSlotCycles } from './steps/apply/src/controller/validation/detect-slot-cycles.js';
 export { assertNoSlotCycles } from './steps/apply/src/controller/validation/assert-no-slot-cycles.js';
 export { assertNoUnresolvedSlotReferences } from './steps/apply/src/controller/validation/assert-no-unresolved-slot-references.js';
 export { formatSlotCycleReport } from './steps/apply/src/controller/validation/format-slot-cycle-report.js';
 export { formatUnresolvedSlotReferences } from './steps/apply/src/controller/validation/format-unresolved-slot-references.js';
-
-// Apply — inline CDF mutation (final-review edits)
 export {
   mutateCdfComponent,
-  applyComponentPatch, // legacy-name alias
+  applyComponentPatch,
   type ComponentPatchOperation,
   type MutateCdfComponentRequest,
-  type ApplyComponentPatchRequest, // legacy-name alias
+  type ApplyComponentPatchRequest,
 } from './steps/apply/src/controller/mutate/mutate-cdf-component.js';
 export {
   mutateDotPath,
-  applyDotPath, // legacy-name alias
+  applyDotPath,
   type MutateDotPathRequest,
-  type ApplyDotPathRequest, // legacy-name alias
+  type ApplyDotPathRequest,
 } from './steps/apply/src/controller/mutate/mutate-dot-path.js';
 export { warnOnUnknownPatchComponents } from './steps/apply/src/controller/mutate/warn-on-unknown-patch-components.js';
-
-// Apply — preview output transforms
 export { annotatePreview, type PreviewAnnotation } from './steps/apply/src/controller/preview/annotate-preview.js';
-// Legacy name used by TUI call sites — same impl, positional-args signature
 export { annotatePreview as applyPreviewAnnotations } from './steps/apply/src/helpers/annotate-preview.js';
-
-// Apply — server error parsing
 export { parseEdsiError, type ParsedEdsiError } from './steps/apply/src/controller/errors/parse-edsi-error.js';
 export { formatEdsiError } from './steps/apply/src/controller/errors/format-edsi-error.js';
 export { formatApiError, type ApiErrorLike } from './steps/apply/src/controller/errors/format-api-error.js';
 export { stripLambdaLogPrefix } from './steps/apply/src/helpers/edsi-errors/strip-lambda-log-prefix.js';
-
-// Apply — token file reading
 export { readTokensFromPath } from './steps/apply/src/controller/tokens/read-tokens-from-path.js';
-
-// Agents — resolution + prompt overrides + user agent + output formatter
 export {
   parseAgentModel,
   type ParsedAgentModel,
@@ -231,28 +191,18 @@ export {
   OutputFormatter,
   formatToolCall,
 } from './agents/index.js';
-
-// Agents — identity + capabilities. Native in backend-pipeline; callers should
-// prefer these over `@contentful/experience-design-system-generation`.
 export { AGENT_NAMES, type AgentName } from './agents/types/agent-name.js';
 export { DEFAULT_AGENT_NAME } from './agents/constants/models.js';
 export { isAgentName } from './agents/helpers/resolution/is-agent-name.js';
 export { agentSupportsBedrock } from './agents/helpers/bedrock/agent-supports-bedrock.js';
 export { checkAgentAuth } from './agents/services/check-agent-auth.js';
 export type { AgentAuthStatus } from './agents/types/agent-run.js';
-
-// Agents — prompt builder, invoker, skill resolution, tool-call parsers. Used by
-// in-process callers (v2 TUI step 06 selection) and lifted step orchestrators.
 export { buildPrompt } from './agents/prompts/build-prompt.js';
 export { resolveSkillPath } from './agents/prompts/resolve-skill-path.js';
 export { createLocalCliAgentInvoker } from './agents/invoker/create-local-cli-agent-invoker.js';
 export { parseSelectToolCalls } from './agents/parsers/parse-select-tool-calls.js';
 export { parseTokenToolCalls } from './agents/parsers/parse-token-tool-calls.js';
-
-// Generation — Contentful Management client factory
 export { buildContentfulManagementClient } from './steps/generation/src/controller/client/build-contentful-management-client.js';
-
-// Generation — existing-entities fetch, read, summarize
 export { fetchAndPersistExistingContentfulEntities } from './steps/generation/src/controller/existing-entities/fetch-and-persist.js';
 export type {
   FetchAndPersistExistingEntitiesRequest,
@@ -265,7 +215,7 @@ export { fetchExistingContentfulEntitiesFromContentful } from './steps/generatio
 export { summarizeForSelect } from './steps/generation/src/controller/existing-entities/summarize-for-select.js';
 export {
   summarizeForGenerate,
-  summarizeForGenerateAgent, // legacy positional-args alias
+  summarizeForGenerateAgent,
 } from './steps/generation/src/controller/existing-entities/summarize-for-generate.js';
 export { summarizeForMapTokens } from './steps/generation/src/controller/existing-entities/summarize-for-map-tokens.js';
 export type { ExistingContentfulEntities } from './steps/generation/src/types/existing-entities.js';
@@ -274,59 +224,41 @@ export type {
   GenerateAgentSummary,
   MapTokensSummary,
 } from './steps/generation/src/types/summaries.js';
-
-// Generation — token-default resolution (pre-step for map-tokens)
 export { resolveTokenDefaults } from './steps/generation/src/controller/token-defaults/resolve-token-defaults.js';
 export type {
   RawDesignTokenDefault,
   DTCGTokenLeaf,
   ResolveTokenDefaultsResult,
 } from './steps/generation/src/types/token-defaults.js';
-
-// Generation — fuzzy match (public for TUI's reject dialog)
 export { findNearlyMatchingComponent } from './steps/generation/src/helpers/existing-entities/find-nearly-matching-component.js';
-
-// Generation — component cache helpers (shared cache-key normalization + precedence)
 export { normalizeComponentForCache } from './steps/generation/src/helpers/components/normalize-component-for-cache.js';
 export { lookupComponentCache } from './steps/generation/src/helpers/components/lookup-component-cache.js';
 export {
   resolveComponentCache,
   type ComponentCacheResolution,
 } from './steps/generation/src/helpers/components/resolve-component-cache.js';
-
-// Apply — shared pre-flight (read creds + validate CDF + build client)
 export {
   resolveSharedInputs,
   ResolveSharedInputsFailure,
   type SharedInputs,
 } from './steps/apply/src/controller/endpoint/resolve-shared-inputs.js';
-
-// Generation — map-tokens (apply parsed map_token_prop calls to a session)
 export { applyMapTokenPropCalls } from './steps/generation/src/controller/map-tokens/apply-map-token-prop-calls.js';
 export type { ApplyMapTokenPropCallsResult } from './steps/generation/src/types/map-tokens.js';
 export type { MapTokenPropCall, ParsedMapTokenPropToolCalls } from './agents/types/tool-calls.js';
-
-// Generation — map-tokens orchestrator (full flow: resolve defaults → cache → agent → apply)
 export { runMapTokens, MapTokensRunFailure } from './steps/generation/src/controller/map-tokens/run-map-tokens.js';
 export type {
   MapTokensRunRequest,
   MapTokensRunResult,
   MapTokensRunError,
 } from './steps/generation/src/types/map-tokens-run.js';
-
-// Persistence — file collection + legacy SessionHandle (cache callbacks)
 export { collectFiles, openSession, generateSessionId } from './persistence/src/index.js';
 export type { OpenSessionOptions, SelectionDecision, SessionHandle } from './persistence/src/index.js';
-
-// Persistence — DB infra + schema + migrations
 export {
   openPipelineDb,
   getPipelineDbPath,
   runMigrationIfNeeded,
   resolveExtractSessionId,
 } from './persistence/src/index.js';
-
-// Persistence — config paths + settings
 export {
   configRoot,
   configFilePath,
@@ -338,8 +270,6 @@ export {
   updateSettings,
 } from './persistence/src/index.js';
 export type { Settings } from './persistence/src/index.js';
-
-// Persistence — credentials store (shared config.json)
 export {
   readExperiencesCredentials,
   writeExperiencesCredentials,
@@ -347,12 +277,8 @@ export {
   DEFAULT_CONFIGURED_HOST,
 } from './persistence/src/index.js';
 export type { ExperiencesCredentials } from './persistence/src/index.js';
-
-// Persistence — session + step state
 export { getOrCreateSession, createStep, updateStep, findLatestSessionForCommand } from './persistence/src/index.js';
 export type { CommandName, MatchHints } from './persistence/src/index.js';
-
-// Persistence — raw component storage
 export {
   storeRawComponents,
   loadRawComponents,
@@ -361,12 +287,8 @@ export {
   renameEmptySlots,
 } from './persistence/src/index.js';
 export type { RawComponentWithId } from './persistence/src/index.js';
-
-// Persistence — CDF storage
 export { storeCDFComponents, loadCDFComponents, loadScopeComponents } from './persistence/src/index.js';
 export type { ScopeComponentRow } from './persistence/src/index.js';
-
-// Persistence — review metadata (DB)
 export {
   loadComponentReviewMetadata,
   loadComponentRationale,
@@ -382,16 +304,12 @@ export type {
   ApplyToolCallsResult,
   ApplyToolCallsOptions,
 } from './persistence/src/index.js';
-
-// Persistence — resume seeds
 export {
   seedCDFFromPriorSession,
   seedCDFFromPreviewResponse,
   seedDefaultsFromChangedItems,
   backfillUnclassifiedProps,
 } from './persistence/src/index.js';
-
-// Persistence — cache (lookup/store/copy, keys)
 export {
   lookupCache,
   lookupCacheByEntity,
@@ -424,8 +342,6 @@ export type {
   SelectCacheEntry,
   ExtractCacheEntry,
 } from './persistence/src/index.js';
-
-// Persistence — slot cycles + unresolved slot refs
 export {
   storeSlotCycles,
   loadSlotCycles,
@@ -434,19 +350,13 @@ export {
   filterUnknownSlotAllowedComponents,
 } from './persistence/src/index.js';
 export type { StoredSlotCycle, UnknownSlotAllowedComponent } from './persistence/src/index.js';
-
-// Persistence — scanned files tracking
 export { storeScannedFiles, loadScannedFiles } from './persistence/src/index.js';
-
-// Persistence — token writers
 export {
   storeDtcgTokens,
   applyTokenToolCalls,
   replaceRawTokenNamePaths,
   replaceRawPropTokenPaths,
 } from './persistence/src/index.js';
-
-// Persistence — pure helpers
 export {
   deriveComponentId,
   hashComponentShape,
@@ -456,8 +366,6 @@ export {
   escapeForRegExp,
   excerptAroundNames,
 } from './persistence/src/index.js';
-
-// Persistence — runs ledger (runsFilePath exported above in "config paths")
 export {
   appendRun,
   listRuns,
@@ -480,19 +388,9 @@ export type {
   SourceFileEntry,
   RawComponentsDb,
 } from './persistence/src/index.js';
-
-// Persistence — review-session file I/O (loadAcceptedNames + parsePrecomputedCachedNames
-// are new; the rest were exported earlier in this file)
 export { loadAcceptedNames, parsePrecomputedCachedNames } from './persistence/src/index.js';
-
-// Shared
 export type { CandidateFile } from './steps/shared/index.js';
-
-// Legacy-name alias: storeDTCGTokens (uppercase) used by cli-legacy
 export { storeDtcgTokens as storeDTCGTokens } from './persistence/src/index.js';
-
-// Extraction types — re-exported so the CLI can import from the backend barrel
-// instead of its local cli-legacy/types.ts file.
 export type {
   RawComponentDefinition,
   RawPropDefinition,
@@ -504,10 +402,6 @@ export type {
   ExtractorProgress,
 } from './steps/extraction/src/types/component.js';
 export { stripScoringFields } from './steps/extraction/src/types/component.js';
-
-// Orchestrators — multi-step pipeline flows exposed as single functions.
-// Callers (legacy CLI, v2 TUI) use these to drive the pipeline without
-// duplicating orchestration logic.
 export { runExtractAndComposeSession } from './orchestrators/run-extract-and-compose-session/run-extract-and-compose-session.js';
 export type {
   RunExtractAndComposeSessionRequest,
@@ -520,3 +414,15 @@ export type {
   RunGenerateTokensSessionResponse,
   GenerateTokensProgress,
 } from './orchestrators/run-generate-tokens-session/run-generate-tokens-session.js';
+export {
+  runGenerateComponentsSession,
+  checkGenerateComponentsCache,
+} from './orchestrators/run-generate-components-session/run-generate-components-session.js';
+export type {
+  RunGenerateComponentsSessionRequest,
+  RunGenerateComponentsSessionResponse,
+  GenerateComponentsProgress,
+  GeneratedComponentResult,
+  CheckGenerateComponentsCacheRequest,
+  CheckGenerateComponentsCacheResponse,
+} from './orchestrators/run-generate-components-session/run-generate-components-session.js';
