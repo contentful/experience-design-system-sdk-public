@@ -287,7 +287,10 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
             state={flow.state}
             controller={flow.controller}
             generatePromptPath={flowStart.generatePromptPath}
-            onExit={setImportExitCode}
+            onExit={(code) => {
+              inkClear();
+              setImportExitCode(code);
+            }}
             onStepChange={inkClear}
           />
         );
