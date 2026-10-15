@@ -8,7 +8,7 @@ export function scanFiles(directory: string): ScanResult {
   return toScanResult(collectFiles(directory));
 }
 
-export function toScanResult(outcome: CollectedFilesOutcome): ScanResult {
+function toScanResult(outcome: CollectedFilesOutcome): ScanResult {
   if (!outcome.ok) return { ok: false, failure: outcome.failure };
   return {
     ok: true,
@@ -18,7 +18,7 @@ export function toScanResult(outcome: CollectedFilesOutcome): ScanResult {
   };
 }
 
-export function foldSvelteAndMdIntoOther(counts: PipelineFileCounts): LocalFileCounts {
+function foldSvelteAndMdIntoOther(counts: PipelineFileCounts): LocalFileCounts {
   const { svelte, md, ...rest } = counts;
   return { ...rest, other: rest.other + svelte + md };
 }

@@ -64,7 +64,7 @@ type Preview422Outcome =
   | { kind: 'unparseable'; message: string }
   | { kind: 'not-422' };
 
-export async function handlePreview422(
+async function handlePreview422(
   err: ApiError,
   extractSessionId: string | null,
   patchFn: PreviewDeps['patchReviewState'],
@@ -82,10 +82,7 @@ export async function handlePreview422(
 }
 
 /** The patch to spread into any update that leaves the validation error step, so stale errors do not linger. */
-export function clearedValidationErrorState(): Pick<
-  FlowState,
-  'previewValidationErrors' | 'previewValidationMissingNames'
-> {
+function clearedValidationErrorState(): Pick<FlowState, 'previewValidationErrors' | 'previewValidationMissingNames'> {
   return { previewValidationErrors: [], previewValidationMissingNames: [] };
 }
 

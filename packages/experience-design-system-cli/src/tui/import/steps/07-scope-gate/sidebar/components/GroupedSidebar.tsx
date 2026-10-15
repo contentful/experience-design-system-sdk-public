@@ -463,19 +463,6 @@ export function buildVisibleRows(props: {
   return rows;
 }
 
-export function visibleItemOrder(props: {
-  items: GroupedSidebarItem[];
-  cycleParticipants: Set<string>;
-  expandedGroups: Set<string>;
-  alwaysExpanded?: boolean;
-  showFlatTier?: boolean;
-  graph: ComponentGraphNode[];
-}): number[] {
-  return buildVisibleRows(props)
-    .filter((row) => row.itemIdx >= 0)
-    .map((row) => row.itemIdx);
-}
-
 function rowColor(row: VisibleRow, aggregate?: string | null): string | undefined {
   if (row.kind === 'cycle') return PALETTE.warning;
   if (row.kind === 'group-child' && row.cycleChild) return PALETTE.warning;
@@ -485,7 +472,7 @@ function rowColor(row: VisibleRow, aggregate?: string | null): string | undefine
   return undefined;
 }
 
-export function labelStyleFor(input: { row: VisibleRow; isCursor: boolean; wouldDim: boolean }): {
+function labelStyleFor(input: { row: VisibleRow; isCursor: boolean; wouldDim: boolean }): {
   color: string | undefined;
   bold: boolean;
   dim: boolean;
@@ -501,7 +488,7 @@ export function labelStyleFor(input: { row: VisibleRow; isCursor: boolean; would
   };
 }
 
-export function selectionGlyphStyleFor(
+function selectionGlyphStyleFor(
   selState: 'accepted' | 'rejected' | 'undecided' | undefined,
   isCycleRow: boolean,
 ): { glyph: string | null; color: string | undefined; dim: boolean; bold: boolean } {
@@ -517,7 +504,7 @@ export function selectionGlyphStyleFor(
   return { glyph: null, color: undefined, dim: false, bold: false };
 }
 
-export function inheritanceGlyphStyleFor(input: {
+function inheritanceGlyphStyleFor(input: {
   status: RenderStatus['status'] | undefined;
   isOwn: boolean;
   isCursor: boolean;

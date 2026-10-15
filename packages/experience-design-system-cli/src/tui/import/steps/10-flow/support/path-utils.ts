@@ -5,7 +5,7 @@ import { homedir } from 'node:os';
  * Expands a leading `~` to the user's home directory.
  * Exported separately so it can be unit-tested and reused.
  */
-export function expandTilde(input: string): string {
+function expandTilde(input: string): string {
   if (input === '~' || input.startsWith('~/') || input.startsWith('~\\')) {
     return homedir() + input.slice(1);
   }

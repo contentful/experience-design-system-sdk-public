@@ -34,16 +34,6 @@ interface Key {
   return: boolean;
 }
 
-const CATEGORY_BY_EXTENSION = new Map<string, FileCategory>([
-  ['tsx', 'tsx'],
-  ['ts', 'ts'],
-  ['vue', 'vue'],
-  ['astro', 'astro'],
-  ['jsx', 'jsx'],
-  ['js', 'js'],
-  ['json', 'json'],
-]);
-
 const COMPONENT_CATEGORIES: FileCategory[] = ['tsx', 'ts', 'vue', 'astro', 'jsx', 'js'];
 
 const ROW_LABELS: Record<FileCategory, string> = {
@@ -58,42 +48,6 @@ const ROW_LABELS: Record<FileCategory, string> = {
 };
 
 const ROW_ORDER: FileCategory[] = ['tsx', 'ts', 'vue', 'astro', 'jsx', 'js', 'json', 'other'];
-
-function categorize(fileName: string): FileCategory {
-  if (fileName.endsWith('.d.ts')) return 'other';
-  const dot = fileName.lastIndexOf('.');
-  const extension = dot === -1 ? '' : fileName.slice(dot + 1);
-  return CATEGORY_BY_EXTENSION.get(extension) ?? 'other';
-}
-
-export function emptyCounts(): FileCounts {
-  return { tsx: 0, ts: 0, vue: 0, astro: 0, jsx: 0, js: 0, json: 0, other: 0, total: 0 };
-}
-
-export function addFile(counts: FileCounts, fileName: string): FileCounts {
-  const category = categorize(fileName);
-  return { ...counts, [category]: counts[category] + 1, total: counts.total + 1 };
-}
-
-export function mergeCounts(a: FileCounts, b: FileCounts): FileCounts {
-  return {
-    tsx: a.tsx + b.tsx,
-    ts: a.ts + b.ts,
-    vue: a.vue + b.vue,
-    astro: a.astro + b.astro,
-    jsx: a.jsx + b.jsx,
-    js: a.js + b.js,
-    json: a.json + b.json,
-    other: a.other + b.other,
-    total: a.total + b.total,
-  };
-}
-
-export function failureFromErrorCode(code: string | undefined): ScanFailureCode {
-  if (code === 'ENOENT') return 'not-found';
-  if (code === 'EACCES') return 'permission-denied';
-  return 'unreadable';
-}
 
 export function describeFailure(failure: ScanFailureCode, path: string): FailureMessage {
   switch (failure) {
