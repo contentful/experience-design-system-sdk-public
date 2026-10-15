@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
 import { Box } from 'ink';
 import { parseCDFComponents } from '@contentful/experience-design-system-types';
 import { ErrorStep, GateStep, RunningStep } from '../../../shared/index.js';
@@ -20,8 +20,6 @@ interface FlowScreenProps {
   generatePromptPath?: string;
   /** Leaves the import with the exit code the wizard would have exited with. */
   onExit: (exitCode: number) => void;
-  /** Called when the step changes so the host can clear Ink's render buffer without scrollback pollution. */
-  onStepChange?: () => void;
 }
 
 /** How many steps the import has, as the wizard counted them. */
@@ -42,18 +40,9 @@ export function FlowScreen({
   livePreview = true,
   generatePromptPath,
   onExit,
-  onStepChange,
 }: FlowScreenProps): React.ReactElement {
   const totalSteps = totalStepsFor(state);
   const quit = (): void => onExit(0);
-
-  const previousStep = useRef(state.step);
-  useEffect(() => {
-    if (previousStep.current !== state.step) {
-      onStepChange?.();
-      previousStep.current = state.step;
-    }
-  }, [state.step, onStepChange]);
 
   const content = ((): React.ReactElement | null => {
     switch (state.step) {
