@@ -234,6 +234,7 @@ function App({ importOptions }: AppProps): React.ReactElement {
   useEffect(() => {
     if (!scopeRun || generation?.status !== 'done' || !generation.result.ok) return;
     const { credentialsSkipped, tokenStrategy, extraction: produced, input, generatePromptPath } = scopeRun;
+    process.stdout.write('\x1b[2J\x1b[H');
     setScopeRun(undefined);
     setGenerationInput(undefined);
     setFlowStart(
