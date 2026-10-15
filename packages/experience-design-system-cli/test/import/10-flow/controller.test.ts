@@ -75,6 +75,7 @@ describe('the flow controller', () => {
   const buildTimestampedSubdir = vi.fn();
   const rejectComponentsByName = vi.fn();
   const loadAcceptedComponents = vi.fn();
+  const beforeStepChange = vi.fn();
 
   const deps = (): FlowDeps => ({
     preview: {} as never,
@@ -87,6 +88,7 @@ describe('the flow controller', () => {
     rejectComponentsByName,
     log,
     stderr,
+    beforeStepChange,
   });
 
   beforeEach(() => {
@@ -99,6 +101,7 @@ describe('the flow controller', () => {
       buildTimestampedSubdir,
       rejectComponentsByName,
       loadAcceptedComponents,
+      beforeStepChange,
     ]) {
       fake.mockReset();
     }
@@ -555,6 +558,69 @@ describe('the flow controller', () => {
 
       expect(rejectComponentsByName).not.toHaveBeenCalled();
       expect(steps.runPreview).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('clearing the terminal between steps', () => {
+    it('does so before listeners hear about the new step, so the clear cannot wipe what they draw', () => {
+      const order: string[] = [];
+      beforeStepChange.mockImplementation(() => order.push('clear'));
+      const controller = createFlowController(start(), deps());
+      controller.subscribe(() => order.push(`render:${controller.getState().step}`));
+      order.length = 0;
+
+      controller.finalize(4, 0, 0);
+
+      expect(order).toEqual(['clear', 'render:path-prompt']);
+    });
+
+    it('clears for a change to a different step, including going back to one it was on before', () => {
+      const controller = createFlowController(start(), deps());
+      beforeStepChange.mockClear();
+
+      controller.finalize(4, 0, 0); // final-review -> path-prompt
+      controller.editDefinitions(); // path-prompt -> final-review
+
+      expect(beforeStepChange).toHaveBeenCalledTimes(2);
+    });
+
+    it('clears once for each step change and not for an update that keeps the step', async () => {
+      steps.runPush.mockImplementation(async (_i, _d, onPatch) => {
+        onPatch({ step: 'pushing', pushProgress: { kind: 'queued', operationId: 'op-1' } });
+        onPatch({ pushProgress: { kind: 'progress', processed: 1, total: 2, current: null } });
+        return { step: 'done' };
+      });
+      const controller = createFlowController(start(), deps());
+      controller.finalize(4, 0, 0);
+      await controller.submitPath('/out');
+      beforeStepChange.mockClear();
+
+      controller.confirmPreview(false);
+      await vi.waitFor(() => expect(controller.getState().step).toBe('done'));
+
+      // pushing, then done; the progress update in between keeps the step and must not clear
+      expect(beforeStepChange).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not stop the import when the clear throws', () => {
+      beforeStepChange.mockImplementation(() => {
+        throw new Error('stdout closed');
+      });
+      const controller = createFlowController(start(), deps());
+
+      controller.finalize(4, 0, 0);
+
+      expect(controller.getState().step).toBe('path-prompt');
+    });
+
+    it('works without a clear being supplied', () => {
+      const withoutClear = { ...deps() } as Partial<FlowDeps>;
+      delete withoutClear.beforeStepChange;
+      const controller = createFlowController(start(), withoutClear as FlowDeps);
+
+      controller.finalize(4, 0, 0);
+
+      expect(controller.getState().step).toBe('path-prompt');
     });
   });
 

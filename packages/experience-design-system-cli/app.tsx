@@ -121,7 +121,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
   const generation = useGeneration(generationInput);
   // Set once generation has finished; the review, save, preview and push run for it.
   const [flowStart, setFlowStart] = useState<FlowStart>();
-  const flow = useFlow(flowStart);
+  const flow = useFlow(flowStart, { beforeStepChange: inkClear });
   const [importDefaults, setImportDefaults] = useState<{
     componentDir: string;
     tokenFile: string;
@@ -288,7 +288,6 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
             controller={flow.controller}
             generatePromptPath={flowStart.generatePromptPath}
             onExit={setImportExitCode}
-            onStepChange={inkClear}
           />
         );
       }
