@@ -118,6 +118,8 @@ export async function runGeneration(
   }
   update({ mapTokens: 'complete' });
 
+  await new Promise<void>((r) => setImmediate(r));
+
   const generatedCount = generated.results.filter((r) => !r.failed).length;
   return {
     ok: true,
