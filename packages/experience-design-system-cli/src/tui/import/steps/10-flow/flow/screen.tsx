@@ -20,6 +20,8 @@ interface FlowScreenProps {
   generatePromptPath?: string;
   /** Leaves the import with the exit code the wizard would have exited with. */
   onExit: (exitCode: number) => void;
+  /** Called when the step changes so the host can clear Ink's render buffer without scrollback pollution. */
+  onStepChange?: () => void;
 }
 
 /** How many steps the import has, as the wizard counted them. */
@@ -40,6 +42,7 @@ export function FlowScreen({
   livePreview = true,
   generatePromptPath,
   onExit,
+  onStepChange,
 }: FlowScreenProps): React.ReactElement {
   const totalSteps = totalStepsFor(state);
   const quit = (): void => onExit(0);
@@ -47,10 +50,10 @@ export function FlowScreen({
   const previousStep = useRef(state.step);
   useEffect(() => {
     if (previousStep.current !== state.step) {
-      process.stdout.write('\x1b[2J\x1b[H');
+      onStepChange?.();
       previousStep.current = state.step;
     }
-  }, [state.step]);
+  }, [state.step, onStepChange]);
 
   const content = ((): React.ReactElement | null => {
     switch (state.step) {
