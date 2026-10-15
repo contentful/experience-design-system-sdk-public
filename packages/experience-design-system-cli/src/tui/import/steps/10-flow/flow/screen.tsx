@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
 import { Box } from 'ink';
 import { parseCDFComponents } from '@contentful/experience-design-system-types';
 import { ErrorStep, GateStep, RunningStep } from '../../../shared/index.js';
@@ -43,14 +43,6 @@ export function FlowScreen({
 }: FlowScreenProps): React.ReactElement {
   const totalSteps = totalStepsFor(state);
   const quit = (): void => onExit(0);
-
-  const previousStep = useRef(state.step);
-  useEffect(() => {
-    if (previousStep.current !== state.step) {
-      process.stdout.write('\x1b[2J\x1b[H');
-      previousStep.current = state.step;
-    }
-  }, [state.step]);
 
   const content = ((): React.ReactElement | null => {
     switch (state.step) {
