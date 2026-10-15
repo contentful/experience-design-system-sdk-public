@@ -3,7 +3,7 @@ import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import { PALETTE } from '../../home/home.theme.js';
 import { readCredentials, writeCredentials, type V1Credentials } from './config-store.js';
-import { startDebugRun, finishDebugRun } from '../../debug-store.js';
+import { startDebugRun, finishDebugRun, startDebugSessionIn } from '../../debug-store.js';
 import { ControlHints } from '../../control-hints.js';
 
 type Field =
@@ -44,7 +44,7 @@ const FIELD_LABELS: Record<Field, string> = {
   host: 'API Host (optional)',
   defaultComponentDir: 'Default component directory (optional)',
   defaultTokenFile: 'Default token file (optional)',
-  contentfulBaseDir: 'Where to put .contentful (optional)',
+  contentfulBaseDir: 'Default project directory, where .contentful goes (optional)',
 };
 
 export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.ReactElement {
@@ -91,6 +91,8 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
     writeCredentials(config)
       .then(() => {
         setLastSaved(config);
+        // Start the session folder now rather than at the next launch.
+        if (config.contentfulBaseDir) void startDebugSessionIn(config.contentfulBaseDir);
         setNotice({ kind: 'success', text: 'Configuration saved' });
         setStage('form');
       })

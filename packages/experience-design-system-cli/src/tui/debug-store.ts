@@ -77,11 +77,17 @@ export function currentDebugSessionDir(): string | undefined {
   return sessionDir && join(sessionDir, 'debug');
 }
 
-/** Starts the session in the project the import was started for, unless a base directory already started it. */
-export async function startImportDebugSession(projectPath: string): Promise<void> {
-  if (!(await isDebugModeEnabled())) return;
-  const dir = join(startSession(resolve(projectPath)), 'debug');
-  await mkdir(dir, { recursive: true });
+/**
+ * Starts this terminal session's folder in `base`, unless a session already started somewhere else. Called when the
+ * user saves the base directory setting and when the import starts without one. Fail-open like the rest of the logger.
+ */
+export async function startDebugSessionIn(base: string): Promise<void> {
+  try {
+    if (!(await isDebugModeEnabled())) return;
+    await mkdir(join(startSession(resolve(base)), 'debug'), { recursive: true });
+  } catch {
+    // Debug logging must never get in the way of the user.
+  }
 }
 
 // Fire-and-forget so a user who never visits a wired flow still sees an (empty)

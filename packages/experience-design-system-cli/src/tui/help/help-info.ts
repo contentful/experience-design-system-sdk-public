@@ -31,7 +31,8 @@ export async function readHelpInfo(): Promise<HelpInfo> {
         label: 'This session',
         value: !debugMode.enabled
           ? 'no logs written while Debug Mode is off'
-          : (currentDebugSessionDir() ?? 'not started: set "Where to put .contentful" in Settings, or start an import'),
+          : (currentDebugSessionDir() ??
+            'not started: set the default project directory in Settings, or start an import'),
       },
     ],
   };

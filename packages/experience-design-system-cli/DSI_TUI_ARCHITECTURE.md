@@ -16,7 +16,7 @@ This is where all the api calls are made that the TUI needs
 The single settings file, read and written through `@contentful/experience-design-system-types/config` (the only module that knows the path). Holds credentials (spaceId, environmentId, cmaToken, host), preferences (analyticsDisabled, debug, debugMode) and defaults. The CLI and the bundled legacy import share it; `EDS_HOME` relocates the whole folder (used by tests).
 
 **<base>/.contentful/MM-DD-YYYY-session-N/debug**
-Per-session debug logs, one `session-N` folder per terminal session, with markdown run snapshots for each flow visit. `<base>` is the "Where to put .contentful" setting (Settings > Contentful Configuration). When it is empty, the session is created once the import starts, in the project being imported. Logging is toggled from Settings > Debug Mode.
+Per-session debug logs, one `session-N` folder per terminal session, with markdown run snapshots for each flow visit. `<base>` is the "Default project directory" setting (Settings > Contentful Configuration). When it is empty, the session is created once the import starts, in the project being imported. Logging is toggled from Settings > Debug Mode.
 
 ## Project Architecture
 

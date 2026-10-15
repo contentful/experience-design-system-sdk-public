@@ -72,7 +72,7 @@ describe('the debug store', () => {
     expect(store.currentDebugSessionDir()).toBeUndefined();
     expect(existsSync(join(home, 'debug'))).toBe(false);
 
-    await store.startImportDebugSession(base);
+    await store.startDebugSessionIn(base);
 
     expect(store.currentDebugSessionDir()).toMatch(/\.contentful\/\d\d-\d\d-\d{4}-session-1\/debug$/);
     await logRun(store, join(base, '.contentful'));
@@ -83,14 +83,24 @@ describe('the debug store', () => {
     await vi.waitFor(() => expect(store.currentDebugSessionDir()).toBeDefined());
     const before = store.currentDebugSessionDir();
 
-    await store.startImportDebugSession(join(base, 'elsewhere'));
+    await store.startDebugSessionIn(join(base, 'elsewhere'));
 
     expect(store.currentDebugSessionDir()).toBe(before);
   });
 
+  it('starts the session as soon as the base directory is saved, without a restart', async () => {
+    const store = await load();
+    expect(store.currentDebugSessionDir()).toBeUndefined();
+
+    await store.startDebugSessionIn(base);
+
+    expect(existsSync(store.currentDebugSessionDir()!)).toBe(true);
+    await logRun(store, join(base, '.contentful'));
+  });
+
   it('writes nothing while Debug Mode is off', async () => {
     const store = await load({ contentfulBaseDir: base, debugMode: { enabled: false } });
-    await store.startImportDebugSession(base);
+    await store.startDebugSessionIn(base);
 
     expect(existsSync(join(base, '.contentful'))).toBe(false);
   });
