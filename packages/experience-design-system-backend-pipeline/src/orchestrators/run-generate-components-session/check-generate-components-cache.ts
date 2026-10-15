@@ -66,13 +66,18 @@ export async function checkGenerateComponentsCache(
       ...(existingEntities?.components ?? []).map((component) => component.name),
     ]);
 
-    const cachedComponents = components.flatMap((component) => {
+    const cachedComponents: Array<{
+      component: (typeof components)[number];
+      resolution: NonNullable<ReturnType<typeof resolveComponentCache>>;
+    }> = [];
+    for (const component of components) {
       const resolution = resolveComponentCache(db, component, promptHash, allowedComponentNames);
-      return resolution ? [{ component, resolution }] : [];
-    });
+      if (resolution) cachedComponents.push({ component, resolution });
+      await new Promise<void>((r) => setImmediate(r));
+    }
 
     if (request.restoreCache) {
-      restoreCachedComponents(db, request.sessionId, cachedComponents, promptHash, allowedComponentNames);
+      await restoreCachedComponents(db, request.sessionId, cachedComponents, promptHash, allowedComponentNames);
     }
 
     return {

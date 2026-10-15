@@ -14,13 +14,13 @@ export type RestoreCandidate = {
   resolution: NonNullable<ReturnType<typeof resolveComponentCache>>;
 };
 
-export function restoreCachedComponents(
+export async function restoreCachedComponents(
   db: DatabaseSync,
   sessionId: string,
   cachedComponents: RestoreCandidate[],
   promptHash: string,
   allowedComponentNames: ReadonlySet<string>,
-): void {
+): Promise<void> {
   const restorations: Array<{ sourceSessionId: string; targetSessionId: string; componentId: string }> = [];
   const rekeyed: Array<{ component: RawComponentWithId; cached: { sourceSessionId: string; humanEdited: boolean } }> =
     [];
@@ -35,6 +35,7 @@ export function restoreCachedComponents(
       componentId: component.component_id,
     });
     rekeyed.push({ component, cached: resolution.entry });
+    await new Promise<void>((r) => setImmediate(r));
   }
   copyComponentsFromCache(db, restorations, { allowedComponentNames });
   storeCaches(
