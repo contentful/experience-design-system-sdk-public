@@ -32,7 +32,11 @@ describe('rapid input', () => {
     stdin.write('f');
     await tick();
     expect(onConfirm).toHaveBeenCalledTimes(1);
-    expect(onConfirm.mock.calls[0][0]).toEqual({ accepted: ['A', 'B', 'C'], rejected: ['D'] });
+    expect(onConfirm.mock.calls[0][0]).toEqual({
+      accepted: ['A', 'B', 'C'],
+      rejected: ['D'],
+      excludedSlotEdges: [],
+    });
   });
 
   it('rejects a parent and its dependency together, in one burst', async () => {

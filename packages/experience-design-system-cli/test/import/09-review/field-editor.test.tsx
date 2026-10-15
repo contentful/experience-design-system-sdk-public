@@ -496,6 +496,67 @@ describe('FieldEditor — prop category grouping', () => {
     }
   });
 
+  it('Enter on a slot row edits that slot, not the prop above it', async () => {
+    const value = JSON.stringify({
+      Button: {
+        $type: 'component',
+        $properties: { label: { $type: 'string', $category: 'content', $description: 'content prop' } },
+        $slots: { icon: { $description: 'slot row' } },
+      },
+    });
+    const { stdin, lastFrame } = render(
+      <FieldEditor value={value} width={100} height={30} onChange={vi.fn()} onSave={vi.fn()} onDiscard={vi.fn()} />,
+    );
+
+    stdin.write('\r');
+    await tick();
+    stdin.write('\x1b');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('\r');
+    await tick();
+
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('icon');
+    expect(frame).toContain('slot row');
+    expect(frame).not.toContain('label');
+  });
+
+  it('the empty component screen says Esc goes back, points to [r]/[a] when unfocused, and calls onExit', async () => {
+    const onExit = vi.fn();
+    const empty = JSON.stringify({ Flex: { $type: 'component' } });
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={empty}
+        width={100}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        onExit={onExit}
+      />,
+    );
+    expect(lastFrame() ?? '').toContain('[Esc] go back to the list');
+    expect(lastFrame() ?? '').not.toContain('Esc to discard');
+    stdin.write('\x1b');
+    await tick();
+    expect(onExit).toHaveBeenCalledTimes(1);
+
+    const unfocused = render(
+      <FieldEditor
+        value={empty}
+        width={100}
+        height={20}
+        active={false}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    expect(unfocused.lastFrame() ?? '').toContain('[r] reject this component');
+  });
+
   it('omits empty category headers', () => {
     const onlyDesignAndSlot = JSON.stringify({
       Button: {

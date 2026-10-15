@@ -58,7 +58,8 @@ export type GateAction =
   | { type: 'toggle-dependencies' }
   | { type: 'toggle-cycle-filter' }
   | { type: 'toggle-jump-filter' }
-  | { type: 'toggle-view' };
+  | { type: 'toggle-view' }
+  | { type: 'undo' };
 
 const NONE: GateAction = { type: 'none' };
 
@@ -94,6 +95,8 @@ export function resolveKey(mode: GateMode, key: KeyPress, ctx: GateContext): Gat
 function resolveMain(key: KeyPress, ctx: GateContext): GateAction {
   const { input } = key;
   const inMain = ctx.focusedColumn === 'main';
+
+  if (key.ctrl && input === 'z') return { type: 'undo' };
 
   if (input === 'q' || key.escape) {
     if (key.escape && ctx.jumpFilterActive) return { type: 'clear-jump-filter' };

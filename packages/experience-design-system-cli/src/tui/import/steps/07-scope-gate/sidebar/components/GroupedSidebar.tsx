@@ -67,7 +67,11 @@ export interface VisibleRow {
   cycleChild?: boolean;
   itemIdx: number;
   rootName?: string;
+  /** The parent whose slot the nested row sits in. */
+  parentName?: string;
 }
+
+type CycleSubtreeNode = { name: string; depth: number; isCycleMember: boolean; parent: string };
 
 function isEmpty(entry: CDFComponentEntry): boolean {
   return Object.keys(entry.$properties ?? {}).length === 0 && Object.keys(entry.$slots ?? {}).length === 0;
@@ -177,8 +181,8 @@ export function buildVisibleRows(props: {
 
   const seenCycleTierChildOccurrence = new Set<string>();
 
-  const computeCycleMemberSubtree = (root: string): Array<{ name: string; depth: number; isCycleMember: boolean }> => {
-    const out: Array<{ name: string; depth: number; isCycleMember: boolean }> = [];
+  const computeCycleMemberSubtree = (root: string): CycleSubtreeNode[] => {
+    const out: CycleSubtreeNode[] = [];
     const visited = new Set<string>([root]);
     const queue: Array<{ name: string; depth: number }> = [{ name: root, depth: 0 }];
     while (queue.length > 0) {
@@ -198,7 +202,7 @@ export function buildVisibleRows(props: {
         if (visited.has(target)) continue;
         visited.add(target);
         const isCycleMember = cycleParticipants.has(target);
-        out.push({ name: target, depth: cur.depth + 1, isCycleMember });
+        out.push({ name: target, depth: cur.depth + 1, isCycleMember, parent: cur.name });
         queue.push({ name: target, depth: cur.depth + 1 });
       }
     }
@@ -247,6 +251,7 @@ export function buildVisibleRows(props: {
         cycleChild: child.isCycleMember || undefined,
         itemIdx: childRec?.idx ?? -1,
         rootName: key,
+        parentName: child.parent,
       });
     });
   }
@@ -332,6 +337,7 @@ export function buildVisibleRows(props: {
       name: string;
       depth: number;
       isCycleChild: boolean;
+      parent: string;
     };
     const injectedChildren: ChildRow[] = [];
     const emitCycleChildrenOf = (parentName: string, parentDepth: number): void => {
@@ -346,12 +352,18 @@ export function buildVisibleRows(props: {
           name: target,
           depth: parentDepth + 1,
           isCycleChild: true,
+          parent: parentName,
         });
       }
     };
     emitCycleChildrenOf(root, 0);
     for (const c of closureChildren) {
-      injectedChildren.push({ name: c.name, depth: c.depth, isCycleChild: false });
+      injectedChildren.push({
+        name: c.name,
+        depth: c.depth,
+        isCycleChild: false,
+        parent: c.path[c.path.length - 2] ?? root,
+      });
       emitCycleChildrenOf(c.name, c.depth);
     }
 
@@ -392,6 +404,7 @@ export function buildVisibleRows(props: {
         cycleChild: child.isCycleChild || undefined,
         itemIdx: childRec?.idx ?? -1,
         rootName: root,
+        parentName: child.parent,
       });
     });
   }
@@ -596,6 +609,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
             row.kind === 'group-root' ||
             row.kind === 'group-child' ||
             row.kind === 'flat' ||
+            row.kind === 'empty' ||
             row.kind === 'cycle');
         const selState = supportsSelectionGlyph ? (selectionStateByKey!.get(itemName!) ?? 'undecided') : undefined;
         const isCycleRow = row.kind === 'cycle';
@@ -659,7 +673,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
               color={isSelected ? PALETTE.info : labelStyle.dim ? PALETTE.muted : labelStyle.color}
               bold={isSelected || labelStyle.bold}
               inverse={false}
-              underline={isSelected && !focused}
+              underline={isSelected && focused}
               wrap={wrapLabels ? 'wrap' : 'truncate'}
             >
               {' '}

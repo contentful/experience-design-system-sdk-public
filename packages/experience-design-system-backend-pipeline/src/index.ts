@@ -294,9 +294,11 @@ export {
   loadComponentRationale,
   applyToolCalls,
   applyScopeDecisions,
+  removeSlotAllowedComponents,
   markCacheHumanEdited,
 } from './persistence/src/index.js';
 export type {
+  ParentChildEdge,
   ComponentReviewMetadata,
   ComponentRationale,
   ApplyToolCallsResult,
