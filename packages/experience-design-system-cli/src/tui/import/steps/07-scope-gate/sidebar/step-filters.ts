@@ -24,6 +24,22 @@ export function computeFilterKeys(input: {
   return out;
 }
 
+const FILTER_LABELS: Record<FilterCategory, string> = {
+  broken: 'components with breaking changes',
+  cycles: 'slot cycles',
+  deleted: 'removed components',
+};
+
+export function describeEmptyFilter(input: {
+  filters: Iterable<FilterCategory>;
+  slotDependencies?: boolean;
+}): string | undefined {
+  const names = [...input.filters].map((f) => FILTER_LABELS[f]);
+  if (input.slotDependencies) names.push('slot dependencies');
+  if (names.length === 0) return undefined;
+  return `Nothing to show: no ${names.join(' or ')} in this import.`;
+}
+
 export function intersectFilterKeys(a: Set<string> | undefined, b: Set<string> | undefined): Set<string> | undefined {
   if (a === undefined) return b;
   if (b === undefined) return a;

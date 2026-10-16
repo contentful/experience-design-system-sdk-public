@@ -15,7 +15,12 @@ import { useTerminalSize } from './sidebar/hooks/use-terminal-size.js';
 import { computeSidebarBudget, FALLBACK_ROWS } from './sidebar/lineage-layout.js';
 import { collectExpandedGroupRoots, computeSidebarViewToggle } from './sidebar/sidebar-navigation.js';
 import { handleSidebarSearchInput } from './sidebar/sidebar-input.js';
-import { buildFlatDimPredicate, computeFilterKeys, intersectFilterKeys } from './sidebar/step-filters.js';
+import {
+  buildFlatDimPredicate,
+  computeFilterKeys,
+  describeEmptyFilter,
+  intersectFilterKeys,
+} from './sidebar/step-filters.js';
 import { partitionDecisions, rejectNeedsConfirmation, reduceDecisions, type DecisionState } from './state.js';
 import type { ScopeComponent, ScopeDecisions } from './types.js';
 
@@ -45,6 +50,7 @@ export function useScopeGate({ components, onConfirm, onQuit }: UseScopeGateOpti
   const [nav, setNav] = useState<{ cursor: number; scrollOffset: number }>({ cursor: 0, scrollOffset: 0 });
   const [focusedColumn, setFocusedColumn] = useState<FocusedColumn>('main');
   const [addedComponentsCursor, setAddedComponentsCursor] = useState(0);
+  const [showDependencies, setShowDependencies] = useState(false);
   const [cyclesPanelOpen, setCyclesPanelOpen] = useState(false);
   const [cyclesCursor, setCyclesCursor] = useState(0);
   const aiRationalePanel = useOverlayPanel({ toggleKey: 'x' });
@@ -69,7 +75,7 @@ export function useScopeGate({ components, onConfirm, onQuit }: UseScopeGateOpti
 
   const groupedItems = useMemo(() => sidebarItems(components), [components]);
   const graph = useMemo(() => buildScopeGraph(components), [components]);
-  const { cycles: slotCycles, cycleParticipants, closures } = graph;
+  const { cycles: slotCycles, cycleParticipants, cycleUnits, closures } = graph;
   const hasCycles = slotCycles.length > 0;
   const cyclesJumpables = useMemo(
     () => slotCycles.map((c, i) => ({ cycleIndex: i, jumpTarget: c.path[0] })),
@@ -108,6 +114,20 @@ export function useScopeGate({ components, onConfirm, onQuit }: UseScopeGateOpti
 
   const brokenKeys = useMemo(() => new Set(components.filter(isAiFlagged).map((c) => c.name)), [components]);
 
+  const dependencyFilterKeys = useMemo<Set<string> | undefined>(() => {
+    if (!showDependencies) return undefined;
+    const keys = new Set<string>();
+    for (const [root, closure] of closures) {
+      if (closure.nodes.length <= 1 || decisions.get(root) !== 'accepted') continue;
+      for (const node of closure.nodes) keys.add(node.name);
+    }
+    for (const unit of cycleUnits.values()) {
+      if (![...unit].some((name) => decisions.get(name) === 'accepted')) continue;
+      for (const name of unit) keys.add(name);
+    }
+    return keys;
+  }, [closures, cycleUnits, showDependencies, decisions]);
+
   const filterVisibleKeys = useMemo<Set<string> | undefined>(() => {
     if (jumpFilterTarget) return findAllAncestors(jumpFilterTarget, graph.nodes);
     const categoryKeys = computeFilterKeys({
@@ -120,8 +140,17 @@ export function useScopeGate({ components, onConfirm, onQuit }: UseScopeGateOpti
       if (matches.length === 0) return undefined;
       return computeDirectNeighborhood(matches, graph.nodes);
     })();
-    return intersectFilterKeys(categoryKeys, searchKeys);
-  }, [jumpFilterTarget, activeFilters, cycleParticipants, brokenKeys, searchQuery, groupedItems, graph]);
+    return intersectFilterKeys(intersectFilterKeys(categoryKeys, searchKeys), dependencyFilterKeys);
+  }, [
+    jumpFilterTarget,
+    activeFilters,
+    cycleParticipants,
+    brokenKeys,
+    searchQuery,
+    groupedItems,
+    graph,
+    dependencyFilterKeys,
+  ]);
 
   const visibleRows = useMemo(
     () =>
@@ -136,6 +165,11 @@ export function useScopeGate({ components, onConfirm, onQuit }: UseScopeGateOpti
       }),
     [groupedItems, cycleParticipants, expandedGroups, columnOneView, graph, filterVisibleKeys],
   );
+
+  const emptyMessage =
+    visibleRows.length === 0 && filterVisibleKeys !== undefined && !jumpFilterTarget
+      ? describeEmptyFilter({ filters: activeFilters, slotDependencies: showDependencies })
+      : undefined;
 
   const total = visibleRows.length;
   const safeCursor = Math.min(nav.cursor, Math.max(0, total - 1));
@@ -424,6 +458,10 @@ export function useScopeGate({ components, onConfirm, onQuit }: UseScopeGateOpti
           setCyclesPanelOpen(false);
         }
         return;
+      case 'toggle-dependencies':
+        setShowDependencies((current) => !current);
+        setNav({ cursor: 0, scrollOffset: 0 });
+        return;
       case 'toggle-cycle-filter':
         setActiveFilters((prev) => {
           const next = new Set(prev);
@@ -489,6 +527,7 @@ export function useScopeGate({ components, onConfirm, onQuit }: UseScopeGateOpti
     expandedGroups,
     toggleExpanded,
     visibleRows,
+    emptyMessage,
     safeCursor,
     scrollOffset: nav.scrollOffset,
     selectionStateByKey,
