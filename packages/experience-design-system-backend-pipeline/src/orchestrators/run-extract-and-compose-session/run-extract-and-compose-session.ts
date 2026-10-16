@@ -104,7 +104,7 @@ export async function runExtractAndComposeSession(
     await onSessionCreated?.(sessionId);
 
     await bindAnalyticsSessionId(sessionId);
-    if (!isPipelineAnalyticsChild()) await emitSessionStarted('analyze_extract');
+    if (!isPipelineAnalyticsChild()) await emitSessionStarted('import');
 
     const stepId = createStep(db, sessionId, 'analyze extract', { project: projectPath });
 
