@@ -92,7 +92,7 @@ export function realFlowDeps(): FlowDeps {
 }
 
 /** The state the flow begins in, from what the earlier stages handed over. */
-export function initialFlowState(start: FlowStart): FlowState {
+function initialFlowState(start: FlowStart): FlowState {
   const { handoff } = start;
   const { extraction, generation } = handoff;
   return {
@@ -133,7 +133,7 @@ export function initialFlowState(start: FlowStart): FlowState {
 }
 
 /** What the log gets: the state change without the token, the document, or the whole of a large server response. */
-export function sanitizeForLog(partial: FlowPatch): Record<string, unknown> {
+function sanitizeForLog(partial: FlowPatch): Record<string, unknown> {
   const sanitized: Record<string, unknown> = { ...partial };
   const p = partial.serverPreview;
   if (p) {
@@ -178,7 +178,7 @@ export function sanitizeForLog(partial: FlowPatch): Record<string, unknown> {
 }
 
 /** The names of the components the errors are about, once each. */
-export function namesToSkip(errors: readonly PreviewValidationError[]): string[] {
+function namesToSkip(errors: readonly PreviewValidationError[]): string[] {
   return [...new Set(errors.map((e) => e.componentName))];
 }
 

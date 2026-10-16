@@ -23,13 +23,13 @@ interface FlowScreenProps {
 }
 
 /** How many steps the import has, as the wizard counted them. */
-export function totalStepsFor(state: Pick<FlowState, 'tokensPath' | 'rawTokensPath' | 'mapTokensEligible'>): number {
+function totalStepsFor(state: Pick<FlowState, 'tokensPath' | 'rawTokensPath' | 'mapTokensEligible'>): number {
   const hasTokenStage = !!state.tokensPath || !!state.rawTokensPath;
   return 3 + (hasTokenStage ? 1 : 0) + 2 + (state.mapTokensEligible === true ? 1 : 0);
 }
 
 /** Whether the preview gate offers "[e] Edit definitions": only when the document has components to edit. */
-export function canEditFromPreview(cdf: FlowState['cdf']): boolean {
+function canEditFromPreview(cdf: FlowState['cdf']): boolean {
   if (!cdf) return false;
   return parseCDFComponents(cdf as unknown as Record<string, unknown>).components.length > 0;
 }

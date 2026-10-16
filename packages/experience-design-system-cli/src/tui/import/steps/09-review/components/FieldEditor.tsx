@@ -906,7 +906,7 @@ function propFields(prop: PropState): PropField[] {
 }
 const SLOT_FIELDS: SlotField[] = ['description', 'required', 'allowedComponents'];
 
-export function simulateGraphWithCandidate(
+function simulateGraphWithCandidate(
   projectSlotGraph: ComponentSlotInfo[],
   selfName: string,
   currentSlots: { name: string; allowedComponents: string[] }[],
@@ -924,7 +924,7 @@ export function simulateGraphWithCandidate(
   return [...withoutSelf, selfEntry];
 }
 
-export function introducesNewCycle(
+function introducesNewCycle(
   before: ReturnType<typeof findSlotCycles>,
   next: ReturnType<typeof findSlotCycles>,
 ): boolean {
@@ -940,7 +940,7 @@ export function introducesNewCycle(
   return false;
 }
 
-export function computeAllowedComponentCandidates(
+function computeAllowedComponentCandidates(
   projectSlotGraph: ComponentSlotInfo[],
   selfName: string,
   currentSlots: { name: string; allowedComponents: string[] }[],
@@ -964,7 +964,7 @@ export function computeAllowedComponentCandidates(
   return safe;
 }
 
-export function simulateGraphWithReplacement(
+function simulateGraphWithReplacement(
   projectSlotGraph: ComponentSlotInfo[],
   selfName: string,
   currentSlots: { name: string; allowedComponents: string[] }[],
@@ -984,7 +984,7 @@ export function simulateGraphWithReplacement(
   return [...withoutSelf, selfEntry];
 }
 
-export function computeAllowedComponentReplacementCandidates(
+function computeAllowedComponentReplacementCandidates(
   projectSlotGraph: ComponentSlotInfo[],
   selfName: string,
   currentSlots: { name: string; allowedComponents: string[] }[],

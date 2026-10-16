@@ -15,13 +15,13 @@ import { SpaceEnvironment } from '../components/SpaceEnvironment.js';
 import { usePreviewConfirmationInput } from '../support/preview-confirmation-input.js';
 import { WindowedPanel, terminalPanelHeight } from '../../07-scope-gate/sidebar/components/windowed-panel.js';
 
-export interface PreviewDiffLine {
+interface PreviewDiffLine {
   key: string;
   color: string;
   text: string;
 }
 
-export function buildPreviewSummaryLines(preview: ServerPreviewResponse): PreviewDiffLine[] {
+function buildPreviewSummaryLines(preview: ServerPreviewResponse): PreviewDiffLine[] {
   const lines: PreviewDiffLine[] = [];
   const { components, tokens } = preview;
 

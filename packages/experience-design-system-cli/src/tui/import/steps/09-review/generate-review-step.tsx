@@ -108,7 +108,7 @@ type GenerateReviewStepProps = {
   initialFinalizeError?: string | null;
 };
 
-export function sortComponentsForSidebar<T extends { key: string; entry: CDFComponentEntry }>(
+function sortComponentsForSidebar<T extends { key: string; entry: CDFComponentEntry }>(
   components: T[],
   cycleParticipants?: Set<string>,
 ): T[] {
@@ -362,22 +362,20 @@ const HELP_SECTIONS: HelpSection[] = [
   },
 ];
 
-export { computeCycleAutoRejectTargets } from './graph/cycle-auto-reject.js';
-
-export interface BreakingComponent {
+interface BreakingComponent {
   componentName: string;
   changes: BreakingChange[];
   impact?: DownstreamImpact;
   current?: ComponentTypeSummary;
 }
 
-export interface BreakingRow {
+interface BreakingRow {
   label: string;
   componentName: string;
   focusTarget?: { kind: 'prop' | 'slot'; name: string };
 }
 
-export function buildBreakingRows(breakingChanges: BreakingComponent[]): BreakingRow[] {
+function buildBreakingRows(breakingChanges: BreakingComponent[]): BreakingRow[] {
   const out: BreakingRow[] = [];
   for (const b of breakingChanges) {
     if (b.changes.length === 0) {
@@ -404,7 +402,7 @@ export function buildBreakingRows(breakingChanges: BreakingComponent[]): Breakin
   return out;
 }
 
-export function deriveBreakingChanges(response: ServerPreviewResponse): BreakingComponent[] {
+function deriveBreakingChanges(response: ServerPreviewResponse): BreakingComponent[] {
   const out: BreakingComponent[] = [];
   for (const item of response.components.changed ?? []) {
     if (item.changeClassification?.classification !== 'breaking') continue;

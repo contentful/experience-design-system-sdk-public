@@ -9,7 +9,7 @@ import {
 } from '@contentful/experience-design-system-backend-pipeline';
 import { cliUserAgent } from '../../../user-agent.js';
 
-export class TimeoutError extends Error {
+class TimeoutError extends Error {
   constructor(message = 'live-preview timed out') {
     super(message);
     this.name = 'TimeoutError';
