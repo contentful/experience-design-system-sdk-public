@@ -14,7 +14,7 @@ import {
  */
 export function useFlow(
   start: FlowStart | undefined,
-  deps: () => FlowDeps = realFlowDeps,
+  options: { beforeStepChange?: () => void; deps?: () => FlowDeps } = {},
 ): { controller: FlowController; state: ReturnType<FlowController['getState']> } | undefined {
   const controller = useRef<FlowController>();
   if (start && !controller.current) {
@@ -23,7 +23,11 @@ export function useFlow(
     } catch {
       // A step log that cannot be started must never stop the import.
     }
-    controller.current = createFlowController(start, deps());
+    const flowDeps = (options.deps ?? realFlowDeps)();
+    controller.current = createFlowController(start, {
+      ...flowDeps,
+      ...(options.beforeStepChange ? { beforeStepChange: options.beforeStepChange } : {}),
+    });
   }
   const current = controller.current;
   const state = useSyncExternalStore(

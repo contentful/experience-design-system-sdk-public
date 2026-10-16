@@ -50,6 +50,12 @@ export interface FlowDeps {
   /** Writes one line of the wizard's step log. */
   log: (entry: Record<string, unknown>) => void;
   stderr: (text: string) => void;
+  /**
+   * Called when the step is about to change, before anything is told about the new one. The host clears the terminal
+   * here so the next screen is drawn on a clean one. It has to be before: Ink paints as soon as it is told, and a clear
+   * after the paint wipes a static screen like the done step, which nothing draws again.
+   */
+  beforeStepChange?: () => void;
 }
 
 function appendWizardLog(entry: Record<string, unknown>): void {
@@ -204,6 +210,13 @@ export function createFlowController(start: FlowStart, deps: FlowDeps): FlowCont
       deps.log({ update: sanitizeForLog(patch) });
     } catch {
       // A step log that cannot be written must never stop the import.
+    }
+    if (patch.step !== undefined && patch.step !== state.step) {
+      try {
+        deps.beforeStepChange?.();
+      } catch {
+        // A terminal that cannot be cleared must never stop the import.
+      }
     }
     state = { ...state, ...patch };
     for (const listener of listeners) listener();
