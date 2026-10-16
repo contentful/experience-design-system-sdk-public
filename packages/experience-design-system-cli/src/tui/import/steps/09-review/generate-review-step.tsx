@@ -1119,18 +1119,18 @@ function GenerateReviewStepView({
       }
       return;
     }
-    if (input === 'c' && !key.ctrl && !key.meta && cycleRows.length > 0) {
+    if (input === 'c' && !reviewEditor.textEntryActive && !key.ctrl && !key.meta && cycleRows.length > 0) {
       cyclePanel.open();
       setCyclePanelScroll(0);
       setCyclesCursor(0);
       return;
     }
-    if (input === 'b' && sidebarFocused && breakingChanges.length > 0) {
+    if (input === 'b' && !reviewEditor.textEntryActive && sidebarFocused && breakingChanges.length > 0) {
       breakingPanel.open();
       setBreakingCursor(0);
       return;
     }
-    if (input === 'o' || input === 'w') {
+    if (!reviewEditor.textEntryActive && (input === 'o' || input === 'w')) {
       const category: FilterCategory = input === 'o' ? 'cycles' : 'broken';
       setActiveFilters((prev) => {
         const next = new Set(prev);
