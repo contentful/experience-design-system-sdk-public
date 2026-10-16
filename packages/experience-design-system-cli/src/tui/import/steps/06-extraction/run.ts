@@ -62,7 +62,7 @@ export async function runExtraction(
   onProgress: (progress: ExtractionProgress) => void,
   deps: ExtractionDeps = realDeps,
 ): Promise<ExtractionResult> {
-  const outDir = join(resolve(input.projectPath), '.contentful');
+  const outDir = input.outDir ?? join(resolve(input.projectPath), '.contentful');
   let progress = initialProgress({
     hasCredentials: input.credentials !== null,
     hasRawTokens: input.rawTokensPath !== '',
