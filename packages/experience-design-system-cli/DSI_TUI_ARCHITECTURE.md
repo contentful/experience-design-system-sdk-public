@@ -13,10 +13,10 @@ This package is the Terminal UI flow that the customer interacts with
 This is where all the api calls are made that the TUI needs
 
 **~/.contentful/experience-design-system-cli/config.json**
-The single settings file, read and written through `@contentful/experience-design-system-types/config` (the only module that knows the path). Holds credentials (spaceId, environmentId, cmaToken, host), preferences (analyticsDisabled, debug, debugMode) and defaults. The CLI and the bundled legacy import share it; `EDS_HOME` relocates the whole folder (used by tests).
+The single settings file, read and written through `@contentful/experience-design-system-types/config` (the only module that knows the path). Holds credentials (spaceId, environmentId, cmaToken, host), preferences (analyticsDisabled, debug, debugMode), agent settings (agent, agentModel, agents) and defaults. The CLI and the bundled legacy import share it; `EDS_HOME` relocates the whole folder (used by tests).
 
 **<root>/.contentful/MM-DD-YYYY-session-N/**
-One folder per terminal session, numbered per day. `<root>` is the "Root Project Directory" setting (Settings > Contentful Configuration). When it is empty, the session is created once the import starts, in the project being imported.
+One folder per terminal session, numbered per day. `<root>` is the "Root Project Directory" setting (Settings > Configuration > Project). When it is empty, the session is created once the import starts, in the project being imported.
 
 - `debug/` holds the per-screen debug logs (markdown run snapshots), written only while Debug Mode is on.
 - `dsi-import-N/` holds one import run's output: `tokens.json`, `.existing-entities.json` and `components.json`. Each import in the session gets the next number, so a second import never overwrites the first. Token reuse offers the newest `tokens.json` found across all sessions.
