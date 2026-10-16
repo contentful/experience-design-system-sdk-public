@@ -3,12 +3,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const trackEventMock = vi.fn().mockResolvedValue(undefined);
 const flushAnalyticsMock = vi.fn().mockResolvedValue(undefined);
 
-vi.mock('../../src/analytics/client.js', () => ({
+vi.mock('../../src/analytics/client/segment-client.js', () => ({
   trackEvent: (...args: unknown[]) => trackEventMock(...args),
   flushAnalytics: () => flushAnalyticsMock(),
+  resetSegmentClientForTests: () => undefined,
+}));
+vi.mock('../../src/analytics/client/opt-out.js', () => ({
   analyticsEnabled: () => !process.env.DISABLE_ANALYTICS && Boolean(process.env.SEGMENT_WRITE_KEY),
+  setPersistedAnalyticsDisabled: () => undefined,
+  resetOptOutForTests: () => undefined,
+}));
+vi.mock('../../src/analytics/client/cli-info.js', () => ({
+  setCliVersion: () => undefined,
   cliVersion: () => '2.23.0',
-  resetAnalyticsClientForTests: () => undefined,
+  resetCliVersionForTests: () => undefined,
 }));
 
 import { normalizeCommand } from '../../src/analytics/normalize.js';
@@ -22,7 +30,7 @@ import {
   failActiveCommand,
   noteCommandStart,
   resetAnalyticsStateForTests,
-} from '../../src/analytics/tracker.js';
+} from '../../src/analytics/tracker/index.js';
 
 describe('analytics normalizeCommand', () => {
   it('maps commander chains to tracked command ids', () => {

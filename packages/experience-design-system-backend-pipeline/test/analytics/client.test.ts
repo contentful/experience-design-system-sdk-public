@@ -18,9 +18,9 @@ import {
   resetAnalyticsClientForTests,
   setPersistedAnalyticsDisabled,
   trackEvent,
-} from '../../src/analytics/client.js';
+} from '../../src/analytics/client/index.js';
 
-// Duplicated from client.ts on purpose: importing the constant would assert it
+// Duplicated from segment-client.ts on purpose: importing the constant would assert it
 // against itself, so a rotation must be an explicit change here too.
 const PUBLIC_WRITE_KEY = '6DmxiEPN3SV1vbRTTMcNqDzCvkfwT06N';
 

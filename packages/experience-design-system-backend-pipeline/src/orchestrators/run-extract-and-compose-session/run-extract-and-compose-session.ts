@@ -18,6 +18,12 @@ import { persistSlotCycles } from './helpers/persist-slot-cycles.js';
 import { resolveComposition } from './helpers/resolve-composition.js';
 import { resolveCompositionPrompt } from './helpers/resolve-composition-prompt.js';
 import { retryDatabaseWrite } from './helpers/retry-database-write.js';
+import {
+  bindAnalyticsSessionId,
+  emitSessionStarted,
+  enrichCommandResult,
+  isPipelineAnalyticsChild,
+} from '../../analytics/index.js';
 import type { RunExtractAndComposeSessionRequest, RunExtractAndComposeSessionResponse } from './types.js';
 
 export type {
@@ -97,9 +103,8 @@ export async function runExtractAndComposeSession(
     });
     await onSessionCreated?.(sessionId);
 
-    // TODO(analytics): lift to backend-pipeline so this fires for both callers.
-    //   await bindAnalyticsSessionId(sessionId);
-    //   if (!isPipelineAnalyticsChild()) await emitSessionStarted('analyze_extract');
+    await bindAnalyticsSessionId(sessionId);
+    if (!isPipelineAnalyticsChild()) await emitSessionStarted('import');
 
     const stepId = createStep(db, sessionId, 'analyze extract', { project: projectPath });
 
@@ -144,8 +149,7 @@ export async function runExtractAndComposeSession(
     );
     await retryDatabaseWrite(() => updateStep(db, stepId, 'complete', { sessionId }));
 
-    // TODO(analytics): lift to backend-pipeline so this fires for both callers.
-    //   enrichCommandResult({ extracted_component_count: composition.components.length });
+    enrichCommandResult({ extracted_component_count: composition.components.length });
 
     return {
       sessionId,

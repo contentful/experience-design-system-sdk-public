@@ -1,12 +1,15 @@
 import type { ApplyOperationResponse } from '@contentful/experience-design-system-types';
-import type { ImportApiClient } from '../apply/api-client.js';
-import { enrichCommandResult, setCommandContext } from './tracker.js';
-import type { WriteResult } from './types.js';
+/** Minimal shape the analytics layer needs; accepts both bp's ApiClient and legacy's ImportApiClient. */
+interface RequestIdCarrier {
+  getLastRequestId(): string | undefined;
+}
+import { enrichCommandResult, setCommandContext } from './tracker/index.js';
+import type { AnalyticsWriteResult } from './types.js';
 
 function countWriteResult(
   items: NonNullable<ApplyOperationResponse['items']>,
   entityType: 'ComponentType' | 'DesignToken',
-): WriteResult {
+): AnalyticsWriteResult {
   const subset = items.filter((item) => item.entityType === entityType);
   return {
     created_count: subset.filter((item) => item.action === 'create' && item.status === 'succeeded').length,
@@ -17,7 +20,7 @@ function countWriteResult(
 
 /** Record apply/preview API outcomes on the active command. */
 export function recordApplyOutcome(
-  client: ImportApiClient,
+  client: RequestIdCarrier,
   spaceId: string,
   environmentId: string,
   operation: ApplyOperationResponse,
@@ -35,7 +38,7 @@ export function recordApplyOutcome(
 }
 
 /** Record Contentful target context without an apply operation (e.g. preview-only). */
-export function recordContentfulContext(client: ImportApiClient, spaceId: string, environmentId: string): void {
+export function recordContentfulContext(client: RequestIdCarrier, spaceId: string, environmentId: string): void {
   setCommandContext({
     space_key: spaceId,
     environment_key: environmentId,
