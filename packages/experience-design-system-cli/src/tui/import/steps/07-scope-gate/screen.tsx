@@ -43,7 +43,6 @@ const HELP_SECTIONS: HelpSection[] = [
     title: 'Panels',
     entries: [
       { keys: 'c', label: 'Cycle list' },
-      { keys: 'd', label: 'Show slot dependencies in main list' },
       { keys: 'x', label: 'Review flags' },
     ],
   },

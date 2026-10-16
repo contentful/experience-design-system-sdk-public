@@ -55,7 +55,6 @@ export type GateAction =
   | { type: 'collapse-all' }
   | { type: 'switch-column'; delta: -1 | 1 }
   | { type: 'open-panel'; panel: 'cycles' | 'flags' | 'help' | 'search' }
-  | { type: 'toggle-dependencies' }
   | { type: 'toggle-cycle-filter' }
   | { type: 'toggle-jump-filter' }
   | { type: 'toggle-view' };
@@ -103,7 +102,6 @@ function resolveMain(key: KeyPress, ctx: GateContext): GateAction {
   if (input === 'h') return { type: 'open-panel', panel: 'help' };
   if (input === 'f' || input === 'F') return { type: 'confirm' };
   if (input === 'c') return ctx.hasCycles ? { type: 'open-panel', panel: 'cycles' } : NONE;
-  if (input === 'd') return { type: 'toggle-dependencies' };
   if (input === 'x') return ctx.hasFlagReasons ? { type: 'open-panel', panel: 'flags' } : NONE;
   if (input === '/') return { type: 'open-panel', panel: 'search' };
   if (input === 'o') return ctx.hasCycles ? { type: 'toggle-cycle-filter' } : NONE;
