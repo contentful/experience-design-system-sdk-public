@@ -15,7 +15,12 @@ import { useTerminalSize } from './sidebar/hooks/use-terminal-size.js';
 import { computeSidebarBudget, FALLBACK_ROWS } from './sidebar/lineage-layout.js';
 import { collectExpandedGroupRoots, computeSidebarViewToggle } from './sidebar/sidebar-navigation.js';
 import { handleSidebarSearchInput } from './sidebar/sidebar-input.js';
-import { buildFlatDimPredicate, computeFilterKeys, intersectFilterKeys } from './sidebar/step-filters.js';
+import {
+  buildFlatDimPredicate,
+  computeFilterKeys,
+  describeEmptyFilter,
+  intersectFilterKeys,
+} from './sidebar/step-filters.js';
 import { partitionDecisions, rejectNeedsConfirmation, reduceDecisions, type DecisionState } from './state.js';
 import type { ScopeComponent, ScopeDecisions } from './types.js';
 
@@ -160,6 +165,11 @@ export function useScopeGate({ components, onConfirm, onQuit }: UseScopeGateOpti
       }),
     [groupedItems, cycleParticipants, expandedGroups, columnOneView, graph, filterVisibleKeys],
   );
+
+  const emptyMessage =
+    visibleRows.length === 0 && filterVisibleKeys !== undefined && !jumpFilterTarget
+      ? describeEmptyFilter({ filters: activeFilters, slotDependencies: showDependencies })
+      : undefined;
 
   const total = visibleRows.length;
   const safeCursor = Math.min(nav.cursor, Math.max(0, total - 1));
@@ -517,6 +527,7 @@ export function useScopeGate({ components, onConfirm, onQuit }: UseScopeGateOpti
     expandedGroups,
     toggleExpanded,
     visibleRows,
+    emptyMessage,
     safeCursor,
     scrollOffset: nav.scrollOffset,
     selectionStateByKey,

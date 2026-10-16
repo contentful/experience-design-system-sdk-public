@@ -46,6 +46,7 @@ export interface GroupedSidebarProps {
   visibleRows?: VisibleRow[];
   graph: ComponentGraphNode[];
   filterVisibleKeys?: Set<string>;
+  emptyMessage?: string;
 }
 
 const GLYPH_EXPAND_COLLAPSED = '▸';
@@ -543,6 +544,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
     visibleRows: providedRows,
     graph,
     filterVisibleKeys,
+    emptyMessage,
   } = props;
   const allRows =
     providedRows ??
@@ -564,6 +566,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
 
   return (
     <WindowedPanel width={width} height={props.height} title={title} focused={focused}>
+      {allRows.length === 0 && emptyMessage !== undefined && <Text color={PALETTE.warning}> {emptyMessage}</Text>}
       {windowed && <WindowIndicator direction="up" count={start} />}
       {rows.map((row, i) => {
         const absoluteRowIdx = start + i;
