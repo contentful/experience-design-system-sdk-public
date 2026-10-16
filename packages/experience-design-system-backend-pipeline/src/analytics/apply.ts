@@ -3,7 +3,7 @@ import type { ApplyOperationResponse } from '@contentful/experience-design-syste
 interface RequestIdCarrier {
   getLastRequestId(): string | undefined;
 }
-import { enrichCommandResult, setCommandContext } from './tracker.js';
+import { enrichCommandResult, setCommandContext } from './tracker/index.js';
 import type { AnalyticsWriteResult } from './types.js';
 
 function countWriteResult(

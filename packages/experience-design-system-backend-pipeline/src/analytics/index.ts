@@ -4,7 +4,7 @@ export {
   setCliVersion,
   cliVersion,
   analyticsEnabled,
-} from './client.js';
+} from './client/index.js';
 export { isPipelineAnalyticsChild } from './session.js';
 export {
   bindAnalyticsSessionId,
@@ -14,7 +14,7 @@ export {
   failActiveCommand,
   noteCommandStart,
   setCommandContext,
-} from './tracker.js';
+} from './tracker/index.js';
 export { recordApplyOutcome, recordContentfulContext } from './apply.js';
 export type {
   CommandCompletion,
