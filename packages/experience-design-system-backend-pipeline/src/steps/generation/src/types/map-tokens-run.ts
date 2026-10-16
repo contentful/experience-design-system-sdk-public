@@ -14,38 +14,28 @@ export interface MapTokensRunRequest {
   agentTimeoutMs?: number;
 }
 
-/**
- * Diagnostics surfaced to the caller: token-map entries referencing unknown
- * paths, and `resolveTokenDefaults` resolution issues (ambiguous paths, no
- * match, conflicts with manual mappings). Legacy emitted these to stderr; the
- * orchestrator returns them so the caller owns final presentation.
- */
 export type MapTokensRunResult =
   | {
       type: 'nothing-to-map';
       sessionId: string;
       mappablePropCount: number;
       tokenCount: number;
-      diagnostics: string[];
     }
   | {
       type: 'printed-prompt';
       sessionId: string;
       prompt: string;
-      diagnostics: string[];
     }
   | {
       type: 'skipped';
       sessionId: string;
       stepId: number;
-      diagnostics: string[];
     }
   | {
       type: 'cached';
       sessionId: string;
       applied: number;
       stepId: number;
-      diagnostics: string[];
     }
   | {
       type: 'applied';
@@ -53,7 +43,6 @@ export type MapTokensRunResult =
       applied: number;
       warnings: string[];
       stepId: number;
-      diagnostics: string[];
     };
 
 export type MapTokensRunError =

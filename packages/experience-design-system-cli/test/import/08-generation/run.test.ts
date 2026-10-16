@@ -80,7 +80,6 @@ function fakes(overrides: Partial<GenerationDeps> = {}) {
         applied: 2,
         warnings: [],
         stepId: 1,
-        diagnostics: [],
       } as never;
     }) as GenerationDeps['runMapTokens'],
     ...overrides,
