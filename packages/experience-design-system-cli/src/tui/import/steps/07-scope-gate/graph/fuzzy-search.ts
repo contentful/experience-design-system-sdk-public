@@ -44,27 +44,3 @@ function match(query: string, text: string): MatchResult | null {
 export function fuzzyMatches(query: string, text: string): boolean {
   return match(query, text) !== null;
 }
-
-export function fuzzyScore(query: string, text: string): number | null {
-  const result = match(query, text);
-  return result === null ? null : result.score;
-}
-
-export function fuzzyFilter(query: string, candidates: string[]): string[] {
-  if (query.length === 0) return [...candidates];
-
-  const scored = candidates
-    .map((candidate, index) => ({
-      candidate,
-      index,
-      score: fuzzyScore(query, candidate),
-    }))
-    .filter((entry): entry is { candidate: string; index: number; score: number } => entry.score !== null);
-
-  scored.sort((a, b) => {
-    if (b.score !== a.score) return b.score - a.score;
-    return a.index - b.index;
-  });
-
-  return scored.map((entry) => entry.candidate);
-}

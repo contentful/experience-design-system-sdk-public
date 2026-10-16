@@ -21,10 +21,10 @@ import { nextStateAfterPrint } from '../support/run-print-files-helpers.js';
 import type { FlowPatch, FlowState } from './types.js';
 
 /** How long the confirmation of a written file stays up before the flow moves on to the preview. */
-export const SAVE_CONFIRMATION_DELAY_MS = 1000;
+const SAVE_CONFIRMATION_DELAY_MS = 1000;
 
 /** The document written to `components.json`: the components and tokens as one schema-valid CDF. */
-export function buildSavedCDF(
+function buildSavedCDF(
   components: Array<{ key: string; entry: CDFComponentEntry }>,
   tokens: DTCGTokenEntry[],
   opts: { deleteAll?: boolean } = {},

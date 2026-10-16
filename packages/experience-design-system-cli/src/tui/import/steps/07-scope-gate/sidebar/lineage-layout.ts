@@ -1,12 +1,12 @@
 /** Maximum layout rows; the active terminal height determines the actual budget. */
-export const VISIBLE_COUNT = 200;
+const VISIBLE_COUNT = 200;
 
 /** Maximum supported panel window; normal terminals remain terminal-sized. */
-export const MAX_PANEL_ROWS = 200;
+const MAX_PANEL_ROWS = 200;
 
 /** Floors — both surfaces stay usable even on a small terminal. */
-export const SIDEBAR_MIN = 4;
-export const MIN_PANEL_ROWS = 4;
+const SIDEBAR_MIN = 4;
+const MIN_PANEL_ROWS = 4;
 
 /**
  * Fallback when `stdout.rows` is unavailable (piped output, tests). No TTY
@@ -26,11 +26,11 @@ const LEGEND_ROWS = 3;
  * shares the columns row, so the fit constraint while open is simply
  * `FIXED_OVERHEAD + panelBoxHeight <= rows`.
  */
-export const FIXED_OVERHEAD = HEADER_ROWS + COUNTER_STRIP_ROWS + FOCUSED_DETAIL_ROWS + LEGEND_ROWS;
+const FIXED_OVERHEAD = HEADER_ROWS + COUNTER_STRIP_ROWS + FOCUSED_DETAIL_ROWS + LEGEND_ROWS;
 
 // Panel box rows that are NOT entry rows: top border + header + footer hint +
 // bottom border (+ up to two scroll indicators on large lineages).
-export const PANEL_BOX_CHROME = 6;
+const PANEL_BOX_CHROME = 6;
 
 /**
  * L2e — fixed vertical chrome around the sidebar in the BASE (no-panel) case,
@@ -41,7 +41,7 @@ export const PANEL_BOX_CHROME = 6;
  * focused-detail block, and the wrapping legend region. The value intentionally
  * leaves a small safety margin so resize-induced wrapping does not overflow.
  */
-export const BASE_CHROME_OVERHEAD = 18;
+const BASE_CHROME_OVERHEAD = 18;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -56,7 +56,7 @@ export interface LineageLayoutInput {
   entryCount?: number;
 }
 
-export interface LineageLayout {
+interface LineageLayout {
   /** Rows the sidebar should render (`visibleCount`). Constant across open/closed. */
   sidebarVisible: number;
   /** Rows a sidebar replacement panel should window to (`maxRows`). */
@@ -68,7 +68,7 @@ export interface LineageLayout {
  * there is nothing to shrink). Both values are derived from the terminal so
  * resizing grows or shrinks the viewport without content-driven layout changes.
  */
-export function computeLineageLayout({ rows, panelOpen, entryCount }: LineageLayoutInput): LineageLayout {
+function computeLineageLayout({ rows, panelOpen, entryCount }: LineageLayoutInput): LineageLayout {
   const sidebarVisible = clamp(rows - BASE_CHROME_OVERHEAD, SIDEBAR_MIN, VISIBLE_COUNT);
   if (!panelOpen) {
     return { sidebarVisible, panelMaxRows: MAX_PANEL_ROWS };

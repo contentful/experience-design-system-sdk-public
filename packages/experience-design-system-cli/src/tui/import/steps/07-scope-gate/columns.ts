@@ -8,8 +8,8 @@ export interface ScopeComponentLike {
 import type { Decision } from './types.js';
 
 const TWO_COLUMN_MIN_WIDTH = 100;
-export const SCOPE_GATE_MAIN_COLUMN_WIDTH = 54;
-export const ACCEPTED_COMPONENTS_COLUMN_WIDTH = 36;
+const SCOPE_GATE_MAIN_COLUMN_WIDTH = 54;
+const ACCEPTED_COMPONENTS_COLUMN_WIDTH = 36;
 const PANEL_BORDER_ROWS = 2;
 const PANEL_INDICATOR_ROWS = 2;
 const PANEL_HEADER_ROWS = 2;
