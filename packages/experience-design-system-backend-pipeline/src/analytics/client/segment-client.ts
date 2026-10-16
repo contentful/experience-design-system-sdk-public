@@ -1,13 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { Analytics } from '@segment/analytics-node';
-import { findPkgRoot } from '../lib/cli-path.js';
-
-// Read via findPkgRoot() rather than a hardcoded-depth require — this file's
-// depth under dist/ changes once the CLI is bundled into a single dist/src/index.js.
-const pkg = JSON.parse(readFileSync(join(findPkgRoot(), 'package.json'), 'utf8')) as {
-  version: string;
-};
+import { analyticsEnabled } from './opt-out.js';
 
 // Anonymous usage telemetry for the CLI. Disabled when DISABLE_ANALYTICS is set
 // or when the setup preference opts out. Never blocks command execution.
@@ -17,27 +9,11 @@ const pkg = JSON.parse(readFileSync(join(findPkgRoot(), 'package.json'), 'utf8')
 const DEFAULT_WRITE_KEY = '6DmxiEPN3SV1vbRTTMcNqDzCvkfwT06N';
 
 let analyticsClient: Analytics | null = null;
-let persistedDisabled = false;
-
-export function cliVersion(): string {
-  return pkg.version;
-}
-
-// Set once per invocation from the persisted `experiences setup` preference
-// (credentials.json `analyticsDisabled`). Sticky-off: once set, DISABLE_ANALYTICS
-// has nothing left to override — see setPersistedAnalyticsDisabled callers.
-export function setPersistedAnalyticsDisabled(disabled: boolean): void {
-  persistedDisabled = disabled;
-}
-
-export function analyticsEnabled(): boolean {
-  return !persistedDisabled && !process.env.DISABLE_ANALYTICS;
-}
 
 // SEGMENT_WRITE_KEY overrides the default so engineers can point a local run at
 // their own staging connection.
 function resolveWriteKey(): string {
-  const key = (process.env.SEGMENT_WRITE_KEY ?? '').trim();
+  const key = (process.env['SEGMENT_WRITE_KEY'] ?? '').trim();
   return key.length > 0 ? key : DEFAULT_WRITE_KEY;
 }
 
@@ -90,7 +66,6 @@ export async function flushAnalytics(): Promise<void> {
   }
 }
 
-export function resetAnalyticsClientForTests(): void {
+export function resetSegmentClientForTests(): void {
   analyticsClient = null;
-  persistedDisabled = false;
 }

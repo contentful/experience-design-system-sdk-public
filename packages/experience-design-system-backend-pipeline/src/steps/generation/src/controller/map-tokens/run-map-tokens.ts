@@ -29,6 +29,7 @@ import { loadRawDefaults } from '../../helpers/map-tokens/load-raw-defaults.js';
 import { loadTokenLeaves } from '../../helpers/map-tokens/load-token-leaves.js';
 import { rebuildDTCGTree } from '../../../../shared/dtcg/helpers/rebuild-dtcg-tree.js';
 import { resolveTokenDefaults } from '../../helpers/token-defaults/resolve-token-defaults.js';
+import { bindAnalyticsSessionId } from '../../../../../analytics/index.js';
 import type { MapTokensRunRequest, MapTokensRunResult } from '../../types/map-tokens-run.js';
 
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
@@ -78,6 +79,8 @@ export async function runMapTokens(request: MapTokensRunRequest): Promise<MapTok
     if (!sessionId) {
       throw new MapTokensRunFailure({ type: 'no-session' });
     }
+
+    await bindAnalyticsSessionId(sessionId);
 
     const tokenLeaves = loadTokenLeaves(db, sessionId);
     const knownTokenPaths = new Set(tokenLeaves.map((t) => t.path));

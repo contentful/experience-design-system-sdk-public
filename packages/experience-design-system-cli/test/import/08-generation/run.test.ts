@@ -74,7 +74,13 @@ function fakes(overrides: Partial<GenerationDeps> = {}) {
     }),
     runMapTokens: vi.fn(async () => {
       calls.push('map');
-      return { type: 'applied', sessionId: 'extract-1', applied: 2, warnings: [], stepId: 1 } as never;
+      return {
+        type: 'applied',
+        sessionId: 'extract-1',
+        applied: 2,
+        warnings: [],
+        stepId: 1,
+      } as never;
     }) as GenerationDeps['runMapTokens'],
     ...overrides,
   };

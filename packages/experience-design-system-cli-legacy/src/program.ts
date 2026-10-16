@@ -15,6 +15,7 @@ import {
   completeActiveCommand,
   flushAnalytics,
   noteCommandStart,
+  setCliVersion,
   setPersistedAnalyticsDisabled,
 } from './analytics/index.js';
 import { readExperiencesCredentials } from './credentials-store.js';
@@ -140,6 +141,7 @@ export function createProgram(): Command {
     const commandChain = chain.join(' ') || actionCommand.name();
     const { analyticsDisabled } = await readExperiencesCredentials();
     setPersistedAnalyticsDisabled(analyticsDisabled ?? false);
+    setCliVersion(pkg.version);
     noteCommandStart(commandChain);
     await beginCommand(commandChain, {});
   });
