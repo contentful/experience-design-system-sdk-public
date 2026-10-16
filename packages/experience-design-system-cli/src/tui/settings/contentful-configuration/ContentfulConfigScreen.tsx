@@ -3,10 +3,17 @@ import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import { PALETTE } from '../../home/home.theme.js';
 import { readCredentials, writeCredentials, type V1Credentials } from './config-store.js';
-import { startDebugRun, finishDebugRun } from '../../debug-store.js';
+import { startDebugRun, finishDebugRun, startDebugSessionIn } from '../../debug-store.js';
 import { ControlHints } from '../../control-hints.js';
 
-type Field = 'spaceId' | 'environmentId' | 'cmaToken' | 'host' | 'defaultComponentDir' | 'defaultTokenFile';
+type Field =
+  | 'spaceId'
+  | 'environmentId'
+  | 'cmaToken'
+  | 'host'
+  | 'defaultComponentDir'
+  | 'defaultTokenFile'
+  | 'contentfulBaseDir';
 type Stage = 'loading' | 'form' | 'saving';
 
 const FIELD_ORDER: Field[] = [
@@ -16,6 +23,7 @@ const FIELD_ORDER: Field[] = [
   'host',
   'defaultComponentDir',
   'defaultTokenFile',
+  'contentfulBaseDir',
 ];
 function debugFields(config: V1Credentials | null): Record<string, unknown> {
   return {
@@ -25,6 +33,7 @@ function debugFields(config: V1Credentials | null): Record<string, unknown> {
     host: config?.host ?? '',
     default_component_dir: config?.defaultComponentDir ?? '',
     default_token_file: config?.defaultTokenFile ?? '',
+    contentful_base_dir: config?.contentfulBaseDir ?? '',
   };
 }
 
@@ -32,10 +41,19 @@ const FIELD_LABELS: Record<Field, string> = {
   spaceId: 'Space ID',
   environmentId: 'Environment ID',
   cmaToken: 'CMA Token',
-  host: 'API Host (optional)',
-  defaultComponentDir: 'Default component directory (optional)',
-  defaultTokenFile: 'Default token file (optional)',
+  host: 'API Host',
+  defaultComponentDir: 'Default component directory',
+  defaultTokenFile: 'Default token file',
+  contentfulBaseDir: 'Root Project Directory',
 };
+
+// A short note shown dimmed after a key, so the key column stays narrow.
+const FIELD_HINTS: Partial<Record<Field, string>> = {
+  contentfulBaseDir: '(where .contentful goes)',
+};
+
+// The keys sit in a column this wide so every value starts at the same place, whatever its label.
+const LABEL_WIDTH = Math.max(...Object.values(FIELD_LABELS).map((label) => label.length));
 
 export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.ReactElement {
   const [stage, setStage] = useState<Stage>('loading');
@@ -81,6 +99,8 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
     writeCredentials(config)
       .then(() => {
         setLastSaved(config);
+        // Start the session folder now rather than at the next launch.
+        if (config.contentfulBaseDir) void startDebugSessionIn(config.contentfulBaseDir, { replace: true });
         setNotice({ kind: 'success', text: 'Configuration saved' });
         setStage('form');
       })
@@ -167,7 +187,11 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
           return (
             <Box key={field} gap={1}>
               <Text color={isActive ? PALETTE.accent : undefined}>{isActive ? '❯' : ' '}</Text>
-              <Text bold={isActive}>{FIELD_LABELS[field]}:</Text>
+              <Box width={LABEL_WIDTH} flexShrink={0}>
+                <Text bold={isActive} color={isActive ? PALETTE.accent : PALETTE.muted}>
+                  {FIELD_LABELS[field]}
+                </Text>
+              </Box>
               {isActive && editing ? (
                 <TextInput
                   value={value}
@@ -176,8 +200,11 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
                   mask={field === 'cmaToken' ? '•' : undefined}
                 />
               ) : (
-                <Text>{display || <Text color={PALETTE.muted}>(empty)</Text>}</Text>
+                <Text bold={!!display}>
+                  {display || (FIELD_HINTS[field] ? '' : <Text color={PALETTE.muted}>(empty)</Text>)}
+                </Text>
               )}
+              {FIELD_HINTS[field] && <Text color={PALETTE.muted}>{FIELD_HINTS[field]}</Text>}
             </Box>
           );
         })}

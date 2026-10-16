@@ -1,7 +1,7 @@
 import { appendFileSync, writeFileSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import {
   buildTimestampedSubdir,
   detectSaveConflict,
@@ -344,7 +344,8 @@ export function createFlowController(start: FlowStart, deps: FlowDeps): FlowCont
 
     async submitPath(submitted) {
       await deps.mkdir(submitted);
-      if (await deps.detectSaveConflict(submitted)) {
+      // This run's own folder already holds its tokens.json, so only a folder the user picked can conflict.
+      if (resolve(submitted) !== resolve(state.outDir) && (await deps.detectSaveConflict(submitted))) {
         const subdir = deps.buildTimestampedSubdir(submitted);
         await deps.mkdir(subdir);
         await proceedToWrite(subdir);
