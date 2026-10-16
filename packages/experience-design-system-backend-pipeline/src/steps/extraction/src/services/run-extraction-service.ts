@@ -12,6 +12,8 @@ import { extractVueComponents } from '../framework-adapters/vue/extract-vue-comp
 import { extractAstroComponents } from '../framework-adapters/astro/extract-astro-components.js';
 import { extractWebComponentDefinitions } from '../framework-adapters/web-components/extract-web-components.js';
 import { extractSvelteComponents } from '../framework-adapters/svelte/extract-svelte-components.js';
+import { extractAngularComponents } from '../framework-adapters/angular/extract-angular-components.js';
+import { isAngularSourceFile } from '../framework-adapters/angular/helpers/is-angular-source-file.js';
 
 type ExtractedComponent = ComponentExtractionResult['components'][number];
 
@@ -40,6 +42,13 @@ const extractors: ComponentExtractor[] = [
     name: 'astro',
     fileFilter: (f) => f.endsWith('.astro'),
     extract: extractAstroComponents,
+  },
+  {
+    // Must run BEFORE web-components (both claim bare .ts). The sniff reads
+    // the file head looking for `@angular/core` so we only claim real Angular files.
+    name: 'angular',
+    fileFilter: (f) => isAngularSourceFile(f),
+    extract: extractAngularComponents,
   },
   {
     name: 'web-components',
