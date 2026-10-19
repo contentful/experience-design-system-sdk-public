@@ -5,15 +5,8 @@ import { extractWatchFlag } from '../src/commands/watch.js';
 describe('createProgram', () => {
   const names = createProgram().commands.map((command) => command.name());
 
-  it('registers import as the default command plus every forwarded command', () => {
-    expect(names).toEqual(['import', 'apply', 'setup', 'doctor', 'print', 'map', '__extract', '__generate']);
-  });
-
-  it('hides the internal forwarded commands from help', () => {
-    const hidden = createProgram()
-      .commands.filter((command) => (command as unknown as { _hidden: boolean })._hidden)
-      .map((command) => command.name());
-    expect(hidden).toEqual(['print', 'map', '__extract', '__generate']);
+  it('registers import as the only command', () => {
+    expect(names).toEqual(['import']);
   });
 });
 

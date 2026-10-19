@@ -9,7 +9,6 @@ import {
   setCliVersion,
   setPersistedAnalyticsDisabled,
 } from '@contentful/experience-design-system-backend-pipeline';
-import { registerForwardedCommands } from './src/commands/forwarded.js';
 import { registerImportCommand } from './src/commands/import.js';
 import { readAnalyticsSetting } from './src/tui/settings/opt-in-analytics/analytics-store.js';
 import { findPackageRoot } from './src/tui/package-root.js';
@@ -34,7 +33,6 @@ export function createProgram(): Command {
     const { runApp } = await import('./app.js');
     await runApp(render, options);
   });
-  registerForwardedCommands(program);
 
   program.hook('preAction', async (_thisCommand, actionCommand) => {
     const chain: string[] = [];
