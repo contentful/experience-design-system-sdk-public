@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Text, useInput } from 'ink';
-import { PALETTE } from '../home/home.theme.js';
+import { PALETTE } from '../theme.js';
 
 export function ImportScreen({ exitCode, onDone }: { exitCode?: number; onDone: () => void }): React.ReactElement {
   useInput((input, key) => {

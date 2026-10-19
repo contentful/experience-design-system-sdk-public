@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { FOCUS_MARKER, PALETTE } from '../home/home.theme.js';
+import { PALETTE } from '../theme.js';
+import { FOCUS_MARKER } from '../home/home.theme.js';
 import { checkForUpgrade, readPackageVersion, type UpgradeCheckResult } from './version.js';
 import { startDebugRun, finishDebugRun } from '../debug-store.js';
 

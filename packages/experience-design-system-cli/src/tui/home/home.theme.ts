@@ -1,23 +1,5 @@
-const BRAND = {
-  blue: '#1773EB',
-  green: '#00C459',
-  orange: '#E44F20',
-  yellow: '#FFDA00',
-  white: '#FFFFFF',
-  slate: '#8B8D91',
-  steel: '#C4D1DE',
-} as const;
-
-export const PALETTE = {
-  accent: BRAND.blue,
-  success: BRAND.green,
-  error: BRAND.orange,
-  warning: BRAND.yellow,
-  muted: BRAND.slate,
-  border: BRAND.steel,
-} as const;
-
-const BRAND_RAMP = [BRAND.blue, BRAND.orange, BRAND.yellow] as const;
+// Contentful brand colours. Fixed, so they do not change with the colour mode.
+const BRAND_RAMP = ['#1773EB', '#E44F20', '#FFDA00'] as const;
 
 const BAR_CELL = '━';
 

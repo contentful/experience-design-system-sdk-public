@@ -68,7 +68,7 @@ Use Ink's `useInput` for keys. The existing screens treat `q` and `Esc` as "go b
 
 ### Theme
 
-Each flow owns its styling. The home menu keeps its palette in `src/tui/home/home.theme.ts`; other flows define theirs beside their screens. There is no shared `ui/` folder.
+The shared colour palette lives in `src/tui/theme.ts`. It has a dark and a light set and picks one from the terminal background. Screens import `PALETTE` from there and should not hardcode colours. Flows keep any other styling beside their screens. There is no shared `ui/` folder.
 
 ### The Import flow
 

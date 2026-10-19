@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text, useApp, useInput } from 'ink';
 import type { Screen } from '../../../app.js';
-import { FOCUS_MARKER, PALETTE, brandBar } from './home.theme.js';
+import { PALETTE } from '../theme.js';
+import { FOCUS_MARKER, brandBar } from './home.theme.js';
 import { checkForUpgrade, readPackageVersion, type UpgradeCheckResult } from '../upgrade/version.js';
 import { useTerminalWidth } from '../use-terminal-width.js';
 import { ControlHints } from '../control-hints.js';

@@ -1,5 +1,5 @@
 import React from 'react';
-import { PALETTE } from '../theme.js';
+import { PALETTE } from '../../../../theme.js';
 import { wrapText } from './wrap-text.js';
 import { RationaleLine, type RationaleLineData } from './RationaleLine.js';
 import { ScrollablePanel } from './ScrollablePanel.js';
@@ -27,7 +27,7 @@ function renderRationaleLines(rows: RationaleRow[], innerWidth: number): Rendere
     out.push({
       kind: 'label',
       text: row.name,
-      color: PALETTE.info,
+      color: PALETTE.accent,
       suffix: row.kind === 'slot' ? ' (slot)' : undefined,
     });
     for (const line of wrapText(row.rationale, innerWidth)) {
@@ -64,7 +64,7 @@ export function RationalePanel({
       totalLines={totalLines}
       visibleStart={visibleStart}
       visibleEnd={visibleEnd}
-      borderColor={active ? PALETTE.inverse : undefined}
+      borderColor={active ? PALETTE.text : undefined}
     >
       {visible.map((line, i) => (
         <RationaleLine key={i} line={line} active={active} />
