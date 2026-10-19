@@ -9,7 +9,7 @@ import { AGENT_HINTS, AGENT_LABELS, writeAgentConfig, type AgentConfig } from '.
 import {
   defaultModelLabel,
   inspectAgent,
-  nextStepHint,
+  setupHint,
   statusFromChecks,
   statusRows,
   testAgent,
@@ -18,11 +18,11 @@ import {
 import { TONE_COLOR } from './AgentStatusBadge.js';
 import { applyBinaryOverrides } from './apply-binary-overrides.js';
 
-// One screen, three sections, so reading, changing and acting are never mixed up:
+// One screen, two sections, with what can be changed on top and what was found underneath, so the two are never mixed up:
 //
-//   STATUS    what was found: read-only, never focusable
-//   SETTINGS  the command path and the model: Enter edits, s saves
-//   ACTIONS   Run test: Enter runs it (it sends one small prompt, so it costs a few tokens)
+//   CONFIGURE  the command path and the model (Enter edits, s saves) and Run test (Enter runs it; it sends one small
+//              prompt, so it costs a few tokens). The only part with a cursor.
+//   STATUS     what was found: read-only, never focusable
 
 type Field = 'binary' | 'model';
 type Focus = Field | 'test';
@@ -34,12 +34,26 @@ const LABEL_WIDTH = 'Command path'.length;
 const fieldHint = (name: AgentName, field: Field): string =>
   field === 'binary' ? `(empty: \`${AGENT_HINTS[name]}\` from the PATH)` : `(empty: ${defaultModelLabel(name)})`;
 
-function Section({ title, children }: { title: string; children: React.ReactNode }): React.ReactElement {
+/** A titled block. `note` says what kind it is, and `interactive` colors the title so the editable part stands out. */
+function Section({
+  title,
+  note,
+  interactive = false,
+  children,
+}: {
+  title: string;
+  note: string;
+  interactive?: boolean;
+  children: React.ReactNode;
+}): React.ReactElement {
   return (
     <Box flexDirection="column" marginTop={1}>
-      <Text bold color={PALETTE.muted}>
-        {title}
-      </Text>
+      <Box gap={1}>
+        <Text bold color={interactive ? PALETTE.accent : PALETTE.muted}>
+          {title}
+        </Text>
+        <Text color={PALETTE.muted}>{`· ${note}`}</Text>
+      </Box>
       {children}
     </Box>
   );
@@ -156,7 +170,7 @@ export function AgentDetail({
   });
 
   const status = checks ? statusFromChecks(name, checks, settings.binary) : 'checking';
-  const hint = nextStepHint(name, status);
+  const hint = setupHint(name, status);
   const pointer = (isFocused: boolean): React.ReactElement => (
     <Text color={isFocused ? PALETTE.accent : undefined}>{isFocused ? '❯' : ' '}</Text>
   );
@@ -168,23 +182,7 @@ export function AgentDetail({
         {config.defaultAgent === name ? 'This is the default agent.' : `Runs the \`${AGENT_HINTS[name]}\` command.`}
       </Text>
 
-      <Section title="STATUS">
-        {statusRows(name, checks, settings.binary).map((row) => (
-          <Box key={row.label} gap={1} paddingLeft={2}>
-            <Box width={LABEL_WIDTH} flexShrink={0}>
-              <Text color={PALETTE.muted}>{row.label}</Text>
-            </Box>
-            <Text color={TONE_COLOR[row.tone]}>{row.value}</Text>
-          </Box>
-        ))}
-        {hint && (
-          <Box paddingLeft={2}>
-            <Text color={PALETTE.muted}>Next: {hint}</Text>
-          </Box>
-        )}
-      </Section>
-
-      <Section title="SETTINGS">
+      <Section title="CONFIGURE" note="you can change these" interactive>
         {FIELDS.map((field) => {
           const isFocused = focused === field;
           const value = settings[field];
@@ -209,9 +207,6 @@ export function AgentDetail({
             </Box>
           );
         })}
-      </Section>
-
-      <Section title="ACTIONS">
         <Box gap={1}>
           {pointer(focused === 'test')}
           <Box width={LABEL_WIDTH} flexShrink={0}>
@@ -223,6 +218,22 @@ export function AgentDetail({
             {testing ? 'running...' : 'sends one small prompt (uses a few tokens)'}
           </Text>
         </Box>
+      </Section>
+
+      <Section title="STATUS" note="read only">
+        {statusRows(name, checks, settings.binary).map((row) => (
+          <Box key={row.label} gap={1} paddingLeft={2}>
+            <Box width={LABEL_WIDTH} flexShrink={0}>
+              <Text color={PALETTE.muted}>{row.label}</Text>
+            </Box>
+            <Text color={TONE_COLOR[row.tone]}>{row.value}</Text>
+          </Box>
+        ))}
+        {hint && (
+          <Box paddingLeft={2}>
+            <Text color={PALETTE.muted}>Setup: {hint}</Text>
+          </Box>
+        )}
       </Section>
 
       {notice && (

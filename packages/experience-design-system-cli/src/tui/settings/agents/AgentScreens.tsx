@@ -10,18 +10,15 @@ import { inspectAgent, panelRows, type AgentCheck } from './agent-status.js';
 import { AgentDetail } from './AgentDetail.js';
 import { AgentStatusBadge, TONE_COLOR } from './AgentStatusBadge.js';
 
-// The first row is the default-agent choice; the five agents follow.
-type Row = { kind: 'default' } | { kind: 'agent'; name: AgentName };
-const ROWS: readonly Row[] = [{ kind: 'default' }, ...AGENT_NAMES.map((name): Row => ({ kind: 'agent', name }))];
-
 const NAME_WIDTH = 16;
 const PANEL_LABEL_WIDTH = 'Command'.length;
 
 /**
- * Settings > Configuration > Agents. The list holds only what is needed to pick a row: the name, a star on the default,
+ * Settings > Configuration > Agents. The list holds only what is needed to pick an agent: the name, a star on the default,
  * and a one-word status. Below it, a panel shows the full detail for the focused agent and follows the cursor, so nothing
- * has to be opened to read it. Enter opens the agent's own screen, where its path and model are edited and the test is run.
- * The first row picks the default agent (←/→ or Enter cycles it, and the change is saved at once).
+ * has to be opened to read it. The "Default agent" line at the top is read-only: ↑/↓ move through the agents, Enter makes
+ * the focused one the default (saved at once), and → opens its own screen, where its path and model are edited and the
+ * test is run.
  */
 export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactElement {
   const [config, setConfig] = useState<AgentConfig | null>(null);
@@ -52,14 +49,17 @@ export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactEle
     });
   }, []);
 
-  const cycleDefault = (step: 1 | -1): void => {
+  const makeDefault = (name: AgentName): void => {
     if (!config) return;
-    const index = AGENT_NAMES.indexOf(config.defaultAgent);
-    const next = { ...config, defaultAgent: AGENT_NAMES[(index + step + AGENT_NAMES.length) % AGENT_NAMES.length]! };
+    if (name === config.defaultAgent) {
+      setNotice({ kind: 'success', text: `${AGENT_LABELS[name]} is already the default agent` });
+      return;
+    }
+    const next = { ...config, defaultAgent: name };
     setConfig(next);
-    // Saved straight away: this row is a choice, not a field being typed into.
+    // Saved straight away: this is a choice, not a field being typed into.
     writeAgentConfig(next)
-      .then(() => setNotice({ kind: 'success', text: `Default agent is now ${AGENT_LABELS[next.defaultAgent]}` }))
+      .then(() => setNotice({ kind: 'success', text: `Default agent is now ${AGENT_LABELS[name]}` }))
       .catch((err: unknown) =>
         setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'Failed to save' }),
       );
@@ -67,30 +67,26 @@ export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactEle
 
   useInput((input, key) => {
     if (!config || open) return;
-    const row = ROWS[focus]!;
+    const focused = AGENT_NAMES[focus]!;
 
     // A confirmation is about the last thing done, so it goes as soon as the user moves on.
     if (key.upArrow || key.downArrow || key.tab) setNotice(null);
 
     if (key.upArrow) {
-      setFocus((i) => (i - 1 + ROWS.length) % ROWS.length);
+      setFocus((i) => (i - 1 + AGENT_NAMES.length) % AGENT_NAMES.length);
       return;
     }
     if (key.downArrow || key.tab) {
-      setFocus((i) => (i + 1) % ROWS.length);
-      return;
-    }
-    if (row.kind === 'default' && key.leftArrow) {
-      cycleDefault(-1);
-      return;
-    }
-    if (row.kind === 'default' && key.rightArrow) {
-      cycleDefault(1);
+      setFocus((i) => (i + 1) % AGENT_NAMES.length);
       return;
     }
     if (key.return) {
-      if (row.kind === 'default') cycleDefault(1);
-      else setOpen(row.name);
+      makeDefault(focused);
+      return;
+    }
+    if (key.rightArrow) {
+      setNotice(null);
+      setOpen(focused);
       return;
     }
     if (key.escape || input === 'q') {
@@ -127,8 +123,7 @@ export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactEle
     );
   }
 
-  const focusedRow = ROWS[focus]!;
-  const focusedAgent = focusedRow.kind === 'agent' ? focusedRow.name : null;
+  const focusedAgent = AGENT_NAMES[focus]!;
 
   return (
     <Box flexDirection="column" paddingX={2} paddingY={1}>
@@ -137,16 +132,8 @@ export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactEle
       <Text> </Text>
 
       <Box gap={1}>
-        <Text color={focusedRow.kind === 'default' ? PALETTE.accent : undefined}>
-          {focusedRow.kind === 'default' ? '❯' : ' '}
-        </Text>
-        <Text
-          bold={focusedRow.kind === 'default'}
-          color={focusedRow.kind === 'default' ? PALETTE.accent : PALETTE.muted}
-        >
-          Default agent
-        </Text>
-        <Text bold>{`‹ ${AGENT_LABELS[config.defaultAgent]} ›`}</Text>
+        <Text color={PALETTE.muted}>Default agent</Text>
+        <Text bold>{AGENT_LABELS[config.defaultAgent]}</Text>
       </Box>
 
       <Box marginTop={1} gap={1}>
@@ -173,19 +160,17 @@ export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactEle
         );
       })}
 
-      {focusedAgent && (
-        <Box flexDirection="column" marginTop={1}>
-          <Text color={PALETTE.muted}>{`─ ${AGENT_LABELS[focusedAgent]} ${'─'.repeat(30)}`}</Text>
-          {panelRows(focusedAgent, checks[focusedAgent], config.agents[focusedAgent]).map((row) => (
-            <Box key={row.label} gap={1} paddingLeft={1}>
-              <Box width={PANEL_LABEL_WIDTH} flexShrink={0}>
-                <Text color={PALETTE.muted}>{row.label}</Text>
-              </Box>
-              <Text color={TONE_COLOR[row.tone]}>{row.value}</Text>
+      <Box flexDirection="column" marginTop={1}>
+        <Text color={PALETTE.muted}>{`─ ${AGENT_LABELS[focusedAgent]} ${'─'.repeat(30)}`}</Text>
+        {panelRows(focusedAgent, checks[focusedAgent], config.agents[focusedAgent]).map((row) => (
+          <Box key={row.label} gap={1} paddingLeft={1}>
+            <Box width={PANEL_LABEL_WIDTH} flexShrink={0}>
+              <Text color={PALETTE.muted}>{row.label}</Text>
             </Box>
-          ))}
-        </Box>
-      )}
+            <Text color={TONE_COLOR[row.tone]}>{row.value}</Text>
+          </Box>
+        ))}
+      </Box>
 
       {notice && (
         <>
@@ -197,19 +182,12 @@ export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactEle
       )}
       <Text> </Text>
       <ControlHints
-        hints={
-          focusedRow.kind === 'default'
-            ? [
-                { keys: '↑/↓', label: 'move' },
-                { keys: '←/→', label: 'change default agent' },
-                { keys: 'Esc/q', label: 'back' },
-              ]
-            : [
-                { keys: '↑/↓', label: 'move' },
-                { keys: '⏎', label: 'settings and test' },
-                { keys: 'Esc/q', label: 'back' },
-              ]
-        }
+        hints={[
+          { keys: '↑/↓', label: 'move' },
+          { keys: '⏎', label: 'make default' },
+          { keys: '→', label: 'settings and test' },
+          { keys: 'Esc/q', label: 'back' },
+        ]}
       />
     </Box>
   );

@@ -8,7 +8,7 @@ import {
   LIST_STATUS,
   inspectAgent,
   modelLine,
-  nextStepHint,
+  setupHint,
   panelRows,
   resolvedPath,
   statusFromChecks,
@@ -111,7 +111,7 @@ describe('checking an agent', () => {
     it('tells the user how to get an agent that is not installed, with no version or model to show', () => {
       const rows = panelRows('codex', [{ step: 'path', ok: false, detail: '`codex` was not found' }], none);
 
-      expect(rows.map((row) => row.label)).toEqual(['Command', 'Next']);
+      expect(rows.map((row) => row.label)).toEqual(['Command', 'Setup']);
       expect(rows[0]).toMatchObject({ value: 'not found on your PATH', tone: 'muted' });
       expect(rows[1]?.value).toContain('npm install -g @openai/codex');
     });
@@ -123,7 +123,7 @@ describe('checking an agent', () => {
       });
 
       expect(rows[0]).toMatchObject({ value: '`/x/codex` was not found', tone: 'bad' });
-      expect(rows[1]?.value).toContain('fix the command path');
+      expect(rows[1]?.value).toContain('correct the command path in settings');
     });
 
     it('shows the full path, version and model for an agent that runs', async () => {
@@ -245,10 +245,10 @@ describe('checking an agent', () => {
     });
 
     it('tells the user what to run next', () => {
-      expect(nextStepHint('claude', 'not-configured')).toContain('npm install');
-      expect(nextStepHint('claude', 'not-found')).toContain('fix the command path');
-      expect(nextStepHint('claude', 'not-logged-in')).toContain('claude login');
-      expect(nextStepHint('claude', 'ready')).toBe('');
+      expect(setupHint('claude', 'not-configured')).toContain('npm install');
+      expect(setupHint('claude', 'not-found')).toContain('correct the command path in settings');
+      expect(setupHint('claude', 'not-logged-in')).toContain('claude login');
+      expect(setupHint('claude', 'ready')).toBe('');
     });
   });
 });

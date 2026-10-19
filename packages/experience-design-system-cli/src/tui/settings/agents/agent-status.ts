@@ -163,10 +163,14 @@ export function statusFromChecks(name: AgentName, checks: readonly AgentCheck[],
   return name === 'claude' ? 'ready' : 'unknown';
 }
 
-/** What to tell a user whose agent is not ready: the install command, or the login command. Empty when nothing is needed. */
-export function nextStepHint(name: AgentName, status: AgentStatus): string {
-  if (status === 'not-configured') return `${INSTALL_HINTS[name]}, or set the command path below`;
-  if (status === 'not-found') return `${INSTALL_HINTS[name]}, or fix the command path`;
+/**
+ * What to tell a user whose agent is not ready: the install command, or the login command. Empty when nothing is needed.
+ * Shown on the list's panel and on the agent's own screen, so it cannot say where the command path is ("below"): it
+ * names the settings instead, which is the same place from both.
+ */
+export function setupHint(name: AgentName, status: AgentStatus): string {
+  if (status === 'not-configured') return `${INSTALL_HINTS[name]}, or set its command path in settings`;
+  if (status === 'not-found') return `${INSTALL_HINTS[name]}, or correct the command path in settings`;
   if (status === 'not-logged-in') return LOGIN_HINTS[name];
   if (status === 'unknown') return 'run a full test to confirm it is logged in';
   return '';
@@ -217,8 +221,8 @@ export function panelRows(
         tone: settings.binary.trim() ? 'bad' : 'muted',
       },
     ];
-    const hint = nextStepHint(name, status);
-    if (hint) rows.push({ label: 'Next', value: hint, tone: 'muted' });
+    const hint = setupHint(name, status);
+    if (hint) rows.push({ label: 'Setup', value: hint, tone: 'muted' });
     return rows;
   }
 
@@ -226,8 +230,8 @@ export function panelRows(
   const version = checks.find((check) => check.step === 'version');
   if (version?.ok) rows.push({ label: 'Version', value: version.detail, tone: 'ok' });
   rows.push({ label: 'Model', value: modelLine(name, settings.model), tone: 'muted' });
-  const hint = nextStepHint(name, status);
-  if (hint) rows.push({ label: 'Next', value: hint, tone: 'muted' });
+  const hint = setupHint(name, status);
+  if (hint) rows.push({ label: 'Setup', value: hint, tone: 'muted' });
   return rows;
 }
 
