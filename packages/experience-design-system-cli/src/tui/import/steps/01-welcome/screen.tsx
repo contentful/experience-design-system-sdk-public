@@ -34,10 +34,8 @@ export function WelcomeScreen({ onContinue, onQuit, initialPath = '' }: WelcomeS
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
       <Text bold color={PALETTE.success}>
-        👋 Hey! Let&apos;s import your design system into Contentful.
+       Let&apos;s import your design system into Contentful.
       </Text>
-      <Text color={PALETTE.muted}>I&apos;ll walk you through 5 steps to get your components into Contentful ExO.</Text>
-
       <Box flexDirection="column">
         <Text color={PALETTE.muted}>{RULE}</Text>
         {OVERVIEW.map((item) => (
@@ -51,8 +49,8 @@ export function WelcomeScreen({ onContinue, onQuit, initialPath = '' }: WelcomeS
 
       <Box flexDirection="column" gap={1}>
         <Text>Where is your component library?</Text>
-        <Box gap={1}>
-          <Text color={PALETTE.accent}>?</Text>
+        <Box>
+          <Text color={PALETTE.text}>?</Text>
           <Text>Project path:</Text>
           <TextInput value={projectPath} onChange={setProjectPath} onSubmit={submit} />
         </Box>

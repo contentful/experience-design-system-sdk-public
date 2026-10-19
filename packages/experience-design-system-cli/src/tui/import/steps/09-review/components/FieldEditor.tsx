@@ -355,9 +355,9 @@ function RowLabel({
 }): React.ReactElement {
   return (
     <Text
-      color={selected ? PALETTE.text : PALETTE.accent}
+      color={selected ? '#FFFFFF' : PALETTE.accent}
       bold={selected}
-      backgroundColor={selected ? 'blue' : undefined}
+      backgroundColor={selected ? PALETTE.accent : undefined}
       wrap="truncate-end"
     >
       {' '}

@@ -5,7 +5,7 @@ import { dirname, basename, join } from 'node:path';
 import { useImmediateInput } from '../../07-scope-gate/sidebar/hooks/useImmediateInput.js';
 import { normalizePath } from '../support/path-utils.js';
 import { useBlinkingCursor } from '../support/use-blinking-cursor.js';
-import { PALETTE } from '../theme.js';
+import { PALETTE } from '../../../../theme.js';
 
 export type PathPromptProps = {
   defaultPath: string;
@@ -78,7 +78,7 @@ export function PathPrompt({
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
       <Box gap={1}>
-        <Text color="cyan">?</Text>
+        <Text color={PALETTE.accent}>?</Text>
         <Text bold>{label}:</Text>
         <Text color={isPlaceholder ? PALETTE.muted : undefined}>{shown}</Text>
         <Text>{cursor}</Text>

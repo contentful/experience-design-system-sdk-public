@@ -10,9 +10,9 @@ const DARK = {
 } as const;
 
 const LIGHT = {
-  text: '#111b2b', // gray900
-  muted: '#5a657c', // gray600
-  border: '#5a657c', // gray600
+  text: '#111B2B', // gray900
+  muted: '#5A657C', // gray600
+  border: '#5A657C', // gray600
   accent: '#0059c8', // semantic primary
   error: '#bd002a', // semantic negative
   success: '#006D23', // semantic positive
