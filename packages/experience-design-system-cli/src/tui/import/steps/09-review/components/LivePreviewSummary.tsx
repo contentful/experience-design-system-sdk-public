@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import type { PreviewAnnotation } from '../types.js';
-import { PALETTE } from '../theme.js';
+import { PALETTE } from '../../../../theme.js';
 import type { UseLivePreviewReturn } from '../use-live-preview.js';
 
 type LivePreviewSummaryProps = {

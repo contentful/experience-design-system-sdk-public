@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import { PALETTE } from '../../../home/home.theme.js';
+import { PALETTE } from '../../../theme.js';
 import { useErrorControls } from './controls.js';
 import { errorControls } from './logic.js';
 

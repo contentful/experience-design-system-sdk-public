@@ -1,11 +1,11 @@
 import type { TextProps } from 'ink';
 import { defaultTheme, extendTheme } from '@inkjs/ui';
-import { PALETTE as REVIEW } from '../09-review/theme.js';
+import { PALETTE as BASE } from '../../../theme.js';
 
-// The flow's colours. The review's, plus `link`, which only the push result uses to show where the design system now
-// is. Same values as legacy's PALETTE, so nothing looks different.
+// The flow's colours. The shared palette, plus `link`, which only the push result uses to show where the design system
+// now is.
 export const PALETTE = {
-  ...REVIEW,
+  ...BASE,
   link: '#58A6FF',
 } as const;
 

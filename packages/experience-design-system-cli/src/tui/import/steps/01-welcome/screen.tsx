@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Box, Text } from 'ink';
 import TextInput from 'ink-text-input';
-import { PALETTE } from '../../../home/home.theme.js';
+import { PALETTE } from '../../../theme.js';
 import { WELCOME_CONTROLS, useWelcomeControls } from './controls.js';
 import { toProjectPath } from './logic.js';
 

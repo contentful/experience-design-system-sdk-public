@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
-import { PALETTE } from '../../home/home.theme.js';
+import { PALETTE } from '../../theme.js';
 import { readCredentials, writeCredentials, type V1Credentials } from './config-store.js';
 import { startDebugRun, finishDebugRun, startDebugSessionIn } from '../../debug-store.js';
 import { ControlHints } from '../../control-hints.js';

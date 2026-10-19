@@ -1,23 +1,6 @@
-const BRAND = {
-  blue: '#1773EB',
-  green: '#00C459',
-  orange: '#E44F20',
-  yellow: '#FFDA00',
-  white: '#FFFFFF',
-  slate: '#8B8D91',
-  steel: '#C4D1DE',
-} as const;
+import { PALETTE } from '../theme.js';
 
-export const PALETTE = {
-  accent: BRAND.blue,
-  success: BRAND.green,
-  error: BRAND.orange,
-  warning: BRAND.yellow,
-  muted: BRAND.slate,
-  border: BRAND.steel,
-} as const;
-
-const BRAND_RAMP = [BRAND.blue, BRAND.orange, BRAND.yellow] as const;
+const BRAND_RAMP = [PALETTE.accent, PALETTE.error, PALETTE.warning] as const;
 
 const BAR_CELL = '━';
 
