@@ -11,15 +11,29 @@ interface WelcomeScreenProps {
   initialPath?: string;
 }
 
-const RULE = '────────────────────────────────────────';
+const OVERVIEW_BOX_MAX_WIDTH = 90;
+
+const AI_MARKER = '✻';
 
 const OVERVIEW = [
-  { label: 'Step 1', description: 'Extract components from your codebase' },
-  { label: 'Step 2', description: 'Review what was extracted' },
-  { label: 'Step 3', description: 'Generate CDF definitions with Claude' },
-  { label: 'Step 4', description: 'Review generated definitions' },
-  { label: 'Step 5', description: 'Push to Contentful' },
+  {
+    label: 'Step 1',
+    description: 'Extract components from your codebase',
+    ai: true,
+  },
+  { label: 'Step 2', description: 'Review what was extracted', ai: false },
+  {
+    label: 'Step 3',
+    description: 'Generate component definitions',
+    ai: true,
+  },
+  { label: 'Step 4', description: 'Review generated definitions', ai: false },
+  { label: 'Step 5', description: 'Push to Contentful', ai: false },
 ] as const;
+
+const AI_DISCLOSURE = [
+  'Steps marked ✻ use your local AI agent, which may send relevant code to your AI provider under your agreement with them. Contentful does not receive that code, or the prompts and responses. AI suggestions can be wrong or incomplete, so review and edit them before importing.',
+];
 
 export function WelcomeScreen({ onContinue, onQuit, initialPath = '' }: WelcomeScreenProps): React.ReactElement {
   const [projectPath, setProjectPath] = useState(initialPath);
@@ -33,25 +47,53 @@ export function WelcomeScreen({ onContinue, onQuit, initialPath = '' }: WelcomeS
 
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
-      <Text bold color={PALETTE.success}>
+      <Text bold color={PALETTE.accent}>
         Let&apos;s import your design system into Contentful.
       </Text>
-      <Box flexDirection="column">
-        <Text color={PALETTE.muted}>{RULE}</Text>
-        {OVERVIEW.map((item) => (
-          <Box key={item.label} gap={1}>
-            <Text bold>{item.label}</Text>
-            <Text color={PALETTE.muted}>{item.description}</Text>
+      <Box flexDirection="row">
+        <Box
+          flexDirection="column"
+          borderStyle="round"
+          borderColor={PALETTE.border}
+          paddingX={2}
+          paddingY={1}
+          width={OVERVIEW_BOX_MAX_WIDTH}
+          flexShrink={1}
+        >
+          {OVERVIEW.map((item) => (
+            <Box key={item.label} gap={1}>
+              <Box flexShrink={0}>
+                <Text bold>{item.label}</Text>
+              </Box>
+              <Text color={PALETTE.muted} wrap="truncate-end">
+                {item.description}
+              </Text>
+              {item.ai && (
+                <Text bold color={PALETTE.accent}>
+                  {AI_MARKER}
+                </Text>
+              )}
+            </Box>
+          ))}
+
+          <Box flexDirection="column" marginTop={1}>
+            <Text bold>
+              <Text color={PALETTE.accent}>{AI_MARKER}</Text> AI disclosure
+            </Text>
+            {AI_DISCLOSURE.map((paragraph) => (
+              <Text key={paragraph} color={PALETTE.muted}>
+                {paragraph}
+              </Text>
+            ))}
           </Box>
-        ))}
-        <Text color={PALETTE.muted}>{RULE}</Text>
+        </Box>
       </Box>
 
       <Box flexDirection="column" gap={1}>
         <Text>Where is your component library?</Text>
         <Box>
-          <Text color={PALETTE.text}>?</Text>
-          <Text>Project path:</Text>
+          <Text color={PALETTE.accent}>? </Text>
+          <Text>Project path: </Text>
           <TextInput value={projectPath} onChange={setProjectPath} onSubmit={submit} />
         </Box>
       </Box>
