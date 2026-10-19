@@ -50,6 +50,12 @@ export { mergeEdges } from './steps/composition/src/helpers/edges/merge-edges.js
 export { parseMapEdges } from './steps/composition/src/helpers/edges/parse-map-edges.js';
 export { applyCompositionEdges, applyMapping } from './steps/composition/src/helpers/edges/apply-mapping.js';
 export { resolveMapping } from './steps/composition/src/helpers/edges/resolve-mapping.js';
+export { collectSourceCallSiteEvidence } from './steps/composition/src/helpers/edges/source-call-site-evidence.js';
+export type {
+  SourceCallSiteEvidence,
+  SourceCallSiteRejection,
+  SourceCallSiteEvidenceResult,
+} from './steps/composition/src/helpers/edges/source-call-site-evidence.js';
 export { loadPrompt } from './steps/composition/src/helpers/prompt/prompt-loader.js';
 export { buildCompositionInputHash } from './steps/composition/src/helpers/candidates/composition-cache-key.js';
 export { resolveCompositionSources } from './steps/composition/src/helpers/edges/resolve-composition-sources.js';

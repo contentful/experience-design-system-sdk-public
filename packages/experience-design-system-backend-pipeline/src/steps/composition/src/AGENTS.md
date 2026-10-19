@@ -28,6 +28,12 @@ Resolves parent-child relationships between extracted components and wires child
 
 `ComposeComponentsResponse` — `{ components: RawComponentDefinition[], warnings: string[] }`. Returned components carry populated `slots[].allowedComponents`.
 
+## Source call-site observations
+
+`collectSourceCallSiteEvidence(files, components)` is an opt-in helper over supplied source files. It resolves JSX targets through compiler symbols, matches the extracted declarations, and attributes each reference to its enclosing component declaration. References inside nested functions and callbacks remain visible and are labeled `lexical-reference`; they do not prove execution or constrain a slot allowlist.
+
+`resolveMapping` accepts optional `sourceCallSiteEvidence` and `sourceCallSiteRejections`, retains copies in its result, and appends accepted observations as untrusted data to default or custom prompts. Observations alone never create deterministic edges. Current production services do not yet invoke the collector or persist these arrays. The collector does not read dependency files or project configuration, so unresolved imports and unsupported source declarations remain limitations rather than inferred relationships.
+
 ## Cache
 
 | Field       | Value                                                                                               |
