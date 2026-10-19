@@ -11,6 +11,40 @@ afterEach(async () => {
 });
 
 describe('extractEndpoint', () => {
+  it.each([
+    {
+      fileName: 'Field.tsx',
+      source: `export function Field({ name, className, label, onChange }: { name: string; className: string; label: string; onChange: () => void }) {
+        return <input name={name} className={className} aria-label={label} onChange={onChange} />;
+      }`,
+      names: ['className', 'label', 'name'],
+    },
+    {
+      fileName: 'Field.vue',
+      source: `<script setup lang="ts">
+        defineProps<{ name: string; modelValue: string; label: string }>();
+      </script>
+      <template><input :name="name" :value="modelValue" :aria-label="label" /></template>`,
+      names: ['label', 'modelValue', 'name'],
+    },
+  ])(
+    'retains DOM-named props through extraction, classification and validation for $fileName',
+    async ({ fileName, source, names }) => {
+      const projectRoot = await mkdtemp(join(tmpdir(), 'extraction-dom-props-'));
+      tempDirs.push(projectRoot);
+      const sourcePath = join(projectRoot, fileName);
+      await writeFile(sourcePath, source);
+
+      const result = await extractEndpoint({ filePaths: [sourcePath], projectRoot });
+
+      expect(result.components).toHaveLength(1);
+      expect(result.components[0]?.props.map((prop) => prop.name).sort()).toEqual(names);
+      expect(result.components[0]?.props.every((prop) => prop.category === 'content')).toBe(true);
+      expect(result.components[0]?.props.some((prop) => 'domAttribute' in prop)).toBe(false);
+      expect(result.components[0]?.validationIssues).toEqual([]);
+    },
+  );
+
   it('returns validated components and typed progress without owning persistence', async () => {
     const projectRoot = await mkdtemp(join(tmpdir(), 'extraction-endpoint-'));
     tempDirs.push(projectRoot);

@@ -43,7 +43,10 @@ describe('classification service', () => {
       }),
     );
 
-    expect(classified.props).toEqual([expect.objectContaining({ name: 'variant', category: 'design' })]);
+    expect(classified.props).toEqual([
+      expect.objectContaining({ name: 'name', category: 'content' }),
+      expect.objectContaining({ name: 'variant', category: 'design' }),
+    ]);
     expect(classified.props.some((candidate) => 'domAttribute' in candidate)).toBe(false);
   });
 
