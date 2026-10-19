@@ -28,8 +28,11 @@ export type AgentCheck = {
   detail: string;
 };
 
-/** The one-word state shown on an agent's row. `unknown` means it runs but its login cannot be checked. */
-export type AgentStatus = 'checking' | 'ready' | 'not-found' | 'not-logged-in' | 'unknown';
+/**
+ * The one-word state shown on an agent's row. `not-configured` means no path is saved and the command is not on the
+ * PATH; `not-found` means a saved path does not work. `unknown` means it runs but its login cannot be checked.
+ */
+export type AgentStatus = 'checking' | 'ready' | 'not-configured' | 'not-found' | 'not-logged-in' | 'unknown';
 
 const VERSION_TIMEOUT_MS = 5000;
 const PROMPT_TIMEOUT_MS = 60_000;
@@ -147,9 +150,11 @@ export async function testAgent(name: AgentName, binary: string, model: string):
 }
 
 /** Collapses a list of checks into the status shown on the row. */
-export function statusFromChecks(name: AgentName, checks: readonly AgentCheck[]): AgentStatus {
+export function statusFromChecks(name: AgentName, checks: readonly AgentCheck[], savedBinary: string): AgentStatus {
   if (checks.length === 0) return 'checking';
-  if (checks.some((check) => check.step === 'path' && !check.ok)) return 'not-found';
+  if (checks.some((check) => check.step === 'path' && !check.ok)) {
+    return savedBinary.trim() ? 'not-found' : 'not-configured';
+  }
   const login = checks.find((check) => check.step === 'login');
   if (login) return login.ok ? 'ready' : 'not-logged-in';
   const prompt = checks.find((check) => check.step === 'prompt');
@@ -160,10 +165,66 @@ export function statusFromChecks(name: AgentName, checks: readonly AgentCheck[])
 
 /** What to tell a user whose agent is not ready: the install command, or the login command. Empty when nothing is needed. */
 export function nextStepHint(name: AgentName, status: AgentStatus): string {
-  if (status === 'not-found') return INSTALL_HINTS[name];
+  if (status === 'not-configured') return `${INSTALL_HINTS[name]}, or set the command path below`;
+  if (status === 'not-found') return `${INSTALL_HINTS[name]}, or fix the command path`;
   if (status === 'not-logged-in') return LOGIN_HINTS[name];
   if (status === 'unknown') return 'run a full test to confirm it is logged in';
   return '';
+}
+
+export type StatusRow = { label: string; value: string; tone: 'ok' | 'bad' | 'muted' };
+
+/** The resolved path of the command, when the checks found it. For the list, where the user wants to see what runs. */
+export function resolvedPath(checks: readonly AgentCheck[] | undefined): string {
+  const path = checks?.find((check) => check.step === 'path');
+  return path?.ok ? path.detail : '';
+}
+
+/**
+ * What the Status section of an agent's screen shows, one row per thing that was checked. The login row is always
+ * there once the command is found, because for most agents it has to say that login cannot be checked without a test.
+ */
+export function statusRows(
+  _name: AgentName,
+  checks: readonly AgentCheck[] | undefined,
+  savedBinary: string,
+): StatusRow[] {
+  if (!checks) return [{ label: 'Command', value: 'checking...', tone: 'muted' }];
+
+  const find = (step: AgentCheckStep): AgentCheck | undefined => checks.find((check) => check.step === step);
+  const path = find('path');
+  if (!path?.ok) {
+    if (savedBinary.trim()) return [{ label: 'Command', value: path?.detail ?? 'not found', tone: 'bad' }];
+    return [{ label: 'Command', value: 'not configured (not on the PATH)', tone: 'muted' }];
+  }
+
+  const rows: StatusRow[] = [{ label: 'Command', value: path.detail, tone: 'ok' }];
+
+  const version = find('version');
+  if (version) {
+    rows.push({
+      label: 'Version',
+      value: version.ok ? version.detail : 'could not be read',
+      tone: version.ok ? 'ok' : 'muted',
+    });
+  }
+
+  const login = find('login');
+  const prompt = find('prompt');
+  if (login) {
+    rows.push({ label: 'Login', value: login.detail, tone: login.ok ? 'ok' : 'bad' });
+  } else if (prompt) {
+    rows.push({
+      label: 'Login',
+      value: prompt.ok ? 'confirmed by the test' : 'see the test result',
+      tone: prompt.ok ? 'ok' : 'bad',
+    });
+  } else {
+    rows.push({ label: 'Login', value: 'not checked (use Run test)', tone: 'muted' });
+  }
+
+  if (prompt) rows.push({ label: 'Test', value: prompt.detail, tone: prompt.ok ? 'ok' : 'bad' });
+  return rows;
 }
 
 /** The pipeline reads an agent's binary from EDS_AGENT_BINARY_<AGENT>, so a check on a specific path sets it for the call. */

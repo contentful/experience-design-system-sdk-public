@@ -4,101 +4,24 @@ import { AGENT_NAMES, type AgentName } from '@contentful/experience-design-syste
 import { PALETTE } from '../../home/home.theme.js';
 import { ControlHints } from '../../control-hints.js';
 import { startDebugRun, finishDebugRun } from '../../debug-store.js';
-import { FieldForm, type FormField, type FormNotice } from '../shared/FieldForm.js';
-import { AGENT_HINTS, AGENT_LABELS, readAgentConfig, writeAgentConfig, type AgentConfig } from './agent-store.js';
-import { defaultModelLabel, inspectAgent, testAgent, type AgentCheck } from './agent-status.js';
-import { AgentChecks, AgentStatusBadge } from './AgentStatusLine.js';
-import { applyBinaryOverrides } from './apply-binary-overrides.js';
-
-type AgentField = 'binary' | 'model';
-
-const agentFields = (name: AgentName): readonly FormField<AgentField>[] => [
-  { key: 'binary', label: 'Command path', hint: `(empty: \`${AGENT_HINTS[name]}\` from the PATH)` },
-  { key: 'model', label: 'Model', hint: `(empty: ${defaultModelLabel(name)})` },
-];
+import type { FormNotice } from '../shared/FieldForm.js';
+import { AGENT_LABELS, readAgentConfig, writeAgentConfig, type AgentConfig } from './agent-store.js';
+import { inspectAgent, resolvedPath, type AgentCheck } from './agent-status.js';
+import { AgentDetail } from './AgentDetail.js';
+import { AgentStatusBadge } from './AgentStatusBadge.js';
 
 // The first row is the default-agent choice; the five agents follow.
 type Row = { kind: 'default' } | { kind: 'agent'; name: AgentName };
 const ROWS: readonly Row[] = [{ kind: 'default' }, ...AGENT_NAMES.map((name): Row => ({ kind: 'agent', name }))];
 
-/** One agent's own settings. Saving writes the whole agent config, so the default agent and other agents are kept. */
-function AgentForm({
-  name,
-  config,
-  setConfig,
-  onBack,
-}: {
-  name: AgentName;
-  config: AgentConfig;
-  setConfig: (config: AgentConfig) => void;
-  onBack: () => void;
-}): React.ReactElement {
-  const [saving, setSaving] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [notice, setNotice] = useState<FormNotice | null>(null);
-  const [checks, setChecks] = useState<AgentCheck[] | undefined>(undefined);
-  const settings = config.agents[name];
-
-  // Quick check on open, and again whenever the path changes, so the user sees what the path they typed would do.
-  useEffect(() => {
-    let current = true;
-    setChecks(undefined);
-    void inspectAgent(name, settings.binary).then((result) => current && setChecks(result));
-    return () => {
-      current = false;
-    };
-  }, [name, settings.binary]);
-
-  const save = (): void => {
-    setSaving(true);
-    setNotice(null);
-    writeAgentConfig(config)
-      .then(() => {
-        applyBinaryOverrides(config);
-        setNotice({ kind: 'success', text: `${AGENT_LABELS[name]} settings saved` });
-      })
-      .catch((err: unknown) =>
-        setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'Failed to save' }),
-      )
-      .finally(() => setSaving(false));
-  };
-
-  // Spends a few tokens, so it only runs when asked. It tests the values on screen, saved or not.
-  const runFullTest = (): void => {
-    setTesting(true);
-    setNotice(null);
-    setChecks(undefined);
-    testAgent(name, settings.binary, settings.model)
-      .then(setChecks)
-      .catch((err: unknown) =>
-        setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'The test could not run' }),
-      )
-      .finally(() => setTesting(false));
-  };
-
-  return (
-    <FieldForm
-      title={AGENT_LABELS[name]}
-      subtitle={`Runs the \`${AGENT_HINTS[name]}\` command. ${config.defaultAgent === name ? 'This is the default agent.' : ''}`.trim()}
-      fields={agentFields(name)}
-      values={{ binary: settings.binary, model: settings.model }}
-      onChange={(key, value) => {
-        setConfig({ ...config, agents: { ...config.agents, [name]: { ...settings, [key]: value } } });
-        setNotice(null);
-      }}
-      onSave={save}
-      onQuit={onBack}
-      notice={notice}
-      busy={saving || testing}
-      footer={<AgentChecks name={name} checks={checks} />}
-      actions={[{ key: 't', label: 'full test (uses a few tokens)', run: runFullTest }]}
-    />
-  );
-}
+// Long paths are cut from the left, since the end (the command name) is the part that tells them apart.
+const MAX_PATH_WIDTH = 44;
+const shortenPath = (path: string): string =>
+  path.length > MAX_PATH_WIDTH ? `…${path.slice(-(MAX_PATH_WIDTH - 1))}` : path;
 
 /**
- * Settings > Configuration > Agents: which coding agent the CLI uses, and each agent's own settings. Enter on an agent
- * opens its form; the first row picks the default agent (←/→ or Enter cycles it, and the change is saved at once).
+ * Settings > Configuration > Agents: which coding agent the CLI uses, and what was found for each one. Enter on an agent
+ * opens its screen; the first row picks the default agent (←/→ or Enter cycles it, and the change is saved at once).
  */
 export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactElement {
   const [config, setConfig] = useState<AgentConfig | null>(null);
@@ -185,13 +108,13 @@ export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactEle
 
   if (open) {
     return (
-      <AgentForm
+      <AgentDetail
         name={open}
         config={config}
         setConfig={setConfig}
         onBack={() => {
           setOpen(null);
-          // The path or login may have changed in the form, so the row's badge is checked again.
+          // The path or login may have changed on the agent's screen, so the rows are checked again.
           void readAgentConfig().then((saved) => {
             setConfig(saved);
             inspectAll(saved);
@@ -204,7 +127,7 @@ export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactEle
   return (
     <Box flexDirection="column" paddingX={2} paddingY={1}>
       <Text bold>Agents</Text>
-      <Text color={PALETTE.muted}>The coding agent the CLI runs, and the settings for each one.</Text>
+      <Text color={PALETTE.muted}>The coding agent the CLI runs, and what was found for each one.</Text>
       <Text> </Text>
       {ROWS.map((row, index) => {
         const isFocused = index === focus;
@@ -222,7 +145,7 @@ export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactEle
             </Box>
           );
         }
-        const model = config.agents[row.name].model;
+        const saved = config.agents[row.name].binary;
         return (
           <Box key={row.name} gap={1}>
             {pointer}
@@ -232,9 +155,9 @@ export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactEle
               </Text>
             </Box>
             <Box width={26} flexShrink={0}>
-              <AgentStatusBadge name={row.name} checks={checks[row.name]} />
+              <AgentStatusBadge name={row.name} checks={checks[row.name]} binary={saved} />
             </Box>
-            <Text color={PALETTE.muted}>{`model: ${model || defaultModelLabel(row.name)}`}</Text>
+            <Text color={PALETTE.muted}>{shortenPath(resolvedPath(checks[row.name]) || saved)}</Text>
             {row.name === config.defaultAgent && <Text color={PALETTE.success}>(default)</Text>}
           </Box>
         );
