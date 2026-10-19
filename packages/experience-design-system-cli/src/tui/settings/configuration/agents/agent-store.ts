@@ -23,8 +23,13 @@ export type AgentSettings = {
   binary: string;
 };
 export type AgentConfig = {
-  /** The agent the CLI uses when `--agent` is not given. */
+  /** The agent the CLI uses when `--agent` is not given. Claude when nothing was chosen. */
   defaultAgent: AgentName;
+  /**
+   * Whether the user chose the default agent. Only then is `agent` written to config.json, so someone who never chose
+   * keeps the import's built-in default, including if that default changes in a later version.
+   */
+  defaultChosen?: boolean;
   agents: Record<AgentName, AgentSettings>;
 };
 
@@ -49,7 +54,8 @@ export function emptyAgents(): Record<AgentName, AgentSettings> {
 export async function readAgentConfig(): Promise<AgentConfig> {
   const store = await readV1Store();
   const stored = asString(store['agent']);
-  const defaultAgent: AgentName = isAgentName(stored) ? stored : DEFAULT_AGENT_NAME;
+  const defaultChosen = isAgentName(stored);
+  const defaultAgent: AgentName = defaultChosen ? stored : DEFAULT_AGENT_NAME;
 
   const agents = emptyAgents();
   const saved = store['agents'];
@@ -69,7 +75,7 @@ export async function readAgentConfig(): Promise<AgentConfig> {
   if (legacyModel && !agents[defaultAgent].model)
     agents[defaultAgent] = { ...agents[defaultAgent], model: legacyModel };
 
-  return { defaultAgent, agents };
+  return { defaultAgent, defaultChosen, agents };
 }
 
 export async function writeAgentConfig(config: AgentConfig): Promise<void> {
@@ -84,9 +90,11 @@ export async function writeAgentConfig(config: AgentConfig): Promise<void> {
     if (model || binary) agents[name] = { ...(model ? { model } : {}), ...(binary ? { binary } : {}) };
   }
 
-  // Not set when the user never picked one, so the import's own default (Claude) still applies.
-  merged['agent'] = config.defaultAgent;
-  const defaultModel = agents[config.defaultAgent]?.model;
+  // `agent` and `agentModel` are the import's view of the default agent. They are only written once the user has chosen
+  // one; until then the import falls back to its own default, which a later version is free to change.
+  const defaultModel = config.defaultChosen ? agents[config.defaultAgent]?.model : undefined;
+  if (config.defaultChosen) merged['agent'] = config.defaultAgent;
+  else delete merged['agent'];
   if (defaultModel) merged['agentModel'] = defaultModel;
   else delete merged['agentModel'];
 

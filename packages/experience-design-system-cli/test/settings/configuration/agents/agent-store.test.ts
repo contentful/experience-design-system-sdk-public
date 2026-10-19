@@ -30,11 +30,16 @@ describe('the agent settings in config.json', () => {
   });
 
   describe('writing', () => {
-    const config = (defaultAgent: 'claude' | 'codex', models: Partial<Record<string, string>> = {}) => {
+    // `defaultChosen` is true unless a test says otherwise: most of these are about a user who picked an agent.
+    const config = (
+      defaultAgent: 'claude' | 'codex',
+      models: Partial<Record<string, string>> = {},
+      defaultChosen = true,
+    ) => {
       const agents = emptyAgents();
       for (const [name, model] of Object.entries(models))
         agents[name as keyof typeof agents] = { model: model ?? '', binary: '' };
-      return { defaultAgent, agents };
+      return { defaultAgent, defaultChosen, agents };
     };
 
     it('keeps the credentials and every other setting', async () => {
@@ -53,6 +58,30 @@ describe('the agent settings in config.json', () => {
 
     it('writes the default agent to `agent` and its model to `agentModel`, which is what the import reads', async () => {
       await writeAgentConfig(config('codex', { codex: 'gpt-5', claude: 'sonnet' }));
+
+      expect(await onDisk()).toMatchObject({ agent: 'codex', agentModel: 'gpt-5' });
+    });
+
+    it('does not pin the default agent for someone who never chose one, so a later default still reaches them', async () => {
+      // Saving only a Codex model must not write `agent: "claude"` (or any `agentModel`) into config.json.
+      await seed({ spaceId: 's' });
+      const loaded = await readAgentConfig();
+      loaded.agents.codex = { model: 'gpt-5', binary: '' };
+
+      await writeAgentConfig(loaded);
+
+      const saved = await onDisk();
+      expect(saved).not.toHaveProperty('agent');
+      expect(saved).not.toHaveProperty('agentModel');
+      expect(saved['agents']).toEqual({ codex: { model: 'gpt-5' } });
+    });
+
+    it('keeps `agent` for someone who already chose one, even when only a model is saved', async () => {
+      await seed({ agent: 'codex' });
+      const loaded = await readAgentConfig();
+      loaded.agents.codex = { model: 'gpt-5', binary: '' };
+
+      await writeAgentConfig(loaded);
 
       expect(await onDisk()).toMatchObject({ agent: 'codex', agentModel: 'gpt-5' });
     });

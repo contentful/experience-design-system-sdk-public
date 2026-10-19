@@ -26,6 +26,7 @@ export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactEle
   const [open, setOpen] = useState<AgentName | null>(null);
   const [notice, setNotice] = useState<FormNotice | null>(null);
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [checks, setChecks] = useState<Partial<Record<AgentName, AgentCheck[]>>>({});
 
   // One quick inspection per agent when the screen opens, filled in as each answers. No prompts, so no tokens.
@@ -38,16 +39,18 @@ export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactEle
   };
 
   useEffect(() => {
-    void readAgentConfig().then((loaded) => {
-      setConfig(loaded);
-      inspectAll(loaded);
-      startDebugRun({
-        flow: 'settings/agents',
-        step: '01-agents',
-        menuOption: 'Configuration > Agents',
-        inputs: { default_agent: loaded.defaultAgent },
-      });
-    });
+    readAgentConfig()
+      .then((loaded) => {
+        setConfig(loaded);
+        inspectAll(loaded);
+        startDebugRun({
+          flow: 'settings/agents',
+          step: '01-agents',
+          menuOption: 'Configuration > Agents',
+          inputs: { default_agent: loaded.defaultAgent },
+        });
+      })
+      .catch((err: unknown) => setLoadError(err instanceof Error ? err.message : String(err)));
   }, []);
 
   const makeDefault = (name: AgentName): void => {
@@ -59,9 +62,9 @@ export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactEle
     // The star only moves once the write has worked, so a failed save cannot leave the screen showing the wrong agent.
     setSaving(true);
     setNotice(null);
-    writeAgentConfig({ ...config, defaultAgent: name })
+    writeAgentConfig({ ...config, defaultAgent: name, defaultChosen: true })
       .then(() => {
-        setConfig((current) => (current ? { ...current, defaultAgent: name } : current));
+        setConfig((current) => (current ? { ...current, defaultAgent: name, defaultChosen: true } : current));
         setNotice({ kind: 'success', text: `Default agent is now ${AGENT_LABELS[name]}` });
       })
       .catch((err: unknown) =>
@@ -74,6 +77,11 @@ export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactEle
   };
 
   useInput((input, key) => {
+    // With the settings unreadable there is nothing to show, so the only thing left to do is go back.
+    if (loadError && (key.escape || input === 'q')) {
+      onDone();
+      return;
+    }
     if (!config || open || saving) return;
     const focused = AGENT_NAMES[focus]!;
 
@@ -108,7 +116,15 @@ export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactEle
       <Box flexDirection="column" paddingX={2} paddingY={1}>
         <Text bold>Agents</Text>
         <Text> </Text>
-        <Text color={PALETTE.accent}>Loading...</Text>
+        {loadError ? (
+          <>
+            <Text color={PALETTE.error}>✗ Could not read the settings: {loadError}</Text>
+            <Text> </Text>
+            <ControlHints hints={[{ keys: 'Esc/q', label: 'back' }]} />
+          </>
+        ) : (
+          <Text color={PALETTE.accent}>Loading...</Text>
+        )}
       </Box>
     );
   }

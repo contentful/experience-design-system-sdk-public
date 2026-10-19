@@ -25,6 +25,9 @@ const fields = (name: AgentName): readonly FormField<Field>[] => [
   { key: 'model', label: 'Model', hint: `(empty: ${defaultModelLabel(name)})` },
 ];
 
+// How long the command path must sit unchanged before it is checked.
+const INSPECT_DELAY_MS = 400;
+
 const LABEL_WIDTH = 'Command path'.length;
 const LABEL_GAP = 2;
 const POINTER_WIDTH = 2;
@@ -74,13 +77,17 @@ export function AgentDetail({
   const [notice, setNotice] = useState<FormNotice | null>(null);
   const [checks, setChecks] = useState<AgentCheck[] | undefined>(undefined);
 
-  // Quick check on open, and again whenever the path changes, so the user sees what the path they typed would do.
+  // Quick check on open, and again once the user pauses typing the path, so they see what the path they typed would do.
+  // Waiting for a pause keeps half-typed paths from each spawning `which`, `--version` and (for claude) an auth check.
   useEffect(() => {
     let active = true;
     setChecks(undefined);
-    void inspectAgent(name, settings.binary).then((result) => active && setChecks(result));
+    const timer = setTimeout(() => {
+      void inspectAgent(name, settings.binary).then((result) => active && setChecks(result));
+    }, INSPECT_DELAY_MS);
     return () => {
       active = false;
+      clearTimeout(timer);
     };
   }, [name, settings.binary]);
 
