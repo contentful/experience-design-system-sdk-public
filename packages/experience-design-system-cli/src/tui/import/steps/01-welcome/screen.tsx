@@ -1,9 +1,9 @@
-import React, { useState } from "react";
-import { Box, Text } from "ink";
-import TextInput from "ink-text-input";
-import { PALETTE } from "../../../theme.js";
-import { WELCOME_CONTROLS, useWelcomeControls } from "./controls.js";
-import { toProjectPath } from "./logic.js";
+import React, { useState } from 'react';
+import { Box, Text } from 'ink';
+import TextInput from 'ink-text-input';
+import { PALETTE } from '../../../theme.js';
+import { WELCOME_CONTROLS, useWelcomeControls } from './controls.js';
+import { toProjectPath } from './logic.js';
 
 interface WelcomeScreenProps {
   onContinue: (projectPath: string) => void;
@@ -13,33 +13,29 @@ interface WelcomeScreenProps {
 
 const OVERVIEW_BOX_MAX_WIDTH = 90;
 
-const AI_MARKER = "✻";
+const AI_MARKER = '✻';
 
 const OVERVIEW = [
   {
-    label: "Step 1",
-    description: "Extract components from your codebase",
+    label: 'Step 1',
+    description: 'Extract components from your codebase',
     ai: true,
   },
-  { label: "Step 2", description: "Review what was extracted", ai: false },
+  { label: 'Step 2', description: 'Review what was extracted', ai: false },
   {
-    label: "Step 3",
-    description: "Generate component definitions",
+    label: 'Step 3',
+    description: 'Generate component definitions',
     ai: true,
   },
-  { label: "Step 4", description: "Review generated definitions", ai: false },
-  { label: "Step 5", description: "Push to Contentful", ai: false },
+  { label: 'Step 4', description: 'Review generated definitions', ai: false },
+  { label: 'Step 5', description: 'Push to Contentful', ai: false },
 ] as const;
 
 const AI_DISCLOSURE = [
-  "Steps marked ✻ use your local AI agent, which may send relevant code to your AI provider under your agreement with them. Contentful does not receive that code, or the prompts and responses. AI suggestions can be wrong or incomplete, so review and edit them before importing.",
+  'Steps marked ✻ use your local AI agent, which may send relevant code to your AI provider under your agreement with them. Contentful does not receive that code, or the prompts and responses. AI suggestions can be wrong or incomplete, so review and edit them before importing.',
 ];
 
-export function WelcomeScreen({
-  onContinue,
-  onQuit,
-  initialPath = "",
-}: WelcomeScreenProps): React.ReactElement {
+export function WelcomeScreen({ onContinue, onQuit, initialPath = '' }: WelcomeScreenProps): React.ReactElement {
   const [projectPath, setProjectPath] = useState(initialPath);
 
   useWelcomeControls(onQuit);
@@ -98,11 +94,7 @@ export function WelcomeScreen({
         <Box>
           <Text color={PALETTE.accent}>? </Text>
           <Text>Project path: </Text>
-          <TextInput
-            value={projectPath}
-            onChange={setProjectPath}
-            onSubmit={submit}
-          />
+          <TextInput value={projectPath} onChange={setProjectPath} onSubmit={submit} />
         </Box>
       </Box>
 
