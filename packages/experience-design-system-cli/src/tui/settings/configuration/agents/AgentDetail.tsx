@@ -56,11 +56,14 @@ export function AgentDetail({
   config,
   setConfig,
   onBack,
+  record,
 }: {
   name: AgentName;
   config: AgentConfig;
   setConfig: (config: AgentConfig) => void;
   onBack: () => void;
+  /** Adds a line to the debug log of this visit. The Agents list owns the log, since it is the screen that is open. */
+  record: (action: string, error?: unknown) => void;
 }): React.ReactElement {
   const settings = config.agents[name];
   const [saving, setSaving] = useState(false);
@@ -88,11 +91,13 @@ export function AgentDetail({
     writeAgentConfig(config)
       .then(() => {
         applyBinaryOverrides(config);
+        record(`saved ${name}`);
         setNotice({ kind: 'success', text: `Saved: ${AGENT_LABELS[name]} settings are written to config.json` });
       })
-      .catch((err: unknown) =>
-        setNotice({ kind: 'error', text: `Not saved: ${err instanceof Error ? err.message : String(err)}` }),
-      )
+      .catch((err: unknown) => {
+        record(`saving ${name} failed`, err);
+        setNotice({ kind: 'error', text: `Not saved: ${err instanceof Error ? err.message : String(err)}` });
+      })
       .finally(() => setSaving(false));
   };
 
@@ -103,6 +108,8 @@ export function AgentDetail({
       .then((result) => {
         setChecks(result);
         const outcome = testOutcome(result);
+        if (!outcome || !outcome.ok)
+          record(`test of ${name} failed: ${outcome?.text ?? 'the agent could not be started'}`);
         // A test that stopped at the path or version check never reached the prompt, so say what blocked it.
         setNotice(
           outcome
@@ -110,9 +117,10 @@ export function AgentDetail({
             : { kind: 'error', text: 'Test not run: the agent could not be started (see Status)' },
         );
       })
-      .catch((err: unknown) =>
-        setNotice({ kind: 'error', text: `Test could not run: ${err instanceof Error ? err.message : String(err)}` }),
-      )
+      .catch((err: unknown) => {
+        record(`test of ${name} could not run`, err);
+        setNotice({ kind: 'error', text: `Test could not run: ${err instanceof Error ? err.message : String(err)}` });
+      })
       .finally(() => setTesting(false));
   };
 
@@ -138,6 +146,7 @@ export function AgentDetail({
       onChange={(key, value) => {
         setConfig({ ...config, agents: { ...config.agents, [name]: { ...settings, [key]: value } } });
         setNotice(null);
+        record(`edited ${name}.${key}`);
       }}
       onSave={save}
       onQuit={onBack}
