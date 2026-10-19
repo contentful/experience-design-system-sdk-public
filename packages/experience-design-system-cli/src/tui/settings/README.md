@@ -26,7 +26,7 @@ New preference screens should follow this pattern:
 Settings > Configuration is a menu with two sections, both stored in the same `config.json`:
 
 - **Project** (`contentful-configuration/ProjectConfigScreen.tsx`) — space, environment, token, host, import defaults and the Root Project Directory.
-- **Agents** (`agents/AgentScreens.tsx`) — the **Default agent** row (←/→ or Enter cycles it, saved at once) and one row per supported agent (Claude Code, OpenAI Codex, OpenCode, Cursor, GitHub Copilot). Enter on an agent opens its form, where the model can be set.
+- **Agents** (`agents/AgentsScreen.tsx`) — the **Default agent** row (←/→ or Enter cycles it, saved at once) and one row per supported agent (Claude Code, OpenAI Codex, OpenCode, Cursor, GitHub Copilot). Enter on an agent opens its form, where the model can be set.
 
 Both forms use the shared `shared/FieldForm.tsx` (↑/↓ move, Enter edits a field, `c` clears, `s` saves, Esc/q goes back without saving).
 

@@ -13,6 +13,19 @@ export interface FormField<K extends string> {
   masked?: boolean;
 }
 
+/** A row after the fields that Enter runs instead of opening for editing, such as "Run test". */
+export interface FormAction {
+  label: string;
+  /** What running it does, shown dimmed after the label. */
+  description: string;
+  /** Shown instead of the description while it runs. */
+  runningText?: string;
+  running?: boolean;
+  /** The control hint for Enter while this row is focused. */
+  hint: string;
+  onRun: () => void;
+}
+
 export type FormNotice = { kind: 'success' | 'error'; text: string };
 
 interface FieldFormProps<K extends string> {
@@ -25,16 +38,19 @@ interface FieldFormProps<K extends string> {
   onSave: () => void;
   /** Leaves without saving. */
   onQuit: () => void;
+  /** Rows after the fields that are run, not edited. They share the cursor with the fields. */
+  actions?: readonly FormAction[];
   notice?: FormNotice | null;
   /** Ignores keys while a load or save is in flight. */
   busy?: boolean;
-  /** Shown above the controls, for a screen's own explanation. */
-  footer?: React.ReactNode;
+  /** Shown after the rows and the notice, for read-only content that belongs to the same screen. */
+  children?: React.ReactNode;
 }
 
 /**
  * The edit-in-place form the Configuration pages share. Fields are read-only until Enter opens one; Enter again closes it.
  * While one is open, keys type into it (so a "q" in a path is just a "q"), and Esc closes it and restores the old value.
+ * Actions sit after the fields and take the same cursor: Enter runs one, and `c` does nothing on it.
  */
 export function FieldForm<K extends string>({
   title,
@@ -44,24 +60,31 @@ export function FieldForm<K extends string>({
   onChange,
   onSave,
   onQuit,
+  actions = [],
   notice,
   busy = false,
-  footer,
+  children,
 }: FieldFormProps<K>): React.ReactElement {
   const [active, setActive] = useState(0);
   const [editing, setEditing] = useState(false);
   const [valueBeforeEdit, setValueBeforeEdit] = useState('');
 
-  const labelWidth = Math.max(...fields.map((field) => field.label.length));
-  const current = fields[active]!;
+  // The cursor walks the fields first, then the actions.
+  const rowCount = fields.length + actions.length;
+  const labelWidth = Math.max(
+    ...fields.map((field) => field.label.length),
+    ...actions.map((action) => action.label.length),
+  );
+  const currentField = active < fields.length ? fields[active] : undefined;
+  const currentAction = currentField ? undefined : actions[active - fields.length];
 
   useInput((input, key) => {
     if (busy) return;
 
     if (editing) {
       // <TextInput> handles typing, the cursor, left/right and Enter (onSubmit) itself.
-      if (key.escape) {
-        onChange(current.key, valueBeforeEdit);
+      if (key.escape && currentField) {
+        onChange(currentField.key, valueBeforeEdit);
         setEditing(false);
       }
       return;
@@ -75,23 +98,31 @@ export function FieldForm<K extends string>({
       onSave();
       return;
     }
-    if (input === 'c') {
-      onChange(current.key, '');
+    if (input === 'c' && currentField) {
+      onChange(currentField.key, '');
       return;
     }
     if (key.tab || key.downArrow) {
-      setActive((i) => (i + 1) % fields.length);
+      setActive((i) => (i + 1) % rowCount);
       return;
     }
     if (key.upArrow) {
-      setActive((i) => (i - 1 + fields.length) % fields.length);
+      setActive((i) => (i - 1 + rowCount) % rowCount);
       return;
     }
     if (key.return) {
-      setValueBeforeEdit(values[current.key]);
-      setEditing(true);
+      if (currentField) {
+        setValueBeforeEdit(values[currentField.key]);
+        setEditing(true);
+      } else {
+        currentAction?.onRun();
+      }
     }
   });
+
+  const pointer = (isActive: boolean): React.ReactElement => (
+    <Text color={isActive ? PALETTE.accent : undefined}>{isActive ? '❯' : ' '}</Text>
+  );
 
   return (
     <Box flexDirection="column" paddingX={2} paddingY={1}>
@@ -105,7 +136,7 @@ export function FieldForm<K extends string>({
           const display = field.masked ? '•'.repeat(value.length) : value;
           return (
             <Box key={field.key} gap={1}>
-              <Text color={isActive ? PALETTE.accent : undefined}>{isActive ? '❯' : ' '}</Text>
+              {pointer(isActive)}
               <Box width={labelWidth} flexShrink={0}>
                 <Text bold={isActive} color={isActive ? PALETTE.accent : PALETTE.muted}>
                   {field.label}
@@ -127,6 +158,22 @@ export function FieldForm<K extends string>({
             </Box>
           );
         })}
+        {actions.map((action, index) => {
+          const isActive = fields.length + index === active;
+          return (
+            <Box key={action.label} gap={1}>
+              {pointer(isActive)}
+              <Box width={labelWidth} flexShrink={0}>
+                <Text bold={isActive} color={isActive ? PALETTE.accent : PALETTE.muted}>
+                  {action.label}
+                </Text>
+              </Box>
+              <Text color={action.running ? PALETTE.accent : PALETTE.muted}>
+                {action.running ? (action.runningText ?? 'running...') : action.description}
+              </Text>
+            </Box>
+          );
+        })}
       </Box>
       {notice && (
         <>
@@ -136,7 +183,7 @@ export function FieldForm<K extends string>({
           </Text>
         </>
       )}
-      {footer}
+      {children}
       <Text> </Text>
       <ControlHints
         hints={
@@ -149,8 +196,8 @@ export function FieldForm<K extends string>({
               ]
             : [
                 { keys: '↑/↓', label: 'move' },
-                { keys: '⏎', label: 'edit' },
-                { keys: 'c', label: 'clear' },
+                { keys: '⏎', label: currentAction ? currentAction.hint : 'edit' },
+                ...(currentField ? [{ keys: 'c', label: 'clear' }] : []),
                 { keys: 's', label: 'save' },
                 { keys: 'Esc/q', label: 'back without saving' },
               ]

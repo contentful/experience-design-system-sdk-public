@@ -109,14 +109,11 @@ function readVersion(binary: string): Promise<AgentCheck> {
   });
 }
 
-/**
- * Steps 1 to 3 against `binary`. Never throws and never spends tokens, so it is safe to run for every row on open.
- * Checks the path the user typed, not what is saved, so the form can test a value before it is written.
- */
-export async function inspectAgent(name: AgentName, binary: string): Promise<AgentCheck[]> {
+/** The quick checks, and the path they resolved, so a caller that goes on to run the agent does not look it up again. */
+async function inspect(name: AgentName, binary: string): Promise<{ checks: AgentCheck[]; found: string | null }> {
   const target = effectiveBinary(name, binary);
   const found = await resolveOnPath(target);
-  if (!found) return [fail('path', `\`${target}\` was not found or is not executable`)];
+  if (!found) return { checks: [fail('path', `\`${target}\` was not found or is not executable`)], found: null };
 
   const checks: AgentCheck[] = [pass('path', found)];
   checks.push(await readVersion(found));
@@ -130,16 +127,22 @@ export async function inspectAgent(name: AgentName, binary: string): Promise<Age
         : fail('login', auth === 'not-found' ? 'binary not found' : `not logged in: ${LOGIN_HINTS.claude}`),
     );
   }
-  return checks;
+  return { checks, found };
+}
+
+/**
+ * Steps 1 to 3 against `binary`. Never throws and never spends tokens, so it is safe to run for every row on open.
+ * Checks the path the user typed, not what is saved, so the form can test a value before it is written.
+ */
+export async function inspectAgent(name: AgentName, binary: string): Promise<AgentCheck[]> {
+  return (await inspect(name, binary)).checks;
 }
 
 /** Steps 1 to 4. The prompt step is the only way to verify login and model name for agents other than claude. */
 export async function testAgent(name: AgentName, binary: string, model: string): Promise<AgentCheck[]> {
-  const checks = await inspectAgent(name, binary);
-  if (!checks.every((check) => check.step === 'version' || check.ok)) return checks;
+  const { checks, found } = await inspect(name, binary);
+  if (!found || !checks.every((check) => check.step === 'version' || check.ok)) return checks;
 
-  const target = effectiveBinary(name, binary);
-  const found = (await resolveOnPath(target)) ?? target;
   const started = Date.now();
   const result = await withBinaryEnv(name, found, () =>
     createLocalCliAgentInvoker().invoke({
@@ -185,7 +188,7 @@ export function statusFromChecks(name: AgentName, checks: readonly AgentCheck[],
  * Shown on the list's panel and on the agent's own screen, so it cannot say where the command path is ("below"): it
  * names the settings instead, which is the same place from both.
  */
-export function setupHint(name: AgentName, status: AgentStatus): string {
+function setupHint(name: AgentName, status: AgentStatus): string {
   if (status === 'not-configured') return `${INSTALL_HINTS[name]}, or set its command path in settings`;
   if (status === 'not-found') return `${INSTALL_HINTS[name]}, or correct the command path in settings`;
   if (status === 'not-logged-in') return LOGIN_HINTS[name];
@@ -234,6 +237,43 @@ function modelLine(name: AgentName, savedModel: string): string {
 }
 
 /**
+ * The rows both views share, built once so they cannot drift apart: the command (or why there is none), its version, and
+ * the setup hint. The list's panel and the agent's Status section each add only what is their own.
+ */
+function baseRows(
+  name: AgentName,
+  checks: readonly AgentCheck[],
+  savedBinary: string,
+): { command: StatusRow; version: StatusRow | undefined; setup: StatusRow | undefined; found: boolean } {
+  const path = checks.find((check) => check.step === 'path');
+  const version = checks.find((check) => check.step === 'version');
+  const hint = setupHint(name, statusFromChecks(name, checks, savedBinary));
+  const setup: StatusRow | undefined = hint ? { label: 'Setup', value: hint, tone: 'muted' } : undefined;
+
+  if (!path?.ok) {
+    const saved = savedBinary.trim() !== '';
+    const command: StatusRow = {
+      label: 'Command',
+      value: saved ? (path?.detail ?? 'not found') : 'not configured (not on the PATH)',
+      tone: saved ? 'bad' : 'muted',
+    };
+    return { command, version: undefined, setup, found: false };
+  }
+  return {
+    command: { label: 'Command', value: path.detail, tone: 'ok' },
+    version: {
+      label: 'Version',
+      value: version?.ok ? version.detail : 'could not be read',
+      tone: version?.ok ? 'ok' : 'muted',
+    },
+    setup,
+    found: true,
+  };
+}
+
+const checking: StatusRow[] = [{ label: 'Command', value: 'checking...', tone: 'muted' }];
+
+/**
  * The rows of the detail panel under the list, for the focused agent. Everything here is read-only and comes from
  * checks already collected, so moving the cursor never runs anything.
  */
@@ -242,68 +282,34 @@ export function panelRows(
   checks: readonly AgentCheck[] | undefined,
   settings: { binary: string; model: string },
 ): StatusRow[] {
-  if (!checks) return [{ label: 'Command', value: 'checking...', tone: 'muted' }];
-
-  const status = statusFromChecks(name, checks, settings.binary);
-  const path = checks.find((check) => check.step === 'path');
-  if (!path?.ok) {
-    const rows: StatusRow[] = [
-      {
-        label: 'Command',
-        value: settings.binary.trim() ? (path?.detail ?? 'not found') : 'not found on your PATH',
-        tone: settings.binary.trim() ? 'bad' : 'muted',
-      },
-    ];
-    const hint = setupHint(name, status);
-    if (hint) rows.push({ label: 'Setup', value: hint, tone: 'muted' });
-    return rows;
-  }
-
-  const rows: StatusRow[] = [{ label: 'Command', value: path.detail, tone: 'ok' }];
-  const version = checks.find((check) => check.step === 'version');
-  if (version?.ok) rows.push({ label: 'Version', value: version.detail, tone: 'ok' });
-  rows.push({ label: 'Model', value: modelLine(name, settings.model), tone: 'muted' });
-  const hint = setupHint(name, status);
-  if (hint) rows.push({ label: 'Setup', value: hint, tone: 'muted' });
-  return rows;
+  if (!checks) return checking;
+  const { command, version, setup, found } = baseRows(name, checks, settings.binary);
+  const model: StatusRow = { label: 'Model', value: modelLine(name, settings.model), tone: 'muted' };
+  return [command, ...(found ? [...(version?.tone === 'ok' ? [version] : []), model] : []), ...(setup ? [setup] : [])];
 }
 
 /**
- * What the Status section of an agent's screen shows, one row per thing that was checked. The login row is always
- * there once the command is found, because for most agents it has to say that login cannot be checked without a test.
+ * What the Status section of an agent's screen shows: the shared rows, then the login and the test, which only this
+ * view has. The login row is always there once the command is found, because for most agents it has to say that login
+ * cannot be checked without a test.
  */
 export function statusRows(
-  _name: AgentName,
+  name: AgentName,
   checks: readonly AgentCheck[] | undefined,
   savedBinary: string,
 ): StatusRow[] {
-  if (!checks) return [{ label: 'Command', value: 'checking...', tone: 'muted' }];
+  if (!checks) return checking;
+  const { command, version, setup, found } = baseRows(name, checks, savedBinary);
+  if (!found) return [command];
 
-  const find = (step: AgentCheckStep): AgentCheck | undefined => checks.find((check) => check.step === step);
-  const path = find('path');
-  if (!path?.ok) {
-    if (savedBinary.trim()) return [{ label: 'Command', value: path?.detail ?? 'not found', tone: 'bad' }];
-    return [{ label: 'Command', value: 'not configured (not on the PATH)', tone: 'muted' }];
-  }
-
-  const rows: StatusRow[] = [{ label: 'Command', value: path.detail, tone: 'ok' }];
-
-  const version = find('version');
-  if (version) {
-    rows.push({
-      label: 'Version',
-      value: version.ok ? version.detail : 'could not be read',
-      tone: version.ok ? 'ok' : 'muted',
-    });
-  }
-
-  const login = find('login');
-  const prompt = find('prompt');
+  const login = checks.find((check) => check.step === 'login');
+  const prompt = checks.find((check) => check.step === 'prompt');
+  let loginRow: StatusRow;
   if (login) {
-    rows.push({ label: 'Login', value: login.detail, tone: login.ok ? 'ok' : 'bad' });
+    loginRow = { label: 'Login', value: login.detail, tone: login.ok ? 'ok' : 'bad' };
   } else if (prompt) {
     // A timeout says nothing about the login, so it is not blamed for one.
-    rows.push({
+    loginRow = {
       label: 'Login',
       value: prompt.ok
         ? 'confirmed by the test'
@@ -311,13 +317,12 @@ export function statusRows(
           ? 'unknown (the test timed out)'
           : 'see the test result',
       tone: prompt.ok ? 'ok' : prompt.timedOut ? 'muted' : 'bad',
-    });
+    };
   } else {
-    rows.push({ label: 'Login', value: 'not checked (use Run test)', tone: 'muted' });
+    loginRow = { label: 'Login', value: 'not checked (use Run test)', tone: 'muted' };
   }
-
-  if (prompt) rows.push({ label: 'Test', value: prompt.detail, tone: prompt.ok ? 'ok' : 'bad' });
-  return rows;
+  const testRow: StatusRow[] = prompt ? [{ label: 'Test', value: prompt.detail, tone: prompt.ok ? 'ok' : 'bad' }] : [];
+  return [command, ...(version ? [version] : []), loginRow, ...testRow, ...(setup ? [setup] : [])];
 }
 
 /** The pipeline reads an agent's binary from EDS_AGENT_BINARY_<AGENT>, so a check on a specific path sets it for the call. */

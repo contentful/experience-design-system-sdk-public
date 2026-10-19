@@ -25,21 +25,13 @@ export type AgentConfig = {
 
 const DEFAULT_AGENT: AgentName = 'claude';
 
-// How each agent is shown. The binary is what the CLI looks for on the PATH (cursor's is `cursor-agent`).
+// How each agent is shown.
 export const AGENT_LABELS: Record<AgentName, string> = {
   claude: 'Claude Code',
   codex: 'OpenAI Codex',
   opencode: 'OpenCode',
   cursor: 'Cursor',
   copilot: 'GitHub Copilot',
-};
-
-export const AGENT_HINTS: Record<AgentName, string> = {
-  claude: 'claude',
-  codex: 'codex',
-  opencode: 'opencode',
-  cursor: 'cursor-agent',
-  copilot: 'copilot',
 };
 
 const asString = (value: unknown): string => (typeof value === 'string' ? value : '');

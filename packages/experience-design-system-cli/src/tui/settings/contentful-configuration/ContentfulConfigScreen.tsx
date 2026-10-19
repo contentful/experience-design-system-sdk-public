@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { PALETTE } from '../../theme.js';
 import { ControlHints } from '../../control-hints.js';
-import { AgentsScreen } from '../agents/AgentScreens.js';
+import { AgentsScreen } from '../agents/AgentsScreen.js';
 import { ProjectConfigScreen } from './ProjectConfigScreen.js';
 
 type Section = 'project' | 'agents';
