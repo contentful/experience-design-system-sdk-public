@@ -13,7 +13,7 @@ function Section({ title, rows }: { title: string; rows: HelpRow[] }): React.Rea
       </Text>
       {rows.map((row) => (
         <Box key={row.label} gap={1}>
-          <Box width={14} flexShrink={0}>
+          <Box width={16} flexShrink={0}>
             <Text color={PALETTE.muted}>{row.label}</Text>
           </Box>
           <Text>{row.value}</Text>
