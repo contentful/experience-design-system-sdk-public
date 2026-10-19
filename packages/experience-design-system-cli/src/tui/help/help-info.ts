@@ -1,7 +1,7 @@
 import { configFilePath, configRoot } from '@contentful/experience-design-system-types/config';
 import { currentDebugSessionDir } from '../debug-store.js';
 import { readDebugModeSetting } from '../settings/debug-mode/debug-mode-store.js';
-import { readPackageVersion } from '../upgrade/version.js';
+import { readPackageVersion } from '../home/version.js';
 
 export interface HelpRow {
   label: string;
