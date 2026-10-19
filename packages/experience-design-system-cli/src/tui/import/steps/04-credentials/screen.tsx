@@ -116,7 +116,9 @@ export function CredentialsScreen({
           </Box>
         ))}
       </Box>
-      {active === 'host' && <Text color={PALETTE.muted}>Default: api.contentful.com · EU spaces: api.eu.contentful.com</Text>}
+      {active === 'host' && (
+        <Text color={PALETTE.muted}>Default: api.contentful.com · EU spaces: api.eu.contentful.com</Text>
+      )}
 
       {error && <Text color={PALETTE.error}>✗ {error}</Text>}
       {validating && <Text color={PALETTE.accent}>Validating credentials...</Text>}

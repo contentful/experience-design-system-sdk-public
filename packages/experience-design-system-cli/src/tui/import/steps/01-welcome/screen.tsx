@@ -34,7 +34,7 @@ export function WelcomeScreen({ onContinue, onQuit, initialPath = '' }: WelcomeS
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
       <Text bold color={PALETTE.success}>
-       Let&apos;s import your design system into Contentful.
+        Let&apos;s import your design system into Contentful.
       </Text>
       <Box flexDirection="column">
         <Text color={PALETTE.muted}>{RULE}</Text>
