@@ -1,12 +1,14 @@
 import { spawn } from 'node:child_process';
+import {
+  formatArgvPromptSizeLimitError,
+  MAX_ARGV_PROMPT_BYTES,
+  shouldUseStdinForPrompt,
+} from '@contentful/experience-design-system-types';
 import { BEDROCK_ENV_BY_AGENT } from '../constants/bedrock.js';
 import { buildArgs } from '../helpers/build-agent-args.js';
 import { resolveBinary } from '../helpers/resolution/resolve-binary.js';
 import type { AgentDebugEvent, AgentRunResult } from '../types/agent-run.js';
 import type { AgentName } from '../types/agent-name.js';
-
-const STDIN_PROMPT_AGENTS = new Set<AgentName>(['claude', 'codex']);
-const MAX_ARGV_PROMPT_BYTES = 100_000;
 
 export interface RunAgentOptions {
   agent: AgentName;
@@ -27,12 +29,12 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentRunResult
   const bedrock = options.bedrock ?? process.env.EDS_BEDROCK === '1';
 
   const binary = resolveBinary(agent);
-  const useStdin = promptViaStdin ?? STDIN_PROMPT_AGENTS.has(agent);
+  const useStdin = shouldUseStdinForPrompt(agent, promptViaStdin);
   const promptBytes = Buffer.byteLength(prompt, 'utf8');
   if (!useStdin && promptBytes > MAX_ARGV_PROMPT_BYTES) {
     return {
       stdout: '',
-      stderr: `The ${agent} prompt is being sent as a command-line argument and exceeds the ${MAX_ARGV_PROMPT_BYTES}-byte safety limit (${promptBytes} UTF-8 bytes). Use claude or codex with stdin delivery for large projects.`,
+      stderr: formatArgvPromptSizeLimitError(agent, promptBytes),
       exitCode: 1,
       timedOut: false,
     };

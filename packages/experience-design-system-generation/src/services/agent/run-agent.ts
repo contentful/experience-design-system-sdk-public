@@ -1,4 +1,9 @@
 import { spawn } from 'node:child_process';
+import {
+  formatArgvPromptSizeLimitError,
+  MAX_ARGV_PROMPT_BYTES,
+  shouldUseStdinForPrompt,
+} from '@contentful/experience-design-system-types';
 import type { AgentName } from '../../agent-names.js';
 import type { AgentRunResult, AgentDebugEvent } from '../../types/agent.js';
 import { resolveAgentBinary } from './helpers/resolve-agent-binary.js';
@@ -22,7 +27,16 @@ export async function runAgent(options: {
   const bedrock = options.bedrock ?? process.env.EDS_BEDROCK === '1';
 
   const binary = resolveAgentBinary(agent);
-  const useStdin = !!promptViaStdin;
+  const useStdin = shouldUseStdinForPrompt(agent, promptViaStdin);
+  const promptBytes = Buffer.byteLength(prompt, 'utf8');
+  if (!useStdin && promptBytes > MAX_ARGV_PROMPT_BYTES) {
+    return {
+      stdout: '',
+      stderr: formatArgvPromptSizeLimitError(agent, promptBytes),
+      exitCode: 1,
+      timedOut: false,
+    };
+  }
   const args = buildAgentArgs(agent, prompt, model, useStdin, bedrock);
 
   const startedAt = Date.now();
