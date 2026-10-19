@@ -31,14 +31,14 @@ import { FlowScreen } from './src/tui/import/steps/10-flow/flow/screen.js';
 import { useFlow } from './src/tui/import/steps/10-flow/flow/use-flow.js';
 import { HelpScreen } from './src/tui/help/PageContainer.js';
 import { SettingsScreen } from './src/tui/settings/PageContainer.js';
-import { ConfigurationScreen } from './src/tui/settings/contentful-configuration/ContentfulConfigScreen.js';
+import { ConfigurationScreen } from './src/tui/settings/configuration/ConfigurationScreen.js';
 import { OptInAnalyticsScreen } from './src/tui/settings/opt-in-analytics/screen.js';
 import { DebugModeScreen } from './src/tui/settings/debug-mode/screen.js';
 import {
   readCredentials,
   writeCredentials,
   type V1Credentials,
-} from './src/tui/settings/contentful-configuration/config-store.js';
+} from './src/tui/settings/configuration/project/project-store.js';
 
 export type Screen =
   | 'start'

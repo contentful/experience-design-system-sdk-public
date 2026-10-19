@@ -1,7 +1,8 @@
-import { configFilePath, configRoot } from '@contentful/experience-design-system-types/config';
-import { currentDebugSessionDir } from '../debug-store.js';
+import { configFilePath, configRoot, readSettings } from '@contentful/experience-design-system-types/config';
+import { currentDebugSessionDir, currentSessionDir } from '../debug-store.js';
 import { readDebugModeSetting } from '../settings/debug-mode/debug-mode-store.js';
 import { readPackageVersion } from '../home/version.js';
+import { describeFileLocations } from './file-locations.js';
 
 export interface HelpRow {
   label: string;
@@ -13,14 +14,24 @@ export interface HelpInfo {
   troubleshooting: HelpRow[];
 }
 
-// Everything here is paths and versions. Nothing reads the settings file, so no credential can reach the screen.
+// Everything here is paths and versions. It reads the settings file only for two path settings (the Root Project
+// Directory and whether Debug Mode is on) and never returns a value from it, so no credential can reach the screen.
 export async function readHelpInfo(): Promise<HelpInfo> {
-  const debugMode = await readDebugModeSetting();
+  const [debugMode, settings] = await Promise.all([readDebugModeSetting(), readSettings()]);
+  const base = settings['contentfulBaseDir'];
+  const locations = describeFileLocations({
+    contentfulBaseDir: typeof base === 'string' ? base : '',
+    debugModeEnabled: debugMode.enabled,
+    currentSessionDir: currentSessionDir(),
+  });
 
   return {
     storage: [
       { label: 'Config folder', value: configRoot() },
       { label: 'Settings file', value: configFilePath() },
+      { label: 'Agent settings', value: `${configFilePath()} (keys: agent, agentModel, agents)` },
+      { label: 'Debug logs', value: locations.debugLogs },
+      { label: 'Import files', value: locations.importFiles },
     ],
     troubleshooting: [
       { label: 'CLI version', value: readPackageVersion() },
