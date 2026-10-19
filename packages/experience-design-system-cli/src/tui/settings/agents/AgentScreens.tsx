@@ -25,6 +25,7 @@ export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactEle
   const [focus, setFocus] = useState(0);
   const [open, setOpen] = useState<AgentName | null>(null);
   const [notice, setNotice] = useState<FormNotice | null>(null);
+  const [saving, setSaving] = useState(false);
   const [checks, setChecks] = useState<Partial<Record<AgentName, AgentCheck[]>>>({});
 
   // One quick inspection per agent when the screen opens, filled in as each answers. No prompts, so no tokens.
@@ -50,23 +51,30 @@ export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactEle
   }, []);
 
   const makeDefault = (name: AgentName): void => {
-    if (!config) return;
+    if (!config || saving) return;
     if (name === config.defaultAgent) {
       setNotice({ kind: 'success', text: `${AGENT_LABELS[name]} is already the default agent` });
       return;
     }
-    const next = { ...config, defaultAgent: name };
-    setConfig(next);
-    // Saved straight away: this is a choice, not a field being typed into.
-    writeAgentConfig(next)
-      .then(() => setNotice({ kind: 'success', text: `Default agent is now ${AGENT_LABELS[name]}` }))
+    // The star only moves once the write has worked, so a failed save cannot leave the screen showing the wrong agent.
+    setSaving(true);
+    setNotice(null);
+    writeAgentConfig({ ...config, defaultAgent: name })
+      .then(() => {
+        setConfig((current) => (current ? { ...current, defaultAgent: name } : current));
+        setNotice({ kind: 'success', text: `Default agent is now ${AGENT_LABELS[name]}` });
+      })
       .catch((err: unknown) =>
-        setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'Failed to save' }),
-      );
+        setNotice({
+          kind: 'error',
+          text: `Default agent not changed: ${err instanceof Error ? err.message : String(err)}`,
+        }),
+      )
+      .finally(() => setSaving(false));
   };
 
   useInput((input, key) => {
-    if (!config || open) return;
+    if (!config || open || saving) return;
     const focused = AGENT_NAMES[focus]!;
 
     // A confirmation is about the last thing done, so it goes as soon as the user moves on.
@@ -134,6 +142,7 @@ export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactEle
       <Box gap={1}>
         <Text color={PALETTE.muted}>Default agent</Text>
         <Text bold>{AGENT_LABELS[config.defaultAgent]}</Text>
+        {saving && <Text color={PALETTE.accent}>… saving</Text>}
       </Box>
 
       <Box marginTop={1} gap={1}>
@@ -175,7 +184,7 @@ export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactEle
       {notice && (
         <>
           <Text> </Text>
-          <Text color={notice.kind === 'success' ? PALETTE.success : PALETTE.error}>
+          <Text bold color={notice.kind === 'success' ? PALETTE.success : PALETTE.error}>
             {notice.kind === 'success' ? '✓' : '✗'} {notice.text}
           </Text>
         </>

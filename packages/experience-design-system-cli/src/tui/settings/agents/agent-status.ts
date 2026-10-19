@@ -26,13 +26,23 @@ export type AgentCheck = {
   ok: boolean;
   /** One line for the user: the version string, the reason it failed, or what to run next. */
   detail: string;
+  /** Only on the prompt step: the agent did not answer in time. That is not the same as a failure or a missing login. */
+  timedOut?: boolean;
 };
 
 /**
  * The one-word state shown on an agent's row. `not-configured` means no path is saved and the command is not on the
  * PATH; `not-found` means a saved path does not work. `unknown` means it runs but its login cannot be checked.
  */
-export type AgentStatus = 'checking' | 'ready' | 'not-configured' | 'not-found' | 'not-logged-in' | 'unknown';
+export type AgentStatus =
+  | 'checking'
+  | 'ready'
+  | 'not-configured'
+  | 'not-found'
+  | 'not-logged-in'
+  | 'test-failed'
+  | 'timed-out'
+  | 'unknown';
 
 const VERSION_TIMEOUT_MS = 5000;
 const PROMPT_TIMEOUT_MS = 60_000;
@@ -141,7 +151,9 @@ export async function testAgent(name: AgentName, binary: string, model: string):
   );
 
   const seconds = ((Date.now() - started) / 1000).toFixed(1);
-  if (result.timedOut) return [...checks, fail('prompt', `no answer within ${PROMPT_TIMEOUT_MS / 1000}s`)];
+  if (result.timedOut) {
+    return [...checks, { ...fail('prompt', `no answer within ${PROMPT_TIMEOUT_MS / 1000}s`), timedOut: true }];
+  }
   if (result.exitCode !== 0) {
     const reason = result.stderr.trim().split('\n').pop()?.slice(0, 160) || `exited with code ${result.exitCode}`;
     return [...checks, fail('prompt', reason)];
@@ -155,10 +167,15 @@ export function statusFromChecks(name: AgentName, checks: readonly AgentCheck[],
   if (checks.some((check) => check.step === 'path' && !check.ok)) {
     return savedBinary.trim() ? 'not-found' : 'not-configured';
   }
+  // A test that was run is the most recent and most direct evidence, so it outranks the login check. For claude a
+  // passing login check next to a failing test must not read as "ready".
+  const prompt = checks.find((check) => check.step === 'prompt');
+  if (prompt) {
+    if (prompt.ok) return 'ready';
+    return prompt.timedOut ? 'timed-out' : 'test-failed';
+  }
   const login = checks.find((check) => check.step === 'login');
   if (login) return login.ok ? 'ready' : 'not-logged-in';
-  const prompt = checks.find((check) => check.step === 'prompt');
-  if (prompt) return prompt.ok ? 'ready' : 'not-logged-in';
   // It exists and runs, but this agent has no login check, so ready would be a guess.
   return name === 'claude' ? 'ready' : 'unknown';
 }
@@ -172,11 +189,25 @@ export function setupHint(name: AgentName, status: AgentStatus): string {
   if (status === 'not-configured') return `${INSTALL_HINTS[name]}, or set its command path in settings`;
   if (status === 'not-found') return `${INSTALL_HINTS[name]}, or correct the command path in settings`;
   if (status === 'not-logged-in') return LOGIN_HINTS[name];
+  if (status === 'test-failed') return `read the test message; if it is a login problem, ${LOGIN_HINTS[name]}`;
+  if (status === 'timed-out') return 'it may be slow or waiting for input; run the test again, or try it in a terminal';
   if (status === 'unknown') return 'run a full test to confirm it is logged in';
   return '';
 }
 
 export type StatusRow = { label: string; value: string; tone: 'ok' | 'bad' | 'muted' };
+
+/**
+ * How a full test went, in one line for a banner on the agent's screen. Undefined when no test has run (the quick checks
+ * alone are not a test), so the banner only appears after the user asked for one.
+ */
+export function testOutcome(checks: readonly AgentCheck[] | undefined): { ok: boolean; text: string } | undefined {
+  const prompt = checks?.find((check) => check.step === 'prompt');
+  if (!prompt) return undefined;
+  if (prompt.ok) return { ok: true, text: `Test passed: ${prompt.detail}` };
+  if (prompt.timedOut) return { ok: false, text: `Test timed out: ${prompt.detail}` };
+  return { ok: false, text: `Test failed: ${prompt.detail}` };
+}
 
 /**
  * The short form of a status for the list, where every row has to be scannable at a glance. The wording is plainer than
@@ -188,6 +219,8 @@ export const LIST_STATUS: Record<AgentStatus, { symbol: string; text: string; to
   'not-configured': { symbol: '○', text: 'not installed', tone: 'muted' },
   'not-found': { symbol: '○', text: 'not installed', tone: 'bad' },
   'not-logged-in': { symbol: '◐', text: 'not logged in', tone: 'bad' },
+  'test-failed': { symbol: '✗', text: 'test failed', tone: 'bad' },
+  'timed-out': { symbol: '✗', text: 'test timed out', tone: 'bad' },
   unknown: { symbol: '◐', text: 'installed, login unknown', tone: 'muted' },
 };
 
@@ -275,10 +308,15 @@ export function statusRows(
   if (login) {
     rows.push({ label: 'Login', value: login.detail, tone: login.ok ? 'ok' : 'bad' });
   } else if (prompt) {
+    // A timeout says nothing about the login, so it is not blamed for one.
     rows.push({
       label: 'Login',
-      value: prompt.ok ? 'confirmed by the test' : 'see the test result',
-      tone: prompt.ok ? 'ok' : 'bad',
+      value: prompt.ok
+        ? 'confirmed by the test'
+        : prompt.timedOut
+          ? 'unknown (the test timed out)'
+          : 'see the test result',
+      tone: prompt.ok ? 'ok' : prompt.timedOut ? 'muted' : 'bad',
     });
   } else {
     rows.push({ label: 'Login', value: 'not checked (use Run test)', tone: 'muted' });

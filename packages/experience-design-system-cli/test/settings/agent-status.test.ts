@@ -14,6 +14,7 @@ import {
   statusFromChecks,
   statusRows,
   testAgent,
+  testOutcome,
 } from '../../src/tui/settings/agents/agent-status.js';
 
 // These run real throwaway scripts instead of mocking the process layer: what matters is that a path the user typed is
@@ -165,6 +166,68 @@ describe('checking an agent', () => {
     });
   });
 
+  describe('telling the user how a test went', () => {
+    const found = [
+      { step: 'path', ok: true, detail: '/x/claude' },
+      { step: 'version', ok: true, detail: '1.0.0' },
+    ] as const;
+
+    it('says a passing test passed, and how long it took', () => {
+      const outcome = testOutcome([...found, { step: 'prompt', ok: true, detail: 'answered in 2.1s' }]);
+
+      expect(outcome).toEqual({ ok: true, text: 'Test passed: answered in 2.1s' });
+    });
+
+    it('says a failing test failed, with the agent’s own reason', () => {
+      const outcome = testOutcome([...found, { step: 'prompt', ok: false, detail: 'Error: model not found' }]);
+
+      expect(outcome).toEqual({ ok: false, text: 'Test failed: Error: model not found' });
+    });
+
+    it('says a test that ran out of time timed out, not that it failed', () => {
+      const outcome = testOutcome([
+        ...found,
+        { step: 'prompt', ok: false, detail: 'no answer within 60s', timedOut: true },
+      ]);
+
+      expect(outcome?.text).toBe('Test timed out: no answer within 60s');
+    });
+
+    it('says nothing when only the quick checks ran, so no banner appears before a test was asked for', () => {
+      expect(testOutcome(found)).toBeUndefined();
+      expect(testOutcome(undefined)).toBeUndefined();
+    });
+
+    it('does not call a claude that fails its test ready, even though its login check passed', () => {
+      const checks = [
+        ...found,
+        { step: 'login', ok: true, detail: 'logged in' },
+        { step: 'prompt', ok: false, detail: 'Error: model not found' },
+      ] as const;
+
+      expect(statusFromChecks('claude', checks, '')).toBe('test-failed');
+    });
+
+    it('reports a timeout as a timeout on the list and does not blame the login', () => {
+      const checks = [...found, { step: 'prompt', ok: false, detail: 'no answer within 60s', timedOut: true }] as const;
+
+      expect(statusFromChecks('codex', checks, '')).toBe('timed-out');
+      expect(statusRows('codex', checks, '').find((row) => row.label === 'Login')).toMatchObject({
+        value: 'unknown (the test timed out)',
+        tone: 'muted',
+      });
+    });
+
+    it('reports a real agent that exits with an error as a failed test, with its own message', async () => {
+      const failing = await script('codex', 'case "$1" in --version) echo v;; *) echo "boom" >&2; exit 2;; esac');
+
+      const checks = await testAgent('codex', failing, '');
+
+      expect(statusFromChecks('codex', checks, failing)).toBe('test-failed');
+      expect(testOutcome(checks)?.text).toBe('Test failed: boom');
+    });
+  });
+
   describe('an agent that runs', () => {
     it('shows its version', async () => {
       const path = await script('codex', 'echo "codex 9.9.9"');
@@ -218,7 +281,8 @@ describe('checking an agent', () => {
       const checks = await testAgent('codex', path, '');
 
       expect(checks.at(-1)).toMatchObject({ step: 'prompt', ok: false, detail: 'Error: not signed in' });
-      expect(statusFromChecks('codex', checks, path)).toBe('not-logged-in');
+      // A failed prompt is a failed test. It is not assumed to be a login problem, which the agent's own message may or may not be.
+      expect(statusFromChecks('codex', checks, path)).toBe('test-failed');
     });
 
     it('does not leave the tested path behind in the environment', async () => {

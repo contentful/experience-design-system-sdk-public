@@ -13,6 +13,7 @@ import {
   statusFromChecks,
   statusRows,
   testAgent,
+  testOutcome,
   type AgentCheck,
 } from './agent-status.js';
 import { TONE_COLOR } from './AgentStatusBadge.js';
@@ -30,9 +31,41 @@ const FOCUS_ORDER: readonly Focus[] = ['binary', 'model', 'test'];
 const FIELDS: readonly Field[] = ['binary', 'model'];
 const FIELD_LABEL: Record<Field, string> = { binary: 'Command path', model: 'Model' };
 const LABEL_WIDTH = 'Command path'.length;
+const LABEL_GAP = 2;
+const POINTER_WIDTH = 2;
 
 const fieldHint = (name: AgentName, field: Field): string =>
   field === 'binary' ? `(empty: \`${AGENT_HINTS[name]}\` from the PATH)` : `(empty: ${defaultModelLabel(name)})`;
+
+/**
+ * One label and value on the screen's shared grid: a pointer slot, the label column, then the value. Both sections use it,
+ * so every value starts in the same column. `pointer` is empty for the read-only rows, which keeps their slot.
+ */
+function Row({
+  pointer,
+  label,
+  labelProps,
+  children,
+}: {
+  pointer: React.ReactNode;
+  label: string;
+  labelProps?: { bold?: boolean; color?: string };
+  children: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <Box>
+      <Box width={POINTER_WIDTH} flexShrink={0}>
+        {pointer}
+      </Box>
+      <Box width={LABEL_WIDTH + LABEL_GAP} flexShrink={0}>
+        <Text color={PALETTE.muted} {...labelProps}>
+          {label}
+        </Text>
+      </Box>
+      {children}
+    </Box>
+  );
+}
 
 /** A titled block. `note` says what kind it is, and `interactive` colors the title so the editable part stands out. */
 function Section({
@@ -104,10 +137,10 @@ export function AgentDetail({
     writeAgentConfig(config)
       .then(() => {
         applyBinaryOverrides(config);
-        setNotice({ kind: 'success', text: `${AGENT_LABELS[name]} settings saved` });
+        setNotice({ kind: 'success', text: `Saved: ${AGENT_LABELS[name]} settings are written to config.json` });
       })
       .catch((err: unknown) =>
-        setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'Failed to save' }),
+        setNotice({ kind: 'error', text: `Not saved: ${err instanceof Error ? err.message : String(err)}` }),
       )
       .finally(() => setSaving(false));
   };
@@ -115,11 +148,19 @@ export function AgentDetail({
   const runTest = (): void => {
     setTesting(true);
     setNotice(null);
-    setChecks(undefined);
     testAgent(name, settings.binary, settings.model)
-      .then(setChecks)
+      .then((result) => {
+        setChecks(result);
+        const outcome = testOutcome(result);
+        // A test that stopped at the path or version check never reached the prompt, so say what blocked it.
+        setNotice(
+          outcome
+            ? { kind: outcome.ok ? 'success' : 'error', text: outcome.text }
+            : { kind: 'error', text: 'Test not run: the agent could not be started (see Status)' },
+        );
+      })
       .catch((err: unknown) =>
-        setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'The test could not run' }),
+        setNotice({ kind: 'error', text: `Test could not run: ${err instanceof Error ? err.message : String(err)}` }),
       )
       .finally(() => setTesting(false));
   };
@@ -182,68 +223,68 @@ export function AgentDetail({
         {config.defaultAgent === name ? 'This is the default agent.' : `Runs the \`${AGENT_HINTS[name]}\` command.`}
       </Text>
 
+      {(notice || testing || saving) && (
+        <Box marginTop={1}>
+          {testing || saving ? (
+            <Text color={PALETTE.accent}>{testing ? '… Running the test (up to 60s)' : '… Saving'}</Text>
+          ) : (
+            notice && (
+              <Text bold color={notice.kind === 'success' ? PALETTE.success : PALETTE.error}>
+                {notice.kind === 'success' ? '✓' : '✗'} {notice.text}
+              </Text>
+            )
+          )}
+        </Box>
+      )}
+
       <Section title="CONFIGURE" note="you can change these" interactive>
         {FIELDS.map((field) => {
           const isFocused = focused === field;
           const value = settings[field];
+          // An empty field shows its hint in the value's place, not after an empty value, so it stays on the grid.
+          const display =
+            isFocused && editing ? (
+              <TextInput value={value} onChange={(next) => setField(field, next)} onSubmit={() => setEditing(false)} />
+            ) : value ? (
+              <Text bold>{value}</Text>
+            ) : (
+              <Text color={PALETTE.muted}>{fieldHint(name, field)}</Text>
+            );
           return (
-            <Box key={field} gap={1}>
-              {pointer(isFocused)}
-              <Box width={LABEL_WIDTH} flexShrink={0}>
-                <Text bold={isFocused} color={isFocused ? PALETTE.accent : PALETTE.muted}>
-                  {FIELD_LABEL[field]}
-                </Text>
-              </Box>
-              {isFocused && editing ? (
-                <TextInput
-                  value={value}
-                  onChange={(next) => setField(field, next)}
-                  onSubmit={() => setEditing(false)}
-                />
-              ) : (
-                <Text bold>{value}</Text>
-              )}
-              {!value && <Text color={PALETTE.muted}>{fieldHint(name, field)}</Text>}
-            </Box>
+            <Row
+              key={field}
+              pointer={pointer(isFocused)}
+              label={FIELD_LABEL[field]}
+              labelProps={{ bold: isFocused, color: isFocused ? PALETTE.accent : PALETTE.muted }}
+            >
+              {display}
+            </Row>
           );
         })}
-        <Box gap={1}>
-          {pointer(focused === 'test')}
-          <Box width={LABEL_WIDTH} flexShrink={0}>
-            <Text bold={focused === 'test'} color={focused === 'test' ? PALETTE.accent : PALETTE.muted}>
-              Run test
-            </Text>
-          </Box>
+        <Row
+          pointer={pointer(focused === 'test')}
+          label="Run test"
+          labelProps={{ bold: focused === 'test', color: focused === 'test' ? PALETTE.accent : PALETTE.muted }}
+        >
           <Text color={testing ? PALETTE.accent : PALETTE.muted}>
             {testing ? 'running...' : 'sends one small prompt (uses a few tokens)'}
           </Text>
-        </Box>
+        </Row>
       </Section>
 
       <Section title="STATUS" note="read only">
         {statusRows(name, checks, settings.binary).map((row) => (
-          <Box key={row.label} gap={1} paddingLeft={2}>
-            <Box width={LABEL_WIDTH} flexShrink={0}>
-              <Text color={PALETTE.muted}>{row.label}</Text>
-            </Box>
+          <Row key={row.label} pointer={null} label={row.label}>
             <Text color={TONE_COLOR[row.tone]}>{row.value}</Text>
-          </Box>
+          </Row>
         ))}
         {hint && (
-          <Box paddingLeft={2}>
-            <Text color={PALETTE.muted}>Setup: {hint}</Text>
-          </Box>
+          <Row pointer={null} label="Setup">
+            <Text color={PALETTE.muted}>{hint}</Text>
+          </Row>
         )}
       </Section>
 
-      {notice && (
-        <>
-          <Text> </Text>
-          <Text color={notice.kind === 'success' ? PALETTE.success : PALETTE.error}>
-            {notice.kind === 'success' ? '✓' : '✗'} {notice.text}
-          </Text>
-        </>
-      )}
       <Text> </Text>
       <ControlHints
         hints={
