@@ -15,19 +15,18 @@ const MIN_TERMINAL_WIDTH = 164;
 
 const START_ITEMS: { label: string; screen: Screen }[] = [
   { label: 'Import', screen: 'import' },
-  { label: 'Upgrade Version', screen: 'upgrade' },
   { label: 'Settings', screen: 'settings' },
   { label: 'Help', screen: 'help' },
 ];
 
-function upgradeItemDisplay(upgradeCheck: UpgradeCheckResult | undefined): { label: string; color?: string } {
+function versionStatus(upgradeCheck: UpgradeCheckResult | undefined): { text: string; color: string } | undefined {
   if (upgradeCheck?.status === 'update-available') {
-    return { label: `Upgrade Version (v${upgradeCheck.latest} available)`, color: PALETTE.warning };
+    return { text: ` (upgrade available v${upgradeCheck.latest})`, color: PALETTE.warning };
   }
   if (upgradeCheck?.status === 'up-to-date') {
-    return { label: 'Upgrade Version (up to date)', color: PALETTE.muted };
+    return { text: ' (up to date)', color: PALETTE.muted };
   }
-  return { label: 'Upgrade Version' };
+  return undefined;
 }
 
 export function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => void }): React.ReactElement {
@@ -36,7 +35,7 @@ export function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => voi
   const { exit } = useApp();
   const terminalWidth = useTerminalWidth();
   const tooNarrow = terminalWidth < MIN_TERMINAL_WIDTH;
-  const upgradeDisabled = upgradeCheck?.status === 'up-to-date';
+  const status = versionStatus(upgradeCheck);
 
   useEffect(() => {
     checkForUpgrade()
@@ -61,7 +60,6 @@ export function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => voi
     }
     if (key.return) {
       const item = START_ITEMS[focusIdx]!;
-      if (item.screen === 'upgrade' && upgradeDisabled) return;
       onNavigate(item.screen);
       return;
     }
@@ -92,24 +90,20 @@ export function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => voi
           ))}
         </Text>
         <Text color={PALETTE.muted}>{SUBTITLE}</Text>
-        <Text color={PALETTE.muted}>v{VERSION}</Text>
+        <Text color={PALETTE.muted}>
+          v{VERSION}
+          {status && <Text color={status.color}>{status.text}</Text>}
+        </Text>
       </Box>
 
       <Box marginTop={1} justifyContent="center">
         <Box flexDirection="column">
           {START_ITEMS.map((item, i) => {
             const focused = i === focusIdx;
-            const isUpgradeItem = item.screen === 'upgrade';
-            const display = isUpgradeItem ? upgradeItemDisplay(upgradeCheck) : { label: item.label };
-            const dimmed = isUpgradeItem && upgradeDisabled;
             return (
-              <Text
-                key={item.label}
-                bold={focused && !dimmed}
-                color={dimmed ? PALETTE.muted : focused ? PALETTE.accent : display.color}
-              >
+              <Text key={item.label} bold={focused} color={focused ? PALETTE.accent : undefined}>
                 {focused ? `${FOCUS_MARKER} ` : '  '}
-                {display.label}
+                {item.label}
               </Text>
             );
           })}
