@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
-import { PALETTE } from '../../home/home.theme.js';
+import { PALETTE } from '../../theme.js';
 import { ControlHints } from '../../control-hints.js';
 
 export interface FormField<K extends string> {

@@ -1,9 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
-import TextInput from 'ink-text-input';
 import { PALETTE } from '../../theme.js';
-import { readCredentials, writeCredentials, type V1Credentials } from './config-store.js';
-import { startDebugRun, finishDebugRun, startDebugSessionIn } from '../../debug-store.js';
 import { ControlHints } from '../../control-hints.js';
 import { AgentsScreen } from '../agents/AgentScreens.js';
 import { ProjectConfigScreen } from './ProjectConfigScreen.js';

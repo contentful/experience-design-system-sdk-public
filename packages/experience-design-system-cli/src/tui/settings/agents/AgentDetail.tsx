@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import type { AgentName } from '@contentful/experience-design-system-backend-pipeline';
-import { PALETTE } from '../../home/home.theme.js';
+import { PALETTE } from '../../theme.js';
 import { ControlHints } from '../../control-hints.js';
 import type { FormNotice } from '../shared/FieldForm.js';
 import { AGENT_HINTS, AGENT_LABELS, writeAgentConfig, type AgentConfig } from './agent-store.js';

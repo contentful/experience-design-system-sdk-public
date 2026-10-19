@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text } from 'ink';
-import { PALETTE } from '../../home/home.theme.js';
+import { PALETTE } from '../../theme.js';
 import { startDebugRun, finishDebugRun, startDebugSessionIn } from '../../debug-store.js';
 import { FieldForm, type FormField, type FormNotice } from '../shared/FieldForm.js';
 import { readCredentials, writeCredentials, type V1Credentials } from './config-store.js';
