@@ -1,6 +1,5 @@
-import { PALETTE } from '../theme.js';
-
-const BRAND_RAMP = [PALETTE.accent, PALETTE.error, PALETTE.warning] as const;
+// Contentful brand colours. Fixed, so they do not change with the colour mode.
+const BRAND_RAMP = ['#1773EB', '#E44F20', '#FFDA00'] as const;
 
 const BAR_CELL = '━';
 
