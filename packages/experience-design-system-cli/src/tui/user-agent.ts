@@ -1,5 +1,5 @@
 import { buildUserAgent } from '@contentful/experience-design-system-backend-pipeline';
-import { readPackageVersion } from './upgrade/version.js';
+import { readPackageVersion } from './home/version.js';
 
 /**
  * The `X-Contentful-User-Agent` for the CLI's requests to the Contentful API, so writes are attributed to the CLI

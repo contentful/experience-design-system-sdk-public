@@ -27,7 +27,7 @@ Walks a set of source file paths, routes each one to the correct framework extra
 
 ## External calls
 
-None. Pure AST parsing via `ts-morph` and framework-specific parsers in `@contentful/experience-design-system-extraction`.
+None. Pure AST parsing via `ts-morph` and framework-specific parsers under `framework-adapters/`.
 
 ## DSI contribution
 

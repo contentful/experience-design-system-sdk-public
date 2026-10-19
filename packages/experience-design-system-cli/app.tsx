@@ -31,15 +31,14 @@ import { FlowScreen } from './src/tui/import/steps/10-flow/flow/screen.js';
 import { useFlow } from './src/tui/import/steps/10-flow/flow/use-flow.js';
 import { HelpScreen } from './src/tui/help/PageContainer.js';
 import { SettingsScreen } from './src/tui/settings/PageContainer.js';
-import { ConfigurationScreen } from './src/tui/settings/contentful-configuration/ContentfulConfigScreen.js';
+import { ConfigurationScreen } from './src/tui/settings/configuration/ConfigurationScreen.js';
 import { OptInAnalyticsScreen } from './src/tui/settings/opt-in-analytics/screen.js';
-import { UpgradeScreen } from './src/tui/upgrade/PageContainer.js';
 import { DebugModeScreen } from './src/tui/settings/debug-mode/screen.js';
 import {
   readCredentials,
   writeCredentials,
   type V1Credentials,
-} from './src/tui/settings/contentful-configuration/config-store.js';
+} from './src/tui/settings/configuration/project/project-store.js';
 
 export type Screen =
   | 'start'
@@ -48,8 +47,7 @@ export type Screen =
   | 'settings'
   | 'settings-configuration'
   | 'settings-opt-in-analytics'
-  | 'settings-debug-mode'
-  | 'upgrade';
+  | 'settings-debug-mode';
 
 /** What the import was started with: the paths the screens collected and the flags from the command line. */
 interface ImportLaunch extends Partial<ImportOptions> {
@@ -396,8 +394,6 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
       );
     case 'help':
       return <HelpScreen onDone={goToStart} />;
-    case 'upgrade':
-      return <UpgradeScreen onDone={goToStart} />;
     case 'settings':
       return <SettingsScreen onNavigate={setScreen} onBack={goToStart} />;
     case 'settings-configuration':
