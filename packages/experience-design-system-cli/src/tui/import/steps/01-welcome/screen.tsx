@@ -24,7 +24,7 @@ const OVERVIEW = [
   { label: "Step 2", description: "Review what was extracted", ai: false },
   {
     label: "Step 3",
-    description: "Generate CDF definitions with Claude",
+    description: "Generate component definitions",
     ai: true,
   },
   { label: "Step 4", description: "Review generated definitions", ai: false },
