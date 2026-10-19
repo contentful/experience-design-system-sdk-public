@@ -73,11 +73,12 @@ async function generateOne(
 
   const inputHash = hashString(JSON.stringify(component));
 
+  const componentBuckets = bucketComponentProps(component);
   const prompt = await buildPrompt({
     skill: 'components',
     mode: 'autonomous',
     rawComponentsInline: JSON.stringify({ ...component, props: component.props.map(stripPropProvenance) }),
-    propBucketsInline: JSON.stringify(bucketComponentProps(component)),
+    propBucketsInline: JSON.stringify(componentBuckets),
     outDir: '',
     componentName: component.name,
     skillPathOverride,
@@ -89,6 +90,7 @@ async function generateOne(
   const cached = onCacheLookup?.(inputHash, promptHash);
   if (cached) return { entry: cached, warnings: [] };
 
+  options.onDebugEvent?.('prop-buckets.generate', { ...componentBuckets });
   const invoker = createLocalCliAgentInvoker();
   let agentResult;
   try {

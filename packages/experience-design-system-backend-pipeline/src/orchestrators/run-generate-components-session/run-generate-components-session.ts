@@ -94,6 +94,7 @@ export async function runGenerateComponentsSession(
           precomputedCachedNames: request.precomputedCachedNames ?? new Set(),
           allowedComponentNames,
           onProgress: request.onProgress,
+          onDebugEvent: request.onDebugEvent,
         },
         component,
         index,

@@ -16,6 +16,7 @@ import {
   storeSelectCache,
   stripPropProvenance,
 } from '@contentful/experience-design-system-backend-pipeline';
+import { recordDebugEvent } from '../../../debug-store.js';
 import { findSkillPath } from './find-skill-path.js';
 
 const SELECT_SKILL_PATH = findSkillPath('select-components.md');
@@ -84,6 +85,12 @@ export async function runSelection(options: SelectionOptions): Promise<void> {
   if (componentsToRun.length > 0) {
     const invoker = createLocalCliAgentInvoker({});
 
+    const selectBuckets = bucketComponentsProps(componentsToRun);
+    await Promise.all(
+      selectBuckets.map((assignment) =>
+        recordDebugEvent('prop-buckets.select', { sessionId: options.sessionId, ...assignment }),
+      ),
+    );
     const prompt = await buildPrompt({
       skill: 'select',
       mode: 'autonomous',
@@ -92,7 +99,7 @@ export async function runSelection(options: SelectionOptions): Promise<void> {
         null,
         2,
       ),
-      propBucketsInline: JSON.stringify(bucketComponentsProps(componentsToRun)),
+      propBucketsInline: JSON.stringify(selectBuckets),
       outDir: process.cwd(),
       ...(options.promptText !== undefined
         ? { skillContentOverride: options.promptText }

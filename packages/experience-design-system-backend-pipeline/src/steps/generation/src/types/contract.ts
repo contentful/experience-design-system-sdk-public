@@ -1,3 +1,4 @@
+import type { AgentDebugEvent } from '../../../../agents/types/agent-run.js';
 import type { RawComponentDefinition } from '../../../extraction/src/types/component.js';
 import type { AgentName } from '../../../../agents/index.js';
 import type { CDFComponentEntry, DTCGTokenEntry } from '../../../shared/index.js';
@@ -19,6 +20,7 @@ export interface RunCdfGenerationServiceOptions {
   onCacheLookup?: (inputHash: string, promptHash: string) => CDFComponentEntry | null;
   onCacheStore?: (inputHash: string, promptHash: string, entry: CDFComponentEntry) => void;
   onWarning?: (message: string) => void;
+  onDebugEvent?: AgentDebugEvent;
 }
 
 export interface RunCdfGenerationServiceResult {

@@ -1,3 +1,4 @@
+import type { AgentDebugEvent } from '../../agents/types/agent-run.js';
 import type { ExistingContentfulEntities } from '../../steps/generation/src/types/existing-entities.js';
 
 export type GenerateComponentsProgress =
@@ -76,6 +77,8 @@ export interface RunGenerateComponentsSessionRequest {
   precomputedCachedNames?: ReadonlySet<string>;
 
   onProgress?: (event: GenerateComponentsProgress) => void;
+
+  onDebugEvent?: AgentDebugEvent;
 }
 
 export interface RunGenerateComponentsSessionResponse {

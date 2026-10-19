@@ -41,6 +41,8 @@ Component-analysis data between pipeline steps flows through a local SQLite sess
 
 Raw prop definitions retain optional DOM-forwarding provenance in the session database: true, false, or unknown. Selection and component generation derive advisory prop buckets from that evidence, then omit the provenance flag from raw component data in agent prompts; the buckets are context rather than inclusion or category decisions.
 
+With Debug Mode enabled, the CLI records `prop-buckets.select` and `prop-buckets.generate` events in `.contentful/<session>/debug/events.jsonl`, including the pipeline session ID. The backend accepts optional caller-owned event sinks; it does not own a log file. Generation waits for these diagnostic writes on success and failure, and disabled or failed debug logging does not stop the import.
+
 A separate JSON file at `~/.contentful/experience-design-system-cli/state/runs.json` records each successful wizard session (id, project path, save path, push target, component count). No command lists these records.
 
 When a token file is supplied (the token-input screen), the wizard performs token generation internally before it extracts and generates components. Token mapping needs the generated CDF and DTCG data in the same pipeline session.

@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -78,6 +78,57 @@ describe('the debug store', () => {
     expect(first).toMatch(/\.contentful\/\d\d-\d\d-\d{4}-session-1\/dsi-import-1$/);
     expect(second).toMatch(/\/dsi-import-2$/);
     expect(existsSync(first) && existsSync(second)).toBe(true);
+  });
+
+  it('appends inspectable events without losing concurrent writes and redacts credentials', async () => {
+    const store = await load();
+    await store.startDebugSessionIn(base);
+    const dir = store.currentDebugSessionDir()!;
+    expect(typeof store.recordDebugEvent).toBe('function');
+    await Promise.all(
+      Array.from({ length: 12 }, (_, index) =>
+        store.recordDebugEvent('prop-buckets.select', {
+          component: `Field${index}`,
+          customPropNames: ['label'],
+          cma_token: 'example-token',
+        }),
+      ),
+    );
+    const path = join(dir, 'events.jsonl');
+    const events = (await readFile(path, 'utf8'))
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+    expect(events).toHaveLength(12);
+    expect(new Set(events.map((event) => event.payload.component)).size).toBe(12);
+    expect(
+      events.every(
+        (event) => event.event === 'prop-buckets.select' && event.payload.cma_token === '[present, 13 chars]',
+      ),
+    ).toBe(true);
+    expect((await stat(path)).mode & 0o777).toBe(0o600);
+  });
+
+  it('records nothing without a session or when Debug Mode was disabled after starting it', async () => {
+    const store = await load();
+    expect(typeof store.recordDebugEvent).toBe('function');
+    await store.recordDebugEvent('prop-buckets.select', { component: 'Field' });
+    expect(store.currentDebugSessionDir()).toBeUndefined();
+    await store.startDebugSessionIn(base);
+    const dir = store.currentDebugSessionDir()!;
+    await writeFile(join(home, 'config.json'), JSON.stringify({ debugMode: { enabled: false } }));
+    await store.recordDebugEvent('prop-buckets.select', { component: 'Field' });
+    expect(existsSync(join(dir, 'events.jsonl'))).toBe(false);
+  });
+
+  it('does not fail the import when the event log cannot be written', async () => {
+    const store = await load();
+    await store.startDebugSessionIn(base);
+    const dir = store.currentDebugSessionDir()!;
+    await rm(dir, { recursive: true });
+    await writeFile(dir, 'not a directory');
+    expect(typeof store.recordDebugEvent).toBe('function');
+    await expect(store.recordDebugEvent('prop-buckets.generate', { component: 'Field' })).resolves.toBeUndefined();
   });
 
   it('writes nothing while Debug Mode is off', async () => {

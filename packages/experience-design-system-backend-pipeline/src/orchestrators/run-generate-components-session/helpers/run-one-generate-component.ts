@@ -1,3 +1,4 @@
+import type { AgentDebugEvent } from '../../../agents/types/agent-run.js';
 import { bucketComponentProps } from '@contentful/experience-design-system-extraction';
 import { stripPropProvenance } from '../../../agents/prompts/helpers/strip-prop-provenance.js';
 import type { DatabaseSync } from 'node:sqlite';
@@ -45,6 +46,7 @@ export interface RunOneGenerateComponentOptions {
   precomputedCachedNames: ReadonlySet<string>;
   allowedComponentNames: ReadonlySet<string>;
   onProgress: ((event: GenerateComponentsProgress) => void) | undefined;
+  onDebugEvent?: AgentDebugEvent;
 }
 
 export async function runOneGenerateComponent(
@@ -128,6 +130,9 @@ export async function runOneGenerateComponent(
     }
   }
 
+  const componentBuckets = bucketComponentProps(component);
+  options.onDebugEvent?.('prop-buckets.generate', { ...componentBuckets });
+
   const rawComponentsInline = JSON.stringify(
     [
       {
@@ -154,7 +159,7 @@ export async function runOneGenerateComponent(
     skill: 'components',
     mode: 'autonomous',
     rawComponentsInline,
-    propBucketsInline: JSON.stringify(bucketComponentProps(component)),
+    propBucketsInline: JSON.stringify(componentBuckets),
     tokensInline,
     tokenMapInline,
     outDir: process.cwd(),

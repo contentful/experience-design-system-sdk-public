@@ -12,6 +12,10 @@ export async function runSelectionService(options: RunSelectionServiceOptions): 
   const warnings: string[] = [];
   const invoker = createLocalCliAgentInvoker({});
 
+  const selectBuckets = bucketComponentsProps(components);
+  for (const assignment of selectBuckets) {
+    options.onDebugEvent?.('prop-buckets.select', { ...assignment });
+  }
   const prompt = await buildPrompt({
     skill: 'select',
     mode: 'autonomous',
@@ -20,7 +24,7 @@ export async function runSelectionService(options: RunSelectionServiceOptions): 
       null,
       2,
     ),
-    propBucketsInline: JSON.stringify(bucketComponentsProps(components)),
+    propBucketsInline: JSON.stringify(selectBuckets),
     outDir: process.cwd(),
     ...(options.promptPath ? { skillPathOverride: options.promptPath } : {}),
     ...(options.promptText !== undefined ? { skillContentOverride: options.promptText } : {}),

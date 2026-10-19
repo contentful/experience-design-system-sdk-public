@@ -1,3 +1,4 @@
+import type { AgentDebugEvent } from '../../../../agents/types/agent-run.js';
 import type { RawComponentDefinition } from '../../../extraction/src/types/component.js';
 import type { AgentName } from '../../../../agents/index.js';
 
@@ -30,6 +31,7 @@ export interface RunSelectionServiceOptions {
     reason: string | null,
   ) => void;
   onWarning?: (message: string) => void;
+  onDebugEvent?: AgentDebugEvent;
 }
 
 export interface SelectComponentsEndpointRequest extends Omit<RunSelectionServiceOptions, 'agent'> {

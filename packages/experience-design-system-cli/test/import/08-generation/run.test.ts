@@ -3,6 +3,9 @@ import type {
   AgentAuthStatus,
   RunGenerateComponentsSessionResponse,
 } from '@contentful/experience-design-system-backend-pipeline';
+const debug = vi.hoisted(() => ({ record: vi.fn(async (_event: string, _payload?: Record<string, unknown>) => {}) }));
+vi.mock('../../../src/tui/debug-store.js', () => ({ recordDebugEvent: debug.record }));
+
 import { runGeneration, type GenerationDeps } from '../../../src/tui/import/steps/08-generation/run.js';
 import type { GenerationInput, GenerationProgress } from '../../../src/tui/import/steps/08-generation/types.js';
 
@@ -294,6 +297,39 @@ describe('runGeneration', () => {
         message: 'db locked',
       });
     });
+  });
+
+  it('persists generation events before reporting a failed generation', async () => {
+    let finishWrite!: () => void;
+    debug.record.mockClear().mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finishWrite = resolve;
+      }),
+    );
+    const { deps } = fakes({
+      runGenerate: vi.fn(async (request) => {
+        request.onDebugEvent?.('prop-buckets.generate', { component: 'Button', customPropNames: ['label'] });
+        throw new Error('agent exited');
+      }) as GenerationDeps['runGenerate'],
+    });
+    let settled = false;
+    const run = runGeneration(input(), () => {}, deps).then((result) => {
+      settled = true;
+      return result;
+    });
+    try {
+      await vi.waitFor(() =>
+        expect(debug.record).toHaveBeenCalledWith('prop-buckets.generate', {
+          sessionId: 'extract-1',
+          component: 'Button',
+          customPropNames: ['label'],
+        }),
+      );
+      expect(settled).toBe(false);
+    } finally {
+      finishWrite();
+    }
+    expect(await run).toEqual({ ok: false, step: 'generate components', message: 'agent exited' });
   });
 
   describe('progress', () => {

@@ -33,6 +33,9 @@ vi.mock('@contentful/experience-design-system-backend-pipeline', async (importOr
   };
 });
 
+const debug = vi.hoisted(() => ({ record: vi.fn(async () => {}) }));
+vi.mock('../../../src/tui/debug-store.js', () => ({ recordDebugEvent: debug.record }));
+
 import { runSelection } from '../../../src/tui/import/steps/06-extraction/selection.js';
 
 const component = (name: string) => ({
@@ -85,6 +88,7 @@ describe('runSelection', () => {
     previousDbPath = process.env.EDS_PIPELINE_DB_PATH;
     process.env.EDS_PIPELINE_DB_PATH = join(dir, 'pipeline.db');
     agent.invocations.length = 0;
+    debug.record.mockClear();
     agent.result = { stdout: '', stderr: '', exitCode: 0, timedOut: false };
   });
 
@@ -158,6 +162,11 @@ describe('runSelection', () => {
         otherPropNames: [],
       },
     ]);
+    expect(debug.record).toHaveBeenCalledWith('prop-buckets.select', {
+      sessionId,
+      ...JSON.parse(advisory![1]!)[0],
+    });
+    expect(debug.record).toHaveBeenCalledTimes(1);
     const saved = openPipelineDb();
     try {
       expect(loadRawComponents(saved, sessionId)[0]?.props[0]?.domAttribute).toBe(true);
@@ -181,6 +190,7 @@ describe('runSelection', () => {
     seed([]);
     await runSelection(options());
     expect(agent.invocations).toHaveLength(0);
+    expect(debug.record).not.toHaveBeenCalled();
   });
 
   it('does not ask the agent again for components it already decided', async () => {

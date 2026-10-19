@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, writeFile } from 'node:fs/promises';
 import { existsSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { readSettings } from '@contentful/experience-design-system-types/config';
@@ -143,6 +143,19 @@ function redact(value: Record<string, unknown>): Record<string, unknown> {
     clone.cma_token = typeof raw === 'string' && raw.length > 0 ? `[present, ${raw.length} chars]` : '[not set]';
   }
   return clone;
+}
+
+/** Append an event to the current debug session; disabled or failed logging must not stop the import. */
+export async function recordDebugEvent(event: string, payload?: Record<string, unknown>): Promise<void> {
+  try {
+    const root = currentDebugSessionDir();
+    if (!root || !(await isDebugModeEnabled())) return;
+    const content = JSON.stringify({ timestamp: new Date().toISOString(), event, payload: redact(payload ?? {}) });
+    await mkdir(root, { recursive: true });
+    await appendFile(join(root, 'events.jsonl'), `${content}\n`, { mode: 0o600 });
+  } catch {
+    // Debug logging must never get in the way of the user.
+  }
 }
 
 export function startDebugRun({

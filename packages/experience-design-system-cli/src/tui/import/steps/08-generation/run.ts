@@ -12,6 +12,7 @@ import {
   type GenerateComponentsProgress,
   type RunGenerateComponentsSessionResponse,
 } from '@contentful/experience-design-system-backend-pipeline';
+import { recordDebugEvent } from '../../../debug-store.js';
 import { findSkillPath } from '../06-extraction/find-skill-path.js';
 import { agentAuthMessage } from '../06-extraction/logic.js';
 import { prepareMapTokens } from './map-tokens.js';
@@ -69,6 +70,7 @@ export async function runGeneration(
     return fail(`${input.agent} auth check`, agentAuthMessage(input.agent, auth));
   }
 
+  const debugWrites: Promise<void>[] = [];
   let generated: RunGenerateComponentsSessionResponse;
   try {
     generated = await deps.runGenerate({
@@ -81,9 +83,14 @@ export async function runGeneration(
       existingEntitiesPath: input.existingEntitiesPath,
       precomputedCachedNames: new Set(handedOverNames),
       onProgress: (event) => update({ components: applyProgressEvent(event, progress.components, accepted.length) }),
+      onDebugEvent: (event, payload) => {
+        debugWrites.push(recordDebugEvent(event, { ...payload, sessionId: input.sessionId }));
+      },
     });
   } catch (error) {
     return fail('generate components', errorMessage(error));
+  } finally {
+    await Promise.all(debugWrites);
   }
   if (generated.emptySession) return fail('generate components', 'no raw components in session');
   if (!generated.allOk) {
