@@ -49,7 +49,9 @@ describe('generate-tokens.md', () => {
     const content = await readSkill('generate-tokens.md');
     expect(content).toMatch(/ambiguous/i);
     expect(content).toMatch(/inferredKind/);
-    expect(content).toMatch(/developer/i);
+    expect(content).toMatch(/use its name as context/i);
+    expect(content).toMatch(/Document your reasoning in `description`/i);
+    expect(content).toMatch(/WARNING: type unknown/);
   });
 
   it('documents the token-name sidecar', async () => {
@@ -58,10 +60,15 @@ describe('generate-tokens.md', () => {
     expect(content).toMatch(/sidecar|mapping|name.*map/i);
   });
 
-  it('instructs agent to run CLI validation loop', async () => {
+  it('requires pre-emit validation and preserves unresolved warnings', async () => {
     const content = await readSkill('generate-tokens.md');
-    expect(content).toContain('validate --tokens');
-    expect(content).toMatch(/iterate|loop|re-run|repeat/i);
+    expect(content).toContain('Before emitting any tool calls, verify:');
+    expect(content).toContain('Every raw token in the input has exactly one `set_token` call');
+    expect(content).toContain('No duplicate paths.');
+    expect(content).toMatch(/iterate on any warning the supplied input can resolve/i);
+    expect(content).toContain('Preserve unresolved warnings in the token `description`');
+    expect(content).toContain('do not guess values');
+    expect(content).not.toMatch(/(?:experience-design-system-cli|experiences)\s+print\s+validate\b/);
   });
 });
 
@@ -117,10 +124,15 @@ describe('generate-components.md', () => {
     expect(content).toMatch(/exclud|omit|filter|skip/i);
   });
 
-  it('instructs agent to run CLI validation loop', async () => {
+  it('requires pre-emit validation and preserves unresolved warnings', async () => {
     const content = await readSkill('generate-components.md');
-    expect(content).toContain('validate --components');
-    expect(content).toMatch(/iterate|loop|re-run|repeat/i);
+    expect(content).toContain('Before emitting any tool calls, verify:');
+    expect(content).toContain('Every prop in the input has exactly one `classify_prop` or `exclude_prop` call');
+    expect(content).toContain('Every slot has exactly one `classify_slot` call');
+    expect(content).toMatch(/iterate on any warning the supplied evidence can resolve/i);
+    expect(content).toContain('Preserve unresolved warnings in the relevant `description` or `reason`');
+    expect(content).toContain('do not invent values');
+    expect(content).not.toMatch(/(?:experience-design-system-cli|experiences)\s+print\s+validate\b/);
   });
 
   it('stops emitting values for token-typed props', async () => {

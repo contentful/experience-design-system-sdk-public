@@ -6,22 +6,18 @@ This file tells AI coding agents what they need to know to be productive in this
 
 Nx monorepo with six packages:
 
-- `packages/experience-design-system-cli` — the published CLI (`@contentful/experience-design-system-cli`, bins `experiences`, `exo`, `experience-design-system-cli`). An Ink TUI; `experiences import` and bare `experiences` open it. It forwards `apply`, `setup`, `doctor`, `print`, `map` and `__*` to the bundled legacy CLI
-- `packages/experience-design-system-cli-legacy` — the previous CLI and import wizard (`@contentful/experience-design-system-cli-legacy`). Private and never published; its build output is copied into `packages/experience-design-system-cli/legacy/` and spawned from there. It is being ported into the new CLI and will then be deleted
-- `packages/experience-design-system-extraction` — component extraction engine (ts-morph, framework parsers); a runtime dependency of the CLI
-- `packages/experience-design-system-generation` — agent-invocation and skill-prompt engine; used internally by the import wizard
-- `packages/experience-design-system-client` — generated API client for the Experience Design System Integrations API (from `openapi.json` via `@hey-api/openapi-ts`); a runtime dependency of the CLI's `apply` command
-- `packages/experience-design-system-types` — shared types, schemas, validation
+- `packages/experience-design-system-cli` — the published CLI (`@contentful/experience-design-system-cli`, bins `experiences`, `exo`, `experience-design-system-cli`) and the interactive import wizard
+- `packages/experience-design-system-backend-pipeline` — extraction orchestration, generation, session persistence, in-process validation, and apply operations called directly by the wizard
+- `packages/experience-design-system-extraction` — component extraction engine (ts-morph, framework parsers), used by the backend pipeline
+- `packages/experience-design-system-generation` — source for the generation and selection skill files copied into the CLI package at build time
+- `packages/experience-design-system-client` — generated client for the Experience Design System Integrations API, used by backend apply operations
+- `packages/experience-design-system-types` — shared types, schemas, and validation
 
-The CLI extracts React/Vue/Astro/Stencil/Web Component definitions from customer codebases using the TypeScript compiler API (ts-morph), invokes a coding agent to produce CDF artifacts, validates them against JSON schemas, and provides interactive terminal UIs (Ink) for reviewing, finalizing, and pushing them to Contentful ExO.
+The supported developer flow is the interactive `experiences import` wizard. It collects project, token, agent, and credential inputs; runs optional token generation, extraction and selection; presents a scope gate; generates accepted definitions; maps tokens when eligible; then reviews, saves, previews, and pushes the result. The CLI calls backend-pipeline functions directly in the same process; extraction and generation are not separate CLI routes.
 
-The supported import pipeline is internal to `experiences import`: **extract → selection agent → internal generation → validate → apply.** When a raw token source is supplied (the token-input screen), the wizard performs token generation internally before component extraction and generation, then runs token mapping after generation. The extraction and selection stages are implementation modules, not public commands.
+Unless stated otherwise, `src/...` paths below are relative to `packages/experience-design-system-cli`.
 
-Unless stated otherwise, `src/...` paths below are relative to `packages/experience-design-system-cli-legacy`.
-
-Legacy commands: `import`, `apply <file>`, `setup`, `doctor`, `build`. Hidden internal commands the wizard spawns: `__extract`, `__generate`, `map tokens`, `print`. The former `runs`, `session` and `analyze` commands no longer exist.
-
-### Wizard step machine (`packages/experience-design-system-cli-legacy/src/import/tui/`)
+### Wizard step machine (`packages/experience-design-system-cli/src/tui/import/steps/`)
 
 ```
 extracting (selection agent runs here)
@@ -29,7 +25,7 @@ extracting (selection agent runs here)
         → previewing → preview-gate → pushing → done
 ```
 
-The Welcome, Token input, Path validation and Credentials screens live in the new CLI (`packages/experience-design-system-cli/src/tui/import/steps/`), which validates and saves the credentials. The new CLI also runs extraction, shows the scope gate, generates the definitions and then runs the review, save, preview and push itself (`steps/09-review`, `steps/10-flow`) in the same process, from what the earlier stages produced (`ImportHandoff` in `@contentful/experience-design-system-types/handoff`); choosing skip on the Credentials screen sets `credentialsSkipped` in it, which saves files only. Choosing `[s]` on `credentials` saves files only: the preview is bypassed and push is refused.
+The CLI owns the full wizard flow in one process, including extraction, the scope gate, generation, review, save, preview, and push. Choosing skip on the Credentials screen sets `credentialsSkipped` in the `ImportHandoff` and saves files without previewing or pushing.
 
 A single human review gate (`scope-gate`) precedes generation. The final-review step edits names, `$description`, `$default`, `$allowedComponents` and `$values` inline, with source and rationale panels. After final-review the flow always saves one combined `components.json` CDF and, unless credentials were skipped, previews and pushes it.
 
@@ -39,7 +35,7 @@ Each successful wizard run appends a record to `~/.contentful/experience-design-
 
 ### Import options
 
-The public `experiences import` opens the TUI and takes `--agent`, `--prompt <stage=value>` and `--no-cache`; the project and tokens file are collected on the TUI's own screens. The bundled legacy `import` command (still shipped with the legacy package, no longer launched by the TUI) also accepts `--project` and `--tokens`. `--model`, `--composition-map`, `--skip-map-tokens` and `--raw-tokens` were removed and are rejected. The model is passed as `--agent agent:model`; it resolves `--agent` → `credentials.json` → built-in default, and `EDS_AGENT_MODEL_<AGENT>` sets a per-agent model.
+`experiences import` takes `--agent`, `--prompt <stage=value>` and `--no-cache`; the project and token files are collected in the TUI. The selected agent and optional model use `--agent agent:model`; resolution is flag → `credentials.json` → built-in default, and `EDS_AGENT_MODEL_<AGENT>` sets a per-agent model.
 
 ## Build System
 
@@ -51,15 +47,9 @@ pnpm test           # test all packages
 pnpm lint           # lint all packages
 
 # Single package (preferred when iterating)
-pnpm -F @contentful/experience-design-system-cli build            # the published CLI (also builds legacy and copies it in)
-pnpm -F @contentful/experience-design-system-cli-legacy test
-pnpm -F @contentful/experience-design-system-cli-legacy typecheck
-```
-
-The legacy CLI's compiled output lands in `packages/experience-design-system-cli-legacy/dist/src/`, not `dist/`. This is because `@nx/js:tsc` preserves the `src/` prefix. If you see Nx cache issues after structural changes, run:
-
-```bash
-pnpm -F @contentful/experience-design-system-cli-legacy clean && pnpm build
+pnpm -F @contentful/experience-design-system-cli build
+pnpm -F @contentful/experience-design-system-backend-pipeline test
+pnpm -F @contentful/experience-design-system-backend-pipeline typecheck
 ```
 
 ## TypeScript
@@ -71,9 +61,9 @@ pnpm -F @contentful/experience-design-system-cli-legacy clean && pnpm build
 
 ## Pipeline Session Database
 
-All intermediary data between commands flows through a SQLite session database — there are no intermediary JSON files. The database is at `~/.contentful/experience-design-system-cli/pipeline.db` and is accessed via Node's built-in `DatabaseSync` (not `better-sqlite3`).
+All intermediary data between import stages flows through a SQLite session database — there are no intermediary JSON files for extracted component data. The database is at `~/.contentful/experience-design-system-cli/pipeline.db` and is accessed via Node's built-in `DatabaseSync` (not `better-sqlite3`).
 
-The session layer lives in `src/session/db.ts`:
+The session layer lives in `packages/experience-design-system-backend-pipeline/src/persistence/src/session/repositories/db.ts`:
 
 - `openPipelineDb(path?)` — opens (and initializes) the DB; uses `EDS_PIPELINE_DB_PATH` env or the default path
 - `getOrCreateSession(db, sessionFlag, name, hints)` — creates or resumes a session
@@ -82,11 +72,11 @@ The session layer lives in `src/session/db.ts`:
 - `storeRawComponents(db, sessionId, components)` — idempotent DELETE+INSERT; replaces all raw components for the session
 - `loadRawComponents(db, sessionId)` — returns `RawComponentDefinition[]` from the session
 
-The standalone `map tokens` stage (`src/map-tokens/`) runs after generated CDF and DTCG data are in the session and before artifacts are printed or applied. It deterministically resolves a canonical DTCG path, or a unique token-kind-compatible normalized terminal member, from `tokenReference` when present and otherwise from the extracted default. It preserves the extracted default in `raw_props`; unresolved or ambiguous matches remain unchanged and produce diagnostics. It then optionally invokes the coding agent to infer `$token.allowed` paths for design-category token properties. `--skip-agent` skips only that agentic inference; deterministic default resolution still runs.
+The backend token-mapping stage (`packages/experience-design-system-backend-pipeline/src/steps/generation/src/controller/map-tokens/`) runs inside import after component generation when eligible. It deterministically resolves a canonical DTCG path, or a unique token-kind-compatible normalized terminal member, from `tokenReference` when present and otherwise from the extracted default. It preserves the extracted default in `raw_props`; unresolved or ambiguous matches remain unchanged and produce diagnostics. The stage can also invoke the coding agent to infer `$token.allowed` paths for design-category token properties; deterministic default resolution is independent of that inference.
 
 The session stores the default projection in the `raw_token_name_paths` sidecar (`raw_name`, canonical DTCG `path`, and `source` of `automatic` or `manual`). `raw_prop_token_paths` stores ordered token-path lists per component property and records whether a list is an agent suggestion or a review decision. CDF loading projects a compatible resolved path into `$default` while retaining the raw extracted default when no valid resolution exists; only non-empty allowed lists are projected as `$token.allowed`.
 
-**Do not write intermediary JSON files for extracted component data.** The handoff from extraction to internal generation flows through the session DB. The explicit `tokens.json` produced by optional token preparation is a separate input sidecar for component generation or apply.
+**Do not write intermediary JSON files for extracted component data.** The handoff from extraction to generation flows through the session DB. The `tokens.json` file produced by token generation is an output artifact, separate from that component-data handoff.
 
 **`DatabaseSync` synchronous write invariant:** all multi-statement operations use explicit `BEGIN`/`COMMIT`/`ROLLBACK`. SIGINT and crash cannot produce partially-written state. Do not add async alternatives to this path.
 
@@ -109,26 +99,28 @@ When adding a new DOM attribute wrapper type (e.g., `TableHTMLAttributes`):
 
 ## Import Generation Internals
 
-The generation package (`packages/experience-design-system-generation`) owns agent invocation and prompt building; the CLI's `src/generate/command.ts` calls it:
+The CLI owns wizard routing and calls the backend pipeline directly. The backend pipeline owns the prompt builder, agent invocation, generation, and persistence:
 
-- `src/prompt-builder.ts` — combines a skill file with a runtime preamble; walks up from the compiled output to locate `skills/`
-- `src/agent-runner.ts` — spawns the agent; parses tool-call output
-- `src/agent-invoker.ts`, `src/agent-names.ts`, `src/progress.ts` — agent selection and progress reporting
-- `skills/generate-components.md`, `skills/generate-tokens.md`, `skills/select-components.md` and `skills/map-tokens.md` — the skill instructions shipped with the package
+- `packages/experience-design-system-cli/src/tui/import/steps/06-extraction/` runs extraction and selection, and starts optional token generation
+- `packages/experience-design-system-cli/src/tui/import/steps/08-generation/` runs component generation and eligible token mapping
+- `packages/experience-design-system-backend-pipeline/src/agents/prompts/` builds prompts from a skill file and runtime preamble; its prompt loader resolves bundled fallback skills
+- `packages/experience-design-system-backend-pipeline/src/orchestrators/` owns component and token generation sessions
+- `packages/experience-design-system-generation/skills/` is the source of the skill files copied into `packages/experience-design-system-cli/skills/` by the CLI `copy-assets` target
+- Matching fallback skill copies live under `packages/experience-design-system-backend-pipeline/src/agents/skills/`; the CLI passes its packaged skill paths to backend generation
 
-The CLI's `src/generate/command.ts` handles validation, session resolution, caching, concurrency, retries and writing results to the session DB.
+Generated data stays in the backend session database until the CLI review and save flow. Generated component and token data are validated within the import path; generation agents use the pre-emit output checklist and warning rules rather than a separate CLI validation route.
 
 Raw components are loaded from the session DB and embedded as an inline JSON block in the prompt — the agent never reads a file path. `PromptOptions.rawComponentsInline` carries this string; `rawComponentsPath` does not exist.
 
-The output protocol for internal component and token generation: the agent emits one JSON tool-call object per line to stdout (no sentinel markers). `parseToolCallLines()` in `agent-runner.ts` handles line-by-line parsing.
+The output protocol for component and token generation: the agent emits one JSON tool-call object per line to stdout. The backend pipeline parses these lines in `packages/experience-design-system-backend-pipeline/src/agents/parsers/parse-tool-calls.ts` and `parse-token-tool-calls.ts`.
 
-The output protocol for the selection agent: the agent emits exactly one JSON object on a single line — either `{"tool":"select_component",...}` or `{"tool":"reject_component",...}`. `parseSelectToolCallLines()` in `agent-runner.ts` handles parsing.
+The output protocol for the selection agent: the agent emits exactly one JSON object on a single line — either `{"tool":"select_component",...}` or `{"tool":"reject_component",...}`. The backend pipeline parses it in `packages/experience-design-system-backend-pipeline/src/agents/parsers/parse-select-tool-calls.ts`.
 
 **Do not use agent SDKs or APIs** — the import wizard invokes agents as subprocesses only. This is a firm constraint.
 
 ## The Selection Agent
 
-`packages/experience-design-system-cli/src/tui/import/steps/06-extraction/selection.ts` runs in the new CLI during the extraction stage, once `__extract` has stored the components. It makes one agent call for the components it has not decided yet to decide whether each belongs in Contentful ExO as a Component Type. The decisions feed the scope gate (`steps/07-scope-gate`), where the operator confirms or changes them.
+`packages/experience-design-system-cli/src/tui/import/steps/06-extraction/selection.ts` runs during extraction after the backend pipeline creates a session. It makes one agent call for undecided components to decide whether each belongs in Contentful ExO as a Component Type. The decisions feed the scope gate (`steps/07-scope-gate`), where the operator confirms or changes them.
 
 - Skips components whose decision is cached (keyed on the component, the prompt and the CLI version); `--no-cache` asks again for everything
 - Times out after 5 minutes (`EDS_AGENT_TIMEOUT_MS`), and writes nothing if the call fails
@@ -137,39 +129,26 @@ The output protocol for the selection agent: the agent emits exactly one JSON ob
 
 **Selection criteria**: accept any component that renders visible UI — atoms, molecules, and organisms are all valid Component Types in ExO. Reject only: React hooks, pure context providers, A/B testing or variant-routing wrappers (whose _entire_ purpose is routing), analytics trackers, security utilities. A component is not rejected merely because it has few props, is low-level, or contains some personalization-related props.
 
-The skill file `skills/select-components.md` in the generation package provides detailed instructions and examples. The preamble is built by `buildSelectAutonomousPreamble()` in `prompt-builder.ts`.
+The skill file `packages/experience-design-system-generation/skills/select-components.md` provides detailed instructions and examples. The backend pipeline owns prompt assembly and agent invocation.
 
-## The Apply Command
+## The Import Apply Flow
 
-`src/apply/` contains:
-
-- `command.ts` — registers `apply`; loads CDF/DTCG artifacts or a session, builds manifests, and drives preview/apply operation polling
-- `tokens.ts` — token helpers shared with the wizard's preview step
-- `api-client.ts` — `ImportApiClient` calls the generated sources API client for token validation, manifest preview, manifest apply, and operation polling
-- `preview-utils.ts` — detects empty server previews before confirmation or apply
-- `tui/` — server preview, selection, and apply-progress views
-
-The apply flow validates the target, builds a `ManifestPayload` through the shared manifest utilities from the CDF components and DTCG token entries, previews it, optionally confirms, submits it to the apply endpoint, and polls the returned operation to completion. Breaking-change acknowledgement is sent as an operation option; entities absent from the manifest are skipped.
+The CLI's `steps/10-flow/` owns saving, preview, confirmation, and push inside the import wizard; there is no separate apply command. The save stage builds and validates the combined CDF. Backend-pipeline apply operations use `ImportApiClient` for preview, apply, and operation polling. Breaking-change acknowledgement is sent as an operation option; entities absent from the manifest are skipped.
 
 ## The Wizard (interactive)
 
-`src/import/tui/WizardApp.tsx` is the import wizard. There is no headless mode: `experiences import` requires an interactive terminal. State transitions live in `wizard-state-transitions.ts`; the step components are in `src/import/tui/steps/`. `WizardApp` reads pipeline-DB state itself and passes it directly to the step components; `GenerateReviewStep` guards its own missing-session/empty-components case (the scope gate is shown by the new CLI). `runLivePreview.ts` re-runs the diff after each FieldEditor save. Extraction and generation run as `__extract` and `__generate` subprocesses.
-
-The new CLI's Import option (`packages/experience-design-system-cli/src/tui/import/`) runs the whole import in-process. The bundled legacy CLI (`src/legacy/`) is only used to forward the `apply`, `setup`, `doctor`, `print`, `map`, `__extract` and `__generate` commands.
+`packages/experience-design-system-cli/src/tui/import/steps/` owns the interactive import wizard. There is no headless mode: `experiences import` requires an interactive terminal. The CLI owns screen and step routing and calls backend-pipeline functions directly for extraction, generation, session access, validation, and apply operations. Coding-agent work runs as a subprocess of the backend pipeline.
 
 ## TUI Components
 
 All TUI components are standard React functional components rendered by Ink. They live in:
 
-- `src/analyze/select/tui/` — shared editor pieces (`TopBar`, `useImmediateInput`, theme `PALETTE`) reused by the wizard
-- `src/print/` — hidden `print` command and `validate` view
-- `src/apply/tui/` — `SummaryView`, `EntityDiffView`, `ServerApplyView`
-- `src/import/tui/` — the wizard: `WizardApp` and step components in `steps/` (`GenerateReviewStep`, `WizardPreviewStep`, `PreviewValidationErrorStep`, `PushingStep`, `DoneStep`, `ErrorStep`, `GateStep`, `RunningStep`)
-- `packages/experience-design-system-cli/src/tui/` — the new CLI's TUI; see `DSI_TUI_ARCHITECTURE.md` in that package
+- `packages/experience-design-system-cli/src/tui/import/steps/` — import, review, preview, and push screens
+- `packages/experience-design-system-cli/src/tui/` — CLI TUI components and shared terminal UI
 
 When writing TUI tests, use `ink-testing-library`. Set `NO_COLOR=1` in the environment before running tests to suppress ANSI escape codes. Strip ANSI before snapshot assertions if the test renders raw strings.
 
-The scope gate (`steps/07-scope-gate`, in the new CLI) shows two columns at 100 or more terminal columns (`columns.ts`) and one column below that.
+The scope gate (`steps/07-scope-gate`) shows two columns at 100 or more terminal columns (`columns.ts`) and one column below that.
 
 ## Session Persistence
 
@@ -177,7 +156,7 @@ The scope gate (`steps/07-scope-gate`, in the new CLI) shows two columns at 100 
 
 The legacy `import.db` is read only by the session migration when present; the current apply flow does not use it for per-entity push resumption.
 
-Run records are appended to `~/.contentful/experience-design-system-cli/state/runs.json` (`src/runs/store.ts`).
+Run records are appended to `~/.contentful/experience-design-system-cli/state/runs.json` by the import flow.
 
 ## Testing
 

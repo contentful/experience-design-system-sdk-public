@@ -561,13 +561,7 @@ Before emitting any tool calls, verify:
 15. Every prop whose values are friendly names is `enum` with a non-empty `values` array, even when each name resolves to a design token internally; every prop for which Q1–Q3 could not be answered was emitted as `enum` (or `string`) with the ambiguity stated in `reason`, and no answerable prop was called ambiguous.
 16. Every `enum`'s `values` array is copied from evidence in the material shown — a type declaration, an `allowedValues` list on the raw prop, a variant or lookup map, a default, in the component's own file or in any sibling excerpt — and none of it was invented. Where the value set appears nowhere, the prop is `cdf_type: "string"`, with the reason recorded in `reason`. Do not drop a prop merely because you could not enumerate its values.
 
-After the run completes, the developer can validate the pipeline output with:
-
-```
-experience-design-system-cli print validate --components <out-path>
-```
-
-Re-run or re-iterate on any components flagged by warnings until the output passes validation.
+Before finishing, review the component output against this checklist and iterate on any warning the supplied evidence can resolve. Preserve unresolved warnings in the relevant `description` or `reason`; do not invent values.
 
 ---
 
