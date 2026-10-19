@@ -1,10 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { AGENT_NAMES, type AgentName } from '@contentful/experience-design-system-backend-pipeline';
 import { PALETTE } from '../../../theme.js';
 import { ControlHints } from '../../../control-hints.js';
 import { startDebugRun, finishDebugRun } from '../../../debug-store.js';
 import type { FormNotice } from '../../shared/FieldForm.js';
+import { createTrail, diffSnapshots, scrubError, type Snapshot } from '../../shared/debug-trail.js';
+import { agentSnapshot, describeAgents, type AgentEnvironment } from './agent-debug.js';
 import { AGENT_LABELS, readAgentConfig, writeAgentConfig, type AgentConfig } from './agent-store.js';
 import { inspectAgent, panelRows, type AgentCheck } from './agent-status.js';
 import { AgentDetail } from './AgentDetail.js';
@@ -28,6 +30,14 @@ export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactEle
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [checks, setChecks] = useState<Partial<Record<AgentName, AgentCheck[]>>>({});
+  // What this visit adds to the debug log: what the user did, the settings it opened with, and the last error. The agent's
+  // own screen records into the same trail, since the logger keeps one run at a time and this screen owns it.
+  const visit = useRef({
+    trail: createTrail(),
+    before: undefined as Snapshot | undefined,
+    environment: undefined as Record<AgentName, AgentEnvironment> | undefined,
+    error: '',
+  }).current;
 
   // One quick inspection per agent when the screen opens, filled in as each answers. No prompts, so no tokens.
   const inspectAll = (loaded: AgentConfig): void => {
@@ -43,15 +53,44 @@ export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactEle
       .then((loaded) => {
         setConfig(loaded);
         inspectAll(loaded);
+        visit.before = agentSnapshot(loaded);
+        // The run starts now so an early Esc still leaves a log. The environment takes a few probes, so it is gathered
+        // in the background and written with the outputs.
         startDebugRun({
           flow: 'settings/agents',
           step: '01-agents',
           menuOption: 'Configuration > Agents',
-          inputs: { default_agent: loaded.defaultAgent },
+          inputs: { ...visit.before, default_chosen: loaded.defaultChosen ?? false },
+        });
+        void describeAgents(loaded).then((found) => {
+          visit.environment = found;
         });
       })
-      .catch((err: unknown) => setLoadError(err instanceof Error ? err.message : String(err)));
+      .catch((err: unknown) => {
+        // Start a run anyway: a settings file that cannot be read is what someone would send us a log about.
+        visit.error = scrubError(err, []);
+        startDebugRun({ flow: 'settings/agents', step: '01-agents', menuOption: 'Configuration > Agents', inputs: {} });
+        setLoadError(visit.error);
+      });
   }, []);
+
+  // Finishes the log from the settings as they are now. Every way out of the screen goes through here.
+  const endVisit = (current: AgentConfig | null): void => {
+    const after = current ? agentSnapshot(current) : undefined;
+    const change = visit.before && after ? diffSnapshots(visit.before, after) : { changed: false, changed_fields: [] };
+    void finishDebugRun({
+      outputs: {
+        ...(after ?? {}),
+        ...change,
+        actions: visit.trail.entries(),
+        // Missing only when the user left before the probes finished.
+        ...(visit.environment ? { agents: visit.environment } : {}),
+        ...(visit.error ? { error: visit.error } : {}),
+      },
+      status: visit.error ? 'error' : 'success',
+      exitMethod: change.changed ? 'saved' : 'discarded',
+    });
+  };
 
   const makeDefault = (name: AgentName): void => {
     if (!config || saving) return;
@@ -66,19 +105,20 @@ export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactEle
       .then(() => {
         setConfig((current) => (current ? { ...current, defaultAgent: name, defaultChosen: true } : current));
         setNotice({ kind: 'success', text: `Default agent is now ${AGENT_LABELS[name]}` });
+        visit.trail.record(`made ${name} the default`);
       })
-      .catch((err: unknown) =>
-        setNotice({
-          kind: 'error',
-          text: `Default agent not changed: ${err instanceof Error ? err.message : String(err)}`,
-        }),
-      )
+      .catch((err: unknown) => {
+        visit.error = scrubError(err, []);
+        visit.trail.record(`making ${name} the default failed`);
+        setNotice({ kind: 'error', text: `Default agent not changed: ${visit.error}` });
+      })
       .finally(() => setSaving(false));
   };
 
   useInput((input, key) => {
     // With the settings unreadable there is nothing to show, so the only thing left to do is go back.
     if (loadError && (key.escape || input === 'q')) {
+      endVisit(null);
       onDone();
       return;
     }
@@ -106,7 +146,7 @@ export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactEle
       return;
     }
     if (key.escape || input === 'q') {
-      void finishDebugRun({ outputs: { default_agent: config.defaultAgent }, status: 'success', exitMethod: 'saved' });
+      endVisit(config);
       onDone();
     }
   });
@@ -135,6 +175,10 @@ export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactEle
         name={open}
         config={config}
         setConfig={setConfig}
+        record={(action, error) => {
+          visit.trail.record(action);
+          if (error !== undefined) visit.error = scrubError(error, []);
+        }}
         onBack={() => {
           setOpen(null);
           // The path or login may have changed on the agent's screen, so the rows are checked again.
