@@ -49,11 +49,23 @@ describe('type-based DOM prop classification', () => {
           description: 'Form field name',
           defaultValue: 'contact',
           category: 'content',
+          domAttribute: true,
         },
       ]);
       expect(input.props[0]).toBe(name);
       expect(name.domAttribute).toBe(true);
       expect(name.category).toBeUndefined();
+    },
+  );
+
+  it.each([true, false, undefined])(
+    'preserves provenance %s for unclassified and preclassified props',
+    (domAttribute) => {
+      const props = [
+        prop({ name: 'payload', type: 'Payload', ...(domAttribute === undefined ? {} : { domAttribute }) }),
+        prop({ name: 'label', category: 'design', ...(domAttribute === undefined ? {} : { domAttribute }) }),
+      ];
+      expect(preClassifyComponent(component(props)).props).toEqual(props);
     },
   );
 

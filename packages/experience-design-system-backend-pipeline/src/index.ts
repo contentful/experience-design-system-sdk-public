@@ -198,6 +198,8 @@ export { agentSupportsBedrock } from './agents/helpers/bedrock/agent-supports-be
 export { checkAgentAuth } from './agents/services/check-agent-auth.js';
 export type { AgentAuthStatus } from './agents/types/agent-run.js';
 export { buildPrompt } from './agents/prompts/build-prompt.js';
+export { stripPropProvenance } from './agents/prompts/helpers/strip-prop-provenance.js';
+export { bucketComponentsProps } from '@contentful/experience-design-system-extraction';
 export { resolveSkillPath } from './agents/prompts/resolve-skill-path.js';
 export { createLocalCliAgentInvoker } from './agents/invoker/create-local-cli-agent-invoker.js';
 export { parseSelectToolCalls } from './agents/parsers/parse-select-tool-calls.js';

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { preClassifyComponent } from '@contentful/experience-design-system-extraction';
+import { bucketComponentProps, preClassifyComponent } from '@contentful/experience-design-system-extraction';
 import { buildPrompt } from '../../../src/agents/prompts/build-prompt.js';
+import { stripPropProvenance } from '../../../src/agents/prompts/helpers/strip-prop-provenance.js';
 
 describe('component classification prompt evidence', () => {
   it('includes prop buckets as advisory evidence when supplied and omits them otherwise', async () => {
@@ -30,7 +31,8 @@ describe('component classification prompt evidence', () => {
     const prompt = await buildPrompt({
       skill: 'components',
       mode: 'autonomous',
-      rawComponentsInline: JSON.stringify([component]),
+      rawComponentsInline: JSON.stringify([{ ...component, props: component.props.map(stripPropProvenance) }]),
+      propBucketsInline: JSON.stringify(bucketComponentProps(component)),
       componentSourceRefs: [
         {
           component: 'Card',
@@ -52,5 +54,7 @@ export function Card({ title, ...props }: CardProps) {
     expect(prompt).toContain('a component that redeclares one of these with its own type or JSDoc');
     expect(prompt).toContain('title?: string');
     expect(prompt).not.toContain('"domAttribute"');
+    expect(prompt).toContain('"domPassthroughPropNames":["className"]');
+    expect(component.props[1]?.domAttribute).toBe(true);
   });
 });

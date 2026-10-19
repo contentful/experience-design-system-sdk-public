@@ -1,3 +1,5 @@
+import { bucketComponentsProps } from '@contentful/experience-design-system-extraction';
+import { stripPropProvenance } from '../../../../agents/prompts/helpers/strip-prop-provenance.js';
 import { buildPrompt, createLocalCliAgentInvoker, parseSelectToolCalls } from '../../../../agents/index.js';
 import type { RunSelectionServiceOptions, SelectionServiceResult, ComponentSelection } from '../types/contract.js';
 
@@ -13,7 +15,12 @@ export async function runSelectionService(options: RunSelectionServiceOptions): 
   const prompt = await buildPrompt({
     skill: 'select',
     mode: 'autonomous',
-    rawComponentsInline: JSON.stringify(components, null, 2),
+    rawComponentsInline: JSON.stringify(
+      components.map((component) => ({ ...component, props: component.props.map(stripPropProvenance) })),
+      null,
+      2,
+    ),
+    propBucketsInline: JSON.stringify(bucketComponentsProps(components)),
     outDir: process.cwd(),
     ...(options.promptPath ? { skillPathOverride: options.promptPath } : {}),
     ...(options.promptText !== undefined ? { skillContentOverride: options.promptText } : {}),

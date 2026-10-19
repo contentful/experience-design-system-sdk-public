@@ -18,6 +18,7 @@ describe('extractEndpoint', () => {
         return <input name={name} className={className} aria-label={label} onChange={onChange} />;
       }`,
       names: ['className', 'label', 'name'],
+      domName: true,
     },
     {
       fileName: 'Field.vue',
@@ -26,10 +27,11 @@ describe('extractEndpoint', () => {
       </script>
       <template><input :name="name" :value="modelValue" :aria-label="label" /></template>`,
       names: ['label', 'modelValue', 'name'],
+      domName: undefined,
     },
   ])(
     'retains DOM-named props through extraction, classification and validation for $fileName',
-    async ({ fileName, source, names }) => {
+    async ({ fileName, source, names, domName }) => {
       const projectRoot = await mkdtemp(join(tmpdir(), 'extraction-dom-props-'));
       tempDirs.push(projectRoot);
       const sourcePath = join(projectRoot, fileName);
@@ -40,7 +42,7 @@ describe('extractEndpoint', () => {
       expect(result.components).toHaveLength(1);
       expect(result.components[0]?.props.map((prop) => prop.name).sort()).toEqual(names);
       expect(result.components[0]?.props.every((prop) => prop.category === 'content')).toBe(true);
-      expect(result.components[0]?.props.some((prop) => 'domAttribute' in prop)).toBe(false);
+      expect(result.components[0]?.props.find((prop) => prop.name === 'name')?.domAttribute).toBe(domName);
       expect(result.components[0]?.validationIssues).toEqual([]);
     },
   );

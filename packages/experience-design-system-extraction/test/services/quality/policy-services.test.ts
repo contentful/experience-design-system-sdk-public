@@ -31,7 +31,7 @@ function component(overrides: Partial<RawComponentDefinition>): RawComponentDefi
 }
 
 describe('classification service', () => {
-  it('classifies authorable design props and removes DOM provenance from component output', () => {
+  it('classifies authorable design props and retains DOM provenance for saved results', () => {
     expect(preClassifyProp(prop({ name: 'variant', type: "'solid' | 'ghost'" }))).toEqual({
       category: 'design',
       cdfTypeHint: 'enum',
@@ -44,10 +44,9 @@ describe('classification service', () => {
     );
 
     expect(classified.props).toEqual([
-      expect.objectContaining({ name: 'name', category: 'content' }),
+      expect.objectContaining({ name: 'name', category: 'content', domAttribute: true }),
       expect.objectContaining({ name: 'variant', category: 'design' }),
     ]);
-    expect(classified.props.some((candidate) => 'domAttribute' in candidate)).toBe(false);
   });
 
   it('does not classify unresolved complex props as authorable categories', () => {

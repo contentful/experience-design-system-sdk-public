@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import {
   type AgentName,
   buildPrompt,
+  bucketComponentsProps,
   computeComponentInputHash,
   createLocalCliAgentInvoker,
   getCliCacheVersion,
@@ -13,6 +14,7 @@ import {
   openPipelineDb,
   parseSelectToolCalls,
   storeSelectCache,
+  stripPropProvenance,
 } from '@contentful/experience-design-system-backend-pipeline';
 import { findSkillPath } from './find-skill-path.js';
 
@@ -85,7 +87,12 @@ export async function runSelection(options: SelectionOptions): Promise<void> {
     const prompt = await buildPrompt({
       skill: 'select',
       mode: 'autonomous',
-      rawComponentsInline: JSON.stringify(componentsToRun, null, 2),
+      rawComponentsInline: JSON.stringify(
+        componentsToRun.map((component) => ({ ...component, props: component.props.map(stripPropProvenance) })),
+        null,
+        2,
+      ),
+      propBucketsInline: JSON.stringify(bucketComponentsProps(componentsToRun)),
       outDir: process.cwd(),
       ...(options.promptText !== undefined
         ? { skillContentOverride: options.promptText }

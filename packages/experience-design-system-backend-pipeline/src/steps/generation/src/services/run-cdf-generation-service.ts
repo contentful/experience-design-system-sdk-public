@@ -1,3 +1,5 @@
+import { bucketComponentProps } from '@contentful/experience-design-system-extraction';
+import { stripPropProvenance } from '../../../../agents/prompts/helpers/strip-prop-provenance.js';
 import { createHash } from 'node:crypto';
 import { buildPrompt, createLocalCliAgentInvoker, parseToolCalls, type ToolCall } from '../../../../agents/index.js';
 import type { RawComponentDefinition } from '../../../extraction/src/types/component.js';
@@ -74,7 +76,8 @@ async function generateOne(
   const prompt = await buildPrompt({
     skill: 'components',
     mode: 'autonomous',
-    rawComponentsInline: JSON.stringify(component),
+    rawComponentsInline: JSON.stringify({ ...component, props: component.props.map(stripPropProvenance) }),
+    propBucketsInline: JSON.stringify(bucketComponentProps(component)),
     outDir: '',
     componentName: component.name,
     skillPathOverride,

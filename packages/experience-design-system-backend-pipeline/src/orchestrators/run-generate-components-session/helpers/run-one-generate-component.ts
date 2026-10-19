@@ -1,3 +1,5 @@
+import { bucketComponentProps } from '@contentful/experience-design-system-extraction';
+import { stripPropProvenance } from '../../../agents/prompts/helpers/strip-prop-provenance.js';
 import type { DatabaseSync } from 'node:sqlite';
 import type { AgentName } from '../../../agents/types/agent-name.js';
 import type { AgentInvoker } from '../../../agents/types/invoker.js';
@@ -132,7 +134,7 @@ export async function runOneGenerateComponent(
         name: component.name,
         source: component.source,
         framework: component.framework,
-        props: component.props,
+        props: component.props.map(stripPropProvenance),
         slots: effectiveSlots,
       },
     ],
@@ -152,6 +154,7 @@ export async function runOneGenerateComponent(
     skill: 'components',
     mode: 'autonomous',
     rawComponentsInline,
+    propBucketsInline: JSON.stringify(bucketComponentProps(component)),
     tokensInline,
     tokenMapInline,
     outDir: process.cwd(),

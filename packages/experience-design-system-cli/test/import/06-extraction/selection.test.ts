@@ -120,6 +120,52 @@ describe('runSelection', () => {
     expect(agent.invocations[0]?.prompt).toContain('Hero');
   });
 
+  it('derives advisory buckets from saved provenance and strips it from raw agent data', async () => {
+    seed(['Field']);
+    const db = openPipelineDb();
+    try {
+      storeRawComponents(db, sessionId, [
+        {
+          ...component('Field'),
+          props: [
+            { name: 'name', type: 'string', required: false, domAttribute: true },
+            { name: 'icon', type: 'string', required: false, domAttribute: false },
+            { name: 'label', type: 'string', required: true },
+          ],
+        },
+      ]);
+    } finally {
+      db.close();
+    }
+    agent.result.stdout = lines({ tool: 'select_component', name: 'Field' });
+    await runSelection(options({ noCache: true, promptText: 'Select visible UI.' }));
+    const prompt = agent.invocations[0]!.prompt;
+    expect(prompt).not.toContain('"domAttribute"');
+    const raw = prompt.match(/Raw component data \(JSON\):\n```json\n([\s\S]*?)\n```/);
+    expect(JSON.parse(raw![1]!)[0].props).toEqual([
+      { name: 'name', type: 'string', required: false },
+      { name: 'icon', type: 'string', required: false },
+      { name: 'label', type: 'string', required: true },
+    ]);
+    const advisory = prompt.match(/Deterministic prop buckets[^\n]*:\n```json\n([\s\S]*?)\n```/);
+    expect(advisory).not.toBeNull();
+    expect(JSON.parse(advisory![1]!)).toEqual([
+      {
+        component: 'Field',
+        source: 'src/Field.tsx',
+        customPropNames: ['icon', 'label'],
+        domPassthroughPropNames: ['name'],
+        otherPropNames: [],
+      },
+    ]);
+    const saved = openPipelineDb();
+    try {
+      expect(loadRawComponents(saved, sessionId)[0]?.props[0]?.domAttribute).toBe(true);
+    } finally {
+      saved.close();
+    }
+  });
+
   it('leaves a component alone when the agent says nothing about it', async () => {
     seed(['Card', 'Hero']);
     const before = statuses();
