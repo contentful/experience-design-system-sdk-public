@@ -1,7 +1,7 @@
 import { configFilePath, configRoot, readSettings } from '@contentful/experience-design-system-types/config';
 import { currentDebugSessionDir, currentSessionDir } from '../debug-store.js';
 import { readDebugModeSetting } from '../settings/debug-mode/debug-mode-store.js';
-import { readPackageVersion } from '../upgrade/version.js';
+import { readPackageVersion } from '../home/version.js';
 import { describeFileLocations } from './file-locations.js';
 
 export interface HelpRow {

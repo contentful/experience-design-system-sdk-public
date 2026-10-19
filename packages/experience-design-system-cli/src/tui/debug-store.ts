@@ -2,7 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { existsSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { readSettings } from '@contentful/experience-design-system-types/config';
-import { readPackageVersion } from './upgrade/version.js';
+import { readPackageVersion } from './home/version.js';
 import { readDebugModeSetting } from './settings/debug-mode/debug-mode-store.js';
 
 type PendingRun = {
