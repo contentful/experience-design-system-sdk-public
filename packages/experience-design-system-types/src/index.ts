@@ -7,6 +7,14 @@ export {
 } from './agent-prompt-transport.js';
 
 export {
+  createAgentCancellationResult,
+  runAgentProcess,
+  type AgentProcessEndDetails,
+  type AgentProcessResult,
+  type RunAgentProcessOptions,
+} from './agent-process-lifecycle.js';
+
+export {
   validateCDF,
   parseCDFComponents,
   CDF_SCHEMA_URL,

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { executeGenerationOrchestrator } from '../../src/orchestrator/execute-generation-orchestrator.js';
+import * as promptService from '../../src/services/prompts/build-prompt.js';
 import type { GenerationOrchestratorRequest } from '../../src/orchestrator/execute-generation-orchestrator.js';
 
 describe('executeGenerationOrchestrator', () => {
@@ -34,6 +35,7 @@ describe('executeGenerationOrchestrator', () => {
   it('forwards model, bedrock, and onOutput to the invoker', async () => {
     const fakeInvoke = vi.fn().mockResolvedValue({ exitCode: 0, stdout: '', stderr: '', timedOut: false });
     const onOutput = vi.fn();
+    const controller = new AbortController();
 
     const request: GenerationOrchestratorRequest = {
       agent: 'codex',
@@ -41,6 +43,7 @@ describe('executeGenerationOrchestrator', () => {
       bedrock: true,
       timeoutMs: 10000,
       onOutput,
+      signal: controller.signal,
       promptOptions: {
         skill: 'tokens',
         mode: 'autonomous',
@@ -56,5 +59,46 @@ describe('executeGenerationOrchestrator', () => {
     expect(invokeArg.model).toBe('gpt-5');
     expect(invokeArg.bedrock).toBe(true);
     expect(invokeArg.onOutput).toBe(onOutput);
+    expect(invokeArg.signal).toBe(controller.signal);
+  });
+
+  it('does not invoke after cancellation during asynchronous prompt construction', async () => {
+    let releasePrompt!: () => void;
+    const pendingPrompt = new Promise<void>((resolve) => {
+      releasePrompt = resolve;
+    });
+    const originalBuildPrompt = promptService.buildPrompt;
+    const buildPromptSpy = vi.spyOn(promptService, 'buildPrompt').mockImplementationOnce(async (options) => {
+      await pendingPrompt;
+      return originalBuildPrompt(options);
+    });
+    const controller = new AbortController();
+    const fakeInvoke = vi.fn().mockResolvedValue({ exitCode: 0, stdout: '', stderr: '', timedOut: false });
+    const request: GenerationOrchestratorRequest = {
+      agent: 'claude',
+      timeoutMs: 5000,
+      signal: controller.signal,
+      promptOptions: {
+        skill: 'components',
+        mode: 'autonomous',
+        outDir: '/tmp',
+        skillContentOverride: 'STUB_SKILL_CONTENT',
+      },
+      invoker: { invoke: fakeInvoke, checkAuth: vi.fn() },
+    };
+
+    const resultPromise = executeGenerationOrchestrator(request);
+    controller.abort();
+    releasePrompt();
+
+    await expect(resultPromise).resolves.toEqual({
+      exitCode: 1,
+      stdout: '',
+      stderr: 'Agent invocation was cancelled.',
+      timedOut: false,
+    });
+    expect(buildPromptSpy).toHaveBeenCalledOnce();
+    expect(fakeInvoke).not.toHaveBeenCalled();
+    buildPromptSpy.mockRestore();
   });
 });

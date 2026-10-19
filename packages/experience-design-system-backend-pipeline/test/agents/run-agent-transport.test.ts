@@ -56,6 +56,64 @@ describe('local agent prompt transport', () => {
     expect(captures[0].args.includes(prompt)).toBe(false);
   });
 
+  it('returns before binary resolution and side effects for a pre-aborted invocation', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const onOutput = vi.fn();
+    const onDebugEvent = vi.fn();
+    const invoker = createLocalCliAgentInvoker({ onDebugEvent });
+
+    const result = await invoker.invoke({
+      agent: 'unsupported' as never,
+      prompt: 'prompt',
+      timeoutMs: 20_000,
+      signal: controller.signal,
+      onOutput,
+    });
+
+    expect(result).toEqual({
+      exitCode: 1,
+      stdout: '',
+      stderr: 'Agent invocation was cancelled.',
+      timedOut: false,
+    });
+    expect(spawn).not.toHaveBeenCalled();
+    expect(onOutput).not.toHaveBeenCalled();
+    expect(onDebugEvent).not.toHaveBeenCalled();
+  });
+
+  it('forwards an active abort through the local invoker and rejects a zero exit as success', async () => {
+    const controller = new AbortController();
+    const stdin = new PassThrough();
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    const child = Object.assign(new EventEmitter(), { stdin, stdout, stderr, kill: vi.fn() });
+    vi.mocked(spawn).mockImplementationOnce(() => child as unknown as ReturnType<typeof spawn>);
+    const onOutput = vi.fn();
+    const invoker = createLocalCliAgentInvoker();
+    const resultPromise = invoker.invoke({
+      agent: 'claude',
+      prompt: 'prompt',
+      timeoutMs: 20_000,
+      signal: controller.signal,
+      onOutput,
+    });
+
+    controller.abort();
+    stdout.write('late output');
+    stderr.write('retained diagnostic');
+    child.emit('close', 0, null);
+
+    await expect(resultPromise).resolves.toEqual({
+      exitCode: 1,
+      stdout: 'late output',
+      stderr: 'retained diagnostic',
+      timedOut: false,
+    });
+    expect(child.kill).toHaveBeenCalledExactlyOnceWith('SIGTERM');
+    expect(onOutput).not.toHaveBeenCalled();
+  });
+
   it('retains an explicit argv choice for a bounded prompt', async () => {
     await runAgent({ agent: 'claude', prompt: 'small prompt', timeoutMs: 20_000, promptViaStdin: false });
     expect(captures[0]).toEqual({ args: expect.arrayContaining(['small prompt']), input: '' });

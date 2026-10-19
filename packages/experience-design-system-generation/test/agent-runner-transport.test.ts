@@ -145,4 +145,51 @@ describe('generation agent prompt transport', () => {
     );
     expect(onDebugEvent).toHaveBeenCalledWith('run.end', expect.objectContaining({ exitCode: 0, timedOut: false }));
   });
+
+  it('forwards public endpoint cancellation to the active child and suppresses trailing output', async () => {
+    const controller = new AbortController();
+    const child = Object.assign(new EventEmitter(), {
+      stdin: new PassThrough(),
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      kill: vi.fn(),
+    });
+    let spawned!: () => void;
+    const childSpawned = new Promise<void>((resolve) => {
+      spawned = resolve;
+    });
+    vi.mocked(spawn).mockImplementationOnce(() => {
+      spawned();
+      return child as unknown as ReturnType<typeof spawn>;
+    });
+    const onOutput = vi.fn();
+    const endpoint = createGenerationEndpoint();
+    const request: GenerationEndpointRequest = {
+      agent: 'claude',
+      timeoutMs: 20_000,
+      signal: controller.signal,
+      onOutput,
+      promptOptions: {
+        skill: 'components',
+        mode: 'autonomous',
+        outDir: '/tmp',
+        skillContentOverride: 'PUBLIC_CANCELLATION_PROMPT',
+      },
+    };
+
+    const resultPromise = endpoint.run(request);
+    await childSpawned;
+    controller.abort();
+    child.stdout.write('captured after cancellation');
+    child.emit('close', 0, null);
+
+    await expect(resultPromise).resolves.toEqual({
+      exitCode: 1,
+      stdout: 'captured after cancellation',
+      stderr: '',
+      timedOut: false,
+    });
+    expect(child.kill).toHaveBeenCalledExactlyOnceWith('SIGTERM');
+    expect(onOutput).not.toHaveBeenCalled();
+  });
 });

@@ -9,6 +9,7 @@ export interface GenerationEndpointRequest {
   readonly promptOptions: PromptOptions;
   readonly timeoutMs: number;
   readonly onOutput?: (chunk: string) => void;
+  readonly signal?: AbortSignal;
 }
 
 export interface GenerationEndpointResponse {
