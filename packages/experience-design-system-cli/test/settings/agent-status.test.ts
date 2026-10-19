@@ -5,8 +5,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   defaultModelLabel,
   effectiveBinary,
+  LIST_STATUS,
   inspectAgent,
+  modelLine,
   nextStepHint,
+  panelRows,
   resolvedPath,
   statusFromChecks,
   statusRows,
@@ -99,6 +102,66 @@ describe('checking an agent', () => {
       expect(resolvedPath(await inspectAgent('codex', path))).toBe(path);
       expect(resolvedPath(await inspectAgent('codex', join(dir, 'missing')))).toBe('');
       expect(resolvedPath(undefined)).toBe('');
+    });
+  });
+
+  describe('the detail panel under the list', () => {
+    const none = { binary: '', model: '' };
+
+    it('tells the user how to get an agent that is not installed, with no version or model to show', () => {
+      const rows = panelRows('codex', [{ step: 'path', ok: false, detail: '`codex` was not found' }], none);
+
+      expect(rows.map((row) => row.label)).toEqual(['Command', 'Next']);
+      expect(rows[0]).toMatchObject({ value: 'not found on your PATH', tone: 'muted' });
+      expect(rows[1]?.value).toContain('npm install -g @openai/codex');
+    });
+
+    it('names the saved path when that is what failed', () => {
+      const rows = panelRows('codex', [{ step: 'path', ok: false, detail: '`/x/codex` was not found' }], {
+        binary: '/x/codex',
+        model: '',
+      });
+
+      expect(rows[0]).toMatchObject({ value: '`/x/codex` was not found', tone: 'bad' });
+      expect(rows[1]?.value).toContain('fix the command path');
+    });
+
+    it('shows the full path, version and model for an agent that runs', async () => {
+      const path = await script('codex', 'echo "codex 9.9.9"');
+
+      const rows = panelRows('codex', await inspectAgent('codex', path), { binary: path, model: '' });
+
+      expect(rows.find((row) => row.label === 'Command')?.value).toBe(path);
+      expect(rows.find((row) => row.label === 'Version')?.value).toBe('codex 9.9.9');
+      expect(rows.find((row) => row.label === 'Model')?.value).toBe('chosen by the agent (built-in default)');
+    });
+
+    it('does not run anything while the checks have not come back', () => {
+      expect(panelRows('claude', undefined, none)).toEqual([{ label: 'Command', value: 'checking...', tone: 'muted' }]);
+    });
+  });
+
+  describe('the words on the list', () => {
+    it('uses the same plain words for an agent that is missing, whether or not a path was saved', () => {
+      expect(LIST_STATUS['not-configured'].text).toBe('not installed');
+      expect(LIST_STATUS['not-found'].text).toBe('not installed');
+    });
+
+    it('marks a saved path that does not work as a problem, and nothing saved as just empty', () => {
+      expect(LIST_STATUS['not-found'].tone).toBe('bad');
+      expect(LIST_STATUS['not-configured'].tone).toBe('muted');
+    });
+
+    it('does not call an agent ready unless it was confirmed', () => {
+      expect(LIST_STATUS.unknown.text).not.toContain('ready');
+      expect(LIST_STATUS.ready.text).toBe('ready');
+    });
+  });
+
+  describe('the model line', () => {
+    it('shows the saved model as is, and says when it is the built-in default instead', () => {
+      expect(modelLine('claude', 'sonnet')).toBe('sonnet');
+      expect(modelLine('claude', '  ')).toBe('haiku (built-in default)');
     });
   });
 

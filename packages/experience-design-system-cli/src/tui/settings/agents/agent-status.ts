@@ -174,6 +174,63 @@ export function nextStepHint(name: AgentName, status: AgentStatus): string {
 
 export type StatusRow = { label: string; value: string; tone: 'ok' | 'bad' | 'muted' };
 
+/**
+ * The short form of a status for the list, where every row has to be scannable at a glance. The wording is plainer than
+ * the detail panel's: "not installed" covers both "nothing saved" and "saved path broken", which the panel tells apart.
+ */
+export const LIST_STATUS: Record<AgentStatus, { symbol: string; text: string; tone: StatusRow['tone'] }> = {
+  checking: { symbol: '…', text: 'checking', tone: 'muted' },
+  ready: { symbol: '●', text: 'ready', tone: 'ok' },
+  'not-configured': { symbol: '○', text: 'not installed', tone: 'muted' },
+  'not-found': { symbol: '○', text: 'not installed', tone: 'bad' },
+  'not-logged-in': { symbol: '◐', text: 'not logged in', tone: 'bad' },
+  unknown: { symbol: '◐', text: 'installed, login unknown', tone: 'muted' },
+};
+
+/**
+ * The model line for the detail panel: what is saved, or what the agent really runs with when nothing is. Says which of
+ * the two it is, so a user can tell their own choice from the built-in default.
+ */
+export function modelLine(name: AgentName, savedModel: string): string {
+  const model = savedModel.trim();
+  return model ? model : `${defaultModelLabel(name)} (built-in default)`;
+}
+
+/**
+ * The rows of the detail panel under the list, for the focused agent. Everything here is read-only and comes from
+ * checks already collected, so moving the cursor never runs anything.
+ */
+export function panelRows(
+  name: AgentName,
+  checks: readonly AgentCheck[] | undefined,
+  settings: { binary: string; model: string },
+): StatusRow[] {
+  if (!checks) return [{ label: 'Command', value: 'checking...', tone: 'muted' }];
+
+  const status = statusFromChecks(name, checks, settings.binary);
+  const path = checks.find((check) => check.step === 'path');
+  if (!path?.ok) {
+    const rows: StatusRow[] = [
+      {
+        label: 'Command',
+        value: settings.binary.trim() ? (path?.detail ?? 'not found') : 'not found on your PATH',
+        tone: settings.binary.trim() ? 'bad' : 'muted',
+      },
+    ];
+    const hint = nextStepHint(name, status);
+    if (hint) rows.push({ label: 'Next', value: hint, tone: 'muted' });
+    return rows;
+  }
+
+  const rows: StatusRow[] = [{ label: 'Command', value: path.detail, tone: 'ok' }];
+  const version = checks.find((check) => check.step === 'version');
+  if (version?.ok) rows.push({ label: 'Version', value: version.detail, tone: 'ok' });
+  rows.push({ label: 'Model', value: modelLine(name, settings.model), tone: 'muted' });
+  const hint = nextStepHint(name, status);
+  if (hint) rows.push({ label: 'Next', value: hint, tone: 'muted' });
+  return rows;
+}
+
 /** The resolved path of the command, when the checks found it. For the list, where the user wants to see what runs. */
 export function resolvedPath(checks: readonly AgentCheck[] | undefined): string {
   const path = checks?.find((check) => check.step === 'path');

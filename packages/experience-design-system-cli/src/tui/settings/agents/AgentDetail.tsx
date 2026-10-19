@@ -14,8 +14,8 @@ import {
   statusRows,
   testAgent,
   type AgentCheck,
-  type StatusRow,
 } from './agent-status.js';
+import { TONE_COLOR } from './AgentStatusBadge.js';
 import { applyBinaryOverrides } from './apply-binary-overrides.js';
 
 // One screen, three sections, so reading, changing and acting are never mixed up:
@@ -30,12 +30,6 @@ const FOCUS_ORDER: readonly Focus[] = ['binary', 'model', 'test'];
 const FIELDS: readonly Field[] = ['binary', 'model'];
 const FIELD_LABEL: Record<Field, string> = { binary: 'Command path', model: 'Model' };
 const LABEL_WIDTH = 'Command path'.length;
-
-const TONE_COLOR: Record<StatusRow['tone'], string> = {
-  ok: PALETTE.success,
-  bad: PALETTE.error,
-  muted: PALETTE.muted,
-};
 
 const fieldHint = (name: AgentName, field: Field): string =>
   field === 'binary' ? `(empty: \`${AGENT_HINTS[name]}\` from the PATH)` : `(empty: ${defaultModelLabel(name)})`;
