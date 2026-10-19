@@ -1,9 +1,0 @@
-{
-  "colors": {
-    "primary": { "$type": "color", "$value": "#0066ff" },
-    "secondary": { "$type": "color", "$value": "#6b7280" }
-  },
-  "spacing": {
-    "sm": { "$type": "dimension", "$value": "8px" }
-  }
-}
