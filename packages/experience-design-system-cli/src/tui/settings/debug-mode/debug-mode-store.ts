@@ -1,9 +1,10 @@
 import { readSettings, updateSettings } from '@contentful/experience-design-system-types/config';
 
 /** How long a debug log is kept before the CLI deletes it. Only these values are offered. */
-export const RETENTION_CHOICES = [30, 60, 90] as const;
+export const RETENTION_CHOICES = [3, 14, 30] as const;
 type RetentionDays = (typeof RETENTION_CHOICES)[number];
 
+// Every user is opted in from the start; choosing a value only changes how long logs are kept.
 const DEFAULT_RETENTION_DAYS: RetentionDays = 30;
 
 export type DebugModeSetting = {
@@ -12,7 +13,7 @@ export type DebugModeSetting = {
 };
 
 /**
- * The retention to use for whatever is in the settings file. Anything other than 30, 60 or 90 (a hand edit, an old
+ * The retention to use for whatever is in the settings file. Anything other than 3, 14 or 30 (a hand edit, an old
  * file) falls back to the default, so a bad value can never delete anything sooner than the default would.
  */
 function toRetentionDays(value: unknown): RetentionDays {
