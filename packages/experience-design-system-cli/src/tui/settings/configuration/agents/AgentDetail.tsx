@@ -2,7 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { Box, Text } from 'ink';
 import { AGENT_BINARIES, type AgentName } from '@contentful/experience-design-system-backend-pipeline';
 import { PALETTE } from '../../../theme.js';
-import { FieldForm, type FormAction, type FormField, type FormNotice } from '../../shared/FieldForm.js';
+import {
+  FieldForm,
+  FormReadOnlyRow,
+  formLabelWidth,
+  type FormAction,
+  type FormField,
+  type FormNotice,
+} from '../../shared/FieldForm.js';
 import { AGENT_LABELS, writeAgentConfig, type AgentConfig } from './agent-store.js';
 import {
   defaultModelLabel,
@@ -27,22 +34,6 @@ const fields = (name: AgentName): readonly FormField<Field>[] => [
 
 // How long the command path must sit unchanged before it is checked.
 const INSPECT_DELAY_MS = 400;
-
-const LABEL_WIDTH = 'Command path'.length;
-const LABEL_GAP = 2;
-const POINTER_WIDTH = 2;
-
-/** A label and its value for the read-only block, lined up with the form's value column above it. */
-function Row({ label, children }: { label: string; children: React.ReactNode }): React.ReactElement {
-  return (
-    <Box>
-      <Box width={POINTER_WIDTH + LABEL_WIDTH + LABEL_GAP} flexShrink={0}>
-        <Text color={PALETTE.muted}>{label}</Text>
-      </Box>
-      {children}
-    </Box>
-  );
-}
 
 /** The heading over the read-only block, with a note saying it cannot be edited. */
 function StatusHeading(): React.ReactElement {
@@ -133,13 +124,16 @@ export function AgentDetail({
     onRun: runTest,
   };
 
+  const formFields = fields(name);
+  const labelWidth = formLabelWidth([...formFields, action]);
+
   return (
     <FieldForm
       title={AGENT_LABELS[name]}
       subtitle={
         config.defaultAgent === name ? 'This is the default agent.' : `Runs the \`${AGENT_BINARIES[name]}\` command.`
       }
-      fields={fields(name)}
+      fields={formFields}
       values={{ binary: settings.binary, model: settings.model }}
       onChange={(key, value) => {
         setConfig({ ...config, agents: { ...config.agents, [name]: { ...settings, [key]: value } } });
@@ -154,9 +148,9 @@ export function AgentDetail({
       <Box flexDirection="column" marginTop={1}>
         <StatusHeading />
         {statusRows(name, checks, settings.binary).map((row) => (
-          <Row key={row.label} label={row.label}>
+          <FormReadOnlyRow key={row.label} label={row.label} labelWidth={labelWidth}>
             <Text color={TONE_COLOR[row.tone]}>{row.value}</Text>
-          </Row>
+          </FormReadOnlyRow>
         ))}
       </Box>
     </FieldForm>

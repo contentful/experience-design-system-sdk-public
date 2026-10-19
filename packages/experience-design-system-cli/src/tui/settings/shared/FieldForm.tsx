@@ -47,6 +47,35 @@ interface FieldFormProps<K extends string> {
   children?: React.ReactNode;
 }
 
+/** The widest label among a form's rows. The form pads every label to it, and read-only rows use it to line up with them. */
+export function formLabelWidth(rows: readonly { label: string }[]): number {
+  return Math.max(...rows.map((row) => row.label.length));
+}
+
+/**
+ * A label and value for read-only content shown with a form. It is built the same way as the form's own rows (a pointer
+ * slot, the label padded to the shared width, then the value), so its values start in the same column as the form's.
+ */
+export function FormReadOnlyRow({
+  label,
+  labelWidth,
+  children,
+}: {
+  label: string;
+  labelWidth: number;
+  children: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <Box gap={1}>
+      <Text> </Text>
+      <Box width={labelWidth} flexShrink={0}>
+        <Text color={PALETTE.muted}>{label}</Text>
+      </Box>
+      {children}
+    </Box>
+  );
+}
+
 /**
  * The edit-in-place form the Configuration pages share. Fields are read-only until Enter opens one; Enter again closes it.
  * While one is open, keys type into it (so a "q" in a path is just a "q"), and Esc closes it and restores the old value.
@@ -71,10 +100,7 @@ export function FieldForm<K extends string>({
 
   // The cursor walks the fields first, then the actions.
   const rowCount = fields.length + actions.length;
-  const labelWidth = Math.max(
-    ...fields.map((field) => field.label.length),
-    ...actions.map((action) => action.label.length),
-  );
+  const labelWidth = formLabelWidth([...fields, ...actions]);
   const currentField = active < fields.length ? fields[active] : undefined;
   const currentAction = currentField ? undefined : actions[active - fields.length];
 
@@ -149,12 +175,14 @@ export function FieldForm<K extends string>({
                   onSubmit={() => setEditing(false)}
                   mask={field.masked ? '•' : undefined}
                 />
+              ) : display ? (
+                <Text bold>{display}</Text>
               ) : (
-                <Text bold={!!display}>
-                  {display || (field.hint ? '' : <Text color={PALETTE.muted}>(empty)</Text>)}
-                </Text>
+                // An empty value shows its hint (or "(empty)") in the value's place, not after an empty element, so the
+                // text starts in the same column as every other row's.
+                <Text color={PALETTE.muted}>{field.hint ?? '(empty)'}</Text>
               )}
-              {field.hint && <Text color={PALETTE.muted}>{field.hint}</Text>}
+              {display && field.hint && <Text color={PALETTE.muted}>{field.hint}</Text>}
             </Box>
           );
         })}
