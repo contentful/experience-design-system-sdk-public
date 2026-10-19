@@ -127,10 +127,25 @@ export async function startImportRun(projectPath: string): Promise<string> {
 void Promise.all([isDebugModeEnabled(), readBaseDir()]).then(async ([enabled, base]) => {
   if (!base) return;
   // Expired logs go whether or not logging is on now, so turning it off does not keep old ones around.
-  await readDebugModeSetting()
-    .then(({ retentionDays }) => pruneExpiredLogs(base, retentionDays))
-    .catch(() => undefined);
-  if (enabled) await mkdir(join(startSession(base, { replace: false }), 'debug'), { recursive: true });
+  const retention = await readDebugModeSetting().catch(() => undefined);
+  const pruned = retention ? await pruneExpiredLogs(base, retention.retentionDays).catch(() => undefined) : undefined;
+  if (!enabled) return;
+  const debugDir = join(startSession(base, { replace: false }), 'debug');
+  await mkdir(debugDir, { recursive: true });
+  // Say what was deleted, so "my logs are gone" can be answered from the log. Nothing is written when nothing expired.
+  if (retention && pruned && pruned.logs + pruned.folders > 0) {
+    await writeFile(
+      join(debugDir, `${datePrefix()}-cleanup-${generateRunId()}.md`),
+      `# Debug Log Cleanup
+
+- Date: ${new Date().toISOString()}
+- Retention: ${retention.retentionDays} days
+- Logs deleted: ${pruned.logs}
+- Empty folders removed: ${pruned.folders}
+`,
+      { mode: 0o600 },
+    );
+  }
 });
 
 async function isDebugModeEnabled(): Promise<boolean> {

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { PALETTE } from '../../theme.js';
 import {
@@ -9,9 +9,16 @@ import {
 } from './debug-mode-store.js';
 import { startDebugRun, finishDebugRun } from '../../debug-store.js';
 import { ControlHints } from '../../control-hints.js';
+import { createTrail, diffSnapshots, scrubError, type Snapshot } from '../shared/debug-trail.js';
 
 type Row = 'enabled' | 'retentionDays';
 const ROWS: readonly Row[] = ['enabled', 'retentionDays'];
+
+// The settings as flat text, for comparing what the screen opened with against what it closed with.
+const snapshotOf = (setting: DebugModeSetting): Snapshot => ({
+  enabled: String(setting.enabled),
+  retentionDays: String(setting.retentionDays),
+});
 
 type Notice = { kind: 'success' | 'error'; text: string };
 
@@ -27,11 +34,14 @@ export function DebugModeScreen({ onDone }: { onDone: () => void }): React.React
     RETENTION_CHOICES[RETENTION_CHOICES.length - 1]!,
   );
   const [notice, setNotice] = useState<Notice | null>(null);
+  // What this visit adds to the debug log: the values it opened with, what the user did, and the last error.
+  const visit = useRef({ trail: createTrail(), before: undefined as Snapshot | undefined, error: '' }).current;
 
   useEffect(() => {
     readDebugModeSetting().then((loaded) => {
       setSetting(loaded);
       setPending(loaded.retentionDays);
+      visit.before = snapshotOf(loaded);
       startDebugRun({
         flow: 'settings/debug-mode',
         step: '01-debug-mode',
@@ -43,14 +53,35 @@ export function DebugModeScreen({ onDone }: { onDone: () => void }): React.React
 
   const save = (patch: Partial<DebugModeSetting>, saved: string): void => {
     if (!setting) return;
+    const fields = Object.keys(patch).join(', ');
     writeDebugModeSetting(patch)
       .then(() => {
         setSetting({ ...setting, ...patch });
+        visit.trail.record(`saved ${fields}`);
         setNotice({ kind: 'success', text: `Saved: ${saved}` });
       })
-      .catch((err: unknown) =>
-        setNotice({ kind: 'error', text: `Not saved: ${err instanceof Error ? err.message : String(err)}` }),
-      );
+      .catch((err: unknown) => {
+        visit.error = scrubError(err, []);
+        visit.trail.record(`saving ${fields} failed`);
+        setNotice({ kind: 'error', text: `Not saved: ${err instanceof Error ? err.message : String(err)}` });
+      });
+  };
+
+  // Finishes the log. A choice that was highlighted but never confirmed is reported on its own, since "I picked it and
+  // nothing happened" is what people write in about.
+  const endVisit = (current: DebugModeSetting): void => {
+    const change = diffSnapshots(visit.before ?? snapshotOf(current), snapshotOf(current));
+    void finishDebugRun({
+      outputs: {
+        ...current,
+        ...change,
+        ...(pending !== current.retentionDays ? { unsaved_retention_days: pending } : {}),
+        actions: visit.trail.entries(),
+        ...(visit.error ? { error: visit.error } : {}),
+      },
+      status: visit.error ? 'error' : 'success',
+      exitMethod: change.changed ? 'saved' : 'discarded',
+    });
   };
 
   useInput((input, key) => {
@@ -77,7 +108,7 @@ export function DebugModeScreen({ onDone }: { onDone: () => void }): React.React
       return;
     }
     if (key.escape || input === 'q') {
-      void finishDebugRun({ outputs: { ...setting }, status: 'success', exitMethod: 'saved' });
+      endVisit(setting);
       onDone();
     }
   });

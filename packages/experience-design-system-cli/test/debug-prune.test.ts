@@ -42,9 +42,11 @@ describe('pruning expired debug logs', () => {
     const note = file(join(mixed, 'debug', 'notes.txt'), 400);
     const outside = file(join(contentful, 'keep-me.md'), 400);
 
-    const deleted = await pruneExpiredLogs(base, 30);
+    const result = await pruneExpiredLogs(base, 30);
 
-    expect(deleted).toBe(3);
+    expect(result.logs).toBe(3);
+    // What the cleanup record reports: onlyOld loses settings, debug and the session (3); withImport loses settings and debug (2).
+    expect(result.folders).toBe(5);
     expect(existsSync(onlyOld)).toBe(false);
     expect(existsSync(oldLog)).toBe(false);
     expect(existsSync(join(withImport, 'debug'))).toBe(false);
