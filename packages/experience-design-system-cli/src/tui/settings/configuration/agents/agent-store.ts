@@ -1,4 +1,9 @@
-import { AGENT_NAMES, isAgentName, type AgentName } from '@contentful/experience-design-system-backend-pipeline';
+import {
+  AGENT_NAMES,
+  DEFAULT_AGENT_NAME,
+  isAgentName,
+  type AgentName,
+} from '@contentful/experience-design-system-backend-pipeline';
 import { readV1Store, writeV1Store } from '../../shared/v1-store.js';
 
 // The agent settings live in the same config.json as everything else:
@@ -8,8 +13,8 @@ import { readV1Store, writeV1Store } from '../../shared/v1-store.js';
 //   agents       each agent's own saved settings (its model and the path to its command), so changing the default
 //                does not lose another agent's settings
 //
-// `agent` and `agentModel` stay because the import and the legacy `experiences setup` already read and write them.
-// `agentModel` is always the default agent's entry in `agents`, so the two cannot disagree.
+// `agent` and `agentModel` stay because the import reads them. `agentModel` is always the default agent's entry in
+// `agents`, so the two cannot disagree.
 
 export type AgentSettings = {
   /** Passed as --model. Empty: the agent's built-in default (see defaultModelLabel). */
@@ -22,8 +27,6 @@ export type AgentConfig = {
   defaultAgent: AgentName;
   agents: Record<AgentName, AgentSettings>;
 };
-
-const DEFAULT_AGENT: AgentName = 'claude';
 
 // How each agent is shown.
 export const AGENT_LABELS: Record<AgentName, string> = {
@@ -46,7 +49,7 @@ export function emptyAgents(): Record<AgentName, AgentSettings> {
 export async function readAgentConfig(): Promise<AgentConfig> {
   const store = await readV1Store();
   const stored = asString(store['agent']);
-  const defaultAgent: AgentName = isAgentName(stored) ? stored : DEFAULT_AGENT;
+  const defaultAgent: AgentName = isAgentName(stored) ? stored : DEFAULT_AGENT_NAME;
 
   const agents = emptyAgents();
   const saved = store['agents'];
@@ -60,8 +63,8 @@ export async function readAgentConfig(): Promise<AgentConfig> {
     }
   }
 
-  // A model saved before this section existed (by `experiences setup`) belongs to the agent that was the default.
-  // It is shown there until the user saves, which writes it under `agents`.
+  // A model saved before the per-agent section existed belongs to the agent that was the default. It is shown there until
+  // the user saves, which writes it under `agents`.
   const legacyModel = asString(store['agentModel']);
   if (legacyModel && !agents[defaultAgent].model)
     agents[defaultAgent] = { ...agents[defaultAgent], model: legacyModel };

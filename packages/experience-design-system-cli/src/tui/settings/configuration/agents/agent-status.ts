@@ -17,7 +17,7 @@ import {
 //   3. login    `claude auth status --json` says loggedIn                 claude only: no other agent has a login check
 //   4. prompt   one tiny real prompt through the import's own code path   every agent, opt-in (spends a few tokens)
 //
-// Steps 1 to 3 are the "quick" inspection shown on each row. Step 4 is the explicit "Run a full test" action.
+// Steps 1 to 3 are the "quick" inspection shown on each row. Step 4 is the explicit "Run test" action.
 
 type AgentCheckStep = 'path' | 'version' | 'login' | 'prompt';
 
@@ -65,10 +65,7 @@ const LOGIN_HINTS: Record<AgentName, string> = {
   copilot: 'run `copilot` and sign in',
 };
 
-/**
- * The binary the import will actually run for this agent: the saved path if there is one, otherwise the built-in
- * command name. Shown in the form so the user sees what is used when the field is empty.
- */
+/** The binary the import will actually run for this agent: the saved path if there is one, otherwise the built-in command name. */
 function effectiveBinary(name: AgentName, savedBinary: string): string {
   return savedBinary.trim() || AGENT_BINARIES[name];
 }
@@ -185,8 +182,7 @@ export function statusFromChecks(name: AgentName, checks: readonly AgentCheck[],
 
 /**
  * What to tell a user whose agent is not ready: the install command, or the login command. Empty when nothing is needed.
- * Shown on the list's panel and on the agent's own screen, so it cannot say where the command path is ("below"): it
- * names the settings instead, which is the same place from both.
+ * It points at "settings" for the command path because it is shown on both the list and the agent's own screen.
  */
 function setupHint(name: AgentName, status: AgentStatus): string {
   if (status === 'not-configured') return `${INSTALL_HINTS[name]}, or set its command path in settings`;
