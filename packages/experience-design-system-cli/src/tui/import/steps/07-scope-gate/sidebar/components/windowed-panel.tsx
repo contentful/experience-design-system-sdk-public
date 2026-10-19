@@ -90,7 +90,7 @@ function WindowedPanelHeader({
       <Text bold color={PALETTE.info} inverse={focused}>
         {title}
       </Text>
-      <Text dimColor>{'─'.repeat(Math.max(0, width - 2))}</Text>
+      <Text color={PALETTE.muted}>{'─'.repeat(Math.max(0, width - 2))}</Text>
     </Box>
   );
 }

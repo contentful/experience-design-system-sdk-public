@@ -45,7 +45,7 @@ export function GateStep({
       )}
       <Box marginTop={1} gap={3}>
         {gateControls(continueLabel, skipLabel, onSkip !== undefined).map((control) => (
-          <Text key={control.keys} dimColor>
+          <Text key={control.keys} color={PALETTE.muted}>
             [{control.keys}] {control.label}
           </Text>
         ))}

@@ -34,7 +34,7 @@ export function ErrorStep({
       <Text color={PALETTE.error}>{message}</Text>
       <Box marginTop={1} gap={3}>
         {controls.map((control) => (
-          <Text key={control.keys} dimColor>
+          <Text key={control.keys} color={PALETTE.muted}>
             [{control.keys}] {control.label}
           </Text>
         ))}

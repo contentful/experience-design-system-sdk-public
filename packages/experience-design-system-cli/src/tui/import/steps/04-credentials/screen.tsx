@@ -91,11 +91,11 @@ export function CredentialsScreen({
         </Text>
         {!prefilled && (
           <>
-            <Text dimColor>
+            <Text color={PALETTE.muted}>
               We use it to check what components already exist and to push your import. If you skip, files are saved
               locally and nothing is pushed.
             </Text>
-            <Text dimColor>Tip: save these under Settings → Configuration so they pre-fill here.</Text>
+            <Text color={PALETTE.muted}>Tip: save these under Settings → Configuration so they pre-fill here.</Text>
           </>
         )}
       </Box>
@@ -116,17 +116,17 @@ export function CredentialsScreen({
           </Box>
         ))}
       </Box>
-      {active === 'host' && <Text dimColor>Default: api.contentful.com · EU spaces: api.eu.contentful.com</Text>}
+      {active === 'host' && <Text color={PALETTE.muted}>Default: api.contentful.com · EU spaces: api.eu.contentful.com</Text>}
 
       {error && <Text color={PALETTE.error}>✗ {error}</Text>}
       {validating && <Text color={PALETTE.accent}>Validating credentials...</Text>}
       {!validating && !error && !isUnchanged(normalize(values), initialValues) && (
-        <Text dimColor>Changed values are saved after they validate.</Text>
+        <Text color={PALETTE.muted}>Changed values are saved after they validate.</Text>
       )}
 
       <Box marginTop={1} gap={3}>
         {CREDENTIALS_CONTROLS.map((control) => (
-          <Text key={control.keys} dimColor>
+          <Text key={control.keys} color={PALETTE.muted}>
             [{control.keys}] {control.label}
           </Text>
         ))}

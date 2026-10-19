@@ -39,14 +39,14 @@ export function WelcomeScreen({ onContinue, onQuit, initialPath = '' }: WelcomeS
       <Text color={PALETTE.muted}>I&apos;ll walk you through 5 steps to get your components into Contentful ExO.</Text>
 
       <Box flexDirection="column">
-        <Text dimColor>{RULE}</Text>
+        <Text color={PALETTE.muted}>{RULE}</Text>
         {OVERVIEW.map((item) => (
           <Box key={item.label} gap={1}>
             <Text bold>{item.label}</Text>
             <Text color={PALETTE.muted}>{item.description}</Text>
           </Box>
         ))}
-        <Text dimColor>{RULE}</Text>
+        <Text color={PALETTE.muted}>{RULE}</Text>
       </Box>
 
       <Box flexDirection="column" gap={1}>
