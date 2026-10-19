@@ -45,6 +45,12 @@ export function DebugModeScreen({ onDone }: { onDone: () => void }): React.React
       setFocus((current) => ROWS[(ROWS.indexOf(current) + (key.downArrow ? 1 : ROWS.length - 1)) % ROWS.length]!);
       return;
     }
+    if ((key.leftArrow || key.rightArrow) && focus === 'retentionDays') {
+      const index = RETENTION_CHOICES.indexOf(setting.retentionDays) + (key.rightArrow ? 1 : -1);
+      const choice = RETENTION_CHOICES[Math.min(Math.max(index, 0), RETENTION_CHOICES.length - 1)]!;
+      if (choice !== setting.retentionDays) change({ retentionDays: choice });
+      return;
+    }
     if (key.return || input === ' ') {
       if (focus === 'enabled') change({ enabled: !setting.enabled });
       else change({ retentionDays: nextRetention(setting.retentionDays) });
@@ -70,12 +76,19 @@ export function DebugModeScreen({ onDone }: { onDone: () => void }): React.React
               {setting.enabled ? 'On' : 'Off'}
             </Text>
           </Text>
-          <Text>
-            {marker('retentionDays')} Delete logs after:{' '}
-            <Text bold color={PALETTE.accent}>
-              {setting.retentionDays} days
-            </Text>
-          </Text>
+          <Box gap={1}>
+            <Text>{marker('retentionDays')} Delete logs after:</Text>
+            {RETENTION_CHOICES.map((days) => (
+              <Text
+                key={days}
+                inverse={days === setting.retentionDays}
+                bold={days === setting.retentionDays}
+                color={days === setting.retentionDays ? PALETTE.accent : PALETTE.muted}
+              >
+                {` ${days} days `}
+              </Text>
+            ))}
+          </Box>
           <Text> </Text>
           <Text color={PALETTE.muted}>Older logs are deleted the next time the CLI starts.</Text>
         </>
@@ -86,7 +99,8 @@ export function DebugModeScreen({ onDone }: { onDone: () => void }): React.React
       <ControlHints
         hints={[
           { keys: '↑/↓', label: 'move' },
-          { keys: '⏎/Space', label: 'change' },
+          ...(focus === 'retentionDays' ? [{ keys: '←/→', label: 'choose' }] : []),
+          { keys: '⏎/Space', label: focus === 'retentionDays' ? 'next option' : 'toggle' },
           { keys: 'Esc/q', label: 'back' },
         ]}
       />
