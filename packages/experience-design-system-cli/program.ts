@@ -10,6 +10,8 @@ import {
   setPersistedAnalyticsDisabled,
 } from '@contentful/experience-design-system-backend-pipeline';
 import { registerImportCommand } from './src/commands/import.js';
+import { readAgentConfig } from './src/tui/settings/agents/agent-store.js';
+import { applyBinaryOverrides } from './src/tui/settings/agents/apply-binary-overrides.js';
 import { readAnalyticsSetting } from './src/tui/settings/opt-in-analytics/analytics-store.js';
 import { findPackageRoot } from './src/tui/package-root.js';
 
@@ -40,6 +42,8 @@ export function createProgram(): Command {
     const commandChain = chain.join(' ') || actionCommand.name();
     const { enabled } = await readAnalyticsSetting();
     setPersistedAnalyticsDisabled(!enabled);
+    // Fail open, like the config migration: a settings file that cannot be read must not stop the CLI starting.
+    await readAgentConfig().then(applyBinaryOverrides, () => undefined);
     setCliVersion(pkg.version);
     noteCommandStart(commandChain);
   });

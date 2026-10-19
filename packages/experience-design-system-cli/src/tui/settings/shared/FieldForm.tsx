@@ -30,6 +30,8 @@ interface FieldFormProps<K extends string> {
   busy?: boolean;
   /** Shown above the controls, for a screen's own explanation. */
   footer?: React.ReactNode;
+  /** Extra single-key actions. They only fire when no field is open, so typing a "t" into a path is just a "t". */
+  actions?: readonly { key: string; label: string; run: () => void }[];
 }
 
 /**
@@ -47,6 +49,7 @@ export function FieldForm<K extends string>({
   notice,
   busy = false,
   footer,
+  actions = [],
 }: FieldFormProps<K>): React.ReactElement {
   const [active, setActive] = useState(0);
   const [editing, setEditing] = useState(false);
@@ -77,6 +80,11 @@ export function FieldForm<K extends string>({
     }
     if (input === 'c') {
       onChange(current.key, '');
+      return;
+    }
+    const action = actions.find((candidate) => candidate.key === input);
+    if (action) {
+      action.run();
       return;
     }
     if (key.tab || key.downArrow) {
@@ -152,6 +160,7 @@ export function FieldForm<K extends string>({
                 { keys: '⏎', label: 'edit' },
                 { keys: 'c', label: 'clear' },
                 { keys: 's', label: 'save' },
+                ...actions.map(({ key, label }) => ({ keys: key, label })),
                 { keys: 'Esc/q', label: 'back without saving' },
               ]
         }

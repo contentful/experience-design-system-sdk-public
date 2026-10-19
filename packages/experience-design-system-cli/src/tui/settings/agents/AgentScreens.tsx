@@ -6,9 +6,15 @@ import { ControlHints } from '../../control-hints.js';
 import { startDebugRun, finishDebugRun } from '../../debug-store.js';
 import { FieldForm, type FormField, type FormNotice } from '../shared/FieldForm.js';
 import { AGENT_HINTS, AGENT_LABELS, readAgentConfig, writeAgentConfig, type AgentConfig } from './agent-store.js';
+import { defaultModelLabel, inspectAgent, testAgent, type AgentCheck } from './agent-status.js';
+import { AgentChecks, AgentStatusBadge } from './AgentStatusLine.js';
+import { applyBinaryOverrides } from './apply-binary-overrides.js';
 
-const MODEL_FIELDS: readonly FormField<'model'>[] = [
-  { key: 'model', label: 'Model', hint: '(empty: the agent’s own default)' },
+type AgentField = 'binary' | 'model';
+
+const agentFields = (name: AgentName): readonly FormField<AgentField>[] => [
+  { key: 'binary', label: 'Command path', hint: `(empty: \`${AGENT_HINTS[name]}\` from the PATH)` },
+  { key: 'model', label: 'Model', hint: `(empty: ${defaultModelLabel(name)})` },
 ];
 
 // The first row is the default-agent choice; the five agents follow.
@@ -28,33 +34,64 @@ function AgentForm({
   onBack: () => void;
 }): React.ReactElement {
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
   const [notice, setNotice] = useState<FormNotice | null>(null);
+  const [checks, setChecks] = useState<AgentCheck[] | undefined>(undefined);
+  const settings = config.agents[name];
+
+  // Quick check on open, and again whenever the path changes, so the user sees what the path they typed would do.
+  useEffect(() => {
+    let current = true;
+    setChecks(undefined);
+    void inspectAgent(name, settings.binary).then((result) => current && setChecks(result));
+    return () => {
+      current = false;
+    };
+  }, [name, settings.binary]);
 
   const save = (): void => {
     setSaving(true);
     setNotice(null);
     writeAgentConfig(config)
-      .then(() => setNotice({ kind: 'success', text: `${AGENT_LABELS[name]} settings saved` }))
+      .then(() => {
+        applyBinaryOverrides(config);
+        setNotice({ kind: 'success', text: `${AGENT_LABELS[name]} settings saved` });
+      })
       .catch((err: unknown) =>
         setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'Failed to save' }),
       )
       .finally(() => setSaving(false));
   };
 
+  // Spends a few tokens, so it only runs when asked. It tests the values on screen, saved or not.
+  const runFullTest = (): void => {
+    setTesting(true);
+    setNotice(null);
+    setChecks(undefined);
+    testAgent(name, settings.binary, settings.model)
+      .then(setChecks)
+      .catch((err: unknown) =>
+        setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'The test could not run' }),
+      )
+      .finally(() => setTesting(false));
+  };
+
   return (
     <FieldForm
       title={AGENT_LABELS[name]}
       subtitle={`Runs the \`${AGENT_HINTS[name]}\` command. ${config.defaultAgent === name ? 'This is the default agent.' : ''}`.trim()}
-      fields={MODEL_FIELDS}
-      values={{ model: config.agents[name].model }}
-      onChange={(_key, value) => {
-        setConfig({ ...config, agents: { ...config.agents, [name]: { model: value } } });
+      fields={agentFields(name)}
+      values={{ binary: settings.binary, model: settings.model }}
+      onChange={(key, value) => {
+        setConfig({ ...config, agents: { ...config.agents, [name]: { ...settings, [key]: value } } });
         setNotice(null);
       }}
       onSave={save}
       onQuit={onBack}
       notice={notice}
-      busy={saving}
+      busy={saving || testing}
+      footer={<AgentChecks name={name} checks={checks} />}
+      actions={[{ key: 't', label: 'full test (uses a few tokens)', run: runFullTest }]}
     />
   );
 }
@@ -68,10 +105,21 @@ export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactEle
   const [focus, setFocus] = useState(0);
   const [open, setOpen] = useState<AgentName | null>(null);
   const [notice, setNotice] = useState<FormNotice | null>(null);
+  const [checks, setChecks] = useState<Partial<Record<AgentName, AgentCheck[]>>>({});
+
+  // One quick inspection per agent when the screen opens, filled in as each answers. No prompts, so no tokens.
+  const inspectAll = (loaded: AgentConfig): void => {
+    for (const name of AGENT_NAMES) {
+      void inspectAgent(name, loaded.agents[name].binary).then((result) =>
+        setChecks((previous) => ({ ...previous, [name]: result })),
+      );
+    }
+  };
 
   useEffect(() => {
     void readAgentConfig().then((loaded) => {
       setConfig(loaded);
+      inspectAll(loaded);
       startDebugRun({
         flow: 'settings/agents',
         step: '01-agents',
@@ -136,7 +184,21 @@ export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactEle
   }
 
   if (open) {
-    return <AgentForm name={open} config={config} setConfig={setConfig} onBack={() => setOpen(null)} />;
+    return (
+      <AgentForm
+        name={open}
+        config={config}
+        setConfig={setConfig}
+        onBack={() => {
+          setOpen(null);
+          // The path or login may have changed in the form, so the row's badge is checked again.
+          void readAgentConfig().then((saved) => {
+            setConfig(saved);
+            inspectAll(saved);
+          });
+        }}
+      />
+    );
   }
 
   return (
@@ -169,7 +231,10 @@ export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactEle
                 {AGENT_LABELS[row.name]}
               </Text>
             </Box>
-            <Text color={PALETTE.muted}>{model ? `model: ${model}` : 'model: default'}</Text>
+            <Box width={26} flexShrink={0}>
+              <AgentStatusBadge name={row.name} checks={checks[row.name]} />
+            </Box>
+            <Text color={PALETTE.muted}>{`model: ${model || defaultModelLabel(row.name)}`}</Text>
             {row.name === config.defaultAgent && <Text color={PALETTE.success}>(default)</Text>}
           </Box>
         );

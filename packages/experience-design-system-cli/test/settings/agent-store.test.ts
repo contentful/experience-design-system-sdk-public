@@ -78,7 +78,8 @@ describe('the agent settings in config.json', () => {
   describe('writing', () => {
     const config = (defaultAgent: 'claude' | 'codex', models: Partial<Record<string, string>> = {}) => {
       const agents = emptyAgents();
-      for (const [name, model] of Object.entries(models)) agents[name as keyof typeof agents] = { model: model ?? '' };
+      for (const [name, model] of Object.entries(models))
+        agents[name as keyof typeof agents] = { model: model ?? '', binary: '' };
       return { defaultAgent, agents };
     };
 
@@ -137,6 +138,20 @@ describe('the agent settings in config.json', () => {
       await writeAgentConfig(config('claude', { claude: '  sonnet  ', codex: '   ' }));
 
       expect((await onDisk())['agents']).toEqual({ claude: { model: 'sonnet' } });
+    });
+
+    it('saves a binary path without a model, and keeps it when the model changes', async () => {
+      const withPath = config('claude', {});
+      withPath.agents.claude = { model: '', binary: '  /opt/bin/claude  ' };
+      await writeAgentConfig(withPath);
+
+      expect((await onDisk())['agents']).toEqual({ claude: { binary: '/opt/bin/claude' } });
+
+      const read = await readAgentConfig();
+      read.agents.claude = { ...read.agents.claude, model: 'sonnet' };
+      await writeAgentConfig(read);
+
+      expect((await onDisk())['agents']).toEqual({ claude: { model: 'sonnet', binary: '/opt/bin/claude' } });
     });
 
     it('can be read back as it was written', async () => {
