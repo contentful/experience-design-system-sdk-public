@@ -1,9 +1,9 @@
 import type { RawComponentDefinition } from '../../types/component.js';
-import type { ExtractionEndpointResponse } from '../../types/contract.js';
-import { hasNoAuthoringSurface } from './helpers/authorability/evaluate-authorability.js';
-import { computeExtractionScore, deriveNeedsReview } from './helpers/scoring/compute-extraction-score.js';
-import { inspectComponentSource, describeReviewReasons } from './helpers/inspection/inspect-component-source.js';
-import { validateExtractedComponents } from './helpers/inspection/validate-extracted-components.js';
+import type { ExtractComponentsResponse } from '../../types/contract.js';
+import { hasNoAuthoringSurface } from './non-authorable-filter.js';
+import { computeExtractionScore, deriveNeedsReview } from './scoring.js';
+import { inspectComponentSource, describeReviewReasons } from '../evidence/source-inspection.js';
+import { validateExtractedComponents } from './validate.js';
 
 function wrapperConfidenceToIssueCount(confidence: number): number {
   if (confidence >= 4) return 2;
@@ -15,7 +15,7 @@ function wrapperConfidenceToIssueCount(confidence: number): number {
 export async function evaluateExtractionQuality(
   components: readonly RawComponentDefinition[],
   initialWarnings: readonly string[] = [],
-): Promise<ExtractionEndpointResponse> {
+): Promise<ExtractComponentsResponse> {
   const inspectedComponents = await Promise.all(
     components.map(async (component) => ({
       component,

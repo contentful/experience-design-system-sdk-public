@@ -1,5 +1,5 @@
-import { preClassifyProp } from '@contentful/experience-design-system-extraction';
-import type { ComponentExtractionResult } from '@contentful/experience-design-system-extraction';
+import { preClassifyProp } from '../../../steps/extraction/src/helpers/pre-classify.js';
+import type { ComponentExtractionResult } from '../../../steps/extraction/src/types/component.js';
 
 /**
  * Fire the caller's exclusion sink for every pre-classification exclusion:
