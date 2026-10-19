@@ -113,7 +113,15 @@ export function DebugModeScreen({ onDone }: { onDone: () => void }): React.React
     }
   });
 
-  const marker = (row: Row): string => (focus === row ? '❯' : ' ');
+  // The same cursor and label styling as the other settings screens: accent when focused, muted otherwise.
+  const marker = (row: Row): React.ReactElement => (
+    <Text color={focus === row ? PALETTE.accent : undefined}>{focus === row ? '❯' : ' '}</Text>
+  );
+  const label = (row: Row, text: string): React.ReactElement => (
+    <Text bold={focus === row} color={focus === row ? PALETTE.accent : PALETTE.muted}>
+      {text}
+    </Text>
+  );
 
   return (
     <Box flexDirection="column" paddingX={2} paddingY={1}>
@@ -121,26 +129,27 @@ export function DebugModeScreen({ onDone }: { onDone: () => void }): React.React
       <Text> </Text>
       {setting ? (
         <>
-          <Text>
-            {marker('enabled')} Debug logging:{' '}
+          <Box gap={1}>
+            {marker('enabled')}
+            {label('enabled', 'Debug logging:')}
             <Text bold color={setting.enabled ? PALETTE.success : PALETTE.muted}>
               {setting.enabled ? 'On' : 'Off'}
             </Text>
-          </Text>
+          </Box>
           <Box gap={1}>
-            <Text>{marker('retentionDays')} Delete logs after:</Text>
+            {marker('retentionDays')}
+            {label('retentionDays', 'Delete logs after:')}
             {RETENTION_CHOICES.map((days) => {
               const highlighted = focus === 'retentionDays' && days === pending;
+              const saved = days === setting.retentionDays;
               return (
                 <Text
                   key={days}
-                  inverse={highlighted}
-                  bold={highlighted || days === setting.retentionDays}
-                  color={
-                    highlighted ? PALETTE.accent : days === setting.retentionDays ? PALETTE.success : PALETTE.muted
-                  }
+                  bold={highlighted || saved}
+                  underline={highlighted}
+                  color={highlighted ? PALETTE.accent : saved ? PALETTE.success : PALETTE.muted}
                 >
-                  {` ${days === setting.retentionDays ? '✓ ' : ''}${days} days `}
+                  {`${saved ? '✓ ' : ''}${days} days`}
                 </Text>
               );
             })}
