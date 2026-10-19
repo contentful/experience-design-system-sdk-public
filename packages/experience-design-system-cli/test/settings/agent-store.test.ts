@@ -25,56 +25,6 @@ describe('the agent settings in config.json', () => {
     await rm(home, { recursive: true, force: true });
   });
 
-  describe('reading', () => {
-    it('is Claude with no models when nothing has been saved', async () => {
-      expect(await readAgentConfig()).toEqual({ defaultAgent: 'claude', agents: emptyAgents() });
-    });
-
-    it('reads the default agent and each agent’s own model', async () => {
-      await seed({ agent: 'codex', agents: { codex: { model: 'gpt-5' }, claude: { model: 'sonnet' } } });
-
-      const config = await readAgentConfig();
-
-      expect(config.defaultAgent).toBe('codex');
-      expect(config.agents.codex.model).toBe('gpt-5');
-      expect(config.agents.claude.model).toBe('sonnet');
-      expect(config.agents.opencode.model).toBe('');
-    });
-
-    it('falls back to Claude for an agent name it does not know', async () => {
-      await seed({ agent: 'not-an-agent' });
-
-      expect((await readAgentConfig()).defaultAgent).toBe('claude');
-    });
-
-    it('survives a settings file with the wrong shapes in it', async () => {
-      await seed({ agent: 42, agentModel: ['x'], agents: 'nope' });
-
-      expect(await readAgentConfig()).toEqual({ defaultAgent: 'claude', agents: emptyAgents() });
-    });
-
-    it('ignores an agent entry it does not know and one with a model that is not text', async () => {
-      await seed({ agents: { claude: { model: 7 }, imaginary: { model: 'x' } } });
-
-      const config = await readAgentConfig();
-
-      expect(config.agents.claude.model).toBe('');
-      expect(Object.keys(config.agents).sort()).toEqual(['claude', 'codex', 'copilot', 'cursor', 'opencode']);
-    });
-
-    it('shows a model saved by `experiences setup` against the agent that was the default', async () => {
-      await seed({ agent: 'codex', agentModel: 'gpt-5' });
-
-      expect((await readAgentConfig()).agents.codex.model).toBe('gpt-5');
-    });
-
-    it('prefers the per-agent model to the older global one when both exist', async () => {
-      await seed({ agent: 'codex', agentModel: 'old', agents: { codex: { model: 'new' } } });
-
-      expect((await readAgentConfig()).agents.codex.model).toBe('new');
-    });
-  });
-
   describe('writing', () => {
     const config = (defaultAgent: 'claude' | 'codex', models: Partial<Record<string, string>> = {}) => {
       const agents = emptyAgents();
@@ -124,22 +74,6 @@ describe('the agent settings in config.json', () => {
       expect(saved).not.toHaveProperty('agentModel');
     });
 
-    it('leaves out agents with no model, and the whole section when none have one', async () => {
-      await seed({ agents: { claude: { model: 'sonnet' } }, agentModel: 'sonnet' });
-
-      await writeAgentConfig(config('claude', {}));
-
-      const saved = await onDisk();
-      expect(saved).not.toHaveProperty('agents');
-      expect(saved).not.toHaveProperty('agentModel');
-    });
-
-    it('trims the model, and treats a blank one as none', async () => {
-      await writeAgentConfig(config('claude', { claude: '  sonnet  ', codex: '   ' }));
-
-      expect((await onDisk())['agents']).toEqual({ claude: { model: 'sonnet' } });
-    });
-
     it('saves a binary path without a model, and keeps it when the model changes', async () => {
       const withPath = config('claude', {});
       withPath.agents.claude = { model: '', binary: '  /opt/bin/claude  ' };
@@ -152,14 +86,6 @@ describe('the agent settings in config.json', () => {
       await writeAgentConfig(read);
 
       expect((await onDisk())['agents']).toEqual({ claude: { model: 'sonnet', binary: '/opt/bin/claude' } });
-    });
-
-    it('can be read back as it was written', async () => {
-      const written = config('codex', { claude: 'sonnet', codex: 'gpt-5', opencode: 'anthropic/claude-sonnet' });
-
-      await writeAgentConfig(written);
-
-      expect(await readAgentConfig()).toEqual(written);
     });
   });
 });

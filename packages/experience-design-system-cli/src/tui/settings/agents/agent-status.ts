@@ -69,7 +69,7 @@ const LOGIN_HINTS: Record<AgentName, string> = {
  * The binary the import will actually run for this agent: the saved path if there is one, otherwise the built-in
  * command name. Shown in the form so the user sees what is used when the field is empty.
  */
-export function effectiveBinary(name: AgentName, savedBinary: string): string {
+function effectiveBinary(name: AgentName, savedBinary: string): string {
   return savedBinary.trim() || AGENT_BINARIES[name];
 }
 
@@ -228,7 +228,7 @@ export const LIST_STATUS: Record<AgentStatus, { symbol: string; text: string; to
  * The model line for the detail panel: what is saved, or what the agent really runs with when nothing is. Says which of
  * the two it is, so a user can tell their own choice from the built-in default.
  */
-export function modelLine(name: AgentName, savedModel: string): string {
+function modelLine(name: AgentName, savedModel: string): string {
   const model = savedModel.trim();
   return model ? model : `${defaultModelLabel(name)} (built-in default)`;
 }
@@ -266,12 +266,6 @@ export function panelRows(
   const hint = setupHint(name, status);
   if (hint) rows.push({ label: 'Setup', value: hint, tone: 'muted' });
   return rows;
-}
-
-/** The resolved path of the command, when the checks found it. For the list, where the user wants to see what runs. */
-export function resolvedPath(checks: readonly AgentCheck[] | undefined): string {
-  const path = checks?.find((check) => check.step === 'path');
-  return path?.ok ? path.detail : '';
 }
 
 /**
