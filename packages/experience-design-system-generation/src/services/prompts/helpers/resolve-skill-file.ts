@@ -9,6 +9,7 @@ const SKILL_FILES: Record<Skill, string> = {
   tokens: 'generate-tokens.md',
   select: 'select-components.md',
   'map-tokens': 'map-tokens.md',
+  'debate-select': 'debate-select.md',
 };
 
 export function resolveSkillPath(skill: Skill): string {

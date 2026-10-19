@@ -162,6 +162,8 @@ interface DTCGTokenGroupNode {
 
 All import stages share a single SQLite database at `~/.contentful/experience-design-system-cli/pipeline.db` (overridable via `EDS_PIPELINE_DB_PATH`). Legacy `import.db` data may be read once by session migration, but the current apply flow uses the sources API manifest operation rather than per-entity push resumption.
 
+Database initialization also runs a one-time cleanup migration for obsolete step labels. It removes only `analyze select`, `print components`, `print tokens`, and `fetch existing entities` rows whose status is `pending`, `failed`, or `interrupted`; completed rows, retained workflow labels, unknown labels and statuses, sessions, and saved component/token data remain intact.
+
 `DatabaseSync` (Node.js built-in) is used throughout. Synchronous writes are safe from SIGINT and uncaught exceptions without async ceremony — the database is always consistent at the moment of a signal.
 
 Sessions are created by extraction and passed to the wizard's internal subprocesses as `--session <id>`.
@@ -392,6 +394,8 @@ React components commonly extend `HTMLAttributes<T>`, `ButtonHTMLAttributes<T>`,
 The CLI resolves the component, token, and selection skill files from its packaged `skills/` assets and passes those paths to backend-pipeline operations. The CLI build copies the primary markdown sources from `packages/experience-design-system-generation/skills/`; matching fallback copies live under `packages/experience-design-system-backend-pipeline/src/agents/skills/`.
 
 The backend pipeline owns prompt assembly and agent invocation. It combines each skill file with a runtime preamble, embeds session data inline, invokes the selected local coding agent, parses one JSON tool-call object per output line, and applies valid calls to the session database. Raw components are not passed to the agent as file paths.
+
+The generation and backend prompt APIs also accept the additive `debate-select` skill. It supplies one role, one disagreement, source evidence, and an optional existing-model path to a prompt that returns one argument object. This prompt does not dispatch a FOR/AGAINST pair or make the final component-selection decision. The generation package carries the primary skill asset, the CLI asset-copy target includes it, and the backend build packages a narrow fallback under its selection skills.
 
 Do not use agent SDKs or APIs — the import wizard invokes agents as local subprocesses only.
 

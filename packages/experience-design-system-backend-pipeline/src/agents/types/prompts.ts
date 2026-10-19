@@ -6,7 +6,8 @@ import type { CDFComponentEntry } from '../../steps/shared/index.js';
  * `select` — decide whether a component belongs in Contentful Experience Orchestration;
  * `map-tokens` — suggest `$token.allowed` restrictions for design-category token props
  */
-export type Skill = 'components' | 'tokens' | 'select' | 'map-tokens';
+export type DebateRole = 'for' | 'against';
+export type Skill = 'components' | 'tokens' | 'select' | 'map-tokens' | 'debate-select';
 
 export type Mode = 'autonomous';
 
@@ -34,6 +35,10 @@ export type GeneratedCdf = Record<string, CDFComponentEntry>;
 export interface PromptOptions {
   skill: Skill;
   mode: Mode;
+  /** For debate-select: which position to argue; defaults to `for`. */
+  debateRole?: DebateRole;
+  /** For debate-select: the serialized disagreement under review. */
+  disagreementInline?: string;
   rawComponentsInline?: string;
   propBucketsInline?: string;
   rawTokensInline?: string;
@@ -60,4 +65,6 @@ export interface PromptOptions {
   existingTokensInline?: string;
   /** JSON-serialized hard allowlist for generated slot allowed-components references. */
   componentAllowlistInline?: string;
+  /** Optional path identifying the model already imported into the target space; context only. */
+  existingModelPath?: string;
 }

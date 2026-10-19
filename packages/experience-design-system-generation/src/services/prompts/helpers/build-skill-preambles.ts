@@ -1,3 +1,5 @@
+import type { DebateRole } from '../../../types/prompt.js';
+
 export function buildComponentsAutonomousPreamble(inputBlock: string): string {
   return `You are running as part of the experience-design-system-cli generate pipeline in AUTONOMOUS mode. The developer is not present to answer questions.
 
@@ -126,4 +128,45 @@ Rules:
 - "value" must be valid JSON (string, number, array, or object depending on the type). Do NOT wrap it in quotes if it is a complex type.
 - Emit set_group calls before the set_token calls that fall under them.
 - You may emit prose lines (not starting with {) anywhere — they are ignored by the parser and serve as your reasoning log.`;
+}
+
+export function buildDebateSelectAutonomousPreamble(
+  inputBlock: string,
+  debateRole: DebateRole | undefined,
+  disagreementInline: string | undefined,
+  existingModelPath: string | undefined,
+): string {
+  const role = debateRole ?? 'for';
+  const existingModelSection = existingModelPath
+    ? [
+        '',
+        '## Existing ExO model',
+        '',
+        `The already-imported components and design tokens are identified by this JSON path: \`${existingModelPath}\`. If that file is available in your execution context, use it as evidence about prior choices, not as the answer. Do not invent its contents when it is unavailable. When it conflicts with source evidence, the source wins; identify the existing component and property when you rely on it.`,
+      ]
+    : [];
+
+  return [
+    `You are the ${role.toUpperCase()} participant in a review of one component-selection disagreement. Do not ask the developer for confirmation.`,
+    '',
+    `Argue only the ${role.toUpperCase()} position on the exact disagreement below. Address the claim literally, cite supplied component evidence, and do not substitute a nearby component or field. Do not assume or describe another participant's response. Your output is an argument for a later independent determination, not a final selection.`,
+    '',
+    `Component and source data:${inputBlock}`,
+    '',
+    'Disagreement under review (JSON):',
+    '~~~json',
+    disagreementInline ?? '{}',
+    '~~~',
+    ...existingModelSection,
+    '',
+    '## Output protocol',
+    '',
+    'Emit exactly one JSON object on one line and do not write files:',
+    '',
+    '~~~json',
+    `{"role":"${role}","disagreement_id":"<id>","argument":"<position and reasoning>","evidence":[{"source":"<path>","line":"<line-or-range>","quote":"<verbatim evidence>"}]}`,
+    '~~~',
+    '',
+    'Use the role and disagreement ID supplied by the caller. Evidence must be an array of objects with source, line, and quote strings. Use an empty evidence array only when the supplied context contains no citable source evidence.',
+  ].join('\n');
 }

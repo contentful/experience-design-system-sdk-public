@@ -2,6 +2,7 @@ import type { PromptOptions } from '../../../types/prompt.js';
 import { inferFenceLang, filterDesignTokenProps, buildTokenCandidateSections } from './format-token-candidates.js';
 import { formatSourceRefsSection } from './format-source-refs.js';
 import {
+  buildDebateSelectAutonomousPreamble,
   buildComponentsAutonomousPreamble,
   buildSelectAutonomousPreamble,
   buildMapTokensAutonomousPreamble,
@@ -77,6 +78,14 @@ export function buildPreamble(options: PromptOptions): string {
 
   const inputBlock = sections.length > 0 ? `\n\n${sections.join('\n\n')}` : '';
 
+  if (skill === 'debate-select') {
+    return buildDebateSelectAutonomousPreamble(
+      inputBlock,
+      options.debateRole,
+      options.disagreementInline,
+      options.existingModelPath,
+    );
+  }
   if (skill === 'components') return buildComponentsAutonomousPreamble(inputBlock);
   if (skill === 'select') return buildSelectAutonomousPreamble(inputBlock);
   if (skill === 'map-tokens') return buildMapTokensAutonomousPreamble(inputBlock);

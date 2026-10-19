@@ -22,6 +22,7 @@ import { updateSessionTimestamp } from './sessions/write.js';
 import { getSessionIdForStep } from './steps/read.js';
 import { createPendingStep, updatePendingStepsToInterrupted, updateStepStatus } from './steps/write.js';
 import { getOrCreateSessionForCommand, type SessionResolution } from '../services/session-resolver.js';
+import { pruneObsoleteIncompleteStepsIfNeeded } from './step-history-migration.js';
 import { getRawTokenNamePaths, type RawTokenNamePathSource } from './tokens/read.js';
 import { type RawPropTokenPathSource } from './tokens/write.js';
 
@@ -247,6 +248,7 @@ export function openPipelineDb(dbPath?: string): DatabaseSync {
     db.exec('PRAGMA synchronous = NORMAL');
     db.exec(SCHEMA);
     applyDbMigrations(db);
+    pruneObsoleteIncompleteStepsIfNeeded(db);
     return db;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

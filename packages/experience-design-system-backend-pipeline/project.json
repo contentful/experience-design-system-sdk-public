@@ -12,7 +12,13 @@
         "outputPath": "packages/experience-design-system-backend-pipeline/dist",
         "main": "packages/experience-design-system-backend-pipeline/src/index.ts",
         "tsConfig": "packages/experience-design-system-backend-pipeline/tsconfig.build.json",
-        "assets": []
+        "assets": [
+          {
+            "input": "packages/experience-design-system-backend-pipeline/src/agents/skills/selection",
+            "glob": "debate-select.md",
+            "output": "src/agents/skills/selection"
+          }
+        ]
       },
       "dependsOn": ["^build"]
     },

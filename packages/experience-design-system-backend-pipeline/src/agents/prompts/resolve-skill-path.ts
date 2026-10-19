@@ -14,7 +14,7 @@ export function resolveSkillPath(skill: Skill): string {
     if (existsSync(candidate)) {
       // Each skill lives under skills/<step>/<file>; try every subdir until one hits.
       const file = SKILL_FILES[skill];
-      const stepDir = file === 'select-components.md' ? 'selection' : 'generation';
+      const stepDir = file === 'select-components.md' || file === 'debate-select.md' ? 'selection' : 'generation';
       return join(candidate, stepDir, file);
     }
     const parent = resolve(dir, '..');

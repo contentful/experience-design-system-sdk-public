@@ -204,6 +204,14 @@ export { agentSupportsBedrock } from './agents/helpers/bedrock/agent-supports-be
 export { checkAgentAuth } from './agents/services/check-agent-auth.js';
 export type { AgentAuthStatus } from './agents/types/agent-run.js';
 export { buildPrompt } from './agents/prompts/build-prompt.js';
+export type {
+  ComponentSourceRef,
+  DebateRole,
+  GeneratedCdf,
+  Mode,
+  PromptOptions,
+  Skill,
+} from './agents/types/prompts.js';
 export { stripPropProvenance } from './agents/prompts/helpers/strip-prop-provenance.js';
 export { bucketComponentsProps } from '@contentful/experience-design-system-extraction';
 export { resolveSkillPath } from './agents/prompts/resolve-skill-path.js';
