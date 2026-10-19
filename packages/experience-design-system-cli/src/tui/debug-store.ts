@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { readSettings } from '@contentful/experience-design-system-types/config';
 import { readPackageVersion } from './upgrade/version.js';
 import { readDebugModeSetting } from './settings/debug-mode/debug-mode-store.js';
+import { cancelAndDrainImportWork } from './import/cancellation.js';
 
 type PendingRun = {
   flow: string;
@@ -275,8 +276,15 @@ process.once('unhandledRejection', (reason) => {
   });
 });
 
-process.once('SIGINT', () => {
-  void handleCrash().finally(() => {
-    process.exit(130);
-  });
-});
+let shutdownStarted = false;
+
+function shutdownImport(exitCode: 130 | 143): void {
+  if (shutdownStarted) return;
+  shutdownStarted = true;
+  void cancelAndDrainImportWork()
+    .then(handleCrash)
+    .finally(() => process.exit(exitCode));
+}
+
+process.once('SIGINT', () => shutdownImport(130));
+process.once('SIGTERM', () => shutdownImport(143));

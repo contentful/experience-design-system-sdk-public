@@ -21,6 +21,7 @@ import { saveDecisions } from './save-decisions.js';
 const COMPONENTS_SKILL_PATH = findSkillPath('generate-components.md');
 const MAP_TOKENS_SKILL_PATH = findSkillPath('map-tokens.md');
 import type { GenerationInput, GenerationProgress, GenerationResult, GenerationStepName } from './types.js';
+import { throwIfAborted } from '../../cancellation.js';
 
 type Failure = Extract<GenerationResult, { ok: false }>;
 
@@ -30,6 +31,7 @@ export interface GenerationDeps {
   runGenerate: typeof runGenerateComponentsSession;
   runMapTokens: typeof runMapTokens;
   prepareMapTokens: typeof prepareMapTokens;
+  prepareMapOptions: typeof buildMapTokensOptions;
 }
 
 const realDeps: GenerationDeps = {
@@ -38,6 +40,7 @@ const realDeps: GenerationDeps = {
   runGenerate: runGenerateComponentsSession,
   runMapTokens,
   prepareMapTokens,
+  prepareMapOptions: buildMapTokensOptions,
 };
 
 const fail = (step: GenerationStepName, message: string): Failure => ({ ok: false, step, message });
@@ -48,24 +51,42 @@ export async function runGeneration(
   onProgress: (progress: GenerationProgress) => void,
   deps: GenerationDeps = realDeps,
 ): Promise<GenerationResult> {
+  const signal = input.signal;
   let progress: GenerationProgress = { components: null, mapTokens: 'idle', mapTokensEligible: null };
   const update = (change: Partial<GenerationProgress>): void => {
+    if (signal?.aborted) return;
     progress = { ...progress, ...change };
     onProgress(progress);
   };
   const accepted = input.decisions.accepted;
 
-  const handedOverNames = await input.cachedNames.catch((): string[] => []);
+  let handedOverNames: string[];
+  try {
+    throwIfAborted(signal);
+    handedOverNames = await input.cachedNames.catch((): string[] => []);
+    throwIfAborted(signal);
+  } catch (error) {
+    return fail('generate components', errorMessage(error));
+  }
 
   try {
-    await deps.saveDecisions({ sessionId: input.sessionId, decisions: input.decisions });
+    throwIfAborted(signal);
+    await deps.saveDecisions({ sessionId: input.sessionId, decisions: input.decisions, signal });
+    throwIfAborted(signal);
   } catch (error) {
     return fail('save decisions', errorMessage(error));
   }
 
   if (accepted.length === 0) return { ok: true, generation: { route: 'push', acceptedCount: 0 } };
 
-  const auth = await deps.checkAgentAuth(input.agent as AgentName);
+  let auth: Awaited<ReturnType<GenerationDeps['checkAgentAuth']>>;
+  try {
+    throwIfAborted(signal);
+    auth = await deps.checkAgentAuth(input.agent as AgentName);
+    throwIfAborted(signal);
+  } catch (error) {
+    return fail(`${input.agent} auth check`, errorMessage(error));
+  }
   if (auth === 'not-found' || auth === 'unauthenticated') {
     return fail(`${input.agent} auth check`, agentAuthMessage(input.agent, auth));
   }
@@ -73,6 +94,7 @@ export async function runGeneration(
   const debugWrites: Promise<void>[] = [];
   let generated: RunGenerateComponentsSessionResponse;
   try {
+    throwIfAborted(signal);
     generated = await deps.runGenerate({
       sessionId: input.sessionId,
       agent: input.agent,
@@ -80,6 +102,7 @@ export async function runGeneration(
       promptOverrides: appendGeneratePromptOverride(input),
       skillPath: COMPONENTS_SKILL_PATH,
       noCache: input.noCache,
+      signal,
       existingEntitiesPath: input.existingEntitiesPath,
       precomputedCachedNames: new Set(handedOverNames),
       onProgress: (event) => update({ components: applyProgressEvent(event, progress.components, accepted.length) }),
@@ -87,11 +110,13 @@ export async function runGeneration(
         debugWrites.push(recordDebugEvent(event, { ...payload, sessionId: input.sessionId }));
       },
     });
+    throwIfAborted(signal);
   } catch (error) {
     return fail('generate components', errorMessage(error));
   } finally {
-    await Promise.all(debugWrites);
+    await Promise.allSettled(debugWrites);
   }
+  if (signal?.aborted) return fail('generate components', errorMessage(new Error('The operation was aborted.')));
   if (generated.emptySession) return fail('generate components', 'no raw components in session');
   if (!generated.allOk) {
     const firstFailure = generated.results.find((r) => r.failed);
@@ -100,7 +125,9 @@ export async function runGeneration(
 
   let plan;
   try {
-    plan = await deps.prepareMapTokens(input, input.sessionId);
+    throwIfAborted(signal);
+    plan = await deps.prepareMapTokens({ ...input, signal }, input.sessionId);
+    throwIfAborted(signal);
   } catch (error) {
     return fail('map tokens', errorMessage(error));
   }
@@ -108,15 +135,19 @@ export async function runGeneration(
   if (plan.eligible) {
     update({ mapTokens: 'running' });
     try {
-      const mapTokensOptions = await buildMapTokensOptions(input);
+      throwIfAborted(signal);
+      const mapTokensOptions = await deps.prepareMapOptions(input, signal);
+      throwIfAborted(signal);
       await deps.runMapTokens({
         sessionId: input.sessionId,
         agent: input.agent as AgentName,
         ...(input.agentModel ? { model: input.agentModel } : {}),
         cache: !input.noCache,
+        signal,
         skillPathOverride: MAP_TOKENS_SKILL_PATH,
         ...mapTokensOptions,
       });
+      throwIfAborted(signal);
     } catch (error) {
       const message =
         error instanceof MapTokensRunFailure ? error.message : error instanceof Error ? error.message : String(error);
@@ -126,6 +157,7 @@ export async function runGeneration(
   update({ mapTokens: 'complete' });
 
   await new Promise<void>((r) => setImmediate(r));
+  if (signal?.aborted) return fail('generate components', 'The operation was aborted.');
 
   const generatedCount = generated.results.filter((r) => !r.failed).length;
   return {
@@ -142,7 +174,9 @@ export async function runGeneration(
 
 async function buildMapTokensOptions(
   input: GenerationInput,
+  signal?: AbortSignal,
 ): Promise<{ skillContentOverride?: string; skillPathOverride?: string; existingEntitiesInline?: string }> {
+  throwIfAborted(signal);
   const { overrides: parsed, errors } = parsePromptOverrides(input.promptOverrides);
   if (errors.length > 0) throw new Error(errors.join('; '));
   const mapOverride = parsed.get('map-tokens');
@@ -151,11 +185,13 @@ async function buildMapTokensOptions(
   if (mapOverride?.kind === 'text') prompt.skillContentOverride = mapOverride.value;
   if (mapOverride?.kind === 'path') {
     await resolvePromptOverride(mapOverride);
+    throwIfAborted(signal);
     prompt.skillPathOverride = resolve(mapOverride.value);
   }
 
   if (input.existingEntitiesPath) {
     const entities = await readExistingContentfulEntitiesFromSession({ path: input.existingEntitiesPath });
+    throwIfAborted(signal);
     if (entities) return { ...prompt, existingEntitiesInline: JSON.stringify(summarizeForMapTokens({ entities })) };
   }
   return prompt;

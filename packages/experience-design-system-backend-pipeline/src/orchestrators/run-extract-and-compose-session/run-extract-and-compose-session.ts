@@ -25,6 +25,7 @@ import {
   isPipelineAnalyticsChild,
 } from '../../analytics/index.js';
 import type { RunExtractAndComposeSessionRequest, RunExtractAndComposeSessionResponse } from './types.js';
+import { throwIfAborted } from '../../helpers/abort.js';
 
 export type {
   ExtractAndComposeProgress,
@@ -59,6 +60,7 @@ export type {
 export async function runExtractAndComposeSession(
   request: RunExtractAndComposeSessionRequest,
 ): Promise<RunExtractAndComposeSessionResponse> {
+  throwIfAborted(request.signal);
   const {
     projectPath,
     outDir,
@@ -78,9 +80,11 @@ export async function runExtractAndComposeSession(
   const db = openPipelineDb();
   try {
     const cacheVersion = await getCliCacheVersion();
+    throwIfAborted(request.signal);
 
     // Fail-fast on bad prompt-override syntax before any DB writes or agent calls.
     const compositionPrompt = await resolveCompositionPrompt(promptOverrides);
+    throwIfAborted(request.signal);
 
     const { extraction, cacheHits } = await extractComponentsWithCache({
       db,
@@ -92,8 +96,11 @@ export async function runExtractAndComposeSession(
       onProgress,
       onDebugEvent,
     });
+    throwIfAborted(request.signal);
 
+    throwIfAborted(request.signal);
     await mkdir(outDir, { recursive: true });
+    throwIfAborted(request.signal);
 
     // Mint the session and tell the caller — selection lane can start now.
     const { sessionId } = getOrCreateSession(db, undefined, undefined, {
@@ -101,15 +108,21 @@ export async function runExtractAndComposeSession(
       inputPath: projectPath,
       outDir,
     });
+    throwIfAborted(request.signal);
     await onSessionCreated?.(sessionId);
+    throwIfAborted(request.signal);
 
     await bindAnalyticsSessionId(sessionId);
+    throwIfAborted(request.signal);
     if (!isPipelineAnalyticsChild()) await emitSessionStarted('import');
+    throwIfAborted(request.signal);
 
+    throwIfAborted(request.signal);
     const stepId = createStep(db, sessionId, 'analyze extract', { project: projectPath });
 
     if (cacheHits === 0 && !noCache) {
       await persistExtractCache(db, sourceFiles, extraction.components, cacheVersion);
+      throwIfAborted(request.signal);
     }
 
     emitPreClassificationExclusions(extraction, onExclusion);
@@ -117,10 +130,12 @@ export async function runExtractAndComposeSession(
     const classifiedComponents = extraction.components.map(preClassifyComponent);
     const { components: initialValidatedComponents, warnings: filterWarnings } =
       await evaluateExtractionQuality(classifiedComponents);
+    throwIfAborted(request.signal);
 
     // First raw-components write — before composition so downstream stages can
     // start working while the (potentially agent-backed) mapper continues.
     storeRawComponents(db, sessionId, initialValidatedComponents);
+    throwIfAborted(request.signal);
 
     const sources = resolveCompositionSources({ noCache, compositionRefresh });
     const composition = await resolveComposition({
@@ -134,26 +149,39 @@ export async function runExtractAndComposeSession(
       compositionPrompt,
       agent,
       bedrock,
+      signal: request.signal,
       onProgress,
       onDebugEvent,
     });
+    throwIfAborted(request.signal);
 
     // Final writes — raw components (preserving selection decisions), slot
     // cycles, scanned files, step completion.
-    await retryDatabaseWrite(() => storeRawComponents(db, sessionId, composition.components, { preserveStatus: true }));
+    await retryDatabaseWrite(
+      () => storeRawComponents(db, sessionId, composition.components, { preserveStatus: true }),
+      8,
+      request.signal,
+    );
+    throwIfAborted(request.signal);
     await persistSlotCycles(db, sessionId, composition.components);
+    throwIfAborted(request.signal);
     storeScannedFiles(
       db,
       sessionId,
       sourceFiles.map((f) => relative(projectPath, f)),
     );
-    await retryDatabaseWrite(() =>
-      updateStep(db, stepId, 'complete', {
-        sessionId,
-        compositionEvidence: JSON.stringify(composition.sourceCallSiteEvidence),
-        compositionRejections: JSON.stringify(composition.sourceCallSiteRejections),
-      }),
+    throwIfAborted(request.signal);
+    await retryDatabaseWrite(
+      () =>
+        updateStep(db, stepId, 'complete', {
+          sessionId,
+          compositionEvidence: JSON.stringify(composition.sourceCallSiteEvidence),
+          compositionRejections: JSON.stringify(composition.sourceCallSiteRejections),
+        }),
+      8,
+      request.signal,
     );
+    throwIfAborted(request.signal);
 
     enrichCommandResult({ extracted_component_count: composition.components.length });
 

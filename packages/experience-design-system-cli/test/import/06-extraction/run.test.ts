@@ -6,6 +6,10 @@ import type {
 import { runExtraction, type ExtractionDeps } from '../../../src/tui/import/steps/06-extraction/run.js';
 import type { ExtractionInput, ExtractionProgress } from '../../../src/tui/import/steps/06-extraction/types.js';
 
+vi.mock('../../../src/tui/import/steps/06-extraction/find-skill-path.js', () => ({
+  findSkillPath: (fileName: string) => `/test-skills/${fileName}`,
+}));
+
 const input = (overrides: Partial<ExtractionInput> = {}): ExtractionInput => ({
   projectPath: '/proj',
   filePaths: ['/proj/src/a.tsx', '/proj/src/b.tsx', '/proj/src/c.tsx'],
@@ -111,6 +115,40 @@ describe('runExtraction — the tokens path it hands over', () => {
 });
 
 describe('runExtraction — the happy path', () => {
+  it('keeps one live attempt signal through extraction, selection, and token generation', async () => {
+    const controller = new AbortController();
+    const withSignal = input() as ExtractionInput & { signal?: AbortSignal };
+    withSignal.signal = controller.signal;
+    const signals: Array<AbortSignal | undefined> = [];
+    const deps = makeDeps({
+      runExtractAndComposeSession: vi.fn(async (req) => {
+        signals.push((req as typeof req & { signal?: AbortSignal }).signal);
+        await req.onSessionCreated?.('sess-1');
+        return successResponse();
+      }) as ExtractionDeps['runExtractAndComposeSession'],
+      runGenerateTokensSession: vi.fn(async (req) => {
+        signals.push((req as typeof req & { signal?: AbortSignal }).signal);
+        return {
+          tokensPath: '/proj/.contentful/tokens.json',
+          tokenSessionId: 'tok-1',
+          tokenCount: 12,
+          warnings: [],
+        };
+      }) as ExtractionDeps['runGenerateTokensSession'],
+      runSelection: vi.fn(async (req) => {
+        signals.push((req as typeof req & { signal?: AbortSignal }).signal);
+      }),
+    });
+
+    const result = await runExtraction(withSignal, () => {}, deps);
+
+    expect(result.ok).toBe(true);
+    expect(signals).toHaveLength(3);
+    expect(signals[0]).toBeInstanceOf(AbortSignal);
+    expect(signals.every((signal) => signal === signals[0] && signal?.aborted === false)).toBe(true);
+    expect(controller.signal.aborted).toBe(false);
+  });
+
   it('hands the wizard everything it needs to start at the scope gate', async () => {
     const result = await runExtraction(input(), () => {}, makeDeps());
 
@@ -284,6 +322,23 @@ describe('runExtraction — what is skipped', () => {
 });
 
 describe('runExtraction — failures', () => {
+  it('does no preparation or session work for a pre-aborted attempt', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const withSignal = input() as ExtractionInput & { signal?: AbortSignal };
+    withSignal.signal = controller.signal;
+    const deps = makeDeps();
+
+    const result = await runExtraction(withSignal, () => {}, deps);
+
+    expect(result).toMatchObject({ ok: false });
+    expect(deps.checkAgentAuth).not.toHaveBeenCalled();
+    expect(deps.fetchEntities).not.toHaveBeenCalled();
+    expect(deps.runGenerateTokensSession).not.toHaveBeenCalled();
+    expect(deps.runExtractAndComposeSession).not.toHaveBeenCalled();
+    expect(deps.runSelection).not.toHaveBeenCalled();
+  });
+
   it.each(['not-found', 'unauthenticated'] as const)(
     'stops before doing any work when the agent is %s',
     async (status) => {
@@ -388,5 +443,93 @@ describe('runExtraction — failures', () => {
         message: 'selection broke',
       });
     });
+  });
+
+  it('cancels and drains token generation and selection when extraction fails first', async () => {
+    const controller = new AbortController();
+    const events: string[] = [];
+    let releaseTokens!: () => void;
+    let releaseSelection!: () => void;
+    let selectionStarted!: () => void;
+    const selectionStartedPromise = new Promise<void>((resolve) => {
+      selectionStarted = resolve;
+    });
+    const withSignal = input() as ExtractionInput & { signal?: AbortSignal };
+    withSignal.signal = controller.signal;
+
+    const deps = makeDeps({
+      runGenerateTokensSession: vi.fn((req) => {
+        const signal = (req as typeof req & { signal?: AbortSignal }).signal;
+        return new Promise((resolve) => {
+          releaseTokens = () => {
+            events.push('tokens:drained');
+            resolve({ tokenSessionId: 'tok-1', tokensPath: '/tokens.json', tokenCount: 1, warnings: [] });
+          };
+          signal?.addEventListener(
+            'abort',
+            () => {
+              events.push('tokens:aborted');
+              releaseTokens();
+            },
+            { once: true },
+          );
+        });
+      }) as ExtractionDeps['runGenerateTokensSession'],
+      runSelection: vi.fn((req) => {
+        const signal = (req as typeof req & { signal?: AbortSignal }).signal;
+        selectionStarted();
+        return new Promise<void>((resolve) => {
+          releaseSelection = () => {
+            events.push('selection:drained');
+            resolve();
+          };
+          signal?.addEventListener(
+            'abort',
+            () => {
+              events.push('selection:aborted');
+              releaseSelection();
+            },
+            { once: true },
+          );
+        });
+      }),
+      runExtractAndComposeSession: vi.fn(async (req) => {
+        await req.onSessionCreated?.('sess-1');
+        await selectionStartedPromise;
+        throw new Error('original extraction failure');
+      }) as ExtractionDeps['runExtractAndComposeSession'],
+    });
+
+    const result = await runExtraction(withSignal, () => {}, deps);
+    const atReturn = [...events];
+    releaseTokens?.();
+    releaseSelection?.();
+
+    expect(result).toEqual({ ok: false, step: 'analyze extract', message: 'original extraction failure' });
+    expect(atReturn).toContain('tokens:aborted');
+    expect(atReturn).toContain('selection:aborted');
+    expect(atReturn).toContain('tokens:drained');
+    expect(atReturn).toContain('selection:drained');
+  });
+
+  it('does not launch selection when cancellation happens during the entities wait', async () => {
+    let resolveEntities!: (path: string | null) => void;
+    const entities = new Promise<string | null>((resolve) => {
+      resolveEntities = resolve;
+    });
+    const controller = new AbortController();
+    const withSignal = input() as ExtractionInput & { signal?: AbortSignal };
+    withSignal.signal = controller.signal;
+    const deps = makeDeps({
+      fetchEntities: vi.fn(() => entities),
+    });
+
+    const running = runExtraction(withSignal, () => {}, deps);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    controller.abort();
+    resolveEntities('/entities.json');
+    await running;
+
+    expect(deps.runSelection).not.toHaveBeenCalled();
   });
 });

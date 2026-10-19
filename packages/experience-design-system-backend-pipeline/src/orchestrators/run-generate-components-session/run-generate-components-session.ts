@@ -13,6 +13,7 @@ import { runOneGenerateComponent } from './helpers/run-one-generate-component.js
 import { runWithPool } from './helpers/run-with-pool.js';
 import { bindAnalyticsSessionId } from '../../analytics/index.js';
 import type { RunGenerateComponentsSessionRequest, RunGenerateComponentsSessionResponse } from './types.js';
+import { throwIfAborted } from '../../helpers/abort.js';
 
 export type {
   GenerateComponentsProgress,
@@ -31,9 +32,12 @@ const DEFAULT_COMPONENT_CONCURRENCY = Number(process.env['EDS_GENERATE_CONCURREN
 export async function runGenerateComponentsSession(
   request: RunGenerateComponentsSessionRequest,
 ): Promise<RunGenerateComponentsSessionResponse> {
+  throwIfAborted(request.signal);
   const prompt = await resolveGeneratePrompt(request.promptOverrides);
+  throwIfAborted(request.signal);
   const effectiveSkillPath = prompt.path ?? request.skillPath;
   const existingEntities = await readExistingEntities(request);
+  throwIfAborted(request.signal);
   const existingTokensInline = existingEntities
     ? JSON.stringify(summarizeForMapTokens({ entities: existingEntities }))
     : undefined;
@@ -48,12 +52,15 @@ export async function runGenerateComponentsSession(
     existingTokensHash,
     prompt.text,
   );
+  throwIfAborted(request.signal);
 
   await bindAnalyticsSessionId(request.sessionId);
+  throwIfAborted(request.signal);
 
   const db = openPipelineDb();
   try {
     const acceptedNames = await loadAcceptedNames(request.sessionId);
+    throwIfAborted(request.signal);
     const acceptedSet = acceptedNames ? new Set(acceptedNames) : undefined;
     let components = loadRawComponents(db, request.sessionId, acceptedSet ?? undefined);
     if (components.length === 0) return buildEmptySessionResponse(request.sessionId);
@@ -74,32 +81,37 @@ export async function runGenerateComponentsSession(
     const duplicateNames = collectDuplicateNames(components);
     const invoker = createLocalCliAgentInvoker({});
     const concurrency = Math.max(1, Math.min(DEFAULT_COMPONENT_CONCURRENCY, components.length));
-    const results = await runWithPool(components, concurrency, (component, index) =>
-      runOneGenerateComponent(
-        {
-          db,
-          sessionId: request.sessionId,
-          invoker,
-          agent,
-          model: request.agentModel,
-          tokensInline: request.tokensInline,
-          tokenMapInline: request.tokenMapInline,
-          verbose: request.verbose ?? false,
-          noCache: request.noCache,
-          skillPathOverride: effectiveSkillPath,
-          skillContentOverride: prompt.text,
-          promptHash,
-          existingContentfulEntities: existingEntities,
-          existingTokensInline,
-          precomputedCachedNames: request.precomputedCachedNames ?? new Set(),
-          allowedComponentNames,
-          onProgress: request.onProgress,
-          onDebugEvent: request.onDebugEvent,
-        },
-        component,
-        index,
-        components.length,
-      ),
+    const results = await runWithPool(
+      components,
+      concurrency,
+      (component, index, signal) =>
+        runOneGenerateComponent(
+          {
+            db,
+            sessionId: request.sessionId,
+            invoker,
+            agent,
+            model: request.agentModel,
+            tokensInline: request.tokensInline,
+            tokenMapInline: request.tokenMapInline,
+            verbose: request.verbose ?? false,
+            noCache: request.noCache,
+            skillPathOverride: effectiveSkillPath,
+            skillContentOverride: prompt.text,
+            promptHash,
+            existingContentfulEntities: existingEntities,
+            existingTokensInline,
+            precomputedCachedNames: request.precomputedCachedNames ?? new Set(),
+            allowedComponentNames,
+            onProgress: request.onProgress,
+            onDebugEvent: request.onDebugEvent,
+            signal,
+          },
+          component,
+          index,
+          components.length,
+        ),
+      request.signal,
     );
 
     const allOk = results.every((r) => !r.failed);

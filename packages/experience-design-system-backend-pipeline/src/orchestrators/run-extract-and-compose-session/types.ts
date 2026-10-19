@@ -14,6 +14,7 @@ export type ExtractAndComposeProgress =
   | { kind: 'composition'; phase: 'resolving' | 'cache-hit' | `agent:${string}` | 'done' };
 
 export interface RunExtractAndComposeSessionRequest {
+  signal?: AbortSignal;
   /** Absolute project root. Used as the session's inputPath and for relative file-path storage. */
   projectPath: string;
   /** Absolute path to the session's output directory (typically `<projectPath>/.contentful`). */

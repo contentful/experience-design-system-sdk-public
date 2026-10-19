@@ -9,6 +9,7 @@ import type {
   RunCdfGenerationServiceOptions,
   RunCdfGenerationServiceResult,
 } from '../types/contract.js';
+import { isAbortError, throwIfAborted } from '../../../../helpers/abort.js';
 
 const DEFAULT_CONCURRENCY = 3;
 const AGENT_TIMEOUT_MS = 120_000;
@@ -66,6 +67,7 @@ async function generateOne(
   index: number,
   total: number,
 ): Promise<{ entry?: CDFComponentEntry; failure?: CdfGenerationFailure; warnings: string[] }> {
+  throwIfAborted(options.signal);
   const { agent, model, skillPathOverride, skillContentOverride, onCacheLookup, onCacheStore, onProgress, onWarning } =
     options;
 
@@ -84,23 +86,27 @@ async function generateOne(
     skillPathOverride,
     skillContentOverride,
   });
+  throwIfAborted(options.signal);
 
   const promptHash = hashString(prompt);
 
   const cached = onCacheLookup?.(inputHash, promptHash);
+  throwIfAborted(options.signal);
   if (cached) return { entry: cached, warnings: [] };
 
   options.onDebugEvent?.('prop-buckets.generate', { ...componentBuckets });
   const invoker = createLocalCliAgentInvoker();
   let agentResult;
   try {
-    agentResult = await invoker.invoke({ agent, model, prompt, timeoutMs: AGENT_TIMEOUT_MS });
+    agentResult = await invoker.invoke({ agent, model, prompt, timeoutMs: AGENT_TIMEOUT_MS, signal: options.signal });
   } catch (error) {
+    if (isAbortError(error) || options.signal?.aborted) throwIfAborted(options.signal);
     return {
       failure: { componentName: component.name, error: error instanceof Error ? error.message : String(error) },
       warnings: [],
     };
   }
+  throwIfAborted(options.signal);
 
   if (agentResult.timedOut || agentResult.exitCode !== 0) {
     const error = agentResult.timedOut
@@ -110,10 +116,16 @@ async function generateOne(
   }
 
   const { calls, warnings } = parseToolCalls(agentResult.stdout);
-  for (const w of warnings) onWarning?.(`${component.name}: ${w}`);
+  throwIfAborted(options.signal);
+  for (const w of warnings) {
+    throwIfAborted(options.signal);
+    onWarning?.(`${component.name}: ${w}`);
+  }
 
+  throwIfAborted(options.signal);
   const entry = toolCallsToEntry(component, calls);
   onCacheStore?.(inputHash, promptHash, entry);
+  throwIfAborted(options.signal);
 
   return { entry, warnings };
 }
@@ -122,6 +134,7 @@ export async function runCdfGenerationService(
   options: RunCdfGenerationServiceOptions,
 ): Promise<RunCdfGenerationServiceResult> {
   const { components, concurrency = DEFAULT_CONCURRENCY } = options;
+  throwIfAborted(options.signal);
 
   const resultComponents: CDFComponentEntry[] = [];
   const allWarnings: string[] = [];
@@ -131,10 +144,11 @@ export async function runCdfGenerationService(
   let cursor = 0;
 
   async function worker(): Promise<void> {
-    while (cursor < total) {
+    while (!options.signal?.aborted && cursor < total) {
       const i = cursor++;
       const component = components[i]!;
       const result = await generateOne(component, options, i, total);
+      throwIfAborted(options.signal);
       if (result.failure) {
         failures.push(result.failure);
       } else if (result.entry) {
@@ -144,7 +158,10 @@ export async function runCdfGenerationService(
     }
   }
 
-  await Promise.all(Array.from({ length: Math.min(concurrency, total) }, worker));
+  const settled = await Promise.allSettled(Array.from({ length: Math.min(concurrency, total) }, worker));
+  throwIfAborted(options.signal);
+  const failed = settled.find((entry): entry is PromiseRejectedResult => entry.status === 'rejected');
+  if (failed) throw failed.reason;
 
   return { components: resultComponents, warnings: allWarnings, failures };
 }

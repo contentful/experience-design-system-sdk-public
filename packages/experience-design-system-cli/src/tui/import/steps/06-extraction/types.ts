@@ -5,6 +5,7 @@ import type { ExtractionHandoff, ImportHandoff } from '@contentful/experience-de
 export type TokenStrategy = ImportHandoff['tokens']['strategy'];
 
 export interface ExtractionInput {
+  signal?: AbortSignal;
   projectPath: string;
   /** Where the stage writes tokens.json and the other files. Defaults to `<projectPath>/.contentful`. */
   outDir?: string;

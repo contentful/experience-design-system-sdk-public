@@ -56,6 +56,8 @@ export interface GeneratedComponentResult {
 export interface RunGenerateComponentsSessionRequest {
   sessionId: string;
 
+  signal?: AbortSignal;
+
   agent: string;
 
   agentModel?: string;

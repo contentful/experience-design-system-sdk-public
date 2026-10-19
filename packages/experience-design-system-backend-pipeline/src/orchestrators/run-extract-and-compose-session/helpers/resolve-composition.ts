@@ -12,9 +12,11 @@ import type { AgentDebugEvent } from '../../../agents/types/agent-run.js';
 import type { EdgeConflict } from '../../../steps/composition/src/helpers/edges/merge-edges.js';
 import type { RawComponentDefinition } from '../../../steps/extraction/src/types/component.js';
 import type { ExtractAndComposeProgress } from '../types.js';
+import { throwIfAborted } from '../../../helpers/abort.js';
 
 export interface ResolveCompositionRequest {
   db: DatabaseSync;
+  signal?: AbortSignal;
   components: RawComponentDefinition[];
   sourceFiles: string[];
   cacheVersion: string;
@@ -72,11 +74,13 @@ export async function resolveComposition(request: ResolveCompositionRequest): Pr
     onDebugEvent,
   } = request;
 
+  throwIfAborted(request.signal);
   const warnings: string[] = [];
 
   onProgress?.({ kind: 'composition', phase: 'resolving' });
 
   const { promptFiles, runtimeFiles, droppedWarning } = await selectCompositionPromptFiles(components, sourceFiles);
+  throwIfAborted(request.signal);
   if (droppedWarning) warnings.push(droppedWarning);
 
   const resolverAgent = resolveCompositionAgentName(agent);
@@ -90,8 +94,10 @@ export async function resolveComposition(request: ResolveCompositionRequest): Pr
       timeoutMs: 120_000,
       promptViaStdin: true,
       bedrock,
+      signal: request.signal,
       onDebugEvent: (name, payload) => onDebugEvent?.('agent', { event: name, ...payload }),
     });
+    throwIfAborted(request.signal);
     lastAgentExitCode = res.exitCode;
     if (res.exitCode !== 0 && res.stderr.trim()) {
       warnings.push(`composition — agent exited ${res.exitCode}: ${res.stderr.trim()}`);
@@ -115,6 +121,7 @@ export async function resolveComposition(request: ResolveCompositionRequest): Pr
     runAgentFn: async ({ prompt }) => {
       if (!noCache && !compositionRefresh) {
         const cached = lookupCompositionCache(db, agentCacheKey, cacheVersion);
+        throwIfAborted(request.signal);
         if (cached !== null) {
           didHitCompositionCache = true;
           onProgress?.({ kind: 'composition', phase: 'cache-hit' });
@@ -123,10 +130,12 @@ export async function resolveComposition(request: ResolveCompositionRequest): Pr
       }
       onProgress?.({ kind: 'composition', phase: `agent:${resolverAgent}` });
       const stdout = await spawnAgent(prompt);
+      throwIfAborted(request.signal);
       if (lastAgentExitCode === 0) storeCompositionCache(db, agentCacheKey, cacheVersion, stdout);
       return stdout;
     },
   });
+  throwIfAborted(request.signal);
 
   onProgress?.({ kind: 'composition', phase: 'done' });
 

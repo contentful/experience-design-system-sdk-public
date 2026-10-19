@@ -24,6 +24,7 @@ import type { ExistingContentfulEntities } from '../../../steps/generation/src/t
 import type { GeneratedComponentResult, GenerateComponentsProgress } from '../types.js';
 import { buildCachedComponentResult } from './build-cached-component-result.js';
 import { buildFailedComponentResult } from './build-failed-component-result.js';
+import { abortableDelay, throwIfAborted } from '../../../helpers/abort.js';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env['EDS_AGENT_TIMEOUT_MS'] ?? 5 * 60 * 1000);
 const RETRY_BACKOFF_MS = Number(process.env['EDS_RETRY_BACKOFF_MS'] ?? 5_000);
@@ -47,6 +48,7 @@ export interface RunOneGenerateComponentOptions {
   allowedComponentNames: ReadonlySet<string>;
   onProgress: ((event: GenerateComponentsProgress) => void) | undefined;
   onDebugEvent?: AgentDebugEvent;
+  signal?: AbortSignal;
 }
 
 export async function runOneGenerateComponent(
@@ -73,8 +75,10 @@ export async function runOneGenerateComponent(
     precomputedCachedNames,
     allowedComponentNames,
     onProgress,
+    signal,
   } = options;
 
+  throwIfAborted(signal);
   const { renames } = renameEmptySlots(db, sessionId, component.component_id, component.name, component.slots.length);
   let effectiveSlots = component.slots;
   if (renames.length > 0) {
@@ -89,6 +93,7 @@ export async function runOneGenerateComponent(
       });
     }
   }
+  throwIfAborted(signal);
   effectiveSlots = effectiveSlots.map((slot) =>
     slot.allowedComponents
       ? { ...slot, allowedComponents: slot.allowedComponents.filter((name) => allowedComponentNames.has(name)) }
@@ -98,6 +103,7 @@ export async function runOneGenerateComponent(
 
   if (!noCache && precomputedCachedNames.has(component.name)) {
     onProgress?.({ kind: 'component:cached', index, total, name: component.name, pinned: false });
+    throwIfAborted(signal);
     return buildCachedComponentResult(component.name);
   }
 
@@ -117,6 +123,7 @@ export async function runOneGenerateComponent(
         promptHash,
       );
       onProgress?.({ kind: 'component:cached', index, total, name: component.name, pinned: false });
+      throwIfAborted(signal);
       return buildCachedComponentResult(component.name);
     }
     if (resolution?.humanEdited) {
@@ -124,6 +131,7 @@ export async function runOneGenerateComponent(
         allowedComponentNames,
       });
       onProgress?.({ kind: 'component:cached', index, total, name: component.name, pinned: true });
+      throwIfAborted(signal);
       return buildCachedComponentResult(component.name, [
         `${component.name}: source changed but human edits preserved`,
       ]);
@@ -152,6 +160,7 @@ export async function runOneGenerateComponent(
     component.props.map((p) => p.name),
     component.props.map((p) => p.type),
   );
+  throwIfAborted(signal);
   const existingComponentsInline = existingContentfulEntities
     ? JSON.stringify(summarizeForGenerateAgent(existingContentfulEntities, component.name))
     : undefined;
@@ -171,18 +180,22 @@ export async function runOneGenerateComponent(
     existingTokensInline,
     componentAllowlistInline: JSON.stringify([...allowedComponentNames].sort()),
   });
+  throwIfAborted(signal);
 
   const maxAttempts = 2;
   let lastError = '';
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    if (attempt > 1) await new Promise((res) => setTimeout(res, RETRY_BACKOFF_MS));
+    throwIfAborted(signal);
+    if (attempt > 1) await abortableDelay(RETRY_BACKOFF_MS, signal);
+    throwIfAborted(signal);
     onProgress?.({ kind: 'component:started', index, total, name: component.name, attempt, maxAttempts });
     const { result } = await invokeAgentWithOutput(
       invoker,
-      { agent, model, prompt, timeoutMs: DEFAULT_TIMEOUT_MS },
+      { agent, model, prompt, timeoutMs: DEFAULT_TIMEOUT_MS, signal },
       verbose,
     );
+    throwIfAborted(signal);
 
     if (result.timedOut) {
       const error = `timed out after ${DEFAULT_TIMEOUT_MS / 60000} minutes`;
@@ -196,6 +209,7 @@ export async function runOneGenerateComponent(
     }
 
     const { calls, warnings } = parseToolCalls(result.stdout);
+    throwIfAborted(signal);
     if (calls.length === 0) {
       lastError = describeAgentFailure(result);
       continue;
@@ -204,6 +218,7 @@ export async function runOneGenerateComponent(
     const applied = applyToolCalls(db, sessionId, component.component_id, component.name, calls, warnings, {
       allowedComponentNames,
     });
+    throwIfAborted(signal);
     if (!noCache) {
       storeCache(
         db,

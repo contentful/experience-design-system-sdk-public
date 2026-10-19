@@ -14,6 +14,7 @@ export type GenerateTokensProgress =
   | { kind: 'done' };
 
 export interface RunGenerateTokensSessionRequest {
+  signal?: AbortSignal;
   /** Absolute path to the user's raw tokens file (TS, JS, or JSON). */
   rawTokensPath: string;
   /** Absolute path to the session's output directory. `tokens.json` is written at `<outDir>/tokens.json`. */

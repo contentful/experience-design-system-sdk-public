@@ -10,6 +10,7 @@ import { spawn } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as esbuild from 'esbuild';
+import { stopChildAndWait } from './dev-shutdown.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
@@ -32,6 +33,7 @@ function resetTerminal() {
 }
 
 function start() {
+  if (shuttingDown) return;
   child = spawn(process.execPath, [join(root, 'dist', 'index.js'), ...args], {
     stdio: 'inherit',
   });
@@ -49,6 +51,7 @@ function start() {
 }
 
 function restart(reason) {
+  if (shuttingDown) return;
   if (reason) console.log(`\n[dev] ${reason}`);
   resetTerminal();
   if (child) {
@@ -99,9 +102,10 @@ console.log('[dev] watching for changes. Ctrl+C to stop.');
 start();
 
 async function shutdown() {
+  if (shuttingDown) return;
   shuttingDown = true;
-  child?.kill('SIGTERM');
-  await Promise.all(contexts.map((c) => c.dispose()));
+  const runningChild = child;
+  await Promise.all([stopChildAndWait(runningChild), ...contexts.map((c) => c.dispose())]);
   resetTerminal();
   process.exit(0);
 }

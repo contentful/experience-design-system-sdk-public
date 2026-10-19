@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { HomeScreen } from './src/tui/home/home.js';
 import { ImportScreen } from './src/tui/import/PageContainer.js';
 import {
@@ -40,6 +40,14 @@ import {
   writeCredentials,
   type V1Credentials,
 } from './src/tui/settings/contentful-configuration/config-store.js';
+import {
+  awaitForCurrentImportAttempt,
+  createImportAttemptOwner,
+  isAbortError,
+  trackImportWork,
+  type ImportAttempt,
+  type ImportAttemptOwner,
+} from './src/tui/import/cancellation.js';
 
 export type Screen =
   | 'start'
@@ -61,10 +69,12 @@ interface ImportLaunch extends Partial<ImportOptions> {
 interface PendingLaunch {
   launch: ImportLaunch;
   credentials: CredentialsResult;
+  attempt: ImportAttempt;
   cached?: { tokensPath: string; sourceChanged: boolean };
 }
 
 interface ExtractionRun {
+  attempt: ImportAttempt;
   launch: ImportLaunch;
   credentialsSkipped: boolean;
   tokenStrategy: TokenStrategy;
@@ -75,6 +85,7 @@ interface ExtractionRun {
 
 // Set once extraction has produced a session; the scope gate runs for it before the review starts.
 interface ScopeRun {
+  attempt: ImportAttempt;
   launch: ImportLaunch;
   credentialsSkipped: boolean;
   tokenStrategy: TokenStrategy;
@@ -89,9 +100,17 @@ interface AppProps {
 }
 
 function App({ importOptions, inkClear }: AppProps): React.ReactElement {
+  const attemptOwnerRef = useRef<ImportAttemptOwner | undefined>(undefined);
+  if (!attemptOwnerRef.current) attemptOwnerRef.current = createImportAttemptOwner();
+  const attemptOwner = attemptOwnerRef.current;
+  const beginAttempt = (): ImportAttempt => attemptOwner.begin();
+  const cancelAttempt = (): void => attemptOwner.cancel();
+  const isActiveAttempt = (attempt: ImportAttempt): boolean => attemptOwner.isCurrent(attempt);
+
   const [screen, setScreen] = useState<Screen>('start');
   // Set when the import has ended, with the exit code the result screen shows.
   const [importExitCode, setImportExitCode] = useState<number>();
+  const [launchError, setLaunchError] = useState<{ stepName: string; message: string }>();
   const showImportResult = importExitCode !== undefined;
   const [projectPath, setProjectPath] = useState<string>();
   const [tokensPath, setTokensPath] = useState<string>();
@@ -104,6 +123,8 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
   const [scopeRun, setScopeRun] = useState<ScopeRun>();
   const scopeFlow = useScopeGateFlow(
     scopeRun && {
+      attemptId: scopeRun.attempt.id,
+      signal: scopeRun.attempt.controller.signal,
       sessionId: scopeRun.extraction.sessionId,
       cache: {
         sessionId: scopeRun.extraction.sessionId,
@@ -128,6 +149,8 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
     credentials: V1Credentials;
   }>();
 
+  useEffect(() => () => cancelAttempt(), []);
+
   // Read the saved defaults each time the import flow opens, so a change in Settings shows up right away.
   // The screens only read their initial value on mount, so they wait for this to resolve.
   useEffect(() => {
@@ -144,73 +167,123 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
     );
   }, [screen]);
 
+  const failLaunch = (attempt: ImportAttempt, stepName: string, error: unknown): void => {
+    if (!isActiveAttempt(attempt)) return;
+    cancelAttempt();
+    setLaunchError({ stepName, message: error instanceof Error ? error.message : String(error) });
+  };
+
   const finishCredentials = async (
     result: CredentialsResult,
     projectPath: string,
     tokens: string,
     filePaths: string[],
   ): Promise<void> => {
-    if (!result.skipped) await writeCredentials({ ...result.credentials });
-    const launch: ImportLaunch = { projectPath, tokens, filePaths, ...importOptions };
-    // earlier catalogs sit in the .contentful folder, in each session's dsi-import folder
-    const state = await inspectTokens({
-      rawTokensPath: tokens,
-      contentfulDir: join(resolveUserPath(projectPath), '.contentful'),
-      cache: importOptions.cache,
-    });
-    if (state.kind === 'cached') {
-      setPendingLaunch({
-        launch,
-        credentials: result,
-        cached: { tokensPath: state.tokensPath, sourceChanged: state.sourceChanged },
-      });
-      return;
+    const attempt = beginAttempt();
+    setLaunchError(undefined);
+    try {
+      if (!result.skipped) {
+        const saved = await awaitForCurrentImportAttempt(attempt, attemptOwner.isCurrent, () =>
+          writeCredentials({ ...result.credentials }),
+        );
+        if (!saved.current) return;
+      }
+      const launch: ImportLaunch = { projectPath, tokens, filePaths, ...importOptions };
+      // earlier catalogs sit in the .contentful folder, in each session's dsi-import folder
+      const inspected = await awaitForCurrentImportAttempt(attempt, attemptOwner.isCurrent, () =>
+        inspectTokens({
+          rawTokensPath: tokens,
+          contentfulDir: join(resolveUserPath(projectPath), '.contentful'),
+          cache: importOptions.cache,
+        }),
+      );
+      if (!inspected.current) return;
+      const state = inspected.value;
+      if (state.kind === 'cached') {
+        setPendingLaunch({
+          launch,
+          credentials: result,
+          attempt,
+          cached: { tokensPath: state.tokensPath, sourceChanged: state.sourceChanged },
+        });
+        return;
+      }
+      await startExtraction(launch, 'generate', result, attempt);
+    } catch (error) {
+      if (isAbortError(error)) {
+        if (isActiveAttempt(attempt)) cancelAttempt();
+      } else failLaunch(attempt, 'prepare import', error);
     }
-    await startExtraction(launch, 'generate', result);
   };
 
   const chooseTokenStrategy = (pending: PendingLaunch, tokenStrategy: TokenStrategy): void => {
+    if (!isActiveAttempt(pending.attempt)) return;
     setPendingLaunch(undefined);
-    void startExtraction(pending.launch, tokenStrategy, pending.credentials);
+    void trackImportWork(startExtraction(pending.launch, tokenStrategy, pending.credentials, pending.attempt));
   };
 
   const startExtraction = async (
     launch: ImportLaunch,
     tokenStrategy: TokenStrategy,
     credentials: CredentialsResult,
+    attempt: ImportAttempt,
   ): Promise<void> => {
-    const settings = await readSettings();
-    const { agent, agentModel } = resolveAgentChoice(launch.agent, settings);
-    const generatePromptPath =
-      typeof settings.generatePromptPath === 'string' ? settings.generatePromptPath : undefined;
-    // Loaded on first use because the debug store reads the settings as soon as it is imported.
-    const outDir = await (
-      await import('./src/tui/debug-store.js')
-    ).startImportRun(resolveUserPath(launch.projectPath ?? ''));
-    setExtractionRun({
-      ...(generatePromptPath ? { generatePromptPath } : {}),
-      // the later steps get the same agent, so they use what the stage used
-      launch: { ...launch, agent: agentModel ? `${agent}:${agentModel}` : agent },
-      credentialsSkipped: credentials.skipped,
-      tokenStrategy,
-      input: {
-        projectPath: resolveUserPath(launch.projectPath ?? ''),
-        outDir,
-        filePaths: launch.filePaths ?? [],
-        rawTokensPath: launch.tokens ?? '',
+    try {
+      const settingsResult = await awaitForCurrentImportAttempt(attempt, attemptOwner.isCurrent, readSettings);
+      if (!settingsResult.current) return;
+      const settings = settingsResult.value;
+      const { agent, agentModel } = resolveAgentChoice(launch.agent, settings);
+      const generatePromptPath =
+        typeof settings.generatePromptPath === 'string' ? settings.generatePromptPath : undefined;
+      // Loaded on first use because the debug store reads the settings as soon as it is imported.
+      const debugStoreResult = await awaitForCurrentImportAttempt(
+        attempt,
+        attemptOwner.isCurrent,
+        () => import('./src/tui/debug-store.js'),
+      );
+      if (!debugStoreResult.current) return;
+      const outDirResult = await awaitForCurrentImportAttempt(attempt, attemptOwner.isCurrent, () =>
+        debugStoreResult.value.startImportRun(resolveUserPath(launch.projectPath ?? '')),
+      );
+      if (!outDirResult.current) return;
+      const outDir = outDirResult.value;
+      setExtractionRun({
+        attempt,
+        ...(generatePromptPath ? { generatePromptPath } : {}),
+        // the later steps get the same agent, so they use what the stage used
+        launch: { ...launch, agent: agentModel ? `${agent}:${agentModel}` : agent },
+        credentialsSkipped: credentials.skipped,
         tokenStrategy,
-        credentials: credentials.skipped ? null : credentials.credentials,
-        agent,
-        ...(agentModel ? { agentModel } : {}),
-        promptOverrides: launch.prompt ?? [],
-        noCache: launch.cache === false,
-      },
-    });
+        input: {
+          signal: attempt.controller.signal,
+          projectPath: resolveUserPath(launch.projectPath ?? ''),
+          outDir,
+          filePaths: launch.filePaths ?? [],
+          rawTokensPath: launch.tokens ?? '',
+          tokenStrategy,
+          credentials: credentials.skipped ? null : credentials.credentials,
+          agent,
+          ...(agentModel ? { agentModel } : {}),
+          promptOverrides: launch.prompt ?? [],
+          noCache: launch.cache === false,
+        },
+      });
+    } catch (error) {
+      if (isAbortError(error)) {
+        if (isActiveAttempt(attempt)) cancelAttempt();
+      } else failLaunch(attempt, 'prepare import', error);
+    }
   };
 
   // A finished extraction opens the scope gate, once, with what the stage produced.
   useEffect(() => {
-    if (!extractionRun || extraction?.status !== 'done' || !extraction.result.ok) return;
+    if (
+      !extractionRun ||
+      !isActiveAttempt(extractionRun.attempt) ||
+      extraction?.status !== 'done' ||
+      !extraction.result.ok
+    )
+      return;
     setExtractionRun(undefined);
     setScopeRun({ ...extractionRun, extraction: extraction.result.extraction });
   }, [extraction, extractionRun]);
@@ -218,9 +291,10 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
   // A confirmed scope starts generation, once. The cache check that ran at the gate is handed over so generation can
   // wait for it before it saves the decisions.
   useEffect(() => {
-    if (!scopeRun || scopeFlow?.status !== 'confirmed' || generationInput) return;
+    if (!scopeRun || !isActiveAttempt(scopeRun.attempt) || scopeFlow?.status !== 'confirmed' || generationInput) return;
     const { extraction: produced, input, generatePromptPath } = scopeRun;
     setGenerationInput({
+      signal: scopeRun.attempt.controller.signal,
       sessionId: produced.sessionId,
       decisions: scopeFlow.decisions,
       cachedNames: scopeFlow.cachedNames,
@@ -238,7 +312,8 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
 
   // Finished generation starts the review and everything after it, exactly once, with everything the stages did.
   useEffect(() => {
-    if (!scopeRun || generation?.status !== 'done' || !generation.result.ok) return;
+    if (!scopeRun || !isActiveAttempt(scopeRun.attempt) || generation?.status !== 'done' || !generation.result.ok)
+      return;
     const { credentialsSkipped, tokenStrategy, extraction: produced, input, generatePromptPath } = scopeRun;
     inkClear();
     setScopeRun(undefined);
@@ -262,6 +337,8 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
   const goToSettings = (): void => setScreen('settings');
 
   const resetImport = (): void => {
+    cancelAttempt();
+    setLaunchError(undefined);
     setProjectPath(undefined);
     setTokensPath(undefined);
     setScannedFiles(undefined);
@@ -286,6 +363,8 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
   switch (screen) {
     case 'import':
       if (showImportResult) return <ImportScreen exitCode={importExitCode} onDone={finishImportResult} />;
+      if (launchError)
+        return <ErrorStep stepName={launchError.stepName} message={launchError.message} onExit={leaveImport} />;
       if (flow && flowStart) {
         return (
           <FlowScreen
@@ -391,7 +470,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
         <CredentialsScreen
           initial={importDefaults.credentials}
           onBack={() => setScannedFiles(undefined)}
-          onDone={(result) => void finishCredentials(result, projectPath, tokensPath, scannedFiles)}
+          onDone={(result) => void trackImportWork(finishCredentials(result, projectPath, tokensPath, scannedFiles))}
         />
       );
     case 'help':

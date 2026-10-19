@@ -10,6 +10,7 @@ export interface CdfGenerationFailure {
 
 export interface RunCdfGenerationServiceOptions {
   components: RawComponentDefinition[];
+  signal?: AbortSignal;
   tokens?: DTCGTokenEntry[];
   agent: AgentName;
   model?: string;

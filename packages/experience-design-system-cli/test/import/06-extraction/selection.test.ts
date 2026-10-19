@@ -11,13 +11,14 @@ import {
 
 // The agent itself is scripted: it prints the tool calls a real agent would, and records the prompt it was given.
 const agent = vi.hoisted(() => ({
-  invocations: [] as Array<{ prompt: string }>,
+  invocations: [] as Array<{ prompt: string; signal?: AbortSignal }>,
   result: { stdout: '', stderr: '', exitCode: 0, timedOut: false } as {
     stdout: string;
     stderr: string;
     exitCode: number;
     timedOut: boolean;
   },
+  waiter: undefined as Promise<{ stdout: string; stderr: string; exitCode: number; timedOut: boolean }> | undefined,
 }));
 
 vi.mock('@contentful/experience-design-system-backend-pipeline', async (importOriginal) => {
@@ -25,13 +26,20 @@ vi.mock('@contentful/experience-design-system-backend-pipeline', async (importOr
   return {
     ...actual,
     createLocalCliAgentInvoker: () => ({
-      invoke: async (options: { prompt: string }) => {
-        agent.invocations.push({ prompt: options.prompt });
-        return agent.result;
+      invoke: async (options: { prompt: string; signal?: AbortSignal }) => {
+        agent.invocations.push({ prompt: options.prompt, signal: options.signal });
+        return (await agent.waiter) ?? agent.result;
       },
     }),
   };
 });
+vi.mock('../../../src/tui/import/steps/06-extraction/find-skill-path.js', () => ({
+  findSkillPath: (fileName: string) =>
+    new URL(
+      `../../../../experience-design-system-backend-pipeline/src/agents/skills/selection/${fileName}`,
+      import.meta.url,
+    ).pathname,
+}));
 
 const debug = vi.hoisted(() => ({ record: vi.fn(async () => {}) }));
 vi.mock('../../../src/tui/debug-store.js', () => ({ recordDebugEvent: debug.record }));
@@ -277,6 +285,35 @@ describe('runSelection', () => {
     await expect(runSelection(options())).rejects.toThrow('selection agent exited with code 2');
 
     expect(statuses()).toEqual(before);
+  });
+
+  it('does not parse or persist valid selection output after cancellation', async () => {
+    seed(['Card']);
+    const before = statuses();
+    const controller = new AbortController();
+    let finishInvocation!: (result: typeof agent.result) => void;
+    agent.result = {
+      stdout: lines({ tool: 'select_component', name: 'Card' }),
+      stderr: '',
+      exitCode: 0,
+      timedOut: false,
+    };
+    agent.waiter = new Promise((resolve) => (finishInvocation = resolve));
+
+    const running = runSelection({
+      ...options(),
+      promptText: 'selection test prompt',
+      noCache: true,
+      signal: controller.signal,
+    });
+    await vi.waitFor(() => expect(agent.invocations).toHaveLength(1));
+    controller.abort();
+    finishInvocation(agent.result);
+
+    await expect(running).rejects.toMatchObject({ name: 'AbortError' });
+    expect(agent.invocations[0]?.signal).toBe(controller.signal);
+    expect(statuses()).toEqual(before);
+    agent.waiter = undefined;
   });
 
   it('writes nothing, and caches nothing, when the update fails part way through', async () => {

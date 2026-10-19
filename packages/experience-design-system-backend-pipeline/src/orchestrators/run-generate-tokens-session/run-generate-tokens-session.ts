@@ -19,6 +19,7 @@ import { resolvePromptOverride } from '../../agents/helpers/prompt-overrides/res
 import { writeTokensFile } from './helpers/write-tokens-file.js';
 import { bindAnalyticsSessionId } from '../../analytics/index.js';
 import type { RunGenerateTokensSessionRequest, RunGenerateTokensSessionResponse } from './types.js';
+import { throwIfAborted } from '../../helpers/abort.js';
 
 export type {
   GenerateTokensProgress,
@@ -50,6 +51,7 @@ const TOKENS_TIMEOUT_MS = DEFAULT_TIMEOUT_MS * 5;
 export async function runGenerateTokensSession(
   request: RunGenerateTokensSessionRequest,
 ): Promise<RunGenerateTokensSessionResponse> {
+  throwIfAborted(request.signal);
   const {
     rawTokensPath,
     outDir,
@@ -65,11 +67,14 @@ export async function runGenerateTokensSession(
 
   // Fail-fast on bad prompt-override syntax before DB writes or agent calls.
   const { overrides: overridesMap, errors: promptErrors } = parsePromptOverrides(promptOverrides);
+  throwIfAborted(request.signal);
   if (promptErrors.length > 0) throw new Error(`Prompt override error(s): ${promptErrors.join('; ')}`);
   const tokensOverride = overridesMap.get('tokens');
   const skillContentOverride = tokensOverride ? await resolvePromptOverride(tokensOverride) : undefined;
+  throwIfAborted(request.signal);
 
   const rawTokensInline = await readFile(pathResolve(rawTokensPath), 'utf8');
+  throwIfAborted(request.signal);
   const tokenInputHash = computeTokenInputHash(rawTokensInline);
 
   const db = openPipelineDb();
@@ -79,11 +84,15 @@ export async function runGenerateTokensSession(
       inputPath: pathResolve(rawTokensPath),
       outDir,
     });
+    throwIfAborted(request.signal);
     await onSessionCreated?.(tokenSessionId);
+    throwIfAborted(request.signal);
 
     await bindAnalyticsSessionId(tokenSessionId);
+    throwIfAborted(request.signal);
 
     const tokenPromptHash = await hashPromptForSkill('tokens', agent, agentModel, skillPath);
+    throwIfAborted(request.signal);
     const warnings: string[] = [];
 
     onProgress?.({ kind: 'resolving' });
@@ -91,10 +100,20 @@ export async function runGenerateTokensSession(
     // Cache lookup — if hit, copy tokens from the source session into ours.
     if (!noCache) {
       const cached = lookupCache(db, tokenInputHash, 'token_set', '__tokens__', tokenPromptHash);
+      throwIfAborted(request.signal);
       if (cached) {
+        throwIfAborted(request.signal);
         copyTokensFromCache(db, cached.sourceSessionId, tokenSessionId);
+        throwIfAborted(request.signal);
         onProgress?.({ kind: 'cache-hit' });
-        const { tokensPath, tokenCount } = await writeTokensFile(db, tokenSessionId, outDir, onProgress);
+        const { tokensPath, tokenCount } = await writeTokensFile(
+          db,
+          tokenSessionId,
+          outDir,
+          onProgress,
+          request.signal,
+        );
+        throwIfAborted(request.signal);
         return { tokenSessionId, tokensPath, tokenCount, warnings };
       }
     }
@@ -110,6 +129,7 @@ export async function runGenerateTokensSession(
       outDir: process.cwd(),
       ...(skillContentOverride ? { skillContentOverride } : skillPath ? { skillPathOverride: skillPath } : {}),
     });
+    throwIfAborted(request.signal);
 
     const invoker = createLocalCliAgentInvoker({});
     const { result } = await invokeAgentWithOutput(
@@ -120,9 +140,11 @@ export async function runGenerateTokensSession(
         prompt,
         timeoutMs: TOKENS_TIMEOUT_MS,
         bedrock,
+        signal: request.signal,
       },
       false,
     );
+    throwIfAborted(request.signal);
     if (result.timedOut) throw new Error(`token agent did not complete within ${TOKENS_TIMEOUT_MS / 60000} minutes`);
     if (result.exitCode !== 0) {
       if (result.stderr) process.stderr.write(result.stderr);
@@ -130,6 +152,7 @@ export async function runGenerateTokensSession(
     }
 
     const { calls, warnings: parseWarnings } = parseTokenToolCalls(result.stdout);
+    throwIfAborted(request.signal);
     for (const w of parseWarnings) warnings.push(w);
 
     const tokenCallCount = calls.filter((c) => c.tool === 'set_token').length;
@@ -138,11 +161,13 @@ export async function runGenerateTokensSession(
     }
 
     applyTokenToolCalls(db, tokenSessionId, calls, []);
+    throwIfAborted(request.signal);
     if (!noCache) {
       storeCache(db, tokenInputHash, 'token_set', '__tokens__', tokenSessionId, false, tokenPromptHash);
     }
 
-    const { tokensPath, tokenCount } = await writeTokensFile(db, tokenSessionId, outDir, onProgress);
+    const { tokensPath, tokenCount } = await writeTokensFile(db, tokenSessionId, outDir, onProgress, request.signal);
+    throwIfAborted(request.signal);
     onProgress?.({ kind: 'done' });
 
     return { tokenSessionId, tokensPath, tokenCount, warnings };

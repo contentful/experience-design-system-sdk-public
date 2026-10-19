@@ -26,23 +26,33 @@ const realDeps: Deps = { load: loadScopeGate, checkCache: checkGenerationCache }
 
 /** `input` is undefined until the extraction stage has produced a session, so the hook can be called unconditionally. */
 export function useScopeGateFlow(
-  input: { sessionId: string; cache: CacheCheckInput } | undefined,
+  input: { attemptId: number; signal: AbortSignal; sessionId: string; cache: CacheCheckInput } | undefined,
   deps: Deps = realDeps,
 ): ScopeGateFlow | undefined {
   const sessionId = input?.sessionId;
   const loaded = useMemo(() => (sessionId ? deps.load(sessionId) : undefined), [sessionId]);
-  const cacheCheck = useRef<Promise<string[]> | undefined>(undefined);
-  const [confirmed, setConfirmed] = useState<ScopeDecisions>();
+  const cacheCheck = useRef<{ attemptId: number; promise: Promise<string[]> }>();
+  const [confirmed, setConfirmed] = useState<{ attemptId: number; decisions: ScopeDecisions }>();
 
-  // Started once per session, as soon as the gate has components to show.
+  // Started once per attempt, as soon as the gate has components to show.
   useEffect(() => {
-    if (!input || !loaded?.ok || cacheCheck.current) return;
-    cacheCheck.current = deps.checkCache(input.cache);
+    if (!input || input.signal.aborted || !loaded?.ok || cacheCheck.current?.attemptId === input.attemptId) return;
+    const promise = Promise.resolve().then(() => (input.signal.aborted ? [] : deps.checkCache(input.cache)));
+    void promise.catch(() => {});
+    cacheCheck.current = { attemptId: input.attemptId, promise };
   }, [input, loaded]);
 
-  if (!input || !loaded) return undefined;
+  if (!input || input.signal.aborted || !loaded) return undefined;
   if (!loaded.ok) return { status: 'failed', message: loaded.message };
-  if (confirmed && cacheCheck.current)
-    return { status: 'confirmed', decisions: confirmed, cachedNames: cacheCheck.current };
-  return { status: 'deciding', load: loaded, confirm: setConfirmed };
+  const currentCacheCheck = cacheCheck.current?.attemptId === input.attemptId ? cacheCheck.current.promise : undefined;
+  const currentConfirmation = confirmed?.attemptId === input.attemptId ? confirmed.decisions : undefined;
+  if (currentConfirmation && currentCacheCheck)
+    return { status: 'confirmed', decisions: currentConfirmation, cachedNames: currentCacheCheck };
+  return {
+    status: 'deciding',
+    load: loaded,
+    confirm: (decisions) => {
+      if (!input.signal.aborted) setConfirmed({ attemptId: input.attemptId, decisions });
+    },
+  };
 }

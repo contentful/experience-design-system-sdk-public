@@ -130,6 +130,7 @@ describe('an import, from extraction to the hand-off to the review', () => {
       prepareMapTokens: vi.fn(async () => ({
         eligible: false as const,
       })) as unknown as GenerationDeps['prepareMapTokens'],
+      prepareMapOptions: vi.fn<GenerationDeps['prepareMapOptions']>(async () => ({})),
       runMapTokens: vi.fn() as GenerationDeps['runMapTokens'],
     } satisfies GenerationDeps;
   };
@@ -174,6 +175,7 @@ describe('an import, from extraction to the hand-off to the review', () => {
       sessionId,
       decisions: { accepted: ['Page', 'Card', 'Button'], rejected: ['Spacer'] },
     });
+    expect(generationDeps.prepareMapOptions).not.toHaveBeenCalled();
   });
 
   it('stops at the first stage that fails and says which one, instead of carrying on with nothing', async () => {
@@ -265,5 +267,6 @@ describe('an import, from extraction to the hand-off to the review', () => {
 
     expect(generation).toEqual({ ok: true, generation: { route: 'push', acceptedCount: 0 } });
     expect(deps.runGenerate).not.toHaveBeenCalled();
+    expect(deps.prepareMapOptions).not.toHaveBeenCalled();
   });
 });

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { initialProgress } from './logic.js';
 import { runExtraction } from './run.js';
 import type { ExtractionInput, ExtractionProgress, ExtractionResult } from './types.js';
+import { isAbortError, linkAbortSignal, trackImportWork } from '../../cancellation.js';
 
 export type ExtractionState =
   | { status: 'running'; progress: ExtractionProgress }
@@ -14,14 +15,18 @@ export type ExtractionState =
  */
 export function useExtraction(input: ExtractionInput | undefined): ExtractionState | undefined {
   const [state, setState] = useState<ExtractionState>();
-  const current = useRef<ExtractionInput>();
+  const current = useRef<{ input: ExtractionInput; controller: AbortController }>();
 
   useEffect(() => {
-    current.current = input;
     if (!input) {
+      current.current = undefined;
       setState(undefined);
       return;
     }
+    const linked = linkAbortSignal(input.signal);
+    const run = { input, controller: linked.controller };
+    current.current = run;
+    const isCurrent = (): boolean => current.current === run && !run.controller.signal.aborted;
     setState({
       status: 'running',
       progress: initialProgress({
@@ -30,13 +35,31 @@ export function useExtraction(input: ExtractionInput | undefined): ExtractionSta
         reuseTokens: input.tokenStrategy === 'reuse',
       }),
     });
-    void runExtraction(input, (progress) => {
-      if (current.current === input) setState({ status: 'running', progress });
-    }).then((result) => {
-      if (current.current === input) setState({ status: 'done', result });
-    });
+    const work = trackImportWork(
+      runExtraction({ ...input, signal: run.controller.signal }, (progress) => {
+        if (isCurrent()) setState({ status: 'running', progress });
+      }),
+    );
+    void work
+      .then((result) => {
+        if (isCurrent()) setState({ status: 'done', result });
+      })
+      .catch((error: unknown) => {
+        if (!isCurrent() || isAbortError(error)) return;
+        setState({
+          status: 'done',
+          result: {
+            ok: false,
+            step: 'analyze extract',
+            message: error instanceof Error ? error.message : String(error),
+          },
+        });
+      })
+      .finally(linked.dispose);
     return () => {
-      if (current.current === input) current.current = undefined;
+      if (current.current === run) current.current = undefined;
+      run.controller.abort();
+      linked.dispose();
     };
   }, [input]);
 

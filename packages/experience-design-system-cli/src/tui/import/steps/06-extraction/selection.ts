@@ -18,6 +18,7 @@ import {
 } from '@contentful/experience-design-system-backend-pipeline';
 import { recordDebugEvent } from '../../../debug-store.js';
 import { findSkillPath } from './find-skill-path.js';
+import { throwIfAborted } from '../../cancellation.js';
 
 const SELECT_SKILL_PATH = findSkillPath('select-components.md');
 
@@ -43,6 +44,7 @@ async function hashSelectPrompt(
 }
 
 export interface SelectionOptions {
+  signal?: AbortSignal;
   sessionId: string;
   agent: AgentName;
   model?: string;
@@ -60,15 +62,21 @@ export interface SelectionOptions {
  * or a database error.
  */
 export async function runSelection(options: SelectionOptions): Promise<void> {
+  throwIfAborted(options.signal);
   const db = openPipelineDb();
   let components: ReturnType<typeof loadRawComponents>;
   const cachedDecisions = new Map<string, Decision>();
-  const cliVersion = await getCliCacheVersion();
-  const promptHash = await hashSelectPrompt(options);
+  let cliVersion: string;
+  let promptHash: string;
   try {
+    cliVersion = await getCliCacheVersion();
+    throwIfAborted(options.signal);
+    promptHash = await hashSelectPrompt(options);
+    throwIfAborted(options.signal);
     components = loadRawComponents(db, options.sessionId);
     if (!options.noCache) {
       for (const component of components) {
+        throwIfAborted(options.signal);
         const cached = lookupSelectCache(db, computeComponentInputHash(component), promptHash, cliVersion);
         if (cached) cachedDecisions.set(component.name, { decision: cached.decision, reason: cached.reason });
       }
@@ -91,6 +99,7 @@ export async function runSelection(options: SelectionOptions): Promise<void> {
         recordDebugEvent('prop-buckets.select', { sessionId: options.sessionId, ...assignment }),
       ),
     );
+    throwIfAborted(options.signal);
     const prompt = await buildPrompt({
       skill: 'select',
       mode: 'autonomous',
@@ -105,11 +114,13 @@ export async function runSelection(options: SelectionOptions): Promise<void> {
         ? { skillContentOverride: options.promptText }
         : { skillPathOverride: options.promptPath ?? SELECT_SKILL_PATH }),
     });
+    throwIfAborted(options.signal);
     const { result } = await invokeAgentWithOutput(
       invoker,
-      { agent: options.agent, model: options.model, prompt, timeoutMs: DEFAULT_TIMEOUT_MS },
+      { agent: options.agent, model: options.model, prompt, timeoutMs: DEFAULT_TIMEOUT_MS, signal: options.signal },
       false,
     );
+    throwIfAborted(options.signal);
     if (result.timedOut) throw new Error('selection agent timed out');
     if (result.exitCode !== 0) throw new Error(`selection agent exited with code ${result.exitCode}`);
 
@@ -119,13 +130,16 @@ export async function runSelection(options: SelectionOptions): Promise<void> {
   }
   const byName = new Map(calls.map((call) => [call.name, call]));
 
+  throwIfAborted(options.signal);
   const writeDb = openPipelineDb();
   try {
     writeDb.exec('BEGIN');
     const update = writeDb.prepare(
       `UPDATE raw_components SET status = ?, reject_reason = ? WHERE session_id = ? AND component_id = ?`,
     );
+    throwIfAborted(options.signal);
     for (const component of components) {
+      throwIfAborted(options.signal);
       const cached = cachedDecisions.get(component.name);
       const call = byName.get(component.name);
       if (!cached && !call) continue;

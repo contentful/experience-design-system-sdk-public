@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { composeComponents, runExtractAndComposeSession } from '../../../src/index.js';
 import { runAgent } from '../../../src/agents/services/run-agent.js';
 import { openPipelineDb, loadRawComponents } from '../../../src/persistence/src/session/repositories/db.js';
+import { resolveComposition } from '../../../src/orchestrators/run-extract-and-compose-session/helpers/resolve-composition.js';
 import type { RawComponentDefinition } from '../../../src/steps/extraction/src/types/component.js';
 
 vi.mock('../../../src/agents/services/run-agent.js', () => ({ runAgent: vi.fn() }));
@@ -189,5 +190,43 @@ describe('source call-site production wiring', () => {
     } finally {
       db.close();
     }
+  });
+
+  it('does not parse or cache valid composition output after the agent is canceled', async () => {
+    const controller = new AbortController();
+    let finishAgent!: (result: { exitCode: number; stdout: string; stderr: string; timedOut: boolean }) => void;
+    vi.mocked(runAgent).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishAgent = resolve;
+        }),
+    );
+    const db = openPipelineDb();
+    const running = resolveComposition({
+      db,
+      components: [components[0]!],
+      sourceFiles: [files[0]!.path],
+      cacheVersion: 'test-version',
+      noCache: false,
+      compositionRefresh: true,
+      forceAgent: true,
+      compositionPrompt: undefined,
+      agent: 'claude',
+      bedrock: false,
+      signal: controller.signal,
+    });
+    await vi.waitFor(() => expect(runAgent).toHaveBeenCalledOnce());
+
+    controller.abort();
+    finishAgent({
+      exitCode: 0,
+      stdout: JSON.stringify({ tool: 'map_edge', parent: 'Card', child: 'Button' }),
+      stderr: '',
+      timedOut: false,
+    });
+
+    await expect(running).rejects.toMatchObject({ name: 'AbortError' });
+    expect(db.prepare('SELECT COUNT(*) AS count FROM composition_cache').get()).toEqual({ count: 0 });
+    db.close();
   });
 });

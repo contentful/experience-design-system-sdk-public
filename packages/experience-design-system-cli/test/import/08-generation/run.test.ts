@@ -5,6 +5,9 @@ import type {
 } from '@contentful/experience-design-system-backend-pipeline';
 const debug = vi.hoisted(() => ({ record: vi.fn(async (_event: string, _payload?: Record<string, unknown>) => {}) }));
 vi.mock('../../../src/tui/debug-store.js', () => ({ recordDebugEvent: debug.record }));
+vi.mock('../../../src/tui/import/steps/06-extraction/find-skill-path.js', () => ({
+  findSkillPath: (fileName: string) => `/test-skills/${fileName}`,
+}));
 
 import { runGeneration, type GenerationDeps } from '../../../src/tui/import/steps/08-generation/run.js';
 import type { GenerationInput, GenerationProgress } from '../../../src/tui/import/steps/08-generation/types.js';
@@ -75,6 +78,7 @@ function fakes(overrides: Partial<GenerationDeps> = {}) {
       calls.push('prepare-map');
       return { eligible: true, mappablePropCount: 2, rawTokenCount: 3 };
     }),
+    prepareMapOptions: vi.fn(async () => ({})),
     runMapTokens: vi.fn(async () => {
       calls.push('map');
       return {
@@ -91,7 +95,115 @@ function fakes(overrides: Partial<GenerationDeps> = {}) {
 }
 
 describe('runGeneration', () => {
+  it('does not save decisions after cancellation while awaiting cache restoration', async () => {
+    let resolveCachedNames!: (names: string[]) => void;
+    const cachedNames = new Promise<string[]>((resolve) => {
+      resolveCachedNames = resolve;
+    });
+    const controller = new AbortController();
+    const generationInput = input({ cachedNames }) as GenerationInput & { signal?: AbortSignal };
+    generationInput.signal = controller.signal;
+    const { deps } = fakes();
+
+    const running = runGeneration(generationInput, () => {}, deps);
+    controller.abort();
+    resolveCachedNames([]);
+    const result = await running;
+
+    expect(result).toMatchObject({ ok: false });
+    expect(deps.saveDecisions).not.toHaveBeenCalled();
+  });
+
+  it('does not generate after cancellation while awaiting agent authentication', async () => {
+    let finishAuth!: (status: AgentAuthStatus) => void;
+    const controller = new AbortController();
+    const { deps } = fakes({
+      checkAgentAuth: vi.fn(() => new Promise<AgentAuthStatus>((resolve) => (finishAuth = resolve))),
+    });
+    const running = runGeneration(input({ signal: controller.signal }), () => {}, deps);
+    await vi.waitFor(() => expect(deps.checkAgentAuth).toHaveBeenCalledOnce());
+
+    controller.abort();
+    finishAuth('ok');
+    expect(await running).toMatchObject({ ok: false });
+    expect(deps.runGenerate).not.toHaveBeenCalled();
+  });
+
+  it('drains outstanding debug writes before returning cancellation and starting no map work', async () => {
+    let finishWrite!: () => void;
+    debug.record.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishWrite = resolve;
+        }),
+    );
+    const controller = new AbortController();
+    const { deps } = fakes({
+      runGenerate: vi.fn(async (request) => {
+        request.onDebugEvent?.('generation.event', {});
+        return generatedResponse();
+      }) as GenerationDeps['runGenerate'],
+    });
+    const running = runGeneration(input({ signal: controller.signal }), () => {}, deps);
+    await vi.waitFor(() => expect(debug.record).toHaveBeenCalledOnce());
+
+    controller.abort();
+    finishWrite();
+    expect(await running).toMatchObject({ ok: false });
+    expect(deps.prepareMapTokens).not.toHaveBeenCalled();
+    expect(deps.prepareMapOptions).not.toHaveBeenCalled();
+    expect(deps.runMapTokens).not.toHaveBeenCalled();
+  });
+
+  it('does not invoke mapping after cancellation while awaiting map options', async () => {
+    type MapOptions = Awaited<ReturnType<GenerationDeps['prepareMapOptions']>>;
+    let finishOptions!: (options: MapOptions) => void;
+    const controller = new AbortController();
+    const { deps } = fakes({
+      prepareMapOptions: vi.fn(() => new Promise<MapOptions>((resolve) => (finishOptions = resolve))),
+    });
+    const running = runGeneration(input({ signal: controller.signal }), () => {}, deps);
+    await vi.waitFor(() => expect(deps.prepareMapOptions).toHaveBeenCalledOnce());
+
+    controller.abort();
+    finishOptions({});
+    expect(await running).toMatchObject({ ok: false });
+    expect(deps.runMapTokens).not.toHaveBeenCalled();
+  });
+
   describe('a normal run', () => {
+    it('keeps the attempt signal live and forwards it through save, generation, map prep and mapping', async () => {
+      const controller = new AbortController();
+      const generationInput = input() as GenerationInput & { signal?: AbortSignal };
+      generationInput.signal = controller.signal;
+      const signals: Array<AbortSignal | undefined> = [];
+      const { deps } = fakes({
+        saveDecisions: vi.fn(async (req) => {
+          signals.push((req as typeof req & { signal?: AbortSignal }).signal);
+        }),
+        runGenerate: vi.fn(async (req) => {
+          signals.push((req as typeof req & { signal?: AbortSignal }).signal);
+          return generatedResponse();
+        }) as GenerationDeps['runGenerate'],
+        prepareMapTokens: vi.fn(async (req) => {
+          signals.push((req as typeof req & { signal?: AbortSignal }).signal);
+          return { eligible: true, mappablePropCount: 2, rawTokenCount: 3 };
+        }),
+        runMapTokens: vi.fn(async (req) => {
+          signals.push((req as typeof req & { signal?: AbortSignal }).signal);
+          return { type: 'applied', sessionId: 'extract-1', applied: 2, warnings: [], stepId: 1 } as never;
+        }) as GenerationDeps['runMapTokens'],
+      });
+
+      const result = await runGeneration(generationInput, () => {}, deps);
+
+      expect(result).toMatchObject({ ok: true });
+      expect(signals).toHaveLength(4);
+      expect(signals[0]).toBeInstanceOf(AbortSignal);
+      expect(signals.every((signal) => signal === signals[0] && signal?.aborted === false)).toBe(true);
+      expect(controller.signal.aborted).toBe(false);
+    });
+
     it('saves, auths, generates, prepares then maps tokens, in that order', async () => {
       const { deps, calls } = fakes();
       const result = await runGeneration(input(), () => {}, deps);

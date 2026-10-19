@@ -5,6 +5,7 @@ import type { GenerationHandoff } from '@contentful/experience-design-system-typ
 // screen opens, which is what `GenerationHandoff` carries to the wizard.
 
 export interface GenerationInput {
+  signal?: AbortSignal;
   /** The extraction session the scope was decided on. */
   sessionId: string;
   decisions: { accepted: string[]; rejected: string[] };

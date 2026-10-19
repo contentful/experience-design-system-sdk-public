@@ -8,6 +8,7 @@ import {
 } from '@contentful/experience-design-system-backend-pipeline';
 import { shouldRunMapTokens } from './logic.js';
 import type { GenerationInput } from './types.js';
+import { throwIfAborted } from '../../cancellation.js';
 
 export interface MapTokensPlan {
   /** False when there is nothing to map, in which case the command is not run. */
@@ -23,16 +24,21 @@ export interface MapTokensPlan {
  * Then it counts the design props that are tokens and the raw tokens. Reads and writes the pipeline database.
  */
 export async function prepareMapTokens(
-  input: Pick<GenerationInput, 'tokenSessionId' | 'tokensPath'>,
+  input: Pick<GenerationInput, 'tokenSessionId' | 'tokensPath' | 'signal'>,
   generatedSessionId: string,
 ): Promise<MapTokensPlan> {
+  throwIfAborted(input.signal);
   const db = openPipelineDb();
   try {
     if (input.tokenSessionId && input.tokenSessionId !== generatedSessionId) {
+      throwIfAborted(input.signal);
       copyTokensFromCache(db, input.tokenSessionId, generatedSessionId);
+      throwIfAborted(input.signal);
     } else if (!input.tokenSessionId && input.tokensPath) {
       const tokens = await readTokensFromPath({ flag: 'tokens', path: input.tokensPath });
+      throwIfAborted(input.signal);
       storeDTCGTokens(db, generatedSessionId, [], tokens);
+      throwIfAborted(input.signal);
     }
     const mappablePropCount = loadCDFComponents(db, generatedSessionId).reduce(
       (count, { entry }) =>
