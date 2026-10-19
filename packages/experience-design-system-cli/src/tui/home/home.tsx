@@ -23,9 +23,6 @@ function versionStatus(upgradeCheck: UpgradeCheckResult | undefined): { text: st
   if (upgradeCheck?.status === 'update-available') {
     return { text: ` (upgrade available v${upgradeCheck.latest})`, color: PALETTE.warning };
   }
-  if (upgradeCheck?.status === 'up-to-date') {
-    return { text: ' (up to date)', color: PALETTE.muted };
-  }
   return undefined;
 }
 
