@@ -13,7 +13,7 @@ This package is the Terminal UI flow that the customer interacts with
 This is where all the api calls are made that the TUI needs
 
 **~/.contentful/experience-design-system-cli/config.json**
-The single settings file, read and written through `@contentful/experience-design-system-types/config` (the only module that knows the path). Holds credentials (spaceId, environmentId, cmaToken, host), preferences (analyticsDisabled, debug, debugMode) and defaults. The CLI and the bundled legacy import share it; `EDS_HOME` relocates the whole folder (used by tests).
+The single settings file, read and written through `@contentful/experience-design-system-types/config` (the only module that knows the path). Holds credentials (spaceId, environmentId, cmaToken, host), preferences (analyticsDisabled, debug, debugMode) and defaults. `EDS_HOME` relocates the whole folder (used by tests).
 
 **<root>/.contentful/MM-DD-YYYY-session-N/**
 One folder per terminal session, numbered per day. `<root>` is the "Root Project Directory" setting (Settings > Contentful Configuration). When it is empty, the session is created once the import starts, in the project being imported.
@@ -31,7 +31,7 @@ For each directory and flow, there is always a top level parent container screen
 
 ### Settings Flow (`src/tui/settings/`)
 
-Settings pages persist user preferences and credentials to `~/.contentful/experience-design-system-cli/config.json` (shared with the bundled legacy import). `utils/v1-store.ts` re-exports the shared read/write functions from `@contentful/experience-design-system-types/config`.
+Settings pages persist user preferences and credentials to `~/.contentful/experience-design-system-cli/config.json`. `utils/v1-store.ts` re-exports the shared read/write functions from `@contentful/experience-design-system-types/config`.
 
 Each preference screen:
 
@@ -72,7 +72,7 @@ Each flow owns its styling. The home menu keeps its palette in `src/tui/home/hom
 
 ### The Import flow
 
-`src/tui/import/` is the Import menu item. The Import menu item shows the Welcome step (`steps/01-welcome`) and collects the project path, then the Token input step (`steps/02-token-input`) and collects the token file, then the Path validation step (`steps/03-path-validation`), which scans the project folder and asks the user to confirm it. `app.tsx` then runs the rest of the import in the same process: credentials (`steps/04-credentials`), token reuse, extraction, the scope gate, generation, the review (`steps/09-review`) and the save, preview, push and done screens (`steps/10-flow`). The flow's state machine is `steps/10-flow/flow/controller.ts`, kept free of React so it can be tested; `flow/use-flow.ts` and `flow/screen.tsx` connect it to the terminal. When the flow ends it reports an exit code and `PageContainer.tsx` shows the result, then resumes the menu. `src/legacy/legacy-cli-path.ts` locates the bundled legacy CLI, which still serves the forwarded commands (`apply`, `setup`, `doctor` and the hidden ones) (`legacy/bin/cli.js` in an installed package, the sibling `experience-design-system-cli-legacy` package in the monorepo). This package must never import legacy code.
+`src/tui/import/` is the Import menu item. The Import menu item shows the Welcome step (`steps/01-welcome`) and collects the project path, then the Token input step (`steps/02-token-input`) and collects the token file, then the Path validation step (`steps/03-path-validation`), which scans the project folder and asks the user to confirm it. `app.tsx` then runs the rest of the import in the same process: credentials (`steps/04-credentials`), token reuse, extraction, the scope gate, generation, the review (`steps/09-review`) and the save, preview, push and done screens (`steps/10-flow`). The flow's state machine is `steps/10-flow/flow/controller.ts`, kept free of React so it can be tested; `flow/use-flow.ts` and `flow/screen.tsx` connect it to the terminal. When the flow ends it reports an exit code and `PageContainer.tsx` shows the result, then resumes the menu.
 
 ### Multi-step flows
 
