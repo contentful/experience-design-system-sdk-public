@@ -35,6 +35,8 @@ const existingRuntimeExports = [
   'shouldBeSlot',
   'preClassifyProp',
   'preClassifyComponent',
+  'bucketComponentProps',
+  'bucketComponentsProps',
 ] as const;
 
 const internalRuntimeExports = [

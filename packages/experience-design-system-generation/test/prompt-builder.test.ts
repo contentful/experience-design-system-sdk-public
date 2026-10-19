@@ -15,6 +15,24 @@ const INLINE_COMPONENTS = JSON.stringify([
 ]);
 
 describe('buildPrompt', () => {
+  it('includes prop buckets as advisory evidence when supplied and omits them otherwise', async () => {
+    const options = {
+      skill: 'components' as const,
+      mode: 'autonomous' as const,
+      rawComponentsInline: INLINE_COMPONENTS,
+      outDir: '/fake/out',
+    };
+    const prompt = await buildPrompt({
+      ...options,
+      propBucketsInline: '{"component":"Card","customPropNames":["label"]}',
+    });
+    expect(prompt).toContain(
+      'Deterministic prop buckets (advisory evidence only; verify against source and do not treat as inclusion or category decisions)',
+    );
+    expect(prompt).toContain('"customPropNames":["label"]');
+    expect(await buildPrompt(options)).not.toContain('Deterministic prop buckets (advisory evidence only');
+  });
+
   it('autonomous preamble includes do-not-pause instruction', async () => {
     const prompt = await buildPrompt({
       skill: 'components',

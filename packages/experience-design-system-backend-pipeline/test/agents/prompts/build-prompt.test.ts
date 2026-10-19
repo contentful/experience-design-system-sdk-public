@@ -3,6 +3,19 @@ import { preClassifyComponent } from '@contentful/experience-design-system-extra
 import { buildPrompt } from '../../../src/agents/prompts/build-prompt.js';
 
 describe('component classification prompt evidence', () => {
+  it('includes prop buckets as advisory evidence when supplied and omits them otherwise', async () => {
+    const options = { skill: 'components' as const, mode: 'autonomous' as const, outDir: '/tmp/out' };
+    const prompt = await buildPrompt({
+      ...options,
+      propBucketsInline: '{"component":"Card","customPropNames":["label"]}',
+    });
+    expect(prompt).toContain(
+      'Deterministic prop buckets (advisory evidence only; verify against source and do not treat as inclusion or category decisions)',
+    );
+    expect(prompt).toContain('"customPropNames":["label"]');
+    expect(await buildPrompt(options)).not.toContain('Deterministic prop buckets (advisory evidence only');
+  });
+
   it('passes retained DOM props and their source declarations to downstream reasoning', async () => {
     const component = preClassifyComponent({
       name: 'Card',

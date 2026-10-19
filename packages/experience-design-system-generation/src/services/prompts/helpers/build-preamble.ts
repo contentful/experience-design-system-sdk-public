@@ -12,6 +12,7 @@ export function buildPreamble(options: PromptOptions): string {
   const {
     skill,
     rawComponentsInline,
+    propBucketsInline,
     rawTokensInline,
     rawTokensFilename,
     tokensInline,
@@ -43,6 +44,11 @@ export function buildPreamble(options: PromptOptions): string {
   }
   if (rawComponentsInline) {
     sections.push(`Raw component data (JSON):\n\`\`\`json\n${rawComponentsInline}\n\`\`\``);
+  }
+  if (propBucketsInline) {
+    sections.push(
+      `Deterministic prop buckets (advisory evidence only; verify against source and do not treat as inclusion or category decisions):\n\`\`\`json\n${propBucketsInline}\n\`\`\``,
+    );
   }
   if (rawTokensInline) {
     const lang = inferFenceLang(rawTokensFilename);
