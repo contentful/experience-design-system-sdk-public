@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildScopeGraph } from '../../../src/tui/import/steps/07-scope-gate/graph/index.js';
+import { buildScopeGraph, sidebarItems } from '../../../src/tui/import/steps/07-scope-gate/graph/index.js';
 import {
   partitionDecisions,
   rejectNeedsConfirmation,
@@ -142,6 +142,28 @@ describe('toggle all', () => {
 });
 
 describe('accept non-flagged', () => {
+  it('includes extraction review candidates unless the AI rejected or failed them', () => {
+    const components = [
+      component('Accepted', [], { aiDecision: 'accepted', needsReview: true }),
+      component('Pending', [], { aiDecision: null, needsReview: true }),
+      component('Rejected', [], { aiDecision: 'rejected', needsReview: true }),
+      component('Failed', [], { aiDecision: 'failed', needsReview: false }),
+    ];
+    const graph = buildScopeGraph(components);
+
+    expect(sidebarItems(components).map(({ key, status }) => ({ name: key, status }))).toEqual([
+      { name: 'Accepted', status: 'ok' },
+      { name: 'Pending', status: 'ok' },
+      { name: 'Rejected', status: 'warning' },
+      { name: 'Failed', status: 'warning' },
+    ]);
+    const next = reduceDecisions(none(), { type: 'accept-unflagged' }, components, graph);
+    expect([...next]).toEqual([
+      ['Accepted', 'accepted'],
+      ['Pending', 'accepted'],
+    ]);
+  });
+
   it('accepts the components the AI did not flag', () => {
     const components = [
       component('Good'),
