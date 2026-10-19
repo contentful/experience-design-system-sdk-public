@@ -45,7 +45,7 @@ Resolves parent-child relationships between extracted components and wires child
 
 ## External calls
 
-AI agent via `runAgent` from `@contentful/experience-design-system-generation`. Timeout: 120 s. Prompt is sent over stdin. No HTTP calls.
+AI agent via the backend's shared `runAgent`. Timeout: 120 s. Composition explicitly sends its prompt over stdin. Other shared-agent callers default to stdin for Claude and Codex and retain bounded argv delivery for other agents. No HTTP calls.
 
 ## DSI contribution
 

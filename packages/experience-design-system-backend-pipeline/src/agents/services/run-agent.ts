@@ -5,6 +5,9 @@ import { resolveBinary } from '../helpers/resolution/resolve-binary.js';
 import type { AgentDebugEvent, AgentRunResult } from '../types/agent-run.js';
 import type { AgentName } from '../types/agent-name.js';
 
+const STDIN_PROMPT_AGENTS = new Set<AgentName>(['claude', 'codex']);
+const MAX_ARGV_PROMPT_BYTES = 100_000;
+
 export interface RunAgentOptions {
   agent: AgentName;
   prompt: string;
@@ -13,7 +16,7 @@ export interface RunAgentOptions {
   /** Apply the selected agent's Bedrock-routing env vars when enabled. */
   bedrock?: boolean;
   onOutput?: (chunk: string) => void;
-  /** Deliver the prompt on stdin instead of as an argv positional (large prompts overflow ARG_MAX). */
+  /** Defaults to stdin for Claude/Codex; explicit choices override that default. */
   promptViaStdin?: boolean;
   /** Optional debug-event sink; callers own how/where events get logged. */
   onDebugEvent?: AgentDebugEvent;
@@ -24,7 +27,16 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentRunResult
   const bedrock = options.bedrock ?? process.env.EDS_BEDROCK === '1';
 
   const binary = resolveBinary(agent);
-  const useStdin = !!promptViaStdin;
+  const useStdin = promptViaStdin ?? STDIN_PROMPT_AGENTS.has(agent);
+  const promptBytes = Buffer.byteLength(prompt, 'utf8');
+  if (!useStdin && promptBytes > MAX_ARGV_PROMPT_BYTES) {
+    return {
+      stdout: '',
+      stderr: `The ${agent} prompt is being sent as a command-line argument and exceeds the ${MAX_ARGV_PROMPT_BYTES}-byte safety limit (${promptBytes} UTF-8 bytes). Use claude or codex with stdin delivery for large projects.`,
+      exitCode: 1,
+      timedOut: false,
+    };
+  }
   const args = buildArgs(agent, prompt, model, useStdin, bedrock);
 
   const startedAt = Date.now();
