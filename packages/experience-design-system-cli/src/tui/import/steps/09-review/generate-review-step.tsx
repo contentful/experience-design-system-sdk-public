@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import figures from 'figures';
-import { PALETTE } from './theme.js';
+import { PALETTE } from '../../../theme.js';
 import { getReviewJsonPanelValue } from './review-json-panel.js';
 import { Box, Text } from 'ink';
 import type {
@@ -61,6 +61,7 @@ import { resolveGroupRoot } from '../07-scope-gate/sidebar/group-collapse.js';
 import {
   buildFlatDimPredicate,
   computeFilterKeys,
+  describeEmptyFilter,
   intersectFilterKeys,
   type FilterCategory,
 } from '../07-scope-gate/sidebar/step-filters.js';
@@ -108,7 +109,7 @@ type GenerateReviewStepProps = {
   initialFinalizeError?: string | null;
 };
 
-export function sortComponentsForSidebar<T extends { key: string; entry: CDFComponentEntry }>(
+function sortComponentsForSidebar<T extends { key: string; entry: CDFComponentEntry }>(
   components: T[],
   cycleParticipants?: Set<string>,
 ): T[] {
@@ -187,7 +188,7 @@ function CyclePathLine({
       {prefix}
       {segments.map((segment, index) =>
         segment.kind === 'slot' ? (
-          <Text key={index} color={PALETTE.info}>
+          <Text key={index} color={PALETTE.accent}>
             {segment.text}
           </Text>
         ) : segment.kind === 'arrow' ? (
@@ -324,12 +325,12 @@ const HELP_SECTIONS: HelpSection[] = [
     title: 'Panels',
     entries: [
       { keys: 'c', label: 'Cycle list' },
-      { keys: 'b', label: 'Breaking changes' },
-      { keys: 'w', label: 'Only breaking' },
-      { keys: 'o', label: 'Only cycles' },
+      { keys: 'b', label: 'Show breaking changes' },
+      { keys: 'w', label: 'Filter components with breaking changes' },
+      { keys: 'o', label: 'Filter components in slot cycles' },
       { keys: 'p', label: 'Prop rationale' },
       { keys: 'P', label: 'Component rationale' },
-      { keys: 's', label: 'Source' },
+      { keys: 's', label: 'Source code snippet' },
       { keys: 'J', label: 'Toggle JSON' },
       { keys: 't', label: 'Token review' },
     ],
@@ -362,22 +363,20 @@ const HELP_SECTIONS: HelpSection[] = [
   },
 ];
 
-export { computeCycleAutoRejectTargets } from './graph/cycle-auto-reject.js';
-
-export interface BreakingComponent {
+interface BreakingComponent {
   componentName: string;
   changes: BreakingChange[];
   impact?: DownstreamImpact;
   current?: ComponentTypeSummary;
 }
 
-export interface BreakingRow {
+interface BreakingRow {
   label: string;
   componentName: string;
   focusTarget?: { kind: 'prop' | 'slot'; name: string };
 }
 
-export function buildBreakingRows(breakingChanges: BreakingComponent[]): BreakingRow[] {
+function buildBreakingRows(breakingChanges: BreakingComponent[]): BreakingRow[] {
   const out: BreakingRow[] = [];
   for (const b of breakingChanges) {
     if (b.changes.length === 0) {
@@ -404,7 +403,7 @@ export function buildBreakingRows(breakingChanges: BreakingComponent[]): Breakin
   return out;
 }
 
-export function deriveBreakingChanges(response: ServerPreviewResponse): BreakingComponent[] {
+function deriveBreakingChanges(response: ServerPreviewResponse): BreakingComponent[] {
   const out: BreakingComponent[] = [];
   for (const item of response.components.changed ?? []) {
     if (item.changeClassification?.classification !== 'breaking') continue;
@@ -1141,18 +1140,18 @@ function GenerateReviewStepView({
       }
       return;
     }
-    if (input === 'c' && !key.ctrl && !key.meta && cycleRows.length > 0) {
+    if (input === 'c' && !reviewEditor.textEntryActive && !key.ctrl && !key.meta && cycleRows.length > 0) {
       cyclePanel.open();
       setCyclePanelScroll(0);
       setCyclesCursor(0);
       return;
     }
-    if (input === 'b' && sidebarFocused && breakingChanges.length > 0) {
+    if (input === 'b' && !reviewEditor.textEntryActive && sidebarFocused && breakingChanges.length > 0) {
       breakingPanel.open();
       setBreakingCursor(0);
       return;
     }
-    if (input === 'o' || input === 'w') {
+    if (!reviewEditor.textEntryActive && (input === 'o' || input === 'w')) {
       const category: FilterCategory = input === 'o' ? 'cycles' : 'broken';
       setActiveFilters((prev) => {
         const next = new Set(prev);
@@ -1599,6 +1598,11 @@ function GenerateReviewStepView({
               visibleCount={visibleCount}
               dimPredicate={dimPredicate}
               visibleRows={visibleRowsMemo}
+              emptyMessage={
+                visibleRowsMemo.length === 0 && filterVisibleKeys !== undefined && !jumpFilterTarget
+                  ? describeEmptyFilter({ filters: activeFilters })
+                  : undefined
+              }
               viewMode={columnOneView}
               graph={sidebarGraph}
             />

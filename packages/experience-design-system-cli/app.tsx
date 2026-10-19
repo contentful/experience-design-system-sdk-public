@@ -121,7 +121,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
   const generation = useGeneration(generationInput);
   // Set once generation has finished; the review, save, preview and push run for it.
   const [flowStart, setFlowStart] = useState<FlowStart>();
-  const flow = useFlow(flowStart);
+  const flow = useFlow(flowStart, { beforeStepChange: inkClear });
   const [importDefaults, setImportDefaults] = useState<{
     componentDir: string;
     tokenFile: string;
@@ -152,10 +152,10 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
   ): Promise<void> => {
     if (!result.skipped) await writeCredentials({ ...result.credentials });
     const launch: ImportLaunch = { projectPath, tokens, filePaths, ...importOptions };
-    // legacy keeps its output next to the project, so the existing token catalog is looked up there
+    // earlier catalogs sit in the .contentful folder, in each session's dsi-import folder
     const state = await inspectTokens({
       rawTokensPath: tokens,
-      outDir: join(resolveUserPath(projectPath), '.contentful'),
+      contentfulDir: join(resolveUserPath(projectPath), '.contentful'),
       cache: importOptions.cache,
     });
     if (state.kind === 'cached') {
@@ -183,6 +183,10 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
     const { agent, agentModel } = resolveAgentChoice(launch.agent, settings);
     const generatePromptPath =
       typeof settings.generatePromptPath === 'string' ? settings.generatePromptPath : undefined;
+    // Loaded on first use because the debug store reads the settings as soon as it is imported.
+    const outDir = await (
+      await import('./src/tui/debug-store.js')
+    ).startImportRun(resolveUserPath(launch.projectPath ?? ''));
     setExtractionRun({
       ...(generatePromptPath ? { generatePromptPath } : {}),
       // the later steps get the same agent, so they use what the stage used
@@ -191,6 +195,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
       tokenStrategy,
       input: {
         projectPath: resolveUserPath(launch.projectPath ?? ''),
+        outDir,
         filePaths: launch.filePaths ?? [],
         rawTokensPath: launch.tokens ?? '',
         tokenStrategy,
@@ -288,7 +293,6 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
             controller={flow.controller}
             generatePromptPath={flowStart.generatePromptPath}
             onExit={setImportExitCode}
-            onStepChange={inkClear}
           />
         );
       }

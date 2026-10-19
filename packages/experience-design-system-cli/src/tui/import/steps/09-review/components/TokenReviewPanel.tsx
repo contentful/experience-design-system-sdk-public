@@ -1,8 +1,7 @@
 import React from 'react';
 import figures from 'figures';
 import { Box, Text } from 'ink';
-import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
-import { PALETTE } from '../theme.js';
+import { PALETTE } from '../../../../theme.js';
 
 export type TokenPropSuggestion = {
   propName: string;
@@ -11,47 +10,11 @@ export type TokenPropSuggestion = {
   allowed: string[];
 };
 
-export type TokenReviewToken = {
-  path: string;
-  kind: string;
-};
-
 /**
  * Design-token props on `entry` with a declared token kind. `paths` is the
  * full compatible token universe when a token catalog is available; `allowed`
  * remains the current subset.
  */
-export function collectTokenSuggestions(
-  entry: CDFComponentEntry,
-  availableTokens: TokenReviewToken[] = [],
-): TokenPropSuggestion[] {
-  return Object.entries(entry.$properties)
-    .filter(([, def]) => {
-      const rawKind = (def as { '$token.kind'?: unknown })['$token.kind'];
-      return (
-        def.$type === 'token' && def.$category === 'design' && (typeof rawKind === 'string' || Array.isArray(rawKind))
-      );
-    })
-    .map(([propName, def]) => {
-      const persistedAllowed = [...(def['$token.allowed'] ?? [])];
-      const rawKind = (def as { '$token.kind'?: unknown })['$token.kind'];
-      const kinds = Array.isArray(rawKind)
-        ? rawKind.filter((kind): kind is string => typeof kind === 'string')
-        : typeof rawKind === 'string'
-          ? rawKind
-              .split(',')
-              .map((kind) => kind.trim())
-              .filter(Boolean)
-          : [];
-      const compatible = availableTokens.filter((token) => kinds.includes(token.kind)).map((token) => token.path);
-      const compatiblePaths = new Set(compatible);
-      const allowed =
-        availableTokens.length > 0 ? persistedAllowed.filter((path) => compatiblePaths.has(path)) : persistedAllowed;
-      const paths = availableTokens.length > 0 ? compatible : allowed;
-      return { propName, paths, suggested: [...allowed], allowed };
-    });
-}
-
 export type TokenReviewPanelProps = {
   componentName: string;
   suggestions: TokenPropSuggestion[];
@@ -92,7 +55,7 @@ export function TokenReviewPanel({
         width={width}
         height={height + 2}
         borderStyle="single"
-        borderColor={active ? PALETTE.inverse : undefined}
+        borderColor={active ? PALETTE.text : undefined}
       >
         <Text bold color={active ? undefined : PALETTE.muted} wrap="truncate">
           {`TOKEN REVIEW — ${componentName} · ${current.propName} (edit allowed)`}
@@ -110,7 +73,11 @@ export function TokenReviewPanel({
           const focused = pathIndex === editCursor;
           return (
             <Box key={path}>
-              <Text color={focused ? PALETTE.info : active ? undefined : PALETTE.muted} bold={focused} wrap="truncate">
+              <Text
+                color={focused ? PALETTE.accent : active ? undefined : PALETTE.muted}
+                bold={focused}
+                wrap="truncate"
+              >
                 {`  [${checked ? 'x' : ' '}] ${path}`}
               </Text>
             </Box>
@@ -133,7 +100,7 @@ export function TokenReviewPanel({
       width={width}
       height={height + 2}
       borderStyle="single"
-      borderColor={active ? PALETTE.inverse : undefined}
+      borderColor={active ? PALETTE.text : undefined}
     >
       <Text bold color={active ? undefined : PALETTE.muted}>{`TOKEN REVIEW — ${componentName}`}</Text>
       {suggestions.length === 0 && <Text color={PALETTE.muted}>{'(no token suggestions for this component)'}</Text>}
@@ -142,7 +109,7 @@ export function TokenReviewPanel({
         return (
           <Box key={s.propName} flexDirection="column">
             <Box>
-              <Text color={focused ? PALETTE.info : active ? undefined : PALETTE.muted} bold={focused}>
+              <Text color={focused ? PALETTE.accent : active ? undefined : PALETTE.muted} bold={focused}>
                 {`${focused ? figures.pointer : ' '} ${s.propName}`}
               </Text>
             </Box>

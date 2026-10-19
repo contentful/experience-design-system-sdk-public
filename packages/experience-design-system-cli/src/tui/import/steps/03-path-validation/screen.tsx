@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Text } from 'ink';
-import { PALETTE } from '../../../home/home.theme.js';
+import { PALETTE } from '../../../theme.js';
 import { resolveUserPath } from '../../resolve-user-path.js';
 import { controlsFor, usePathValidationControls } from './controls.js';
 import { scanFiles } from './helpers/scan-files.js';
@@ -15,7 +15,7 @@ interface PathValidationScreenProps {
 
 function Row({ row }: { row: SummaryRow }): React.ReactElement {
   return (
-    <Text color={row.tone === 'accent' ? PALETTE.accent : undefined} dimColor={row.tone === 'muted'}>
+    <Text color={row.tone === 'accent' ? PALETTE.accent : row.tone === 'muted' ? PALETTE.muted : undefined}>
       {'  • '}
       {String(row.count).padStart(3)} {row.label}
     </Text>
@@ -28,7 +28,7 @@ function Failure({ scan, path }: { scan: Extract<ScanResult, { ok: false }>; pat
     <Box flexDirection="column">
       <Text color={PALETTE.error}>✗ {headline}</Text>
       {hints.map((hint) => (
-        <Text key={hint} dimColor>
+        <Text key={hint} color={PALETTE.muted}>
           {hint}
         </Text>
       ))}
@@ -81,7 +81,7 @@ export function PathValidationScreen({
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
       {scan === undefined && (
-        <Text dimColor>
+        <Text color={PALETTE.muted}>
           Scanning <Text bold>{resolvedPath}</Text>...
         </Text>
       )}
@@ -90,7 +90,7 @@ export function PathValidationScreen({
 
       <Box marginTop={1} gap={3}>
         {controlsFor(phase).map((control) => (
-          <Text key={control.keys} dimColor>
+          <Text key={control.keys} color={PALETTE.muted}>
             [{control.keys}] {control.label}
           </Text>
         ))}

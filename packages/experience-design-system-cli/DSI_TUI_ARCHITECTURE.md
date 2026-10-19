@@ -15,8 +15,11 @@ This is where all the api calls are made that the TUI needs
 **~/.contentful/experience-design-system-cli/config.json**
 The single settings file, read and written through `@contentful/experience-design-system-types/config` (the only module that knows the path). Holds credentials (spaceId, environmentId, cmaToken, host), preferences (analyticsDisabled, debug, debugMode) and defaults. The CLI and the bundled legacy import share it; `EDS_HOME` relocates the whole folder (used by tests).
 
-**~/.contentful/experience-design-system-cli/debug/sessions**
-Per-session debug logs. v2 creates `MM-DD-YYYY-session-N/` directories with markdown run snapshots for each flow visit. Logging is toggled from Settings > Debug Mode.
+**<root>/.contentful/MM-DD-YYYY-session-N/**
+One folder per terminal session, numbered per day. `<root>` is the "Root Project Directory" setting (Settings > Contentful Configuration). When it is empty, the session is created once the import starts, in the project being imported.
+
+- `debug/` holds the per-screen debug logs (markdown run snapshots), written only while Debug Mode is on.
+- `dsi-import-N/` holds one import run's output: `tokens.json`, `.existing-entities.json` and `components.json`. Each import in the session gets the next number, so a second import never overwrites the first. Token reuse offers the newest `tokens.json` found across all sessions.
 
 ## Project Architecture
 
@@ -65,7 +68,7 @@ Use Ink's `useInput` for keys. The existing screens treat `q` and `Esc` as "go b
 
 ### Theme
 
-Each flow owns its styling. The home menu keeps its palette in `src/tui/home/home.theme.ts`; other flows define theirs beside their screens. There is no shared `ui/` folder.
+The shared colour palette lives in `src/tui/theme.ts`. It has a dark and a light set and picks one from the terminal background. Screens import `PALETTE` from there and should not hardcode colours. Flows keep any other styling beside their screens. There is no shared `ui/` folder.
 
 ### The Import flow
 

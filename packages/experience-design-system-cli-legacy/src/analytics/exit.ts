@@ -1,7 +1,10 @@
+import {
+  completeActiveCommand,
+  failActiveCommand,
+  flushAnalytics,
+  type CommandFailure,
+} from '@contentful/experience-design-system-backend-pipeline';
 import type { ApiError } from '../apply/api-client.js';
-import { flushAnalytics } from './client.js';
-import { completeActiveCommand, failActiveCommand } from './tracker.js';
-import type { CommandFailure } from './types.js';
 
 export async function exitWithAnalytics(code: number, fields: CommandFailure = {}): Promise<never> {
   if (code === 0) await completeActiveCommand();

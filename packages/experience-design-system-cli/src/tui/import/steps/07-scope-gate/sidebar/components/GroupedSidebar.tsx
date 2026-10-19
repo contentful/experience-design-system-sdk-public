@@ -46,6 +46,7 @@ export interface GroupedSidebarProps {
   visibleRows?: VisibleRow[];
   graph: ComponentGraphNode[];
   filterVisibleKeys?: Set<string>;
+  emptyMessage?: string;
 }
 
 const GLYPH_EXPAND_COLLAPSED = '▸';
@@ -476,19 +477,6 @@ export function buildVisibleRows(props: {
   return rows;
 }
 
-export function visibleItemOrder(props: {
-  items: GroupedSidebarItem[];
-  cycleParticipants: Set<string>;
-  expandedGroups: Set<string>;
-  alwaysExpanded?: boolean;
-  showFlatTier?: boolean;
-  graph: ComponentGraphNode[];
-}): number[] {
-  return buildVisibleRows(props)
-    .filter((row) => row.itemIdx >= 0)
-    .map((row) => row.itemIdx);
-}
-
 function rowColor(row: VisibleRow, aggregate?: string | null): string | undefined {
   if (row.kind === 'cycle') return PALETTE.warning;
   if (row.kind === 'group-child' && row.cycleChild) return PALETTE.warning;
@@ -498,7 +486,7 @@ function rowColor(row: VisibleRow, aggregate?: string | null): string | undefine
   return undefined;
 }
 
-export function labelStyleFor(input: { row: VisibleRow; isCursor: boolean; wouldDim: boolean }): {
+function labelStyleFor(input: { row: VisibleRow; isCursor: boolean; wouldDim: boolean }): {
   color: string | undefined;
   bold: boolean;
   dim: boolean;
@@ -514,7 +502,7 @@ export function labelStyleFor(input: { row: VisibleRow; isCursor: boolean; would
   };
 }
 
-export function selectionGlyphStyleFor(
+function selectionGlyphStyleFor(
   selState: 'accepted' | 'rejected' | 'undecided' | undefined,
   isCycleRow: boolean,
 ): { glyph: string | null; color: string | undefined; dim: boolean; bold: boolean } {
@@ -530,7 +518,7 @@ export function selectionGlyphStyleFor(
   return { glyph: null, color: undefined, dim: false, bold: false };
 }
 
-export function inheritanceGlyphStyleFor(input: {
+function inheritanceGlyphStyleFor(input: {
   status: RenderStatus['status'] | undefined;
   isOwn: boolean;
   isCursor: boolean;
@@ -569,6 +557,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
     visibleRows: providedRows,
     graph,
     filterVisibleKeys,
+    emptyMessage,
   } = props;
   const allRows =
     providedRows ??
@@ -590,6 +579,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
 
   return (
     <WindowedPanel width={width} height={props.height} title={title} focused={focused}>
+      {allRows.length === 0 && emptyMessage !== undefined && <Text color={PALETTE.warning}> {emptyMessage}</Text>}
       {windowed && <WindowIndicator direction="up" count={start} />}
       {rows.map((row, i) => {
         const absoluteRowIdx = start + i;

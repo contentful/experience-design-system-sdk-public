@@ -43,7 +43,7 @@ const HELP_SECTIONS: HelpSection[] = [
     title: 'Panels',
     entries: [
       { keys: 'c', label: 'Cycle list' },
-      { keys: 'd', label: 'Show slot dependencies in main list' },
+      { keys: 'd', label: 'Show slot dependenciess' },
       { keys: 'x', label: 'Review flags' },
     ],
   },
@@ -131,6 +131,7 @@ function ScopeGateView({ components, onConfirm, onQuit }: ScopeGateScreenProps):
             aiFlaggedByKey={gate.aiFlaggedByKey}
             dimPredicate={gate.dimPredicate}
             visibleRows={gate.visibleRows}
+            emptyMessage={gate.emptyMessage}
             viewMode={gate.columnOneView}
             graph={graph.nodes}
           />

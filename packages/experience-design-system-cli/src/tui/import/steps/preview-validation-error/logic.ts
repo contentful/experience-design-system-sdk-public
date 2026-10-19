@@ -4,7 +4,7 @@ export interface PreviewValidationError {
   message: string;
 }
 
-export function failedComponentNames(errors: readonly PreviewValidationError[]): string[] {
+function failedComponentNames(errors: readonly PreviewValidationError[]): string[] {
   return [...new Set(errors.map((error) => error.componentName))];
 }
 
@@ -15,7 +15,7 @@ export function matchedComponentNames(
   return failedComponentNames(errors).filter((name) => !missingNames.includes(name));
 }
 
-export function formatErrorLine(error: PreviewValidationError): string {
+function formatErrorLine(error: PreviewValidationError): string {
   const context = [`Component: ${error.componentName}`, error.path ? `Path: ${error.path}` : null].filter(Boolean);
   return `- ${error.message} (${context.join('; ')})`;
 }
@@ -28,7 +28,7 @@ function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? '' : 's'}`;
 }
 
-export function missingNote(missingNames: readonly string[]): string {
+function missingNote(missingNames: readonly string[]): string {
   if (missingNames.length === 0) return '';
   const verb = missingNames.length === 1 ? 'does' : 'do';
   return `\n\nNote: ${plural(missingNames.length, 'component name')} from the server (${missingNames.join(', ')}) ${verb} not match anything in this session — they cannot be edited or skipped from here.`;

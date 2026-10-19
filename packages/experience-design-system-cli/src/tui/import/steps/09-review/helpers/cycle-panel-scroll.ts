@@ -1,14 +1,14 @@
-export const CYCLE_PANEL_PREAMBLE_LINES = 4;
+const CYCLE_PANEL_PREAMBLE_LINES = 4;
 
 export interface CyclePanelLineCountable {
   suggestedBreak?: unknown;
 }
 
-export function cycleLineCount(cycle: CyclePanelLineCountable): number {
+function cycleLineCount(cycle: CyclePanelLineCountable): number {
   return 3 + (cycle.suggestedBreak ? 1 : 0);
 }
 
-export function cycleLineOffsets(
+function cycleLineOffsets(
   cycles: readonly CyclePanelLineCountable[],
   preamble: number = CYCLE_PANEL_PREAMBLE_LINES,
 ): number[] {
@@ -21,7 +21,7 @@ export function cycleLineOffsets(
   return offsets;
 }
 
-export function totalCyclePanelLines(
+function totalCyclePanelLines(
   cycles: readonly CyclePanelLineCountable[],
   preamble: number = CYCLE_PANEL_PREAMBLE_LINES,
 ): number {

@@ -10,8 +10,10 @@ import {
   parsePreviewValidationErrors,
   patchReviewStateWithValidationErrors,
   readTokensFromPath,
+  recordContentfulContext,
   seedCDFFromPreviewResponse,
   seedDefaultsFromChangedItems,
+  setCommandContext,
   toCDFTokens,
   type PreviewValidationError,
 } from '@contentful/experience-design-system-backend-pipeline';
@@ -26,7 +28,11 @@ import { cliUserAgent } from '../../../../user-agent.js';
 import { buildSkippedPreviewTransition, shouldBypassPreview } from '../support/wizard-state-transitions.js';
 import type { FlowPatch, FlowState } from './types.js';
 
-type PreviewClient = { previewImport(cdf: CDFDocument): Promise<ServerPreviewResponse> };
+type PreviewClient = {
+  previewImport(cdf: CDFDocument): Promise<ServerPreviewResponse>;
+  /** Request id of the most recent response, used by `recordContentfulContext` for analytics correlation. */
+  getLastRequestId(): string | undefined;
+};
 type ComponentRow = { key: string; entry: CDFComponentEntry };
 
 /** The outside world `runPreview` talks to, so each branch can be tested without a database or a network. */
@@ -64,7 +70,7 @@ type Preview422Outcome =
   | { kind: 'unparseable'; message: string }
   | { kind: 'not-422' };
 
-export async function handlePreview422(
+async function handlePreview422(
   err: ApiError,
   extractSessionId: string | null,
   patchFn: PreviewDeps['patchReviewState'],
@@ -82,10 +88,7 @@ export async function handlePreview422(
 }
 
 /** The patch to spread into any update that leaves the validation error step, so stale errors do not linger. */
-export function clearedValidationErrorState(): Pick<
-  FlowState,
-  'previewValidationErrors' | 'previewValidationMissingNames'
-> {
+function clearedValidationErrorState(): Pick<FlowState, 'previewValidationErrors' | 'previewValidationMissingNames'> {
   return { previewValidationErrors: [], previewValidationMissingNames: [] };
 }
 
@@ -99,6 +102,11 @@ export function clearedValidationErrorState(): Pick<
  */
 export async function runPreview(input: RunPreviewInput, deps: PreviewDeps): Promise<FlowPatch> {
   if (shouldBypassPreview(input.state)) return buildSkippedPreviewTransition();
+
+  // Mirror legacy's `apply/command.ts` bindAnalyticsSessionId call, but without rebinding the session id — the
+  // extract orchestrator already set it, so we only need to merge the Contentful target into the pending command's
+  // context so a failed preview still carries space/env in the failure event.
+  setCommandContext({ space_key: input.spaceId, environment_key: input.environmentId });
 
   try {
     const client = deps.createClient({
@@ -157,6 +165,10 @@ export async function runPreview(input: RunPreviewInput, deps: PreviewDeps): Pro
         db.close();
       }
     }
+
+    // Mirror legacy's `apply/command.ts` recordContentfulContext call: tags the active analytics command with the
+    // Contentful target and the preview request id. If a re-preview happened above, this captures the latest id.
+    recordContentfulContext(client, input.spaceId, input.environmentId);
 
     if (isEmptyPreview(preview)) {
       // No-op push: the accepted set already matches the target space, so there is nothing to create, update or remove.

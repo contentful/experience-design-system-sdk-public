@@ -1,14 +1,14 @@
 import React from 'react';
 import type { ComponentTypeSummary } from '@contentful/experience-design-system-types';
 import { Box, Text } from 'ink';
-import { PALETTE } from '../theme.js';
+import { PALETTE } from '../../../../theme.js';
 import { FinalizeDialog } from './FinalizeDialog.js';
 import { QuitDialog } from './QuitDialog.js';
 import type { UseFinalizePreviewReturn } from '../use-finalize-preview.js';
 import type { UseReviewSurfaceStateResult } from '../use-review-surface-state.js';
 import { countReviewStatuses, type ReviewStatusEntry } from './ReviewStatus.js';
 
-export type ReviewFinalizeDialogsProps = {
+type ReviewFinalizeDialogsProps = {
   showFinalize: boolean;
   showQuit: boolean;
   components: ReadonlyArray<ReviewStatusEntry>;
@@ -21,7 +21,7 @@ export type ReviewFinalizeDialogsProps = {
   onQuitCancel: () => void;
 };
 
-export function ReviewFinalizeDialogs({
+function ReviewFinalizeDialogs({
   showFinalize,
   showQuit,
   components,

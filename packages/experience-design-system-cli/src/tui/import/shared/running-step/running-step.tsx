@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import { ProgressBar, Spinner, ThemeProvider } from '@inkjs/ui';
-import { PALETTE } from '../../../home/home.theme.js';
+import { PALETTE } from '../../../theme.js';
 import { progressPercent, stepLabel, type RunningLine } from './logic.js';
 import { PROGRESS_THEME } from './theme.js';
 import { useElapsed } from './use-elapsed.js';
@@ -54,9 +54,9 @@ export function RunningStep({
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
       <Box flexDirection="column">
-        <Text dimColor>{RULE}</Text>
+        <Text color={PALETTE.muted}>{RULE}</Text>
         <Text bold>{stepLabel(stepNumber, totalSteps, title)}</Text>
-        <Text dimColor>{RULE}</Text>
+        <Text color={PALETTE.muted}>{RULE}</Text>
       </Box>
       <Text>{description}</Text>
       <Box marginTop={1} flexDirection="column" gap={1}>

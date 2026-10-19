@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import { PALETTE } from '../theme.js';
+import { PALETTE } from '../../../../theme.js';
 
 type ScrollablePanelProps = {
   title: string;

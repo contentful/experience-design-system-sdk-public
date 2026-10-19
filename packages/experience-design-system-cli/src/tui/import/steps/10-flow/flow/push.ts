@@ -6,6 +6,7 @@ import {
   formatSlotCycleReport,
   formatUnresolvedSlotReferences,
   ImportApiClient,
+  recordApplyOutcome,
   updateRun,
 } from '@contentful/experience-design-system-backend-pipeline';
 import {
@@ -25,6 +26,8 @@ type PushClient = {
     operationId: string,
     options: { onProgress?: (operation: ApplyOperationResponse) => void },
   ): Promise<ApplyOperationResponse>;
+  /** Request id of the most recent response, used by `recordApplyOutcome` for analytics correlation. */
+  getLastRequestId(): string | undefined;
 };
 
 /** The outside world `runPush` talks to, so each branch can be tested without a network or a run history. */
@@ -152,6 +155,11 @@ export async function runPush(
     } catch (logErr) {
       safeLog(deps, { pollLogError: String(logErr) });
     }
+
+    // Mirror legacy's `apply/command.ts` recordApplyOutcome call: enriches the active analytics command with the
+    // operation id, Contentful target, request id, and per-entity write counts. Fires regardless of success so
+    // partial-failure runs still carry the counts.
+    recordApplyOutcome(client, input.spaceId, input.environmentId, operation);
 
     const pushResult = resultOf(operation, preview);
     const pushSucceeded =

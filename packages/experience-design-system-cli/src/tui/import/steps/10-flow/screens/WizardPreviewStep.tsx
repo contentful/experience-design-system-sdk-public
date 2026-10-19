@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { PALETTE } from '../theme.js';
+import { PALETTE } from '../../../../theme.js';
 import { Box, Text } from 'ink';
 import { useImmediateInput } from '../../07-scope-gate/sidebar/hooks/useImmediateInput.js';
 import { useTerminalSize } from '../../07-scope-gate/sidebar/hooks/use-terminal-size.js';
@@ -15,13 +15,13 @@ import { SpaceEnvironment } from '../components/SpaceEnvironment.js';
 import { usePreviewConfirmationInput } from '../support/preview-confirmation-input.js';
 import { WindowedPanel, terminalPanelHeight } from '../../07-scope-gate/sidebar/components/windowed-panel.js';
 
-export interface PreviewDiffLine {
+interface PreviewDiffLine {
   key: string;
   color: string;
   text: string;
 }
 
-export function buildPreviewSummaryLines(preview: ServerPreviewResponse): PreviewDiffLine[] {
+function buildPreviewSummaryLines(preview: ServerPreviewResponse): PreviewDiffLine[] {
   const lines: PreviewDiffLine[] = [];
   const { components, tokens } = preview;
 

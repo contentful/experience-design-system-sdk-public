@@ -1,7 +1,7 @@
 import { appendFileSync, writeFileSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import {
   buildTimestampedSubdir,
   detectSaveConflict,
@@ -50,6 +50,12 @@ export interface FlowDeps {
   /** Writes one line of the wizard's step log. */
   log: (entry: Record<string, unknown>) => void;
   stderr: (text: string) => void;
+  /**
+   * Called when the step is about to change, before anything is told about the new one. The host clears the terminal
+   * here so the next screen is drawn on a clean one. It has to be before: Ink paints as soon as it is told, and a clear
+   * after the paint wipes a static screen like the done step, which nothing draws again.
+   */
+  beforeStepChange?: () => void;
 }
 
 function appendWizardLog(entry: Record<string, unknown>): void {
@@ -86,7 +92,7 @@ export function realFlowDeps(): FlowDeps {
 }
 
 /** The state the flow begins in, from what the earlier stages handed over. */
-export function initialFlowState(start: FlowStart): FlowState {
+function initialFlowState(start: FlowStart): FlowState {
   const { handoff } = start;
   const { extraction, generation } = handoff;
   return {
@@ -127,7 +133,7 @@ export function initialFlowState(start: FlowStart): FlowState {
 }
 
 /** What the log gets: the state change without the token, the document, or the whole of a large server response. */
-export function sanitizeForLog(partial: FlowPatch): Record<string, unknown> {
+function sanitizeForLog(partial: FlowPatch): Record<string, unknown> {
   const sanitized: Record<string, unknown> = { ...partial };
   const p = partial.serverPreview;
   if (p) {
@@ -172,7 +178,7 @@ export function sanitizeForLog(partial: FlowPatch): Record<string, unknown> {
 }
 
 /** The names of the components the errors are about, once each. */
-export function namesToSkip(errors: readonly PreviewValidationError[]): string[] {
+function namesToSkip(errors: readonly PreviewValidationError[]): string[] {
   return [...new Set(errors.map((e) => e.componentName))];
 }
 
@@ -204,6 +210,13 @@ export function createFlowController(start: FlowStart, deps: FlowDeps): FlowCont
       deps.log({ update: sanitizeForLog(patch) });
     } catch {
       // A step log that cannot be written must never stop the import.
+    }
+    if (patch.step !== undefined && patch.step !== state.step) {
+      try {
+        deps.beforeStepChange?.();
+      } catch {
+        // A terminal that cannot be cleared must never stop the import.
+      }
     }
     state = { ...state, ...patch };
     for (const listener of listeners) listener();
@@ -331,7 +344,8 @@ export function createFlowController(start: FlowStart, deps: FlowDeps): FlowCont
 
     async submitPath(submitted) {
       await deps.mkdir(submitted);
-      if (await deps.detectSaveConflict(submitted)) {
+      // This run's own folder already holds its tokens.json, so only a folder the user picked can conflict.
+      if (resolve(submitted) !== resolve(state.outDir) && (await deps.detectSaveConflict(submitted))) {
         const subdir = deps.buildTimestampedSubdir(submitted);
         await deps.mkdir(subdir);
         await proceedToWrite(subdir);

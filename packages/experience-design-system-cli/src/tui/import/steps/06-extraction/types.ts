@@ -6,6 +6,8 @@ export type TokenStrategy = ImportHandoff['tokens']['strategy'];
 
 export interface ExtractionInput {
   projectPath: string;
+  /** Where the stage writes tokens.json and the other files. Defaults to `<projectPath>/.contentful`. */
+  outDir?: string;
   /** Absolute source files from the path-validation step (collectFiles output). */
   filePaths: string[];
   /** Raw tokens file the user pointed at (always set: v2 asks for one). */

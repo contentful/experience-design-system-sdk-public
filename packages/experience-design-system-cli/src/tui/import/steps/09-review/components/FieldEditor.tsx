@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useState } from 'react';
 import figures from 'figures';
-import { PALETTE } from '../theme.js';
+import { PALETTE } from '../../../../theme.js';
 import { Box, measureElement, Text, type DOMElement } from 'ink';
 import {
   CDF_PROPERTY_TYPES,
@@ -355,9 +355,9 @@ function RowLabel({
 }): React.ReactElement {
   return (
     <Text
-      color={selected ? PALETTE.inverse : PALETTE.info}
+      color={selected ? '#FFFFFF' : PALETTE.accent}
       bold={selected}
-      backgroundColor={selected ? 'blue' : undefined}
+      backgroundColor={selected ? PALETTE.accent : undefined}
       wrap="truncate-end"
     >
       {' '}
@@ -378,7 +378,7 @@ function ValueInputRow({
 }): React.ReactElement {
   return (
     <Box paddingLeft={2}>
-      <Text color={PALETTE.info}>{mode === 'edit' ? '✎ ' : '+ '}</Text>
+      <Text color={PALETTE.accent}>{mode === 'edit' ? '✎ ' : '+ '}</Text>
       <Text>{valueText}</Text>
       <Text inverse={cursorVisible}> </Text>
     </Box>
@@ -406,7 +406,7 @@ function EditableListItem({
   }
   return (
     <Box gap={1} paddingLeft={2}>
-      <Text color={active ? PALETTE.info : undefined}>{active ? `${figures.pointer} ${value}` : `  ${value}`}</Text>
+      <Text color={active ? PALETTE.accent : undefined}>{active ? `${figures.pointer} ${value}` : `  ${value}`}</Text>
     </Box>
   );
 }
@@ -870,7 +870,7 @@ function SlotRow({
                           const absIdx = start + i;
                           const isCursor = absIdx === cursor;
                           return (
-                            <Text key={name} color={isCursor ? PALETTE.info : PALETTE.muted}>
+                            <Text key={name} color={isCursor ? PALETTE.accent : PALETTE.muted}>
                               {isCursor ? `  ${figures.pointer} ${name}` : `    ${name}`}
                             </Text>
                           );
@@ -906,7 +906,7 @@ function propFields(prop: PropState): PropField[] {
 }
 const SLOT_FIELDS: SlotField[] = ['description', 'required', 'allowedComponents'];
 
-export function simulateGraphWithCandidate(
+function simulateGraphWithCandidate(
   projectSlotGraph: ComponentSlotInfo[],
   selfName: string,
   currentSlots: { name: string; allowedComponents: string[] }[],
@@ -924,7 +924,7 @@ export function simulateGraphWithCandidate(
   return [...withoutSelf, selfEntry];
 }
 
-export function introducesNewCycle(
+function introducesNewCycle(
   before: ReturnType<typeof findSlotCycles>,
   next: ReturnType<typeof findSlotCycles>,
 ): boolean {
@@ -940,7 +940,7 @@ export function introducesNewCycle(
   return false;
 }
 
-export function computeAllowedComponentCandidates(
+function computeAllowedComponentCandidates(
   projectSlotGraph: ComponentSlotInfo[],
   selfName: string,
   currentSlots: { name: string; allowedComponents: string[] }[],
@@ -964,7 +964,7 @@ export function computeAllowedComponentCandidates(
   return safe;
 }
 
-export function simulateGraphWithReplacement(
+function simulateGraphWithReplacement(
   projectSlotGraph: ComponentSlotInfo[],
   selfName: string,
   currentSlots: { name: string; allowedComponents: string[] }[],
@@ -984,7 +984,7 @@ export function simulateGraphWithReplacement(
   return [...withoutSelf, selfEntry];
 }
 
-export function computeAllowedComponentReplacementCandidates(
+function computeAllowedComponentReplacementCandidates(
   projectSlotGraph: ComponentSlotInfo[],
   selfName: string,
   currentSlots: { name: string; allowedComponents: string[] }[],
@@ -2164,7 +2164,7 @@ export function FieldEditor({
       {...(fixedHeight ? { height } : { minHeight: height })}
       clipOverflow={fixedHeight}
       borderStyle="single"
-      borderColor={hasEmptyProperties ? PALETTE.warning : active ? PALETTE.info : PALETTE.border}
+      borderColor={hasEmptyProperties ? PALETTE.warning : active ? PALETTE.accent : PALETTE.border}
     >
       {hasEmptyProperties && (
         <Text color={PALETTE.warning}>
@@ -2263,8 +2263,8 @@ export function FieldEditor({
         })()}
 
       {showHelp && (
-        <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.info} paddingX={1}>
-          <Text bold color={PALETTE.info}>
+        <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.accent} paddingX={1}>
+          <Text bold color={PALETTE.accent}>
             Keybindings
           </Text>
           <Text> </Text>

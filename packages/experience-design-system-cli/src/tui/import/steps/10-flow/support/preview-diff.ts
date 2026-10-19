@@ -151,7 +151,7 @@ function normalizeType(type: string): string {
   }
 }
 
-export function diffProperty(name: string, old: PropertySummary, newDef: Record<string, unknown>): PropertyDiffLine[] {
+function diffProperty(name: string, old: PropertySummary, newDef: Record<string, unknown>): PropertyDiffLine[] {
   const diffs: PropertyDiffLine[] = [];
   const newType = (newDef['$type'] as string) ?? '';
   const newCategory = (newDef['$category'] as string) ?? '';
@@ -170,7 +170,7 @@ export function diffProperty(name: string, old: PropertySummary, newDef: Record<
   return diffs;
 }
 
-export function formatOldProp(prop: PropertySummary): string {
+function formatOldProp(prop: PropertySummary): string {
   const parts: string[] = [];
   if (prop.type) parts.push(prop.type);
   if (prop.category) parts.push(prop.category);
@@ -179,7 +179,7 @@ export function formatOldProp(prop: PropertySummary): string {
   return parts.join(', ');
 }
 
-export function formatPropDef(def: Record<string, unknown>): string {
+function formatPropDef(def: Record<string, unknown>): string {
   const parts: string[] = [];
   if (def['$type']) parts.push(def['$type'] as string);
   if (def['$category']) parts.push(def['$category'] as string);

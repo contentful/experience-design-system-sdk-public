@@ -1,5 +1,5 @@
 import React from 'react';
-import { PALETTE } from '../theme.js';
+import { PALETTE } from '../../../../theme.js';
 import { Box, Text } from 'ink';
 import { useImmediateInput } from '../../07-scope-gate/sidebar/hooks/useImmediateInput.js';
 import { buildPostPushUrl } from '../support/contentful-urls.js';
@@ -44,7 +44,7 @@ function LinkRow({ title, url }: { title: string; url: string }): React.ReactEle
   return (
     <Box flexDirection="column">
       <Text color={PALETTE.muted}>{title}</Text>
-      <Text color={PALETTE.link}>{url}</Text>
+      <Text color={PALETTE.accent}>{url}</Text>
     </Box>
   );
 }
