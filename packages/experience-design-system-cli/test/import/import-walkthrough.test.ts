@@ -75,6 +75,8 @@ describe('an import, from extraction to the hand-off to the review', () => {
           conflicts: [],
           compositionWarnings: [],
           scannedFileCount: 4,
+          sourceCallSiteEvidence: [],
+          sourceCallSiteRejections: [],
         } as unknown as RunExtractAndComposeSessionResponse;
       } finally {
         db.close();
@@ -222,6 +224,8 @@ describe('an import, from extraction to the hand-off to the review', () => {
           conflicts: [],
           compositionWarnings: [],
           scannedFileCount: 1,
+          sourceCallSiteEvidence: [],
+          sourceCallSiteRejections: [],
         } as unknown as RunExtractAndComposeSessionResponse;
       } finally {
         db.close();

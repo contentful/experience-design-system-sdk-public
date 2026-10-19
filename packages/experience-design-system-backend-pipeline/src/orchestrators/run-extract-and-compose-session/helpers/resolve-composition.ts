@@ -2,6 +2,8 @@ import type { DatabaseSync } from 'node:sqlite';
 import { buildCompositionInputHash } from '../../../steps/composition/src/helpers/candidates/composition-cache-key.js';
 import { collectManifestDocEdges } from '../../../steps/composition/src/helpers/edges/manifest-doc-evidence.js';
 import { resolveMapping } from '../../../steps/composition/src/helpers/edges/resolve-mapping.js';
+import { collectSourceCallSiteEvidence } from '../../../steps/composition/src/helpers/edges/source-call-site-evidence.js';
+import type { ResolveCompositionServiceResult } from '../../../steps/composition/src/types/contract.js';
 import { lookupCompositionCache, storeCompositionCache } from '../../../persistence/src/session/repositories/db.js';
 import { runAgent } from '../../../agents/services/run-agent.js';
 import { resolveCompositionAgentName } from './resolve-composition-agent-name.js';
@@ -29,7 +31,7 @@ export interface ResolveCompositionRequest {
   onDebugEvent?: AgentDebugEvent;
 }
 
-export interface ResolveCompositionResult {
+export interface ResolveCompositionResult extends ResolveCompositionServiceResult {
   /** Composition-enriched components (same input shape, mutated edges). */
   components: RawComponentDefinition[];
   /** Which path composition took. Carried into the handoff to v1's scope gate. */
@@ -98,12 +100,15 @@ export async function resolveComposition(request: ResolveCompositionRequest): Pr
   };
 
   const extraEdges = collectManifestDocEdges(runtimeFiles, components, componentNameSet);
+  const sourceCallSites = collectSourceCallSiteEvidence(runtimeFiles, components);
   const agentCacheKey = buildCompositionInputHash({ files: promptFiles, agent: resolverAgent });
 
   let didHitCompositionCache = false;
   const result = await resolveMapping({
     components,
     ...(extraEdges.length > 0 ? { extraEdges } : {}),
+    sourceCallSiteEvidence: sourceCallSites.accepted,
+    sourceCallSiteRejections: sourceCallSites.rejected,
     forceAgent,
     files: promptFiles,
     ...(compositionPrompt ? { promptOverride: compositionPrompt } : {}),
@@ -137,5 +142,7 @@ export async function resolveComposition(request: ResolveCompositionRequest): Pr
     phase: didHitCompositionCache ? 'cache-hit' : 'done',
     conflicts,
     warnings,
+    sourceCallSiteEvidence: result.sourceCallSiteEvidence,
+    sourceCallSiteRejections: result.sourceCallSiteRejections,
   };
 }

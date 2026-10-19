@@ -34,6 +34,8 @@ const successResponse = (
   conflicts: [],
   compositionWarnings: [],
   scannedFileCount: 3,
+  sourceCallSiteEvidence: [],
+  sourceCallSiteRejections: [],
   ...overrides,
 });
 

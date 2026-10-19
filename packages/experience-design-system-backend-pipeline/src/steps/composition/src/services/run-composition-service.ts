@@ -4,6 +4,7 @@ import { resolveMapping } from '../helpers/edges/resolve-mapping.js';
 import { selectCandidateFiles, capCandidatesToPromptBudget } from '../helpers/candidates/candidate-files.js';
 import { buildCompositionInputHash } from '../helpers/candidates/composition-cache-key.js';
 import { collectManifestDocEdges } from '../helpers/edges/manifest-doc-evidence.js';
+import { collectSourceCallSiteEvidence } from '../helpers/edges/source-call-site-evidence.js';
 import type { ResolveCompositionServiceOptions, ResolveCompositionServiceResult } from '../types/contract.js';
 
 export async function runCompositionService(
@@ -24,6 +25,7 @@ export async function runCompositionService(
   const componentNameSet = new Set(components.map((c) => c.name));
   const runtimeFiles = allFiles.map((c) => ({ path: c.path, content: c.content }));
   const manifestDocEdges = collectManifestDocEdges(runtimeFiles, components, componentNameSet);
+  const sourceCallSites = collectSourceCallSiteEvidence(runtimeFiles, components);
   const agentCacheKey = buildCompositionInputHash({ files: promptFiles, agent });
 
   let lastAgentExitCode = 0;
@@ -40,6 +42,8 @@ export async function runCompositionService(
   const result = await resolveMapping({
     components,
     ...(manifestDocEdges.length > 0 ? { extraEdges: manifestDocEdges } : {}),
+    sourceCallSiteEvidence: sourceCallSites.accepted,
+    sourceCallSiteRejections: sourceCallSites.rejected,
     forceAgent,
     files: promptFiles,
     ...(options.promptOverride ? { promptOverride: options.promptOverride } : {}),
@@ -64,5 +68,10 @@ export async function runCompositionService(
     options.onWarning?.(`composition conflict on ${c.parent}→${c.child}: kept ${c.winner}, dropped ${c.loser}`);
   }
 
-  return { components: result.components as RawComponentDefinition[], warnings: result.warnings };
+  return {
+    components: result.components as RawComponentDefinition[],
+    warnings: result.warnings,
+    sourceCallSiteEvidence: result.sourceCallSiteEvidence,
+    sourceCallSiteRejections: result.sourceCallSiteRejections,
+  };
 }

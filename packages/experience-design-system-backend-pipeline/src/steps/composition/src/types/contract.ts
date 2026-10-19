@@ -1,6 +1,7 @@
 import type { RawComponentDefinition } from '../../../extraction/src/types/component.js';
 import type { AgentName } from '../../../../agents/index.js';
 import type { CandidateFile } from '../../../shared/index.js';
+import type { ResolveMappingResult } from '../helpers/edges/resolve-mapping.js';
 
 export type { CandidateFile };
 export type SelectedCandidate = CandidateFile & { matchReason: string };
@@ -22,7 +23,10 @@ export interface ResolveCompositionServiceOptions {
   onWarning?: (message: string) => void;
 }
 
-export interface ResolveCompositionServiceResult {
+export interface ResolveCompositionServiceResult extends Pick<
+  ResolveMappingResult,
+  'sourceCallSiteEvidence' | 'sourceCallSiteRejections'
+> {
   components: RawComponentDefinition[];
   warnings: string[];
 }

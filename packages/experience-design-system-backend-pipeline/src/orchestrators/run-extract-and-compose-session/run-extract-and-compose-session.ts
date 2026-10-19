@@ -147,7 +147,13 @@ export async function runExtractAndComposeSession(
       sessionId,
       sourceFiles.map((f) => relative(projectPath, f)),
     );
-    await retryDatabaseWrite(() => updateStep(db, stepId, 'complete', { sessionId }));
+    await retryDatabaseWrite(() =>
+      updateStep(db, stepId, 'complete', {
+        sessionId,
+        compositionEvidence: JSON.stringify(composition.sourceCallSiteEvidence),
+        compositionRejections: JSON.stringify(composition.sourceCallSiteRejections),
+      }),
+    );
 
     enrichCommandResult({ extracted_component_count: composition.components.length });
 
@@ -159,6 +165,8 @@ export async function runExtractAndComposeSession(
       conflicts: composition.conflicts,
       compositionWarnings: composition.warnings,
       scannedFileCount: sourceFiles.length,
+      sourceCallSiteEvidence: composition.sourceCallSiteEvidence,
+      sourceCallSiteRejections: composition.sourceCallSiteRejections,
     };
   } finally {
     db.close();

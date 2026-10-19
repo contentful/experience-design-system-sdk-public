@@ -1,6 +1,7 @@
 import type { RawComponentDefinition } from '../../steps/extraction/src/types/component.js';
 import type { EdgeConflict } from '../../steps/composition/src/helpers/edges/merge-edges.js';
 import type { AgentDebugEvent } from '../../agents/types/agent-run.js';
+import type { ResolveCompositionServiceResult } from '../../steps/composition/src/types/contract.js';
 
 /**
  * Structured progress events emitted during extraction and composition.
@@ -43,7 +44,10 @@ export interface RunExtractAndComposeSessionRequest {
   onExclusion?: (exclusion: Record<string, unknown>) => void;
 }
 
-export interface RunExtractAndComposeSessionResponse {
+export interface RunExtractAndComposeSessionResponse extends Pick<
+  ResolveCompositionServiceResult,
+  'sourceCallSiteEvidence' | 'sourceCallSiteRejections'
+> {
   /** Pipeline session id. Downstream commands (select, generate, apply) read the session by this id. */
   sessionId: string;
   /** Which path composition resolution took. Carried into the handoff to v1's scope gate. */
