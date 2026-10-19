@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import { PALETTE } from '../../../home/home.theme.js';
+import { PALETTE } from '../../../theme.js';
 import { useGateControls } from './controls.js';
 import { gateControls } from './logic.js';
 
@@ -45,7 +45,7 @@ export function GateStep({
       )}
       <Box marginTop={1} gap={3}>
         {gateControls(continueLabel, skipLabel, onSkip !== undefined).map((control) => (
-          <Text key={control.keys} dimColor>
+          <Text key={control.keys} color={PALETTE.muted}>
             [{control.keys}] {control.label}
           </Text>
         ))}

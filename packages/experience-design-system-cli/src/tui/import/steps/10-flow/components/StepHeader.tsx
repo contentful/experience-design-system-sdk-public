@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, Text } from 'ink';
+import { PALETTE } from '../../../../theme.js';
 
 type StepHeaderProps = {
   stepNumber: number;
@@ -10,7 +11,7 @@ type StepHeaderProps = {
 export function StepHeader({ stepNumber, totalSteps, title }: StepHeaderProps): React.ReactElement {
   return (
     <Box flexDirection="column" gap={0}>
-      <Text dimColor>{'─'.repeat(40)}</Text>
+      <Text color={PALETTE.muted}>{'─'.repeat(40)}</Text>
       <Box gap={1}>
         <Text bold>
           Step {stepNumber} of {totalSteps}
@@ -18,7 +19,7 @@ export function StepHeader({ stepNumber, totalSteps, title }: StepHeaderProps): 
         <Text bold>—</Text>
         <Text bold>{title}</Text>
       </Box>
-      <Text dimColor>{'─'.repeat(40)}</Text>
+      <Text color={PALETTE.muted}>{'─'.repeat(40)}</Text>
     </Box>
   );
 }

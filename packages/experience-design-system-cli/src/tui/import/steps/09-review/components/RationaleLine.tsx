@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import { PALETTE } from '../theme.js';
+import { PALETTE } from '../../../../theme.js';
 
 export type RationaleLineData =
   | { kind: 'heading'; text: string }
@@ -20,7 +20,7 @@ export function RationaleLine({ line, active }: { line: RationaleLineData; activ
   if (line.kind === 'heading') {
     return (
       <Box>
-        <Text bold color={active ? PALETTE.info : PALETTE.muted}>
+        <Text bold color={active ? PALETTE.accent : PALETTE.muted}>
           {line.text}
         </Text>
       </Box>

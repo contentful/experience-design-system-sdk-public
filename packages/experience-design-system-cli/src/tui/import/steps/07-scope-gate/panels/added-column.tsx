@@ -37,7 +37,7 @@ export function AddedColumn(props: AddedColumnProps): React.ReactElement {
           const style = sideColumnLabelStyle({ isCycle: entry.isCycle, isSelected, focused });
           return (
             <React.Fragment key={entry.name}>
-              {showSeparator && <Text dimColor>{'─'.repeat(Math.max(0, width - 2))}</Text>}
+              {showSeparator && <Text color={PALETTE.muted}>{'─'.repeat(Math.max(0, width - 2))}</Text>}
               <Box>
                 {isCursor ? (
                   <Text color={PALETTE.info} bold>

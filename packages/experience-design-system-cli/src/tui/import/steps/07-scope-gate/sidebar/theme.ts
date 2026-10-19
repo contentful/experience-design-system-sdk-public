@@ -1,4 +1,4 @@
-import { PALETTE as BRAND } from '../../../../home/home.theme.js';
+import { PALETTE as BRAND } from '../../../../theme.js';
 
 // The gate's colours. Same values as legacy's PALETTE; `info` is v2's `accent` (both #1773EB). Everything else is v2's.
 export const PALETTE = {

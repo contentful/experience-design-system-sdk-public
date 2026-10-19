@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { PALETTE } from '../home/home.theme.js';
+import { PALETTE } from '../theme.js';
 import { startDebugRun, finishDebugRun } from '../debug-store.js';
 import { ControlHints } from '../control-hints.js';
 import { readHelpInfo, type HelpInfo, type HelpRow } from './help-info.js';

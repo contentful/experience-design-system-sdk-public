@@ -1,8 +1,8 @@
 import React from 'react';
 import { Text } from 'ink';
+import { PALETTE } from './theme.js';
 
-// The one control-hint line for every screen outside the import flow. Matches the Home screen:
-// default-colour text (hints carry meaning, so no dim or gray), "[keys] label" pairs separated by a middle dot.
+// The one control-hint line for every screen outside the import flow.
 export function ControlHints({ hints }: { hints: readonly { keys: string; label: string }[] }): React.ReactElement {
-  return <Text>{hints.map((hint) => `[${hint.keys}] ${hint.label}`).join(' · ')}</Text>;
+  return <Text color={PALETTE.muted}>{hints.map((hint) => `[${hint.keys}] ${hint.label}`).join(' · ')}</Text>;
 }

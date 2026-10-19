@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Box, Text } from 'ink';
 import TextInput from 'ink-text-input';
-import { PALETTE } from '../../../home/home.theme.js';
+import { PALETTE } from '../../../theme.js';
 import { WELCOME_CONTROLS, useWelcomeControls } from './controls.js';
 import { toProjectPath } from './logic.js';
 
@@ -34,25 +34,23 @@ export function WelcomeScreen({ onContinue, onQuit, initialPath = '' }: WelcomeS
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
       <Text bold color={PALETTE.success}>
-        👋 Hey! Let&apos;s import your design system into Contentful.
+        Let&apos;s import your design system into Contentful.
       </Text>
-      <Text color={PALETTE.muted}>I&apos;ll walk you through 5 steps to get your components into Contentful ExO.</Text>
-
       <Box flexDirection="column">
-        <Text dimColor>{RULE}</Text>
+        <Text color={PALETTE.muted}>{RULE}</Text>
         {OVERVIEW.map((item) => (
           <Box key={item.label} gap={1}>
             <Text bold>{item.label}</Text>
             <Text color={PALETTE.muted}>{item.description}</Text>
           </Box>
         ))}
-        <Text dimColor>{RULE}</Text>
+        <Text color={PALETTE.muted}>{RULE}</Text>
       </Box>
 
       <Box flexDirection="column" gap={1}>
         <Text>Where is your component library?</Text>
-        <Box gap={1}>
-          <Text color={PALETTE.accent}>?</Text>
+        <Box>
+          <Text color={PALETTE.text}>?</Text>
           <Text>Project path:</Text>
           <TextInput value={projectPath} onChange={setProjectPath} onSubmit={submit} />
         </Box>
