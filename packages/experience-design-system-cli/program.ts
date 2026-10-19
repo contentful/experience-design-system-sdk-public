@@ -10,8 +10,8 @@ import {
   setPersistedAnalyticsDisabled,
 } from '@contentful/experience-design-system-backend-pipeline';
 import { registerImportCommand } from './src/commands/import.js';
-import { readAgentConfig } from './src/tui/settings/agents/agent-store.js';
-import { applyBinaryOverrides } from './src/tui/settings/agents/apply-binary-overrides.js';
+import { readAgentConfig } from './src/tui/settings/configuration/agents/agent-store.js';
+import { applyBinaryOverrides } from './src/tui/settings/configuration/agents/apply-binary-overrides.js';
 import { readAnalyticsSetting } from './src/tui/settings/opt-in-analytics/analytics-store.js';
 import { findPackageRoot } from './src/tui/package-root.js';
 

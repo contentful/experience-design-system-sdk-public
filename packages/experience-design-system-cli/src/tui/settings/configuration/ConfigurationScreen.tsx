@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { PALETTE } from '../../theme.js';
 import { ControlHints } from '../../control-hints.js';
-import { AgentsScreen } from '../agents/AgentsScreen.js';
-import { ProjectConfigScreen } from './ProjectConfigScreen.js';
+import { AgentsScreen } from './agents/AgentsScreen.js';
+import { ProjectScreen } from './project/ProjectScreen.js';
 
 type Section = 'project' | 'agents';
 
@@ -39,7 +39,7 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
     if (key.escape || input === 'q') onDone();
   });
 
-  if (open === 'project') return <ProjectConfigScreen onDone={close} />;
+  if (open === 'project') return <ProjectScreen onDone={close} />;
   if (open === 'agents') return <AgentsScreen onDone={close} />;
 
   return (

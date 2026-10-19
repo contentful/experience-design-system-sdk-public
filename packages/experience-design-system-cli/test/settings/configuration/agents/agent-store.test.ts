@@ -2,7 +2,11 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { emptyAgents, readAgentConfig, writeAgentConfig } from '../../src/tui/settings/agents/agent-store.js';
+import {
+  emptyAgents,
+  readAgentConfig,
+  writeAgentConfig,
+} from '../../../../src/tui/settings/configuration/agents/agent-store.js';
 
 // The agent settings share config.json with the credentials, so the point of these tests is what a save does to the
 // rest of the file, and that the two keys the import reads (agent, agentModel) always agree with the new section.

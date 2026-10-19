@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text } from 'ink';
-import { PALETTE } from '../../theme.js';
-import { startDebugRun, finishDebugRun, startDebugSessionIn } from '../../debug-store.js';
-import { FieldForm, type FormField, type FormNotice } from '../shared/FieldForm.js';
-import { readCredentials, writeCredentials, type V1Credentials } from './config-store.js';
+import { PALETTE } from '../../../theme.js';
+import { startDebugRun, finishDebugRun, startDebugSessionIn } from '../../../debug-store.js';
+import { FieldForm, type FormField, type FormNotice } from '../../shared/FieldForm.js';
+import { readCredentials, writeCredentials, type V1Credentials } from './project-store.js';
 
 type Field =
   | 'spaceId'
@@ -40,7 +40,7 @@ const valuesOf = (config: V1Credentials): Record<Field, string> =>
   Object.fromEntries(FIELDS.map(({ key }) => [key, config[key] || ''])) as Record<Field, string>;
 
 /** The Contentful project settings: the space, credentials, defaults and where `.contentful` goes. */
-export function ProjectConfigScreen({ onDone }: { onDone: () => void }): React.ReactElement {
+export function ProjectScreen({ onDone }: { onDone: () => void }): React.ReactElement {
   const [config, setConfig] = useState<V1Credentials | null>(null);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<FormNotice | null>(null);

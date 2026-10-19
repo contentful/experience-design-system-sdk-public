@@ -1,5 +1,5 @@
 import { AGENT_NAMES, isAgentName, type AgentName } from '@contentful/experience-design-system-backend-pipeline';
-import { readV1Store, writeV1Store } from '../utils/v1-store.js';
+import { readV1Store, writeV1Store } from '../../shared/v1-store.js';
 
 // The agent settings live in the same config.json as everything else:
 //

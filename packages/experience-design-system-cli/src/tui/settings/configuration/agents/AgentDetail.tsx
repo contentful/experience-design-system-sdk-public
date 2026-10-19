@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text } from 'ink';
 import { AGENT_BINARIES, type AgentName } from '@contentful/experience-design-system-backend-pipeline';
-import { PALETTE } from '../../theme.js';
-import { FieldForm, type FormAction, type FormField, type FormNotice } from '../shared/FieldForm.js';
+import { PALETTE } from '../../../theme.js';
+import { FieldForm, type FormAction, type FormField, type FormNotice } from '../../shared/FieldForm.js';
 import { AGENT_LABELS, writeAgentConfig, type AgentConfig } from './agent-store.js';
 import {
   defaultModelLabel,

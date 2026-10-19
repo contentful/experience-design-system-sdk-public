@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { AGENT_NAMES, type AgentName } from '@contentful/experience-design-system-backend-pipeline';
-import { PALETTE } from '../../theme.js';
-import { ControlHints } from '../../control-hints.js';
-import { startDebugRun, finishDebugRun } from '../../debug-store.js';
-import type { FormNotice } from '../shared/FieldForm.js';
+import { PALETTE } from '../../../theme.js';
+import { ControlHints } from '../../../control-hints.js';
+import { startDebugRun, finishDebugRun } from '../../../debug-store.js';
+import type { FormNotice } from '../../shared/FieldForm.js';
 import { AGENT_LABELS, readAgentConfig, writeAgentConfig, type AgentConfig } from './agent-store.js';
 import { inspectAgent, panelRows, type AgentCheck } from './agent-status.js';
 import { AgentDetail } from './AgentDetail.js';

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Text } from 'ink';
 import type { AgentName } from '@contentful/experience-design-system-backend-pipeline';
-import { PALETTE } from '../../theme.js';
+import { PALETTE } from '../../../theme.js';
 import { LIST_STATUS, statusFromChecks, type AgentCheck, type StatusRow } from './agent-status.js';
 
 export const TONE_COLOR: Record<StatusRow['tone'], string> = {

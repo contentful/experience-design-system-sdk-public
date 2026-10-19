@@ -7,7 +7,7 @@ import {
   statusFromChecks,
   testAgent,
   type AgentCheck,
-} from '../../src/tui/settings/agents/agent-status.js';
+} from '../../../../src/tui/settings/configuration/agents/agent-status.js';
 
 // These run real throwaway scripts instead of mocking the process layer. What matters: the path the user typed is the
 // thing that gets run, the screen never tells a user a broken agent is ready, and a test leaves nothing behind.

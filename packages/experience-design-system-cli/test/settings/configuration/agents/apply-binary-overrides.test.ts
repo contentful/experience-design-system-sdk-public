@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { emptyAgents } from '../../src/tui/settings/agents/agent-store.js';
-import { applyBinaryOverrides } from '../../src/tui/settings/agents/apply-binary-overrides.js';
+import { emptyAgents } from '../../../../src/tui/settings/configuration/agents/agent-store.js';
+import { applyBinaryOverrides } from '../../../../src/tui/settings/configuration/agents/apply-binary-overrides.js';
 
 // The pipeline reads an agent's binary only from EDS_AGENT_BINARY_<AGENT>. What matters here is who wins when the shell
 // and Settings disagree, and that clearing a path in Settings puts the shell's value back instead of losing it.
