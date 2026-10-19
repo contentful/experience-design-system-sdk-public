@@ -9,13 +9,13 @@ export const PALETTE = {
   link: '#58A6FF',
 } as const;
 
-// Legacy's @inkjs/ui theme: the same as the default, with the progress bar drawn in blue.
+// The @inkjs/ui theme: the same as the default, with the progress bar drawn in the accent colour.
 export const INK_UI_THEME = extendTheme(defaultTheme, {
   components: {
     ProgressBar: {
       styles: {
         completed: (): TextProps => ({
-          color: 'blue',
+          color: PALETTE.accent,
         }),
       },
     },
