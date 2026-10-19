@@ -5,21 +5,14 @@ export interface PreClassification {
   cdfTypeHint?: 'string' | 'enum' | 'richtext' | 'media' | 'boolean';
 }
 
-/**
- * Determines whether a type string represents a simple/primitive type
- * (string, boolean, number, or string literal union) vs a complex type
- * (object, function, array, generic, etc.).
- */
+function isStringLiteralUnion(type: string): boolean {
+  return type.includes('|') && type.includes("'");
+}
+
 function isSimpleType(type: string): boolean {
   const t = type.trim();
   if (t === 'string' || t === 'boolean' || t === 'number') return true;
-  // String literal union (e.g., "'a' | 'b'")
-  if (isStringLiteralUnion(t)) return true;
-  return false;
-}
-
-function isStringLiteralUnion(type: string): boolean {
-  return type.includes('|') && type.includes("'");
+  return isStringLiteralUnion(t);
 }
 
 function isBooleanType(type: string): boolean {
@@ -97,8 +90,7 @@ function isDomPassThroughProp(name: string): boolean {
   if (DOM_PASS_THROUGH_PROPS.has(name)) return true;
   // aria-label, aria-hidden, ariaLabel, ariaHidden — both kebab and camel forms
   if (/^aria[-A-Z]/.test(name)) return true;
-  if (name.startsWith('data-')) return true;
-  return false;
+  return name.startsWith('data-');
 }
 
 /**
@@ -109,7 +101,6 @@ export function preClassifyProp(prop: RawPropDefinition): PreClassification | un
   const { name, type } = prop;
 
   // Rule 1: Event handlers
-  // name starts with `on` + uppercase, OR type contains `=> void` or `EventHandler`
   if (/^on[A-Z]/.test(name) || type.includes('=> void') || type.includes('EventHandler')) {
     return { category: 'exclude' };
   }
@@ -135,9 +126,6 @@ export function preClassifyProp(prop: RawPropDefinition): PreClassification | un
   }
 
   // Rule 6: DOM / a11y / framework pass-through props
-  // These are escape hatches developers use to wire components into the DOM.
-  // Marketers should never configure them in the ExO editor; exposing them
-  // generates noise that obscures the props that actually carry intent.
   if (isDomPassThroughProp(name)) {
     return { category: 'exclude' };
   }
@@ -244,7 +232,6 @@ export function preClassifyComponent(component: RawComponentDefinition): RawComp
     // presented to downstream agents.
     const { domAttribute: _domAttribute, ...authorableProp } = prop;
 
-    // If category is already set, leave unchanged
     if (prop.category) {
       return [authorableProp];
     }
@@ -253,8 +240,12 @@ export function preClassifyComponent(component: RawComponentDefinition): RawComp
       return [authorableProp];
     }
 
-    // Set category hint
-    return [{ ...authorableProp, category: result.category as 'content' | 'design' | 'state' }];
+    return [
+      {
+        ...authorableProp,
+        category: result.category as 'content' | 'design' | 'state',
+      },
+    ];
   });
 
   return { ...component, props };

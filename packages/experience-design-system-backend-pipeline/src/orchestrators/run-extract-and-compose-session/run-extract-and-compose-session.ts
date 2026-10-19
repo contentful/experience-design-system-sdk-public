@@ -1,6 +1,7 @@
 import { mkdir } from 'node:fs/promises';
 import { relative } from 'node:path';
-import { evaluateExtractionQuality, preClassifyComponent } from '@contentful/experience-design-system-extraction';
+import { evaluateExtractionQuality } from '../../steps/extraction/src/helpers/quality/evaluate-extraction-quality.js';
+import { preClassifyComponent } from '../../steps/extraction/src/helpers/pre-classify.js';
 import { resolveCompositionSources } from '../../steps/composition/src/helpers/edges/resolve-composition-sources.js';
 import {
   createStep,
