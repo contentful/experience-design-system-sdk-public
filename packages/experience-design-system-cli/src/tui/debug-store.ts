@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { readSettings } from '@contentful/experience-design-system-types/config';
 import { readPackageVersion } from './home/version.js';
 import { readDebugModeSetting } from './settings/debug-mode/debug-mode-store.js';
+import { pruneExpiredLogs } from './debug-prune.js';
 
 type PendingRun = {
   flow: string;
@@ -123,9 +124,28 @@ export async function startImportRun(projectPath: string): Promise<string> {
 
 // Fire-and-forget so a user who never visits a wired flow still sees an (empty)
 // session directory the moment they boot — matches startDebugRun's fail-open style.
-void Promise.all([isDebugModeEnabled(), readBaseDir()]).then(([enabled, base]) => {
-  if (!enabled || !base) return undefined;
-  return mkdir(join(startSession(base, { replace: false }), 'debug'), { recursive: true });
+void Promise.all([isDebugModeEnabled(), readBaseDir()]).then(async ([enabled, base]) => {
+  if (!base) return;
+  // Expired logs go whether or not logging is on now, so turning it off does not keep old ones around.
+  const retention = await readDebugModeSetting().catch(() => undefined);
+  const pruned = retention ? await pruneExpiredLogs(base, retention.retentionDays).catch(() => undefined) : undefined;
+  if (!enabled) return;
+  const debugDir = join(startSession(base, { replace: false }), 'debug');
+  await mkdir(debugDir, { recursive: true });
+  // Say what was deleted, so "my logs are gone" can be answered from the log. Nothing is written when nothing expired.
+  if (retention && pruned && pruned.logs + pruned.folders > 0) {
+    await writeFile(
+      join(debugDir, `${datePrefix()}-cleanup-${generateRunId()}.md`),
+      `# Debug Log Cleanup
+
+- Date: ${new Date().toISOString()}
+- Retention: ${retention.retentionDays} days
+- Logs deleted: ${pruned.logs}
+- Empty folders removed: ${pruned.folders}
+`,
+      { mode: 0o600 },
+    );
+  }
 });
 
 async function isDebugModeEnabled(): Promise<boolean> {
