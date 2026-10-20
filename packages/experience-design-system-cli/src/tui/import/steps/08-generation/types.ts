@@ -38,7 +38,12 @@ export interface GenerationProgress {
   mapTokensEligible: boolean | null;
 }
 
-export type GenerationStepName = 'save decisions' | 'generate components' | 'map tokens' | `${string} auth check`;
+export type GenerationStepName =
+  | 'save decisions'
+  | 'explore selected components'
+  | 'generate components'
+  | 'map tokens'
+  | `${string} auth check`;
 
 export type GenerationResult =
   | { ok: true; generation: GenerationHandoff }

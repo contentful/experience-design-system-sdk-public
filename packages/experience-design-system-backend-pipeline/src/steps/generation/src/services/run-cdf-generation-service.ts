@@ -11,6 +11,10 @@ import type {
 } from '../types/contract.js';
 import { isAbortError, throwIfAborted } from '../../../../helpers/abort.js';
 import { buildCompilerEvidenceInline } from '../../../../agents/prompts/helpers/build-compiler-evidence-inline.js';
+import {
+  projectAcceptedSlots,
+  projectAcceptedRawSlots,
+} from '../../../exploration/src/services/project-accepted-slots.js';
 
 const DEFAULT_CONCURRENCY = 3;
 const AGENT_TIMEOUT_MS = 120_000;
@@ -98,7 +102,7 @@ async function generateOne(
 
   const promptHash = hashString(prompt);
 
-  const cached = onCacheLookup?.(inputHash, promptHash);
+  const cached = options.acceptedSlots === undefined ? onCacheLookup?.(inputHash, promptHash) : undefined;
   throwIfAborted(options.signal);
   if (cached) return { entry: cached, warnings: [] };
 
@@ -131,7 +135,12 @@ async function generateOne(
   }
 
   throwIfAborted(options.signal);
-  const entry = toolCallsToEntry(component, calls);
+  const entry = projectAcceptedSlots(
+    toolCallsToEntry(component, calls),
+    options.acceptedSlots?.filter(
+      (decision) => decision.name === component.name && decision.source === component.source,
+    ),
+  );
   onCacheStore?.(inputHash, promptHash, entry);
   throwIfAborted(options.signal);
 
@@ -154,7 +163,7 @@ export async function runCdfGenerationService(
   async function worker(): Promise<void> {
     while (!options.signal?.aborted && cursor < total) {
       const i = cursor++;
-      const component = components[i]!;
+      const component = projectAcceptedRawSlots(components[i]!, options.acceptedSlots);
       const result = await generateOne(component, options, i, total);
       throwIfAborted(options.signal);
       if (result.failure) {

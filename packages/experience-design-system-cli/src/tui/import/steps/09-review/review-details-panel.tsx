@@ -113,6 +113,20 @@ export function ReviewDetailsPanel({
     const diagnostics = diagnosticsRead?.status === 'available' ? diagnosticsRead.diagnostics : null;
     const candidates = reviewMetadata?.sourceCandidates ?? [];
     const compilerRows = [
+      ...(reviewMetadata?.exploration
+        ? [
+            `inclusion: ${reviewMetadata.exploration.inclusion?.decision ?? 'unresolved'} · ${reviewMetadata.exploration.inclusion?.reason ?? 'No accepted evidence'}`,
+            ...reviewMetadata.exploration.slots.map(
+              (slot) =>
+                `slot ${slot.slot}: ${slot.state} · ${slot.realVotes}/${slot.coverage} votes · ${slot.disputes?.length ?? 0} disputes · ${slot.provenance ?? 'source-consensus'}`,
+            ),
+            ...(reviewMetadata.exploration.detail
+              ? [
+                  `detail: record-only · ${reviewMetadata.exploration.detail.diff.disagreements.filter((item) => item.component === selectedKey).length} disagreements · ${reviewMetadata.exploration.detail.verified.filter((item) => item.component === selectedKey && item.outcome === 'conflicting').length} unresolved checks`,
+                ]
+              : []),
+          ]
+        : []),
       `compiler candidates: ${reviewMetadata?.sourceEvidenceReadStatus ?? 'unknown-legacy'} · run diagnostics: ${diagnosticsRead?.status ?? 'absent'}`,
       ...(diagnostics
         ? [

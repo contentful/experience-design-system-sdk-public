@@ -1,7 +1,17 @@
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 
 export type DebateRole = 'for' | 'against';
-export type Skill = 'components' | 'tokens' | 'select' | 'map-tokens' | 'debate-select';
+export type Skill =
+  | 'components'
+  | 'tokens'
+  | 'select'
+  | 'map-tokens'
+  | 'debate-select'
+  | 'explore-components'
+  | 'explore-inventory'
+  | 'tier'
+  | 'verify'
+  | 'check';
 export type Mode = 'autonomous';
 
 export interface ComponentSourceRef {
@@ -22,6 +32,8 @@ export interface ComponentSourceRef {
 export type GeneratedCdf = Record<string, CDFComponentEntry>;
 
 export interface PromptOptions {
+  stageAssignmentInline?: string;
+  stageInputInline?: string;
   skill: Skill;
   mode: Mode;
   /** For debate-select: which position to argue; defaults to `for`. */

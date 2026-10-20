@@ -1,3 +1,7 @@
+import {
+  buildStructuredStagePreamble,
+  buildStructuredStagePrompt,
+} from './preambles/build-structured-stage-preamble.js';
 import type { PromptOptions } from '../types/prompts.js';
 import type { Skill } from '../types/prompts.js';
 import { buildInputSections } from './helpers/build-input-sections.js';
@@ -15,10 +19,23 @@ const PREAMBLE_BUILDERS: Record<Skill, (options: PromptOptions, inputBlock: stri
   'map-tokens': (_options, inputBlock) => buildMapTokensPreamble(inputBlock),
   tokens: (_options, inputBlock) => buildTokensPreamble(inputBlock),
   'debate-select': buildDebateSelectPreamble,
+  'explore-components': buildStructuredStagePreamble,
+  'explore-inventory': buildStructuredStagePreamble,
+  tier: buildStructuredStagePreamble,
+  verify: buildStructuredStagePreamble,
+  check: buildStructuredStagePreamble,
 };
 
 export async function buildPrompt(options: PromptOptions): Promise<string> {
   const skillContent = options.skillContentOverride ?? (await readSkillFile(options.skill, options.skillPathOverride));
+  if (['explore-components', 'explore-inventory', 'tier', 'verify', 'check'].includes(options.skill)) {
+    const { readFile } = await import('node:fs/promises');
+    const { resolveSkillPath } = await import('./resolve-skill-path.js');
+    const { dirname, join } = await import('node:path');
+    const rulesPath = join(dirname(resolveSkillPath('explore-components')), 'rules.md');
+    const rules = await readFile(rulesPath, 'utf8');
+    return buildStructuredStagePrompt(options, `${rules}\n${skillContent}`, buildInputSections(options).join('\n\n'));
+  }
   const preamble = buildSkillPreamble(options);
   return `${preamble}\n\nSkill instructions follow:\n---\n${skillContent}`;
 }

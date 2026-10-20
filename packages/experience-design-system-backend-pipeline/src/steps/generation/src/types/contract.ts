@@ -2,6 +2,7 @@ import type { AgentDebugEvent } from '../../../../agents/types/agent-run.js';
 import type { RawComponentDefinition } from '../../../extraction/src/types/component.js';
 import type { AgentName } from '../../../../agents/index.js';
 import type { CDFComponentEntry, DTCGTokenEntry } from '../../../shared/index.js';
+import type { SlotDecision } from '@contentful/experience-design-system-types';
 
 export interface CdfGenerationFailure {
   componentName: string;
@@ -10,6 +11,7 @@ export interface CdfGenerationFailure {
 
 export interface RunCdfGenerationServiceOptions {
   components: RawComponentDefinition[];
+  acceptedSlots?: readonly SlotDecision[];
   signal?: AbortSignal;
   tokens?: DTCGTokenEntry[];
   /** Optional scoped compiler/source-candidate block for alternate fresh-generation callers. */

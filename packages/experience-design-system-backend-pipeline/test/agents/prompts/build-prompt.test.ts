@@ -113,7 +113,9 @@ export function Card({ title, ...props }: CardProps) {
 
     expect(prompt).toContain('"name":"className"');
     expect(prompt).toContain('interface CardProps extends React.HTMLAttributes<HTMLDivElement>');
-    expect(prompt).toContain('a component that redeclares one of these with its own type or JSDoc');
+    expect(prompt).toContain(
+      'Names, frameworks, known component patterns, inherited shapes and category labels do not establish authorability or exhaustive domains',
+    );
     expect(prompt).toContain('title?: string');
     expect(prompt).not.toContain('"domAttribute"');
     expect(prompt).toContain('"domPassthroughPropNames":["className"]');

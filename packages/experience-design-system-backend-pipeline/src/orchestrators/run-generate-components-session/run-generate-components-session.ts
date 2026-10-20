@@ -20,6 +20,13 @@ import { bindAnalyticsSessionId } from '../../analytics/index.js';
 import type { RunGenerateComponentsSessionRequest, RunGenerateComponentsSessionResponse } from './types.js';
 import { throwIfAborted } from '../../helpers/abort.js';
 import { buildCompilerEvidenceInline } from '../../agents/prompts/helpers/build-compiler-evidence-inline.js';
+import {
+  loadAcceptedSlotDecisions,
+  loadExplorationRecord,
+  loadExplorationRun,
+} from '../../persistence/src/session/repositories/exploration/records.js';
+import { projectAcceptedRawSlots } from '../../steps/exploration/src/services/project-accepted-slots.js';
+import { loadScopeDecisions } from '../../persistence/src/session/repositories/db.js';
 
 export type {
   GenerateComponentsProgress,
@@ -65,7 +72,14 @@ export async function runGenerateComponentsSession(
 
   const db = openPipelineDb();
   try {
-    const acceptedNames = await loadAcceptedNames(request.sessionId);
+    const acceptedSlots = loadAcceptedSlotDecisions(db, request.sessionId);
+    const humanScope = acceptedSlots !== undefined ? loadScopeDecisions(db, request.sessionId) : undefined;
+    const acceptedNames =
+      acceptedSlots !== undefined
+        ? humanScope
+          ? new Set(humanScope.accepted)
+          : null
+        : await loadAcceptedNames(request.sessionId);
     throwIfAborted(request.signal);
     const savedSourceEvidence = loadCompletedSourceEvidence(db, request.sessionId);
     const sourceReady = savedSourceEvidence.readiness === 'ready';
@@ -75,20 +89,31 @@ export async function runGenerateComponentsSession(
     const extractionDiagnostics =
       extractionDiagnosticsRead.status === 'available' ? extractionDiagnosticsRead.diagnostics : undefined;
     const acceptedSet = acceptedNames ? new Set(acceptedNames) : undefined;
+    if (
+      acceptedSlots !== undefined &&
+      (!humanScope ||
+        (humanScope.accepted.length > 0 && !loadExplorationRecord(db, request.sessionId, 'detail', 'detail')))
+    )
+      throw new Error('Completed selected detail and human scope are required for generation');
+    const explorationRunIds =
+      acceptedSlots !== undefined && humanScope!.accepted.length > 0
+        ? {
+            componentRunId: loadExplorationRun(db, request.sessionId, 'components')!.runId,
+            detailRunId: loadExplorationRun(db, request.sessionId, 'detail')!.runId,
+          }
+        : undefined;
     let components = loadRawComponents(db, request.sessionId, acceptedSet ?? undefined);
+    components = components.map((component) => projectAcceptedRawSlots(component, acceptedSlots));
     if (components.length === 0) return buildEmptySessionResponse(request.sessionId);
 
     const allowedComponentNames = new Set([
       ...components.map((c) => c.name),
       ...(existingEntities?.components ?? []).map((c) => c.name),
     ]);
-    const { components: filtered, dropped } = filterDroppedAllowedComponents(
-      db,
-      request.sessionId,
-      components,
-      allowedComponentNames,
-      acceptedSet,
-    );
+    const { components: filtered, dropped } =
+      acceptedSlots !== undefined
+        ? { components, dropped: [] }
+        : filterDroppedAllowedComponents(db, request.sessionId, components, allowedComponentNames, acceptedSet);
     components = filtered;
 
     const duplicateNames = collectDuplicateNames(components);
@@ -101,6 +126,7 @@ export async function runGenerateComponentsSession(
         runOneGenerateComponent(
           {
             db,
+            explorationRunIds,
             sessionId: request.sessionId,
             invoker,
             agent,
@@ -108,7 +134,7 @@ export async function runGenerateComponentsSession(
             tokensInline: request.tokensInline,
             tokenMapInline: request.tokenMapInline,
             verbose: request.verbose ?? false,
-            noCache: request.noCache,
+            noCache: acceptedSlots !== undefined || request.noCache,
             skillPathOverride: effectiveSkillPath,
             skillContentOverride: prompt.text,
             promptHash,

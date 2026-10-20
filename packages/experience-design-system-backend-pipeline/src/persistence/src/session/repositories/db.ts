@@ -1,3 +1,16 @@
+import { initializeExplorationSchema } from './exploration/schema.js';
+import {
+  loadAcceptedSlotDecisions,
+  loadExplorationRun,
+  loadExplorationRecord,
+  saveReviewedSlots,
+} from './exploration/records.js';
+import type {
+  DerivedSelection,
+  SlotDecision,
+  ExplorationDetailRecord,
+} from '@contentful/experience-design-system-types';
+import { projectAcceptedSlots } from '../../../../steps/exploration/src/services/project-accepted-slots.js';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
@@ -305,6 +318,7 @@ export function openPipelineDb(dbPath?: string): DatabaseSync {
     db.exec('PRAGMA journal_mode = WAL');
     db.exec('PRAGMA synchronous = NORMAL');
     db.exec(SCHEMA);
+    initializeExplorationSchema(db);
     applyDbMigrations(db);
     pruneObsoleteIncompleteStepsIfNeeded(db);
     return db;
@@ -602,6 +616,7 @@ export interface ApplyToolCallsOptions {
 }
 
 export interface ComponentReviewMetadata {
+  exploration?: { inclusion?: DerivedSelection; slots: SlotDecision[]; detail?: ExplorationDetailRecord };
   sourcePath: string | null;
   componentSource: string | null;
   sourceCoverage: SourceCapture['coverage'];
@@ -689,6 +704,19 @@ export function loadComponentReviewMetadata(
   }
 
   return {
+    ...(loadExplorationRun(db, sessionId, 'components')
+      ? {
+          exploration: {
+            inclusion: loadExplorationRecord<DerivedSelection[]>(db, sessionId, 'components', 'inclusion')?.find(
+              (decision) => decision.componentId === compRow.component_id,
+            ),
+            slots: (loadAcceptedSlotDecisions(db, sessionId) ?? []).filter(
+              (slot) => slot.componentId === compRow.component_id,
+            ),
+            detail: loadExplorationRecord<ExplorationDetailRecord>(db, sessionId, 'detail', 'detail'),
+          },
+        }
+      : {}),
     sourcePath,
     componentSource,
     sourceCoverage,
@@ -919,6 +947,10 @@ export function applyToolCalls(
         clearProp.run(call.reason || null, sessionId, componentId, call.prop);
         excluded++;
       } else if (call.tool === 'classify_slot') {
+        if (loadAcceptedSlotDecisions(db, sessionId) !== undefined) {
+          slots++;
+          continue;
+        }
         const slotRequired = call.required !== undefined ? (call.required ? 1 : 0) : 1;
         const slotChanges = updateSlot.run(
           slotRequired,
@@ -2103,32 +2135,36 @@ export function storeCDFComponents(
           }
         }
 
-        const existingDefaults = new Map<string, number>(
-          (
-            readExistingSlotDefaults.all(sessionId, componentId) as Array<{
-              name: string;
-              is_default: number;
-            }>
-          ).map((r) => [r.name, r.is_default]),
-        );
-        deleteSlotAllowedComponents.run(sessionId, componentId);
-        deleteSlots.run(sessionId, componentId);
-        let slotPos = 0;
-        for (const [slotName, slot] of Object.entries(entry.$slots ?? {})) {
-          const isDefault = existingDefaults.get(slotName) ?? 0;
-          insertSlotOnUpdate.run(
-            sessionId,
-            componentId,
-            slotName,
-            isDefault,
-            slot.$required ? 1 : 0,
-            slot.$description ?? null,
-            slotPos++,
+        if (loadAcceptedSlotDecisions(db, sessionId) !== undefined) {
+          saveReviewedSlots(db, sessionId, componentId, entry);
+        } else {
+          const existingDefaults = new Map<string, number>(
+            (
+              readExistingSlotDefaults.all(sessionId, componentId) as Array<{
+                name: string;
+                is_default: number;
+              }>
+            ).map((r) => [r.name, r.is_default]),
           );
-          if (slot.$allowedComponents && slot.$allowedComponents.length > 0) {
-            slot.$allowedComponents.forEach((ac, i) =>
-              insertAllowedComponent.run(sessionId, componentId, slotName, ac, i),
+          deleteSlotAllowedComponents.run(sessionId, componentId);
+          deleteSlots.run(sessionId, componentId);
+          let slotPos = 0;
+          for (const [slotName, slot] of Object.entries(entry.$slots ?? {})) {
+            const isDefault = existingDefaults.get(slotName) ?? 0;
+            insertSlotOnUpdate.run(
+              sessionId,
+              componentId,
+              slotName,
+              isDefault,
+              slot.$required ? 1 : 0,
+              slot.$description ?? null,
+              slotPos++,
             );
+            if (slot.$allowedComponents && slot.$allowedComponents.length > 0) {
+              slot.$allowedComponents.forEach((ac, i) =>
+                insertAllowedComponent.run(sessionId, componentId, slotName, ac, i),
+              );
+            }
           }
         }
       } else {
@@ -2346,7 +2382,14 @@ export function loadCDFComponents(
     const entry: CDFComponentEntry = { $type: 'component', $properties };
     if (description !== null) entry.$description = description;
     if (Object.keys($slots).length > 0) entry.$slots = $slots;
-    return { key: name, entry };
+    const decisions = loadAcceptedSlotDecisions(db, sessionId);
+    return {
+      key: name,
+      entry: projectAcceptedSlots(
+        entry,
+        decisions?.filter((slot) => slot.componentId === component_id),
+      ),
+    };
   });
 }
 
@@ -2452,6 +2495,9 @@ export function loadScopeDecisions(db: DatabaseSync, sessionId: string): ScopeDe
 }
 
 export function loadScopeComponents(db: DatabaseSync, sessionId: string): ScopeComponentRow[] {
+  const exploration = loadExplorationRun(db, sessionId, 'components');
+  if (exploration && exploration.status !== 'complete') return [];
+  const acceptedSlots = loadAcceptedSlotDecisions(db, sessionId);
   const rows = db
     .prepare(
       `SELECT name, component_id, status, reject_reason, review_reasons, needs_review FROM raw_components
@@ -2507,10 +2553,22 @@ export function loadScopeComponents(db: DatabaseSync, sessionId: string): ScopeC
       aiDecision: r.status === 'accepted' ? 'accepted' : r.status === 'rejected' ? 'rejected' : null,
       aiReason: r.reject_reason ?? nonAuthorableReason?.slice('non-authorable:'.length) ?? null,
       needsReview: Boolean(r.needs_review),
-      slots: (slotsByComponent.get(r.component_id) ?? []).map((s) => ({
-        name: s.name,
-        allowedComponents: (allowedBySlot.get(`${r.component_id}::${s.name}`) ?? []).map((a) => a.allowed_component),
-      })),
+      slots:
+        acceptedSlots !== undefined
+          ? acceptedSlots
+              .filter(
+                (slot) => slot.componentId === r.component_id && (slot.state === 'open' || slot.state === 'finite'),
+              )
+              .map((slot) => ({
+                name: slot.slot,
+                allowedComponents: slot.state === 'finite' ? slot.allowedComponents : [],
+              }))
+          : (slotsByComponent.get(r.component_id) ?? []).map((s) => ({
+              name: s.name,
+              allowedComponents: (allowedBySlot.get(`${r.component_id}::${s.name}`) ?? []).map(
+                (a) => a.allowed_component,
+              ),
+            })),
     };
   });
 }

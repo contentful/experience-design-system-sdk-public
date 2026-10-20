@@ -17,6 +17,11 @@
             "input": "packages/experience-design-system-backend-pipeline/src/agents/skills/selection",
             "glob": "debate-select.md",
             "output": "src/agents/skills/selection"
+          },
+          {
+            "input": "packages/experience-design-system-backend-pipeline/src/agents/skills",
+            "glob": "**/*.md",
+            "output": "src/agents/skills"
           }
         ]
       },

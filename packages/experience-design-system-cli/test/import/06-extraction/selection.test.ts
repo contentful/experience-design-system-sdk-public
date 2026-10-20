@@ -31,6 +31,27 @@ vi.mock('@contentful/experience-design-system-backend-pipeline', async (importOr
     createLocalCliAgentInvoker: () => ({
       invoke: async (options: { prompt: string; signal?: AbortSignal }) => {
         agent.invocations.push({ prompt: options.prompt, signal: options.signal });
+        const scope = /"scope":"([^"\n]+)"/.exec(options.prompt)?.[1];
+        if (scope) {
+          const input = JSON.parse(options.prompt.split('\nInput data:\n')[1]!.split('\n')[0]!) as {
+            components: Array<{ name: string; source: string; component_id: string }>;
+          };
+          return {
+            stdout: JSON.stringify({
+              agentRole: scope,
+              components: input.components.map((component) => ({
+                name: component.name,
+                source: component.source,
+                componentId: component.component_id,
+                included: true,
+              })),
+            }),
+            stderr: '',
+            exitCode: 0,
+            timedOut: false,
+          };
+        }
+
         return (await agent.waiter) ?? agent.result;
       },
     }),
@@ -236,22 +257,31 @@ describe('runSelection', () => {
 
     await writeFile(sourcePath, 'export const Card = () => "SELECTION_CAPTURE_B";\n', 'utf8');
     agent.result.stdout = lines({ tool: 'select_component', name: 'Card' });
-    await runSelection(options({ noCache: true, sourceEvidenceHandle: handle }));
+    await runSelection(
+      options({
+        noCache: true,
+        sourceEvidenceHandle: handle,
+        rendererReference: { kind: 'text', text: 'Renderer reference', origin: 'fixture' },
+      }),
+    );
 
     const prompt = agent.invocations[0]?.prompt ?? '';
     expect(prompt).toContain('SELECTION_CAPTURE_A');
     expect(prompt).not.toContain('SELECTION_CAPTURE_B');
     expect(prompt).toContain('selection-fixture');
-    expect(prompt).toContain('"extractionByteBinding": "unverified"');
-    expect(prompt).toContain(
-      'Compiler evidence and source candidates (JSON; advisory and separate from authoring props)',
-    );
-    expect(prompt).not.toContain('"sourceCandidates":[{"name":"__proto__"');
-    const evidenceBlock = prompt.match(/Compiler evidence and source candidates[^\n]*:\n```json\n([\s\S]*?)\n```/);
-    const compilerEvidence = JSON.parse(evidenceBlock![1]!);
-    expect(compilerEvidence.readiness).toBe('ready');
-    expect(compilerEvidence.sourceCandidates[0].candidates[0].keyPath).toEqual(['__proto__']);
-    expect(compilerEvidence.compilerEvidence.runDiagnostics.projects[0].diagnostics).toEqual(['test-config-warning']);
+    expect(prompt).toContain('"extractionByteBinding":"unverified"');
+    expect(agent.invocations).toHaveLength(7);
+    const input = JSON.parse(prompt.split('\nInput data:\n')[1]!.split('\n')[0]!);
+    expect(input.components[0].sourceCandidates[0].keyPath).toEqual(['__proto__']);
+    expect(
+      input.sourceInput.diagnostics.find((entry: { kind?: string }) => entry.kind === 'compiler-run').diagnostics
+        .diagnostics.projects[0].diagnostics,
+    ).toEqual(['test-config-warning']);
+    for (const candidateFree of agent.invocations.slice(5)) {
+      const input = JSON.parse(candidateFree.prompt.split('\nInput data:\n')[1]!.split('\n')[0]!);
+      expect(input.components[0].sourceCandidates).toBeUndefined();
+      expect(input.sourceInput.observations).toEqual({ accepted: [], rejected: [] });
+    }
   });
 
   it('rejects an unavailable supplied completion handle before invoking or saving selection', async () => {

@@ -6,4 +6,9 @@ export const SKILL_FILES: Record<Skill, string> = {
   select: 'select-components.md',
   'map-tokens': 'map-tokens.md',
   'debate-select': 'debate-select.md',
+  'explore-components': 'components.md',
+  'explore-inventory': 'full-inventory.md',
+  tier: 'tier.md',
+  verify: 'verify.md',
+  check: 'check.md',
 };

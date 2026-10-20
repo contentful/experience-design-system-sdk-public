@@ -10,6 +10,11 @@ const SKILL_FILES: Record<Skill, string> = {
   select: 'select-components.md',
   'map-tokens': 'map-tokens.md',
   'debate-select': 'debate-select.md',
+  'explore-components': 'explore/components.md',
+  'explore-inventory': 'explore/full-inventory.md',
+  tier: 'tier.md',
+  verify: 'verify.md',
+  check: 'check.md',
 };
 
 export function resolveSkillPath(skill: Skill): string {

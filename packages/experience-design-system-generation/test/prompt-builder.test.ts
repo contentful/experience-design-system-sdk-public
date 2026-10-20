@@ -186,9 +186,9 @@ describe('buildPrompt', () => {
       outDir: '/fake/out',
     });
 
-    expect(prompt).toContain('inspect its declaration and use. It may be semantic component data');
-    expect(prompt).toContain('do not exclude or classify it from its name alone');
-    expect(prompt).toContain('`options`, `value`, `name`, `form`');
+    expect(prompt).toContain('Names, frameworks, known component patterns, inherited shapes');
+    expect(prompt).toContain('do not exclude it from its spelling alone');
+    expect(prompt).toContain('declared contract and actual consumption');
     expect(prompt).not.toContain('`name` (the bare HTML form `name` attribute)');
   });
 
@@ -234,20 +234,17 @@ describe('buildPrompt', () => {
     expect(prompt).toContain('Generate Components');
   });
 
-  it('select skill prompt includes utility-wrapper rejection rule (no authorable content surface)', async () => {
+  it('select skill prompt derives inclusion from source purpose without authorability recipes', async () => {
     const prompt = await buildPrompt({
       skill: 'select',
       mode: 'autonomous',
       rawComponentsInline: INLINE_COMPONENTS,
       outDir: '/fake/out',
     });
-    // Distinctive phrase from the new rejection rule.
-    expect(prompt).toContain('Utility wrapper — no authorable content surface');
-    // The rule should call out structural-only props as a rejection signal.
-    expect(prompt).toMatch(/structural[- ]only/i);
-    // Concrete examples authors expect to be rejected.
-    expect(prompt).toMatch(/Portal/);
-    expect(prompt).toMatch(/SrOnly|screen[- ]reader[- ]only/i);
+    expect(prompt).toContain('Source purpose and inclusion');
+    expect(prompt).toContain('not a blanket rejection rule');
+    expect(prompt).not.toContain('Utility-wrapper rule');
+    expect(prompt).not.toContain('Concrete examples to reject');
   });
 
   it('select skill prompt advertises batch input (1–N components per message)', async () => {
@@ -269,8 +266,8 @@ describe('buildPrompt', () => {
       rawComponentsInline: INLINE_COMPONENTS,
       outDir: '/fake/out',
     });
-    expect(prompt).toContain('Data-fetch wrapper rule');
-    expect(prompt).toContain('Non-rendering hooks or functions');
+    expect(prompt).toContain('delegated data are evidence to inspect');
+    expect(prompt).toContain('absence from bounded excerpts is uncertainty');
   });
 
   it('selection and generation prompts keep bounded evidence and model summaries advisory', async () => {
@@ -312,7 +309,7 @@ describe('buildPrompt', () => {
         });
         expect(prompt).toContain(marker);
         // Bundled-prompt distinctive phrase should NOT appear.
-        expect(prompt).not.toContain('Utility wrapper — no authorable content surface');
+        expect(prompt).not.toContain('Source purpose and inclusion');
       } finally {
         await rm(dir, { recursive: true, force: true });
       }
@@ -337,7 +334,7 @@ describe('buildPrompt', () => {
         rawComponentsInline: INLINE_COMPONENTS,
         outDir: '/fake/out',
       });
-      expect(prompt).toContain('Utility wrapper — no authorable content surface');
+      expect(prompt).toContain('Source purpose and inclusion');
     });
 
     it('uses inline skill content when provided', async () => {
@@ -349,7 +346,7 @@ describe('buildPrompt', () => {
         skillContentOverride: 'INLINE_SKILL_MARKER',
       });
       expect(prompt).toContain('INLINE_SKILL_MARKER');
-      expect(prompt).not.toContain('Utility wrapper — no authorable content surface');
+      expect(prompt).not.toContain('Source purpose and inclusion');
     });
   });
 

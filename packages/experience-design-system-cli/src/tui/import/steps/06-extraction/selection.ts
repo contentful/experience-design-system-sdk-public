@@ -22,6 +22,8 @@ import {
   stripPropProvenance,
   summarizeForSelect,
   type SourceEvidenceHandle,
+  type RendererReferenceInput,
+  runExplorationComponentsSession,
 } from '@contentful/experience-design-system-backend-pipeline';
 import { recordDebugEvent } from '../../../debug-store.js';
 import { findSkillPath } from './find-skill-path.js';
@@ -51,6 +53,7 @@ async function hashSelectPrompt(
 }
 
 export interface SelectionOptions {
+  rendererReference?: RendererReferenceInput;
   signal?: AbortSignal;
   sessionId: string;
   agent: AgentName;
@@ -72,6 +75,39 @@ export interface SelectionOptions {
  */
 export async function runSelection(options: SelectionOptions): Promise<void> {
   throwIfAborted(options.signal);
+  if (options.sourceEvidenceHandle) {
+    let existingComponentsInline: string | undefined;
+    let existingTokensInline: string | undefined;
+    if (options.existingEntitiesPath) {
+      const entities = await readExistingContentfulEntitiesFromSession({ path: options.existingEntitiesPath });
+      throwIfAborted(options.signal);
+      if (entities) {
+        try {
+          const summary = summarizeForSelect({ entities });
+          existingComponentsInline = JSON.stringify(summary.components);
+          existingTokensInline = JSON.stringify(summary.tokens);
+        } catch {
+          // Optional alignment context remains unavailable when its model data cannot be summarized.
+        }
+      }
+    }
+    const result = await runExplorationComponentsSession({
+      sessionId: options.sessionId,
+      sourceEvidenceHandle: options.sourceEvidenceHandle,
+      agent: options.agent,
+      model: options.model,
+      signal: options.signal,
+      promptText: options.promptText,
+      promptPath: options.promptPath,
+      invoker: createLocalCliAgentInvoker({}),
+      existingComponentsInline,
+      existingTokensInline,
+      rendererReference: options.rendererReference,
+    });
+    throwIfAborted(options.signal);
+    if (!result.ok) throw new Error(result.error);
+    return;
+  }
   const db = openPipelineDb();
   let components: ReturnType<typeof loadRawComponents>;
   const cachedDecisions = new Map<string, Decision>();

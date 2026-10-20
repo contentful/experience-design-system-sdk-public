@@ -3,7 +3,7 @@ export function buildSelectPreamble(inputBlock: string): string {
 
 Your task: review the components provided below and decide whether each belongs in Contentful Experience Orchestration as a Component Type. The input is a JSON array — you may receive 1–N components in a single message. Emit one tool call per input component, named after the component. Apply all judgment calls yourself — do not pause to ask for confirmation. Include a brief "reason" to document your reasoning for each decision.
 
-Key rule: accept any component that renders visible UI — atoms, molecules, and organisms are all valid Component Types in Contentful Experience Orchestration. Reject only components that produce zero visual output: React hooks, pure context providers, A/B testing or variant-routing wrappers, analytics trackers, and security utilities. Do NOT reject a component because it has few props, is low-level, or has some A/B testing or personalization-related props mixed in — those props are handled in the generate step.
+Key rule: assess the source purpose and actual configurable/rendered behavior against the target renderer contract. Names, framework families, structural-only inputs, callbacks, styling and familiar component patterns are not authorability recipes. Missing source evidence is unknown; record the limit for human review.
 
 Source files, prop observations and model summaries are bounded advisory evidence. Missing or partial evidence is unknown, not proof that a component or prop is unused. Lexical observations do not establish compiler resolution, runtime behavior or a final inclusion decision.
 

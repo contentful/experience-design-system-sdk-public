@@ -495,3 +495,38 @@ describe('runGeneration', () => {
     });
   });
 });
+
+describe('selected detail caller', () => {
+  it('runs selected detail after save/auth and before generation', async () => {
+    const { deps, calls } = fakes();
+    const detail = vi.fn(async () => {
+      calls.push('detail');
+      return { ok: true as const };
+    });
+    const result = await runGeneration(input(), () => {}, { ...deps, runDetail: detail } as GenerationDeps);
+    expect(result.ok).toBe(true);
+    expect(calls.slice(0, 4)).toEqual(['save', 'auth', 'detail', 'generate']);
+    expect(detail).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: 'extract-1', selectedNames: ['Button', 'Card'], agent: 'claude' }),
+    );
+  });
+  it('does not generate when selected detail fails', async () => {
+    const { deps } = fakes();
+    const result = await runGeneration(input(), () => {}, {
+      ...deps,
+      runDetail: async () => ({ ok: false, error: 'unresolved invocation' }),
+    } as GenerationDeps);
+    expect(result).toMatchObject({ ok: false, step: 'explore selected components' });
+    expect(deps.runGenerate).not.toHaveBeenCalled();
+  });
+  it('preserves zero-selection and missing-credential short circuits', async () => {
+    const { deps } = fakes({ checkAgentAuth: vi.fn(async () => 'not-found' as const) });
+    const detail = vi.fn(async () => ({ ok: true as const }));
+    await runGeneration(input({ decisions: { accepted: [], rejected: [] } }), () => {}, {
+      ...deps,
+      runDetail: detail,
+    } as GenerationDeps);
+    await runGeneration(input(), () => {}, { ...deps, runDetail: detail } as GenerationDeps);
+    expect(detail).not.toHaveBeenCalled();
+  });
+});

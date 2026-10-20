@@ -6,6 +6,7 @@ import {
   readExistingContentfulEntitiesFromSession,
   resolvePromptOverride,
   runGenerateComponentsSession,
+  runExplorationDetailSession,
   runMapTokens,
   summarizeForMapTokens,
   type AgentName,
@@ -32,6 +33,7 @@ export interface GenerationDeps {
   runMapTokens: typeof runMapTokens;
   prepareMapTokens: typeof prepareMapTokens;
   prepareMapOptions: typeof buildMapTokensOptions;
+  runDetail?: typeof runExplorationDetailSession;
 }
 
 const realDeps: GenerationDeps = {
@@ -41,6 +43,7 @@ const realDeps: GenerationDeps = {
   runMapTokens,
   prepareMapTokens,
   prepareMapOptions: buildMapTokensOptions,
+  runDetail: runExplorationDetailSession,
 };
 
 const fail = (step: GenerationStepName, message: string): Failure => ({ ok: false, step, message });
@@ -89,6 +92,21 @@ export async function runGeneration(
   }
   if (auth === 'not-found' || auth === 'unauthenticated') {
     return fail(`${input.agent} auth check`, agentAuthMessage(input.agent, auth));
+  }
+
+  try {
+    throwIfAborted(signal);
+    const detail = await deps.runDetail?.({
+      sessionId: input.sessionId,
+      agent: input.agent as AgentName,
+      model: input.agentModel,
+      selectedNames: accepted,
+      signal,
+    });
+    throwIfAborted(signal);
+    if (detail && !detail.ok) return fail('explore selected components', detail.error);
+  } catch (error) {
+    return fail('explore selected components', errorMessage(error));
   }
 
   const debugWrites: Promise<void>[] = [];

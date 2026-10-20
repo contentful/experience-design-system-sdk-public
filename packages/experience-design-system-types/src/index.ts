@@ -75,3 +75,5 @@ export type {
   ApplyOperationResponse,
   ApplyGateError,
 } from './sources-api/apply/index.js';
+
+export * from './exploration/index.js';

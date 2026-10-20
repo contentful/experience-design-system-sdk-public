@@ -485,3 +485,19 @@ export type {
   OsName,
   AnalyticsWriteResult,
 } from './analytics/index.js';
+
+export * from './steps/exploration/src/index.js';
+
+export {
+  loadExplorationRun,
+  loadExplorationReports,
+  loadExplorationAttempts,
+  loadAcceptedSlotDecisions,
+  loadExplorationRecord,
+} from './persistence/src/session/repositories/exploration/records.js';
+export {
+  projectAcceptedSlots,
+  projectAcceptedRawSlots,
+} from './steps/exploration/src/services/project-accepted-slots.js';
+
+export * from './orchestrators/run-exploration-session/index.js';

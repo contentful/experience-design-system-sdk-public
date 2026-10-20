@@ -8,6 +8,7 @@ import type { ExistingContentfulEntities } from '../../steps/generation/src/type
 import { readExistingEntities } from './helpers/read-existing-entities.js';
 import { resolveGeneratePrompt } from './helpers/resolve-generate-prompt.js';
 import { restoreCachedComponents } from './helpers/restore-cached-components.js';
+import { hasExplorationSession } from '../run-exploration-session/index.js';
 
 export interface CheckGenerateComponentsCacheRequest {
   sessionId: string;
@@ -34,7 +35,7 @@ export interface CheckGenerateComponentsCacheResponse {
 export async function checkGenerateComponentsCache(
   request: CheckGenerateComponentsCacheRequest,
 ): Promise<CheckGenerateComponentsCacheResponse> {
-  if (request.noCache) {
+  if (request.noCache || hasExplorationSession(request.sessionId)) {
     return { sessionId: request.sessionId, cachedComponentNames: [], fullyCached: false, cacheDisabled: true };
   }
 

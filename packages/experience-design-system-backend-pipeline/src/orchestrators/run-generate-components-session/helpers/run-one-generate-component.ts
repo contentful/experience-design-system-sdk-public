@@ -26,11 +26,16 @@ import type { GeneratedComponentResult, GenerateComponentsProgress } from '../ty
 import { buildCachedComponentResult } from './build-cached-component-result.js';
 import { buildFailedComponentResult } from './build-failed-component-result.js';
 import { abortableDelay, throwIfAborted } from '../../../helpers/abort.js';
+import {
+  loadExplorationRun,
+  loadExplorationRecord,
+} from '../../../persistence/src/session/repositories/exploration/records.js';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env['EDS_AGENT_TIMEOUT_MS'] ?? 5 * 60 * 1000);
 const RETRY_BACKOFF_MS = Number(process.env['EDS_RETRY_BACKOFF_MS'] ?? 5_000);
 
 export interface RunOneGenerateComponentOptions {
+  explorationRunIds?: { componentRunId: string; detailRunId: string };
   db: DatabaseSync;
   sessionId: string;
   invoker: AgentInvoker;
@@ -81,9 +86,22 @@ export async function runOneGenerateComponent(
   } = options;
 
   throwIfAborted(signal);
+  const assertProjectionCurrent = (): void => {
+    const expected = options.explorationRunIds;
+    if (
+      expected &&
+      (loadExplorationRun(db, sessionId, 'components')?.runId !== expected.componentRunId ||
+        loadExplorationRun(db, sessionId, 'detail')?.runId !== expected.detailRunId ||
+        !loadExplorationRecord(db, sessionId, 'detail', 'detail'))
+    )
+      throw new Error('Accepted generation scope or source changed');
+  };
+  assertProjectionCurrent();
   const compilerEvidenceInline =
     options.compilerEvidenceInline ?? buildCompilerEvidenceInline([component], { readiness: 'caller-provided' });
-  const { renames } = renameEmptySlots(db, sessionId, component.component_id, component.name, component.slots.length);
+  const { renames } = options.explorationRunIds
+    ? { renames: [] }
+    : renameEmptySlots(db, sessionId, component.component_id, component.name, component.slots.length);
   let effectiveSlots = component.slots;
   if (renames.length > 0) {
     const renameMap = new Map(renames.map((r) => [r.oldName, r.newName]));
@@ -108,6 +126,7 @@ export async function runOneGenerateComponent(
   if (!noCache && precomputedCachedNames.has(component.name)) {
     onProgress?.({ kind: 'component:cached', index, total, name: component.name, pinned: false });
     throwIfAborted(signal);
+    assertProjectionCurrent();
     return buildCachedComponentResult(component.name);
   }
 
@@ -223,6 +242,7 @@ export async function runOneGenerateComponent(
       continue;
     }
 
+    assertProjectionCurrent();
     const applied = applyToolCalls(db, sessionId, component.component_id, component.name, calls, warnings, {
       allowedComponentNames,
     });
