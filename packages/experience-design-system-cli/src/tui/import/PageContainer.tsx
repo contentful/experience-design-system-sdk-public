@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Text, useInput } from 'ink';
 import { PALETTE } from '../theme.js';
-import { ControlHints } from '../control-hints.js';
+import { ControlHints } from '@tui/shared/components/ControlHints.js';
 
 export function ImportScreen({ exitCode, onDone }: { exitCode?: number; onDone: () => void }): React.ReactElement {
   useInput((input, key) => {

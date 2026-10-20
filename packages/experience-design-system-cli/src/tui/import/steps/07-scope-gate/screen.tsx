@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import { StepHeader } from '../../shared/index.js';
+import { StepHeader } from '@tui/shared/components/StepHeader.js';
 import { AddedColumn } from './panels/added-column.js';
 import { CyclesPanel } from './panels/cycles-panel.js';
 import { RejectPrompt } from './panels/reject-prompt.js';

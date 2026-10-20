@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { Box, Text } from 'ink';
 import { PALETTE } from '@tui/theme.js';
-import { ClearableTextInput } from '../../../ClearableTextInput.js';
+import { ClearableTextInput } from '../../../shared/components/ClearableTextInput.js';
 import { TOKEN_INPUT_CONTROLS, useTokenInputControls } from './controls.js';
 import { toTokenPath } from './logic.js';
 import { validateTokenPath } from './validate-path.js';
-import { ControlHints } from '@tui/control-hints.js';
+import { ControlHints } from '@tui/shared/components/ControlHints.js';
 
 interface TokenInputScreenProps {
   onConfirm: (tokensPath: string) => void;

@@ -1,7 +1,7 @@
 import React from 'react';
 import type { ComponentTypeSummary } from '@contentful/experience-design-system-types';
 import { PALETTE } from '@tui/theme.js';
-import { ControlHints } from '@tui/control-hints.js';
+import { ControlHints } from '@tui/shared/components/ControlHints.js';
 import { Box, Text } from 'ink';
 import { useImmediateInput } from '../../07-scope-gate/sidebar/hooks/useImmediateInput.js';
 import { removedComponentsHeader, removedComponentLine } from './removed-components-text.js';

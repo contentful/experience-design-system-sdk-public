@@ -68,7 +68,16 @@ Use Ink's `useInput` for keys. The existing screens treat `q` and `Esc` as "go b
 
 ### Theme
 
-The shared colour palette lives in `src/tui/theme.ts`. It has a dark and a light set and picks one from the terminal background. Screens import `PALETTE` from there and should not hardcode colours. Flows keep any other styling beside their screens. There is no shared `ui/` folder.
+The shared colour palette lives in `src/tui/theme.ts`. It has a dark and a light set and picks one from the terminal background. Screens import `PALETTE` from there and should not hardcode colours, including named ones like `'red'` or `'gray'`. Use `PALETTE.accent` for emphasis and `PALETTE.onAccent` for text on an accent background. Do not define a second palette in a flow.
+
+Import it through the `@tui` alias, not a long relative path: `import { PALETTE } from '@tui/theme.js';`. The alias maps `@tui/*` to `src/tui/*`. It is set in `tsconfig.json` (`paths`, used by the type check and the esbuild build) and in `vitest.config.ts` (`resolve.alias`), so a new alias needs both. Use it when the relative path goes up three or more folders.
+
+### Shared components
+
+Components used by more than one flow live in `src/tui/shared/components/`. Flows keep any other styling beside their screens.
+
+- `ControlHints`: the one control-hint line. It shows `[keys]` in the accent colour and the label in the normal text colour, with no border. Use it for every screen's key hints, passing `{ keys, label }` entries (add `active: true` to highlight a hint whose mode is on). Do not hand-write hint lines.
+- `StepHeader`: the import's tab bar: Extract, Select, Generate, Review and Push, with the version on the right and a rule across the full width. Pass `step="extraction"` and so on; `step="done"` marks every step finished. Render it above the screen's padded content, not inside the padding, so the rule reaches the edges.
 
 ### The Import flow
 

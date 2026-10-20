@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { AGENT_NAMES, type AgentName } from '@contentful/experience-design-system-backend-pipeline';
 import { PALETTE } from '@tui/theme.js';
-import { ControlHints } from '../../../control-hints.js';
+import { ControlHints } from '@tui/shared/components/ControlHints.js';
 import { startDebugRun, finishDebugRun } from '../../../debug-store.js';
 import type { FormNotice } from '../../shared/FieldForm.js';
 import { createTrail, diffSnapshots, scrubError, type Snapshot } from '../../shared/debug-trail.js';

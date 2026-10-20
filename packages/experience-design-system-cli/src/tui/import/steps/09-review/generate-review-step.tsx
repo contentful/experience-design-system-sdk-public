@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import figures from 'figures';
 import { PALETTE } from '@tui/theme.js';
-import { StepHeader } from '../../shared/index.js';
+import { StepHeader } from '@tui/shared/components/StepHeader.js';
 import { getReviewJsonPanelValue } from './review-json-panel.js';
 import { Box, Text } from 'ink';
 import type {

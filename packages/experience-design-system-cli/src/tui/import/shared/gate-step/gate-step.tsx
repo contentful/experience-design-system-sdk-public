@@ -1,10 +1,10 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import { PALETTE } from '@tui/theme.js';
-import { ControlHints } from '@tui/control-hints.js';
+import { ControlHints } from '@tui/shared/components/ControlHints.js';
 import { useGateControls } from './controls.js';
 import { gateControls } from './logic.js';
-import { StepHeader, type StepHeaderProps } from '../StepHeader.js';
+import { StepHeader, type StepHeaderProps } from '@tui/shared/components/StepHeader.js';
 
 interface GateStepProps {
   message: string;

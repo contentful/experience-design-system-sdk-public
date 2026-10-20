@@ -1,4 +1,4 @@
-import { ControlHints } from '@tui/control-hints.js';
+import { ControlHints } from '@tui/shared/components/ControlHints.js';
 
 export function CompactControlBar({ hasGroupRoots, searchActive }: { hasGroupRoots: boolean; searchActive: boolean }) {
   return (

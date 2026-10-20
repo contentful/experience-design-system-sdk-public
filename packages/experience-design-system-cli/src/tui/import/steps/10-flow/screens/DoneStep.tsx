@@ -3,7 +3,7 @@ import { PALETTE } from '@tui/theme.js';
 import { Box, Text } from 'ink';
 import { useImmediateInput } from '../../07-scope-gate/sidebar/hooks/useImmediateInput.js';
 import { buildPostPushUrl } from '../support/contentful-urls.js';
-import { StepHeader } from '../../../shared/index.js';
+import { StepHeader } from '@tui/shared/components/StepHeader.js';
 import { SpaceEnvironment } from '../components/SpaceEnvironment.js';
 
 type EntityResult = {

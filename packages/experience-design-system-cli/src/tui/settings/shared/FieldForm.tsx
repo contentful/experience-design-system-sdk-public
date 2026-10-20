@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { PALETTE } from '../../theme.js';
-import { ControlHints } from '../../control-hints.js';
-import { ClearableTextInput, isClearKey } from '../../ClearableTextInput.js';
+import { ControlHints } from '@tui/shared/components/ControlHints.js';
+import { ClearableTextInput, isClearKey } from '../../shared/components/ClearableTextInput.js';
 
 export interface FormField<K extends string> {
   key: K;

@@ -14,7 +14,7 @@ import {
   type CredentialValues,
 } from './logic.js';
 import { validateCredentials, type ValidationResult } from './validate.js';
-import { ControlHints } from '@tui/control-hints.js';
+import { ControlHints } from '@tui/shared/components/ControlHints.js';
 
 export type CredentialsResult = { skipped: false; credentials: CredentialValues } | { skipped: true };
 

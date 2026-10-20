@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { PALETTE } from '@tui/theme.js';
-import { ControlHints } from '@tui/control-hints.js';
+import { ControlHints } from '@tui/shared/components/ControlHints.js';
 import { Box, Text } from 'ink';
 import { useImmediateInput } from '../../07-scope-gate/sidebar/hooks/useImmediateInput.js';
 import { useTerminalSize } from '../../07-scope-gate/sidebar/hooks/use-terminal-size.js';
@@ -11,7 +11,7 @@ import type {
 } from '@contentful/experience-design-system-types';
 import { hasBreakingChangesWithImpact } from '@contentful/experience-design-system-backend-pipeline';
 import { computeComponentDiffLines } from '../support/preview-diff.js';
-import { StepHeader } from '../../../shared/index.js';
+import { StepHeader } from '@tui/shared/components/StepHeader.js';
 import { SpaceEnvironment } from '../components/SpaceEnvironment.js';
 import { usePreviewConfirmationInput } from '../support/preview-confirmation-input.js';
 import { WindowedPanel, terminalPanelHeight } from '../../07-scope-gate/sidebar/components/windowed-panel.js';

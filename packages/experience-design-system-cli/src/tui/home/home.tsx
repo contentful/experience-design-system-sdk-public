@@ -5,7 +5,7 @@ import { PALETTE } from '../theme.js';
 import { FOCUS_MARKER, brandBar } from './home.theme.js';
 import { checkForUpgrade, readPackageVersion, type UpgradeCheckResult } from './version.js';
 import { useTerminalWidth } from '../use-terminal-width.js';
-import { ControlHints } from '../control-hints.js';
+import { ControlHints } from '@tui/shared/components/ControlHints.js';
 
 const VERSION = readPackageVersion();
 const HEADING = 'Contentful Experiences';

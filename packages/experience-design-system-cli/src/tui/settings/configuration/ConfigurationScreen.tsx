@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { PALETTE } from '../../theme.js';
-import { ControlHints } from '../../control-hints.js';
+import { ControlHints } from '@tui/shared/components/ControlHints.js';
 import { AgentsScreen } from './agents/AgentsScreen.js';
 import { ProjectScreen } from './project/ProjectScreen.js';
 

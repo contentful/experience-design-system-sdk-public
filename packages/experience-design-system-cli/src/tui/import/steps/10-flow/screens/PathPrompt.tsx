@@ -6,8 +6,8 @@ import { useImmediateInput } from '../../07-scope-gate/sidebar/hooks/useImmediat
 import { normalizePath } from '../support/path-utils.js';
 import { useBlinkingCursor } from '../support/use-blinking-cursor.js';
 import { PALETTE } from '@tui/theme.js';
-import { ControlHints } from '@tui/control-hints.js';
-import { StepHeader } from '../../../shared/index.js';
+import { ControlHints } from '@tui/shared/components/ControlHints.js';
+import { StepHeader } from '@tui/shared/components/StepHeader.js';
 
 export type PathPromptProps = {
   defaultPath: string;

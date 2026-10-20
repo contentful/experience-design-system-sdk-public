@@ -4,8 +4,8 @@ import { ProgressBar, Spinner, ThemeProvider } from '@inkjs/ui';
 import { PALETTE } from '@tui/theme.js';
 import { progressPercent, type RunningLine } from './logic.js';
 import { PROGRESS_THEME } from './theme.js';
-import { StepHeader } from '../StepHeader.js';
-import type { ImportStepId } from '../StepHeader.js';
+import { StepHeader } from '@tui/shared/components/StepHeader.js';
+import type { ImportStepId } from '@tui/shared/components/StepHeader.js';
 import { useElapsed } from './use-elapsed.js';
 
 interface RunningStepProps {

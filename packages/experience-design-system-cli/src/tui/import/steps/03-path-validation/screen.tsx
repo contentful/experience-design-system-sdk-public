@@ -5,7 +5,7 @@ import { resolveUserPath } from '../../resolve-user-path.js';
 import { controlsFor, usePathValidationControls } from './controls.js';
 import { scanFiles } from './helpers/scan-files.js';
 import { describeFailure, phaseOf, summarize, type ScanResult, type SummaryRow } from './logic.js';
-import { ControlHints } from '@tui/control-hints.js';
+import { ControlHints } from '@tui/shared/components/ControlHints.js';
 
 interface PathValidationScreenProps {
   projectPath: string;

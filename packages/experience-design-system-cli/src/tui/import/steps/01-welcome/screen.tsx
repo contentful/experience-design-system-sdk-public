@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { Box, Text } from 'ink';
 import { PALETTE } from '@tui/theme.js';
-import { ClearableTextInput } from '../../../ClearableTextInput.js';
+import { ClearableTextInput } from '../../../shared/components/ClearableTextInput.js';
 import { WELCOME_CONTROLS, useWelcomeControls } from './controls.js';
 import { toProjectPath } from './logic.js';
-import { ControlHints } from '@tui/control-hints.js';
+import { ControlHints } from '@tui/shared/components/ControlHints.js';
 
 interface WelcomeScreenProps {
   onContinue: (projectPath: string) => void;
