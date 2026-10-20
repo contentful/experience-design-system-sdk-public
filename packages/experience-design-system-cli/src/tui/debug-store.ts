@@ -44,7 +44,8 @@ async function readBaseDir(): Promise<string | undefined> {
   try {
     const dir = (await readSettings())['contentfulBaseDir'];
     return typeof dir === 'string' && dir !== '' ? resolve(dir) : undefined;
-  } catch {
+  } catch (error) {
+    console.warn(`Debug base directory unavailable: ${String(error)}`);
     return undefined;
   }
 }
@@ -124,16 +125,21 @@ export async function startImportRun(projectPath: string): Promise<string> {
 
 // Fire-and-forget so a user who never visits a wired flow still sees an (empty)
 // session directory the moment they boot — matches startDebugRun's fail-open style.
-void Promise.all([isDebugModeEnabled(), readBaseDir()]).then(([enabled, base]) => {
-  if (!enabled || !base) return undefined;
-  return mkdir(join(startSession(base, { replace: false }), 'debug'), { recursive: true });
-});
+void Promise.all([isDebugModeEnabled(), readBaseDir()])
+  .then(([enabled, base]) => {
+    if (!enabled || !base) return undefined;
+    return mkdir(join(startSession(base, { replace: false }), 'debug'), { recursive: true });
+  })
+  .catch((error: unknown) => {
+    console.warn(`Debug session unavailable: ${String(error)}`);
+  });
 
 async function isDebugModeEnabled(): Promise<boolean> {
   try {
     return (await readDebugModeSetting()).enabled;
-  } catch {
-    return true;
+  } catch (error) {
+    console.warn(`Debug logging disabled because settings could not be read: ${String(error)}`);
+    return false;
   }
 }
 

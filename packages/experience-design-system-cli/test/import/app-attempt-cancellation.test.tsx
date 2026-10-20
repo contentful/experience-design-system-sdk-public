@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const deps = vi.hoisted(() => ({
   settings: vi.fn(),
+  credentialsRead: vi.fn(),
+  launchError: vi.fn(),
   extraction: vi.fn(),
   navigate: undefined as ((screen: 'import') => void) | undefined,
   project: undefined as ((path: string) => void) | undefined,
@@ -39,7 +41,7 @@ vi.mock('../../src/tui/import/steps/index.js', () => ({
   ExtractionScreen: () => null,
   TokenReuseScreen: () => null,
 }));
-vi.mock('../../src/tui/import/shared/index.js', () => ({ ErrorStep: () => null }));
+vi.mock('../../src/tui/import/shared/index.js', () => ({ ErrorStep: deps.launchError }));
 vi.mock('../../src/tui/import/steps/06-extraction/logic.js', () => ({
   resolveAgentChoice: () => ({ agent: 'claude' }),
   stepNumbers: () => ({}),
@@ -64,7 +66,7 @@ vi.mock('../../src/tui/settings/opt-in-analytics/screen.js', () => ({ OptInAnaly
 vi.mock('../../src/tui/upgrade/PageContainer.js', () => ({ UpgradeScreen: () => null }));
 vi.mock('../../src/tui/settings/debug-mode/screen.js', () => ({ DebugModeScreen: () => null }));
 vi.mock('../../src/tui/settings/contentful-configuration/config-store.js', () => ({
-  readCredentials: async () => ({}),
+  readCredentials: deps.credentialsRead,
   writeCredentials: vi.fn(),
 }));
 vi.mock('../../src/tui/debug-store.js', () => ({ startImportRun: async () => '/project/.contentful' }));
@@ -74,6 +76,7 @@ let unmount: (() => void) | undefined;
 beforeEach(() => {
   vi.clearAllMocks();
   deps.settings.mockResolvedValue({});
+  deps.credentialsRead.mockResolvedValue({});
   deps.extraction.mockReturnValue(undefined);
   deps.navigate = deps.project = deps.tokens = deps.files = deps.credentials = undefined;
 });
@@ -133,4 +136,47 @@ describe('App attempt replacement cancellation', () => {
       await running;
     },
   );
+});
+
+it('routes failed import defaults to the actual error screen and clears them on re-entry', async () => {
+  const viewRef: { view?: ReturnType<typeof render> } = {};
+  void runApp(
+    (element) => {
+      const view = render(element);
+      viewRef.view = view;
+      unmount = view.unmount;
+      return { waitUntilExit: () => new Promise(() => {}) };
+    },
+    { prompt: [], cache: true },
+  );
+  await vi.waitFor(() => expect(deps.navigate).toBeDefined());
+  deps.credentialsRead.mockRejectedValueOnce(new Error('Defaults unavailable'));
+  deps.navigate!('import');
+  await vi.waitFor(() =>
+    expect(deps.launchError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'Defaults unavailable' }),
+      expect.anything(),
+    ),
+  );
+  expect(deps.project).toBeUndefined();
+  const errorProps = deps.launchError.mock.calls.at(-1)![0];
+  errorProps.onExit();
+  await vi.waitFor(() => expect(deps.credentialsRead).toHaveBeenCalledOnce());
+  deps.navigate!('import');
+  await vi.waitFor(() => expect(deps.project).toBeDefined());
+  deps.project!('/example');
+  await vi.waitFor(() => expect(deps.tokens).toBeDefined());
+  deps.tokens!('');
+  await vi.waitFor(() => expect(deps.files).toBeDefined());
+  deps.files!({ filePaths: [] });
+  await vi.waitFor(() => expect(deps.credentials).toBeDefined());
+  deps.settings.mockRejectedValueOnce(new Error('Preparation unavailable'));
+  deps.credentials!({ skipped: true });
+  await vi.waitFor(() =>
+    expect(deps.launchError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'Preparation unavailable', stepName: 'prepare import' }),
+      expect.anything(),
+    ),
+  );
+  expect(deps.extraction.mock.calls.some(([input]) => input?.signal)).toBe(false);
 });

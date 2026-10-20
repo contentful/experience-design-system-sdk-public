@@ -585,6 +585,10 @@ function GenerateReviewStepView({
   const recomputeCycles = (currentComponents: CdfReviewEntry[]): void => {
     try {
       const view = computeCycleView(currentComponents);
+      if (view.error) {
+        setFinalizeError(view.error);
+        return;
+      }
       const rawCycles = view.pushBlocking;
       const next: StoredSlotCycle[] = rawCycles.map((cycle) => ({
         path: cycle.path,
@@ -593,6 +597,7 @@ function GenerateReviewStepView({
       }));
       const prevSerialized = JSON.stringify(slotCycles);
       const nextSerialized = JSON.stringify(next);
+      if (next.length === 0) setFinalizeError(null);
       if (prevSerialized === nextSerialized) return;
       setSlotCycles(next);
       const db = openPipelineDb();
@@ -601,9 +606,8 @@ function GenerateReviewStepView({
       } finally {
         db.close();
       }
-      if (next.length === 0) setFinalizeError(null);
-    } catch {
-      // Defensive: swallow — never let cycle detection crash the review UI.
+    } catch (error) {
+      setFinalizeError(`Cannot update component cycles: ${String(error)}. Retry before finalizing.`);
     }
   };
 
@@ -1225,13 +1229,17 @@ function GenerateReviewStepView({
     if (input === 'F' || input === 'f') {
       const acceptedNames = new Set(components.filter((c) => c.status === 'accepted').map((c) => c.key));
       const acceptedSubgraph: ComponentGraphNode[] = componentGraph.filter((n) => acceptedNames.has(n.name));
-      const acceptedCycles = (() => {
-        try {
-          return findSlotCycles(acceptedSubgraph);
-        } catch {
-          return [];
-        }
-      })();
+      if (cycleView.error) {
+        setFinalizeError(cycleView.error);
+        return;
+      }
+      let acceptedCycles: ReturnType<typeof findSlotCycles>;
+      try {
+        acceptedCycles = findSlotCycles(acceptedSubgraph);
+      } catch (error) {
+        setFinalizeError(`Cannot verify accepted component cycles: ${String(error)}. Fix the definitions and retry.`);
+        return;
+      }
       if (acceptedCycles.length > 0) {
         const participants = new Set<string>();
         for (const c of acceptedCycles) for (const p of c.path) participants.add(p);

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import { PALETTE } from '../../home/home.theme.js';
@@ -14,7 +14,7 @@ type Field =
   | 'defaultComponentDir'
   | 'defaultTokenFile'
   | 'contentfulBaseDir';
-type Stage = 'loading' | 'form' | 'saving';
+type Stage = 'loading' | 'form' | 'saving' | 'error';
 
 const FIELD_ORDER: Field[] = [
   'spaceId',
@@ -56,6 +56,7 @@ const FIELD_HINTS: Partial<Record<Field, string>> = {
 const LABEL_WIDTH = Math.max(...Object.values(FIELD_LABELS).map((label) => label.length));
 
 export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.ReactElement {
+  const active = useRef(true);
   const [stage, setStage] = useState<Stage>('loading');
   const [config, setConfig] = useState<V1Credentials | null>(null);
   const [activeField, setActiveField] = useState<Field>('spaceId');
@@ -68,16 +69,27 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
   const [valueBeforeEdit, setValueBeforeEdit] = useState('');
 
   useEffect(() => {
-    readCredentials().then((cfg) => {
-      setConfig(cfg);
-      setStage('form');
-      startDebugRun({
-        flow: 'settings/contentful-configuration',
-        step: '01-configuration',
-        menuOption: 'Configuration',
-        inputs: debugFields(cfg),
+    active.current = true;
+    void readCredentials()
+      .then((cfg) => {
+        if (!active.current) return;
+        setConfig(cfg);
+        setStage('form');
+        startDebugRun({
+          flow: 'settings/contentful-configuration',
+          step: '01-configuration',
+          menuOption: 'Configuration',
+          inputs: debugFields(cfg),
+        });
+      })
+      .catch((error: unknown) => {
+        if (!active.current) return;
+        setNotice({ kind: 'error', text: String(error) });
+        setStage('error');
       });
-    });
+    return () => {
+      active.current = false;
+    };
   }, []);
 
   function fieldValue(field: Field): string {
@@ -98,6 +110,7 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
     setNotice(null);
     writeCredentials(config)
       .then(() => {
+        if (!active.current) return;
         setLastSaved(config);
         // Start the session folder now rather than at the next launch.
         if (config.contentfulBaseDir) void startDebugSessionIn(config.contentfulBaseDir, { replace: true });
@@ -105,23 +118,36 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
         setStage('form');
       })
       .catch((err: unknown) => {
+        if (!active.current) return;
         setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'Failed to save' });
         setStage('form');
       });
   }
 
-  // Leaves without writing anything. Changes since the last save are dropped.
+  // Leaves without starting another write. Unsubmitted changes are dropped.
   function quit(): void {
+    active.current = false;
     void finishDebugRun(
-      lastSaved
-        ? { outputs: debugFields(lastSaved), status: 'success', exitMethod: 'saved' }
-        : { outputs: {}, status: 'success', exitMethod: 'discarded' },
-    );
+      stage === 'saving'
+        ? { outputs: {}, status: 'error', exitMethod: 'discarded' }
+        : lastSaved
+          ? { outputs: debugFields(lastSaved), status: 'success', exitMethod: 'saved' }
+          : {
+              outputs: {},
+              status: notice?.kind === 'error' ? 'error' : 'success',
+              exitMethod: 'discarded',
+            },
+    ).catch(() => {});
     onDone();
   }
 
   useInput((input, key) => {
-    if (stage === 'loading' || stage === 'saving') return;
+    if (!active.current) return;
+    if (!editing && (key.escape || input === 'q')) {
+      quit();
+      return;
+    }
+    if (stage !== 'form') return;
 
     if (editing) {
       // <TextInput> handles typing, the cursor, left/right and Enter (onSubmit) itself.
@@ -175,6 +201,15 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
     );
   }
 
+  if (stage === 'error')
+    return (
+      <Box flexDirection="column" paddingX={2} paddingY={1}>
+        <Text bold>Configuration</Text>
+        <Text color={PALETTE.error}>{notice?.text}</Text>
+        <ControlHints hints={[{ keys: 'Esc/q', label: 'back' }]} />
+      </Box>
+    );
+
   return (
     <Box flexDirection="column" paddingX={2} paddingY={1}>
       <Text bold>Configuration</Text>
@@ -209,6 +244,7 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
           );
         })}
       </Box>
+      {stage === 'saving' && <Text color={PALETTE.muted}>Saving…</Text>}
       {notice && (
         <>
           <Text> </Text>
@@ -220,20 +256,22 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
       <Text> </Text>
       <ControlHints
         hints={
-          editing
-            ? [
-                { keys: 'type', label: 'edit' },
-                { keys: '←/→', label: 'move cursor' },
-                { keys: '⏎', label: 'done' },
-                { keys: 'Esc', label: 'cancel edit' },
-              ]
-            : [
-                { keys: '↑/↓', label: 'move' },
-                { keys: '⏎', label: 'edit' },
-                { keys: 'c', label: 'clear' },
-                { keys: 's', label: 'save' },
-                { keys: 'Esc/q', label: 'quit without saving' },
-              ]
+          stage === 'saving'
+            ? [{ keys: 'Esc/q', label: 'back (save may still finish)' }]
+            : editing
+              ? [
+                  { keys: 'type', label: 'edit' },
+                  { keys: '←/→', label: 'move cursor' },
+                  { keys: '⏎', label: 'done' },
+                  { keys: 'Esc', label: 'cancel edit' },
+                ]
+              : [
+                  { keys: '↑/↓', label: 'move' },
+                  { keys: '⏎', label: 'edit' },
+                  { keys: 'c', label: 'clear' },
+                  { keys: 's', label: 'save' },
+                  { keys: 'Esc/q', label: 'quit without saving' },
+                ]
         }
       />
     </Box>

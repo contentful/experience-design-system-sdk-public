@@ -23,10 +23,12 @@ export const debugSessionsDir = (): string => join(configRoot(), 'debug', 'sessi
 export type Settings = Record<string, unknown>;
 
 export async function readSettings(): Promise<Settings> {
+  const path = configFilePath();
   try {
-    return JSON.parse(await readFile(configFilePath(), 'utf8')) as Settings;
-  } catch {
-    return {};
+    return JSON.parse(await readFile(path, 'utf8')) as Settings;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {};
+    throw new Error(`Unable to read settings at ${path}. Check the file contents and permissions.`, { cause: error });
   }
 }
 

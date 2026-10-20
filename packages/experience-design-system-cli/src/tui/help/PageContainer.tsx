@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { PALETTE } from '../home/home.theme.js';
 import { startDebugRun, finishDebugRun } from '../debug-store.js';
@@ -24,15 +24,32 @@ function Section({ title, rows }: { title: string; rows: HelpRow[] }): React.Rea
 }
 
 export function HelpScreen({ onDone }: { onDone: () => void }): React.ReactElement {
+  const active = useRef(true);
+  const [error, setError] = useState<string>();
   const [info, setInfo] = useState<HelpInfo>();
 
   useEffect(() => {
+    active.current = true;
     startDebugRun({ flow: 'help', step: '01-help', menuOption: 'Help', inputs: {} });
-    void readHelpInfo().then(setInfo);
+    void readHelpInfo()
+      .then((value) => {
+        if (active.current) setInfo(value);
+      })
+      .catch((failure: unknown) => {
+        if (active.current) setError(String(failure));
+      });
+    return () => {
+      active.current = false;
+    };
   }, []);
 
   const leave = (exitMethod: 'saved' | 'discarded'): void => {
-    void finishDebugRun({ outputs: {}, status: 'success', exitMethod });
+    active.current = false;
+    void finishDebugRun({
+      outputs: {},
+      status: error ? 'error' : 'success',
+      exitMethod: error ? 'discarded' : exitMethod,
+    }).catch(() => {});
     onDone();
   };
 
@@ -50,7 +67,9 @@ export function HelpScreen({ onDone }: { onDone: () => void }): React.ReactEleme
   return (
     <Box flexDirection="column" paddingX={2} paddingY={1} gap={1}>
       <Text bold>Help</Text>
-      {info ? (
+      {error ? (
+        <Text color={PALETTE.error}>{error}</Text>
+      ) : info ? (
         <>
           <Section title="Where things are stored" rows={info.storage} />
           <Section title="Troubleshooting" rows={info.troubleshooting} />

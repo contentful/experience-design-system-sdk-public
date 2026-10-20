@@ -30,7 +30,7 @@ export async function writeCredentials(config: V1Credentials): Promise<void> {
     ...existing,
     ...config,
   };
-  Object.keys(merged).forEach((k) => {
+  Object.keys(config).forEach((k) => {
     if (!merged[k]) delete merged[k];
   });
   await writeV1Store(merged);

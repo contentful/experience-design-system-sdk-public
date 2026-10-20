@@ -14,8 +14,11 @@ const PACKAGE_NAME = '@contentful/experience-design-system-cli';
 async function readJson(path: string): Promise<Record<string, unknown> | undefined> {
   try {
     return JSON.parse(await readFile(path, 'utf8')) as Record<string, unknown>;
-  } catch {
-    return undefined;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw new Error(`Unable to read legacy settings at ${path}. Check the file contents and permissions.`, {
+      cause: error,
+    });
   }
 }
 
@@ -51,7 +54,7 @@ export async function migrateOldConfig(): Promise<void> {
 
     await Promise.all([oldCredentials, oldDebugMode].map((f) => unlink(f).catch(() => undefined)));
     await rmdir(oldConfigDir()).catch(() => undefined);
-  } catch {
-    // Fail open.
+  } catch (error) {
+    console.warn(`Configuration migration could not complete; remaining source files were retained: ${String(error)}`);
   }
 }

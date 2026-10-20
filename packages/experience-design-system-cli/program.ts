@@ -38,8 +38,13 @@ export function createProgram(): Command {
     const chain: string[] = [];
     for (let c: Command | null = actionCommand; c && c.parent; c = c.parent) chain.unshift(c.name());
     const commandChain = chain.join(' ') || actionCommand.name();
-    const { enabled } = await readAnalyticsSetting();
-    setPersistedAnalyticsDisabled(!enabled);
+    try {
+      const { enabled } = await readAnalyticsSetting();
+      setPersistedAnalyticsDisabled(!enabled);
+    } catch (error) {
+      setPersistedAnalyticsDisabled(true);
+      console.warn(`Analytics disabled because settings could not be read: ${String(error)}`);
+    }
     setCliVersion(pkg.version);
     noteCommandStart(commandChain);
   });

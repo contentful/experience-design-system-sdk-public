@@ -158,13 +158,27 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
       setImportDefaults(undefined);
       return;
     }
-    void readCredentials().then((saved) =>
-      setImportDefaults({
-        componentDir: saved.defaultComponentDir ?? '',
-        tokenFile: saved.defaultTokenFile ?? '',
-        credentials: saved,
-      }),
-    );
+    let disposed = false;
+    setLaunchError(undefined);
+    void readCredentials()
+      .then((saved) => {
+        if (disposed) return;
+        setImportDefaults({
+          componentDir: saved.defaultComponentDir ?? '',
+          tokenFile: saved.defaultTokenFile ?? '',
+          credentials: saved,
+        });
+      })
+      .catch((error: unknown) => {
+        if (!disposed)
+          setLaunchError({
+            stepName: 'load import settings',
+            message: error instanceof Error ? error.message : String(error),
+          });
+      });
+    return () => {
+      disposed = true;
+    };
   }, [screen]);
 
   const failLaunch = (attempt: ImportAttempt, stepName: string, error: unknown): void => {

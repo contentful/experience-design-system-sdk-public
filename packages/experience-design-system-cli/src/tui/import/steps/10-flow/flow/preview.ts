@@ -232,7 +232,17 @@ async function previewFailure(e: unknown, input: RunPreviewInput, deps: PreviewD
           `\nIf using a custom host configuration, make sure the space exists on that host.`,
       };
     }
-    const outcome = await handlePreview422(e, input.extractSessionId, deps.patchReviewState);
+    let outcome: Preview422Outcome;
+    try {
+      outcome = await handlePreview422(e, input.extractSessionId, deps.patchReviewState);
+    } catch (error) {
+      return {
+        step: 'error',
+        errorStep: 'apply preview',
+        errorMessage: `Preview validation could not be recorded: ${String(error)}. Repair the review state before retrying.`,
+        errorAllowCredentialRetry: false,
+      };
+    }
     if (outcome.kind === 'validation-error') {
       return {
         step: 'preview-validation-error',

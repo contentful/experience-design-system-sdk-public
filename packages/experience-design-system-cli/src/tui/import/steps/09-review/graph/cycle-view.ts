@@ -5,27 +5,34 @@ import { buildComponentGraph, type SlotGraphInput } from '../../07-scope-gate/gr
 export interface CycleView {
   pushBlocking: SlotCycle[];
   structural: Set<string>;
+  error?: string;
 }
 
 export function computeCycleView(components: SlotGraphInput[]): CycleView {
   const filtered = components.filter((c) => c.status !== 'rejected');
-  const filteredGraph = buildComponentGraph(filtered);
-  const unfilteredGraph = buildComponentGraph(components);
 
   let pushBlocking: SlotCycle[] = [];
   const structural = new Set<string>();
 
   try {
-    pushBlocking = findSlotCycles(filteredGraph);
+    pushBlocking = findSlotCycles(buildComponentGraph(filtered));
     for (const cyc of pushBlocking) for (const p of cyc.path) structural.add(p);
-  } catch {
-    // Malformed slot data — intentional swallow.
+  } catch (error) {
+    return {
+      pushBlocking,
+      structural,
+      error: `Cannot verify component cycles: ${String(error)}. Fix the definitions and retry.`,
+    };
   }
   try {
-    const unfilteredCycles = findSlotCycles(unfilteredGraph);
+    const unfilteredCycles = findSlotCycles(buildComponentGraph(components));
     for (const cyc of unfilteredCycles) for (const p of cyc.path) structural.add(p);
-  } catch {
-    // Malformed slot data — intentional swallow.
+  } catch (error) {
+    return {
+      pushBlocking,
+      structural,
+      error: `Cannot verify component cycles: ${String(error)}. Fix the definitions and retry.`,
+    };
   }
 
   return { pushBlocking, structural };

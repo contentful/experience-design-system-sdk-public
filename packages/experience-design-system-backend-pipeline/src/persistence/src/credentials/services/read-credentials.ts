@@ -18,7 +18,8 @@ export async function readExperiencesCredentials(): Promise<ExperiencesCredentia
       ...(typeof parsed.noColor === 'boolean' ? { noColor: parsed.noColor } : {}),
       ...(typeof parsed.analyticsDisabled === 'boolean' ? { analyticsDisabled: parsed.analyticsDisabled } : {}),
     };
-  } catch {
+  } catch (error) {
+    console.warn(`Saved credentials unavailable; using environment credentials: ${String(error)}`);
     const host = toConfiguredHost(process.env['EDS_HOST']);
     return {
       spaceId: process.env['CONTENTFUL_SPACE_ID'] ?? '',

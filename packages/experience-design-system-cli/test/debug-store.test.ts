@@ -137,4 +137,18 @@ describe('the debug store', () => {
 
     expect(existsSync(join(base, '.contentful'))).toBe(false);
   });
+  it('reports unreadable settings and leaves optional logging disabled', async () => {
+    await writeFile(join(home, 'config.json'), '{ retained broken');
+    vi.resetModules();
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const store = await import('../src/tui/debug-store.js');
+      await store.startDebugSessionIn(base);
+      expect(warning).toHaveBeenCalledWith(expect.stringContaining(join(home, 'config.json')));
+      expect(store.currentDebugSessionDir()).toBeUndefined();
+      expect(existsSync(join(base, '.contentful'))).toBe(false);
+    } finally {
+      warning.mockRestore();
+    }
+  });
 });
