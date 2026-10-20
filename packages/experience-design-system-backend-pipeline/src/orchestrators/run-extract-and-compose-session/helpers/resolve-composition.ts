@@ -13,12 +13,15 @@ import type { EdgeConflict } from '../../../steps/composition/src/helpers/edges/
 import type { RawComponentDefinition } from '../../../steps/extraction/src/types/component.js';
 import type { ExtractAndComposeProgress } from '../types.js';
 import { throwIfAborted } from '../../../helpers/abort.js';
+import type { SourceCapture } from '@contentful/experience-design-system-extraction';
+import { deriveComponentId } from '../../../persistence/src/session/helpers/components/derive-component-id.js';
 
 export interface ResolveCompositionRequest {
   db: DatabaseSync;
   signal?: AbortSignal;
   components: RawComponentDefinition[];
   sourceFiles: string[];
+  sourceCapture?: SourceCapture;
   cacheVersion: string;
   noCache: boolean;
   compositionRefresh: boolean;
@@ -63,6 +66,7 @@ export async function resolveComposition(request: ResolveCompositionRequest): Pr
     db,
     components,
     sourceFiles,
+    sourceCapture,
     cacheVersion,
     noCache,
     compositionRefresh,
@@ -79,7 +83,11 @@ export async function resolveComposition(request: ResolveCompositionRequest): Pr
 
   onProgress?.({ kind: 'composition', phase: 'resolving' });
 
-  const { promptFiles, runtimeFiles, droppedWarning } = await selectCompositionPromptFiles(components, sourceFiles);
+  const { promptFiles, runtimeFiles, droppedWarning } = await selectCompositionPromptFiles(
+    components,
+    sourceFiles,
+    sourceCapture,
+  );
   throwIfAborted(request.signal);
   if (droppedWarning) warnings.push(droppedWarning);
 
@@ -105,8 +113,24 @@ export async function resolveComposition(request: ResolveCompositionRequest): Pr
     return res.stdout;
   };
 
-  const extraEdges = collectManifestDocEdges(runtimeFiles, components, componentNameSet);
-  const sourceCallSites = collectSourceCallSiteEvidence(runtimeFiles, components);
+  const capturedPathsByComponent = new Map<string, Set<string>>();
+  for (const file of sourceCapture?.files ?? []) {
+    for (const ref of file.componentRefs) {
+      if (!ref.roles.includes('definition')) continue;
+      const identity = JSON.stringify([ref.componentId, ref.name]);
+      const paths = capturedPathsByComponent.get(identity) ?? new Set<string>();
+      paths.add(file.canonicalPath);
+      capturedPathsByComponent.set(identity, paths);
+    }
+  }
+  // Bind deterministic collectors to captured identities without changing public component source paths.
+  const evidenceComponents = components.map((component) => {
+    const identity = JSON.stringify([deriveComponentId(component.name, component.source), component.name]);
+    const paths = capturedPathsByComponent.get(identity);
+    return paths?.size === 1 ? { ...component, sourcePath: [...paths][0] } : component;
+  });
+  const extraEdges = collectManifestDocEdges(runtimeFiles, evidenceComponents, componentNameSet);
+  const sourceCallSites = collectSourceCallSiteEvidence(runtimeFiles, evidenceComponents);
   const agentCacheKey = buildCompositionInputHash({ files: promptFiles, agent: resolverAgent });
 
   let didHitCompositionCache = false;

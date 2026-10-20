@@ -4,6 +4,19 @@ import { buildPrompt } from '../../../src/agents/prompts/build-prompt.js';
 import { stripPropProvenance } from '../../../src/agents/prompts/helpers/strip-prop-provenance.js';
 
 describe('component classification prompt evidence', () => {
+  it('renders bounded source and open-domain guidance in the real selection and generation prompts', async () => {
+    const select = await buildPrompt({ skill: 'select', mode: 'autonomous', outDir: '/tmp/out' });
+    expect(select).toContain('Source evidence and selection uncertainty');
+    expect(select).toContain('A single caller shows an example of use, not the complete contract or all uses');
+    expect(select).toContain('They cannot force acceptance or rejection');
+
+    const generation = await buildPrompt({ skill: 'components', mode: 'autonomous', outDir: '/tmp/out' });
+    expect(generation).toContain('Source evidence and uncertainty');
+    expect(generation).toContain('a union that includes `string` or `number` remains open');
+    expect(generation).toContain('including `false`, `0`, and the empty string');
+    expect(generation).toContain('A default, one caller, one observed value');
+  });
+
   it('includes prop buckets as advisory evidence when supplied and omits them otherwise', async () => {
     const options = { skill: 'components' as const, mode: 'autonomous' as const, outDir: '/tmp/out' };
     const prompt = await buildPrompt({

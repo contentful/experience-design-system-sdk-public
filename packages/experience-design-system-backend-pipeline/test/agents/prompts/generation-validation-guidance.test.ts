@@ -34,4 +34,13 @@ describe('generation validation guidance', () => {
       expect(packagedPrompt).toContain(warningRule);
     },
   );
+
+  it('preserves open domains, declared requiredness, falsy defaults, and bounded-source uncertainty in the loaded skill', async () => {
+    const prompt = await buildPrompt({ skill: 'components', mode: 'autonomous', outDir: '/tmp/out' });
+    expect(prompt).toContain('The declared type and contract govern available alternatives and open domains');
+    expect(prompt).toContain('a union that includes `string` or `number` remains open');
+    expect(prompt).toContain("Preserve the input's declared prop `required` value");
+    expect(prompt).toContain('including `false`, `0`, and the empty string');
+    expect(prompt).toContain('Missing evidence does not close a domain');
+  });
 });

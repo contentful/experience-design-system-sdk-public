@@ -109,11 +109,21 @@ export function ReviewDetailsPanel({
     const path = reviewMetadata?.sourcePath ?? null;
     const source = reviewMetadata?.componentSource ?? null;
     const headerPath = path ?? '<unknown source path>';
-    const sourceLineCount = Math.max(1, height - 4);
+    const sourceLineCount = Math.max(1, height - 5);
     const lines = source ? source.split('\n').slice(panelScrollOffset, panelScrollOffset + sourceLineCount) : [];
     return (
       <FixedPanel width={width} height={height} borderStyle="single" borderColor={sourceBorderColor} paddingLeft={1}>
         <Text color={PALETTE.muted} bold wrap="truncate-end">{`source: ${headerPath}`}</Text>
+        <Text color={PALETTE.muted} wrap="truncate-end">
+          {`evidence: ${reviewMetadata?.sourceCoverage ?? 'unavailable'} · extraction bytes: ${reviewMetadata?.extractionByteBinding ?? 'unverified'}`}
+        </Text>
+        {reviewMetadata?.scopeProvenance && (
+          <Text color={PALETTE.muted} wrap="truncate-end">
+            {reviewMetadata.scopeProvenance.kind === 'closure'
+              ? `scope: included by ${reviewMetadata.scopeProvenance.roots.join(', ')}`
+              : `scope: ${reviewMetadata.scopeProvenance.kind}`}
+          </Text>
+        )}
         {source ? (
           lines.map((line, index) => (
             <Text key={`source-line-${index}`} color={PALETTE.muted} wrap="truncate-end">

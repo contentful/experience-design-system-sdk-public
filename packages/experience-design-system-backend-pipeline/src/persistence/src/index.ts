@@ -71,6 +71,12 @@ export type { OpenSessionOptions, SelectionDecision, SessionHandle, WriteResult 
 
 // --- DB infra + schema + migrations ---
 export { openPipelineDb, getPipelineDbPath } from './session/repositories/db.js';
+export { completeExtractionWithSourceEvidence, loadCompletedSourceEvidence } from './session/repositories/db.js';
+export type {
+  CompletedSourceEvidence,
+  SessionSourceEnvelope,
+  SourceEvidenceHandle,
+} from './session/repositories/db.js';
 export { runMigrationIfNeeded } from './session/repositories/migration.js';
 export {
   configRoot,
@@ -106,13 +112,19 @@ export {
   loadRawComponents,
   loadComponentSourceRef,
   loadComponentSourceRefs,
+  loadSavedComponentSourceRef,
   renameEmptySlots,
 } from './session/repositories/db.js';
 export type { RawComponentWithId } from './session/repositories/db.js';
 
 // --- CDF component storage ---
-export { storeCDFComponents, loadCDFComponents, loadScopeComponents } from './session/repositories/db.js';
-export type { ScopeComponentRow } from './session/repositories/db.js';
+export {
+  storeCDFComponents,
+  loadCDFComponents,
+  loadScopeComponents,
+  loadScopeDecisions,
+} from './session/repositories/db.js';
+export type { ScopeComponentRow, ScopeDecisions, ScopeDecisionProvenance } from './session/repositories/db.js';
 
 // --- DTCG token storage (read side) ---
 export { loadDTCGTokens, loadRawTokenNamePathRows } from './session/repositories/db.js';

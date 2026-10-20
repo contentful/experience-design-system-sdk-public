@@ -2,6 +2,7 @@ import type { RawComponentDefinition } from '../../steps/extraction/src/types/co
 import type { EdgeConflict } from '../../steps/composition/src/helpers/edges/merge-edges.js';
 import type { AgentDebugEvent } from '../../agents/types/agent-run.js';
 import type { ResolveCompositionServiceResult } from '../../steps/composition/src/types/contract.js';
+import type { SourceEvidenceHandle } from '../../persistence/src/session/repositories/db.js';
 
 /**
  * Structured progress events emitted during extraction and composition.
@@ -63,4 +64,6 @@ export interface RunExtractAndComposeSessionResponse extends Pick<
   compositionWarnings: string[];
   /** Count of source files scanned (equal to `request.filePaths.length`). */
   scannedFileCount: number;
+  /** Identity of the immutable source envelope committed with the completed extraction step. */
+  sourceEvidenceHandle: SourceEvidenceHandle;
 }

@@ -19,7 +19,7 @@ export async function saveDecisions(input: Pick<GenerationInput, 'sessionId' | '
     throwIfAborted(input.signal);
     applyScopeDecisions(db, input.sessionId, input.decisions);
     throwIfAborted(input.signal);
-    await writeScopeDecisionsSnapshot(db, input.sessionId, input.decisions);
+    await writeScopeDecisionsSnapshot(db, input.sessionId);
     throwIfAborted(input.signal);
   } finally {
     db.close();

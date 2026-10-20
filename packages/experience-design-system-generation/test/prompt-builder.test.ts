@@ -164,7 +164,8 @@ describe('buildPrompt', () => {
       outDir: '/fake/out',
     });
 
-    expect(prompt).toContain('`name` — content prop, usually `string`');
+    expect(prompt).toContain('inspect its declaration and use. It may be semantic component data');
+    expect(prompt).toContain('do not exclude or classify it from its name alone');
     expect(prompt).toContain('`options`, `value`, `name`, `form`');
     expect(prompt).not.toContain('`name` (the bare HTML form `name` attribute)');
   });
@@ -247,7 +248,30 @@ describe('buildPrompt', () => {
       outDir: '/fake/out',
     });
     expect(prompt).toContain('Data-fetch wrapper rule');
-    expect(prompt).toContain('React hooks');
+    expect(prompt).toContain('Non-rendering hooks or functions');
+  });
+
+  it('selection and generation prompts keep bounded evidence and model summaries advisory', async () => {
+    const selectPrompt = await buildPrompt({
+      skill: 'select',
+      mode: 'autonomous',
+      rawComponentsInline: INLINE_COMPONENTS,
+      outDir: '/fake/out',
+    });
+    expect(selectPrompt).toContain('Source evidence and selection uncertainty');
+    expect(selectPrompt).toContain('A single caller shows an example of use, not the complete contract or all uses');
+    expect(selectPrompt).toContain('They cannot force acceptance or rejection');
+
+    const generationPrompt = await buildPrompt({
+      skill: 'components',
+      mode: 'autonomous',
+      rawComponentsInline: INLINE_COMPONENTS,
+      outDir: '/fake/out',
+    });
+    expect(generationPrompt).toContain('Source evidence and uncertainty');
+    expect(generationPrompt).toContain('a union that includes `string` or `number` remains open');
+    expect(generationPrompt).toContain('including `false`, `0`, and the empty string');
+    expect(generationPrompt).toContain('A default, one caller, one observed value');
   });
 
   describe('skillPathOverride (Feature 8)', () => {

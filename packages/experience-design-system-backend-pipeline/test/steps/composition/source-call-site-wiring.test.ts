@@ -1,12 +1,20 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { composeComponents, runExtractAndComposeSession } from '../../../src/index.js';
 import { runAgent } from '../../../src/agents/services/run-agent.js';
-import { openPipelineDb, loadRawComponents } from '../../../src/persistence/src/session/repositories/db.js';
+import {
+  openPipelineDb,
+  loadRawComponents,
+  loadCompletedSourceEvidence,
+  loadSavedComponentSourceRef,
+  loadComponentReviewMetadata,
+} from '../../../src/persistence/src/session/repositories/db.js';
 import { resolveComposition } from '../../../src/orchestrators/run-extract-and-compose-session/helpers/resolve-composition.js';
 import type { RawComponentDefinition } from '../../../src/steps/extraction/src/types/component.js';
+import { captureSourceEvidence } from '@contentful/experience-design-system-extraction';
+import { deriveComponentId } from '../../../src/persistence/src/session/helpers/components/derive-component-id.js';
 
 vi.mock('../../../src/agents/services/run-agent.js', () => ({ runAgent: vi.fn() }));
 
@@ -147,6 +155,151 @@ describe('source call-site production wiring', () => {
       expect(vi.mocked(runAgent).mock.calls[0][0].prompt).toContain(JSON.stringify(response.sourceCallSiteEvidence));
     } finally {
       db.close();
+    }
+  });
+
+  it.each([true, false])(
+    'retains fresh lexical observations through a directory alias, reference=%s',
+    async (hasReference) => {
+      const aliasPath = join(projectPath, 'linked-project');
+      await symlink(projectPath, aliasPath, 'dir');
+      if (!hasReference) {
+        await writeFile(
+          files[1].path,
+          'export function Card({ title }: { title: string }) { return <div>{title}</div>; }',
+        );
+      }
+      const response = await runExtractAndComposeSession({
+        projectPath: aliasPath,
+        outDir: join(projectPath, 'alias-output'),
+        filePaths: files.map(({ path }) => join(aliasPath, basename(path))),
+        agent: 'claude',
+        promptOverrides: [],
+        noCache: true,
+      });
+      expect(response.sourceCallSiteEvidence).toEqual(
+        hasReference
+          ? [expect.objectContaining({ parent: 'Card', child: 'Button', execution: 'lexical-reference' })]
+          : [],
+      );
+      expect(response.components.find(({ name }) => name === 'Card')?.sourcePath).toBe(join(aliasPath, 'Card.tsx'));
+      const db = openPipelineDb();
+      try {
+        const step = db.prepare('SELECT status, outputs FROM steps WHERE session_id = ?').get(response.sessionId) as {
+          status: string;
+          outputs: string;
+        };
+        expect(step.status).toBe('complete');
+        expect(JSON.parse(JSON.parse(step.outputs).compositionEvidence)).toEqual(response.sourceCallSiteEvidence);
+      } finally {
+        db.close();
+      }
+    },
+  );
+
+  it('does not bind an aliased component to a captured declaration by name without matching identity', async () => {
+    const aliasPath = join(projectPath, 'linked-project');
+    await symlink(projectPath, aliasPath, 'dir');
+    const aliasedComponents = components.map((component) => ({
+      ...component,
+      source: join(aliasPath, `${component.name}.tsx`),
+      sourcePath: join(aliasPath, `${component.name}.tsx`),
+    }));
+    const capture = await captureSourceEvidence({
+      projectRoot: aliasPath,
+      filePaths: aliasedComponents.map(({ sourcePath }) => sourcePath),
+      components: aliasedComponents.map((component) => ({
+        componentId:
+          component.name === 'Card' ? 'unrelated-identity' : deriveComponentId(component.name, component.source),
+        name: component.name,
+        sourcePath: component.sourcePath,
+      })),
+    });
+    const db = openPipelineDb();
+    try {
+      const result = await resolveComposition({
+        db,
+        components: aliasedComponents,
+        sourceFiles: aliasedComponents.map(({ sourcePath }) => sourcePath),
+        sourceCapture: capture,
+        cacheVersion: 'generic-test-version',
+        noCache: true,
+        compositionRefresh: false,
+        forceAgent: true,
+        compositionPrompt: undefined,
+        agent: 'claude',
+        bedrock: false,
+      });
+      expect(result.sourceCallSiteEvidence).toEqual([]);
+      expect(result.sourceCallSiteRejections).toEqual([]);
+      expect(result.components).toEqual(aliasedComponents);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('binds actual source-only extraction to saved generation and review bytes through a directory alias', async () => {
+    const aliasPath = join(projectPath, 'linked-project');
+    await symlink(projectPath, aliasPath, 'dir');
+    const sourcePath = join(aliasPath, 'Panel.svelte');
+    await writeFile(
+      sourcePath,
+      [
+        '<script lang="ts">',
+        'let { title }: { title: string } = $props();',
+        '</script>',
+        '<h2>{title}SOURCE_ONLY_A</h2>',
+      ].join('\n'),
+    );
+    const response = await runExtractAndComposeSession({
+      projectPath: aliasPath,
+      outDir: join(projectPath, 'source-only-output'),
+      filePaths: [sourcePath],
+      agent: 'claude',
+      promptOverrides: [],
+      noCache: true,
+    });
+    expect(response.components).toEqual([
+      expect.objectContaining({ name: 'Panel', source: sourcePath, framework: 'svelte' }),
+    ]);
+    expect(response.components[0]!.sourcePath).toBeUndefined();
+    const db = openPipelineDb();
+    const stored = loadRawComponents(db, response.sessionId)[0]!;
+    try {
+      const saved = loadCompletedSourceEvidence(db, response.sessionId, response.sourceEvidenceHandle);
+      expect(saved.readiness).toBe('ready');
+      if (saved.readiness !== 'ready') throw new Error('Expected complete source evidence');
+      expect(
+        loadSavedComponentSourceRef(db, response.sessionId, stored.component_id, 'Panel', stored.source).content,
+      ).toEqual(expect.stringContaining('SOURCE_ONLY_A'));
+      const bound = saved.envelope.capture.files.find((file) =>
+        file.componentRefs.some((ref) => ref.componentId === stored.component_id && ref.name === 'Panel'),
+      );
+      expect(bound?.captured).toMatchObject({ kind: 'full', text: expect.stringContaining('SOURCE_ONLY_A') });
+    } finally {
+      db.close();
+    }
+    await writeFile(sourcePath, '<h2>SOURCE_ONLY_B</h2>');
+    await rm(sourcePath);
+    const reopened = openPipelineDb();
+    try {
+      const ref = loadSavedComponentSourceRef(
+        reopened,
+        response.sessionId,
+        stored.component_id,
+        'Panel',
+        stored.source,
+      );
+      expect(ref.content).toContain('SOURCE_ONLY_A');
+      expect(ref.content).not.toContain('SOURCE_ONLY_B');
+      expect(ref.sourceEvidence?.extractionByteBinding).toBe('unverified');
+      const review = loadComponentReviewMetadata(reopened, response.sessionId, 'Panel');
+      expect(review?.componentSource).toContain('SOURCE_ONLY_A');
+      expect(review?.componentSource).not.toContain('SOURCE_ONLY_B');
+      expect(review?.extractionByteBinding).toBe('unverified');
+      expect(loadRawComponents(reopened, response.sessionId)[0]?.source).toBe(sourcePath);
+    } finally {
+      reopened.close();
     }
   });
 

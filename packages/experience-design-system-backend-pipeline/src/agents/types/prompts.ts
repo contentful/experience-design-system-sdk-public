@@ -24,9 +24,19 @@ export interface ComponentSourceRef {
   component: string;
   sourcePath: string;
   content: string | null;
-  siblingFiles?: Array<{ path: string; content: string }>;
+  sourceEvidence?: CapturedSourceRefMetadata;
+  siblingFiles?: Array<{ path: string; content: string; sourceEvidence?: CapturedSourceRefMetadata }>;
   truncatedSiblingCount?: number;
   usesNotShown?: string[];
+}
+
+export interface CapturedSourceRefMetadata {
+  captureId: string;
+  captureDigest: string;
+  textHash: string | null;
+  coverage: 'complete-within-declared-bound' | 'partial' | 'unavailable';
+  extractionByteBinding: 'verified-same' | 'changed' | 'unverified';
+  lineRanges: Array<{ startLine: number; endLine: number }>;
 }
 
 /** Plain-data shape of the CDF generated so far — component name → component entry. */
@@ -63,6 +73,8 @@ export interface PromptOptions {
   existingComponentsInline?: string;
   /** JSON-serialized summary of existing space DesignTokens. */
   existingTokensInline?: string;
+  /** Bounded, saved-session source and observation evidence for current selection consumers. */
+  selectionEvidenceInline?: string;
   /** JSON-serialized hard allowlist for generated slot allowed-components references. */
   componentAllowlistInline?: string;
   /** Optional path identifying the model already imported into the target space; context only. */

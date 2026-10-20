@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import {
   type AgentName,
   buildPrompt,
+  buildSelectionEvidenceInline,
   bucketComponentsProps,
   computeComponentInputHash,
   createLocalCliAgentInvoker,
@@ -9,12 +10,16 @@ import {
   hashContent,
   hashFile,
   invokeAgentWithOutput,
+  loadCompletedSourceEvidence,
   loadRawComponents,
   lookupSelectCache,
   openPipelineDb,
   parseSelectToolCalls,
+  readExistingContentfulEntitiesFromSession,
   storeSelectCache,
   stripPropProvenance,
+  summarizeForSelect,
+  type SourceEvidenceHandle,
 } from '@contentful/experience-design-system-backend-pipeline';
 import { recordDebugEvent } from '../../../debug-store.js';
 import { findSkillPath } from './find-skill-path.js';
@@ -51,6 +56,8 @@ export interface SelectionOptions {
   promptText?: string;
   promptPath?: string;
   noCache: boolean;
+  sourceEvidenceHandle?: SourceEvidenceHandle;
+  existingEntitiesPath?: string | null;
 }
 
 /**
@@ -68,11 +75,20 @@ export async function runSelection(options: SelectionOptions): Promise<void> {
   const cachedDecisions = new Map<string, Decision>();
   let cliVersion: string;
   let promptHash: string;
+  let selectionEvidenceInline: string;
   try {
     cliVersion = await getCliCacheVersion();
     throwIfAborted(options.signal);
     promptHash = await hashSelectPrompt(options);
     throwIfAborted(options.signal);
+    const savedEvidence = loadCompletedSourceEvidence(db, options.sessionId, options.sourceEvidenceHandle);
+    if (options.sourceEvidenceHandle && savedEvidence.readiness !== 'ready') {
+      throw new Error(`Completed source evidence is unavailable: ${savedEvidence.reason}`);
+    }
+    selectionEvidenceInline =
+      savedEvidence.readiness === 'ready'
+        ? buildSelectionEvidenceInline(savedEvidence.envelope)
+        : JSON.stringify({ readiness: 'unavailable', reason: savedEvidence.reason });
     components = loadRawComponents(db, options.sessionId);
     if (!options.noCache) {
       for (const component of components) {
@@ -92,6 +108,21 @@ export async function runSelection(options: SelectionOptions): Promise<void> {
 
   if (componentsToRun.length > 0) {
     const invoker = createLocalCliAgentInvoker({});
+    let existingComponentsInline: string | undefined;
+    let existingTokensInline: string | undefined;
+    if (options.existingEntitiesPath) {
+      const entities = await readExistingContentfulEntitiesFromSession({ path: options.existingEntitiesPath });
+      throwIfAborted(options.signal);
+      if (entities) {
+        try {
+          const summary = summarizeForSelect({ entities });
+          existingComponentsInline = JSON.stringify(summary.components);
+          existingTokensInline = JSON.stringify(summary.tokens);
+        } catch {
+          // Optional alignment context remains unavailable when its model data cannot be summarized.
+        }
+      }
+    }
 
     const selectBuckets = bucketComponentsProps(componentsToRun);
     await Promise.all(
@@ -109,6 +140,9 @@ export async function runSelection(options: SelectionOptions): Promise<void> {
         2,
       ),
       propBucketsInline: JSON.stringify(selectBuckets),
+      selectionEvidenceInline,
+      existingComponentsInline,
+      existingTokensInline,
       outDir: process.cwd(),
       ...(options.promptText !== undefined
         ? { skillContentOverride: options.promptText }

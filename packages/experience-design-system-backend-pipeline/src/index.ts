@@ -204,8 +204,10 @@ export { agentSupportsBedrock } from './agents/helpers/bedrock/agent-supports-be
 export { checkAgentAuth } from './agents/services/check-agent-auth.js';
 export type { AgentAuthStatus } from './agents/types/agent-run.js';
 export { buildPrompt } from './agents/prompts/build-prompt.js';
+export { buildSelectionEvidenceInline } from './agents/prompts/helpers/build-selection-evidence-inline.js';
 export type {
   ComponentSourceRef,
+  CapturedSourceRefMetadata,
   DebateRole,
   GeneratedCdf,
   Mode,
@@ -275,6 +277,8 @@ export {
   runMigrationIfNeeded,
   resolveExtractSessionId,
 } from './persistence/src/index.js';
+export { completeExtractionWithSourceEvidence, loadCompletedSourceEvidence } from './persistence/src/index.js';
+export type { CompletedSourceEvidence, SessionSourceEnvelope, SourceEvidenceHandle } from './persistence/src/index.js';
 export {
   configRoot,
   configFilePath,
@@ -300,11 +304,17 @@ export {
   loadRawComponents,
   loadComponentSourceRef,
   loadComponentSourceRefs,
+  loadSavedComponentSourceRef,
   renameEmptySlots,
 } from './persistence/src/index.js';
 export type { RawComponentWithId } from './persistence/src/index.js';
-export { storeCDFComponents, loadCDFComponents, loadScopeComponents } from './persistence/src/index.js';
-export type { ScopeComponentRow } from './persistence/src/index.js';
+export {
+  storeCDFComponents,
+  loadCDFComponents,
+  loadScopeComponents,
+  loadScopeDecisions,
+} from './persistence/src/index.js';
+export type { ScopeComponentRow, ScopeDecisions, ScopeDecisionProvenance } from './persistence/src/index.js';
 export {
   loadComponentReviewMetadata,
   loadComponentRationale,

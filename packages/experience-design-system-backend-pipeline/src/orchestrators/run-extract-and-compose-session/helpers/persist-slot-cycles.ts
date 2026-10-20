@@ -4,6 +4,7 @@ import { suggestCycleBreakEdge } from '../../../steps/composition/src/helpers/cy
 import { storeSlotCycles } from '../../../persistence/src/session/repositories/db.js';
 import { retryDatabaseWrite } from './retry-database-write.js';
 import type { RawComponentDefinition } from '../../../steps/extraction/src/types/component.js';
+import type { SlotCycle, SlotEdge } from '../../../steps/composition/src/types/graph.js';
 
 /**
  * Detect slot-reference cycles across the composed component graph, annotate
@@ -16,11 +17,16 @@ export async function persistSlotCycles(
   sessionId: string,
   components: RawComponentDefinition[],
 ): Promise<void> {
+  await retryDatabaseWrite(() => storeSlotCycles(db, sessionId, calculateSlotCycles(components)));
+}
+
+export function calculateSlotCycles(
+  components: RawComponentDefinition[],
+): Array<SlotCycle & { suggestedBreak?: SlotEdge | null }> {
   const graph = components.map((c) => ({
     name: c.name,
     slots: c.slots.map((s) => ({ name: s.name, allowedComponents: s.allowedComponents })),
   }));
   const cycles = findSlotCycles(graph);
-  const withBreaks = cycles.map((cycle) => ({ ...cycle, suggestedBreak: suggestCycleBreakEdge(cycle, cycles) }));
-  await retryDatabaseWrite(() => storeSlotCycles(db, sessionId, withBreaks));
+  return cycles.map((cycle) => ({ ...cycle, suggestedBreak: suggestCycleBreakEdge(cycle, cycles) }));
 }

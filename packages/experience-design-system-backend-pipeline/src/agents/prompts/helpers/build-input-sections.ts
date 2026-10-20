@@ -20,6 +20,7 @@ export function buildInputSections(options: PromptOptions): string[] {
     existingComponentsInline,
     existingTokensInline,
     componentAllowlistInline,
+    selectionEvidenceInline,
   } = options;
 
   const sections: string[] = [];
@@ -45,6 +46,11 @@ export function buildInputSections(options: PromptOptions): string[] {
   if (propBucketsInline) {
     sections.push(
       `Deterministic prop buckets (advisory evidence only; verify against source and do not treat as inclusion or category decisions):\n\`\`\`json\n${propBucketsInline}\n\`\`\``,
+    );
+  }
+  if (selectionEvidenceInline) {
+    sections.push(
+      `Saved source evidence (bounded capture; advisory only, not compiler or execution proof):\n\`\`\`json\n${selectionEvidenceInline}\n\`\`\``,
     );
   }
   if (rawTokensInline) {
@@ -86,10 +92,13 @@ export function buildInputSections(options: PromptOptions): string[] {
     const withoutContent = componentSourceRefs.filter((ref) => ref.content == null);
     if (withContent.length > 0) {
       const blocks = withContent.map((ref) => {
-        const mainBlock = `#### ${ref.component} (\`${ref.sourcePath}\`)\n\`\`\`${inferFenceLang(ref.sourcePath)}\n${ref.content}\n\`\`\``;
+        const sourceMetadata = ref.sourceEvidence
+          ? `\nSaved capture metadata: ${JSON.stringify(ref.sourceEvidence)}`
+          : '';
+        const mainBlock = `#### ${ref.component} (\`${ref.sourcePath}\`)${sourceMetadata}\n\`\`\`${inferFenceLang(ref.sourcePath)}\n${ref.content}\n\`\`\``;
         const siblingBlocks = (ref.siblingFiles ?? []).map(
           (sibling) =>
-            `##### ${ref.component} — imported file \`${sibling.path}\`\n\`\`\`${inferFenceLang(sibling.path)}\n${sibling.content}\n\`\`\``,
+            `##### ${ref.component} — imported file \`${sibling.path}\`${sibling.sourceEvidence ? `\nSaved capture metadata: ${JSON.stringify(sibling.sourceEvidence)}` : ''}\n\`\`\`${inferFenceLang(sibling.path)}\n${sibling.content}\n\`\`\``,
         );
         const truncationNote =
           ref.truncatedSiblingCount && ref.truncatedSiblingCount > 0

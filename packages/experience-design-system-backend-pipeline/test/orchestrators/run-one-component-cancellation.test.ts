@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const deps = vi.hoisted(() => ({
   renameEmptySlots: vi.fn(() => ({ renames: [] })),
-  loadComponentSourceRef: vi.fn(),
+  loadSavedComponentSourceRef: vi.fn(),
   buildPrompt: vi.fn(),
   invokeAgentWithOutput: vi.fn(),
   copyComponentFromCache: vi.fn(),
@@ -12,7 +12,7 @@ const deps = vi.hoisted(() => ({
 }));
 vi.mock('../../src/persistence/src/session/repositories/db.js', () => ({
   renameEmptySlots: deps.renameEmptySlots,
-  loadComponentSourceRef: deps.loadComponentSourceRef,
+  loadSavedComponentSourceRef: deps.loadSavedComponentSourceRef,
   copyComponentFromCache: deps.copyComponentFromCache,
   computeComponentInputHash: deps.computeComponentInputHash,
   storeCache: deps.storeCache,
@@ -30,7 +30,7 @@ import { runOneGenerateComponent } from '../../src/orchestrators/run-generate-co
 beforeEach(() => {
   vi.clearAllMocks();
   deps.renameEmptySlots.mockReturnValue({ renames: [] });
-  deps.loadComponentSourceRef.mockResolvedValue({ sourcePath: 'src/Button.tsx', props: [] });
+  deps.loadSavedComponentSourceRef.mockReturnValue({ sourcePath: 'src/Button.tsx', props: [] });
   deps.buildPrompt.mockResolvedValue('prompt');
   deps.resolveComponentCache.mockReset();
 });
@@ -76,7 +76,7 @@ describe('component generation preparation cancellation', () => {
       name: 'AbortError',
     });
     expect(deps.renameEmptySlots).not.toHaveBeenCalled();
-    expect(deps.loadComponentSourceRef).not.toHaveBeenCalled();
+    expect(deps.loadSavedComponentSourceRef).not.toHaveBeenCalled();
     expect(deps.invokeAgentWithOutput).not.toHaveBeenCalled();
   });
 
@@ -143,21 +143,17 @@ describe('component generation preparation cancellation', () => {
     expect(deps.copyComponentFromCache).not.toHaveBeenCalled();
   });
 
-  it('does not build a prompt or invoke after cancellation during source inspection', async () => {
+  it('does not build a prompt or invoke after cancellation during saved source projection', async () => {
     const controller = new AbortController();
-    let finishSource!: (value: unknown) => void;
-    deps.loadComponentSourceRef.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finishSource = resolve;
-        }),
-    );
-    const running = runOneGenerateComponent(options(controller.signal), component, 0, 1);
-    await vi.waitFor(() => expect(deps.loadComponentSourceRef).toHaveBeenCalledOnce());
-    controller.abort();
-    finishSource({ sourcePath: 'src/Button.tsx', props: [] });
+    deps.loadSavedComponentSourceRef.mockImplementationOnce(() => {
+      controller.abort();
+      return { sourcePath: 'src/Button.tsx', props: [] };
+    });
 
-    await expect(running).rejects.toMatchObject({ name: 'AbortError' });
+    await expect(runOneGenerateComponent(options(controller.signal), component, 0, 1)).rejects.toMatchObject({
+      name: 'AbortError',
+    });
+    expect(deps.loadSavedComponentSourceRef).toHaveBeenCalledOnce();
     expect(deps.buildPrompt).not.toHaveBeenCalled();
     expect(deps.invokeAgentWithOutput).not.toHaveBeenCalled();
   });

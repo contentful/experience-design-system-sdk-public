@@ -49,14 +49,14 @@ const errorMessage = (error: unknown): string => (error instanceof Error ? error
  * subprocess:
  *
  *   entities fetch ───────────────────┐
- *   extract + compose (in-process)    │
- *     └─ onSessionCreated(id) ────────┴─ selection agent (waits for fetch) ──┐
- *     └──────────────────────── returns (composition done) ─────────────────┴─ result
- *   token generation            (only when the tokens are not being reused)
+ *   extract + compose (in-process) ── returns complete source evidence ──┐
+ *   token generation            (only when the tokens are not being reused)│
+ *   entities fetch ──────────────────────────────────────────────────────┤
+ *   selection (after extraction returns; waits for entities) ────────────┴─ result
  *
- * Selection starts the moment the orchestrator mints the sessionId, so it
- * overlaps with composition. When more than one job fails, the error reported
- * is the first of: extract, no components, selection, token generation.
+ * Selection consumes the completed saved source envelope, so it starts only
+ * after extraction and composition return. When multiple jobs fail, the
+ * reported error priority is: extract, no components, selection, token generation.
  */
 export async function runExtraction(
   input: ExtractionInput,
@@ -79,10 +79,12 @@ export async function runExtraction(
   };
   let selection: Promise<void> | undefined;
   let selectionError: unknown;
+  let createdSessionId: string | undefined;
+  let entities: Promise<boolean> | null = null;
   let tokenGeneration: Promise<TokenGenerationResult | null> = Promise.resolve(null);
 
   const drainSiblings = async (): Promise<void> => {
-    await Promise.allSettled([tokenGeneration, ...(selection ? [selection] : [])]);
+    await Promise.allSettled([tokenGeneration, ...(selection ? [selection] : []), ...(entities ? [entities] : [])]);
   };
   const cancelAndDrain = async (): Promise<void> => {
     controller.abort();
@@ -136,7 +138,7 @@ export async function runExtraction(
         : Promise.resolve(null);
 
     let existingEntitiesPath: string | null = null;
-    const entities: Promise<boolean> | null = input.credentials
+    entities = input.credentials
       ? deps
           .fetchEntities(input.credentials, outDir)
           .then((path) => {
@@ -150,13 +152,18 @@ export async function runExtraction(
           })
       : null;
 
-    const startSelection = (sessionId: string): void => {
+    const startSelection = (
+      sessionId: string,
+      sourceEvidenceHandle: Awaited<ReturnType<typeof runExtractAndComposeSession>>['sourceEvidenceHandle'],
+    ): void => {
       if (selection || signal.aborted) return;
       selection = (async () => {
         if (entities) await awaitWithSignal(entities, signal);
         throwIfAborted(signal);
         await deps.runSelection({
           sessionId,
+          sourceEvidenceHandle,
+          existingEntitiesPath,
           agent: input.agent as AgentName,
           model: input.agentModel,
           ...selectionPrompt,
@@ -183,7 +190,9 @@ export async function runExtraction(
         noCache: input.noCache,
         signal,
         onProgress: (event) => update(applyProgressEvent(progress, event)),
-        onSessionCreated: (sessionId) => startSelection(sessionId),
+        onSessionCreated: (sessionId) => {
+          createdSessionId = sessionId;
+        },
       });
     } catch (error) {
       await cancelAndDrain();
@@ -191,13 +200,20 @@ export async function runExtraction(
     }
     throwIfAborted(signal);
 
-    if (selection) await selection;
-    else if (entities) await awaitWithSignal(entities, signal);
+    if (createdSessionId !== undefined && createdSessionId !== extracted.sessionId) {
+      await cancelAndDrain();
+      return fail('analyze extract', 'extraction returned a different session than the session-created notification');
+    }
 
     if (extracted.components.length === 0) {
       await cancelAndDrain();
       return fail('analyze extract', noComponentsMessage(input.projectPath));
     }
+
+    startSelection(extracted.sessionId, extracted.sourceEvidenceHandle);
+
+    if (selection) await selection;
+    else if (entities) await awaitWithSignal(entities, signal);
     if (selectionError) {
       await cancelAndDrain();
       return fail('selection agent', errorMessage(selectionError));

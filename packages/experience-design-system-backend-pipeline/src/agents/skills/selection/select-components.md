@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Review the extracted React/Next.js component(s) provided below and decide whether each belongs in **Contentful Experience Orchestration** as a Component Type. The input is a JSON array — you may receive 1–N components in a single message. Output one JSON tool call per input component to stdout, named after the component. Tool calls may appear in any order.
+Review the extracted component definition(s) provided below and decide whether each belongs in **Contentful Experience Orchestration** as a Component Type. Use the supplied framework and source evidence; supported inputs may come from more than one UI framework. The input is a JSON array — you may receive 1–N components in a single message. Output one JSON tool call per input component to stdout, named after the component. Tool calls may appear in any order.
 
 ---
 
@@ -26,7 +26,7 @@ The entity being defined — a **Component Type** — is the schema that tells C
 
 **Reject** the component if its primary purpose is framework or data-loading infrastructure rather than the author-facing UI surface:
 
-- It is a React hook (name starts `use` or `Use`)
+- It is a non-rendering hook or function; a name starting with `use` or `Use` is a clue to verify, not proof by itself
 - It is a pure context provider with no visual output
 - It is a Ninetailed/personalization platform wrapper (its job is routing to variants, not rendering content)
 - It is a data-fetch wrapper that loads data for a sibling renderer and then forwards that data into the sibling renderer
@@ -55,7 +55,7 @@ These are **not** valid reasons to reject a component:
 
 | Category                                    | Why                                                                                                                                                                 |
 | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **React hooks**                             | `useXxx` / `UseXxx` — functions, not renderable components. Zero visual output.                                                                                     |
+| **Non-rendering hooks or functions**        | Verify the supplied definition shows a function with no author-facing UI output; a `useXxx` / `UseXxx` name alone is insufficient.                                   |
 | **Pure context providers**                  | Wrap children to pass context but render no UI themselves                                                                                                           |
 | **A/B testing or personalization wrappers** | Components whose _entire purpose_ is routing users to content variants or tracking experiment participation — they render no UI of their own                        |
 | **Data-fetch wrappers**                     | Components whose job is to load or resolve data for a sibling renderer. Even if they eventually return visible UI, the sibling renderer is the real Component Type. |
@@ -64,7 +64,7 @@ These are **not** valid reasons to reject a component:
 
 > **Variant routing rule**: Reject a component if its entire purpose is deciding _which_ content variant to show — that is framework infrastructure, not a Component Type. Do **not** reject a component merely because it _contains_ some A/B testing or personalization-related props — those props are handled as `state` in the generate step.
 
-> **Data-fetch wrapper rule**: Reject a component if it imports or calls a generated query hook, loads data, and then forwards that data into a sibling renderer. The sibling renderer is the Component Type; the data-loader wrapper is not.
+> **Data-fetch wrapper rule**: When supplied source evidence shows a component loading data and forwarding it into a sibling renderer, assess whether the sibling renderer defines the author-facing UI surface. Missing imports or sibling excerpts leave this relationship unknown.
 
 > **Utility-wrapper rule**: Reject a component if **all three** of the following are true:
 >
@@ -83,6 +83,16 @@ If the input includes `selectionContext`, treat it as the only repo-level contex
 - import/export summaries
 - resolver or registry references
 - one likely parent usage site
+
+## Source evidence and selection uncertainty
+
+- Make acceptance or rejection decisions from the supplied definition and captured evidence. Component names, framework labels, familiar patterns, prop counts, or a likely match in an existing model do not prove the component's purpose or rendering behavior by themselves.
+- Captured source references, observations, and parent usage are bounded context. A single caller shows an example of use, not the complete contract or all uses. Missing callers, imports, sibling files, or excerpts do not prove that a component is unused, non-rendering, or an infrastructure wrapper.
+- Treat existing model summaries as optional alignment context. They cannot force acceptance or rejection, and a mature model does not change the evidence required for a decision.
+- When evidence does not establish whether a component defines author-facing UI, preserve that uncertainty in the reason and lower confidence. Do not turn missing evidence into a rejection.
+- The inline context does not provide repository tools, filesystem or working-directory access, a complete compiler graph, final consensus, or an authorability guarantee.
+
+The example component names below are illustrative. Apply an example's decision only when the supplied evidence supports the described behavior; a name alone is not evidence.
 
 Use that bounded context to distinguish the author-facing renderer from infrastructure wrappers. In particular:
 
@@ -159,8 +169,8 @@ ServerExperience — server-side variant routing wrapper, no visual output
 ```
 
 ```
-UseHelpNavigation — React hook, not a renderable component
-{"tool":"reject_component","name":"UseHelpNavigation","reason":"React hook — not a renderable component"}
+The supplied definition shows UseHelpNavigation as a function that returns a callback and renders no UI.
+{"tool":"reject_component","name":"UseHelpNavigation","reason":"Function returns behavior without defining an author-facing UI surface"}
 ```
 
 ```
@@ -229,7 +239,7 @@ SearchInput — search field with dropdown
 
 The preamble may include an "Existing components in the target Contentful space" JSON block and a rolled-up token summary. Use them as **signal, not as a filter**. Rules:
 
-1. Never let a name overlap force a decision. Acceptance is still driven purely by "does the codebase component render visible, authorable UI?" — a name match does not auto-accept, and a name conflict does not auto-reject.
+1. Never let a name overlap force a decision. Decide from supplied evidence about whether the component renders visible, author-facing UI; a name match does not auto-accept, and a name conflict does not auto-reject.
 2. When a codebase component appears to correspond to an existing space component (name overlap, semantic overlap in the description), note it in your `reason` — e.g. `"accepted; likely maps to existing space component 'Button'"`. This surfaces the mapping for downstream review.
-3. When the space is mature (many existing components, dozens of tokens) and the codebase has thin wrappers with no visible UI difference, lean harder toward rejecting the wrappers. Extra noise in a mature space is more costly than in an empty one.
+3. A mature space does not change the evidence threshold for deciding whether a component is an author-facing UI surface. Record possible duplication for review without using model size to reject a component.
 4. When no overlap exists, the acceptance decision is unchanged from the rules above.

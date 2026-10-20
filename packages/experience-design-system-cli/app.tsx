@@ -424,7 +424,9 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
         if (scopeFlow.status === 'deciding') {
           return (
             <ScopeGateScreen
+              key={scopeRun.extraction.sessionId}
               components={scopeFlow.load.components}
+              savedDecisions={scopeFlow.load.savedDecisions}
               onConfirm={scopeFlow.confirm}
               onQuit={leaveImport}
             />

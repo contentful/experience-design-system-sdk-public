@@ -40,6 +40,13 @@ const successResponse = (
   scannedFileCount: 3,
   sourceCallSiteEvidence: [],
   sourceCallSiteRejections: [],
+  sourceEvidenceHandle: {
+    envelopeId: 'source-env',
+    digest: 'digest',
+    extractionStepId: 1,
+    coverage: 'unavailable',
+    readiness: 'ready',
+  },
   ...overrides,
 });
 
@@ -115,6 +122,15 @@ describe('runExtraction — the tokens path it hands over', () => {
 });
 
 describe('runExtraction — the happy path', () => {
+  it('forwards the settled optional model path to selection', async () => {
+    const deps = makeDeps();
+    const result = await runExtraction(input({ noCache: true }), () => {}, deps);
+    expect(result.ok).toBe(true);
+    expect(deps.runSelection).toHaveBeenCalledWith(
+      expect.objectContaining({ existingEntitiesPath: '/proj/.contentful/.existing-entities.json' }),
+    );
+  });
+
   it('keeps one live attempt signal through extraction, selection, and token generation', async () => {
     const controller = new AbortController();
     const withSignal = input() as ExtractionInput & { signal?: AbortSignal };
@@ -199,21 +215,15 @@ describe('runExtraction — the happy path', () => {
 });
 
 describe('runExtraction — ordering', () => {
-  it('starts selection as soon as onSessionCreated fires, while extraction is still running', async () => {
-    // The orchestrator mock holds the extraction promise open until selection has run.
-    // If selection only began after extract returned, this would never be released and the run would hang.
-    let selectionStarted: () => void = () => {};
-    const selectionRan = new Promise<void>((resolve) => (selectionStarted = resolve));
+  it('starts selection once completed extraction returns, not from the early session notification', async () => {
     const log: string[] = [];
     const deps = makeDeps(
       {
         runSelection: vi.fn(async () => {
           log.push('selection');
-          selectionStarted();
         }),
         runExtractAndComposeSession: vi.fn(async (req) => {
           await req.onSessionCreated?.('sess-1');
-          await selectionRan;
           log.push('extract:exit');
           return successResponse();
         }) as ExtractionDeps['runExtractAndComposeSession'],
@@ -221,13 +231,9 @@ describe('runExtraction — ordering', () => {
       log,
     );
 
-    const result = await Promise.race([
-      runExtraction(input(), () => {}, deps),
-      new Promise<'hung'>((resolve) => setTimeout(() => resolve('hung'), 2000)),
-    ]);
-
-    expect(result).not.toBe('hung');
-    expect(log.indexOf('selection')).toBeLessThan(log.indexOf('extract:exit'));
+    const result = await runExtraction(input(), () => {}, deps);
+    expect(result.ok).toBe(true);
+    expect(log.indexOf('selection')).toBeGreaterThan(log.indexOf('extract:exit'));
   });
 
   it('makes selection wait for the entities fetch', async () => {
@@ -279,6 +285,7 @@ describe('runExtraction — what is skipped', () => {
     expect(deps.fetchEntities).not.toHaveBeenCalled();
     expect(result.ok && result.extraction.existingEntitiesStatus).toBe('idle');
     expect(result.ok && result.extraction.existingEntitiesPath).toBeNull();
+    expect(deps.runSelection).toHaveBeenCalledWith(expect.objectContaining({ existingEntitiesPath: null }));
   });
 
   it('does not wait for any fetch before selecting when credentials were skipped', async () => {
@@ -402,7 +409,9 @@ describe('runExtraction — failures', () => {
     const deps = makeDeps({ fetchEntities: vi.fn().mockResolvedValue(null) });
     const result = await runExtraction(input(), () => {}, deps);
     expect(result.ok && result.extraction.existingEntitiesStatus).toBe('failed');
+    expect(deps.runSelection).toHaveBeenCalledWith(expect.objectContaining({ existingEntitiesPath: null }));
     expect(result.ok && result.extraction.existingEntitiesPath).toBeNull();
+    expect(deps.runSelection).toHaveBeenCalledWith(expect.objectContaining({ existingEntitiesPath: null }));
   });
 
   describe('when more than one thing fails, the user sees the first of: extract, no components, selection, tokens', () => {
@@ -445,15 +454,10 @@ describe('runExtraction — failures', () => {
     });
   });
 
-  it('cancels and drains token generation and selection when extraction fails first', async () => {
+  it('cancels and drains token generation without launching selection when extraction fails first', async () => {
     const controller = new AbortController();
     const events: string[] = [];
     let releaseTokens!: () => void;
-    let releaseSelection!: () => void;
-    let selectionStarted!: () => void;
-    const selectionStartedPromise = new Promise<void>((resolve) => {
-      selectionStarted = resolve;
-    });
     const withSignal = input() as ExtractionInput & { signal?: AbortSignal };
     withSignal.signal = controller.signal;
 
@@ -475,27 +479,9 @@ describe('runExtraction — failures', () => {
           );
         });
       }) as ExtractionDeps['runGenerateTokensSession'],
-      runSelection: vi.fn((req) => {
-        const signal = (req as typeof req & { signal?: AbortSignal }).signal;
-        selectionStarted();
-        return new Promise<void>((resolve) => {
-          releaseSelection = () => {
-            events.push('selection:drained');
-            resolve();
-          };
-          signal?.addEventListener(
-            'abort',
-            () => {
-              events.push('selection:aborted');
-              releaseSelection();
-            },
-            { once: true },
-          );
-        });
-      }),
+      runSelection: vi.fn(),
       runExtractAndComposeSession: vi.fn(async (req) => {
         await req.onSessionCreated?.('sess-1');
-        await selectionStartedPromise;
         throw new Error('original extraction failure');
       }) as ExtractionDeps['runExtractAndComposeSession'],
     });
@@ -503,13 +489,11 @@ describe('runExtraction — failures', () => {
     const result = await runExtraction(withSignal, () => {}, deps);
     const atReturn = [...events];
     releaseTokens?.();
-    releaseSelection?.();
 
     expect(result).toEqual({ ok: false, step: 'analyze extract', message: 'original extraction failure' });
     expect(atReturn).toContain('tokens:aborted');
-    expect(atReturn).toContain('selection:aborted');
     expect(atReturn).toContain('tokens:drained');
-    expect(atReturn).toContain('selection:drained');
+    expect(deps.runSelection).not.toHaveBeenCalled();
   });
 
   it('does not launch selection when cancellation happens during the entities wait', async () => {

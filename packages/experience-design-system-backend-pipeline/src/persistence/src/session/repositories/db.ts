@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { configRoot } from '../helpers/config-root.js';
 import { dirname, resolve } from 'node:path';
 import { escapeForRegExp, excerptAroundNames } from '../helpers/source-excerpt.js';
@@ -25,6 +25,7 @@ import { getOrCreateSessionForCommand, type SessionResolution } from '../service
 import { pruneObsoleteIncompleteStepsIfNeeded } from './step-history-migration.js';
 import { getRawTokenNamePaths, type RawTokenNamePathSource } from './tokens/read.js';
 import { type RawPropTokenPathSource } from './tokens/write.js';
+import type { SourceCapture } from '@contentful/experience-design-system-extraction';
 
 export { hashComponentShape as computeComponentInputHash } from '../helpers/components/hash-component-shape.js';
 export { hashTokenContent as computeTokenInputHash } from '../helpers/tokens/hash-token-content.js';
@@ -194,6 +195,34 @@ CREATE TABLE IF NOT EXISTS slot_cycles (
   edges_json             TEXT NOT NULL,
   suggested_break_json   TEXT,
   PRIMARY KEY (session_id, cycle_index)
+);
+
+CREATE TABLE IF NOT EXISTS session_source_envelopes (
+  envelope_id  TEXT NOT NULL PRIMARY KEY,
+  session_id   TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  step_id      INTEGER NOT NULL REFERENCES steps(id) ON DELETE CASCADE,
+  digest       TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at   TEXT NOT NULL,
+  UNIQUE (session_id, step_id)
+);
+
+CREATE TRIGGER IF NOT EXISTS session_source_envelopes_immutable
+BEFORE UPDATE ON session_source_envelopes
+BEGIN
+  SELECT RAISE(ABORT, 'source envelopes are immutable');
+END;
+
+CREATE TABLE IF NOT EXISTS scope_decisions (
+  session_id      TEXT NOT NULL,
+  component_id    TEXT NOT NULL,
+  component_name  TEXT NOT NULL,
+  decision        TEXT NOT NULL CHECK (decision IN ('accepted', 'rejected')),
+  provenance_json TEXT,
+  updated_at      TEXT NOT NULL,
+  PRIMARY KEY (session_id, component_id),
+  FOREIGN KEY (session_id, component_id)
+    REFERENCES raw_components(session_id, component_id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS raw_prop_token_paths (
@@ -546,6 +575,11 @@ export interface ApplyToolCallsOptions {
 export interface ComponentReviewMetadata {
   sourcePath: string | null;
   componentSource: string | null;
+  sourceCoverage: SourceCapture['coverage'];
+  extractionByteBinding: SourceCapture['extractionByteBinding'];
+  sourceTextHash: string | null;
+  sourceLineRanges: Array<{ sourceStartLine: number; sourceEndLine: number; displayStartLine: number }>;
+  scopeProvenance: ScopeDecisionProvenance | null;
   props: Record<
     string,
     {
@@ -586,22 +620,41 @@ export function loadComponentReviewMetadata(
     };
   }
 
-  // raw_components.source historically stores the file path, not the file
-  // text. For the source-view panel to render real lines, prefer reading
-  // the file from disk via source_path. Fall back to whatever's in `source`
-  // (handles in-memory fixtures and tests).
-  let componentSource: string | null = compRow.source ?? null;
-  if (compRow.source_path) {
-    try {
-      componentSource = readFileSync(compRow.source_path, 'utf8');
-    } catch {
-      // File no longer exists or unreadable — leave fallback.
+  let sourcePath: string | null = compRow.source_path;
+  let componentSource: string | null = null;
+  let sourceCoverage: SourceCapture['coverage'] = 'unavailable';
+  let extractionByteBinding: SourceCapture['extractionByteBinding'] = 'unverified';
+  let sourceTextHash: string | null = null;
+  let sourceLineRanges: ComponentReviewMetadata['sourceLineRanges'] = [];
+  const scopeProvenance = loadScopeDecisions(db, sessionId)?.acceptedProvenance?.[componentName] ?? null;
+  const saved = loadCompletedSourceEvidence(db, sessionId);
+  if (saved.readiness === 'ready') {
+    const file =
+      saved.envelope.capture.files.find((entry) =>
+        entry.componentRefs.some((component) => component.componentId === compRow.component_id),
+      ) ??
+      saved.envelope.capture.files.find(
+        (entry) => entry.canonicalPath === compRow.source_path || entry.displayPath === compRow.source_path,
+      );
+    if (file) {
+      const projection = buildReviewSourceProjection(file);
+      sourcePath = file.displayPath;
+      componentSource = projection.text;
+      sourceCoverage = saved.envelope.capture.coverage;
+      extractionByteBinding = saved.envelope.extractionByteBinding;
+      sourceTextHash = file.textHash;
+      sourceLineRanges = projection.ranges;
     }
   }
 
   return {
-    sourcePath: compRow.source_path,
+    sourcePath,
     componentSource,
+    sourceCoverage,
+    extractionByteBinding,
+    sourceTextHash,
+    sourceLineRanges,
+    scopeProvenance,
     props,
   };
 }
@@ -912,18 +965,20 @@ export function updateStep(
   status: 'complete' | 'failed',
   outputs: Record<string, string>,
   error?: string,
+  options?: { withinTransaction?: boolean },
 ): void {
   const now = new Date().toISOString();
-  db.exec('BEGIN');
+  const ownsTransaction = !options?.withinTransaction;
+  if (ownsTransaction) db.exec('BEGIN');
   try {
     const stepSessionId = getSessionIdForStep(db, stepId);
     updateStepStatus(db, stepId, status, outputs, error ?? null, now);
     if (stepSessionId) {
       updateSessionTimestamp(db, stepSessionId, now);
     }
-    db.exec('COMMIT');
+    if (ownsTransaction) db.exec('COMMIT');
   } catch (e) {
-    db.exec('ROLLBACK');
+    if (ownsTransaction) db.exec('ROLLBACK');
     throw e;
   }
 }
@@ -936,6 +991,7 @@ export function storeRawComponents(
     status?: string;
     preserveCDF?: boolean;
     preserveStatus?: boolean;
+    withinTransaction?: boolean;
   },
 ): void {
   const now = new Date().toISOString();
@@ -962,7 +1018,8 @@ export function storeRawComponents(
      VALUES (?, ?, ?, ?, ?)`,
   );
 
-  db.exec('BEGIN');
+  const ownsTransaction = !options?.withinTransaction;
+  if (ownsTransaction) db.exec('BEGIN');
   try {
     type CDFSnapshot = {
       component_id: string;
@@ -1161,9 +1218,9 @@ export function storeRawComponents(
       db.prepare('UPDATE raw_components SET status = ? WHERE session_id = ?').run(options.status, sessionId);
     }
     db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
-    db.exec('COMMIT');
+    if (ownsTransaction) db.exec('COMMIT');
   } catch (e) {
-    db.exec('ROLLBACK');
+    if (ownsTransaction) db.exec('ROLLBACK');
     throw e;
   }
 }
@@ -1577,6 +1634,188 @@ export async function loadComponentSourceRefs(db: DatabaseSync, sessionId: strin
   );
 }
 
+function excerptSavedText(
+  text: string,
+  names: string[],
+  maxChars: number,
+): {
+  content: string;
+  lineRanges: Array<{ startLine: number; endLine: number }>;
+  usesNotShown: string[];
+} {
+  if (text.length <= maxChars) {
+    return { content: text, lineRanges: [{ startLine: 1, endLine: text.split('\n').length }], usesNotShown: [] };
+  }
+  const lines = text.split('\n');
+  const patterns = names
+    .filter(Boolean)
+    .map((name) => ({ name, pattern: new RegExp(`(?<![A-Za-z0-9_$])${escapeForRegExp(name)}(?![A-Za-z0-9_$])`) }));
+  const windows: Array<{ start: number; end: number }> = [];
+  lines.forEach((line, index) => {
+    if (!patterns.some(({ pattern }) => pattern.test(line))) return;
+    const start = Math.max(0, index - 6);
+    const end = Math.min(lines.length - 1, index + 6);
+    const previous = windows.at(-1);
+    if (previous && start <= previous.end + 1) previous.end = Math.max(previous.end, end);
+    else windows.push({ start, end });
+  });
+  if (windows.length === 0) {
+    let end = 0;
+    while (end < lines.length && lines.slice(0, end + 1).join('\n').length <= maxChars - 20) end += 1;
+    const range = { startLine: 1, endLine: Math.max(1, end) };
+    return { content: `${lines.slice(0, end).join('\n')}\n/* truncated */`, lineRanges: [range], usesNotShown: [] };
+  }
+  const kept: Array<{ start: number; end: number; text: string }> = [];
+  let spent = 0;
+  for (const window of [...windows].reverse()) {
+    const chunk = lines.slice(window.start, window.end + 1).join('\n');
+    const separator = kept.length > 0 ? '\n/* … */\n' : '';
+    if (spent + separator.length + chunk.length > maxChars) continue;
+    kept.push({ ...window, text: chunk });
+    spent += separator.length + chunk.length;
+  }
+  kept.sort((left, right) => left.start - right.start);
+  const lastLineByName = new Map<string, number>();
+  for (const { name, pattern } of patterns) {
+    lines.forEach((line, index) => {
+      if (pattern.test(line)) lastLineByName.set(name, index);
+    });
+  }
+  const included = new Set(
+    kept.flatMap((window) => Array.from({ length: window.end - window.start + 1 }, (_, index) => window.start + index)),
+  );
+  const usesNotShown = names.filter((name) => {
+    const last = lastLineByName.get(name);
+    return last !== undefined && !included.has(last);
+  });
+  const lineRanges = kept.map((window) => ({ startLine: window.start + 1, endLine: window.end + 1 }));
+  const body = kept.map((window, index) => `${index > 0 ? '\n/* … */\n' : ''}${window.text}`).join('');
+  return { content: `${body}\n/* truncated */`, lineRanges, usesNotShown };
+}
+
+function capturedFileText(file: SourceCapture['files'][number]): string | null {
+  if (file.captured.kind === 'full') return file.captured.text;
+  if (file.captured.kind === 'excerpts') return file.captured.ranges.map((range) => range.text).join('\n/* … */\n');
+  return null;
+}
+
+function buildReviewSourceProjection(file: SourceCapture['files'][number]): {
+  text: string | null;
+  ranges: Array<{ sourceStartLine: number; sourceEndLine: number; displayStartLine: number }>;
+} {
+  if (file.captured.kind === 'unavailable') return { text: null, ranges: [] };
+  if (file.captured.kind === 'full') {
+    return {
+      text: file.captured.text,
+      ranges: [{ sourceStartLine: 1, sourceEndLine: file.captured.text.split('\n').length, displayStartLine: 1 }],
+    };
+  }
+  const ranges: Array<{ sourceStartLine: number; sourceEndLine: number; displayStartLine: number }> = [];
+  let displayLine = 1;
+  const chunks = file.captured.ranges.map((range, index) => {
+    if (index > 0) displayLine += 2;
+    ranges.push({ sourceStartLine: range.startLine, sourceEndLine: range.endLine, displayStartLine: displayLine });
+    displayLine += range.text.split('\n').length;
+    return range.text;
+  });
+  return { text: chunks.join('\n/* … */\n'), ranges };
+}
+
+export function loadSavedComponentSourceRef(
+  db: DatabaseSync,
+  sessionId: string,
+  componentId: string,
+  name: string,
+  sourcePath: string,
+  propNames: string[] = [],
+  propTypes: string[] = [],
+): ComponentSourceRef {
+  const saved = loadCompletedSourceEvidence(db, sessionId);
+  const unavailable: ComponentSourceRef = { component: name, sourcePath, content: null };
+  if (saved.readiness !== 'ready') return unavailable;
+  const { envelope } = saved;
+  const { capture } = envelope;
+  const byId = new Map(capture.files.map((file) => [file.fileId, file]));
+  const root =
+    capture.files.find((file) => file.componentRefs.some((component) => component.componentId === componentId)) ??
+    capture.files.find((file) => file.canonicalPath === sourcePath || file.displayPath === sourcePath);
+  if (!root) return unavailable;
+  const rootText = capturedFileText(root);
+  if (rootText === null) return unavailable;
+  const names = [...new Set([...propNames, ...identifiersIn(propTypes)])];
+  const mainExcerpt = excerptSavedText(rootText, names, MAX_COMPONENT_SOURCE_CHARS);
+  const ref: ComponentSourceRef = {
+    component: name,
+    sourcePath: root.displayPath,
+    content: mainExcerpt.content,
+    sourceEvidence: {
+      captureId: capture.captureId,
+      captureDigest: envelope.digest,
+      textHash: root.textHash,
+      coverage: capture.coverage,
+      extractionByteBinding: envelope.extractionByteBinding,
+      lineRanges: mainExcerpt.lineRanges,
+    },
+  };
+
+  const discovered = new Map<string, { file: SourceCapture['files'][number]; depth: number }>();
+  let frontier = new Set([root.fileId]);
+  for (let depth = 1; depth <= MAX_SIBLING_DEPTH && discovered.size < MAX_SIBLING_CANDIDATES_EXPLORED; depth += 1) {
+    const next = new Set<string>();
+    for (const fromFileId of frontier) {
+      for (const edge of capture.resolution.filter(
+        (resolution) => resolution.fromFileId === fromFileId && resolution.targetFileId,
+      )) {
+        const targetFileId = edge.targetFileId!;
+        if (targetFileId === root.fileId || discovered.has(targetFileId)) continue;
+        const file = byId.get(targetFileId);
+        if (!file) continue;
+        discovered.set(targetFileId, { file, depth });
+        next.add(targetFileId);
+        if (discovered.size >= MAX_SIBLING_CANDIDATES_EXPLORED) break;
+      }
+      if (discovered.size >= MAX_SIBLING_CANDIDATES_EXPLORED) break;
+    }
+    frontier = next;
+  }
+  const candidates = [...discovered.values()].sort((left, right) =>
+    left.file.displayPath.localeCompare(right.file.displayPath),
+  );
+  let enlarged = 0;
+  const siblingUsesNotShown = new Set<string>();
+  const siblings = candidates.slice(0, MAX_SIBLING_FILES).flatMap(({ file }) => {
+    const text = capturedFileText(file);
+    if (text === null) return [];
+    const declaresType = identifiersIn(propTypes).some((typeName) =>
+      new RegExp(`\\b(type|interface)\\s+${escapeForRegExp(typeName)}\\b`).test(text),
+    );
+    const maxChars =
+      declaresType && enlarged < MAX_ENLARGED_SIBLINGS ? MAX_TYPE_DECLARING_SIBLING_CHARS : MAX_SIBLING_SNIPPET_CHARS;
+    if (declaresType && maxChars === MAX_TYPE_DECLARING_SIBLING_CHARS) enlarged += 1;
+    const excerpt = excerptSavedText(text, names, maxChars);
+    excerpt.usesNotShown.forEach((propName) => siblingUsesNotShown.add(propName));
+    return [
+      {
+        path: file.displayPath,
+        content: excerpt.content,
+        sourceEvidence: {
+          captureId: capture.captureId,
+          captureDigest: envelope.digest,
+          textHash: file.textHash,
+          coverage: capture.coverage,
+          extractionByteBinding: envelope.extractionByteBinding,
+          lineRanges: excerpt.lineRanges,
+        },
+      },
+    ];
+  });
+  if (siblings.length > 0) ref.siblingFiles = siblings;
+  if (candidates.length > MAX_SIBLING_FILES) ref.truncatedSiblingCount = candidates.length - MAX_SIBLING_FILES;
+  const usesNotShown = [...new Set([...mainExcerpt.usesNotShown, ...siblingUsesNotShown])];
+  if (usesNotShown.length > 0) ref.usesNotShown = usesNotShown;
+  return ref;
+}
+
 export function renameEmptySlots(
   db: DatabaseSync,
   sessionId: string,
@@ -1969,14 +2208,109 @@ export type ScopeComponentRow = {
   slots: Array<{ name: string; allowedComponents: string[] }>;
 };
 
+export interface ScopeDecisionProvenance {
+  kind: 'direct' | 'closure' | 'unknown';
+  roots: string[];
+}
+
+export interface ScopeDecisions {
+  accepted: string[];
+  rejected: string[];
+  acceptedProvenance?: Record<string, ScopeDecisionProvenance>;
+}
+
+const unknownScopeProvenance: ScopeDecisionProvenance = { kind: 'unknown', roots: [] };
+
+function validateScopeProvenance(
+  name: string,
+  value: ScopeDecisionProvenance | undefined,
+  acceptedNames: Set<string>,
+): ScopeDecisionProvenance {
+  if (value === undefined) return unknownScopeProvenance;
+  if (!value || !['direct', 'closure', 'unknown'].includes(value.kind) || !Array.isArray(value.roots)) {
+    throw new Error(`Invalid saved scope provenance for ${name}`);
+  }
+
+  const roots = [...value.roots];
+  if (roots.some((root) => typeof root !== 'string')) throw new Error(`Invalid saved scope roots for ${name}`);
+  if (new Set(roots).size !== roots.length) throw new Error(`Duplicate saved scope roots for ${name}`);
+  const sortedRoots = [...roots].sort((left, right) => left.localeCompare(right));
+  if (roots.some((root, index) => root !== sortedRoots[index])) {
+    throw new Error(`Saved scope roots for ${name} must be sorted`);
+  }
+  if (roots.some((root) => !acceptedNames.has(root))) {
+    throw new Error(`Saved scope provenance for ${name} refers to a non-accepted root`);
+  }
+
+  if (value.kind === 'direct' && !roots.includes(name)) {
+    throw new Error(`Direct scope provenance for ${name} must include itself as a root`);
+  }
+  if (value.kind === 'closure' && (roots.length === 0 || roots.includes(name))) {
+    throw new Error(`Closure scope provenance for ${name} must refer to other accepted roots`);
+  }
+  if (value.kind === 'unknown' && roots.length !== 0) {
+    throw new Error(`Unknown scope provenance for ${name} cannot have roots`);
+  }
+  return { kind: value.kind, roots };
+}
+
+/** Read only explicitly saved human choices; AI selection statuses are not scope choices. */
+export function loadScopeDecisions(db: DatabaseSync, sessionId: string): ScopeDecisions | undefined {
+  const rows = db
+    .prepare(
+      `SELECT sd.component_id, sd.component_name, sd.decision, sd.provenance_json, rc.name AS current_name
+       FROM scope_decisions sd
+       JOIN raw_components rc ON rc.session_id = sd.session_id AND rc.component_id = sd.component_id
+       WHERE sd.session_id = ?
+       ORDER BY sd.component_name, sd.component_id`,
+    )
+    .all(sessionId) as Array<{
+    component_id: string;
+    component_name: string;
+    decision: 'accepted' | 'rejected';
+    provenance_json: string | null;
+    current_name: string;
+  }>;
+
+  if (rows.length === 0) return undefined;
+  const accepted = rows.filter((row) => row.decision === 'accepted').map((row) => row.component_name);
+  const rejected = rows.filter((row) => row.decision === 'rejected').map((row) => row.component_name);
+  const acceptedNames = new Set(accepted);
+  const acceptedProvenance = Object.create(null) as Record<string, ScopeDecisionProvenance>;
+
+  for (const row of rows) {
+    if (row.current_name !== row.component_name) {
+      throw new Error(`Saved scope choice no longer matches component ${row.component_id}`);
+    }
+    if (row.decision === 'rejected') {
+      if (row.provenance_json !== null) throw new Error(`Rejected scope choice ${row.component_name} has provenance`);
+      continue;
+    }
+    let provenance: ScopeDecisionProvenance | undefined;
+    if (row.provenance_json !== null) {
+      try {
+        provenance = JSON.parse(row.provenance_json) as ScopeDecisionProvenance;
+      } catch {
+        throw new Error(`Saved scope provenance for ${row.component_name} is corrupt`);
+      }
+    }
+    acceptedProvenance[row.component_name] = validateScopeProvenance(row.component_name, provenance, acceptedNames);
+  }
+
+  return { accepted, rejected, acceptedProvenance };
+}
+
 export function loadScopeComponents(db: DatabaseSync, sessionId: string): ScopeComponentRow[] {
   const rows = db
     .prepare(
       `SELECT name, component_id, status, reject_reason, review_reasons, needs_review FROM raw_components
-       WHERE session_id = ? AND status IN ('extracted', 'accepted', 'rejected')
-       ORDER BY name`,
+       WHERE session_id = ? AND (
+         status IN ('extracted', 'accepted', 'rejected') OR
+         component_id IN (SELECT component_id FROM scope_decisions WHERE session_id = ?)
+       )
+       ORDER BY name, component_id`,
     )
-    .all(sessionId) as Array<{
+    .all(sessionId, sessionId) as Array<{
     name: string;
     component_id: string;
     status: string;
@@ -2030,30 +2364,84 @@ export function loadScopeComponents(db: DatabaseSync, sessionId: string): ScopeC
   });
 }
 
-export function applyScopeDecisions(
-  db: DatabaseSync,
-  sessionId: string,
-  decisions: { accepted: string[]; rejected: string[] },
-): void {
+export function applyScopeDecisions(db: DatabaseSync, sessionId: string, decisions: ScopeDecisions): ScopeDecisions {
   const now = new Date().toISOString();
+  if (!Array.isArray(decisions.accepted) || !Array.isArray(decisions.rejected)) {
+    throw new Error('Scope decisions must contain accepted and rejected name arrays');
+  }
   const acceptedSet = new Set(decisions.accepted);
   const accepted = [...acceptedSet];
   const rejected = [...new Set(decisions.rejected)].filter((n) => !acceptedSet.has(n));
-  if (rejected.length > 0) {
-    const placeholders = rejected.map(() => '?').join(',');
-    db.prepare(`UPDATE raw_components SET status = 'rejected' WHERE session_id = ? AND name IN (${placeholders})`).run(
-      sessionId,
-      ...rejected,
+
+  const components = db
+    .prepare('SELECT component_id, name FROM raw_components WHERE session_id = ? ORDER BY name, component_id')
+    .all(sessionId) as Array<{ component_id: string; name: string }>;
+  if (components.length === 0) throw new Error(`No components found for scope session ${sessionId}`);
+  const componentByName = new Map<string, { component_id: string; name: string }>();
+  for (const component of components) {
+    if (componentByName.has(component.name))
+      throw new Error(`Duplicate component name in scope session: ${component.name}`);
+    componentByName.set(component.name, component);
+  }
+
+  const rejectedSet = new Set(rejected);
+  const unknownNames = [...accepted, ...rejected].filter((name) => !componentByName.has(name));
+  if (unknownNames.length > 0) throw new Error(`Unknown scope component name(s): ${unknownNames.join(', ')}`);
+  const missingNames = components
+    .map((component) => component.name)
+    .filter((name) => !acceptedSet.has(name) && !rejectedSet.has(name));
+  if (missingNames.length > 0) throw new Error(`Scope decisions omit component name(s): ${missingNames.join(', ')}`);
+
+  const provenanceInput = decisions.acceptedProvenance ?? {};
+  if (!provenanceInput || typeof provenanceInput !== 'object' || Array.isArray(provenanceInput)) {
+    throw new Error('Scope provenance must be an object keyed by accepted component name');
+  }
+  const allDecisions = new Set([...accepted, ...rejected]);
+  const provenanceNames = Object.keys(provenanceInput);
+  const invalidProvenanceNames = provenanceNames.filter((name) => !acceptedSet.has(name));
+  if (invalidProvenanceNames.length > 0) {
+    throw new Error(
+      `Scope provenance may only be supplied for accepted component(s): ${invalidProvenanceNames.join(', ')}`,
     );
   }
-  if (accepted.length > 0) {
-    const placeholders = accepted.map(() => '?').join(',');
-    db.prepare(`UPDATE raw_components SET status = 'generated' WHERE session_id = ? AND name IN (${placeholders})`).run(
-      sessionId,
-      ...accepted,
+  if (allDecisions.size !== components.length)
+    throw new Error('Scope decisions must partition every component exactly once');
+  const acceptedProvenance = Object.fromEntries(
+    accepted.map((name) => [
+      name,
+      validateScopeProvenance(
+        name,
+        Object.hasOwn(provenanceInput, name) ? provenanceInput[name] : undefined,
+        acceptedSet,
+      ),
+    ]),
+  );
+
+  let transactionStarted = false;
+  try {
+    db.exec('BEGIN IMMEDIATE');
+    transactionStarted = true;
+    db.prepare('DELETE FROM scope_decisions WHERE session_id = ?').run(sessionId);
+    const insert = db.prepare(
+      `INSERT INTO scope_decisions (session_id, component_id, component_name, decision, provenance_json, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
     );
+    const update = db.prepare('UPDATE raw_components SET status = ? WHERE session_id = ? AND component_id = ?');
+    for (const component of components) {
+      const decision = acceptedSet.has(component.name) ? 'accepted' : 'rejected';
+      const provenance = decision === 'accepted' ? JSON.stringify(acceptedProvenance[component.name]) : null;
+      insert.run(sessionId, component.component_id, component.name, decision, provenance, now);
+      update.run(decision === 'accepted' ? 'generated' : 'rejected', sessionId, component.component_id);
+    }
+    db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
+    db.exec('COMMIT');
+    transactionStarted = false;
+  } catch (error) {
+    if (transactionStarted) db.exec('ROLLBACK');
+    throw error;
   }
-  db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
+
+  return { accepted, rejected, acceptedProvenance };
 }
 
 export function findLatestSessionForCommand(db: DatabaseSync, command: CommandName): string | null {
@@ -2437,17 +2825,23 @@ export function storeCaches(
   }
 }
 
-export function storeScannedFiles(db: DatabaseSync, sessionId: string, filePaths: string[]): void {
-  db.exec('BEGIN');
+export function storeScannedFiles(
+  db: DatabaseSync,
+  sessionId: string,
+  filePaths: string[],
+  options?: { withinTransaction?: boolean },
+): void {
+  const ownsTransaction = !options?.withinTransaction;
+  if (ownsTransaction) db.exec('BEGIN');
   try {
     db.prepare('DELETE FROM scanned_files WHERE session_id = ?').run(sessionId);
     const insert = db.prepare('INSERT INTO scanned_files (session_id, path) VALUES (?, ?)');
     for (const path of filePaths) {
       insert.run(sessionId, path);
     }
-    db.exec('COMMIT');
+    if (ownsTransaction) db.exec('COMMIT');
   } catch (e) {
-    db.exec('ROLLBACK');
+    if (ownsTransaction) db.exec('ROLLBACK');
     throw e;
   }
 }
@@ -2463,8 +2857,10 @@ export function storeSlotCycles(
   db: DatabaseSync,
   sessionId: string,
   cycles: Array<SlotCycle & { suggestedBreak?: SlotEdge | null }>,
+  options?: { withinTransaction?: boolean },
 ): void {
-  db.exec('BEGIN');
+  const ownsTransaction = !options?.withinTransaction;
+  if (ownsTransaction) db.exec('BEGIN');
   try {
     db.prepare('DELETE FROM slot_cycles WHERE session_id = ?').run(sessionId);
     const insert = db.prepare(
@@ -2481,10 +2877,184 @@ export function storeSlotCycles(
         cycle.suggestedBreak ? JSON.stringify(cycle.suggestedBreak) : null,
       );
     }
-    db.exec('COMMIT');
+    if (ownsTransaction) db.exec('COMMIT');
   } catch (e) {
-    db.exec('ROLLBACK');
+    if (ownsTransaction) db.exec('ROLLBACK');
     throw e;
+  }
+}
+
+export interface SessionSourceEnvelope {
+  schemaVersion: 1;
+  envelopeId: string;
+  digest: string;
+  sessionId: string;
+  extractionStepId: number;
+  revision: 'source-evidence-v1';
+  readiness: 'ready';
+  extractionByteBinding: SourceCapture['extractionByteBinding'];
+  capture: SourceCapture;
+  observations: { accepted: unknown[]; rejected: unknown[] };
+}
+
+export interface SourceEvidenceHandle {
+  envelopeId: string;
+  digest: string;
+  extractionStepId: number;
+  coverage: SourceCapture['coverage'];
+  readiness: 'ready';
+}
+
+export type CompletedSourceEvidence =
+  | { readiness: 'ready'; handle: SourceEvidenceHandle; envelope: SessionSourceEnvelope }
+  | { readiness: 'unavailable'; reason: string };
+
+function sourceEnvelopeDigest(payload: Omit<SessionSourceEnvelope, 'digest'>): string {
+  return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+}
+
+export function completeExtractionWithSourceEvidence(
+  db: DatabaseSync,
+  input: {
+    sessionId: string;
+    stepId: number;
+    components: RawComponentDefinition[];
+    cycles: Array<SlotCycle & { suggestedBreak?: SlotEdge | null }>;
+    scannedFiles: string[];
+    capture: SourceCapture;
+    observations: { accepted: unknown[]; rejected: unknown[] };
+  },
+): SourceEvidenceHandle {
+  const step = db.prepare('SELECT session_id, status, command FROM steps WHERE id = ?').get(input.stepId) as
+    | { session_id: string; status: string; command: string }
+    | undefined;
+  if (!step || step.session_id !== input.sessionId || step.status !== 'pending' || step.command !== 'analyze extract') {
+    throw new Error('Extraction step is missing, belongs to another session, or is not pending');
+  }
+  const envelopeId = `source-${randomUUID()}`;
+  const createdAt = new Date().toISOString();
+  const payload: Omit<SessionSourceEnvelope, 'digest'> = {
+    schemaVersion: 1,
+    envelopeId,
+    sessionId: input.sessionId,
+    extractionStepId: input.stepId,
+    revision: 'source-evidence-v1',
+    readiness: 'ready',
+    extractionByteBinding: input.capture.extractionByteBinding,
+    capture: input.capture,
+    observations: input.observations,
+  };
+  const digest = sourceEnvelopeDigest(payload);
+  const envelope: SessionSourceEnvelope = { ...payload, digest };
+  const outputs = {
+    sessionId: input.sessionId,
+    compositionEvidence: JSON.stringify(input.observations.accepted),
+    compositionRejections: JSON.stringify(input.observations.rejected),
+    sourceEnvelopeId: envelope.envelopeId,
+    sourceEnvelopeDigest: envelope.digest,
+    sourceExtractionStepId: String(input.stepId),
+  };
+
+  db.exec('BEGIN');
+  try {
+    storeRawComponents(db, input.sessionId, input.components, { preserveStatus: true, withinTransaction: true });
+    storeSlotCycles(db, input.sessionId, input.cycles, { withinTransaction: true });
+    storeScannedFiles(db, input.sessionId, input.scannedFiles, { withinTransaction: true });
+    db.prepare(
+      `INSERT INTO session_source_envelopes (envelope_id, session_id, step_id, digest, payload_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run(envelope.envelopeId, input.sessionId, input.stepId, envelope.digest, JSON.stringify(envelope), createdAt);
+    updateStep(db, input.stepId, 'complete', outputs, undefined, { withinTransaction: true });
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+
+  return {
+    envelopeId: envelope.envelopeId,
+    digest: envelope.digest,
+    extractionStepId: input.stepId,
+    coverage: envelope.capture.coverage,
+    readiness: 'ready',
+  };
+}
+
+export function loadCompletedSourceEvidence(
+  db: DatabaseSync,
+  sessionId: string,
+  expected?: Pick<SourceEvidenceHandle, 'envelopeId' | 'digest' | 'extractionStepId'>,
+): CompletedSourceEvidence {
+  const step = expected
+    ? (db
+        .prepare(
+          `SELECT id, status, outputs FROM steps WHERE id = ? AND session_id = ? AND command = 'analyze extract'`,
+        )
+        .get(expected.extractionStepId, sessionId) as { id: number; status: string; outputs: string } | undefined)
+    : (db
+        .prepare(
+          `SELECT id, status, outputs FROM steps WHERE session_id = ? AND command = 'analyze extract'
+           ORDER BY id DESC LIMIT 1`,
+        )
+        .get(sessionId) as { id: number; status: string; outputs: string } | undefined);
+  if (!step || step.status !== 'complete')
+    return { readiness: 'unavailable', reason: 'completed-extraction-step-unavailable' };
+  let outputs: Record<string, string>;
+  try {
+    outputs = JSON.parse(step.outputs) as Record<string, string>;
+  } catch {
+    return { readiness: 'unavailable', reason: 'completed-step-outputs-corrupt' };
+  }
+  if (
+    outputs.sourceExtractionStepId !== String(step.id) ||
+    !outputs.sourceEnvelopeId ||
+    !outputs.sourceEnvelopeDigest ||
+    (expected && (outputs.sourceEnvelopeId !== expected.envelopeId || outputs.sourceEnvelopeDigest !== expected.digest))
+  ) {
+    return { readiness: 'unavailable', reason: 'completed-step-source-identity-mismatch' };
+  }
+  const row = db
+    .prepare(
+      `SELECT envelope_id, session_id, step_id, digest, payload_json FROM session_source_envelopes WHERE envelope_id = ?`,
+    )
+    .get(outputs.sourceEnvelopeId) as
+    | { envelope_id: string; session_id: string; step_id: number; digest: string; payload_json: string }
+    | undefined;
+  if (
+    !row ||
+    row.session_id !== sessionId ||
+    row.step_id !== step.id ||
+    row.envelope_id !== outputs.sourceEnvelopeId ||
+    row.digest !== outputs.sourceEnvelopeDigest
+  ) {
+    return { readiness: 'unavailable', reason: 'saved-source-envelope-unavailable' };
+  }
+  try {
+    const envelope = JSON.parse(row.payload_json) as SessionSourceEnvelope;
+    const { digest, ...payload } = envelope;
+    if (
+      envelope.schemaVersion !== 1 ||
+      envelope.sessionId !== sessionId ||
+      envelope.extractionStepId !== step.id ||
+      envelope.envelopeId !== row.envelope_id ||
+      digest !== row.digest ||
+      digest !== sourceEnvelopeDigest(payload)
+    ) {
+      return { readiness: 'unavailable', reason: 'saved-source-envelope-corrupt' };
+    }
+    return {
+      readiness: 'ready',
+      envelope,
+      handle: {
+        envelopeId: envelope.envelopeId,
+        digest: envelope.digest,
+        extractionStepId: envelope.extractionStepId,
+        coverage: envelope.capture.coverage,
+        readiness: 'ready',
+      },
+    };
+  } catch {
+    return { readiness: 'unavailable', reason: 'saved-source-envelope-corrupt' };
   }
 }
 

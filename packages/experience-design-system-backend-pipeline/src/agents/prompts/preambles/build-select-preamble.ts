@@ -5,6 +5,8 @@ Your task: review the components provided below and decide whether each belongs 
 
 Key rule: accept any component that renders visible UI — atoms, molecules, and organisms are all valid Component Types in Contentful Experience Orchestration. Reject only components that produce zero visual output: React hooks, pure context providers, A/B testing or variant-routing wrappers, analytics trackers, and security utilities. Do NOT reject a component because it has few props, is low-level, or has some A/B testing or personalization-related props mixed in — those props are handled in the generate step.
 
+Source files, prop observations and model summaries are bounded advisory evidence. Missing or partial evidence is unknown, not proof that a component or prop is unused. Lexical observations do not establish compiler resolution, runtime behavior or a final inclusion decision.
+
 All input data is provided inline below — do not read any additional files.${inputBlock}
 
 ## Output protocol

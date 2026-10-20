@@ -21,7 +21,13 @@ import {
   describeEmptyFilter,
   intersectFilterKeys,
 } from './sidebar/step-filters.js';
-import { partitionDecisions, rejectNeedsConfirmation, reduceDecisions, type DecisionState } from './state.js';
+import {
+  createDecisionState,
+  partitionDecisions,
+  rejectNeedsConfirmation,
+  reduceDecisions,
+  type DecisionState,
+} from './state.js';
 import type { ScopeComponent, ScopeDecisions } from './types.js';
 
 // The state and the key handling of the gate. Everything legacy kept in one 1,064-line component, except what is drawn:
@@ -30,6 +36,7 @@ import type { ScopeComponent, ScopeDecisions } from './types.js';
 
 interface UseScopeGateOptions {
   components: ScopeComponent[];
+  savedDecisions?: ScopeDecisions;
   onConfirm: (decisions: ScopeDecisions) => void;
   onQuit: () => void;
 }
@@ -42,11 +49,11 @@ export interface PendingRejectCascade {
   descendants: string[];
 }
 
-export function useScopeGate({ components, onConfirm, onQuit }: UseScopeGateOptions) {
+export function useScopeGate({ components, savedDecisions, onConfirm, onQuit }: UseScopeGateOptions) {
   const { columns: totalWidth, rows: terminalRows } = useTerminalSize();
   const columnPlan = useMemo(() => computeColumnWidths(totalWidth), [totalWidth]);
 
-  const [decisions, setDecisions] = useState<DecisionState>(new Map());
+  const [decisions, setDecisions] = useState<DecisionState>(() => createDecisionState(components, savedDecisions));
   const [nav, setNav] = useState<{ cursor: number; scrollOffset: number }>({ cursor: 0, scrollOffset: 0 });
   const [focusedColumn, setFocusedColumn] = useState<FocusedColumn>('main');
   const [addedComponentsCursor, setAddedComponentsCursor] = useState(0);

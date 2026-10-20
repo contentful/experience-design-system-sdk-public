@@ -1,4 +1,5 @@
 import type { RawComponentDefinition } from '../../../../steps/extraction/src/types/component.js';
+import type { ScopeDecisionProvenance } from '../../session/repositories/db.js';
 
 export type PreviewAnnotation = 'new' | 'changed' | 'removed' | 'breaking';
 
@@ -12,6 +13,7 @@ export type ReviewComponentRecord = {
   originalProposal: RawComponentDefinition;
   editedProposal: RawComponentDefinition;
   status: ReviewComponentStatus;
+  scopeProvenance?: ScopeDecisionProvenance;
 };
 
 export type ReviewComponentDetail = {
@@ -20,6 +22,7 @@ export type ReviewComponentDetail = {
   originalProposal: RawComponentDefinition;
   editedProposal: RawComponentDefinition;
   status: ReviewComponentStatus;
+  scopeProvenance?: ScopeDecisionProvenance;
 };
 
 export type ReviewComponentSummary = {

@@ -65,6 +65,21 @@ export {
 } from './extract/services/quality/helpers/inspection/validate-extracted-components.js';
 export { parseImportedNames } from './extract/helpers/evidence/parse-source-imports.js';
 
+// Bounded, plain-data source evidence for completed extraction sessions.
+export { captureSourceEvidence, DEFAULT_SOURCE_CAPTURE_LIMITS } from './source-evidence/index.js';
+export type {
+  CapturedSourceFile,
+  CaptureSourceEvidenceRequest,
+  ExtractionByteBinding,
+  SourceCapture,
+  SourceCaptureDiagnostic,
+  SourceCaptureLimits,
+  SourceComponentReference,
+  SourceCoverage,
+  SourceResolution,
+  SourceResolutionOutcome,
+} from './source-evidence/index.js';
+
 // Slot detection helpers
 export {
   CONTENT_NAME_EXCEPTIONS,

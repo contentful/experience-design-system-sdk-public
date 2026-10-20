@@ -1,20 +1,23 @@
 import { mkdir } from 'node:fs/promises';
 import { relative } from 'node:path';
-import { evaluateExtractionQuality, preClassifyComponent } from '@contentful/experience-design-system-extraction';
+import {
+  captureSourceEvidence,
+  evaluateExtractionQuality,
+  preClassifyComponent,
+} from '@contentful/experience-design-system-extraction';
 import { resolveCompositionSources } from '../../steps/composition/src/helpers/edges/resolve-composition-sources.js';
 import {
   createStep,
+  completeExtractionWithSourceEvidence,
   getCliCacheVersion,
   getOrCreateSession,
   openPipelineDb,
   storeRawComponents,
-  storeScannedFiles,
-  updateStep,
 } from '../../persistence/src/session/repositories/db.js';
 import { emitPreClassificationExclusions } from './helpers/emit-pre-classification-exclusions.js';
 import { extractComponentsWithCache } from './helpers/extract-components-with-cache.js';
 import { persistExtractCache } from './helpers/persist-extract-cache.js';
-import { persistSlotCycles } from './helpers/persist-slot-cycles.js';
+import { calculateSlotCycles } from './helpers/persist-slot-cycles.js';
 import { resolveComposition } from './helpers/resolve-composition.js';
 import { resolveCompositionPrompt } from './helpers/resolve-composition-prompt.js';
 import { retryDatabaseWrite } from './helpers/retry-database-write.js';
@@ -26,6 +29,7 @@ import {
 } from '../../analytics/index.js';
 import type { RunExtractAndComposeSessionRequest, RunExtractAndComposeSessionResponse } from './types.js';
 import { throwIfAborted } from '../../helpers/abort.js';
+import { deriveComponentId } from '../../persistence/src/session/helpers/components/derive-component-id.js';
 
 export type {
   ExtractAndComposeProgress,
@@ -102,7 +106,7 @@ export async function runExtractAndComposeSession(
     await mkdir(outDir, { recursive: true });
     throwIfAborted(request.signal);
 
-    // Mint the session and tell the caller — selection lane can start now.
+    // Notify the caller of the session while extraction completion is still pending.
     const { sessionId } = getOrCreateSession(db, undefined, undefined, {
       command: 'analyze extract',
       inputPath: projectPath,
@@ -132,9 +136,20 @@ export async function runExtractAndComposeSession(
       await evaluateExtractionQuality(classifiedComponents);
     throwIfAborted(request.signal);
 
-    // First raw-components write — before composition so downstream stages can
-    // start working while the (potentially agent-backed) mapper continues.
+    // Persist initial rows for composition; downstream selection waits for final completion.
     storeRawComponents(db, sessionId, initialValidatedComponents);
+    throwIfAborted(request.signal);
+
+    const sourceCapture = await captureSourceEvidence({
+      projectRoot: projectPath,
+      filePaths: sourceFiles,
+      components: initialValidatedComponents.map((component) => ({
+        componentId: deriveComponentId(component.name, component.source),
+        name: component.name,
+        sourcePath: component.sourcePath ?? component.source,
+      })),
+      signal: request.signal,
+    });
     throwIfAborted(request.signal);
 
     const sources = resolveCompositionSources({ noCache, compositionRefresh });
@@ -142,6 +157,7 @@ export async function runExtractAndComposeSession(
       db,
       components: initialValidatedComponents,
       sourceFiles,
+      sourceCapture,
       cacheVersion,
       noCache,
       compositionRefresh,
@@ -155,28 +171,21 @@ export async function runExtractAndComposeSession(
     });
     throwIfAborted(request.signal);
 
-    // Final writes — raw components (preserving selection decisions), slot
-    // cycles, scanned files, step completion.
-    await retryDatabaseWrite(
-      () => storeRawComponents(db, sessionId, composition.components, { preserveStatus: true }),
-      8,
-      request.signal,
-    );
+    // Final rows, source evidence and completion identity publish together.
     throwIfAborted(request.signal);
-    await persistSlotCycles(db, sessionId, composition.components);
-    throwIfAborted(request.signal);
-    storeScannedFiles(
-      db,
-      sessionId,
-      sourceFiles.map((f) => relative(projectPath, f)),
-    );
-    throwIfAborted(request.signal);
-    await retryDatabaseWrite(
+    const sourceEvidenceHandle = await retryDatabaseWrite(
       () =>
-        updateStep(db, stepId, 'complete', {
+        completeExtractionWithSourceEvidence(db, {
           sessionId,
-          compositionEvidence: JSON.stringify(composition.sourceCallSiteEvidence),
-          compositionRejections: JSON.stringify(composition.sourceCallSiteRejections),
+          stepId,
+          components: composition.components,
+          cycles: calculateSlotCycles(composition.components),
+          scannedFiles: sourceFiles.map((f) => relative(projectPath, f)),
+          capture: sourceCapture,
+          observations: {
+            accepted: composition.sourceCallSiteEvidence,
+            rejected: composition.sourceCallSiteRejections,
+          },
         }),
       8,
       request.signal,
@@ -195,6 +204,7 @@ export async function runExtractAndComposeSession(
       scannedFileCount: sourceFiles.length,
       sourceCallSiteEvidence: composition.sourceCallSiteEvidence,
       sourceCallSiteRejections: composition.sourceCallSiteRejections,
+      sourceEvidenceHandle,
     };
   } finally {
     db.close();

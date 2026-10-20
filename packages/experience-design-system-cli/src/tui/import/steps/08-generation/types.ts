@@ -1,4 +1,5 @@
 import type { GenerationHandoff } from '@contentful/experience-design-system-types/handoff';
+import type { ScopeDecisions } from '@contentful/experience-design-system-backend-pipeline';
 
 // The generation stage runs after the user confirms the scope. It saves the decisions, generates the accepted components
 // (or takes them from the cache), and maps tokens onto them. What it leaves behind is the generated session the review
@@ -8,7 +9,7 @@ export interface GenerationInput {
   signal?: AbortSignal;
   /** The extraction session the scope was decided on. */
   sessionId: string;
-  decisions: { accepted: string[]; rejected: string[] };
+  decisions: ScopeDecisions;
   /**
    * The cache check that ran while the scope gate was open, which restores cached definitions into the pipeline
    * database. The stage waits for it before saving the decisions, since both write to that database.

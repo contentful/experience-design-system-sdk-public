@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildScopeGraph, sidebarItems } from '../../../src/tui/import/steps/07-scope-gate/graph/index.js';
 import {
+  createDecisionState,
   partitionDecisions,
   rejectNeedsConfirmation,
   reduceDecisions,
@@ -48,12 +49,12 @@ describe('accepting', () => {
     expect(next.get('B')).toBe('accepted');
   });
 
-  it('leaves the state alone when it is already accepted', () => {
+  it('promotes an accepted row without saved provenance to a direct choice', () => {
     const components = [component('Button')];
     const state: DecisionState = new Map([['Button', 'accepted']]);
-    expect(reduceDecisions(state, { type: 'accept', name: 'Button' }, components, buildScopeGraph(components))).toBe(
-      state,
-    );
+    const next = reduceDecisions(state, { type: 'accept', name: 'Button' }, components, buildScopeGraph(components));
+    expect(next.get('Button')).toBe('accepted');
+    expect(next.acceptedProvenance?.get('Button')).toEqual({ kind: 'direct', roots: ['Button'] });
   });
 
   it('does not change the state it was given', () => {
@@ -61,6 +62,32 @@ describe('accepting', () => {
     const state = none();
     reduceDecisions(state, { type: 'accept', name: 'Button' }, components, buildScopeGraph(components));
     expect(state.size).toBe(0);
+  });
+
+  it('promotes a closure-accepted component to a direct choice and retains live direct roots', () => {
+    const components = [component('Page', slot('Button')), component('Button')];
+    const graph = buildScopeGraph(components);
+    const fromPage = reduceDecisions(none(), { type: 'accept', name: 'Page' }, components, graph);
+    expect(fromPage.acceptedProvenance?.get('Button')).toEqual({ kind: 'closure', roots: ['Page'] });
+
+    const promoted = reduceDecisions(fromPage, { type: 'accept', name: 'Button' }, components, graph);
+    const decisions = partitionDecisions(components, promoted);
+    expect(decisions.acceptedProvenance).toEqual({
+      Button: { kind: 'direct', roots: ['Button', 'Page'] },
+      Page: { kind: 'direct', roots: ['Page'] },
+    });
+    expect(createDecisionState(components, decisions).acceptedProvenance).toEqual(promoted.acceptedProvenance);
+  });
+
+  it('marks only explicit cycle choices direct', () => {
+    const components = [component('X', slot('Y')), component('Y', slot('X'))];
+    const graph = buildScopeGraph(components);
+    const first = reduceDecisions(none(), { type: 'accept', name: 'X' }, components, graph);
+    expect(first.acceptedProvenance?.get('X')).toEqual({ kind: 'direct', roots: ['X'] });
+    expect(first.acceptedProvenance?.get('Y')).toEqual({ kind: 'closure', roots: ['X'] });
+
+    const second = reduceDecisions(first, { type: 'accept', name: 'Y' }, components, graph);
+    expect(second.acceptedProvenance?.get('Y')).toEqual({ kind: 'direct', roots: ['X', 'Y'] });
   });
 });
 
@@ -176,12 +203,29 @@ describe('accept non-flagged', () => {
 });
 
 describe('partitionDecisions', () => {
+  it('retains direct provenance for prototype-like component names in serialized partitions', () => {
+    const components = [component('__proto__'), component('constructor')];
+    const graph = buildScopeGraph(components);
+    let state = none();
+    for (const name of ['__proto__', 'constructor']) {
+      state = reduceDecisions(state, { type: 'accept', name }, components, graph);
+    }
+    const serialized = JSON.parse(JSON.stringify(partitionDecisions(components, state)));
+    expect(Object.hasOwn(serialized.acceptedProvenance, '__proto__')).toBe(true);
+    expect(serialized.acceptedProvenance.__proto__).toEqual({ kind: 'direct', roots: ['__proto__'] });
+    expect(serialized.acceptedProvenance.constructor).toEqual({ kind: 'direct', roots: ['constructor'] });
+  });
+
   it('counts everything that is not accepted as rejected', () => {
     const components = [component('A'), component('B'), component('C')];
     const state: DecisionState = new Map([
       ['A', 'accepted'],
       ['B', 'undecided'],
     ]);
-    expect(partitionDecisions(components, state)).toEqual({ accepted: ['A'], rejected: ['B', 'C'] });
+    expect(partitionDecisions(components, state)).toEqual({
+      accepted: ['A'],
+      rejected: ['B', 'C'],
+      acceptedProvenance: { A: { kind: 'unknown', roots: [] } },
+    });
   });
 });

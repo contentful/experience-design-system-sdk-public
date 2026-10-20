@@ -28,6 +28,10 @@ export type FieldEditorMetadata = {
   sourcePath?: string | null;
   /** Full source text of the component (used by the source-view panel). */
   componentSource?: string | null;
+  sourceLineRanges?: Array<{ sourceStartLine: number; sourceEndLine: number; displayStartLine: number }>;
+  sourceCoverage?: 'complete-within-declared-bound' | 'partial' | 'unavailable';
+  extractionByteBinding?: 'verified-same' | 'changed' | 'unverified';
+  scopeProvenance?: { kind: 'direct' | 'closure' | 'unknown'; roots: string[] } | null;
   /** Per-prop metadata keyed by prop name. */
   props?: Record<string, PropMetadata>;
 };
@@ -2237,7 +2241,10 @@ export function FieldEditor({
           const path = metadata?.sourcePath ?? null;
           const src = metadata?.componentSource ?? null;
           const headerPath = path ?? '<unknown source path>';
-          if (!start || !end || !src) {
+          const lineRange = metadata?.sourceLineRanges?.find(
+            (range) => start !== null && end !== null && start >= range.sourceStartLine && end <= range.sourceEndLine,
+          );
+          if (!start || !end || !src || (metadata?.sourceLineRanges && !lineRange)) {
             return (
               <Box flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1}>
                 <Text color={PALETTE.muted} bold>{`source: ${headerPath}`}</Text>
@@ -2246,10 +2253,22 @@ export function FieldEditor({
               </Box>
             );
           }
-          const lines = src.split('\n').slice(Math.max(0, start - 1), end);
+          const displayStart = lineRange ? lineRange.displayStartLine + start - lineRange.sourceStartLine : start;
+          const displayEnd = displayStart + end - start;
+          const lines = src.split('\n').slice(Math.max(0, displayStart - 1), displayEnd);
           return (
             <Box flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1}>
               <Text color={PALETTE.muted} bold>{`${headerPath}: lines ${start}–${end}`}</Text>
+              <Text color={PALETTE.muted}>
+                {`evidence: ${metadata?.sourceCoverage ?? 'unavailable'} · extraction bytes: ${metadata?.extractionByteBinding ?? 'unverified'}`}
+              </Text>
+              {metadata?.scopeProvenance && (
+                <Text color={PALETTE.muted}>
+                  {metadata.scopeProvenance.kind === 'closure'
+                    ? `scope: included by ${metadata.scopeProvenance.roots.join(', ')}`
+                    : `scope: ${metadata.scopeProvenance.kind}`}
+                </Text>
+              )}
               {lines.map((ln, i) => (
                 <Text key={`source-line-${i}`} color={PALETTE.muted}>
                   {ln}

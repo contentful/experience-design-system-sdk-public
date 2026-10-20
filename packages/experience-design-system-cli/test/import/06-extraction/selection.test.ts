@@ -1,13 +1,16 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  completeExtractionWithSourceEvidence,
+  createStep,
   getOrCreateSession,
   loadRawComponents,
   openPipelineDb,
   storeRawComponents,
 } from '@contentful/experience-design-system-backend-pipeline';
+import { captureSourceEvidence } from '../../../../experience-design-system-extraction/src/source-evidence/capture.js';
 
 // The agent itself is scripted: it prints the tool calls a real agent would, and records the prompt it was given.
 const agent = vi.hoisted(() => ({
@@ -106,6 +109,39 @@ describe('runSelection', () => {
     await rm(dir, { recursive: true, force: true });
   });
 
+  it('delivers optional existing model summaries from the settled path', async () => {
+    seed(['Card']);
+    const path = join(dir, 'existing.json');
+    await writeFile(
+      path,
+      JSON.stringify({
+        components: [{ sys: { id: 'example-component' }, name: 'Example model', description: 'Optional alignment' }],
+        tokens: [],
+      }),
+    );
+    await runSelection({ ...options({ noCache: true }), existingEntitiesPath: path } as Parameters<
+      typeof runSelection
+    >[0]);
+    expect(agent.invocations[0]?.prompt).toContain('Example model');
+    expect(agent.invocations[0]?.prompt).toContain('Optional alignment');
+  });
+
+  it.each(['missing', 'invalid-json', 'invalid-model'])(
+    'omits unavailable optional model context: %s',
+    async (kind) => {
+      seed(['Card']);
+      const path = join(dir, 'existing.json');
+      if (kind === 'invalid-json') await writeFile(path, '{');
+      if (kind === 'invalid-model') await writeFile(path, JSON.stringify({ components: [null], tokens: [] }));
+      await runSelection({ ...options({ noCache: true }), existingEntitiesPath: path } as Parameters<
+        typeof runSelection
+      >[0]);
+      expect(agent.invocations).toHaveLength(1);
+      expect(agent.invocations[0]?.prompt).not.toContain('Existing components in the target Contentful space (JSON)');
+      expect(agent.invocations[0]?.prompt).toContain('Card');
+    },
+  );
+
   it('records what the agent accepted and rejected, with the reason for a rejection', async () => {
     seed(['Card', 'Hero']);
     agent.result.stdout = lines(
@@ -130,6 +166,82 @@ describe('runSelection', () => {
     expect(agent.invocations).toHaveLength(1);
     expect(agent.invocations[0]?.prompt).toContain('Card');
     expect(agent.invocations[0]?.prompt).toContain('Hero');
+  });
+
+  it('uses the completed saved capture after the source file changes', async () => {
+    seed(['Card']);
+    const sourcePath = join(dir, 'Card.tsx');
+    await writeFile(sourcePath, 'export const Card = () => "SELECTION_CAPTURE_A";\n', 'utf8');
+    const db = openPipelineDb();
+    let handle: ReturnType<typeof completeExtractionWithSourceEvidence>;
+    try {
+      const stepId = createStep(db, sessionId, 'analyze extract', { project: dir });
+      const finalComponent = { ...component('Card'), source: sourcePath, sourcePath };
+      storeRawComponents(db, sessionId, [finalComponent]);
+      const stored = loadRawComponents(db, sessionId)[0]!;
+      const capture = await captureSourceEvidence({
+        projectRoot: dir,
+        filePaths: [sourcePath],
+        components: [{ componentId: stored.component_id, name: 'Card', sourcePath }],
+      });
+      handle = completeExtractionWithSourceEvidence(db, {
+        sessionId,
+        stepId,
+        components: [finalComponent],
+        cycles: [],
+        scannedFiles: ['Card.tsx'],
+        capture,
+        observations: { accepted: [{ component: 'Card', source: 'selection-fixture' }], rejected: [] },
+      });
+    } finally {
+      db.close();
+    }
+
+    await writeFile(sourcePath, 'export const Card = () => "SELECTION_CAPTURE_B";\n', 'utf8');
+    agent.result.stdout = lines({ tool: 'select_component', name: 'Card' });
+    await runSelection(options({ noCache: true, sourceEvidenceHandle: handle }));
+
+    const prompt = agent.invocations[0]?.prompt ?? '';
+    expect(prompt).toContain('SELECTION_CAPTURE_A');
+    expect(prompt).not.toContain('SELECTION_CAPTURE_B');
+    expect(prompt).toContain('selection-fixture');
+    expect(prompt).toContain('"extractionByteBinding": "unverified"');
+  });
+
+  it('rejects an unavailable supplied completion handle before invoking or saving selection', async () => {
+    seed(['Card']);
+    const before = statuses();
+    agent.result.stdout = lines({ tool: 'select_component', name: 'Card' });
+
+    await expect(
+      runSelection(
+        options({
+          noCache: true,
+          sourceEvidenceHandle: {
+            envelopeId: 'missing-envelope',
+            digest: 'wrong-digest',
+            extractionStepId: 12345,
+            coverage: 'unavailable',
+            readiness: 'ready',
+          },
+        }),
+      ),
+    ).rejects.toThrow(/source evidence/i);
+
+    expect(agent.invocations).toHaveLength(0);
+    expect(statuses()).toEqual(before);
+  });
+
+  it('keeps source evidence unavailable when no completed envelope exists', async () => {
+    seed(['Card']);
+    const sourcePath = join(dir, 'Card.tsx');
+    await writeFile(sourcePath, 'export const Card = () => "LIVE_DISK_ONLY";\n', 'utf8');
+    agent.result.stdout = lines({ tool: 'select_component', name: 'Card' });
+
+    await runSelection(options({ noCache: true }));
+
+    expect(agent.invocations[0]?.prompt).toContain('"readiness":"unavailable"');
+    expect(agent.invocations[0]?.prompt).not.toContain('LIVE_DISK_ONLY');
   });
 
   it('derives advisory buckets from saved provenance and strips it from raw agent data', async () => {

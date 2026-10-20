@@ -16,6 +16,7 @@ import { useScopeGate } from './use-scope-gate.js';
 
 interface ScopeGateScreenProps {
   components: ScopeComponent[];
+  savedDecisions?: ScopeDecisions;
   onConfirm: (decisions: ScopeDecisions) => void;
   onQuit: () => void;
 }
@@ -72,8 +73,8 @@ export function ScopeGateScreen(props: ScopeGateScreenProps): React.ReactElement
   return <ScopeGateView {...props} />;
 }
 
-function ScopeGateView({ components, onConfirm, onQuit }: ScopeGateScreenProps): React.ReactElement {
-  const gate = useScopeGate({ components, onConfirm, onQuit });
+function ScopeGateView({ components, savedDecisions, onConfirm, onQuit }: ScopeGateScreenProps): React.ReactElement {
+  const gate = useScopeGate({ components, savedDecisions, onConfirm, onQuit });
   const { search, graph, columnPlan, panelLayout, counters } = gate;
 
   if (gate.showHelp) {

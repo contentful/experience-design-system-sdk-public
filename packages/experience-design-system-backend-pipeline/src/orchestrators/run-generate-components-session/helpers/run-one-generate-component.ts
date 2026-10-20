@@ -12,7 +12,7 @@ import {
   applyToolCalls,
   computeComponentInputHash,
   copyComponentFromCache,
-  loadComponentSourceRef,
+  loadSavedComponentSourceRef,
   renameEmptySlots,
   storeCache,
   type RawComponentWithId,
@@ -154,7 +154,10 @@ export async function runOneGenerateComponent(
     null,
     2,
   );
-  const sourceRef = await loadComponentSourceRef(
+  const sourceRef = loadSavedComponentSourceRef(
+    db,
+    sessionId,
+    component.component_id,
     component.name,
     component.sourcePath ?? component.source,
     component.props.map((p) => p.name),

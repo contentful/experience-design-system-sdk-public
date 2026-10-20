@@ -4,6 +4,7 @@ import {
 } from '../../../steps/composition/src/helpers/candidates/candidate-files.js';
 import { readCandidateFiles } from './read-candidate-files.js';
 import type { RawComponentDefinition } from '../../../steps/extraction/src/types/component.js';
+import type { SourceCapture } from '@contentful/experience-design-system-extraction';
 
 export interface CompositionPromptFiles {
   /** Bounded candidate SAMPLE inlined into the agent prompt. */
@@ -27,8 +28,15 @@ export interface CompositionPromptFiles {
 export async function selectCompositionPromptFiles(
   components: RawComponentDefinition[],
   sourceFiles: string[],
+  sourceCapture?: SourceCapture,
 ): Promise<CompositionPromptFiles> {
-  const allFiles = await readCandidateFiles(components, sourceFiles);
+  const allFiles = sourceCapture
+    ? sourceCapture.files.flatMap((file) =>
+        file.captured.kind === 'full' && file.roles.some((role) => role !== 'config')
+          ? [{ path: file.canonicalPath, content: file.captured.text }]
+          : [],
+      )
+    : await readCandidateFiles(components, sourceFiles);
   const selectedCandidates = selectCandidateFiles(allFiles).map((c) => ({ path: c.path, content: c.content }));
   const capped = capCandidatesToPromptBudget(selectedCandidates);
   const promptFiles = capped.kept;
