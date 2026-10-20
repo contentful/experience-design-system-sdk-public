@@ -649,7 +649,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
               color={isSelected ? PALETTE.accent : labelStyle.dim ? PALETTE.muted : labelStyle.color}
               bold={isSelected || labelStyle.bold}
               inverse={false}
-              underline={isSelected && !focused}
+              underline={isSelected && focused}
               wrap={wrapLabels ? 'wrap' : 'truncate'}
             >
               {' '}
