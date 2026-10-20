@@ -2,11 +2,17 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { Project, Node, SyntaxKind, type SourceFile, type ClassDeclaration } from 'ts-morph';
 import type {
   RawComponentDefinition,
-  RawPropDefinition,
   RawSlotDefinition,
   ComponentExtractionResult,
+  ExtractorProgress,
+  ExtractorOptions,
 } from '../../types/component.js';
-import { createSortedExtractionResult, extractProjectSourceFiles } from '../shared/file-extraction-workers.js';
+import {
+  collectWebComponentClasses,
+  createWebComponentCompilerContexts,
+  readWebComponentSyntax,
+  SOURCE_FACT_SCHEMA_VERSION,
+} from '@contentful/experience-design-system-extraction';
 import { kebabToPascal } from '../shared/extract-tsx-components.js';
 
 function normalizeComponentName(input: string): string {
@@ -18,10 +24,6 @@ function camelToKebab(input: string): string {
     .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
     .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
     .toLowerCase();
-}
-
-function kebabToCamel(input: string): string {
-  return input.replace(/-([a-z0-9])/gi, (_, char: string) => char.toUpperCase());
 }
 
 function resolveDecoratorInterpolation(node: Node): string | null {
@@ -297,293 +299,6 @@ function mergeSlotLists(...slotLists: RawSlotDefinition[][]): RawSlotDefinition[
   return [...merged.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function extractJsDocSlots(classDecl: ClassDeclaration): RawSlotDefinition[] {
-  const slots: RawSlotDefinition[] = [];
-
-  for (const jsDoc of classDecl.getJsDocs()) {
-    for (const tag of jsDoc.getTags()) {
-      if (tag.getTagName() !== 'slot') continue;
-
-      const comment = tag.getCommentText()?.trim();
-      if (!comment) continue;
-
-      let name = 'default';
-      let description = comment;
-
-      if (comment.startsWith('-')) {
-        description = comment.slice(1).trim();
-      } else {
-        const match = comment.match(/^(\S+)\s*-\s*(.*)$/s);
-        if (match) {
-          name = match[1];
-          description = match[2].trim();
-        }
-      }
-
-      slots.push({
-        name,
-        isDefault: name === 'default',
-        ...(description && { description }),
-      });
-    }
-  }
-
-  return mergeSlotLists(slots);
-}
-
-function extractObservedAttributes(classDecl: ClassDeclaration): RawPropDefinition[] {
-  const props: RawPropDefinition[] = [];
-
-  const getter = classDecl.getGetAccessor('observedAttributes');
-  if (!getter || !getter.isStatic()) return props;
-
-  const body = getter.getBody();
-  if (!body) return props;
-
-  // Find the return statement containing an array literal
-  body.forEachDescendant((node) => {
-    if (!Node.isReturnStatement(node)) return;
-
-    const expression = node.getExpression();
-    if (!expression || !Node.isArrayLiteralExpression(expression)) return;
-
-    for (const element of expression.getElements()) {
-      if (Node.isStringLiteral(element)) {
-        const attrName = element.getLiteralValue();
-        props.push({
-          name: attrName,
-          type: 'string',
-          required: false,
-        });
-      }
-    }
-  });
-
-  return props;
-}
-
-function hasInternalJsDocTag(member: { getJsDocs(): import('ts-morph').JSDoc[] }): boolean {
-  return member.getJsDocs().some((doc) => doc.getTags().some((tag) => tag.getTagName() === 'internal'));
-}
-
-const NON_PUBLIC_LIT_DECORATORS = new Set(['consume', 'provide', 'query', 'queryAsync', 'state']);
-const INTERNAL_RUNTIME_FIELD_NAMES = new Set(['dir', 'initialReflectedProperties', 'lang']);
-
-function isNonPublicLitMember(member: { getDecorators(): import('ts-morph').Decorator[] }): boolean {
-  return member.getDecorators().some((decorator) => NON_PUBLIC_LIT_DECORATORS.has(decorator.getName()));
-}
-
-function hasShoelaceRuntimeBookkeepingField(classDecl: ClassDeclaration): boolean {
-  return classDecl.getProperties().some((property) => property.getName() === 'initialReflectedProperties');
-}
-
-function isInternalRuntimeField(name: string, applyRuntimeFieldDenylist: boolean): boolean {
-  return applyRuntimeFieldDenylist && INTERNAL_RUNTIME_FIELD_NAMES.has(name);
-}
-
-function getExplicitLitPropertyAttributeName(property: import('ts-morph').PropertyDeclaration): string | null {
-  const decorator = property.getDecorators().find((candidate) => candidate.getName() === 'property');
-  const firstArg = decorator?.getArguments()[0];
-  if (!firstArg || !Node.isObjectLiteralExpression(firstArg)) {
-    return null;
-  }
-
-  const attributeProp = firstArg.getProperty('attribute');
-  if (!attributeProp || !Node.isPropertyAssignment(attributeProp)) {
-    return null;
-  }
-
-  const initializer = attributeProp.getInitializer();
-  if (!initializer || !Node.isStringLiteral(initializer)) {
-    return null;
-  }
-
-  return initializer.getLiteralValue();
-}
-
-function extractClassProperties(classDecl: ClassDeclaration, applyRuntimeFieldDenylist = false): RawPropDefinition[] {
-  const props: RawPropDefinition[] = [];
-
-  for (const property of classDecl.getProperties()) {
-    if (property.isStatic()) continue;
-    if (hasInternalJsDocTag(property)) continue;
-    if (isNonPublicLitMember(property)) continue;
-
-    const name = property.getName();
-    if (name.startsWith('#') || isInternalRuntimeField(name, applyRuntimeFieldDenylist)) continue;
-    const scope = property.getScope();
-    if (scope === 'private' || scope === 'protected') continue;
-
-    const initializer = property.getInitializer();
-    const hasDecorators = property.getDecorators().length > 0;
-
-    // Skip undecorated arrow-function properties (internal event handlers / callbacks)
-    if (!hasDecorators && initializer && Node.isArrowFunction(initializer)) {
-      continue;
-    }
-
-    // Skip properties initialized with this.attachInternals() (ElementInternals)
-    if (
-      initializer &&
-      Node.isCallExpression(initializer) &&
-      initializer.getExpression().getText() === 'this.attachInternals'
-    ) {
-      continue;
-    }
-
-    const typeNode = property.getTypeNode();
-    const type = typeNode ? typeNode.getText() : 'any';
-    const publicName = name.startsWith('_') && hasDecorators ? getExplicitLitPropertyAttributeName(property) : null;
-
-    let defaultValue: string | undefined;
-
-    if (initializer) {
-      if (Node.isStringLiteral(initializer)) {
-        defaultValue = initializer.getLiteralValue();
-      } else {
-        defaultValue = initializer.getText();
-      }
-    }
-
-    props.push({
-      name: publicName ? kebabToCamel(publicName) : name,
-      type,
-      required: false,
-      ...(defaultValue !== undefined && { defaultValue }),
-      sourceStartLine: property.getStartLineNumber(),
-      sourceEndLine: property.getEndLineNumber(),
-    });
-  }
-
-  return props;
-}
-
-function extractAccessorProperties(
-  classDecl: ClassDeclaration,
-  applyRuntimeFieldDenylist = false,
-): RawPropDefinition[] {
-  const props: RawPropDefinition[] = [];
-  const accessors = new Map<
-    string,
-    {
-      getter?: ReturnType<ClassDeclaration['getGetAccessor']>;
-      setter?: ReturnType<ClassDeclaration['getSetAccessor']>;
-    }
-  >();
-
-  for (const getter of classDecl.getGetAccessors()) {
-    if (getter.isStatic()) continue;
-    if (hasInternalJsDocTag(getter)) continue;
-    if (isNonPublicLitMember(getter)) continue;
-
-    const name = getter.getName();
-    if (
-      name === 'observedAttributes' ||
-      name === 'template' ||
-      name.startsWith('#') ||
-      isInternalRuntimeField(name, applyRuntimeFieldDenylist)
-    )
-      continue;
-
-    const scope = getter.getScope();
-    if (scope === 'private' || scope === 'protected') continue;
-
-    const entry = accessors.get(name) ?? {};
-    entry.getter = getter;
-    accessors.set(name, entry);
-  }
-
-  for (const setter of classDecl.getSetAccessors()) {
-    if (setter.isStatic()) continue;
-    if (hasInternalJsDocTag(setter)) continue;
-    if (isNonPublicLitMember(setter)) continue;
-
-    const name = setter.getName();
-    if (
-      name === 'observedAttributes' ||
-      name === 'template' ||
-      name.startsWith('#') ||
-      isInternalRuntimeField(name, applyRuntimeFieldDenylist)
-    )
-      continue;
-
-    const scope = setter.getScope();
-    if (scope === 'private' || scope === 'protected') continue;
-
-    const entry = accessors.get(name) ?? {};
-    entry.setter = setter;
-    accessors.set(name, entry);
-  }
-
-  for (const [name, { getter, setter }] of accessors) {
-    const hasPropertyDecorator =
-      getter?.getDecorators().some((decorator) => decorator.getName() === 'property') ||
-      setter?.getDecorators().some((decorator) => decorator.getName() === 'property');
-    if (!hasPropertyDecorator && !(getter && setter)) continue;
-
-    const type =
-      getter?.getReturnTypeNode()?.getText() ?? setter?.getParameters()[0]?.getTypeNode()?.getText() ?? 'any';
-
-    const accessorNode = getter ?? setter;
-    props.push({
-      name,
-      type,
-      required: false,
-      ...(accessorNode
-        ? {
-            sourceStartLine: accessorNode.getStartLineNumber(),
-            sourceEndLine: accessorNode.getEndLineNumber(),
-          }
-        : {}),
-    });
-  }
-
-  return props;
-}
-
-function extractJsDocAttributeProps(classDecl: ClassDeclaration): RawPropDefinition[] {
-  const props: RawPropDefinition[] = [];
-
-  for (const doc of classDecl.getJsDocs()) {
-    for (const tag of doc.getTags()) {
-      if (tag.getTagName() !== 'attribute') continue;
-
-      const tagComment = tag.getCommentText();
-      const normalizedComment = Array.isArray(tagComment) ? tagComment.join(' ') : tagComment;
-      const match = normalizedComment?.match(/(?:\{([^}]+)\}\s+)?([^\s]+)(?:\s*-\s*([\s\S]*))?/);
-      if (!match) continue;
-
-      const [, type, name, description] = match;
-      if (!name || name.startsWith('#')) continue;
-
-      props.push({
-        name,
-        type: type?.trim() || 'any',
-        required: false,
-        ...(description ? { description: description.replace(/\s+/g, ' ').trim() } : {}),
-      });
-    }
-  }
-
-  return props;
-}
-
-function mergePropLists(...propLists: RawPropDefinition[][]): RawPropDefinition[] {
-  const merged = new Map<string, RawPropDefinition>();
-
-  for (const propList of propLists) {
-    for (const prop of propList) {
-      merged.set(prop.name, prop);
-    }
-  }
-
-  return [...merged.values()].sort((a, b) => a.name.localeCompare(b.name));
-}
-
-function mergeProps(observed: RawPropDefinition[], classProps: RawPropDefinition[]): RawPropDefinition[] {
-  return mergePropLists(observed, classProps);
-}
-
 function collectHtmlTaggedTemplates(root: Node): string[] {
   const templates: string[] = [];
 
@@ -664,49 +379,6 @@ function resolveTemplateHelperDeclarations(
   }
 
   return declarations;
-}
-
-function extractTemplateContent(classDecl: ClassDeclaration, project: Project): string {
-  const templates: string[] = [];
-
-  // Strategy 1: innerHTML assignment in methods (connectedCallback, etc.)
-  classDecl.forEachDescendant((node) => {
-    if (!Node.isBinaryExpression(node)) return;
-
-    const leftText = node.getLeft().getText();
-    if (!leftText.includes('.innerHTML')) return;
-
-    const right = node.getRight();
-    if (Node.isTemplateExpression(right) || Node.isNoSubstitutionTemplateLiteral(right)) {
-      templates.push(right.getText().slice(1, -1)); // strip surrounding backticks
-    }
-  });
-
-  // Strategy 2: Lit render() method with html tagged template
-  const renderMethod = classDecl.getMethod('render');
-  if (renderMethod && !renderMethod.isStatic()) {
-    templates.push(...collectHtmlTaggedTemplatesWithHelpers(renderMethod, project));
-  }
-
-  // Strategy 3: Polymer static get template() with html tagged template
-  const templateGetter = classDecl.getGetAccessor('template');
-  if (templateGetter?.isStatic()) {
-    templateGetter.forEachDescendant((node) => {
-      if (Node.isTaggedTemplateExpression(node)) {
-        const tag = node.getTag();
-        if (tag.getText() === 'html') {
-          const template = node.getTemplate();
-          if (Node.isNoSubstitutionTemplateLiteral(template)) {
-            templates.push(template.getText().slice(1, -1));
-          } else if (Node.isTemplateExpression(template)) {
-            templates.push(template.getText().slice(1, -1));
-          }
-        }
-      }
-    });
-  }
-
-  return templates.join('\n');
 }
 
 function extractFastTemplateSlots(classDecl: ClassDeclaration, project: Project): RawSlotDefinition[] {
@@ -851,113 +523,6 @@ function resolveImportSourcePath(fromFilePath: string, specifier: string): strin
   return join(packagesRoot, 'core', 'components', componentPath, 'index.ts');
 }
 
-function getImportedBaseClass(
-  classDecl: ClassDeclaration,
-  project: Project,
-  visitedFiles: Set<string>,
-): ClassDeclaration | null {
-  const extendsClause = classDecl
-    .getHeritageClauses()
-    .find((clause) => clause.getToken() === SyntaxKind.ExtendsKeyword);
-  const typeNode = extendsClause?.getTypeNodes()[0];
-  if (!typeNode) return null;
-
-  const expression = typeNode.getExpression();
-  if (!Node.isIdentifier(expression)) return null;
-  const baseName = expression.getText();
-
-  const importDecl = classDecl
-    .getSourceFile()
-    .getImportDeclarations()
-    .find(
-      (decl) =>
-        decl.getNamedImports().some((namedImport) => namedImport.getName() === baseName) ||
-        decl.getDefaultImport()?.getText() === baseName,
-    );
-  if (!importDecl) return null;
-
-  const resolvedImportPath = resolveImportSourcePath(
-    classDecl.getSourceFile().getFilePath(),
-    importDecl.getModuleSpecifierValue(),
-  );
-  if (!resolvedImportPath || visitedFiles.has(resolvedImportPath)) {
-    return null;
-  }
-  visitedFiles.add(resolvedImportPath);
-
-  let sourceFile = project.getSourceFile(resolvedImportPath);
-  if (!sourceFile) {
-    try {
-      sourceFile = project.addSourceFileAtPath(resolvedImportPath);
-    } catch {
-      return null;
-    }
-  }
-
-  const directClass = sourceFile.getClass(baseName);
-  if (directClass) {
-    return directClass;
-  }
-
-  for (const exportDecl of sourceFile.getExportDeclarations()) {
-    const moduleSpecifier = exportDecl.getModuleSpecifierValue();
-    if (!moduleSpecifier) continue;
-
-    const reexportPath = resolveImportSourcePath(sourceFile.getFilePath(), moduleSpecifier);
-    if (!reexportPath || visitedFiles.has(reexportPath)) continue;
-    visitedFiles.add(reexportPath);
-
-    let reexportFile = project.getSourceFile(reexportPath);
-    if (!reexportFile) {
-      try {
-        reexportFile = project.addSourceFileAtPath(reexportPath);
-      } catch {
-        continue;
-      }
-    }
-
-    const reexportedClass = reexportFile.getClass(baseName);
-    if (reexportedClass) {
-      return reexportedClass;
-    }
-  }
-
-  return null;
-}
-
-function extractInheritedClassProperties(
-  classDecl: ClassDeclaration,
-  project: Project,
-  visitedFiles: Set<string> = new Set(),
-  applyRuntimeFieldDenylist = false,
-): RawPropDefinition[] {
-  const baseClass = getImportedBaseClass(classDecl, project, visitedFiles);
-  if (!baseClass) {
-    return [];
-  }
-
-  const nextApplyRuntimeFieldDenylist = applyRuntimeFieldDenylist || hasShoelaceRuntimeBookkeepingField(baseClass);
-  return mergePropLists(
-    extractInheritedClassProperties(baseClass, project, visitedFiles, nextApplyRuntimeFieldDenylist),
-    extractJsDocAttributeProps(baseClass),
-    extractAccessorProperties(baseClass, nextApplyRuntimeFieldDenylist),
-    extractClassProperties(baseClass, nextApplyRuntimeFieldDenylist),
-  );
-}
-
-function extractInheritedSlots(
-  classDecl: ClassDeclaration,
-  project: Project,
-  visitedFiles: Set<string> = new Set(),
-): RawSlotDefinition[] {
-  const baseClass = getImportedBaseClass(classDecl, project, visitedFiles);
-  if (!baseClass) {
-    return [];
-  }
-
-  return mergeSlotLists(extractInheritedSlots(baseClass, project, visitedFiles), extractJsDocSlots(baseClass));
-}
-
 function buildTagNameMap(sourceFile: SourceFile): Map<string, string> {
   // Maps class name → tag name from customElements.define('tag-name', ClassName) calls
   const tagNameMap = new Map<string, string>();
@@ -988,14 +553,36 @@ function buildTagNameMap(sourceFile: SourceFile): Map<string, string> {
   return tagNameMap;
 }
 
-function extractFromSourceFile(sourceFile: SourceFile, project: Project): RawComponentDefinition[] {
+function extractFromSourceFile(
+  sourceFile: SourceFile,
+  project: Project,
+  result: ComponentExtractionResult,
+): RawComponentDefinition[] {
   const components: RawComponentDefinition[] = [];
   const tagNameMap = buildTagNameMap(sourceFile);
 
-  for (const classDecl of sourceFile.getClasses()) {
+  for (const { declaration: classDecl, name: className } of collectWebComponentClasses(sourceFile)) {
+    if (Node.isClassExpression(classDecl)) {
+      const tagName = tagNameMap.get(className);
+      if (!tagName) continue;
+      const syntax = readWebComponentSyntax(classDecl, sourceFile.getFilePath());
+      result.extractionDiagnostics!.modules.push(...syntax.diagnostics);
+      Object.assign(result.extractionDiagnostics!.limits, syntax.limits);
+      result.extractionDiagnostics!.used.wcDeclarations =
+        (result.extractionDiagnostics!.used.wcDeclarations ?? 0) + syntax.used.wcDeclarations;
+      components.push({
+        name: className,
+        source: sourceFile.getFilePath(),
+        sourcePath: sourceFile.getFilePath(),
+        framework: 'web-component',
+        props: syntax.props,
+        slots: syntax.slots,
+        sourceCandidates: syntax.sourceCandidates,
+        factSchemaVersion: SOURCE_FACT_SCHEMA_VERSION,
+      });
+      continue;
+    }
     const siblingDefinedTagName = getElementTagNameFromSiblingDefine(classDecl, project);
-    const className = classDecl.getName();
-    if (!className) continue;
 
     // Prefer tag name from customElements.define() converted to PascalCase; fall back to class name
     const decoratorTagName = getElementTagNameFromDecorator(classDecl);
@@ -1011,22 +598,13 @@ function extractFromSourceFile(sourceFile: SourceFile, project: Project): RawCom
     if (!tagName) continue;
     const name = chooseComponentName(classDecl, className, tagName);
 
-    const observedAttrs = extractObservedAttributes(classDecl);
-    const inheritedProps = extractInheritedClassProperties(classDecl, project);
-    const classProps = mergePropLists(
-      extractJsDocAttributeProps(classDecl),
-      extractAccessorProperties(classDecl),
-      extractClassProperties(classDecl),
-    );
-    const props = mergeProps(observedAttrs, mergePropLists(inheritedProps, classProps));
-
-    const templateContent = extractTemplateContent(classDecl, project);
-    const slots = mergeSlotLists(
-      extractInheritedSlots(classDecl, project),
-      extractJsDocSlots(classDecl),
-      extractSlotsFromTemplate(templateContent),
-      extractFastTemplateSlots(classDecl, project),
-    );
+    const syntax = readWebComponentSyntax(classDecl, sourceFile.getFilePath());
+    result.extractionDiagnostics!.modules.push(...syntax.diagnostics);
+    Object.assign(result.extractionDiagnostics!.limits, syntax.limits);
+    result.extractionDiagnostics!.used.wcDeclarations =
+      (result.extractionDiagnostics!.used.wcDeclarations ?? 0) + syntax.used.wcDeclarations;
+    const props = syntax.props;
+    const slots = mergeSlotLists(syntax.slots, extractFastTemplateSlots(classDecl, project));
 
     components.push({
       name,
@@ -1035,35 +613,45 @@ function extractFromSourceFile(sourceFile: SourceFile, project: Project): RawCom
       framework: 'web-component',
       props,
       slots,
+      sourceCandidates: syntax.sourceCandidates,
+      factSchemaVersion: SOURCE_FACT_SCHEMA_VERSION,
     });
   }
 
   return components;
 }
 
-export async function extractWebComponentDefinitions(filePaths: string[]): Promise<ComponentExtractionResult> {
-  const tsFiles = filePaths.filter((f) => /\.[jt]s$/.test(f) && !f.endsWith('.d.ts'));
-  if (tsFiles.length === 0) {
-    return { components: [], warnings: [] };
-  }
-
-  const project = new Project({
-    compilerOptions: {
-      target: 99, // ScriptTarget.ESNext
-      module: 99, // ModuleKind.ESNext
-      moduleResolution: 100, // ModuleResolutionKind.Bundler
-      skipLibCheck: true,
-    },
-    skipAddingFilesFromTsConfig: true,
-  });
-
-  for (const filePath of tsFiles) {
-    project.addSourceFileAtPath(filePath);
-  }
-
-  const { items: components, warnings } = extractProjectSourceFiles(project, (sourceFile) =>
-    extractFromSourceFile(sourceFile, project),
-  );
-
-  return createSortedExtractionResult(components, warnings);
+export async function extractWebComponentDefinitions(
+  filePaths: string[],
+  onProgress?: (progress: ExtractorProgress) => void,
+  options: ExtractorOptions = {},
+): Promise<ComponentExtractionResult> {
+  const compiler = createWebComponentCompilerContexts(filePaths, options);
+  const result: ComponentExtractionResult = {
+    components: [],
+    warnings: [],
+    extractionDiagnostics: compiler.diagnostics,
+  };
+  let filesProcessed = 0;
+  for (const context of compiler.contexts)
+    for (const filePath of context.componentFiles) {
+      if (options.signal?.aborted) {
+        result.warnings.push('Web-component extraction aborted');
+        break;
+      }
+      const sourceFile = context.project.getSourceFile(filePath);
+      if (!sourceFile) {
+        result.warnings.push(`Source unavailable: ${filePath}`);
+        continue;
+      }
+      try {
+        result.components.push(...extractFromSourceFile(sourceFile, context.project, result));
+      } catch (error) {
+        result.warnings.push(`${filePath}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      filesProcessed += 1;
+      onProgress?.({ filesProcessed, componentsFound: result.components.length });
+    }
+  result.components.sort((a, b) => a.name.localeCompare(b.name));
+  return result;
 }

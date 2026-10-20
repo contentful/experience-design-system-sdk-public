@@ -32,6 +32,27 @@ const fact = z.object({
   shapeNotes: z.array(z.string()),
   requiredFieldDropped: z.boolean().nullable(),
 });
+const syntax = z.object({
+  reader: z.literal('web-component'),
+  lineage: z.enum(['own', 'base', 'mixin']),
+  declaringClass: z.string().nullable(),
+  converter: z.object({ state: z.enum(['known', 'absent', 'unknown']), expression: z.string().nullable() }),
+  attribute: z.object({
+    state: z.enum(['explicit', 'implicit', 'disabled', 'absent', 'unknown']),
+    name: z.string().nullable(),
+  }),
+  reflect: z.object({ state: z.enum(['explicit', 'absent', 'unknown']), value: z.boolean().nullable() }),
+  exposure: z.array(z.string()),
+  default: z.object({
+    expression: z.string().nullable(),
+    state: z.enum(['literal', 'resolved', 'absent', 'unresolved']),
+    value: z.object({ kind: z.enum(['string', 'number', 'boolean', 'null']), value: z.string() }).nullable(),
+    reason: z.string().nullable(),
+    locations: z.array(location),
+  }),
+  typeLocations: z.array(location),
+  slotKind: z.enum(['jsdoc', 'literal-template']).nullable(),
+});
 const candidate = z.object({
   name: z.string(),
   keyPath: z.array(z.string()),
@@ -51,6 +72,7 @@ const candidate = z.object({
       origin,
       location: location.nullable(),
       fact: fact.optional(),
+      syntax: syntax.optional(),
     }),
   ),
   projection: z.object({ kind: z.enum(['prop', 'slot', 'excluded', 'unknown']), reason: z.string().nullable() }),

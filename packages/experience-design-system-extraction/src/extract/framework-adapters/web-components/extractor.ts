@@ -1,91 +1,77 @@
-import { Project, type SourceFile } from 'ts-morph';
-import type { RawComponentDefinition, ComponentExtractionResult } from '../../types/component.js';
-import { createSortedExtractionResult } from '../shared/helpers/file-processing/result-normalizer.js';
-import { extractProjectSourceFiles } from '../shared/helpers/file-processing/project-source-files.js';
-import {
-  extractAccessorProperties,
-  extractClassProperties,
-  extractJsDocAttributeProps,
-  extractObservedAttributes,
-  mergePropLists,
-  mergeProps,
-} from './helpers/merge-wc-prop-lists.js';
+import { Node, type Project, type SourceFile } from 'ts-morph';
+import type { RawComponentDefinition, ComponentExtractionResult, ExtractorProgress } from '../../types/component.js';
+import type { ExtractorOptions } from '../../types/options.js';
+import { SOURCE_FACT_SCHEMA_VERSION } from '../../candidates/types.js';
 import { buildTagNameMap, chooseComponentName, resolveWcTagName } from './helpers/resolve-wc-tag-name.js';
+import { extractFastTemplateSlots, mergeSlotLists } from './helpers/extract-wc-slots.js';
 import {
-  extractSlotsFromTemplate,
-  mergeSlotLists,
-  extractJsDocSlots,
-  extractTemplateContent,
-  extractFastTemplateSlots,
-} from './helpers/extract-wc-slots.js';
-import { extractInheritedClassProperties, extractInheritedSlots } from './helpers/extract-wc-inheritance.js';
+  collectWebComponentClasses,
+  createWebComponentCompilerContexts,
+  readWebComponentSyntax,
+} from './helpers/read-wc-syntax.js';
 
-function extractFromSourceFile(sourceFile: SourceFile, project: Project): RawComponentDefinition[] {
-  const components: RawComponentDefinition[] = [];
+function extractFromSourceFile(sourceFile: SourceFile, project: Project, result: ComponentExtractionResult): void {
   const tagNameMap = buildTagNameMap(sourceFile);
-
-  for (const classDecl of sourceFile.getClasses()) {
-    const className = classDecl.getName();
-    if (!className) continue;
-
-    const tagName = resolveWcTagName(classDecl, tagNameMap, project);
+  for (const { declaration, name: className } of collectWebComponentClasses(sourceFile)) {
+    const tagName = Node.isClassDeclaration(declaration)
+      ? resolveWcTagName(declaration, tagNameMap, project)
+      : tagNameMap.get(className);
     if (!tagName) continue;
-
-    const name = chooseComponentName(classDecl, className, tagName);
-
-    const observedAttrs = extractObservedAttributes(classDecl);
-    const inheritedProps = extractInheritedClassProperties(classDecl, project);
-    const classProps = mergePropLists(
-      extractJsDocAttributeProps(classDecl),
-      extractAccessorProperties(classDecl),
-      extractClassProperties(classDecl),
-    );
-    const props = mergeProps(observedAttrs, mergePropLists(inheritedProps, classProps));
-
-    const templateContent = extractTemplateContent(classDecl, project);
-    const slots = mergeSlotLists(
-      extractInheritedSlots(classDecl, project),
-      extractJsDocSlots(classDecl),
-      extractSlotsFromTemplate(templateContent),
-      extractFastTemplateSlots(classDecl, project),
-    );
-
-    components.push({
+    const name = Node.isClassDeclaration(declaration)
+      ? chooseComponentName(declaration, className, tagName)
+      : className;
+    const syntax = readWebComponentSyntax(declaration, sourceFile.getFilePath());
+    result.extractionDiagnostics!.modules.push(...syntax.diagnostics);
+    Object.assign(result.extractionDiagnostics!.limits, syntax.limits);
+    result.extractionDiagnostics!.used.wcDeclarations =
+      (result.extractionDiagnostics!.used.wcDeclarations ?? 0) + syntax.used.wcDeclarations;
+    const component: RawComponentDefinition = {
       name,
       source: sourceFile.getFilePath(),
       sourcePath: sourceFile.getFilePath(),
       framework: 'web-component',
-      props,
-      slots,
-    });
+      props: syntax.props,
+      slots: Node.isClassDeclaration(declaration)
+        ? mergeSlotLists(syntax.slots, extractFastTemplateSlots(declaration, project))
+        : syntax.slots,
+      sourceCandidates: syntax.sourceCandidates,
+      factSchemaVersion: SOURCE_FACT_SCHEMA_VERSION,
+    };
+    result.components.push(component);
   }
-
-  return components;
 }
 
-export async function extractWebComponentDefinitions(filePaths: string[]): Promise<ComponentExtractionResult> {
-  const tsFiles = filePaths.filter((f) => /\.[jt]s$/.test(f) && !f.endsWith('.d.ts'));
-  if (tsFiles.length === 0) {
-    return { components: [], warnings: [] };
-  }
-
-  const project = new Project({
-    compilerOptions: {
-      target: 99,
-      module: 99,
-      moduleResolution: 100,
-      skipLibCheck: true,
-    },
-    skipAddingFilesFromTsConfig: true,
-  });
-
-  for (const filePath of tsFiles) {
-    project.addSourceFileAtPath(filePath);
-  }
-
-  const { items: components, warnings } = extractProjectSourceFiles(project, (sourceFile) =>
-    extractFromSourceFile(sourceFile, project),
-  );
-
-  return createSortedExtractionResult(components, warnings);
+export async function extractWebComponentDefinitions(
+  filePaths: string[],
+  onProgress?: (progress: ExtractorProgress) => void,
+  options: ExtractorOptions = {},
+): Promise<ComponentExtractionResult> {
+  const compiler = createWebComponentCompilerContexts(filePaths, options);
+  const result: ComponentExtractionResult = {
+    components: [],
+    warnings: [],
+    extractionDiagnostics: compiler.diagnostics,
+  };
+  let filesProcessed = 0;
+  for (const context of compiler.contexts)
+    for (const filePath of context.componentFiles) {
+      if (options.signal?.aborted) {
+        result.warnings.push('Web-component extraction aborted');
+        break;
+      }
+      const sourceFile = context.project.getSourceFile(filePath);
+      if (!sourceFile) {
+        result.warnings.push(`Source unavailable: ${filePath}`);
+        continue;
+      }
+      try {
+        extractFromSourceFile(sourceFile, context.project, result);
+      } catch (error) {
+        result.warnings.push(`${filePath}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      filesProcessed += 1;
+      onProgress?.({ filesProcessed, componentsFound: result.components.length });
+    }
+  result.components.sort((a, b) => a.name.localeCompare(b.name));
+  return result;
 }

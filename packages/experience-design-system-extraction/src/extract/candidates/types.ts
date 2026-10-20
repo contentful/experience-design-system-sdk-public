@@ -44,6 +44,25 @@ export interface CompilerPropFact {
   requiredFieldDropped: boolean | null;
 }
 
+export interface SourceSyntaxObservation {
+  reader: 'web-component';
+  lineage: 'own' | 'base' | 'mixin';
+  declaringClass: string | null;
+  converter: { state: 'known' | 'absent' | 'unknown'; expression: string | null };
+  attribute: { state: 'explicit' | 'implicit' | 'disabled' | 'absent' | 'unknown'; name: string | null };
+  reflect: { state: 'explicit' | 'absent' | 'unknown'; value: boolean | null };
+  exposure: string[];
+  default: {
+    expression: string | null;
+    state: 'literal' | 'resolved' | 'absent' | 'unresolved';
+    value: SourceDomainLiteral | null;
+    reason: string | null;
+    locations: SourceFactLocation[];
+  };
+  typeLocations: SourceFactLocation[];
+  slotKind: 'jsdoc' | 'literal-template' | null;
+}
+
 export interface SourceCandidateObservation {
   name: string;
   keyPath: string[];
@@ -54,6 +73,7 @@ export interface SourceCandidateObservation {
   origin: SourceFactOrigin;
   location: SourceFactLocation | null;
   fact?: CompilerPropFact;
+  syntax?: SourceSyntaxObservation;
 }
 
 export interface SourceCandidate {

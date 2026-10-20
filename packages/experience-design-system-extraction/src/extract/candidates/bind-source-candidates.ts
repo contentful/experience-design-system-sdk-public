@@ -58,6 +58,22 @@ function bindCandidate(
     observations: candidate.observations.map((observation) => ({
       ...observation,
       location: bindLocation(observation.location, capturedByPath),
+      ...(observation.syntax
+        ? {
+            syntax: {
+              ...observation.syntax,
+              default: {
+                ...observation.syntax.default,
+                locations: observation.syntax.default.locations.map(
+                  (location) => bindLocation(location, capturedByPath)!,
+                ),
+              },
+              typeLocations: observation.syntax.typeLocations.map(
+                (location) => bindLocation(location, capturedByPath)!,
+              ),
+            },
+          }
+        : {}),
       ...(observation.fact
         ? {
             fact: {

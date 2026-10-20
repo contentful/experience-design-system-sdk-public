@@ -309,7 +309,10 @@ function mergeFact(observations: readonly SourceCandidateObservation[]): Compile
   const declaredFacts = authoritative.map(createFact);
   const origins = new Set(declaredFacts.map((item) => item.origin));
   const sourceTypes = new Set(declaredFacts.map((item) => item.sourceTypeText));
-  if (origins.size > 1 || sourceTypes.size > 1) {
+  const syntaxDeclarations = authoritative.filter((observation) => observation.syntax?.reader === 'web-component');
+  const syntaxDefaults = new Set(syntaxDeclarations.map((observation) => observation.sourceDefault));
+  const syntaxRequired = new Set(syntaxDeclarations.map((observation) => observation.declaredRequired));
+  if (origins.size > 1 || sourceTypes.size > 1 || syntaxDefaults.size > 1 || syntaxRequired.size > 1) {
     return {
       ...fact,
       origin: origins.size > 1 ? 'mixed' : fact.origin,
@@ -318,7 +321,9 @@ function mergeFact(observations: readonly SourceCandidateObservation[]): Compile
       declarations: declaredFacts.flatMap((item) => item.declarations),
     };
   }
-  return fact;
+  return syntaxDeclarations.length > 1
+    ? { ...fact, declarations: declaredFacts.flatMap((item) => item.declarations) }
+    : fact;
 }
 
 function projectionFor(

@@ -31,6 +31,7 @@ export type {
   SourceCandidate,
   SourceCandidateCollection,
   SourceCandidateObservation,
+  SourceSyntaxObservation,
   SourceCandidateSource,
   SourceDefaultFact,
   SourceDomain,
@@ -69,6 +70,12 @@ export type {
 } from './extract/framework-adapters/vue/helpers/collect-vue-source-candidates.js';
 export { extractStencilComponents } from './extract/framework-adapters/stencil/extractor.js';
 export { extractAstroComponents } from './extract/framework-adapters/astro/extractor.js';
+export {
+  readWebComponentSyntax,
+  collectWebComponentClasses,
+  createWebComponentCompilerContexts,
+} from './extract/framework-adapters/web-components/helpers/read-wc-syntax.js';
+export type { WebComponentClass } from './extract/framework-adapters/web-components/helpers/read-wc-syntax.js';
 export { extractWebComponentDefinitions } from './extract/framework-adapters/web-components/extractor.js';
 export { extractSvelteComponents } from './extract/framework-adapters/svelte/extractor.js';
 export {
