@@ -5,6 +5,7 @@ import { extractorRegistry, routeFilesToExtractors } from './helpers/register-ex
 import { runExtractorBatches } from './helpers/run-extractor-batches.js';
 import { collectSvelteKitRouteExclusions } from './helpers/collect-sveltekit-route-exclusions.js';
 import { filterHookComponents } from './helpers/filter-hook-components.js';
+import { mergeExtractionDiagnostics } from '../../compiler/diagnostics.js';
 
 export async function extractComponents(
   filePaths: string[],
@@ -23,9 +24,11 @@ export async function extractComponents(
 
   deduplicated.warnings.push(...hookWarnings);
   const allExclusions = [...routeExclusions, ...hookExclusions, ...(deduplicated.exclusions ?? [])];
+  const extractionDiagnostics = mergeExtractionDiagnostics(results.map((result) => result.extractionDiagnostics));
   return {
     components,
     warnings: deduplicated.warnings,
     ...(allExclusions.length > 0 ? { exclusions: allExclusions } : {}),
+    ...(extractionDiagnostics ? { extractionDiagnostics } : {}),
   };
 }

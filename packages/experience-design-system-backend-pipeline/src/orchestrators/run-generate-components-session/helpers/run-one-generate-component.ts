@@ -5,6 +5,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { AgentName } from '../../../agents/types/agent-name.js';
 import type { AgentInvoker } from '../../../agents/types/invoker.js';
 import { buildPrompt } from '../../../agents/prompts/build-prompt.js';
+import { buildCompilerEvidenceInline } from '../../../agents/prompts/helpers/build-compiler-evidence-inline.js';
 import { describeAgentFailure } from '../../../agents/helpers/metadata/describe-agent-failure.js';
 import { invokeAgentWithOutput } from '../../../agents/services/invoke-agent-with-output.js';
 import { parseToolCalls } from '../../../agents/parsers/parse-tool-calls.js';
@@ -44,6 +45,7 @@ export interface RunOneGenerateComponentOptions {
   promptHash: string;
   existingContentfulEntities: ExistingContentfulEntities | null | undefined;
   existingTokensInline: string | undefined;
+  compilerEvidenceInline?: string;
   precomputedCachedNames: ReadonlySet<string>;
   allowedComponentNames: ReadonlySet<string>;
   onProgress: ((event: GenerateComponentsProgress) => void) | undefined;
@@ -79,6 +81,8 @@ export async function runOneGenerateComponent(
   } = options;
 
   throwIfAborted(signal);
+  const compilerEvidenceInline =
+    options.compilerEvidenceInline ?? buildCompilerEvidenceInline([component], { readiness: 'caller-provided' });
   const { renames } = renameEmptySlots(db, sessionId, component.component_id, component.name, component.slots.length);
   let effectiveSlots = component.slots;
   if (renames.length > 0) {
@@ -171,6 +175,7 @@ export async function runOneGenerateComponent(
     skill: 'components',
     mode: 'autonomous',
     rawComponentsInline,
+    compilerEvidenceInline,
     propBucketsInline: JSON.stringify(componentBuckets),
     tokensInline,
     tokenMapInline,

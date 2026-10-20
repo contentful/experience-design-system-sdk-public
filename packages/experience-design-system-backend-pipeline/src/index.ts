@@ -204,6 +204,8 @@ export { agentSupportsBedrock } from './agents/helpers/bedrock/agent-supports-be
 export { checkAgentAuth } from './agents/services/check-agent-auth.js';
 export type { AgentAuthStatus } from './agents/types/agent-run.js';
 export { buildPrompt } from './agents/prompts/build-prompt.js';
+export { buildCompilerEvidenceInline } from './agents/prompts/helpers/build-compiler-evidence-inline.js';
+export type { CompilerEvidenceReadiness } from './agents/prompts/helpers/build-compiler-evidence-inline.js';
 export { buildSelectionEvidenceInline } from './agents/prompts/helpers/build-selection-evidence-inline.js';
 export type {
   ComponentSourceRef,
@@ -305,6 +307,7 @@ export {
   loadComponentSourceRef,
   loadComponentSourceRefs,
   loadSavedComponentSourceRef,
+  loadExtractionSourceDiagnostics,
   renameEmptySlots,
 } from './persistence/src/index.js';
 export type { RawComponentWithId } from './persistence/src/index.js';
@@ -328,6 +331,7 @@ export type {
   ApplyToolCallsResult,
   ApplyToolCallsOptions,
 } from './persistence/src/index.js';
+export type { ExtractionSourceDiagnosticsRead } from './persistence/src/index.js';
 export {
   seedCDFFromPriorSession,
   seedCDFFromPreviewResponse,

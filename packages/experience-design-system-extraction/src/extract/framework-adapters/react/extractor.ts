@@ -5,6 +5,7 @@ import { resolveReactAllowedComponents } from './helpers/extract-react-allowed-c
 import { synthesizeReactStructuralSlots } from './helpers/synthesize-react-structural-slots.js';
 import { resolveReactPropForwarding } from './helpers/resolve-react-prop-forwarding.js';
 import { extractFromReactSourceFile } from './helpers/extract-from-react-source-file.js';
+import type { ExtractorOptions } from '../../types/options.js';
 
 function isStencilFile(sourceFile: SourceFile): boolean {
   return sourceFile.getImportDeclarations().some((imp) => imp.getModuleSpecifierValue() === '@stencil/core');
@@ -17,8 +18,12 @@ function isNextJsComponent(filePath: string, exportedNames: string[]): boolean {
   return isAppRouterFile || hasNextExports;
 }
 
-export async function extractReactComponents(filePaths: string[]): Promise<ComponentExtractionResult> {
-  const { components, warnings, exclusions, project } = extractTsxComponents(
+export async function extractReactComponents(
+  filePaths: string[],
+  _onProgress?: (progress: { filesProcessed: number; componentsFound: number }) => void,
+  options: ExtractorOptions = {},
+): Promise<ComponentExtractionResult> {
+  const { components, warnings, exclusions, contexts, extractionDiagnostics } = extractTsxComponents(
     filePaths,
     /\.[jt]sx$/,
     (sourceFile, exclusions) => {
@@ -27,15 +32,23 @@ export async function extractReactComponents(filePaths: string[]): Promise<Compo
       const isNext = isNextJsComponent(sourceFile.getFilePath(), fileExports);
       return extractFromReactSourceFile(sourceFile, isNext, exclusions);
     },
+    options,
   );
 
   resolveReactAllowedComponents(components);
-  synthesizeReactStructuralSlots(components, project);
+  for (const context of contexts) {
+    const componentPaths = new Set(context.componentFiles);
+    synthesizeReactStructuralSlots(
+      components.filter((component) => componentPaths.has(component.sourcePath ?? component.source)),
+      context.project,
+    );
+  }
   resolveReactPropForwarding(components);
 
   return {
     components: components.sort((a, b) => a.name.localeCompare(b.name)),
     warnings,
     exclusions,
+    extractionDiagnostics,
   };
 }

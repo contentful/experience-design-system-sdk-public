@@ -5,6 +5,7 @@ import type {
   RawSlotDefinition,
   ComponentExtractionResult,
   ExtractionExclusion,
+  ExtractorOptions,
 } from '../../types/component.js';
 import {
   extractAllowedValues,
@@ -14,14 +15,29 @@ import {
   getValueTargetDeclarations,
   getRenderableExports,
 } from '../shared/extract-tsx-components.js';
+import {
+  mergeSourceCandidates,
+  observeRawProps,
+  SOURCE_FACT_SCHEMA_VERSION,
+} from '@contentful/experience-design-system-extraction';
 
-export async function extractVueTsxComponents(filePaths: string[]): Promise<ComponentExtractionResult> {
-  const { components, warnings, exclusions } = extractTsxComponents(filePaths, /\.tsx$/, extractFromSourceFile);
+export async function extractVueTsxComponents(
+  filePaths: string[],
+  _onProgress?: (progress: { filesProcessed: number; componentsFound: number }) => void,
+  options: ExtractorOptions = {},
+): Promise<ComponentExtractionResult> {
+  const { components, warnings, exclusions, extractionDiagnostics } = extractTsxComponents(
+    filePaths,
+    /\.tsx$/,
+    extractFromSourceFile,
+    options,
+  );
 
   return {
     components: components.sort((a, b) => a.name.localeCompare(b.name)),
     warnings,
     exclusions,
+    extractionDiagnostics,
   };
 }
 
@@ -55,6 +71,7 @@ function extractVueTsxComponent(
     const name = extractVueGenericComponentName(resolved.options) ?? exportName;
     const props = extractVueGenericComponentProps(resolved.options);
     const slots = extractVueGenericComponentSlots(resolved.options, resolved.slotsTypeNode);
+    const sourceCandidates = mergeSourceCandidates(observeRawProps(props, 'runtime-object'), props, slots).candidates;
 
     return {
       name,
@@ -62,6 +79,8 @@ function extractVueTsxComponent(
       framework: 'vue',
       props,
       slots,
+      sourceCandidates,
+      factSchemaVersion: SOURCE_FACT_SCHEMA_VERSION,
     };
   }
 

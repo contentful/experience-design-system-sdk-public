@@ -137,7 +137,9 @@ export async function runExtractAndComposeSession(
     throwIfAborted(request.signal);
 
     // Persist initial rows for composition; downstream selection waits for final completion.
-    storeRawComponents(db, sessionId, initialValidatedComponents);
+    storeRawComponents(db, sessionId, initialValidatedComponents, {
+      extractionDiagnostics: extraction.extractionDiagnostics,
+    });
     throwIfAborted(request.signal);
 
     const sourceCapture = await captureSourceEvidence({
@@ -186,6 +188,7 @@ export async function runExtractAndComposeSession(
             accepted: composition.sourceCallSiteEvidence,
             rejected: composition.sourceCallSiteRejections,
           },
+          extractionDiagnostics: extraction.extractionDiagnostics,
         }),
       8,
       request.signal,

@@ -12,6 +12,10 @@ import { extractVueComponents } from '../framework-adapters/vue/extract-vue-comp
 import { extractAstroComponents } from '../framework-adapters/astro/extract-astro-components.js';
 import { extractWebComponentDefinitions } from '../framework-adapters/web-components/extract-web-components.js';
 import { extractSvelteComponents } from '../framework-adapters/svelte/extract-svelte-components.js';
+import {
+  mergeExtractionDiagnostics,
+  retainDuplicateSourceCandidates,
+} from '@contentful/experience-design-system-extraction';
 
 type ExtractedComponent = ComponentExtractionResult['components'][number];
 
@@ -386,7 +390,7 @@ export async function extractComponents(
           reason: `duplicate identity; ${selected.reason}`,
           stage: 'duplicate-filter',
         });
-        componentsByKey.set(identityKey, selected.winner);
+        componentsByKey.set(identityKey, retainDuplicateSourceCandidates(selected.winner, selected.loser));
         continue;
       }
 
@@ -428,6 +432,7 @@ export async function extractComponents(
     components: filteredComponents.sort((a, b) => a.name.localeCompare(b.name)),
     warnings: allWarnings,
     exclusions,
+    extractionDiagnostics: mergeExtractionDiagnostics(results.map((result) => result.extractionDiagnostics)),
   };
 }
 

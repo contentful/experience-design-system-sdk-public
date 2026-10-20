@@ -109,7 +109,33 @@ export function ReviewDetailsPanel({
     const path = reviewMetadata?.sourcePath ?? null;
     const source = reviewMetadata?.componentSource ?? null;
     const headerPath = path ?? '<unknown source path>';
-    const sourceLineCount = Math.max(1, height - 5);
+    const diagnosticsRead = reviewMetadata?.extractionDiagnostics;
+    const diagnostics = diagnosticsRead?.status === 'available' ? diagnosticsRead.diagnostics : null;
+    const candidates = reviewMetadata?.sourceCandidates ?? [];
+    const compilerRows = [
+      `compiler candidates: ${reviewMetadata?.sourceEvidenceReadStatus ?? 'unknown-legacy'} · run diagnostics: ${diagnosticsRead?.status ?? 'absent'}`,
+      ...(diagnostics
+        ? [
+            `compiler coverage: ${diagnostics.coverage} · projects ${diagnostics.projects.length} · unresolved modules ${diagnostics.modules.filter((module) => module.outcome === 'unresolved').length}`,
+          ]
+        : []),
+      ...(diagnostics?.projects.flatMap((project) =>
+        project.diagnostics.map((message) => `compiler warning: ${project.root}: ${message}`),
+      ) ?? []),
+      ...candidates.map(
+        (candidate) =>
+          `candidate ${candidate.name || '<empty>'}: ${candidate.facts?.sourceTypeText ?? candidate.type} · ${candidate.facts?.origin ?? 'unknown'} · ${candidate.facts?.certainty ?? 'unknown'} · projection ${candidate.projection.kind}`,
+      ),
+    ];
+    const scopeRows = reviewMetadata?.scopeProvenance ? 1 : 0;
+    // Reserve space for source and navigation before displaying advisory details.
+    const detailCapacity = Math.max(0, height - 8 - scopeRows);
+    const visibleCompilerRows = compilerRows.slice(0, detailCapacity);
+    if (compilerRows.length > detailCapacity && visibleCompilerRows.length > 1) {
+      visibleCompilerRows[visibleCompilerRows.length - 1] =
+        `compiler details: ${compilerRows.length - visibleCompilerRows.length + 1} more rows; field facts are available in the field source view`;
+    }
+    const sourceLineCount = Math.max(1, height - 5 - visibleCompilerRows.length - scopeRows);
     const lines = source ? source.split('\n').slice(panelScrollOffset, panelScrollOffset + sourceLineCount) : [];
     return (
       <FixedPanel width={width} height={height} borderStyle="single" borderColor={sourceBorderColor} paddingLeft={1}>
@@ -117,6 +143,11 @@ export function ReviewDetailsPanel({
         <Text color={PALETTE.muted} wrap="truncate-end">
           {`evidence: ${reviewMetadata?.sourceCoverage ?? 'unavailable'} · extraction bytes: ${reviewMetadata?.extractionByteBinding ?? 'unverified'}`}
         </Text>
+        {visibleCompilerRows.map((row, index) => (
+          <Text key={`compiler-detail-${index}`} color={PALETTE.muted} wrap="truncate-end">
+            {row}
+          </Text>
+        ))}
         {reviewMetadata?.scopeProvenance && (
           <Text color={PALETTE.muted} wrap="truncate-end">
             {reviewMetadata.scopeProvenance.kind === 'closure'

@@ -12,4 +12,6 @@ export interface ExtractorOptions {
   resolveUnreachable?: 'auto' | 'always' | 'never';
   /** Absolute project root — used by the retry pass to locate tsconfig.json and node_modules. */
   projectRoot?: string;
+  /** Optional cooperative cancellation for bounded compiler analysis. */
+  signal?: AbortSignal;
 }

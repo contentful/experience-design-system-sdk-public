@@ -117,7 +117,24 @@ describe('the generation stage and the pipeline database', () => {
     it('marks the partition, writes authoritative provenance, and reads it through review consumers', async () => {
       const sessionId = newSession();
       const db = openPipelineDb();
-      storeRawComponents(db, sessionId, [raw('Button'), raw('Card'), raw('Helper')]);
+      const button = {
+        ...raw('Button'),
+        factSchemaVersion: 3,
+        sourceCandidates: [
+          {
+            name: '__proto__',
+            keyPath: ['__proto__'],
+            evidenceKinds: ['declaration'],
+            type: "'on' | string",
+            declaredRequired: false,
+            sourceDefault: null,
+            facts: null,
+            observations: [],
+            projection: { kind: 'excluded', reason: 'source-candidate-only' },
+          },
+        ],
+      };
+      storeRawComponents(db, sessionId, [button, raw('Card'), raw('Helper')]);
       db.close();
 
       const decisions = {
@@ -148,11 +165,17 @@ describe('the generation stage and the pipeline database', () => {
 
       const paths = await getRefineSessionPaths(sessionId, join(dir, 'reviews'));
       const snapshot = JSON.parse(await readFile(paths.statePath, 'utf8')) as {
-        components: Array<{ name: string; status: string; scopeProvenance?: unknown }>;
+        components: Array<{
+          name: string;
+          status: string;
+          scopeProvenance?: unknown;
+          originalProposal?: { sourceCandidates?: Array<{ name: string; keyPath: string[] }> };
+        }>;
       };
       expect(snapshot.components.find((item) => item.name === 'Button')).toMatchObject({
         status: 'accepted',
         scopeProvenance: { kind: 'direct', roots: ['Button'] },
+        originalProposal: { sourceCandidates: [{ name: '__proto__', keyPath: ['__proto__'] }] },
       });
       expect(await loadAcceptedNames(sessionId)).toEqual(new Set(['Button', 'Card']));
     });

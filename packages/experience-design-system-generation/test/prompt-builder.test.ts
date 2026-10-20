@@ -55,6 +55,28 @@ describe('buildPrompt', () => {
     expect(prompt).toContain('Button');
   });
 
+  it('includes scoped compiler evidence separately from raw authoring components', async () => {
+    const compilerEvidenceInline = JSON.stringify({
+      schemaVersion: 1,
+      readiness: 'ready',
+      sourceCandidates: [{ componentName: 'Button', candidates: [{ name: '__scopeButton' }] }],
+      compilerEvidence: { status: 'available', runDiagnostics: null },
+    });
+    const prompt = await buildPrompt({
+      skill: 'components',
+      mode: 'autonomous',
+      rawComponentsInline: INLINE_COMPONENTS,
+      compilerEvidenceInline,
+      outDir: '/fake/out',
+    });
+
+    expect(prompt).toContain(
+      'Compiler evidence and source candidates (JSON; advisory and separate from authoring props)',
+    );
+    expect(prompt).toContain('"__scopeButton"');
+    expect(prompt).toContain('Raw component data (JSON)');
+  });
+
   it('omits token sections when not provided', async () => {
     const prompt = await buildPrompt({
       skill: 'components',

@@ -50,6 +50,8 @@ export interface PromptOptions {
   /** For debate-select: the serialized disagreement under review. */
   disagreementInline?: string;
   rawComponentsInline?: string;
+  /** Scoped plain compiler/source-candidate evidence, separate from authoring props. */
+  compilerEvidenceInline?: string;
   propBucketsInline?: string;
   rawTokensInline?: string;
   /** Original filename for raw tokens — used to set the correct code fence language. */

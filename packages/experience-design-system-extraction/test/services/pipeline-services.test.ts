@@ -98,7 +98,20 @@ describe('component deduplicator', () => {
 
     const deduplicated = deduplicateComponents([result(implementation), result(index)]);
 
-    expect(deduplicated.components).toEqual([index]);
+    expect(deduplicated.components).toEqual([
+      {
+        ...index,
+        sourceCandidateSources: [
+          {
+            componentName: implementation.name,
+            sourcePath: implementation.source,
+            factSchemaVersion: null,
+            candidates: null,
+          },
+        ],
+      },
+    ]);
+    expect(index).not.toHaveProperty('sourceCandidateSources');
     expect(deduplicated.warnings).toEqual([
       expect.stringContaining('Duplicate component "Dropdown" found in /repo/packages/ui/Dropdown/index.tsx'),
     ]);

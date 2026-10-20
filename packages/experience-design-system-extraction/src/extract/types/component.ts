@@ -14,6 +14,8 @@ export type ExtractionValidationIssue = {
   field?: string;
 };
 
+import type { SourceCandidate, SourceCandidateSource } from '../candidates/types.js';
+
 export interface RawPropDefinition {
   name: string;
   type: string;
@@ -69,12 +71,20 @@ export interface RawComponentDefinition {
   validationIssues?: ExtractionValidationIssue[];
   /** Absolute path to the source file this component was extracted from. Null for synthesized / multi-file. */
   sourcePath?: string;
+  /** Immutable, plain source observations kept separate from current authoring props and slots. */
+  sourceCandidates?: SourceCandidate[];
+  /** Candidate evidence from duplicate declarations; never merged into this winner's facts. */
+  sourceCandidateSources?: SourceCandidateSource[];
+  sourceEvidenceReadStatus?: 'available' | 'unknown-legacy' | 'corrupt' | 'unsupported';
+  /** Identifies the source-fact schema; absent legacy data is unknown. */
+  factSchemaVersion?: number;
 }
 
 export interface ComponentExtractionResult {
   components: RawComponentDefinition[];
   warnings: string[];
   exclusions?: ExtractionExclusion[];
+  extractionDiagnostics?: import('../candidates/types.js').ExtractionDiagnostics;
 }
 
 /** A deterministic item removed before the interactive scope gate. */

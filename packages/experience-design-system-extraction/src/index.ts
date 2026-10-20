@@ -9,6 +9,39 @@ export type {
   ExtractionValidationIssue,
   ExtractionValidationIssueCode,
 } from './extract/types/component.js';
+export {
+  mergeSourceCandidates,
+  retainDuplicateSourceCandidates,
+  describeSourceDomain,
+  observeRawProps,
+  observeTypeProps,
+} from './extract/candidates/source-candidates.js';
+export { extractSourceDefaultExpressions } from './extract/framework-adapters/react/helpers/extract-react-binding-defaults.js';
+export { SOURCE_FACT_SCHEMA_VERSION } from './extract/candidates/types.js';
+export { bindSourceCandidatesToCapture } from './extract/candidates/bind-source-candidates.js';
+export { mergeExtractionDiagnostics } from './extract/compiler/diagnostics.js';
+export { createCompilerContexts } from './extract/compiler/context.js';
+export type {
+  CompilerPropFact,
+  CompilerCoverage,
+  CompilerModuleDiagnostic,
+  CompilerProjectDiagnostic,
+  CompilerReferenceDiagnostic,
+  ExtractionDiagnostics,
+  SourceCandidate,
+  SourceCandidateCollection,
+  SourceCandidateObservation,
+  SourceCandidateSource,
+  SourceDefaultFact,
+  SourceDomain,
+  SourceDomainLiteral,
+  SourceEvidenceKind,
+  SourceFactBinding,
+  SourceFactCertainty,
+  SourceFactLocation,
+  SourceFactOrigin,
+} from './extract/candidates/types.js';
+export type { CompilerContextResult, CompilerProjectContext } from './extract/compiler/context.js';
 export { stripScoringFields } from './extract/types/display.js';
 export type { ExtractorOptions } from './extract/types/options.js';
 export type { ComponentExtractor } from './extract/types/component-extractor.js';
@@ -26,6 +59,14 @@ export type {
 export { extractReactComponents } from './extract/framework-adapters/react/extractor.js';
 export { extractVueComponents } from './extract/framework-adapters/vue/extractor.js';
 export { extractVueTsxComponents } from './extract/framework-adapters/vue-tsx/extractor.js';
+export {
+  collectVueSourceCandidates,
+  createVueSfcCompilerContexts,
+} from './extract/framework-adapters/vue/helpers/collect-vue-source-candidates.js';
+export type {
+  VueSfcCompilerContexts,
+  VueSfcCompilerInput,
+} from './extract/framework-adapters/vue/helpers/collect-vue-source-candidates.js';
 export { extractStencilComponents } from './extract/framework-adapters/stencil/extractor.js';
 export { extractAstroComponents } from './extract/framework-adapters/astro/extractor.js';
 export { extractWebComponentDefinitions } from './extract/framework-adapters/web-components/extractor.js';

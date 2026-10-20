@@ -23,6 +23,8 @@ export interface RunSelectionServiceOptions {
   promptPath?: string;
   /** Caller-supplied, bounded source evidence for this selection prompt; absent means unknown. */
   selectionEvidenceInline?: string;
+  /** Pre-scoped shared compiler/source-candidate block from the saved extraction session. */
+  compilerEvidenceInline?: string;
   existingContentfulEntities?: ExistingContentfulEntities | null;
   existingComponentsInline?: string;
   existingTokensInline?: string;

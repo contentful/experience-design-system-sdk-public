@@ -3,6 +3,7 @@ import { stripPropProvenance } from '../../../../agents/prompts/helpers/strip-pr
 import { buildPrompt, createLocalCliAgentInvoker, parseSelectToolCalls } from '../../../../agents/index.js';
 import type { RunSelectionServiceOptions, SelectionServiceResult, ComponentSelection } from '../types/contract.js';
 import { summarizeForSelect } from '../../../generation/src/controller/existing-entities/summarize-for-select.js';
+import { buildCompilerEvidenceInline } from '../../../../agents/prompts/helpers/build-compiler-evidence-inline.js';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 5 * 60 * 1000);
 
@@ -32,10 +33,15 @@ export async function runSelectionService(options: RunSelectionServiceOptions): 
     skill: 'select',
     mode: 'autonomous',
     rawComponentsInline: JSON.stringify(
-      components.map((component) => ({ ...component, props: component.props.map(stripPropProvenance) })),
+      components.map(({ sourceCandidates: _candidates, sourceCandidateSources: _sources, ...component }) => ({
+        ...component,
+        props: component.props.map(stripPropProvenance),
+      })),
       null,
       2,
     ),
+    compilerEvidenceInline:
+      options.compilerEvidenceInline ?? buildCompilerEvidenceInline(components, { readiness: 'caller-provided' }),
     propBucketsInline: JSON.stringify(selectBuckets),
     outDir: process.cwd(),
     existingComponentsInline,

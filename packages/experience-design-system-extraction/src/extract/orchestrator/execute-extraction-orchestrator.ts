@@ -22,8 +22,13 @@ export async function executeExtractionOrchestrator(
   const extraction = await extractComponents(filePaths, request.onProgress, {
     ...(request.resolveUnreachable !== undefined ? { resolveUnreachable: request.resolveUnreachable } : {}),
     ...(request.projectRoot !== undefined ? { projectRoot: request.projectRoot } : {}),
+    ...(request.signal !== undefined ? { signal: request.signal } : {}),
   });
 
   const classifiedComponents = extraction.components.map(preClassifyComponent);
-  return evaluateExtractionQuality(classifiedComponents, extraction.warnings);
+  const quality = await evaluateExtractionQuality(classifiedComponents, extraction.warnings);
+  return {
+    ...quality,
+    ...(extraction.extractionDiagnostics ? { extractionDiagnostics: extraction.extractionDiagnostics } : {}),
+  };
 }

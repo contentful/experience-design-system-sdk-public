@@ -25,7 +25,21 @@ import { getOrCreateSessionForCommand, type SessionResolution } from '../service
 import { pruneObsoleteIncompleteStepsIfNeeded } from './step-history-migration.js';
 import { getRawTokenNamePaths, type RawTokenNamePathSource } from './tokens/read.js';
 import { type RawPropTokenPathSource } from './tokens/write.js';
+import {
+  isSourceCandidatePayload,
+  isAlternateSourcePayload,
+  isExtractionDiagnosticsPayload,
+} from './source-evidence-validation.js';
 import type { SourceCapture } from '@contentful/experience-design-system-extraction';
+import {
+  bindSourceCandidatesToCapture,
+  SOURCE_FACT_SCHEMA_VERSION,
+} from '@contentful/experience-design-system-extraction';
+import type {
+  ExtractionDiagnostics,
+  SourceCandidate,
+  SourceCandidateSource,
+} from '@contentful/experience-design-system-extraction';
 
 export { hashComponentShape as computeComponentInputHash } from '../helpers/components/hash-component-shape.js';
 export { hashTokenContent as computeTokenInputHash } from '../helpers/tokens/hash-token-content.js';
@@ -98,6 +112,21 @@ CREATE TABLE IF NOT EXISTS raw_components (
   source_path            TEXT,
   reject_reason          TEXT,
   PRIMARY KEY (session_id, component_id)
+);
+
+CREATE TABLE IF NOT EXISTS raw_component_source_evidence (
+  session_id          TEXT NOT NULL,
+  component_id        TEXT NOT NULL,
+  fact_schema_version INTEGER,
+  candidates_json     TEXT,
+  alternate_sources_json TEXT,
+  PRIMARY KEY (session_id, component_id),
+  FOREIGN KEY (session_id, component_id) REFERENCES raw_components(session_id, component_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS extraction_source_diagnostics (
+  session_id  TEXT NOT NULL PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+  payload_json TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS raw_props (
@@ -586,8 +615,13 @@ export interface ComponentReviewMetadata {
       rationale: string | null;
       sourceStartLine: number | null;
       sourceEndLine: number | null;
+      sourceCandidate: SourceCandidate | null;
     }
   >;
+  sourceEvidenceReadStatus: NonNullable<RawComponentDefinition['sourceEvidenceReadStatus']>;
+  sourceCandidates: SourceCandidate[] | null;
+  sourceCandidateSources: SourceCandidateSource[] | null;
+  extractionDiagnostics: ExtractionSourceDiagnosticsRead;
 }
 
 export function loadComponentReviewMetadata(
@@ -611,12 +645,19 @@ export function loadComponentReviewMetadata(
     source_end_line: number | null;
   }>;
 
-  const props: ComponentReviewMetadata['props'] = {};
+  const rawComponent = loadRawComponents(db, sessionId, new Set([componentName])).find(
+    (component) => component.component_id === compRow.component_id,
+  );
+  const candidatesByName = new Map(
+    (rawComponent?.sourceCandidates ?? []).map((candidate) => [candidate.name, candidate]),
+  );
+  const props: ComponentReviewMetadata['props'] = Object.create(null) as ComponentReviewMetadata['props'];
   for (const r of propRows) {
     props[r.name] = {
       rationale: r.rationale,
       sourceStartLine: r.source_start_line,
       sourceEndLine: r.source_end_line,
+      sourceCandidate: candidatesByName.get(r.name) ?? null,
     };
   }
 
@@ -656,6 +697,12 @@ export function loadComponentReviewMetadata(
     sourceLineRanges,
     scopeProvenance,
     props,
+    sourceEvidenceReadStatus: rawComponent?.sourceEvidenceReadStatus ?? 'unknown-legacy',
+    sourceCandidates:
+      rawComponent?.sourceEvidenceReadStatus === 'available' ? (rawComponent.sourceCandidates ?? []) : null,
+    sourceCandidateSources:
+      rawComponent?.sourceEvidenceReadStatus === 'available' ? (rawComponent.sourceCandidateSources ?? []) : null,
+    extractionDiagnostics: loadExtractionSourceDiagnostics(db, sessionId),
   };
 }
 
@@ -992,6 +1039,7 @@ export function storeRawComponents(
     preserveCDF?: boolean;
     preserveStatus?: boolean;
     withinTransaction?: boolean;
+    extractionDiagnostics?: ExtractionDiagnostics;
   },
 ): void {
   const now = new Date().toISOString();
@@ -999,6 +1047,11 @@ export function storeRawComponents(
   const insertComp = db.prepare(
     `INSERT INTO raw_components (session_id, component_id, name, source, framework, extracted_at, extraction_confidence, review_reasons, needs_review, source_path)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+  const insertSourceEvidence = db.prepare(
+    `INSERT INTO raw_component_source_evidence
+       (session_id, component_id, fact_schema_version, candidates_json, alternate_sources_json)
+     VALUES (?, ?, ?, ?, ?)`,
   );
   const insertProp = db.prepare(
     `INSERT INTO raw_props
@@ -1097,6 +1150,20 @@ export function storeRawComponents(
         comp.needsReview ? 1 : 0,
         comp.sourcePath ?? null,
       );
+
+      if (
+        comp.factSchemaVersion !== undefined ||
+        comp.sourceCandidates !== undefined ||
+        comp.sourceCandidateSources !== undefined
+      ) {
+        insertSourceEvidence.run(
+          sessionId,
+          componentId,
+          comp.factSchemaVersion ?? null,
+          comp.sourceCandidates === undefined ? null : JSON.stringify(comp.sourceCandidates),
+          comp.sourceCandidateSources === undefined ? null : JSON.stringify(comp.sourceCandidateSources),
+        );
+      }
 
       for (let i = 0; i < comp.props.length; i++) {
         const prop = comp.props[i]!;
@@ -1217,6 +1284,12 @@ export function storeRawComponents(
     if (options?.status) {
       db.prepare('UPDATE raw_components SET status = ? WHERE session_id = ?').run(options.status, sessionId);
     }
+    if (options?.extractionDiagnostics !== undefined) {
+      db.prepare(
+        `INSERT INTO extraction_source_diagnostics (session_id, payload_json) VALUES (?, ?)
+         ON CONFLICT(session_id) DO UPDATE SET payload_json = excluded.payload_json`,
+      ).run(sessionId, JSON.stringify(options.extractionDiagnostics));
+    }
     db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
     if (ownsTransaction) db.exec('COMMIT');
   } catch (e) {
@@ -1312,6 +1385,48 @@ export function loadRawComponents(
     allowed_component: string;
   }>;
 
+  const sourceEvidenceRows = db
+    .prepare(
+      `SELECT component_id, fact_schema_version, candidates_json, alternate_sources_json
+       FROM raw_component_source_evidence WHERE session_id = ?`,
+    )
+    .all(sessionId) as Array<{
+    component_id: string;
+    fact_schema_version: number | null;
+    candidates_json: string | null;
+    alternate_sources_json: string | null;
+  }>;
+  const sourceEvidenceByComponent = new Map<
+    string,
+    {
+      status: NonNullable<RawComponentDefinition['sourceEvidenceReadStatus']>;
+      factSchemaVersion?: number;
+      candidates?: SourceCandidate[];
+      alternates?: SourceCandidateSource[];
+    }
+  >();
+  for (const row of sourceEvidenceRows) {
+    if (row.fact_schema_version !== SOURCE_FACT_SCHEMA_VERSION) {
+      sourceEvidenceByComponent.set(row.component_id, { status: 'unsupported' });
+      continue;
+    }
+    try {
+      if (row.candidates_json === null) throw new Error('candidate-payload-missing');
+      const candidates = JSON.parse(row.candidates_json) as unknown;
+      const alternates = row.alternate_sources_json === null ? [] : (JSON.parse(row.alternate_sources_json) as unknown);
+      if (!isSourceCandidatePayload(candidates) || !isAlternateSourcePayload(alternates))
+        throw new Error('candidate-payload-invalid');
+      sourceEvidenceByComponent.set(row.component_id, {
+        status: 'available',
+        factSchemaVersion: row.fact_schema_version,
+        candidates,
+        alternates,
+      });
+    } catch {
+      sourceEvidenceByComponent.set(row.component_id, { status: 'corrupt' });
+    }
+  }
+
   const propsByComponent = indexRowsByKey(props, (p) => p.component_id);
   const allowedValuesByProp = indexRowsByKey(allowedValues, (av) => `${av.component_id}::${av.prop_name}`);
   const slotsByComponent = indexRowsByKey(slots, (s) => s.component_id);
@@ -1327,6 +1442,16 @@ export function loadRawComponents(
       reviewReasons: parseReviewReasons(c.review_reasons),
       needsReview: Boolean(c.needs_review),
       sourcePath: c.source_path ?? undefined,
+      sourceEvidenceReadStatus: sourceEvidenceByComponent.get(c.component_id)?.status ?? 'unknown-legacy',
+      ...(sourceEvidenceByComponent.get(c.component_id)?.factSchemaVersion !== undefined
+        ? { factSchemaVersion: sourceEvidenceByComponent.get(c.component_id)!.factSchemaVersion! }
+        : {}),
+      ...(sourceEvidenceByComponent.get(c.component_id)?.status === 'available'
+        ? {
+            sourceCandidates: sourceEvidenceByComponent.get(c.component_id)!.candidates!,
+            sourceCandidateSources: sourceEvidenceByComponent.get(c.component_id)!.alternates!,
+          }
+        : {}),
       props: (propsByComponent.get(c.component_id) ?? []).map((p): RawPropDefinition => {
         const av = allowedValuesByProp.get(`${c.component_id}::${p.name}`);
         const prop: RawPropDefinition = {
@@ -1356,6 +1481,32 @@ export function loadRawComponents(
       }),
     }),
   );
+}
+
+export type ExtractionSourceDiagnosticsRead =
+  | { status: 'available'; diagnostics: ExtractionDiagnostics }
+  | { status: 'absent' | 'corrupt' | 'unsupported' };
+
+export function loadExtractionSourceDiagnostics(db: DatabaseSync, sessionId: string): ExtractionSourceDiagnosticsRead {
+  const row = db
+    .prepare('SELECT payload_json FROM extraction_source_diagnostics WHERE session_id = ?')
+    .get(sessionId) as { payload_json: string } | undefined;
+  if (!row) return { status: 'absent' };
+  try {
+    const diagnostics = JSON.parse(row.payload_json) as unknown;
+    if (
+      diagnostics !== null &&
+      typeof diagnostics === 'object' &&
+      'schemaVersion' in diagnostics &&
+      diagnostics.schemaVersion !== 1
+    ) {
+      return { status: 'unsupported' };
+    }
+    if (!isExtractionDiagnosticsPayload(diagnostics)) return { status: 'corrupt' };
+    return { status: 'available', diagnostics };
+  } catch {
+    return { status: 'corrupt' };
+  }
 }
 
 // Maximum source excerpt size used when building persisted agent context.
@@ -2923,6 +3074,7 @@ export function completeExtractionWithSourceEvidence(
     scannedFiles: string[];
     capture: SourceCapture;
     observations: { accepted: unknown[]; rejected: unknown[] };
+    extractionDiagnostics?: ExtractionDiagnostics;
   },
 ): SourceEvidenceHandle {
   const step = db.prepare('SELECT session_id, status, command FROM steps WHERE id = ?').get(input.stepId) as
@@ -2954,10 +3106,15 @@ export function completeExtractionWithSourceEvidence(
     sourceEnvelopeDigest: envelope.digest,
     sourceExtractionStepId: String(input.stepId),
   };
+  const boundComponents = bindSourceCandidatesToCapture(input.components, input.capture.files);
 
   db.exec('BEGIN');
   try {
-    storeRawComponents(db, input.sessionId, input.components, { preserveStatus: true, withinTransaction: true });
+    storeRawComponents(db, input.sessionId, boundComponents, {
+      preserveStatus: true,
+      withinTransaction: true,
+      extractionDiagnostics: input.extractionDiagnostics,
+    });
     storeSlotCycles(db, input.sessionId, input.cycles, { withinTransaction: true });
     storeScannedFiles(db, input.sessionId, input.scannedFiles, { withinTransaction: true });
     db.prepare(

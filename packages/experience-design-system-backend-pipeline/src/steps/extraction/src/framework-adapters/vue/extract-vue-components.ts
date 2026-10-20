@@ -13,6 +13,11 @@ import type {
 import { createSortedExtractionResult, runFileExtractionWorkers } from '../shared/file-extraction-workers.js';
 import { resolveLocalModule } from '../shared/resolve-local-module.js';
 import { resolveTypeProperty } from '../shared/resolve-type-property.js';
+import {
+  collectVueSourceCandidates,
+  createVueSfcCompilerContexts,
+  type VueSfcCompilerContexts,
+} from '@contentful/experience-design-system-extraction';
 
 // @vue/compiler-core NodeTypes enum values (stable since Vue 3.0)
 const ELEMENT_TYPE = 1;
@@ -48,11 +53,25 @@ export async function extractVueComponents(
   onProgress?: (p: { filesProcessed: number; componentsFound: number }) => void,
 ): Promise<ComponentExtractionResult> {
   const vueFiles = filePaths.filter((f) => f.endsWith('.vue'));
+  const sourceByPath = new Map<string, string>();
+  const compilerInputs = vueFiles.flatMap((filePath) => {
+    try {
+      const source = readFileSync(filePath, 'utf8');
+      sourceByPath.set(resolve(filePath), source);
+      const { descriptor } = parseSFC(source);
+      const script = descriptor.scriptSetup ?? descriptor.script;
+      return [{ filePath, scriptContent: script?.content ?? '' }];
+    } catch {
+      return [];
+    }
+  });
+  const compilerContexts = compilerInputs.length > 0 ? createVueSfcCompilerContexts(compilerInputs) : undefined;
   const { items: components, warnings } = await runFileExtractionWorkers(
     vueFiles,
     os.cpus().length,
     async (filePath, source) => {
-      const { component, warnings: fileWarnings } = await extractFromVueSFC(filePath, source);
+      const analysisSource = sourceByPath.get(resolve(filePath)) ?? source;
+      const { component, warnings: fileWarnings } = await extractFromVueSFC(filePath, analysisSource, compilerContexts);
       return { item: component, warnings: fileWarnings };
     },
     (filePath, error) =>
@@ -60,12 +79,16 @@ export async function extractVueComponents(
     onProgress,
   );
 
-  return createSortedExtractionResult(components, warnings);
+  return {
+    ...createSortedExtractionResult(components, warnings),
+    ...(compilerContexts ? { extractionDiagnostics: compilerContexts.diagnostics } : {}),
+  };
 }
 
 async function extractFromVueSFC(
   filePath: string,
   source: string,
+  compilerContexts?: VueSfcCompilerContexts,
 ): Promise<{ component: RawComponentDefinition | null; warnings: string[] }> {
   const { descriptor, errors } = parseSFC(source);
   const fileWarnings: string[] = errors.map(
@@ -75,11 +98,22 @@ async function extractFromVueSFC(
 
   // Props: <script setup> wins over Options API <script>
   let props: RawPropDefinition[] = [];
+  let component: RawComponentDefinition | null = null;
+  let scriptContent = '';
+  let scriptOffset = 0;
   const setupProps = descriptor.scriptSetup ? await extractSetupProps(filePath, descriptor.scriptSetup.content) : null;
   if (setupProps !== null) {
     props = setupProps;
+    scriptContent = descriptor.scriptSetup?.content ?? '';
+    scriptOffset = descriptor.scriptSetup?.loc.start.offset ?? 0;
+    let slots = descriptor.template?.ast
+      ? extractSlotsFromTemplate(descriptor.template.ast as unknown as TemplateAstNode)
+      : [];
+    const runtimeSlots = extractSlotsFromRuntimeAccess(source);
+    slots = mergeSlotsDedup(slots, runtimeSlots);
+    component = { name, source: filePath, sourcePath: filePath, framework: 'vue', props, slots };
   } else if (descriptor.script) {
-    return extractOptionsComponent(
+    const optionsComponent = await extractOptionsComponent(
       filePath,
       descriptor.script.content,
       fileWarnings,
@@ -87,24 +121,47 @@ async function extractFromVueSFC(
       descriptor.template?.ast,
       source,
     );
-  }
-
-  // Slots: from template AST + runtime $slots access
-  let slots = descriptor.template?.ast
-    ? extractSlotsFromTemplate(descriptor.template.ast as unknown as TemplateAstNode)
-    : [];
-  const runtimeSlots = extractSlotsFromRuntimeAccess(source);
-  slots = mergeSlotsDedup(slots, runtimeSlots);
-
-  return {
-    component: {
+    props = optionsComponent.component?.props ?? [];
+    component = optionsComponent.component ?? {
       name,
       source: filePath,
       sourcePath: filePath,
       framework: 'vue',
-      props,
-      slots,
-    },
+      props: [],
+      slots: [],
+    };
+    scriptContent = descriptor.script.content;
+    scriptOffset = descriptor.script.loc.start.offset;
+  }
+
+  if (component === null) {
+    let slots = descriptor.template?.ast
+      ? extractSlotsFromTemplate(descriptor.template.ast as unknown as TemplateAstNode)
+      : [];
+    const runtimeSlots = extractSlotsFromRuntimeAccess(source);
+    slots = mergeSlotsDedup(slots, runtimeSlots);
+    component = { name, source: filePath, sourcePath: filePath, framework: 'vue', props, slots };
+  }
+
+  const candidateResult = collectVueSourceCandidates(
+    filePath,
+    source,
+    scriptContent,
+    scriptOffset,
+    props,
+    component.slots,
+    {},
+    compilerContexts
+      ? { project: compilerContexts.projectBySfcPath.get(resolve(filePath)), diagnostics: compilerContexts.diagnostics }
+      : undefined,
+  );
+  const candidateFields = {
+    sourceCandidates: candidateResult.sourceCandidates,
+    factSchemaVersion: candidateResult.factSchemaVersion,
+  };
+
+  return {
+    component: { ...component, ...candidateFields },
     warnings: fileWarnings,
   };
 }

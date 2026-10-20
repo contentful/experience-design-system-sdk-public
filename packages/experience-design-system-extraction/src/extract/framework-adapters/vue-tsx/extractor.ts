@@ -3,14 +3,25 @@ import type { RawComponentDefinition, ComponentExtractionResult, ExtractionExclu
 import { extractTsxComponents, getRenderableExports } from '../shared/helpers/tsx-shared.js';
 import { extractVueTsxComponentProps } from './helpers/extract-vue-tsx-props.js';
 import { extractVueTsxComponentSlots } from './helpers/extract-vue-tsx-slots.js';
+import type { ExtractorOptions } from '../../types/options.js';
 
-export async function extractVueTsxComponents(filePaths: string[]): Promise<ComponentExtractionResult> {
-  const { components, warnings, exclusions } = extractTsxComponents(filePaths, /\.tsx$/, extractFromSourceFile);
+export async function extractVueTsxComponents(
+  filePaths: string[],
+  _onProgress?: (progress: { filesProcessed: number; componentsFound: number }) => void,
+  options: ExtractorOptions = {},
+): Promise<ComponentExtractionResult> {
+  const { components, warnings, exclusions, extractionDiagnostics } = extractTsxComponents(
+    filePaths,
+    /\.tsx$/,
+    extractFromSourceFile,
+    options,
+  );
 
   return {
     components: components.sort((a, b) => a.name.localeCompare(b.name)),
     warnings,
     exclusions,
+    extractionDiagnostics,
   };
 }
 

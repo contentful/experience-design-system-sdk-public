@@ -17,6 +17,8 @@ describe('executeGenerationOrchestrator', () => {
         mode: 'autonomous',
         outDir: '/tmp',
         skillContentOverride: 'STUB_SKILL_CONTENT',
+        compilerEvidenceInline:
+          '{"readiness":"ready","sourceCandidates":[{"componentName":"Card","candidates":[{"name":"__scopeCard"}]}]}',
       },
       invoker: fakeInvoker,
     };
@@ -30,6 +32,10 @@ describe('executeGenerationOrchestrator', () => {
     expect(invokeArg.timeoutMs).toBe(5000);
     expect(typeof invokeArg.prompt).toBe('string');
     expect(invokeArg.prompt).toContain('STUB_SKILL_CONTENT');
+    expect(invokeArg.prompt).toContain(
+      'Compiler evidence and source candidates (JSON; advisory and separate from authoring props)',
+    );
+    expect(invokeArg.prompt).toContain('"__scopeCard"');
   });
 
   it('forwards model, bedrock, and onOutput to the invoker', async () => {

@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import {
   type AgentName,
   buildPrompt,
+  buildCompilerEvidenceInline,
   buildSelectionEvidenceInline,
   bucketComponentsProps,
   computeComponentInputHash,
@@ -11,6 +12,7 @@ import {
   hashFile,
   invokeAgentWithOutput,
   loadCompletedSourceEvidence,
+  loadExtractionSourceDiagnostics,
   loadRawComponents,
   lookupSelectCache,
   openPipelineDb,
@@ -76,12 +78,18 @@ export async function runSelection(options: SelectionOptions): Promise<void> {
   let cliVersion: string;
   let promptHash: string;
   let selectionEvidenceInline: string;
+  let savedEvidenceReady = false;
+  let savedEvidenceReason: string | undefined;
+  let compilerDiagnosticsRead: ReturnType<typeof loadExtractionSourceDiagnostics> = { status: 'absent' };
   try {
     cliVersion = await getCliCacheVersion();
     throwIfAborted(options.signal);
     promptHash = await hashSelectPrompt(options);
     throwIfAborted(options.signal);
     const savedEvidence = loadCompletedSourceEvidence(db, options.sessionId, options.sourceEvidenceHandle);
+    savedEvidenceReady = savedEvidence.readiness === 'ready';
+    if (savedEvidence.readiness === 'unavailable') savedEvidenceReason = savedEvidence.reason;
+    if (savedEvidenceReady) compilerDiagnosticsRead = loadExtractionSourceDiagnostics(db, options.sessionId);
     if (options.sourceEvidenceHandle && savedEvidence.readiness !== 'ready') {
       throw new Error(`Completed source evidence is unavailable: ${savedEvidence.reason}`);
     }
@@ -135,10 +143,19 @@ export async function runSelection(options: SelectionOptions): Promise<void> {
       skill: 'select',
       mode: 'autonomous',
       rawComponentsInline: JSON.stringify(
-        componentsToRun.map((component) => ({ ...component, props: component.props.map(stripPropProvenance) })),
+        componentsToRun.map(({ sourceCandidates: _candidates, sourceCandidateSources: _sources, ...component }) => ({
+          ...component,
+          props: component.props.map(stripPropProvenance),
+        })),
         null,
         2,
       ),
+      compilerEvidenceInline: buildCompilerEvidenceInline(componentsToRun, {
+        readiness: savedEvidenceReady ? 'ready' : 'unavailable',
+        ...(compilerDiagnosticsRead.status === 'available' ? { diagnostics: compilerDiagnosticsRead.diagnostics } : {}),
+        diagnosticsStatus: compilerDiagnosticsRead.status,
+        ...(savedEvidenceReason ? { reason: savedEvidenceReason } : {}),
+      }),
       propBucketsInline: JSON.stringify(selectBuckets),
       selectionEvidenceInline,
       existingComponentsInline,

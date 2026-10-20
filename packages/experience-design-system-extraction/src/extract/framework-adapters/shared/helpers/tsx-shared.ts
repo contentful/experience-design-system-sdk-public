@@ -1,5 +1,7 @@
-import { Project, type SourceFile } from 'ts-morph';
+import type { SourceFile } from 'ts-morph';
 import type { ExtractionExclusion } from '../../../types/component.js';
+import type { ExtractorOptions } from '../../../types/options.js';
+import { createCompilerContexts, type CompilerContextResult } from '../../../compiler/context.js';
 
 export {
   kebabToPascal,
@@ -14,72 +16,48 @@ export {
 
 export { resolveDefaultExportName, getRenderableExports } from './tsx-renderable-exports.js';
 
-function createTsxProject(filePaths: string[]): Project {
-  const project = new Project({
-    compilerOptions: {
-      jsx: 1,
-      target: 99,
-      module: 99,
-      moduleResolution: 100,
-      skipLibCheck: true,
-      allowJs: true,
-    },
-    skipAddingFilesFromTsConfig: true,
-  });
-
-  for (const filePath of filePaths) {
-    project.addSourceFileAtPath(filePath);
-  }
-
-  return project;
-}
-
-function getTsxProjectFiles(filePaths: string[]): string[] {
-  return filePaths.filter((filePath) => /\.[jt]sx?$/.test(filePath) && !filePath.endsWith('.d.ts'));
-}
-
 export function getTsxExtractionContext(
   filePaths: string[],
   componentFilePattern: RegExp,
-): { componentFiles: string[]; project: Project } | undefined {
-  const componentFiles = filePaths.filter((filePath) => componentFilePattern.test(filePath));
-  if (componentFiles.length === 0) return undefined;
-
-  return {
-    componentFiles,
-    project: createTsxProject(getTsxProjectFiles(filePaths)),
-  };
+  options: ExtractorOptions = {},
+): CompilerContextResult {
+  return createCompilerContexts(filePaths, componentFilePattern, options);
 }
 
 export function extractTsxComponents<T>(
   filePaths: string[],
   componentFilePattern: RegExp,
   extract: (sourceFile: SourceFile, exclusions: ExtractionExclusion[]) => T[],
+  options: ExtractorOptions = {},
 ): {
   components: T[];
   warnings: string[];
   exclusions: ExtractionExclusion[];
-  project?: Project;
+  contexts: CompilerContextResult['contexts'];
+  extractionDiagnostics: CompilerContextResult['diagnostics'];
 } {
-  const extractionContext = getTsxExtractionContext(filePaths, componentFilePattern);
-  if (!extractionContext) {
-    return { components: [], warnings: [], exclusions: [] };
-  }
-
-  const { componentFiles, project } = extractionContext;
+  const extractionContext = getTsxExtractionContext(filePaths, componentFilePattern, options);
   const components: T[] = [];
   const warnings: string[] = [];
   const exclusions: ExtractionExclusion[] = [];
 
-  for (const filePath of componentFiles) {
-    try {
-      const sourceFile = project.getSourceFile(filePath);
-      if (!sourceFile) continue;
-      components.push(...extract(sourceFile, exclusions));
-    } catch (e) {
-      warnings.push(`Failed to extract from ${filePath}: ${e instanceof Error ? e.message : String(e)}`);
+  for (const context of extractionContext.contexts) {
+    for (const filePath of context.componentFiles) {
+      try {
+        const sourceFile = context.project.getSourceFile(filePath);
+        if (!sourceFile) continue;
+        components.push(...extract(sourceFile, exclusions));
+      } catch (e) {
+        warnings.push(`Failed to extract from ${filePath}: ${e instanceof Error ? e.message : String(e)}`);
+      }
     }
   }
 
-  return { components, warnings, exclusions, project };
+  return {
+    components,
+    warnings,
+    exclusions,
+    contexts: extractionContext.contexts,
+    extractionDiagnostics: extractionContext.diagnostics,
+  };
 }

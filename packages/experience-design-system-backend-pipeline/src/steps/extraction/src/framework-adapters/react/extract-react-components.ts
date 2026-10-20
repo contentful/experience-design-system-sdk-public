@@ -16,6 +16,7 @@ import type {
   RawSlotDefinition,
   ComponentExtractionResult,
   ExtractionExclusion,
+  ExtractorOptions,
 } from '../../types/component.js';
 import {
   extractAllowedValues,
@@ -37,6 +38,13 @@ import {
   collectRenderedComponentReferences,
   collectArrayMapRenderComponentReferences,
 } from '../../helpers/evidence/structural-slot-evidence.js';
+import {
+  mergeSourceCandidates,
+  observeRawProps,
+  observeTypeProps,
+  SOURCE_FACT_SCHEMA_VERSION,
+  extractSourceDefaultExpressions,
+} from '@contentful/experience-design-system-extraction';
 
 const REACT_ELEMENT_GENERIC_TEST = /(?:React\.)?ReactElement\s*<\s*[A-Za-z_$][\w$.]*/;
 
@@ -2055,8 +2063,12 @@ function hasImplementationChildrenHint(funcNode: FunctionLike, param: ParameterD
     .some((attr) => isComponentSpreadAttribute(attr, new Set([paramName])));
 }
 
-export async function extractReactComponents(filePaths: string[]): Promise<ComponentExtractionResult> {
-  const { components, warnings, exclusions, project } = extractTsxComponents(
+export async function extractReactComponents(
+  filePaths: string[],
+  _onProgress?: (progress: { filesProcessed: number; componentsFound: number }) => void,
+  options: ExtractorOptions = {},
+): Promise<ComponentExtractionResult> {
+  const { components, warnings, exclusions, contexts, extractionDiagnostics } = extractTsxComponents(
     filePaths,
     /\.[jt]sx$/,
     (sourceFile, exclusions) => {
@@ -2065,6 +2077,7 @@ export async function extractReactComponents(filePaths: string[]): Promise<Compo
       const isNext = isNextJsComponent(sourceFile.getFilePath(), fileExports);
       return extractFromSourceFile(sourceFile, isNext, exclusions);
     },
+    options,
   );
 
   const propsToComponent = new Map<string, string>();
@@ -2108,7 +2121,9 @@ export async function extractReactComponents(filePaths: string[]): Promise<Compo
   const structuralNamesForFile = (filePath: string): string[] => {
     const cached = structuralByFile.get(filePath);
     if (cached) return cached;
-    const sourceFile = project?.getSourceFile(filePath);
+    const sourceFile = contexts
+      .find((context) => context.assignedFiles.includes(filePath))
+      ?.project.getSourceFile(filePath);
     if (!sourceFile) return [];
     const ctx = { propsToComponent, componentNames };
     const found = new Set<string>([
@@ -2189,6 +2204,7 @@ export async function extractReactComponents(filePaths: string[]): Promise<Compo
     components: components.sort((a, b) => a.name.localeCompare(b.name)),
     warnings,
     exclusions,
+    extractionDiagnostics,
   };
 }
 
@@ -2217,6 +2233,8 @@ function extractFromSourceFile(
         framework: isNext ? 'next' : 'react',
         props: [],
         slots: [],
+        sourceCandidates: [],
+        factSchemaVersion: SOURCE_FACT_SCHEMA_VERSION,
         ...(usesCreateContext && { usesCreateContext: true }),
       });
       continue;
@@ -2233,6 +2251,7 @@ function extractFromSourceFile(
       : extractPropsFromType(firstParamType, renderPropSlotNames, firstParamTypeNode);
     const hasMeaningfulExtractedProps = props.some((prop) => !prop.name.startsWith('__scope'));
     const defaults = extractDefaultValues(funcNode);
+    const sourceDefaults = extractSourceDefaultExpressions(funcNode);
     const hasImplementationChildren = hasImplementationChildrenHint(funcNode, params[0]);
     const slots = extractSlots(
       firstParamType,
@@ -2318,6 +2337,17 @@ function extractFromSourceFile(
       return true;
     });
     const finalSlots = [...slots, ...expandedSlots];
+    const sourceCandidateResult = mergeSourceCandidates(
+      [
+        ...observeTypeProps(firstParamType, props, sourceFile.getFilePath(), { sourceDefaults }),
+        ...observeRawProps(syntheticDomProps, 'declaration', { origin: 'inherited-dom' }),
+        ...observeRawProps(implementationPrimitiveDomProps, 'implementation', { sourceDefaults }),
+        ...observeRawProps(bindingFallbackProps, 'binding', { sourceDefaults }),
+        ...(finalProps === resolvedProps ? [] : observeRawProps(finalProps, 'runtime-object', { sourceDefaults })),
+      ],
+      propsAfterSlotExpansion,
+      finalSlots,
+    );
 
     const propsTypeName = firstParamTypeNode?.getText?.().trim();
     const propsTypeNameCapture = propsTypeName && /^[A-Za-z_$][\w$]*$/.test(propsTypeName) ? propsTypeName : undefined;
@@ -2329,6 +2359,8 @@ function extractFromSourceFile(
       framework: isNext ? 'next' : 'react',
       props: propsAfterSlotExpansion,
       slots: finalSlots,
+      sourceCandidates: sourceCandidateResult.candidates,
+      factSchemaVersion: SOURCE_FACT_SCHEMA_VERSION,
       ...(usesCreateContext && { usesCreateContext: true }),
       _componentIdentity: getComponentIdentity(funcNode),
       _funcNode: funcNode,

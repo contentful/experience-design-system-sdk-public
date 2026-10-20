@@ -1,7 +1,9 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { captureSourceEvidence } from '@contentful/experience-design-system-extraction';
+import { buildCompilerEvidenceInline } from '../../agents/prompts/helpers/build-compiler-evidence-inline.js';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { RawComponentDefinition } from '../../steps/extraction/src/types/component.js';
 import { runOneGenerateComponent } from '../../orchestrators/run-generate-components-session/helpers/run-one-generate-component.js';
@@ -12,6 +14,7 @@ import {
   getOrCreateSession,
   loadCompletedSourceEvidence,
   loadComponentReviewMetadata,
+  loadExtractionSourceDiagnostics,
   loadRawComponents,
   loadSavedComponentSourceRef,
   openPipelineDb,
@@ -31,6 +34,58 @@ describe('saved extraction source evidence', () => {
     mkdirSync(join(dir, 'src'));
     writeFileSync(sourcePath, 'export const Card = () => "FROZEN_SOURCE_A";\n', 'utf8');
     const dbPath = join(dir, 'pipeline.db');
+    const sourceText = 'export const Card = () => "FROZEN_SOURCE_A";\n';
+    const sourceHash = createHash('sha256').update(sourceText).digest('hex');
+    const location = {
+      fileId: null,
+      canonicalPath: sourcePath,
+      textHash: sourceHash,
+      startLine: 1,
+      endLine: 1,
+      binding: 'unverified' as const,
+    };
+    const candidate = {
+      name: '__proto__',
+      keyPath: ['__proto__'],
+      evidenceKinds: ['declaration' as const],
+      type: "'literal' | string",
+      declaredRequired: true,
+      sourceDefault: 'null',
+      facts: {
+        origin: 'own' as const,
+        resolvedKind: 'union',
+        certainty: 'certain' as const,
+        ambiguityReason: null,
+        declarations: [location],
+        sourceTypeText: "'literal' | string",
+        domain: { observedLiterals: [{ kind: 'string' as const, value: 'literal' }], openness: 'open' as const },
+        declaredRequired: true,
+        sourceDefault: { expression: 'null', location },
+        advisoryShape: null,
+        shapeNotes: [],
+        requiredFieldDropped: null,
+      },
+      observations: [],
+      projection: { kind: 'excluded' as const, reason: 'test-candidate-only' },
+    };
+    const extractionDiagnostics = {
+      schemaVersion: 1 as const,
+      projects: [
+        {
+          root: sourcePath,
+          configPath: null,
+          configHash: null,
+          status: 'fallback' as const,
+          options: {},
+          diagnostics: ['test-config-warning'],
+        },
+      ],
+      modules: [],
+      references: [],
+      coverage: 'partial' as const,
+      limits: { maxRoots: 10 },
+      used: { roots: 1 },
+    };
     const component: RawComponentDefinition = {
       name: 'Card',
       source: sourcePath,
@@ -38,12 +93,15 @@ describe('saved extraction source evidence', () => {
       framework: 'react',
       props: [{ name: 'label', type: 'string', required: false, sourceStartLine: 1, sourceEndLine: 1 }],
       slots: [],
+      factSchemaVersion: 3,
+      sourceCandidates: [candidate],
+      sourceCandidateSources: [{ componentName: 'Card', sourcePath, factSchemaVersion: 3, candidates: [candidate] }],
     };
 
     const db = openPipelineDb(dbPath);
     const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
     const stepId = createStep(db, sessionId, 'analyze extract', { project: dir });
-    storeRawComponents(db, sessionId, [component]);
+    storeRawComponents(db, sessionId, [component], { extractionDiagnostics });
     const storedComponent = loadRawComponents(db, sessionId)[0]!;
     const capture = await captureSourceEvidence({
       projectRoot: dir,
@@ -58,6 +116,7 @@ describe('saved extraction source evidence', () => {
       scannedFiles: [relative(dir, sourcePath)],
       capture,
       observations: { accepted: [{ component: 'Card', source: 'call-site' }], rejected: [] },
+      extractionDiagnostics,
     });
     db.close();
 
@@ -69,6 +128,17 @@ describe('saved extraction source evidence', () => {
       if (saved.readiness !== 'ready') throw new Error('Expected a complete saved source envelope');
       expect(saved.handle).toEqual(handle);
       expect(saved.envelope.observations.accepted).toEqual([{ component: 'Card', source: 'call-site' }]);
+
+      const savedComponent = loadRawComponents(reopened, sessionId)[0]!;
+      expect(savedComponent.sourceEvidenceReadStatus).toBe('available');
+      expect(savedComponent.factSchemaVersion).toBe(3);
+      expect(savedComponent.sourceCandidates?.[0]?.keyPath).toEqual(['__proto__']);
+      expect(savedComponent.sourceCandidates?.[0]?.facts?.declarations[0]?.binding).toBe('verified');
+      expect(savedComponent.sourceCandidateSources?.[0]?.candidates?.[0]?.name).toBe('__proto__');
+      expect(loadExtractionSourceDiagnostics(reopened, sessionId)).toEqual({
+        status: 'available',
+        diagnostics: extractionDiagnostics,
+      });
 
       const sourceRef = loadSavedComponentSourceRef(
         reopened,
@@ -93,6 +163,9 @@ describe('saved extraction source evidence', () => {
       expect(review?.sourceCoverage).toBe(capture.coverage);
       expect(review?.extractionByteBinding).toBe('unverified');
       expect(review?.sourceLineRanges).toEqual([{ sourceStartLine: 1, sourceEndLine: 2, displayStartLine: 1 }]);
+      expect(review?.sourceEvidenceReadStatus).toBe('available');
+      expect(review?.props['__proto__']).toBeUndefined();
+      expect(review?.sourceCandidates?.[0]?.keyPath).toEqual(['__proto__']);
 
       const prompts: string[] = [];
       const invoker: AgentInvoker = {
@@ -130,11 +203,16 @@ describe('saved extraction source evidence', () => {
             promptHash: 'generic-test-prompt',
             existingContentfulEntities: undefined,
             existingTokensInline: undefined,
+            compilerEvidenceInline: buildCompilerEvidenceInline([savedComponent], {
+              readiness: 'ready',
+              diagnostics: extractionDiagnostics,
+              diagnosticsStatus: 'available',
+            }),
             precomputedCachedNames: new Set(),
             allowedComponentNames: new Set(['Card']),
             onProgress: undefined,
           },
-          storedComponent,
+          savedComponent,
           0,
           1,
         );
@@ -143,10 +221,58 @@ describe('saved extraction source evidence', () => {
         expect(prompts.at(-1)).not.toContain('CHANGED_SOURCE_B');
         expect(prompts.at(-1)).toContain(capture.captureId);
         expect(prompts.at(-1)).toContain(capture.files[0]!.textHash!);
+        expect(prompts.at(-1)).toContain('Compiler evidence and source candidates');
+        expect(prompts.at(-1)).toContain('"keyPath":["__proto__"]');
+        expect(prompts.at(-1)).toContain('"test-config-warning"');
       }
       expect(prompts).toHaveLength(2);
     } finally {
       reopened.close();
+    }
+  });
+
+  it.each(['[null]', '[{}]', '[{"name":"label","facts":{}}]'])(
+    'reports malformed saved candidate members as corrupt without breaking review: %s',
+    (payload) => {
+      dir = mkdtempSync(join(tmpdir(), 'saved-candidate-corrupt-'));
+      const db = openPipelineDb(join(dir, 'pipeline.db'));
+      try {
+        const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+        storeRawComponents(db, sessionId, [
+          {
+            name: 'Card',
+            source: 'Card.tsx',
+            framework: 'react',
+            props: [],
+            slots: [],
+            factSchemaVersion: 3,
+            sourceCandidates: [],
+          },
+        ]);
+        db.prepare('UPDATE raw_component_source_evidence SET candidates_json = ? WHERE session_id = ?').run(
+          payload,
+          sessionId,
+        );
+        expect(loadRawComponents(db, sessionId)[0]?.sourceEvidenceReadStatus).toBe('corrupt');
+        expect(loadComponentReviewMetadata(db, sessionId, 'Card')?.sourceCandidates).toBeNull();
+      } finally {
+        db.close();
+      }
+    },
+  );
+
+  it('reports malformed run diagnostic members as corrupt', () => {
+    dir = mkdtempSync(join(tmpdir(), 'saved-diagnostic-corrupt-'));
+    const db = openPipelineDb(join(dir, 'pipeline.db'));
+    try {
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      db.prepare('INSERT INTO extraction_source_diagnostics (session_id, payload_json) VALUES (?, ?)').run(
+        sessionId,
+        JSON.stringify({ schemaVersion: 1, projects: [null], modules: [] }),
+      );
+      expect(loadExtractionSourceDiagnostics(db, sessionId)).toEqual({ status: 'corrupt' });
+    } finally {
+      db.close();
     }
   });
 

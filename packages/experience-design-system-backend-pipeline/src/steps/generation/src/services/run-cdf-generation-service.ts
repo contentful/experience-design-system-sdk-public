@@ -10,6 +10,7 @@ import type {
   RunCdfGenerationServiceResult,
 } from '../types/contract.js';
 import { isAbortError, throwIfAborted } from '../../../../helpers/abort.js';
+import { buildCompilerEvidenceInline } from '../../../../agents/prompts/helpers/build-compiler-evidence-inline.js';
 
 const DEFAULT_CONCURRENCY = 3;
 const AGENT_TIMEOUT_MS = 120_000;
@@ -79,7 +80,14 @@ async function generateOne(
   const prompt = await buildPrompt({
     skill: 'components',
     mode: 'autonomous',
-    rawComponentsInline: JSON.stringify({ ...component, props: component.props.map(stripPropProvenance) }),
+    rawComponentsInline: JSON.stringify(
+      (({ sourceCandidates: _candidates, sourceCandidateSources: _sources, ...raw }) => ({
+        ...raw,
+        props: component.props.map(stripPropProvenance),
+      }))(component),
+    ),
+    compilerEvidenceInline:
+      options.compilerEvidenceInline ?? buildCompilerEvidenceInline([component], { readiness: 'caller-provided' }),
     propBucketsInline: JSON.stringify(componentBuckets),
     outDir: '',
     componentName: component.name,

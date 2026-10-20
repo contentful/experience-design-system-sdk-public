@@ -1,4 +1,6 @@
 import type { ComponentExtractionResult, ExtractionExclusion, RawComponentDefinition } from '../../types/component.js';
+import { mergeExtractionDiagnostics } from '../../compiler/diagnostics.js';
+import { retainDuplicateSourceCandidates } from '../../candidates/source-candidates.js';
 import {
   resolveComponentScopeInfo,
   resolveTopLevelFamilyName,
@@ -46,7 +48,7 @@ export function deduplicateComponents(results: readonly ComponentExtractionResul
           reason: `duplicate identity; ${selected.reason}`,
           stage: 'duplicate-filter',
         });
-        componentsByKey.set(identityKey, selected.winner);
+        componentsByKey.set(identityKey, retainDuplicateSourceCandidates(selected.winner, selected.loser));
         continue;
       }
 
@@ -70,5 +72,6 @@ export function deduplicateComponents(results: readonly ComponentExtractionResul
     components: [...componentsByKey.values()].sort((a, b) => a.name.localeCompare(b.name)),
     warnings: allWarnings,
     exclusions,
+    extractionDiagnostics: mergeExtractionDiagnostics(results.map((result) => result.extractionDiagnostics)),
   };
 }

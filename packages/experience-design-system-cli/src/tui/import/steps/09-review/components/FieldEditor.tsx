@@ -21,6 +21,23 @@ type PropMetadata = {
   rationale?: string | null;
   sourceStartLine?: number | null;
   sourceEndLine?: number | null;
+  sourceCandidate?: {
+    type: string;
+    facts?: {
+      sourceTypeText: string;
+      origin: string;
+      certainty: string;
+      declaredRequired: boolean | null;
+      domain: { openness: string };
+      sourceDefault: { expression: string } | null;
+      declarations: Array<{
+        canonicalPath: string | null;
+        startLine: number | null;
+        endLine: number | null;
+        binding: string;
+      }>;
+    } | null;
+  } | null;
 };
 
 export type FieldEditorMetadata = {
@@ -2241,6 +2258,14 @@ export function FieldEditor({
           const path = metadata?.sourcePath ?? null;
           const src = metadata?.componentSource ?? null;
           const headerPath = path ?? '<unknown source path>';
+          const candidate = propMeta?.sourceCandidate;
+          const fact = candidate?.facts;
+          const declarationLocations = fact?.declarations
+            .map(
+              (location) =>
+                `${location.canonicalPath ?? '<unknown>'}:${location.startLine ?? '?'}-${location.endLine ?? '?'} (${location.binding})`,
+            )
+            .join(', ');
           const lineRange = metadata?.sourceLineRanges?.find(
             (range) => start !== null && end !== null && start >= range.sourceStartLine && end <= range.sourceEndLine,
           );
@@ -2248,6 +2273,20 @@ export function FieldEditor({
             return (
               <Box flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1}>
                 <Text color={PALETTE.muted} bold>{`source: ${headerPath}`}</Text>
+                {candidate && (
+                  <Text color={PALETTE.muted} wrap="truncate-end">
+                    {`source fact: ${fact?.sourceTypeText ?? candidate.type} · origin ${fact?.origin ?? 'unknown'} · certainty ${fact?.certainty ?? 'unknown'} · declared required ${fact?.declaredRequired === null || fact?.declaredRequired === undefined ? 'unknown' : String(fact.declaredRequired)} · domain ${fact?.domain.openness ?? 'unknown'}`}
+                  </Text>
+                )}
+                {fact?.sourceDefault && (
+                  <Text
+                    color={PALETTE.muted}
+                    wrap="truncate-end"
+                  >{`source default: ${fact.sourceDefault.expression}`}</Text>
+                )}
+                {declarationLocations && (
+                  <Text color={PALETTE.muted} wrap="truncate-end">{`declarations: ${declarationLocations}`}</Text>
+                )}
                 <Text color={PALETTE.muted}>(no source location captured for this prop)</Text>
                 <Text>[s] close</Text>
               </Box>
@@ -2262,6 +2301,20 @@ export function FieldEditor({
               <Text color={PALETTE.muted}>
                 {`evidence: ${metadata?.sourceCoverage ?? 'unavailable'} · extraction bytes: ${metadata?.extractionByteBinding ?? 'unverified'}`}
               </Text>
+              {candidate && (
+                <Text color={PALETTE.muted} wrap="truncate-end">
+                  {`source fact: ${fact?.sourceTypeText ?? candidate.type} · origin ${fact?.origin ?? 'unknown'} · certainty ${fact?.certainty ?? 'unknown'} · declared required ${fact?.declaredRequired === null || fact?.declaredRequired === undefined ? 'unknown' : String(fact.declaredRequired)} · domain ${fact?.domain.openness ?? 'unknown'}`}
+                </Text>
+              )}
+              {fact?.sourceDefault && (
+                <Text
+                  color={PALETTE.muted}
+                  wrap="truncate-end"
+                >{`source default: ${fact.sourceDefault.expression}`}</Text>
+              )}
+              {declarationLocations && (
+                <Text color={PALETTE.muted} wrap="truncate-end">{`declarations: ${declarationLocations}`}</Text>
+              )}
               {metadata?.scopeProvenance && (
                 <Text color={PALETTE.muted}>
                   {metadata.scopeProvenance.kind === 'closure'

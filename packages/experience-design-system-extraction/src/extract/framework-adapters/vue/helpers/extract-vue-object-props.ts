@@ -16,14 +16,17 @@ export function isPublicVuePropName(name: string): boolean {
   return !/^[_$]/.test(name);
 }
 
-export function parseVueObjectProps(obj: import('ts-morph').ObjectLiteralExpression): RawPropDefinition[] {
+export function parseVueObjectProps(
+  obj: import('ts-morph').ObjectLiteralExpression,
+  includePrivate = false,
+): RawPropDefinition[] {
   if (!Node.isObjectLiteralExpression(obj)) return [];
   const result: RawPropDefinition[] = [];
 
   for (const prop of obj.getProperties()) {
     if (!Node.isPropertyAssignment(prop)) continue;
     const name = prop.getName();
-    if (!isPublicVuePropName(name)) continue;
+    if (!includePrivate && !isPublicVuePropName(name)) continue;
     const init = prop.getInitializer();
 
     if (!init || !Node.isObjectLiteralExpression(init)) {

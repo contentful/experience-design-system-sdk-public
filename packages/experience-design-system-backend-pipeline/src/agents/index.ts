@@ -47,5 +47,7 @@ export { createLocalCliAgentInvoker } from './invoker/create-local-cli-agent-inv
 
 // --- Prompt building ---
 export { buildPrompt } from './prompts/build-prompt.js';
+export { buildCompilerEvidenceInline } from './prompts/helpers/build-compiler-evidence-inline.js';
+export type { CompilerEvidenceReadiness } from './prompts/helpers/build-compiler-evidence-inline.js';
 export { resolveSkillPath } from './prompts/resolve-skill-path.js';
 export { formatCustomPromptBanner } from './prompts/format-custom-prompt-banner.js';

@@ -14,6 +14,12 @@ export type ExtractionValidationIssue = {
   field?: string;
 };
 
+import type {
+  ExtractionDiagnostics,
+  SourceCandidate,
+  SourceCandidateSource,
+} from '@contentful/experience-design-system-extraction';
+
 export interface RawPropDefinition {
   name: string;
   type: string;
@@ -69,12 +75,20 @@ export interface RawComponentDefinition {
   validationIssues?: ExtractionValidationIssue[];
   /** Absolute path to the source file this component was extracted from. Null for synthesized / multi-file. */
   sourcePath?: string;
+  /** Immutable source observations kept independent of projected props and slots. */
+  sourceCandidates?: SourceCandidate[];
+  /** Candidate evidence from duplicate declarations; never merged into this winner's facts. */
+  sourceCandidateSources?: SourceCandidateSource[];
+  sourceEvidenceReadStatus?: 'available' | 'unknown-legacy' | 'corrupt' | 'unsupported';
+  /** Absent legacy data is unknown; this version identifies the fact payload. */
+  factSchemaVersion?: number;
 }
 
 export interface ComponentExtractionResult {
   components: RawComponentDefinition[];
   warnings: string[];
   exclusions?: ExtractionExclusion[];
+  extractionDiagnostics?: ExtractionDiagnostics;
 }
 
 /** A deterministic item removed before the interactive scope gate. */
@@ -105,6 +119,8 @@ export interface ExtractorOptions {
   resolveUnreachable?: 'auto' | 'always' | 'never';
   /** Absolute project root — used by the retry pass to locate tsconfig.json and node_modules. */
   projectRoot?: string;
+  /** Optional cooperative cancellation for bounded compiler analysis. */
+  signal?: AbortSignal;
 }
 
 export interface ComponentExtractor {

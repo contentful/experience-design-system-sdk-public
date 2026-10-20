@@ -6,7 +6,6 @@ import type { FunctionLike } from './resolve-component-function.js';
 export function extractDestructuredBindingFallbackProps(
   func: FunctionLike,
   param: ParameterDeclaration,
-  existingPropNames: Set<string>,
   slotNames: Set<string>,
 ): RawPropDefinition[] {
   const nameNode = param.getNameNode();
@@ -36,8 +35,8 @@ export function extractDestructuredBindingFallbackProps(
     for (const element of bindingPattern.getElements()) {
       if (element.getDotDotDotToken()) continue;
 
-      const propName = element.getPropertyNameNode()?.getText() ?? element.getNameNode().getText();
-      if (propName === 'children' || existingPropNames.has(propName) || slotNames.has(propName)) continue;
+      const propName = getBindingPropertyName(element);
+      if (propName === undefined || propName === 'children' || slotNames.has(propName)) continue;
       if (propsByName.has(propName)) continue;
 
       const property = paramType.getProperty(propName);
@@ -49,10 +48,26 @@ export function extractDestructuredBindingFallbackProps(
         name: propName,
         type: propertyType === 'unknown' ? 'any' : propertyType,
         required: property ? !property.isOptional() : false,
+        ...(element.getInitializer() ? { defaultValue: element.getInitializer()!.getText() } : {}),
         ...getSourceLineMetadata(declaration),
       });
     }
   }
 
   return [...propsByName.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function getBindingPropertyName(element: import('ts-morph').BindingElement): string | undefined {
+  const propertyName = element.getPropertyNameNode();
+  const name = propertyName ?? element.getNameNode();
+  if (Node.isIdentifier(name)) return name.getText();
+  if (Node.isStringLiteral(name) || Node.isNoSubstitutionTemplateLiteral(name)) return name.getLiteralValue();
+  if (Node.isNumericLiteral(name)) return String(name.getLiteralValue());
+  if (Node.isComputedPropertyName(name)) {
+    const expression = name.getExpression();
+    if (Node.isStringLiteral(expression) || Node.isNoSubstitutionTemplateLiteral(expression))
+      return expression.getLiteralValue();
+    if (Node.isNumericLiteral(expression)) return String(expression.getLiteralValue());
+  }
+  return undefined;
 }

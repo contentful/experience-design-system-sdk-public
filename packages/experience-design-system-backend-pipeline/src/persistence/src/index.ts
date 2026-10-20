@@ -113,9 +113,10 @@ export {
   loadComponentSourceRef,
   loadComponentSourceRefs,
   loadSavedComponentSourceRef,
+  loadExtractionSourceDiagnostics,
   renameEmptySlots,
 } from './session/repositories/db.js';
-export type { RawComponentWithId } from './session/repositories/db.js';
+export type { RawComponentWithId, ExtractionSourceDiagnosticsRead } from './session/repositories/db.js';
 
 // --- CDF component storage ---
 export {

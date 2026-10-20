@@ -51,3 +51,57 @@ export function extractDefaultValues(func: FunctionLike): Map<string, string> {
 
   return defaults;
 }
+
+/** Preserve the original binding initializer text for source evidence; authoring display keeps its existing normalization. */
+export function extractSourceDefaultExpressions(func: FunctionLike): Map<string, string> {
+  const defaults = new Map<string, string>();
+  const params = func.getParameters();
+  if (params.length === 0) return defaults;
+  const nameNode = params[0]!.getNameNode();
+  const patterns: import('ts-morph').ObjectBindingPattern[] = [];
+  if (Node.isObjectBindingPattern(nameNode)) {
+    patterns.push(nameNode);
+  } else if (Node.isIdentifier(nameNode)) {
+    const body = func.getBody();
+    if (body && Node.isBlock(body)) {
+      for (const statement of body.getStatements()) {
+        if (!Node.isVariableStatement(statement)) continue;
+        for (const declaration of statement.getDeclarationList().getDeclarations()) {
+          const declarationName = declaration.getNameNode();
+          const initializer = declaration.getInitializer();
+          if (
+            Node.isObjectBindingPattern(declarationName) &&
+            initializer &&
+            Node.isIdentifier(initializer) &&
+            initializer.getText() === nameNode.getText()
+          )
+            patterns.push(declarationName);
+        }
+      }
+    }
+  }
+  for (const pattern of patterns) {
+    for (const element of pattern.getElements()) {
+      const initializer = element.getInitializer();
+      const propertyName = element.getPropertyNameNode();
+      const keyNode = propertyName ?? element.getNameNode();
+      const key = Node.isIdentifier(keyNode)
+        ? keyNode.getText()
+        : Node.isStringLiteral(keyNode) || Node.isNoSubstitutionTemplateLiteral(keyNode)
+          ? keyNode.getLiteralValue()
+          : Node.isNumericLiteral(keyNode)
+            ? String(keyNode.getLiteralValue())
+            : Node.isComputedPropertyName(keyNode) &&
+                (Node.isStringLiteral(keyNode.getExpression()) ||
+                  Node.isNoSubstitutionTemplateLiteral(keyNode.getExpression()) ||
+                  Node.isNumericLiteral(keyNode.getExpression()))
+              ? keyNode
+                  .getExpression()
+                  .getText()
+                  .replace(/^['"]|['"]$/g, '')
+              : undefined;
+      if (initializer && key !== undefined) defaults.set(key, initializer.getText());
+    }
+  }
+  return defaults;
+}

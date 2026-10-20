@@ -176,7 +176,43 @@ describe('runSelection', () => {
     let handle: ReturnType<typeof completeExtractionWithSourceEvidence>;
     try {
       const stepId = createStep(db, sessionId, 'analyze extract', { project: dir });
-      const finalComponent = { ...component('Card'), source: sourcePath, sourcePath };
+      const extractionDiagnostics = {
+        schemaVersion: 1 as const,
+        projects: [
+          {
+            root: sourcePath,
+            configPath: null,
+            configHash: null,
+            status: 'fallback' as const,
+            options: {},
+            diagnostics: ['test-config-warning'],
+          },
+        ],
+        modules: [],
+        references: [],
+        coverage: 'partial' as const,
+        limits: { maxRoots: 16 },
+        used: { roots: 1 },
+      };
+      const finalComponent = {
+        ...component('Card'),
+        source: sourcePath,
+        sourcePath,
+        factSchemaVersion: 3,
+        sourceCandidates: [
+          {
+            name: '__proto__',
+            keyPath: ['__proto__'],
+            evidenceKinds: ['declaration' as const],
+            type: "'candidate' | string",
+            declaredRequired: false,
+            sourceDefault: null,
+            facts: null,
+            observations: [],
+            projection: { kind: 'excluded' as const, reason: 'test-candidate-only' },
+          },
+        ],
+      };
       storeRawComponents(db, sessionId, [finalComponent]);
       const stored = loadRawComponents(db, sessionId)[0]!;
       const capture = await captureSourceEvidence({
@@ -192,6 +228,7 @@ describe('runSelection', () => {
         scannedFiles: ['Card.tsx'],
         capture,
         observations: { accepted: [{ component: 'Card', source: 'selection-fixture' }], rejected: [] },
+        extractionDiagnostics,
       });
     } finally {
       db.close();
@@ -206,6 +243,15 @@ describe('runSelection', () => {
     expect(prompt).not.toContain('SELECTION_CAPTURE_B');
     expect(prompt).toContain('selection-fixture');
     expect(prompt).toContain('"extractionByteBinding": "unverified"');
+    expect(prompt).toContain(
+      'Compiler evidence and source candidates (JSON; advisory and separate from authoring props)',
+    );
+    expect(prompt).not.toContain('"sourceCandidates":[{"name":"__proto__"');
+    const evidenceBlock = prompt.match(/Compiler evidence and source candidates[^\n]*:\n```json\n([\s\S]*?)\n```/);
+    const compilerEvidence = JSON.parse(evidenceBlock![1]!);
+    expect(compilerEvidence.readiness).toBe('ready');
+    expect(compilerEvidence.sourceCandidates[0].candidates[0].keyPath).toEqual(['__proto__']);
+    expect(compilerEvidence.compilerEvidence.runDiagnostics.projects[0].diagnostics).toEqual(['test-config-warning']);
   });
 
   it('rejects an unavailable supplied completion handle before invoking or saving selection', async () => {

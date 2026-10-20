@@ -14,11 +14,14 @@ import {
 import { resolvePropsType } from './resolve-react-props-type.js';
 import {
   extractDefaultValues,
+  extractSourceDefaultExpressions,
   filterImplementationOnlyAliasProps,
   extractDestructuredBindingFallbackProps,
 } from './extract-react-binding-defaults.js';
 import { inferPrimitiveDomPropsFromImplementation, hasImplementationChildrenHint } from './collect-react-impl-hints.js';
 import { extractPropTypes } from './extract-react-prop-types.js';
+import { mergeSourceCandidates, observeRawProps, observeTypeProps } from '../../../candidates/source-candidates.js';
+import { SOURCE_FACT_SCHEMA_VERSION } from '../../../candidates/types.js';
 
 const REACT_ELEMENT_GENERIC_TEST = /(?:React\.)?ReactElement\s*<\s*[A-Za-z_$][\w$.]*/;
 
@@ -57,7 +60,7 @@ export function extractReactComponentFromExport(
 
   const params = funcNode.getParameters();
   if (params.length === 0) {
-    return { ...base, props: [], slots: [] };
+    return { ...base, props: [], slots: [], sourceCandidates: [], factSchemaVersion: SOURCE_FACT_SCHEMA_VERSION };
   }
 
   const resolvedPropsType = resolvePropsType(params[0]);
@@ -71,6 +74,7 @@ export function extractReactComponentFromExport(
     : extractPropsFromType(firstParamType, renderPropSlotNames, firstParamTypeNode);
   const hasMeaningfulExtractedProps = props.some((prop) => !prop.name.startsWith('__scope'));
   const defaults = extractDefaultValues(funcNode);
+  const sourceDefaults = extractSourceDefaultExpressions(funcNode);
   const hasImplementationChildren = hasImplementationChildrenHint(funcNode, params[0]);
   const slots = extractSlots(
     firstParamType,
@@ -82,23 +86,20 @@ export function extractReactComponentFromExport(
   const syntheticDomProps = resolvedPropsType.suppressProps
     ? []
     : getSyntheticDomAttributeProps(resolvedPropsType.typeNode);
+  const allImplementationPrimitiveDomProps = resolvedPropsType.suppressProps
+    ? []
+    : inferPrimitiveDomPropsFromImplementation(funcNode, params[0]);
   const implementationPrimitiveDomProps =
-    !resolvedPropsType.suppressProps && !hasMeaningfulExtractedProps && syntheticDomProps.length === 0
-      ? inferPrimitiveDomPropsFromImplementation(funcNode, params[0])
-      : [];
+    !hasMeaningfulExtractedProps && syntheticDomProps.length === 0 ? allImplementationPrimitiveDomProps : [];
+  const sourceBindingFallbackProps = resolvedPropsType.suppressProps
+    ? []
+    : extractDestructuredBindingFallbackProps(funcNode, params[0], renderPropSlotNames);
   const shouldTryBindingFallback =
     !resolvedPropsType.suppressProps &&
     (containsImportedOmitWrappedCustomProps(firstParamTypeNode) ||
       containsAnyPickType(firstParamTypeNode) ||
       (!hasMeaningfulExtractedProps && Node.isObjectBindingPattern(params[0].getNameNode())));
-  const bindingFallbackProps = shouldTryBindingFallback
-    ? extractDestructuredBindingFallbackProps(
-        funcNode,
-        params[0],
-        new Set(props.map((p) => p.name)),
-        renderPropSlotNames,
-      )
-    : [];
+  const bindingFallbackProps = shouldTryBindingFallback ? sourceBindingFallbackProps : [];
 
   const mergedPropsByName = new Map<string, RawPropDefinition>();
   for (const prop of props) mergedPropsByName.set(prop.name, prop);
@@ -135,6 +136,17 @@ export function extractReactComponentFromExport(
     }
     return true;
   });
+  const sourceCandidateResult = mergeSourceCandidates(
+    [
+      ...observeTypeProps(firstParamType, props, source, { sourceDefaults }),
+      ...observeRawProps(syntheticDomProps, 'declaration', { origin: 'inherited-dom' }),
+      ...observeRawProps(allImplementationPrimitiveDomProps, 'implementation'),
+      ...observeRawProps(sourceBindingFallbackProps, 'binding', { sourceDefaults }),
+      ...(finalProps === resolvedProps ? [] : observeRawProps(finalProps, 'runtime-object', { sourceDefaults })),
+    ],
+    propsAfterSlotExpansion,
+    [...slots, ...expandedSlots],
+  );
 
   const propsTypeName = firstParamTypeNode?.getText?.().trim();
   const propsTypeNameCapture = propsTypeName && /^[A-Za-z_$][\w$]*$/.test(propsTypeName) ? propsTypeName : undefined;
@@ -143,6 +155,8 @@ export function extractReactComponentFromExport(
     ...base,
     props: propsAfterSlotExpansion,
     slots: [...slots, ...expandedSlots],
+    sourceCandidates: sourceCandidateResult.candidates,
+    factSchemaVersion: SOURCE_FACT_SCHEMA_VERSION,
     _componentIdentity: getComponentIdentity(funcNode),
     _funcNode: funcNode,
     ...(propsTypeNameCapture ? { _propsTypeName: propsTypeNameCapture } : {}),

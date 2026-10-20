@@ -1,5 +1,6 @@
 import type { RawComponentDefinition } from './component.js';
 import type { ExtractorOptions } from './options.js';
+import type { ExtractionDiagnostics } from '../candidates/types.js';
 
 export type ExtractionEndpointProgress = {
   phase: 'extract'; // BOI give each phase a type
@@ -16,4 +17,5 @@ export interface ExtractionEndpointRequest extends ExtractorOptions {
 export interface ExtractionEndpointResponse {
   components: RawComponentDefinition[];
   warnings: string[];
+  extractionDiagnostics?: ExtractionDiagnostics;
 }

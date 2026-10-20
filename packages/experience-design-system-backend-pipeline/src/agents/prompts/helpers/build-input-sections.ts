@@ -9,6 +9,7 @@ export function buildInputSections(options: PromptOptions): string[] {
   const {
     skill,
     rawComponentsInline,
+    compilerEvidenceInline,
     propBucketsInline,
     rawTokensInline,
     rawTokensFilename,
@@ -42,6 +43,11 @@ export function buildInputSections(options: PromptOptions): string[] {
   }
   if (rawComponentsInline) {
     sections.push(`Raw component data (JSON):\n\`\`\`json\n${rawComponentsInline}\n\`\`\``);
+  }
+  if (compilerEvidenceInline) {
+    sections.push(
+      `Compiler evidence and source candidates (JSON; advisory and separate from authoring props):\n\`\`\`json\n${compilerEvidenceInline}\n\`\`\``,
+    );
   }
   if (propBucketsInline) {
     sections.push(

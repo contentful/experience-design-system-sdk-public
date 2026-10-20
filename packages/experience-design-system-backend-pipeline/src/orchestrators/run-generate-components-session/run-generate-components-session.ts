@@ -1,6 +1,11 @@
 import { createLocalCliAgentInvoker } from '../../agents/invoker/create-local-cli-agent-invoker.js';
 import type { AgentName } from '../../agents/types/agent-name.js';
-import { loadRawComponents, openPipelineDb } from '../../persistence/src/session/repositories/db.js';
+import {
+  loadCompletedSourceEvidence,
+  loadExtractionSourceDiagnostics,
+  loadRawComponents,
+  openPipelineDb,
+} from '../../persistence/src/session/repositories/db.js';
 import { hashContent, hashPromptForSkill } from '../../persistence/src/session/helpers/cache-keys.js';
 import { loadAcceptedNames } from '../../persistence/src/index.js';
 import { summarizeForMapTokens } from '../../steps/generation/src/controller/existing-entities/summarize-for-map-tokens.js';
@@ -14,6 +19,7 @@ import { runWithPool } from './helpers/run-with-pool.js';
 import { bindAnalyticsSessionId } from '../../analytics/index.js';
 import type { RunGenerateComponentsSessionRequest, RunGenerateComponentsSessionResponse } from './types.js';
 import { throwIfAborted } from '../../helpers/abort.js';
+import { buildCompilerEvidenceInline } from '../../agents/prompts/helpers/build-compiler-evidence-inline.js';
 
 export type {
   GenerateComponentsProgress,
@@ -61,6 +67,13 @@ export async function runGenerateComponentsSession(
   try {
     const acceptedNames = await loadAcceptedNames(request.sessionId);
     throwIfAborted(request.signal);
+    const savedSourceEvidence = loadCompletedSourceEvidence(db, request.sessionId);
+    const sourceReady = savedSourceEvidence.readiness === 'ready';
+    const extractionDiagnosticsRead = sourceReady
+      ? loadExtractionSourceDiagnostics(db, request.sessionId)
+      : { status: 'absent' as const };
+    const extractionDiagnostics =
+      extractionDiagnosticsRead.status === 'available' ? extractionDiagnosticsRead.diagnostics : undefined;
     const acceptedSet = acceptedNames ? new Set(acceptedNames) : undefined;
     let components = loadRawComponents(db, request.sessionId, acceptedSet ?? undefined);
     if (components.length === 0) return buildEmptySessionResponse(request.sessionId);
@@ -101,6 +114,12 @@ export async function runGenerateComponentsSession(
             promptHash,
             existingContentfulEntities: existingEntities,
             existingTokensInline,
+            compilerEvidenceInline: buildCompilerEvidenceInline([component], {
+              readiness: sourceReady ? 'ready' : 'unavailable',
+              ...(extractionDiagnostics ? { diagnostics: extractionDiagnostics } : {}),
+              diagnosticsStatus: extractionDiagnosticsRead.status,
+              ...(savedSourceEvidence.readiness === 'unavailable' ? { reason: savedSourceEvidence.reason } : {}),
+            }),
             precomputedCachedNames: request.precomputedCachedNames ?? new Set(),
             allowedComponentNames,
             onProgress: request.onProgress,

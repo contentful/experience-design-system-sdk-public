@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { bucketComponentProps, preClassifyComponent } from '@contentful/experience-design-system-extraction';
 import { buildPrompt } from '../../../src/agents/prompts/build-prompt.js';
 import { stripPropProvenance } from '../../../src/agents/prompts/helpers/strip-prop-provenance.js';
+import { buildCompilerEvidenceInline } from '../../../src/agents/prompts/helpers/build-compiler-evidence-inline.js';
 
 describe('component classification prompt evidence', () => {
   it('renders bounded source and open-domain guidance in the real selection and generation prompts', async () => {
@@ -28,6 +29,54 @@ describe('component classification prompt evidence', () => {
     );
     expect(prompt).toContain('"customPropNames":["label"]');
     expect(await buildPrompt(options)).not.toContain('Deterministic prop buckets (advisory evidence only');
+  });
+
+  it('renders scoped source candidates and run diagnostics as a separate plain evidence block', async () => {
+    const rawComponent = {
+      name: 'Card',
+      source: 'src/Card.tsx',
+      framework: 'react' as const,
+      props: [],
+      slots: [],
+      factSchemaVersion: 3,
+      sourceEvidenceReadStatus: 'available' as const,
+      sourceCandidates: [
+        {
+          name: '__proto__',
+          keyPath: ['__proto__'],
+          evidenceKinds: ['declaration' as const],
+          type: 'string',
+          declaredRequired: false,
+          sourceDefault: null,
+          facts: null,
+          observations: [],
+          projection: { kind: 'excluded' as const, reason: 'candidate-only' },
+        },
+      ],
+    };
+    const compilerEvidenceInline = buildCompilerEvidenceInline([rawComponent], {
+      readiness: 'ready',
+      diagnostics: {
+        schemaVersion: 1,
+        projects: [],
+        modules: [],
+        references: [],
+        coverage: 'partial',
+        limits: { maxRoots: 16 },
+        used: { roots: 1 },
+      },
+    });
+    const prompt = await buildPrompt({
+      skill: 'components',
+      mode: 'autonomous',
+      outDir: '/tmp/out',
+      compilerEvidenceInline,
+    });
+    expect(prompt).toContain(
+      'Compiler evidence and source candidates (JSON; advisory and separate from authoring props)',
+    );
+    expect(prompt).toContain('"keyPath":["__proto__"]');
+    expect(prompt).toContain('"coverage":"partial"');
   });
 
   it('passes retained DOM props and their source declarations to downstream reasoning', async () => {

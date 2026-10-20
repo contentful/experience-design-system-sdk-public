@@ -60,4 +60,36 @@ describe('selection controller optional context', () => {
     expect(agent.prompts[0]).not.toContain('Existing components in the target');
     expect(agent.prompts[0]).toContain('Card');
   });
+
+  it('routes caller-supplied schema-v3 candidates through the distinct evidence block', async () => {
+    await selectComponents({
+      ...request(),
+      components: [
+        {
+          name: 'Card',
+          source: 'Card.tsx',
+          framework: 'react',
+          props: [],
+          slots: [],
+          factSchemaVersion: 3,
+          sourceCandidates: [
+            {
+              name: '__proto__',
+              keyPath: ['__proto__'],
+              evidenceKinds: ['declaration'],
+              type: 'string',
+              declaredRequired: false,
+              sourceDefault: null,
+              facts: null,
+              observations: [],
+              projection: { kind: 'excluded', reason: 'test-candidate-only' },
+            },
+          ],
+        },
+      ],
+    } as Parameters<typeof selectComponents>[0]);
+    expect(agent.prompts[0]).toContain('Compiler evidence and source candidates');
+    expect(agent.prompts[0]).toContain('"readiness":"caller-provided"');
+    expect(agent.prompts[0]).toContain('"keyPath":["__proto__"]');
+  });
 });

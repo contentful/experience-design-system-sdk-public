@@ -12,6 +12,8 @@ export interface RunCdfGenerationServiceOptions {
   components: RawComponentDefinition[];
   signal?: AbortSignal;
   tokens?: DTCGTokenEntry[];
+  /** Optional scoped compiler/source-candidate block for alternate fresh-generation callers. */
+  compilerEvidenceInline?: string;
   agent: AgentName;
   model?: string;
   concurrency?: number;
