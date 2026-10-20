@@ -512,3 +512,5 @@ export type {
   SharedSourceReference,
   SharedSourceRange,
 } from '@contentful/experience-design-system-types';
+
+export { loadPropertyDecisions } from './persistence/src/session/repositories/db.js';

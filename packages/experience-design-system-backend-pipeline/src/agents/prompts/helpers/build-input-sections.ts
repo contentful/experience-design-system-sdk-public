@@ -130,7 +130,7 @@ export function buildInputSections(options: PromptOptions): string[] {
     if (withoutContent.length > 0) {
       const guidance =
         skill === 'components'
-          ? 'there is no consumption evidence for these, so `token` cannot be earned for any of their props — classify from the prop signature alone, and any prop that would otherwise be enum-versus-token is `enum` (or `string`)'
+          ? 'there is no consumption evidence for these, so `token` cannot be earned for any of their props — classify from the prop signature alone, and any prop that would otherwise be enum-versus-token is `string` with declared values (or open `string`)'
           : 'there is no source evidence to narrow from — emit nothing for their props';
       sections.push(
         `Component source unavailable for (JSON) — ${guidance}:\n\`\`\`json\n${JSON.stringify(withoutContent.map((ref) => ({ component: ref.component, sourcePath: ref.sourcePath })))}\n\`\`\``,

@@ -3,6 +3,9 @@ import { cdfJsonSchema, CDF_SCHEMA_URL } from './schema.js';
 import { DESIGN_TOKEN_TYPES } from '../dtcg/token-types.js';
 import type { CDFFile, CDFComponentEntry, CDFTokenEntry, CDFValidationError, CDFValidationResult } from './types.js';
 
+import { validateCDFProperty } from './property-validation.js';
+import { jsonValueIssue } from '../property-contract/json-value.js';
+
 const ajv = new Ajv({ allErrors: true });
 const validate = ajv.compile(cdfJsonSchema);
 
@@ -54,6 +57,8 @@ export function parseCDFComponents(
 }
 
 export function validateCDF(input: unknown): CDFValidationResult {
+  const unsafe = jsonValueIssue(input);
+  if (unsafe) return { valid: false, errors: [unsafe], components: [], tokens: [] };
   const valid = validate(input);
   if (!valid) {
     const errors: CDFValidationError[] = (validate.errors ?? []).map((err: ErrorObject) => ({
@@ -82,5 +87,11 @@ export function validateCDF(input: unknown): CDFValidationResult {
   }
 
   const { components, tokens } = parseCDFComponents(file as Record<string, unknown>);
-  return { valid: true, errors: [], components, tokens };
+  const errors: CDFValidationError[] = [];
+  for (const component of components)
+    for (const [key, property] of Object.entries(component.entry.$properties)) {
+      for (const issue of validateCDFProperty(property).issues)
+        errors.push({ path: `/${component.key}/$properties/${key}${issue.path}`, message: issue.message });
+    }
+  return { valid: !errors.length, errors, components, tokens };
 }

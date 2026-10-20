@@ -1,3 +1,4 @@
+import { parseClassificationMetadata, CDF_PROPERTY_TYPES } from '@contentful/experience-design-system-types';
 import type {
   ClassifyPropCall,
   ClassifyComponentCall,
@@ -8,7 +9,7 @@ import type {
 import { readToolCallObjects } from './helpers/read-tool-call-objects.js';
 
 const VALID_TOOL_NAMES = new Set(['classify_prop', 'exclude_prop', 'classify_component', 'classify_slot']);
-const VALID_CDF_TYPES = new Set(['string', 'richtext', 'media', 'enum', 'token', 'boolean']);
+const VALID_CDF_TYPES = new Set<string>([...CDF_PROPERTY_TYPES, 'enum']);
 const VALID_CATEGORIES = new Set(['content', 'design', 'state']);
 
 export function parsePropToolCallLines(stdout: string): ParsedToolCalls {
@@ -47,7 +48,16 @@ export function parsePropToolCallLines(stdout: string): ParsedToolCalls {
       if (typeof rec.token_kind === 'string') call.token_kind = rec.token_kind;
       if (typeof rec.required === 'boolean') call.required = rec.required;
       if (typeof rec.description === 'string') call.description = rec.description;
-      if (typeof rec.default === 'string' || typeof rec.default === 'boolean') call.default = rec.default;
+      try {
+        const metadataIssues = parseClassificationMetadata(rec, call);
+        if (metadataIssues.length) {
+          warnings.push(...metadataIssues.map((issue) => `classify_prop '${rec.prop}': ${issue} — skipped`));
+          continue;
+        }
+      } catch {
+        warnings.push(`classify_prop '${rec.prop}': invalid JSON-safe metadata — skipped`);
+        continue;
+      }
       if (typeof rec.reason === 'string') call.reason = rec.reason;
       calls.push(call);
     } else if (tool === 'exclude_prop') {

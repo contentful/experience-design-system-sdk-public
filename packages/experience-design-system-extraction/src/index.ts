@@ -17,7 +17,7 @@ export {
   observeTypeProps,
 } from './extract/candidates/source-candidates.js';
 export { extractSourceDefaultExpressions } from './extract/framework-adapters/react/helpers/extract-react-binding-defaults.js';
-export { SOURCE_FACT_SCHEMA_VERSION } from './extract/candidates/types.js';
+export { SOURCE_FACT_SCHEMA_VERSION, SUPPORTED_SOURCE_FACT_SCHEMA_VERSIONS } from './extract/candidates/types.js';
 export { bindSourceCandidatesToCapture } from './extract/candidates/bind-source-candidates.js';
 export { mergeExtractionDiagnostics } from './extract/compiler/diagnostics.js';
 export { createCompilerContexts } from './extract/compiler/context.js';
@@ -145,3 +145,10 @@ export {
   bucketComponentsProps,
 } from './extract/services/classification/bucket-component-props.js';
 export type { PreClassification, PropBucketAssignment } from './extract/types/classification.js';
+
+export type {
+  NativeSourceShape,
+  SourceTypeGraph,
+  SourceTypeNode,
+  SourceJsonValue,
+} from './extract/candidates/types.js';

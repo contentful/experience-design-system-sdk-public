@@ -1,3 +1,4 @@
+import { materializeProperty, PropertyAdmissionError } from './property/materialize-property.js';
 import { bucketComponentProps } from '@contentful/experience-design-system-extraction';
 import { stripPropProvenance } from '../../../../agents/prompts/helpers/strip-prop-provenance.js';
 import { createHash } from 'node:crypto';
@@ -24,8 +25,8 @@ function hashString(s: string): string {
 }
 
 function toolCallsToEntry(component: RawComponentDefinition, calls: ToolCall[]): CDFComponentEntry {
-  const properties: Record<string, CDFPropertyDefinition> = {};
-  const slots: Record<string, CDFSlotDefinition> = {};
+  const properties: Record<string, CDFPropertyDefinition> = Object.create(null);
+  const slots: Record<string, CDFSlotDefinition> = Object.create(null);
   let description: string | undefined;
 
   const knownProps = new Set(component.props.map((p) => p.name));
@@ -36,18 +37,9 @@ function toolCallsToEntry(component: RawComponentDefinition, calls: ToolCall[]):
       if (call.description) description = call.description;
     } else if (call.tool === 'classify_prop') {
       if (!knownProps.has(call.prop)) continue;
-      const prop: CDFPropertyDefinition = {
-        $type: call.cdf_type as CDFPropertyDefinition['$type'],
-        $category: call.cdf_category,
-      };
-      if (call.description) prop.$description = call.description;
-      if (call.required !== undefined) prop.$required = call.required;
-      if (call.default !== undefined) prop.$default = call.default;
-      if (call.cdf_type === 'token') {
-        if (call.token_kind) prop['$token.kind'] = call.token_kind;
-      } else if (call.values && call.values.length > 0) {
-        prop.$values = call.values;
-      }
+      const materialized = materializeProperty(component, call);
+      if (materialized.projection?.outcome === 'unsupported') throw new PropertyAdmissionError(materialized);
+      const prop = materialized.definition;
       properties[call.prop] = prop;
     } else if (call.tool === 'classify_slot') {
       if (!knownSlots.has(call.slot)) continue;
@@ -135,8 +127,21 @@ async function generateOne(
   }
 
   throwIfAborted(options.signal);
+  let materialized: CDFComponentEntry;
+  try {
+    materialized = toolCallsToEntry(component, calls);
+  } catch (error) {
+    return {
+      failure: {
+        componentName: component.name,
+        error: error instanceof Error ? error.message : String(error),
+        ...(error instanceof PropertyAdmissionError ? { propertyOutcomes: [error.property] } : {}),
+      },
+      warnings,
+    };
+  }
   const entry = projectAcceptedSlots(
-    toolCallsToEntry(component, calls),
+    materialized,
     options.acceptedSlots?.filter(
       (decision) => decision.name === component.name && decision.source === component.source,
     ),

@@ -1,12 +1,1 @@
-export const CDF_PROPERTY_TYPES = [
-  'string',
-  'richtext',
-  'number',
-  'media',
-  'link',
-  'enum',
-  'token',
-  'boolean',
-] as const;
-
-export const CDF_PROPERTY_CATEGORIES = ['content', 'design', 'state', 'unattached'] as const;
+export { CDF_PROPERTY_TYPES, CDF_PROPERTY_CATEGORIES } from '@contentful/experience-design-system-types';

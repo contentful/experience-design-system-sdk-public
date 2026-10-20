@@ -25,6 +25,8 @@ export interface DownstreamImpact {
 }
 
 export interface PropertySummary {
+  /** Exact definition when supplied locally; omission means unknown recursive shape. */
+  definition?: import('@contentful/experience-design-system-types').CDFFieldDefinition;
   type: string;
   category: string;
   required: boolean;

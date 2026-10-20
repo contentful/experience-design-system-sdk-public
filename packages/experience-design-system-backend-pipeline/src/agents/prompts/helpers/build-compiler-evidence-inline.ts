@@ -1,3 +1,4 @@
+import { SUPPORTED_SOURCE_FACT_SCHEMA_VERSIONS } from '@contentful/experience-design-system-extraction';
 import type { RawComponentDefinition } from '../../../steps/extraction/src/types/component.js';
 import type { ExtractionDiagnostics } from '@contentful/experience-design-system-extraction';
 
@@ -19,7 +20,7 @@ export function buildCompilerEvidenceInline(
     const available =
       options.readiness !== 'unavailable' &&
       (readStatus === 'available' || allowedFromReadStatus) &&
-      component.factSchemaVersion === 3 &&
+      SUPPORTED_SOURCE_FACT_SCHEMA_VERSIONS.includes(component.factSchemaVersion as 3 | 4) &&
       component.sourceCandidates !== undefined;
     return {
       componentName: component.name,

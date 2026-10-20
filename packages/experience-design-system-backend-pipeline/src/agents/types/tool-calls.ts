@@ -1,16 +1,5 @@
-export interface ClassifyPropCall {
-  tool: 'classify_prop';
-  prop: string;
-  cdf_type: string;
-  cdf_category: 'content' | 'design' | 'state';
-  values?: string[];
-  token_kind?: string;
-  required?: boolean;
-  description?: string;
-  default?: string | boolean;
-  /** Internal LLM rationale; not customer-facing. Persisted to raw_props.rationale. */
-  reason?: string;
-}
+import type { ClassifiedPropertyCall } from '@contentful/experience-design-system-types';
+export type ClassifyPropCall = ClassifiedPropertyCall;
 
 export interface ExcludePropCall {
   tool: 'exclude_prop';

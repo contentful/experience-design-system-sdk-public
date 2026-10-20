@@ -1,3 +1,4 @@
+import { parseClassificationMetadata } from '@contentful/experience-design-system-types';
 import { VALID_CATEGORIES, VALID_CDF_TYPES, VALID_TOOL_NAMES } from '../constants/tool-names.js';
 import type {
   ClassifyComponentCall,
@@ -44,7 +45,16 @@ export function parseToolCalls(stdout: string): ParsedToolCalls {
       if (typeof rec.token_kind === 'string') call.token_kind = rec.token_kind;
       if (typeof rec.required === 'boolean') call.required = rec.required;
       if (typeof rec.description === 'string') call.description = rec.description;
-      if (typeof rec.default === 'string' || typeof rec.default === 'boolean') call.default = rec.default;
+      try {
+        const metadataIssues = parseClassificationMetadata(rec, call);
+        if (metadataIssues.length) {
+          warnings.push(...metadataIssues.map((issue) => `classify_prop '${rec.prop}': ${issue} — skipped`));
+          continue;
+        }
+      } catch {
+        warnings.push(`classify_prop '${rec.prop}': invalid JSON-safe metadata — skipped`);
+        continue;
+      }
       if (typeof rec.reason === 'string') call.reason = rec.reason;
       calls.push(call);
     } else if (tool === 'exclude_prop') {

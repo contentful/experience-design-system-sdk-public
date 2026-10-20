@@ -46,6 +46,17 @@ function bindCandidate(
     facts: candidate.facts
       ? {
           ...candidate.facts,
+          ...(candidate.facts.sourceGraph
+            ? {
+                sourceGraph: {
+                  ...candidate.facts.sourceGraph,
+                  nodes: candidate.facts.sourceGraph.nodes.map((node) => ({
+                    ...node,
+                    declarations: node.declarations.map((location) => bindLocation(location, capturedByPath)!),
+                  })),
+                },
+              }
+            : {}),
           declarations: candidate.facts.declarations.map((location) => bindLocation(location, capturedByPath)!),
           sourceDefault: candidate.facts.sourceDefault
             ? {
@@ -78,6 +89,17 @@ function bindCandidate(
         ? {
             fact: {
               ...observation.fact,
+              ...(observation.fact.sourceGraph
+                ? {
+                    sourceGraph: {
+                      ...observation.fact.sourceGraph,
+                      nodes: observation.fact.sourceGraph.nodes.map((node) => ({
+                        ...node,
+                        declarations: node.declarations.map((location) => bindLocation(location, capturedByPath)!),
+                      })),
+                    },
+                  }
+                : {}),
               declarations: observation.fact.declarations.map((location) => bindLocation(location, capturedByPath)!),
               sourceDefault: observation.fact.sourceDefault
                 ? {

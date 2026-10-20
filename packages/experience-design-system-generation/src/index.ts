@@ -70,3 +70,5 @@ export type {
   InvokeAgentOptions,
   LocalCliAgentInvokerOptions as CreateLocalCliAgentInvokerOptions,
 } from './types/invoker.js';
+
+export { parseRepresentationProposalDrafts as parsePropertyRepresentationProposals } from '@contentful/experience-design-system-types';

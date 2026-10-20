@@ -3,7 +3,8 @@ export type SourceFactOrigin = 'own' | 'imported' | 'inherited-dom' | 'inherited
 export type SourceFactCertainty = 'certain' | 'ambiguous' | 'unknown';
 export type SourceDomainOpenness = 'closed' | 'open' | 'unknown';
 export type SourceFactBinding = 'verified' | 'changed' | 'unverified' | 'unavailable';
-export const SOURCE_FACT_SCHEMA_VERSION = 3;
+export const SOURCE_FACT_SCHEMA_VERSION = 4;
+export const SUPPORTED_SOURCE_FACT_SCHEMA_VERSIONS = [3, 4] as const;
 
 export interface SourceFactLocation {
   fileId: string | null;
@@ -30,6 +31,9 @@ export interface SourceDomain {
 export interface SourceDefaultFact {
   expression: string;
   location: SourceFactLocation | null;
+  state?: 'value' | 'unsupported';
+  value?: SourceJsonValue;
+  reason?: string | null;
 }
 
 export interface CompilerPropFact {
@@ -42,7 +46,8 @@ export interface CompilerPropFact {
   domain: SourceDomain;
   declaredRequired: boolean | null;
   sourceDefault: SourceDefaultFact | null;
-  advisoryShape: null;
+  advisoryShape: NativeSourceShape | null;
+  sourceGraph?: SourceTypeGraph;
   shapeNotes: string[];
   requiredFieldDropped: boolean | null;
 }
@@ -157,4 +162,42 @@ export interface ExtractionDiagnostics {
   coverage: CompilerCoverage;
   limits: Record<string, number>;
   used: Record<string, number>;
+}
+
+export type SourceJsonValue = null | boolean | number | string | SourceJsonValue[] | { [key: string]: SourceJsonValue };
+export interface NativeSourceShape {
+  $type: 'string' | 'number' | 'boolean' | 'array' | 'record';
+  $required: boolean;
+  $description?: string;
+  $values?: SourceJsonValue[];
+  $items?: NativeSourceShape;
+  $fields?: Record<string, NativeSourceShape>;
+}
+export interface SourceTypeNode {
+  id: string;
+  keyPath: string[];
+  kind: string;
+  typeText: string;
+  required: boolean;
+  declarations: SourceFactLocation[];
+  domain: {
+    openness: SourceDomainOpenness;
+    declaredValues: SourceJsonValue[];
+    provenance: 'compiler' | 'unknown';
+    unrepresentedValues?: Array<{ typeText: string; reason: string }>;
+  };
+  fields?: Array<{ key: string; nodeId: string; required: boolean }>;
+  items?: string[];
+  alternatives?: string[];
+  indexSignatures?: Array<{ keyType: string; valueNodeId: string }>;
+  coverage: CompilerCoverage;
+  reason: string | null;
+}
+export interface SourceTypeGraph {
+  schemaVersion: 1;
+  rootId: string;
+  nodes: SourceTypeNode[];
+  coverage: CompilerCoverage;
+  limits: { maxDepth: number; maxNodes: number; maxFields: number };
+  omittedCount: number;
 }

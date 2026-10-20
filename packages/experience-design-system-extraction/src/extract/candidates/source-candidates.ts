@@ -1,4 +1,5 @@
 import ts from 'typescript';
+import { captureNativeSource, decodeSourceDefault } from './native-source.js';
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import type { Node, Type } from 'ts-morph';
@@ -198,6 +199,12 @@ export function observeTypeProps(
     const sourceTypeText = typeTexts[0] ?? prop.type;
     const declaredRequired = property ? !property.isOptional() : prop.required;
     const sourceDefault = options.sourceDefaults?.get(prop.name) ?? prop.defaultValue ?? null;
+    const fallback =
+      declarations[0] ?? type.getSymbol()?.getDeclarations()[0] ?? type.getAliasSymbol()?.getDeclarations()[0];
+    const resolved =
+      property && fallback
+        ? captureNativeSource(property.getTypeAtLocation(fallback), fallback, declaredRequired, [prop.name])
+        : null;
     const fact: CompilerPropFact = {
       origin,
       resolvedKind: resolvedKind(sourceTypeText),
@@ -217,9 +224,10 @@ export function observeTypeProps(
       sourceTypeText,
       domain: describeSourceDomain(sourceTypeText),
       declaredRequired,
-      sourceDefault: sourceDefault !== null ? { expression: sourceDefault, location: null } : null,
-      advisoryShape: null,
-      shapeNotes: ['bounded-advisory-shape-not-derived'],
+      sourceDefault: sourceDefault !== null ? decodeSourceDefault(sourceDefault, locations[0] ?? null) : null,
+      advisoryShape: resolved?.shape ?? null,
+      ...(resolved ? { sourceGraph: resolved.graph } : {}),
+      shapeNotes: resolved?.notes ?? ['source-type-location-unavailable'],
       requiredFieldDropped: null,
     };
     return {
@@ -275,7 +283,7 @@ function createFact(observation: SourceCandidateObservation): CompilerPropFact {
       domain: describeSourceDomain(observation.type),
       declaredRequired: observation.declaredRequired,
       sourceDefault: observation.sourceDefault
-        ? { expression: observation.sourceDefault, location: observation.location }
+        ? decodeSourceDefault(observation.sourceDefault, observation.location)
         : null,
       advisoryShape: null,
       shapeNotes: ['bounded-advisory-shape-not-derived'],

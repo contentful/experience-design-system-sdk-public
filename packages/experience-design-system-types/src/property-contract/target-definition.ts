@@ -1,0 +1,184 @@
+import { childPath, jsonEqual, jsonValueIssue, own, type JsonValue, type PropertyIssue } from './json-value.js';
+
+export const TARGET_PROPERTY_TYPES = [
+  'String',
+  'Number',
+  'Boolean',
+  'Array',
+  'Record',
+  'Integer',
+  'DateTime',
+  'RichText',
+  'JSON',
+  'ResourceLink',
+  'Literal',
+] as const;
+export type TargetPropertyType = (typeof TARGET_PROPERTY_TYPES)[number];
+export interface TargetDefinition {
+  type: TargetPropertyType;
+  id?: string;
+  name?: string;
+  description?: string;
+  required?: boolean;
+  values?: JsonValue[];
+  defaultValue?: JsonValue;
+  items?: TargetDefinition;
+  fields?: Record<string, TargetDefinition>;
+  allowedResources?: Array<{ type: 'Entry' | 'Asset'; source: 'same-space' }>;
+  value?: JsonValue;
+  valueType?: TargetDefinition;
+}
+export interface DefinitionValidation {
+  valid: boolean;
+  issues: PropertyIssue[];
+}
+
+export function validateTargetValue(definition: TargetDefinition, value: JsonValue, path = ''): PropertyIssue[] {
+  const fail = (message: string): PropertyIssue[] => [{ path, message }];
+  const { type } = definition;
+  if (definition.values && !definition.values.some((allowed) => jsonEqual(allowed, value)))
+    return fail('Value outside declared domain');
+  if (type === 'String' || type === 'DateTime') {
+    if (typeof value !== 'string') return fail('Expected string');
+  } else if (type === 'Number' || type === 'Integer') {
+    if (typeof value !== 'number' || !Number.isFinite(value) || (type === 'Integer' && !Number.isSafeInteger(value)))
+      return fail(type === 'Integer' ? 'Expected safe integer' : 'Expected finite number');
+  } else if (type === 'Boolean') {
+    if (typeof value !== 'boolean') return fail('Expected boolean');
+  } else if (type === 'Array') {
+    if (!Array.isArray(value)) return fail('Expected array');
+    return value.flatMap((item, i) => validateTargetValue(definition.items!, item, childPath(path, i)));
+  } else if (type === 'Record') {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) return fail('Expected record');
+    const issues: PropertyIssue[] = [];
+    for (const key of Object.keys(value))
+      if (!own(definition.fields!, key)) issues.push({ path: childPath(path, key), message: 'Unknown field' });
+    for (const [key, field] of Object.entries(definition.fields!)) {
+      if (!own(value, key)) {
+        if (field.required) issues.push({ path: childPath(path, key), message: 'Required field missing' });
+      } else issues.push(...validateTargetValue(field, value[key], childPath(path, key)));
+    }
+    return issues;
+  } else if (type === 'Literal') {
+    if (!jsonEqual(value, definition.value)) return fail('Default must equal intrinsic literal');
+    return validateTargetValue(definition.valueType!, value, path);
+  }
+  if (definition.values && !definition.values.some((allowed) => jsonEqual(allowed, value)))
+    return fail('Value outside declared domain');
+  return [];
+}
+
+export function validateTargetDefinition(input: unknown): DefinitionValidation {
+  const jsonIssue = jsonValueIssue(input);
+  if (jsonIssue) return { valid: false, issues: [jsonIssue] };
+  const issues: PropertyIssue[] = [];
+  const walk = (value: unknown, path: string, depth: number): void => {
+    if (depth > 64) {
+      issues.push({ path, message: 'Definition depth exceeds 64' });
+      return;
+    }
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      issues.push({ path, message: 'Expected target definition' });
+      return;
+    }
+    const d = value as TargetDefinition;
+    const add = (key: string, message: string) => issues.push({ path: childPath(path, key), message });
+    if (!TARGET_PROPERTY_TYPES.includes(d.type)) {
+      add('type', 'Unknown target type');
+      return;
+    }
+    const allowed = new Set(['type', 'id', 'name', 'description', 'required', 'values', 'defaultValue']);
+    if (d.type === 'Array') allowed.add('items');
+    if (d.type === 'Record') allowed.add('fields');
+    if (d.type === 'ResourceLink') allowed.add('allowedResources');
+    if (d.type === 'Literal') {
+      allowed.add('value');
+      allowed.add('valueType');
+    }
+    for (const key of Object.keys(d)) if (!allowed.has(key)) add(key, 'Unexpected target metadata');
+    for (const key of ['id', 'name', 'description'] as const)
+      if (own(d, key) && typeof d[key] !== 'string') add(key, 'Expected string');
+    if (own(d, 'required') && typeof d.required !== 'boolean') add('required', 'Expected boolean');
+    const before = issues.length;
+    if (d.type === 'Array') walk(d.items, childPath(path, 'items'), depth + 1);
+    if (d.type === 'Record') {
+      if (!d.fields || typeof d.fields !== 'object' || Array.isArray(d.fields) || Object.keys(d.fields).length === 0)
+        add('fields', 'Expected nonempty field dictionary');
+      else
+        for (const [key, field] of Object.entries(d.fields))
+          walk(field, childPath(childPath(path, 'fields'), key), depth + 1);
+    }
+    if (d.type === 'ResourceLink') {
+      if (!Array.isArray(d.allowedResources) || d.allowedResources.length === 0)
+        add('allowedResources', 'Expected same-space Entry/Asset resources');
+      else
+        d.allowedResources.forEach((r, i) => {
+          if (
+            !r ||
+            !['Entry', 'Asset'].includes(r.type) ||
+            r.source !== 'same-space' ||
+            Object.keys(r).some((key) => !['type', 'source'].includes(key))
+          )
+            add(`allowedResources/${i}`, 'Expected same-space Entry/Asset resource');
+        });
+    }
+    if (d.type === 'Literal') {
+      if (!own(d, 'value')) add('value', 'Intrinsic literal missing');
+      walk(d.valueType, childPath(path, 'valueType'), depth + 1);
+    }
+    if (own(d, 'values') && (!Array.isArray(d.values) || d.values.length === 0))
+      add('values', 'Expected nonempty declared domain');
+    if (issues.length !== before) return;
+    if (d.values) {
+      const withoutDomain = { ...d };
+      delete withoutDomain.values;
+      d.values.forEach((v, i) =>
+        issues.push(...validateTargetValue(withoutDomain, v, childPath(childPath(path, 'values'), i))),
+      );
+    }
+    if (d.type === 'Literal' && own(d, 'value'))
+      issues.push(...validateTargetValue(d.valueType!, d.value!, childPath(path, 'value')));
+    if (own(d, 'defaultValue')) {
+      if (d.type === 'RichText' || d.type === 'JSON') add('defaultValue', 'Target does not support defaults');
+      else issues.push(...validateTargetValue(d, d.defaultValue!, childPath(path, 'defaultValue')));
+    }
+  };
+  walk(input, '', 0);
+  return { valid: issues.length === 0, issues };
+}
+
+/** Portable structure only; runtime validation checks default/domain semantics. */
+export const targetDefinitionJsonSchema = {
+  $schema: 'http://json-schema.org/draft-07/schema#',
+  $ref: '#/definitions/target',
+  definitions: {
+    target: {
+      type: 'object',
+      required: ['type'],
+      properties: {
+        type: { enum: [...TARGET_PROPERTY_TYPES] },
+        id: { type: 'string' },
+        name: { type: 'string' },
+        description: { type: 'string' },
+        required: { type: 'boolean' },
+        values: { type: 'array', minItems: 1 },
+        defaultValue: {},
+        items: { $ref: '#/definitions/target' },
+        fields: { type: 'object', minProperties: 1, additionalProperties: { $ref: '#/definitions/target' } },
+        allowedResources: {
+          type: 'array',
+          minItems: 1,
+          items: {
+            type: 'object',
+            required: ['type', 'source'],
+            properties: { type: { enum: ['Entry', 'Asset'] }, source: { const: 'same-space' } },
+            additionalProperties: false,
+          },
+        },
+        value: {},
+        valueType: { $ref: '#/definitions/target' },
+      },
+      additionalProperties: false,
+    },
+  },
+} as const;

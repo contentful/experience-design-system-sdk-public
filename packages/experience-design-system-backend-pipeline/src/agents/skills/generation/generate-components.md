@@ -96,11 +96,15 @@ Emit one JSON object per line. The CLI parses lines starting with `{`. Lines not
 **Rules:**
 
 - Emit exactly one JSON object per line. No multi-line JSON.
+- Root array and record definitions carry complete recursive `items` / `fields` metadata using CDF `$type`, `$required`, `$description`, `$values`, `$items` and `$fields`; preserve exact own keys and true/false requiredness at every node.
+- Defaults are typed JSON values; omit them when unknown, use `default_intent: {"action":"clear"}` to clear a decision, and never execute source expressions or narrow a declared domain from observed/default values.
+- Source graphs and defaults remain independent of advisory shape/category/representation; unsupported deeper or cyclic positions retain source evidence and require an explicit plan with unknown mapper/cardinality context.
+- Proposal stdout is staged typed drafts only; caller readiness and activation are separate.
 - Every prop in the input must produce exactly one call: `classify_prop` OR `exclude_prop`.
 - Every slot must produce exactly one `classify_slot` call.
 - Emit `classify_component` once at the start (required). The `description` field is **required** — always provide a brief description of the component's purpose.
-- `values` is required for `cdf_type: "enum"` — it must be a non-empty string array for a source-supported closed set of variant names. A default, one caller, or a partial lookup map does not establish the complete set. When no closed set is shown, emit `cdf_type: "string"` without `values`; do not guess.
-- **Do NOT include `values` for `cdf_type: "token"`.** The two property types carry different kinds of list. An `enum` prop's list holds _variant names_ the component accepts (`"primary"`, `"secondary"`). A `token` prop's list holds _design token paths_ (`"color.brand.primary"`), produced by the separate token-mapping step (`$token.allowed`) — never by you. Emitting `values` on a token prop makes the definition invalid.
+- `values` is optional for `cdf_type: "string"` — it must be a non-empty string array for a source-supported closed set of variant names. A default, one caller, or a partial lookup map does not establish the complete set. When no closed set is shown, emit `cdf_type: "string"` without `values`; do not guess.
+- **Do NOT include `values` for `cdf_type: "token"`.** The two property types carry different kinds of list. A string domain's list holds _variant names_ the component accepts (`"primary"`, `"secondary"`). A `token` prop's list holds _design token paths_ (`"color.brand.primary"`), produced by the separate token-mapping step (`$token.allowed`) — never by you. Emitting `values` on a token prop makes the definition invalid.
 - `token_kind` is required for `cdf_type: "token"` — must be a DTCG `$type` string, e.g. `"color"`.
 - `required` must be a JSON boolean (`true`/`false`), not a string. Preserve the input contract's requiredness unless explicit source evidence establishes a different contract.
 - `description` on `classify_prop` is customer-facing — keep it short and subject to the description content rules below.
@@ -123,18 +127,18 @@ Emit one JSON object per line. The CLI parses lines starting with `{`. Lines not
 
 ## Valid cdf_type values
 
-Exactly **6** valid types:
+Valid local CDF types:
 
-| cdf_type   | Use case                                                                   |
-| ---------- | -------------------------------------------------------------------------- |
-| `string`   | Plain text, URLs, href props, numbers (as string), any string-shaped value |
-| `richtext` | Formatted text, HTML, ReactNode used as markup                             |
-| `media`    | Images, videos, media assets                                               |
-| `enum`     | Fixed set of string choices — requires `values`                            |
-| `token`    | Design-token-linked prop — requires `token_kind`                           |
-| `boolean`  | Boolean toggle props (visible, disabled, enabled, etc.)                    |
+| cdf_type               | Use case                                                |
+| ---------------------- | ------------------------------------------------------- |
+| `string`               | Plain text and string-shaped source values              |
+| `richtext`             | Formatted text, HTML, ReactNode used as markup          |
+| `media`                | Images, videos, media assets                            |
+| `string` with `values` | Fixed declared set of string choices                    |
+| `token`                | Design-token-linked prop — requires `token_kind`        |
+| `boolean`              | Boolean toggle props (visible, disabled, enabled, etc.) |
 
-> **IMPORTANT: No `number` type.** The design-systems API only supports the `String` design property variant for numeric values. All numeric props must use `cdf_type: "string"` with the number as a string default (e.g. `"0"`, `"100"`). Boolean props can now use `cdf_type: "boolean"` directly.
+> Native `number`, `array` and `record` definitions preserve typed values and complete recursive metadata locally; this vocabulary does not prove remote mapper capability.
 
 > **Avoid `link` type for simple URL props.** Props named `href`, `url`, or holding plain URL strings → `cdf_type: "string"`, `cdf_category: "content"`. Reserve `link` for props that hold a reference to another Contentful entry.
 
@@ -142,7 +146,7 @@ Exactly **6** valid types:
 
 ### Source domains and token values
 
-Use `enum` only for a complete finite declared or enforced domain; partial lookups, observations, defaults and existing models cannot prove completeness.
+Use string with declared values only for a complete finite declared or enforced domain; partial lookups, observations, defaults and existing models cannot prove completeness.
 A domain with an open alternative remains open even when its known values are also design token names.
 Use `token` only when the source contract consumes a resolved design token value; a lookup vocabulary consumes names and is not itself a token value.
 Preserve all source-supported alternatives and explain unrepresented alternatives for review; do not invent a narrower type to resolve uncertainty.
@@ -171,46 +175,26 @@ A ref, event handler or style-shaped input still needs its own source reasoning;
 Keep structured/complex alternatives and source defaults in the evidence record when the target format cannot represent them; preserve that capability limit for review.
 Never manufacture requiredness from callers, typical usage or model agreement.
 
-## Handling nested object props
+## Handling structured source properties
 
-When a prop has an inline object type (e.g., `item: { url?: string; alt?: string; target?: string }`),
-classify EACH field as a separate prop using underscore notation (parentName_fieldName):
-
-Input:
-{"name":"item","type":"{ url?: string; alt?: string; linkUrl?: string; target?: string }","required":true}
-
-Output:
-{"tool":"classify_prop","prop":"item_url","cdf_type":"string","cdf_category":"content","required":false,"description":"Image source URL"}
-{"tool":"classify_prop","prop":"item_alt","cdf_type":"string","cdf_category":"content","required":false,"description":"Image alt text"}
-{"tool":"classify_prop","prop":"item_linkUrl","cdf_type":"string","cdf_category":"content","required":false,"description":"Navigation URL"}
-{"tool":"classify_prop","prop":"item_target","cdf_type":"enum","cdf_category":"design","required":false,"values":["_blank","_self","_parent","_top"],"description":"Link open behavior"}
-
-Note: Underscore notation is used (not dot-notation) because the backend's `toDisplayName()`
-function splits on `.` and takes only the last segment, producing poor display names. Underscore
-produces display names like "Item Url", "Item Alt" which are more readable in the ExO editor.
-
-Rules for nested objects:
-
-- Flatten to max depth 2 (e.g., `item_nested_deep` is acceptable, deeper is not)
-- Each leaf field gets its own classify_prop call with underscore-joined name
-- Apply the same classification rules as top-level props
-- If the object has > 10 fields, classify the most important 10 and exclude the rest
-- If the object type cannot be resolved (opaque generic, imported interface without visible fields), exclude the parent prop with reason "opaque nested type"
-
----
+- Emit one definition for the original source property, retaining exact field keys in `fields` and array item metadata in `items`.
+- Root Array, root Record and direct Array<Record> may use the supported local native profile; retain every declared field and nested/item requiredness.
+- Full source graph/type/census/default/domain evidence is authoritative; advisory shape is optional and cannot establish completeness.
+- Preserve deeper, open-indexed, tuple, union, cyclic, imported and unresolved source evidence with explicit coverage and outcomes; propose generic source-derived alternatives when native mapping is unavailable.
+- Alternate definitions require source revision/node identity, complete field accounting and dependency closure, plus caller-owned mapper/cardinality/readiness context; no draft can authorize activation.
 
 ## Resolving `token_kind`
 
 `token_kind` becomes `$token.kind` in the CDF output — the DTCG `$type` of the token the prop binds to. For a prop that earned `cdf_type: "token"` (Q2 yes, Q3 yes), take the token name cited at Q3 (`tokens.borderRadiusSmall`, `var(--brand-primary)`, a raw `tokenReference`) and resolve it against the inline token data: through the token-name sidecar (raw name → DTCG dot-notation path) when one is provided, otherwise by matching the name to the DTCG tree by spelling (`tokens.borderRadiusSmall` → `border-radius.border-radius-small`); the leaf's `$type` (`"dimension"`) is the `token_kind`. If the name cannot be resolved to a leaf, keep `cdf_type: "token"`, omit `token_kind`, and say so in `description` (`"WARNING: token_kind unknown — <name> not found in token data"`).
 
-**Canonical example — a named variant backed by tokens is still `enum`:**
+**Canonical example — a named variant backed by tokens is still a string domain:**
 
 ```
 Tag.variant has allowedValues ["primary","secondary","warning","negative"] and PillNext.styles.ts
 maps each one to a token (primary→tokens.blue100, warning→tokens.orange100, ...). The mapping is
 internal to the design system — Tag's prop signature accepts the name, not the token. Classifying
-as enum so the author picks "primary" and the component receives "primary".
-{"tool":"classify_prop","prop":"variant","cdf_type":"enum","cdf_category":"design","required":false,"values":["primary","secondary","warning","negative"],"default":"primary","description":"Visual variant","reason":"Fully token-backed internally, but the component consumes the variant name. Token classification would deliver a resolved color the component cannot branch on."}
+as string with declared values so the author picks "primary" and the component receives "primary".
+{"tool":"classify_prop","prop":"variant","cdf_type":"string","cdf_category":"design","required":false,"values":["primary","secondary","warning","negative"],"default":"primary","description":"Visual variant","reason":"Fully token-backed internally, but the component consumes the variant name. Token classification would deliver a resolved color the component cannot branch on."}
 ```
 
 ---

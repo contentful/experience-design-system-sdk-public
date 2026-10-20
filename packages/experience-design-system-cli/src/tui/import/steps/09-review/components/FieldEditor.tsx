@@ -6,6 +6,9 @@ import {
   CDF_PROPERTY_TYPES,
   CDF_PROPERTY_CATEGORIES,
   DESIGN_TOKEN_TYPES,
+  validateCDFProperty,
+  cloneJson,
+  own,
 } from '@contentful/experience-design-system-types';
 import type {
   CDFComponentEntry,
@@ -94,6 +97,8 @@ type PropState = {
   tokenKind: string;
   allowed: string[];
   default: string | boolean | null;
+  original?: CDFPropertyDefinition;
+  defaultTouched?: boolean;
 };
 
 type SlotState = {
@@ -144,7 +149,7 @@ function swapValues<T>(values: T[], firstIndex: number, secondIndex: number): T[
   return next;
 }
 
-function parseToState(json: string): {
+export function parseToState(json: string): {
   state: EditorState;
   error: string | null;
 } {
@@ -180,6 +185,9 @@ function parseToState(json: string): {
   const componentDescription = typeof component.$description === 'string' ? component.$description : '';
 
   const rawProps = (component.$properties ?? {}) as Record<string, unknown>;
+  const unsupported = Object.entries(rawProps).flatMap(([name, definition]) =>
+    validateCDFProperty(definition).issues.map((issue) => `${name}${issue.path}: ${issue.message}`),
+  );
   const props: PropState[] = Object.entries(rawProps).map(([name, raw]) => {
     const p = (raw ?? {}) as Record<string, unknown>;
     const type = CDF_PROPERTY_TYPES.includes(p.$type as never) ? (p.$type as PropState['type']) : 'string';
@@ -205,6 +213,8 @@ function parseToState(json: string): {
         ? (p['$token.allowed'] as unknown[]).filter((v): v is string => typeof v === 'string')
         : [],
       default: defaultValue,
+      original: cloneJson(p as unknown as CDFPropertyDefinition),
+      defaultTouched: false,
     };
   });
 
@@ -221,10 +231,13 @@ function parseToState(json: string): {
     };
   });
 
-  return { state: { componentDescription, props, slots }, error: null };
+  return {
+    state: { componentDescription, props, slots },
+    error: unsupported.length ? `Definition cannot be edited safely: ${unsupported.join('; ')}` : null,
+  };
 }
 
-function serializeState(state: EditorState, originalJson: string): string {
+export function serializeState(state: EditorState, originalJson: string): string {
   let wrapperKey: string | null = null;
   try {
     const orig = JSON.parse(originalJson) as Record<string, unknown>;
@@ -237,27 +250,35 @@ function serializeState(state: EditorState, originalJson: string): string {
     }
   } catch {}
 
-  const $properties: Record<string, CDFPropertyDefinition> = {};
+  const $properties: Record<string, CDFPropertyDefinition> = Object.create(null);
   for (const p of state.props) {
-    const def: CDFPropertyDefinition = {
-      $type: p.type,
-      $category: p.category,
-    };
-    if (p.required) def.$required = true;
+    const sameType = p.original?.$type === p.type;
+    const def: CDFPropertyDefinition = p.original ? cloneJson(p.original) : { $type: p.type, $category: p.category };
+    def.$type = p.type;
+    def.$category = p.category;
+    if (!sameType) {
+      if (p.type !== 'array') delete def.$items;
+      if (p.type !== 'record') delete def.$fields;
+      delete def.$values;
+      delete def['$token.kind'];
+      delete def['$token.allowed'];
+      if (!validateCDFProperty(def).valid) delete def.$default;
+    }
+    if (p.required || own(def, '$required')) def.$required = p.required;
     if (p.description) def.$description = p.description;
-    if (p.type === 'enum' && p.values.length > 0) def.$values = p.values;
-    if (p.type === 'token' && p.tokenKind) def['$token.kind'] = p.tokenKind;
-    if (p.type === 'token' && p.allowed.length > 0) def['$token.allowed'] = p.allowed;
-    if (p.default !== null) {
-      if (p.type === 'boolean' && typeof p.default === 'boolean') {
-        def.$default = p.default;
-      } else if (
-        (p.type === 'string' || p.type === 'token' || p.type === 'enum') &&
-        typeof p.default === 'string' &&
-        p.default !== ''
-      ) {
-        def.$default = p.default;
-      }
+    else delete def.$description;
+    if (p.type === 'string' && p.values.length) def.$values = [...p.values];
+    else if (p.type === 'string' && sameType && p.original?.$values?.every((value) => typeof value === 'string'))
+      delete def.$values;
+    if (p.type === 'token') {
+      if (p.tokenKind) def['$token.kind'] = p.tokenKind;
+      else delete def['$token.kind'];
+      if (p.allowed.length) def['$token.allowed'] = [...p.allowed];
+      else delete def['$token.allowed'];
+    }
+    if (p.defaultTouched) {
+      if (p.default === null) delete def.$default;
+      else def.$default = p.default;
     }
     $properties[p.name] = def;
   }
@@ -507,12 +528,23 @@ function DefaultSubRow({
     );
   }
 
+  if (['array', 'record', 'number'].includes(prop.type)) {
+    const display =
+      prop.original && own(prop.original, '$default') ? JSON.stringify(prop.original.$default) : '(unset)';
+    return (
+      <DefaultValueRow
+        display={display.length > 72 ? `${display.slice(0, 69)}...` : display}
+        active={active}
+        focused={focused}
+      />
+    );
+  }
   if (prop.type === 'boolean') {
     const display = prop.default === true ? 'true' : prop.default === false ? 'false' : '(unset)';
     return <DefaultValueRow display={display} active={active} focused={focused} />;
   }
 
-  if (prop.type === 'enum') {
+  if (prop.type === 'string' && prop.values.length > 0) {
     if (prop.values.length === 0) {
       return (
         <Box gap={1} flexShrink={0}>
@@ -695,7 +727,7 @@ function PropRow({
         </InlinePropField>
       )}
 
-      {prop.type === 'enum' && (
+      {prop.type === 'string' && prop.values.length > 0 && (
         <Box gap={1} flexWrap="wrap" width={width} flexShrink={0}>
           <Text color={activeField === 'values' ? PALETTE.warning : PALETTE.muted} bold={activeField === 'values'}>
             {activeField === 'values' ? '› ' : '  '}values:
@@ -744,7 +776,7 @@ function PropRow({
         </Box>
       )}
 
-      {selected && prop.type === 'enum' && activeField === 'values' && (
+      {selected && prop.type === 'string' && prop.values.length > 0 && activeField === 'values' && (
         <Box paddingLeft={2} flexDirection="column">
           <Box>
             <Text color={PALETTE.muted}>values:</Text>
@@ -918,7 +950,7 @@ function propFields(prop: PropState): PropField[] {
   if (prop.type === 'token') {
     fields.push('tokenKind');
   }
-  if (prop.type === 'enum') fields.push('values');
+  if (prop.type === 'string' && prop.values.length > 0) fields.push('values');
   if (prop.type !== 'richtext' && prop.type !== 'media' && prop.type !== 'link') {
     fields.push('default');
   }
@@ -1265,8 +1297,14 @@ export function FieldEditor({
   }, [inComponentDesc, inSlots, showHiddenProps, slots.length, visiblePropIndexes, visiblePropPosition]);
 
   const commit = (next: EditorState) => {
+    const serialized = serializeState(next, value);
+    const parsed = parseToState(serialized);
+    if (parsed.error) {
+      setValidationError(parsed.error);
+      return;
+    }
     setEditorState(next);
-    onChange(serializeState(next, value));
+    onChange(serialized);
   };
 
   const canonicalize = React.useCallback((json: string): string => {
@@ -1294,7 +1332,7 @@ export function FieldEditor({
   }, [discardTrigger, onChange, value]);
 
   useImmediateInput((input, key) => {
-    if (!active) return;
+    if (!active || parseErr) return;
 
     if (showHelp) {
       if (input === 'h' || key.escape) {
@@ -1655,6 +1693,10 @@ export function FieldEditor({
         const next = key.leftArrow
           ? options[(idx - 1 + options.length) % options.length]
           : options[(idx + 1) % options.length];
+        if ((next === 'array' || next === 'record') && next !== currentProp.type) {
+          setValidationError('Create recursive definitions in the JSON editor before selecting this type');
+          return;
+        }
         const updated = { ...currentProp, type: next as PropState['type'] };
         if (next === 'token') {
           updated.category = 'design';
@@ -1662,7 +1704,7 @@ export function FieldEditor({
         } else {
           updated.tokenKind = '';
         }
-        if (next !== 'enum') updated.values = [];
+        if (next !== 'string') updated.values = [];
         const nextProps = props.map((p, i) => (i === propIdx ? updated : p));
         commit({ ...editorState, props: nextProps });
         return;
@@ -1692,7 +1734,12 @@ export function FieldEditor({
       }
 
       if (activeField === 'default' && currentProp) {
+        if (['array', 'record', 'number'].includes(currentProp.type)) {
+          setValidationError('Typed defaults are preserved; edit them in the JSON editor');
+          return;
+        }
         const setProp = (next: PropState) => {
+          next = { ...next, defaultTouched: true };
           const nextProps = props.map((p, i) => (i === propIdx ? next : p));
           commit({ ...editorState, props: nextProps });
         };
@@ -1706,7 +1753,7 @@ export function FieldEditor({
           return;
         }
 
-        if (currentProp.type === 'enum' && (key.leftArrow || key.rightArrow)) {
+        if (currentProp.type === 'string' && currentProp.values.length > 0 && (key.leftArrow || key.rightArrow)) {
           const opts: (string | null)[] = [null, ...currentProp.values];
           const cur = typeof currentProp.default === 'string' ? currentProp.default : null;
           const curIdx = opts.findIndex((v) => v === cur);
@@ -1718,7 +1765,7 @@ export function FieldEditor({
 
         if (currentProp.type === 'string' || currentProp.type === 'token') {
           const cur = typeof currentProp.default === 'string' ? currentProp.default : '';
-          const setVal = (next: string) => setProp({ ...currentProp, default: next === '' ? null : next });
+          const setVal = (next: string) => setProp({ ...currentProp, default: next });
           if (key.leftArrow) {
             setTextCursor((c) => Math.max(0, c - 1));
             return;

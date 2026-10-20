@@ -5,7 +5,7 @@ import type { CDFComponentEntry, CDFTokenEntry, CDFValidationError } from './typ
  * older CDF consumers reject unknown slot fields. */
 export function stripUnsupportedSlotFields(entry: CDFComponentEntry): CDFComponentEntry {
   if (!entry.$slots) return entry;
-  const cleaned: CDFComponentEntry['$slots'] = {};
+  const cleaned: NonNullable<CDFComponentEntry['$slots']> = Object.create(null);
   for (const [name, slot] of Object.entries(entry.$slots)) {
     const { $required: _required, ...rest } = slot as Record<string, unknown>;
     cleaned![name] = rest as NonNullable<CDFComponentEntry['$slots']>[string];
@@ -124,13 +124,23 @@ function setAtPath(root: Record<string, unknown>, dottedPath: string, value: unk
   let cursor = root;
   for (let i = 0; i < segments.length - 1; i += 1) {
     const segment = segments[i];
-    const next = cursor[segment];
+    const next = Object.hasOwn(cursor, segment) ? cursor[segment] : undefined;
     if (typeof next !== 'object' || next === null) {
-      cursor[segment] = {};
+      Object.defineProperty(cursor, segment, {
+        value: Object.create(null),
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
     }
     cursor = cursor[segment] as Record<string, unknown>;
   }
-  cursor[segments[segments.length - 1]] = value;
+  Object.defineProperty(cursor, segments[segments.length - 1], {
+    value,
+    enumerable: true,
+    writable: true,
+    configurable: true,
+  });
 }
 
 function getAtPath(root: Record<string, unknown>, dottedPath: string): unknown {
@@ -138,6 +148,7 @@ function getAtPath(root: Record<string, unknown>, dottedPath: string): unknown {
   let cursor: unknown = root;
   for (const segment of segments) {
     if (typeof cursor !== 'object' || cursor === null) return undefined;
+    if (!Object.hasOwn(cursor, segment)) return undefined;
     cursor = (cursor as Record<string, unknown>)[segment];
   }
   return cursor;

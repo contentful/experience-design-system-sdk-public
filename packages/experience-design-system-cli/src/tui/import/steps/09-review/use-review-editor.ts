@@ -124,15 +124,15 @@ export function useReviewEditor({
             }
           : component,
       );
-      setComponents(next);
-      setDraftValue('');
-      setSaveError(null);
       const db = openPipelineDb();
       try {
         storeCDFComponents(db, extractSessionId, [{ key: current.key, entry }]);
       } finally {
         db.close();
       }
+      setComponents(next);
+      setDraftValue('');
+      setSaveError(null);
       onEditSaved(next);
     } catch (error: unknown) {
       setSaveError(String(error));
@@ -159,13 +159,13 @@ export function useReviewEditor({
     const next = components.map((component, index) =>
       index === selectedIdx ? { ...component, entry: nextEntry } : component,
     );
-    setComponents(next);
     const db = openPipelineDb();
     try {
       storeCDFComponents(db, extractSessionId, [{ key: current.key, entry: nextEntry }]);
     } finally {
       db.close();
     }
+    setComponents(next);
     pushHistorySnapshot(next, `token-review:${propName}`);
     onTokenSaved(next);
   };
@@ -173,8 +173,13 @@ export function useReviewEditor({
   const handleTokenEditSave = (suggestion: TokenPropSuggestion): void => {
     const allowed = suggestion.paths.filter((path) => tokenReviewEditSelection.has(path));
     if (allowed.length === 0) return;
-    persistTokenFields(suggestion.propName, allowed);
-    setTokenReviewEditing(false);
+    try {
+      persistTokenFields(suggestion.propName, allowed);
+      setTokenReviewEditing(false);
+      setSaveError(null);
+    } catch (error) {
+      setSaveError(String(error));
+    }
   };
 
   return {

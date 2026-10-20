@@ -1,4 +1,11 @@
 import { z } from 'zod';
+import {
+  validateCDFProperty,
+  jsonValueIssue,
+  validateSourceGraph,
+  type PropertySourceGraph,
+} from '@contentful/experience-design-system-types';
+import type { NativeSourceShape, SourceTypeGraph } from '@contentful/experience-design-system-extraction';
 import type {
   ExtractionDiagnostics,
   SourceCandidate,
@@ -29,8 +36,29 @@ const fact = z.object({
     openness: z.enum(['closed', 'open', 'unknown']),
   }),
   declaredRequired: z.boolean().nullable(),
-  sourceDefault: z.object({ expression: z.string(), location: location.nullable() }).nullable(),
-  advisoryShape: z.null(),
+  sourceDefault: z
+    .object({
+      expression: z.string(),
+      location: location.nullable(),
+      state: z.enum(['value', 'unsupported']).optional(),
+      value: z
+        .custom<import('@contentful/experience-design-system-types').JsonValue>((value) => !jsonValueIssue(value))
+        .optional(),
+      reason: z.string().nullable().optional(),
+    })
+    .nullable(),
+  advisoryShape: z.custom<NativeSourceShape | null>(
+    (value) => value === null || validateCDFProperty(value, false).valid,
+  ),
+  sourceGraph: z
+    .custom<SourceTypeGraph>((value) => {
+      try {
+        return !jsonValueIssue(value) && validateSourceGraph(value as PropertySourceGraph).length === 0;
+      } catch {
+        return false;
+      }
+    })
+    .optional(),
   shapeNotes: z.array(z.string()),
   requiredFieldDropped: z.boolean().nullable(),
 });

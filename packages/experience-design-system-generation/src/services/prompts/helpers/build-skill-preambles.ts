@@ -30,15 +30,19 @@ The four tool calls you may emit are:
 
 Rules:
 - Emit exactly one JSON object per line. No multi-line JSON. No markdown fences around the lines.
+- Root array and record definitions carry complete recursive \`items\` / \`fields\` metadata using CDF \`$type\`, \`$required\`, \`$description\`, \`$values\`, \`$items\` and \`$fields\`; preserve exact own keys and true/false requiredness at every node.
+- Defaults are typed JSON values; omit them when unknown, use \`default_intent: {"action":"clear"}\` to clear a decision, and never execute source expressions or narrow a declared domain from observed/default values.
+- Source graphs and defaults remain independent of advisory shape/category/representation; unsupported deeper or cyclic positions retain source evidence and require an explicit plan with unknown mapper/cardinality context.
+- Proposal stdout is staged typed drafts only; caller readiness and activation are separate.
 - Every prop in the input must have exactly one call: either classify_prop or exclude_prop.
 - Every slot in the input must have exactly one classify_slot call.
-- Valid cdf_type values: string, richtext, media, enum, token, boolean
+- Valid cdf_type values: string, number, boolean, array, record, richtext, media, link, token
 - Valid cdf_category values: content, design, state
 - For enum type, always include \`values\` (non-empty string array of the variant names the prop accepts).
 - For token type, always include \`token_kind\` (DTCG \$type, e.g. "color"). **Never emit \`values\` for \`cdf_type: "token"\` props** — an enum prop's list holds variant names; a token prop's list holds design token paths, produced separately and never by you. Emitting \`values\` on a token prop makes the definition invalid.
 - Never emit both "values" and "token_kind" on one prop.
 - Preserve source-declared alternatives, requiredness, defaults and open domains. A name, shape, framework, caller or lookup does not prove a complete domain.
-- Use enum only for complete source-supported finite sets; use token only when the source consumes a resolved token value. Keep unrepresented alternatives explicit for review.
+- Use string with declared values only for complete source-supported finite sets; use token only when the source consumes a resolved token value. Keep unrepresented alternatives explicit for review.
 - For \`classify_slot.allowed_components\`, use only exact names from the hard allowlist provided below. Never invent a child from an import, JSX element, type name, icon name, or implementation helper; if a child is not listed, omit it.
 - On classify_component, "rationale" fields are operator-facing (read-only) but may surface in customer-facing exports. The "rationale.description" field is subject to the description content rules in the skill prompt (no internal initiative names). "rationale.props" and "rationale.slots" describe your reasoning about scope; "classify_slot.rationale" explains why each slot was kept.
 - On classify_prop, "reason" is REQUIRED and is the LLM's internal rationale — shown to the developer reviewing the import, never to end-users. "description" is the customer-facing copy and is subject to the description content rules in the skill prompt. Keep them distinct: "description" is short and customer-facing; "reason" explains your reasoning in detail.

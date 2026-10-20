@@ -1,3 +1,4 @@
+import { jsonEqual, type CDFFieldDefinition } from '@contentful/experience-design-system-types';
 import type {
   ChangeClassification,
   ComponentTypeSummary,
@@ -161,9 +162,21 @@ function diffProperty(name: string, old: PropertySummary, newDef: Record<string,
   const typeChanged = old.type !== '' && newType !== '' && normalizeType(old.type) !== normalizeType(newType);
   const categoryChanged = old.category !== newCategory;
   const requiredChanged = old.required !== newRequired;
-  const defaultChanged = JSON.stringify(old.default) !== JSON.stringify(newDefault);
+  const defaultChanged = !jsonEqual(old.default, newDefault);
+  const structural = (definition: CDFFieldDefinition | Record<string, unknown>) => ({
+    type: normalizeType(String(definition.$type)),
+    items: definition.$items,
+    fields: definition.$fields,
+    values: definition.$values,
+  });
+  const hasNewStructure =
+    newDef['$items'] !== undefined || newDef['$fields'] !== undefined || newDef['$values'] !== undefined;
+  const structureUnknown = hasNewStructure && old.definition === undefined;
+  const structureChanged = old.definition !== undefined && !jsonEqual(structural(old.definition), structural(newDef));
+  if (structureUnknown)
+    diffs.push({ key: `${name}-shape-unknown`, color: 'yellow', text: `? ${name}: existing recursive shape unknown` });
 
-  if (!typeChanged && !categoryChanged && !requiredChanged && !defaultChanged) return [];
+  if (!typeChanged && !categoryChanged && !requiredChanged && !defaultChanged && !structureChanged) return diffs;
 
   diffs.push({ key: `${name}-old`, color: 'red', text: `- ${name}: ${formatOldProp(old)}` });
   diffs.push({ key: `${name}-new`, color: 'green', text: `+ ${name}: ${formatPropDef(newDef)}` });

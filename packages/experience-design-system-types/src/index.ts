@@ -84,3 +84,7 @@ export type {
   SharedSourceRange,
   SharedSourceCoverage,
 } from './shared-source.js';
+
+export * from './property-contract/index.js';
+export { validateCDFProperty, cdfToTarget } from './cdf/property-validation.js';
+export type { CDFFieldDefinition } from './cdf/types.js';

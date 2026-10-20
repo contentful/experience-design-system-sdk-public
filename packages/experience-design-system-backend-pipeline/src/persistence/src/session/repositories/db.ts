@@ -1,4 +1,12 @@
 import {
+  validateCDFProperty,
+  jsonValueIssue,
+  cloneJson,
+  own,
+  type CDFPropertyDefinition,
+} from '@contentful/experience-design-system-types';
+import { materializeProperty } from '../../../../steps/generation/src/services/property/materialize-property.js';
+import {
   buildSharedSource,
   projectSharedSource,
   projectCapturedFile,
@@ -53,7 +61,7 @@ import {
 import type { SourceCapture } from '@contentful/experience-design-system-extraction';
 import {
   bindSourceCandidatesToCapture,
-  SOURCE_FACT_SCHEMA_VERSION,
+  SUPPORTED_SOURCE_FACT_SCHEMA_VERSIONS,
 } from '@contentful/experience-design-system-extraction';
 import type {
   ExtractionDiagnostics,
@@ -168,6 +176,17 @@ CREATE TABLE IF NOT EXISTS raw_props (
   source_end_line   INTEGER,
   dom_attribute     INTEGER CHECK (dom_attribute IN (0, 1)),
   PRIMARY KEY (session_id, component_id, name),
+  FOREIGN KEY (session_id, component_id) REFERENCES raw_components(session_id, component_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS raw_property_decisions (
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  component_id TEXT NOT NULL,
+  prop_name TEXT NOT NULL,
+  revision INTEGER NOT NULL,
+  definition_json TEXT NOT NULL,
+  decision_json TEXT NOT NULL,
+  PRIMARY KEY (session_id, component_id, prop_name),
   FOREIGN KEY (session_id, component_id) REFERENCES raw_components(session_id, component_id) ON DELETE CASCADE
 );
 
@@ -615,6 +634,7 @@ export interface ApplyToolCallsResult {
   excluded: number;
   slots: number;
   warnings: string[];
+  projectionBlocked?: boolean;
 }
 
 export interface ApplyToolCallsOptions {
@@ -834,6 +854,71 @@ export function loadComponentRationale(
   };
 }
 
+function savePropertyDecision(
+  db: DatabaseSync,
+  sessionId: string,
+  componentId: string,
+  propName: string,
+  definition: CDFPropertyDefinition,
+  decision: unknown,
+): void {
+  const validation = validateCDFProperty(definition);
+  if (!validation.valid)
+    throw new Error(validation.issues.map((issue) => `${issue.path}: ${issue.message}`).join('; '));
+  const unsafe = jsonValueIssue(decision);
+  if (unsafe) throw new Error(`${unsafe.path}: ${unsafe.message}`);
+  const previous = db
+    .prepare('SELECT decision_json FROM raw_property_decisions WHERE session_id=? AND component_id=? AND prop_name=?')
+    .get(sessionId, componentId, propName) as { decision_json: string } | undefined;
+  let retained = decision;
+  if (previous && decision && typeof decision === 'object' && 'kind' in decision && decision.kind === 'review') {
+    const prior = JSON.parse(previous.decision_json) as Record<string, unknown>;
+    const analysis =
+      prior.analysis ??
+      Object.fromEntries(
+        ['model', 'projection', 'alternatives'].filter((key) => own(prior, key)).map((key) => [key, prior[key]]),
+      );
+    retained = { ...decision, analysis };
+  }
+  db.prepare(
+    `INSERT INTO raw_property_decisions (session_id,component_id,prop_name,revision,definition_json,decision_json)
+    VALUES (?,?,?,1,?,?) ON CONFLICT(session_id,component_id,prop_name) DO UPDATE SET revision=revision+1,definition_json=excluded.definition_json,decision_json=excluded.decision_json`,
+  ).run(sessionId, componentId, propName, JSON.stringify(definition), JSON.stringify(retained));
+}
+export function loadPropertyDecisions(
+  db: DatabaseSync,
+  sessionId: string,
+): Array<{
+  componentId: string;
+  propertyName: string;
+  revision: number;
+  definition: CDFPropertyDefinition;
+  decision: unknown;
+}> {
+  const rows = db
+    .prepare(
+      'SELECT component_id,prop_name,revision,definition_json,decision_json FROM raw_property_decisions WHERE session_id=? ORDER BY component_id,prop_name',
+    )
+    .all(sessionId) as Array<{
+    component_id: string;
+    prop_name: string;
+    revision: number;
+    definition_json: string;
+    decision_json: string;
+  }>;
+  return rows.map((row) => {
+    const definition: unknown = JSON.parse(row.definition_json);
+    if (!validateCDFProperty(definition).valid) throw new Error('Corrupt saved property definition');
+    return {
+      componentId: row.component_id,
+      propertyName: row.prop_name,
+      revision: row.revision,
+      definition: definition as CDFPropertyDefinition,
+      decision: JSON.parse(row.decision_json) as unknown,
+    };
+  });
+}
+
 export function applyToolCalls(
   db: DatabaseSync,
   sessionId: string,
@@ -848,6 +933,10 @@ export function applyToolCalls(
   let classified = 0;
   let excluded = 0;
   let slots = 0;
+  let projectionBlocked = false;
+  const rawComponent = loadRawComponents(db, sessionId, new Set([componentName])).find(
+    (component) => component.component_id === componentId,
+  );
 
   const updateProp = db.prepare(
     `UPDATE raw_props SET cdf_type = ?, cdf_category = ?, cdf_token_kind = ?, required = ?, description = ?, rationale = ?
@@ -916,12 +1005,37 @@ export function applyToolCalls(
           }
         }
       } else if (call.tool === 'classify_prop') {
+        if (!rawComponent || !rawComponent.props.some((prop) => prop.name === call.prop)) {
+          warnings.push(`${componentName}: classify_prop '${call.prop}' — prop not found, skipped`);
+          continue;
+        }
+        const materialized = materializeProperty(rawComponent, call, componentId);
+        const definition = materialized.definition;
+        if (materialized.projection?.outcome === 'unsupported') {
+          projectionBlocked = true;
+          const prior = loadPropertyDecisions(db, sessionId).find(
+            (decision) => decision.componentId === componentId && decision.propertyName === call.prop,
+          );
+          savePropertyDecision(db, sessionId, componentId, call.prop, prior?.definition ?? definition, {
+            kind: 'generation',
+            admission: 'unsupported',
+            ...materialized,
+          });
+          warnings.push(
+            ...materialized.projection.issues.map((issue) => `${call.prop}${issue.path}: ${issue.message}`),
+          );
+          continue;
+        }
+        if (materialized.projection)
+          warnings.push(
+            ...materialized.projection.issues.map((issue) => `${call.prop}${issue.path}: ${issue.message}`),
+          );
         const changes = updateProp.run(
-          call.cdf_type,
-          call.cdf_category,
-          call.token_kind ?? null,
-          call.required !== undefined ? (call.required ? 1 : 0) : 0,
-          call.description ?? null,
+          definition.$type,
+          definition.$category,
+          definition['$token.kind'] ?? null,
+          definition.$required ? 1 : 0,
+          definition.$description ?? null,
           call.reason ?? null,
           sessionId,
           componentId,
@@ -948,18 +1062,26 @@ export function applyToolCalls(
           deleteTokenPaths.run(sessionId, componentId, call.prop);
           if (call.values && call.values.length > 0) {
             deleteAllowedValues.run(sessionId, componentId, call.prop);
-            call.values.forEach((v, i) => insertAllowedValue.run(sessionId, componentId, call.prop, v, i));
+            call.values.forEach((v, i) => {
+              if (typeof v === 'string') insertAllowedValue.run(sessionId, componentId, call.prop, v, i);
+            });
           }
         }
-        if (call.default !== undefined) {
-          const storedDefault = typeof call.default === 'boolean' ? String(call.default) : call.default;
-          db.prepare(
-            `UPDATE raw_props SET default_value = ? WHERE session_id = ? AND component_id = ? AND name = ?`,
-          ).run(storedDefault, sessionId, componentId, call.prop);
-        }
+        savePropertyDecision(db, sessionId, componentId, call.prop, definition, {
+          kind: 'generation',
+          defaultIntent:
+            call.default_intent ??
+            (own(call, 'default') ? { action: 'set', value: call.default } : { action: 'absent' }),
+          ...materialized,
+        });
         classified++;
       } else if (call.tool === 'exclude_prop') {
         clearProp.run(call.reason || null, sessionId, componentId, call.prop);
+        db.prepare('DELETE FROM raw_property_decisions WHERE session_id=? AND component_id=? AND prop_name=?').run(
+          sessionId,
+          componentId,
+          call.prop,
+        );
         excluded++;
       } else if (call.tool === 'classify_slot') {
         if (loadAcceptedSlotDecisions(db, sessionId) !== undefined) {
@@ -1007,9 +1129,12 @@ export function applyToolCalls(
       }
     }
 
-    db.prepare(
-      `UPDATE raw_components SET status = 'generated', extracted_at = ? WHERE session_id = ? AND component_id = ?`,
-    ).run(now, sessionId, componentId);
+    db.prepare(`UPDATE raw_components SET status = ?, extracted_at = ? WHERE session_id = ? AND component_id = ?`).run(
+      projectionBlocked ? 'failed' : 'generated',
+      now,
+      sessionId,
+      componentId,
+    );
     db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
     db.exec('COMMIT');
   } catch (e) {
@@ -1017,7 +1142,7 @@ export function applyToolCalls(
     throw e;
   }
 
-  return { classified, excluded, slots, warnings };
+  return { classified, excluded, slots, warnings, ...(projectionBlocked ? { projectionBlocked: true } : {}) };
 }
 
 export type MatchHints = SessionMatchHints;
@@ -1121,6 +1246,19 @@ export function storeRawComponents(
   const ownsTransaction = !options?.withinTransaction;
   if (ownsTransaction) db.exec('BEGIN');
   try {
+    const nativeSnapshot = options?.preserveCDF
+      ? (db
+          .prepare(
+            'SELECT component_id,prop_name,revision,definition_json,decision_json FROM raw_property_decisions WHERE session_id=?',
+          )
+          .all(sessionId) as Array<{
+          component_id: string;
+          prop_name: string;
+          revision: number;
+          definition_json: string;
+          decision_json: string;
+        }>)
+      : [];
     type CDFSnapshot = {
       component_id: string;
       name: string;
@@ -1245,6 +1383,22 @@ export function storeRawComponents(
       }
     }
 
+    for (const snapshot of nativeSnapshot) {
+      const exists = db
+        .prepare('SELECT 1 FROM raw_props WHERE session_id=? AND component_id=? AND name=?')
+        .get(sessionId, snapshot.component_id, snapshot.prop_name);
+      if (exists)
+        db.prepare(
+          'INSERT INTO raw_property_decisions (session_id,component_id,prop_name,revision,definition_json,decision_json) VALUES (?,?,?,?,?,?)',
+        ).run(
+          sessionId,
+          snapshot.component_id,
+          snapshot.prop_name,
+          snapshot.revision,
+          snapshot.definition_json,
+          snapshot.decision_json,
+        );
+    }
     if (options?.preserveCDF && cdfSnapshot.length > 0) {
       const updateCDFByName = db.prepare(
         `UPDATE raw_props SET cdf_type = ?, cdf_category = ?, cdf_token_kind = ?
@@ -1453,7 +1607,10 @@ export function loadRawComponents(
     }
   >();
   for (const row of sourceEvidenceRows) {
-    if (row.fact_schema_version !== SOURCE_FACT_SCHEMA_VERSION) {
+    if (
+      row.fact_schema_version === null ||
+      !SUPPORTED_SOURCE_FACT_SCHEMA_VERSIONS.includes(row.fact_schema_version as 3 | 4)
+    ) {
       sourceEvidenceByComponent.set(row.component_id, { status: 'unsupported' });
       continue;
     }
@@ -1968,6 +2125,44 @@ export function storeCDFComponents(
   sessionId: string,
   components: Array<{ key: string; entry: CDFComponentEntry }>,
 ): void {
+  for (const { key, entry } of components) {
+    const source = loadRawComponents(db, sessionId, new Set([key])).find((component) => component.name === key);
+    const unsafe = jsonValueIssue(entry);
+    if (unsafe) throw new Error(`${unsafe.path}: ${unsafe.message}`);
+    for (const [name, property] of Object.entries(entry.$properties)) {
+      const validation = validateCDFProperty(property);
+      if (!validation.valid) throw new Error(validation.issues.map((i) => `${i.path}: ${i.message}`).join('; '));
+      if (source?.sourceCandidates?.find((candidate) => candidate.name === name)?.facts?.sourceGraph) {
+        const materialized = materializeProperty(
+          source,
+          {
+            tool: 'classify_prop',
+            prop: name,
+            cdf_type: property.$type,
+            cdf_category: property.$category === 'unattached' ? 'content' : property.$category,
+            required: property.$required,
+            description: property.$description,
+            items: property.$items,
+            fields: property.$fields,
+            values: property.$values,
+            token_kind: property['$token.kind'],
+            default_intent: own(property, '$default')
+              ? { action: 'set', value: property.$default! }
+              : { action: 'clear' },
+          },
+          source.component_id,
+        );
+        if (materialized.projection?.outcome === 'unsupported')
+          throw new Error('Native position unavailable; source and saved decisions retained');
+        if (
+          materialized.projection?.issues.some(
+            (issue) => issue.message === 'Source mapper and mapped target must both support default',
+          )
+        )
+          throw new Error('Default unavailable for this mapper; source and saved decisions retained');
+      }
+    }
+  }
   const now = new Date().toISOString();
 
   const updateComp = db.prepare(
@@ -2022,8 +2217,17 @@ export function storeCDFComponents(
       if (row) {
         const { component_id: componentId } = row;
         updateComp.run(entry.$description ?? null, sessionId, key);
+        const names = new Set(Object.keys(entry.$properties));
+        const existingProps = db
+          .prepare('SELECT name FROM raw_props WHERE session_id=? AND component_id=?')
+          .all(sessionId, componentId) as Array<{ name: string }>;
+        for (const existing of existingProps)
+          if (!names.has(existing.name))
+            db.prepare(
+              'UPDATE raw_props SET cdf_type=NULL,cdf_category=NULL,cdf_token_kind=NULL WHERE session_id=? AND component_id=? AND name=?',
+            ).run(sessionId, componentId, existing.name);
         for (const [propName, prop] of Object.entries(entry.$properties)) {
-          updateProp.run(
+          const updated = updateProp.run(
             prop.$type,
             prop.$category,
             prop['$token.kind'] ?? null,
@@ -2032,9 +2236,37 @@ export function storeCDFComponents(
             componentId,
             propName,
           );
+          if (!Number(updated.changes))
+            db.prepare(
+              `INSERT INTO raw_props (session_id,component_id,name,type,required,category,default_value,description,token_reference,position,cdf_type,cdf_category,cdf_token_kind)
+            VALUES (?,?,?,'',?,NULL,NULL,?,NULL,(SELECT COALESCE(MAX(position),-1)+1 FROM raw_props WHERE session_id=? AND component_id=?),?,?,?)`,
+            ).run(
+              sessionId,
+              componentId,
+              propName,
+              prop.$required ? 1 : 0,
+              prop.$description ?? null,
+              sessionId,
+              componentId,
+              prop.$type,
+              prop.$category,
+              prop['$token.kind'] ?? null,
+            );
+          savePropertyDecision(db, sessionId, componentId, propName, prop, {
+            kind: 'review',
+            defaultIntent: own(prop, '$default') ? { action: 'set', value: prop.$default } : { action: 'clear' },
+          });
+          db.prepare('UPDATE raw_props SET description=? WHERE session_id=? AND component_id=? AND name=?').run(
+            prop.$description ?? null,
+            sessionId,
+            componentId,
+            propName,
+          );
           if (prop.$values && prop.$values.length > 0) {
             deleteAllowedValues.run(sessionId, componentId, propName);
-            prop.$values.forEach((v, i) => insertAllowedValue.run(sessionId, componentId, propName, v, i));
+            prop.$values.forEach(
+              (v, i) => typeof v === 'string' && insertAllowedValue.run(sessionId, componentId, propName, v, i),
+            );
           }
           if (prop.$type === 'token' && prop.$category === 'design') {
             // Reconcile the persisted mapping even when the property omits
@@ -2098,8 +2330,14 @@ export function storeCDFComponents(
             prop.$category,
             prop['$token.kind'] ?? null,
           );
+          savePropertyDecision(db, sessionId, componentId, propName, prop, {
+            kind: 'review',
+            defaultIntent: own(prop, '$default') ? { action: 'set', value: prop.$default } : { action: 'clear' },
+          });
           if (prop.$values && prop.$values.length > 0) {
-            prop.$values.forEach((v, i) => insertAllowedValue.run(sessionId, componentId, propName, v, i));
+            prop.$values.forEach(
+              (v, i) => typeof v === 'string' && insertAllowedValue.run(sessionId, componentId, propName, v, i),
+            );
           }
           if (prop.$type === 'token' && prop.$category === 'design') {
             writeTokenPaths(componentId, propName, prop['$token.allowed'] ?? []);
@@ -2147,6 +2385,12 @@ export function loadCDFComponents(
 
   if (components.length === 0) return [];
 
+  const propertyDefinitions = new Map(
+    loadPropertyDecisions(db, sessionId).map((decision) => [
+      `${decision.componentId}::${decision.propertyName}`,
+      decision,
+    ]),
+  );
   const props = db
     .prepare(
       `SELECT component_id, name, required, default_value, description,
@@ -2237,12 +2481,11 @@ export function loadCDFComponents(
   return components.map(({ component_id, name, description }) => {
     const compProps = propsByComponent.get(component_id) ?? [];
 
-    const $properties: CDFComponentEntry['$properties'] = {};
+    const $properties: CDFComponentEntry['$properties'] = Object.create(null);
     for (const p of compProps) {
-      if (!p.name.trim()) continue;
       const av = allowedValuesByProp.get(`${component_id}::${p.name}`);
       const propDef: CDFComponentEntry['$properties'][string] = {
-        $type: p.cdf_type as CDFComponentEntry['$properties'][string]['$type'],
+        $type: (p.cdf_type === 'enum' ? 'string' : p.cdf_type) as CDFComponentEntry['$properties'][string]['$type'],
         $category: p.cdf_category as CDFComponentEntry['$properties'][string]['$category'],
       };
       if (p.required) propDef.$required = true;
@@ -2272,11 +2515,24 @@ export function loadCDFComponents(
         const allowed = toTokenPaths(tokenPathsByProp.get(`${component_id}::${p.name}`));
         if (allowed !== undefined && allowed.length > 0) propDef['$token.allowed'] = allowed;
       }
-      $properties[p.name] = propDef;
+      const saved = propertyDefinitions.get(`${component_id}::${p.name}`);
+      if (saved) {
+        const exact = cloneJson(saved.definition);
+        if (isTokenProp) {
+          const inheritedDefault =
+            (saved.decision as { defaultIntent?: { action?: string } } | null)?.defaultIntent?.action === 'absent';
+          if (inheritedDefault && exact.$default === defaultReference && compatibleResolvedDefault !== undefined)
+            exact.$default = compatibleResolvedDefault;
+          const allowed = toTokenPaths(tokenPathsByProp.get(`${component_id}::${p.name}`));
+          delete exact['$token.allowed'];
+          if (allowed?.length) exact['$token.allowed'] = allowed;
+        }
+        $properties[p.name] = exact;
+      } else $properties[p.name] = propDef;
     }
 
     const compSlots = slotsByComponent.get(component_id) ?? [];
-    const $slots: CDFComponentEntry['$slots'] = {};
+    const $slots: NonNullable<CDFComponentEntry['$slots']> = Object.create(null);
     for (const s of compSlots) {
       if (!s.name.trim()) continue;
       const ac = allowedComponentsBySlot.get(`${component_id}::${s.name}`);
@@ -2722,7 +2978,9 @@ export function backfillUnclassifiedProps(db: DatabaseSync, sessionId: string): 
   const withCategory = db
     .prepare(
       `UPDATE raw_props SET cdf_type = 'string', cdf_category = category
-     WHERE session_id = ? AND cdf_type IS NULL AND category IS NOT NULL
+     WHERE session_id = ? AND cdf_type IS NULL
+       AND NOT EXISTS (SELECT 1 FROM raw_property_decisions decision WHERE decision.session_id=raw_props.session_id AND decision.component_id=raw_props.component_id AND decision.prop_name=raw_props.name AND json_extract(decision.decision_json,'$.admission')='unsupported')
+       AND category IS NOT NULL
        AND component_id IN (
          SELECT component_id FROM raw_components WHERE session_id = ? AND status = 'generated'
        )`,
@@ -2732,7 +2990,9 @@ export function backfillUnclassifiedProps(db: DatabaseSync, sessionId: string): 
   const withoutCategory = db
     .prepare(
       `UPDATE raw_props SET cdf_type = 'string', cdf_category = 'content'
-     WHERE session_id = ? AND cdf_type IS NULL AND category IS NULL
+     WHERE session_id = ? AND cdf_type IS NULL
+       AND NOT EXISTS (SELECT 1 FROM raw_property_decisions decision WHERE decision.session_id=raw_props.session_id AND decision.component_id=raw_props.component_id AND decision.prop_name=raw_props.name AND json_extract(decision.decision_json,'$.admission')='unsupported')
+       AND category IS NULL
        AND component_id IN (
          SELECT component_id FROM raw_components WHERE session_id = ? AND status = 'generated'
        )`,

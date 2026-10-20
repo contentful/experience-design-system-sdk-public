@@ -1,19 +1,24 @@
 import * as z from 'zod/mini';
 import { CDF_PROPERTY_TYPES, CDF_PROPERTY_CATEGORIES } from './vocabularies.js';
+import { validateCDFProperty } from './property-validation.js';
 import { DESIGN_TOKEN_TYPES } from '../dtcg/token-types.js';
 
-export const CDFPropertySchema = z.strictObject({
-  $type: z.enum(CDF_PROPERTY_TYPES),
-  $category: z.enum(CDF_PROPERTY_CATEGORIES),
-  $description: z.optional(z.string()),
-  $required: z.optional(z.boolean()),
-  $default: z.optional(z.any()),
-  $values: z.optional(z.array(z.string())),
-  '$token.kind': z.optional(z.string()),
-  '$token.allowed': z.optional(z.array(z.string())),
-});
-
-export type CDFPropertyDefinition = z.infer<typeof CDFPropertySchema>;
+export interface CDFFieldDefinition {
+  $type: (typeof CDF_PROPERTY_TYPES)[number];
+  $category?: (typeof CDF_PROPERTY_CATEGORIES)[number];
+  $description?: string;
+  $required?: boolean;
+  $default?: import('../property-contract/json-value.js').JsonValue;
+  $values?: import('../property-contract/json-value.js').JsonValue[];
+  $items?: CDFFieldDefinition;
+  $fields?: Record<string, CDFFieldDefinition>;
+  '$token.kind'?: string;
+  '$token.allowed'?: string[];
+}
+export interface CDFPropertyDefinition extends CDFFieldDefinition {
+  $category: (typeof CDF_PROPERTY_CATEGORIES)[number];
+}
+export const CDFPropertySchema = z.custom<CDFPropertyDefinition>((value) => validateCDFProperty(value).valid);
 
 export const CDFSlotSchema = z.strictObject({
   $description: z.optional(z.string()),

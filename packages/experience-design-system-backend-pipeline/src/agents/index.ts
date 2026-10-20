@@ -51,3 +51,5 @@ export { buildCompilerEvidenceInline } from './prompts/helpers/build-compiler-ev
 export type { CompilerEvidenceReadiness } from './prompts/helpers/build-compiler-evidence-inline.js';
 export { resolveSkillPath } from './prompts/resolve-skill-path.js';
 export { formatCustomPromptBanner } from './prompts/format-custom-prompt-banner.js';
+
+export { parseRepresentationProposalDrafts as parsePropertyRepresentationProposals } from '@contentful/experience-design-system-types';

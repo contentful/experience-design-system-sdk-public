@@ -162,7 +162,7 @@ describe('parseToolCallLines', () => {
       const line = JSON.stringify({
         tool: 'classify_prop',
         prop: 'variant',
-        cdf_type: 'enum',
+        cdf_type: 'string',
         cdf_category: 'design',
         required: false,
         values: ['primary', 'secondary'],
@@ -173,7 +173,7 @@ describe('parseToolCallLines', () => {
       expect(calls[0]).toMatchObject({
         tool: 'classify_prop',
         prop: 'variant',
-        cdf_type: 'enum',
+        cdf_type: 'string',
         cdf_category: 'design',
         required: false,
         values: ['primary', 'secondary'],
@@ -204,10 +204,10 @@ describe('parseToolCallLines', () => {
 
     it('rejects invalid cdf_type', () => {
       const { calls, warnings } = parseToolCallLines(
-        '{"tool":"classify_prop","prop":"href","cdf_type":"link","cdf_category":"content"}',
+        '{"tool":"classify_prop","prop":"href","cdf_type":"symbol","cdf_category":"content"}',
       );
       expect(calls).toHaveLength(0);
-      expect(warnings[0]).toMatch(/invalid cdf_type.*link/);
+      expect(warnings[0]).toMatch(/invalid cdf_type.*symbol/);
     });
 
     it('rejects invalid cdf_category', () => {
@@ -218,16 +218,17 @@ describe('parseToolCallLines', () => {
       expect(warnings[0]).toMatch(/invalid cdf_category.*visual/);
     });
 
-    it('ignores values if not an array of strings', () => {
+    it('rejects values that are not an array', () => {
       const line = JSON.stringify({
         tool: 'classify_prop',
         prop: 'size',
-        cdf_type: 'enum',
+        cdf_type: 'string',
         cdf_category: 'design',
         values: 'not-an-array',
       });
-      const { calls } = parseToolCallLines(line);
-      expect((calls[0] as { values?: unknown }).values).toBeUndefined();
+      const { calls, warnings } = parseToolCallLines(line);
+      expect(calls).toHaveLength(0);
+      expect(warnings[0]).toMatch(/values must be an array/);
     });
 
     it('ignores required if not a boolean', () => {
@@ -354,7 +355,7 @@ describe('parseToolCallLines', () => {
         '{"tool":"classify_prop","prop":"margin","cdf_type":"enum","cdf_category":"design","values":["none","spacingXs"]}"';
       const { calls, warnings } = parseToolCallLines(line);
       expect(calls).toHaveLength(1);
-      expect(calls[0]).toMatchObject({ tool: 'classify_prop', prop: 'margin', cdf_type: 'enum' });
+      expect(calls[0]).toMatchObject({ tool: 'classify_prop', prop: 'margin', cdf_type: 'string' });
       expect(warnings).toEqual(['ignored trailing content after JSON: "']);
     });
 
@@ -416,7 +417,7 @@ describe('parseToolCallLines', () => {
       expect(calls[2]).toMatchObject({
         tool: 'classify_prop',
         prop: 'variant',
-        cdf_type: 'enum',
+        cdf_type: 'string',
         values: ['primary', 'secondary'],
       });
       expect(calls[3]).toMatchObject({ tool: 'classify_prop', prop: 'disabled', cdf_category: 'state' });

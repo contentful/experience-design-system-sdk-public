@@ -7,6 +7,7 @@ import type { SlotDecision } from '@contentful/experience-design-system-types';
 export interface CdfGenerationFailure {
   componentName: string;
   error: string;
+  propertyOutcomes?: import('../services/property/materialize-property.js').MaterializedProperty[];
 }
 
 export interface RunCdfGenerationServiceOptions {

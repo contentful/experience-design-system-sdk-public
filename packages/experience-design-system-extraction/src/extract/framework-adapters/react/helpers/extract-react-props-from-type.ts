@@ -52,6 +52,7 @@ export function extractPropsFromTypeSymbols(
 ): { props: RawPropDefinition[]; hasChildren: boolean } {
   const props: RawPropDefinition[] = [];
   let hasChildren = false;
+  const fallback = type.getAliasSymbol()?.getDeclarations()[0] ?? type.getSymbol()?.getDeclarations()[0];
 
   for (const property of type.getProperties()) {
     const name = property.getName();
@@ -67,7 +68,7 @@ export function extractPropsFromTypeSymbols(
 
     if (slotNames.has(name)) continue;
 
-    const declaration = property.getValueDeclaration() ?? property.getDeclarations()[0];
+    const declaration = property.getValueDeclaration() ?? property.getDeclarations()[0] ?? fallback;
     if (!declaration) continue;
 
     const propType = property.getTypeAtLocation(declaration);

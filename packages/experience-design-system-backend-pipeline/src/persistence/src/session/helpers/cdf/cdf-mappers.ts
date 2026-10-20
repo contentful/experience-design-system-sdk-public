@@ -15,9 +15,15 @@ export function mapContentfulTypeToCdfType(contentfulType: string): string {
       return 'link';
     case 'enum':
     case 'symbol':
-      return 'enum';
+      return 'string';
     case 'token':
       return 'token';
+    case 'array':
+      return 'array';
+    case 'record':
+      return 'record';
+    case 'number':
+      return 'number';
     case 'boolean':
       return 'boolean';
     default:

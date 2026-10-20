@@ -250,6 +250,8 @@ export async function runOneGenerateComponent(
       allowedComponentNames,
     });
     throwIfAborted(signal);
+    if (applied.projectionBlocked)
+      return buildFailedComponentResult(component.name, applied.warnings.join('; '), renames.length);
     if (!noCache) {
       storeCache(
         db,
