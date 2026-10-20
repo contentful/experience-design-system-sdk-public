@@ -3,7 +3,7 @@ import { Box, Text } from 'ink';
 import { PALETTE } from '../../theme.js';
 
 export const IMPORT_STEPS = [
-  { id: 'extraction', title: 'Extracting context' },
+  { id: 'extraction', title: 'Extracting design system' },
   { id: 'scope-gate', title: 'Review extracted components' },
   { id: 'generation', title: 'Generating definitions' },
   { id: 'review', title: 'Review generated definitions' },

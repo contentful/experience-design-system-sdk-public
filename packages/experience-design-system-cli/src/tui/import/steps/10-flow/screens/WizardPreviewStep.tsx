@@ -67,7 +67,7 @@ function buildPreviewSummaryLines(preview: ServerPreviewResponse): PreviewDiffLi
   if (components.unchanged.length > 0) {
     lines.push({
       key: 'summary-components-unchanged',
-      color: 'gray',
+      color: PALETTE.muted,
       text: ` · ${components.unchanged.length} unchanged`,
     });
   }
@@ -96,7 +96,7 @@ function buildPreviewSummaryLines(preview: ServerPreviewResponse): PreviewDiffLi
   if (tokens.unchanged.length > 0) {
     lines.push({
       key: 'summary-tokens-unchanged',
-      color: 'gray',
+      color: PALETTE.muted,
       text: ` · ${tokens.unchanged.length} design tokens unchanged`,
     });
   }
@@ -215,7 +215,7 @@ function buildPreviewDiffLines(preview: ServerPreviewResponse): PreviewDiffLine[
         if (!lines.some((l) => l.key === key)) {
           lines.push({
             key,
-            color: 'gray',
+            color: PALETTE.muted,
             text: `   slot ${slotName} allowedComponents: [${names.join(', ')}]`,
           });
         }
@@ -337,7 +337,7 @@ export function WizardPreviewStep({
             focused={false}
           >
             {activeLines.slice(boundedScrollOffset, boundedScrollOffset + viewportHeight).map((line) => (
-              <Text key={line.key} color={line.color === 'gray' ? PALETTE.muted : line.color} wrap="truncate-end">
+              <Text key={line.key} color={line.color} wrap="truncate-end">
                 {line.text}
               </Text>
             ))}

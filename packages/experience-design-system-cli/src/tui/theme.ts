@@ -4,6 +4,7 @@ const DARK = {
   muted: '#aec1cc', // gray400
   border: '#aec1cc', // gray400
   accent: '#40a0ff', // blue400
+  onAccent: '#111B2B', // gray900, text on an accent background
   error: '#ff707d', // red400
   success: '#5DB057', // green400
   warning: '#FFC835', // yellow500
@@ -14,6 +15,7 @@ const LIGHT = {
   muted: '#5A657C', // gray600
   border: '#5A657C', // gray600
   accent: '#0059c8', // semantic primary
+  onAccent: '#FFFFFF', // text on an accent background
   error: '#bd002a', // semantic negative
   success: '#006D23', // semantic positive
   warning: '#CC4500', // semantic warning

@@ -3,10 +3,11 @@ import type {
   ComponentTypeSummary,
   PropertySummary,
 } from '@contentful/experience-design-system-types';
+import { PALETTE } from '@tui/theme.js';
 
 export interface PropertyDiffLine {
   key: string;
-  color: 'green' | 'red' | 'yellow';
+  color: string;
   text: string;
 }
 
@@ -27,17 +28,17 @@ export function computeComponentDiffLines(
   for (const name of [...proposedProps].sort()) {
     if (!currentProps.has(name)) {
       const def = proposedProperties[name]!;
-      lines.push({ key: `${name}-add`, color: 'green', text: `+ ${name}: ${formatPropDef(def)}` });
+      lines.push({ key: `${name}-add`, color: PALETTE.success, text: `+ ${name}: ${formatPropDef(def)}` });
     }
   }
 
   for (const name of [...currentProps].sort()) {
     if (!proposedProps.has(name)) {
       if (oldProps?.[name]) {
-        lines.push({ key: `${name}-rm`, color: 'red', text: `- ${name}: ${formatOldProp(oldProps[name])}` });
+        lines.push({ key: `${name}-rm`, color: PALETTE.error, text: `- ${name}: ${formatOldProp(oldProps[name])}` });
       } else {
         const cat = current.contentProperties.includes(name) ? 'content' : 'design';
-        lines.push({ key: `${name}-rm`, color: 'red', text: `- ${name} (${cat})` });
+        lines.push({ key: `${name}-rm`, color: PALETTE.error, text: `- ${name} (${cat})` });
       }
     }
   }
@@ -64,8 +65,12 @@ export function computeComponentDiffLines(
       if (handledProps.has(bc.propertyId)) continue;
       handledProps.add(bc.propertyId);
       const def = proposedProperties[bc.propertyId]!;
-      lines.push({ key: `${bc.propertyId}-old`, color: 'red', text: `- ${bc.propertyId}: ${bc.reason}` });
-      lines.push({ key: `${bc.propertyId}-new`, color: 'green', text: `+ ${bc.propertyId}: ${formatPropDef(def)}` });
+      lines.push({ key: `${bc.propertyId}-old`, color: PALETTE.error, text: `- ${bc.propertyId}: ${bc.reason}` });
+      lines.push({
+        key: `${bc.propertyId}-new`,
+        color: PALETTE.success,
+        text: `+ ${bc.propertyId}: ${formatPropDef(def)}`,
+      });
     }
   }
 
@@ -75,12 +80,12 @@ export function computeComponentDiffLines(
   const currentSlotAllowed = current.currentSlotAllowed ?? {};
   for (const name of [...proposedSlotNames].sort()) {
     if (!currentSlots.has(name)) {
-      lines.push({ key: `slot-${name}-add`, color: 'green', text: `+ slot: ${name}` });
+      lines.push({ key: `slot-${name}-add`, color: PALETTE.success, text: `+ slot: ${name}` });
     }
   }
   for (const name of [...currentSlots].sort()) {
     if (!proposedSlotNames.has(name)) {
-      lines.push({ key: `slot-${name}-rm`, color: 'red', text: `- slot: ${name}` });
+      lines.push({ key: `slot-${name}-rm`, color: PALETTE.error, text: `- slot: ${name}` });
     }
   }
 
@@ -93,7 +98,7 @@ export function computeComponentDiffLines(
       if (nextAllowed.length > 0) {
         lines.push({
           key: `slot-${name}-allow-new`,
-          color: 'green',
+          color: PALETTE.success,
           text: `+ slot ${name} allowedComponents: [${nextAllowed.join(', ')}]`,
         });
       }
@@ -104,12 +109,12 @@ export function computeComponentDiffLines(
 
     lines.push({
       key: `slot-${name}-allow-old`,
-      color: 'red',
+      color: PALETTE.error,
       text: `- slot ${name} allowedComponents: [${prevAllowed.join(', ')}]`,
     });
     lines.push({
       key: `slot-${name}-allow-new`,
-      color: 'green',
+      color: PALETTE.success,
       text: `+ slot ${name} allowedComponents: [${nextAllowed.join(', ')}]`,
     });
   }
@@ -165,8 +170,8 @@ function diffProperty(name: string, old: PropertySummary, newDef: Record<string,
 
   if (!typeChanged && !categoryChanged && !requiredChanged && !defaultChanged) return [];
 
-  diffs.push({ key: `${name}-old`, color: 'red', text: `- ${name}: ${formatOldProp(old)}` });
-  diffs.push({ key: `${name}-new`, color: 'green', text: `+ ${name}: ${formatPropDef(newDef)}` });
+  diffs.push({ key: `${name}-old`, color: PALETTE.error, text: `- ${name}: ${formatOldProp(old)}` });
+  diffs.push({ key: `${name}-new`, color: PALETTE.success, text: `+ ${name}: ${formatPropDef(newDef)}` });
   return diffs;
 }
 
