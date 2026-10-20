@@ -46,13 +46,9 @@ export function synthesizeReactStructuralSlots(
     const structural = new Set([...fromFile, ...fromRender, ...fromArrayMap]);
     if (structural.size === 0) continue;
 
-    const synthesisedSlot: RawSlotDefinitionInternal | undefined =
-      fromArrayMap.length > 0 && c.slots.length === 0 ? { name: 'children', isDefault: true } : undefined;
-    if (synthesisedSlot) (c.slots as RawSlotDefinitionInternal[]).push(synthesisedSlot);
-
     for (const slot of c.slots as RawSlotDefinitionInternal[]) {
       if (slot.allowedComponents && slot.allowedComponents.length > 0) continue;
-      slot.structuralAllowedComponents = slot === synthesisedSlot ? [...fromArrayMap].sort() : [...structural].sort();
+      slot.structuralAllowedComponents = [...structural].sort();
     }
   }
 

@@ -1,9 +1,33 @@
-import type { CDFComponentEntry, SlotDecision } from '@contentful/experience-design-system-types';
+import {
+  validateSourceInputOwners,
+  sourceInputOwnerKey,
+  type CDFComponentEntry,
+  type SlotDecision,
+} from '@contentful/experience-design-system-types';
 export function projectAcceptedSlots(
   entry: CDFComponentEntry,
   decisions: readonly SlotDecision[] | undefined,
 ): CDFComponentEntry {
   if (decisions === undefined) return entry;
+  validateSourceInputOwners(
+    decisions.map((decision) => ({
+      name: decision.slot,
+      sourceInput: decision.state === 'open' || decision.state === 'finite' ? decision.sourceInput : undefined,
+    })),
+  );
+  const active = decisions.filter((decision) => decision.state === 'open' || decision.state === 'finite');
+  const owned = new Set(
+    active.flatMap((decision) => (decision.sourceInput ? [sourceInputOwnerKey(decision.sourceInput)] : [])),
+  );
+  for (const property of Object.values(entry.$properties))
+    if (property.$sourceInput && owned.has(sourceInputOwnerKey(property.$sourceInput)))
+      throw new Error('Property and slot conflict over source input ownership');
+  const properties = Object.fromEntries(
+    Object.entries(entry.$properties).filter(
+      ([name, property]) =>
+        property.$sourceInput || !active.some((decision) => decision.sourceInput?.inputName === name),
+    ),
+  );
   const slots: NonNullable<CDFComponentEntry['$slots']> = Object.fromEntries(
     decisions
       .filter((decision) => decision.state === 'open' || decision.state === 'finite')
@@ -13,6 +37,7 @@ export function projectAcceptedSlots(
         return [
           decision.slot,
           {
+            ...(decision.sourceInput ? { $sourceInput: decision.sourceInput } : {}),
             ...(description ? { $description: description } : {}),
             ...(decision.required !== undefined ? { $required: decision.required } : {}),
             ...(decision.state === 'finite' ? { $allowedComponents: [...decision.allowedComponents] } : {}),
@@ -21,7 +46,9 @@ export function projectAcceptedSlots(
       }),
   );
   const { $slots: _slots, ...rest } = entry;
-  return Object.keys(slots).length ? { ...rest, $slots: slots } : rest;
+  return Object.keys(slots).length
+    ? { ...rest, $properties: properties, $slots: slots }
+    : { ...rest, $properties: properties };
 }
 
 export function projectAcceptedRawSlots<
@@ -49,6 +76,7 @@ export function projectAcceptedRawSlots<
       name,
       isDefault: component.slots.find((previous) => previous.name === name)?.isDefault ?? false,
       ...(slot.$description ? { description: slot.$description } : {}),
+      ...(slot.$sourceInput ? { sourceInput: slot.$sourceInput } : {}),
       allowedComponents: slot.$allowedComponents ?? [],
     })),
   };

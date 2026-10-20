@@ -40,6 +40,7 @@ function canonicalPath(path: string): string {
     return resolve(path);
   }
 }
+export { canonicalPath as canonicalSourceFactPath };
 
 function bindCandidate(
   candidate: SourceCandidate,

@@ -2,6 +2,11 @@ import * as z from 'zod/mini';
 import { CDF_PROPERTY_TYPES, CDF_PROPERTY_CATEGORIES } from './vocabularies.js';
 import { validateCDFProperty } from './property-validation.js';
 import { DESIGN_TOKEN_TYPES } from '../dtcg/token-types.js';
+import {
+  SourceInputAssociationSchema,
+  validateCDFSourceOwnerContract,
+  type SourceInputAssociation,
+} from '../source-input-association.js';
 
 export interface CDFFieldDefinition {
   $type: (typeof CDF_PROPERTY_TYPES)[number];
@@ -17,10 +22,12 @@ export interface CDFFieldDefinition {
 }
 export interface CDFPropertyDefinition extends CDFFieldDefinition {
   $category: (typeof CDF_PROPERTY_CATEGORIES)[number];
+  $sourceInput?: SourceInputAssociation;
 }
 export const CDFPropertySchema = z.custom<CDFPropertyDefinition>((value) => validateCDFProperty(value).valid);
 
 export const CDFSlotSchema = z.strictObject({
+  $sourceInput: z.optional(SourceInputAssociationSchema),
   $description: z.optional(z.string()),
   $allowedComponents: z.optional(z.array(z.string())),
   $required: z.optional(z.boolean()),
@@ -28,12 +35,23 @@ export const CDFSlotSchema = z.strictObject({
 
 export type CDFSlotDefinition = z.infer<typeof CDFSlotSchema>;
 
-export const CDFComponentSchema = z.strictObject({
-  $type: z.literal('component'),
-  $description: z.optional(z.string()),
-  $properties: z.record(z.string(), CDFPropertySchema),
-  $slots: z.optional(z.record(z.string(), CDFSlotSchema)),
-});
+export const CDFComponentSchema = z
+  .strictObject({
+    $type: z.literal('component'),
+    $description: z.optional(z.string()),
+    $properties: z.record(z.string(), CDFPropertySchema),
+    $slots: z.optional(z.record(z.string().check(z.refine((value) => value.trim().length > 0)), CDFSlotSchema)),
+  })
+  .check(
+    z.refine((entry) => {
+      try {
+        validateCDFSourceOwnerContract(entry);
+        return true;
+      } catch {
+        return false;
+      }
+    }),
+  );
 
 export type CDFComponentEntry = z.infer<typeof CDFComponentSchema>;
 

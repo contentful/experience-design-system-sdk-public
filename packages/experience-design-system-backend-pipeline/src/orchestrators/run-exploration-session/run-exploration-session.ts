@@ -1,3 +1,4 @@
+import { validateComponentSourceInput } from '../../steps/exploration/src/services/source-input-ownership.js';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { AgentInvoker, AgentName } from '../../agents/index.js';
@@ -287,7 +288,12 @@ async function execute(
         for (const component of report.companion.components)
           for (const slot of component.slots ?? []) {
             const rawComponent = selected.find((raw) => raw.component_id === component.componentId);
-            const fact = rawComponent?.sourceCandidates?.find((candidate) => candidate.name === slot.name)?.facts;
+            if (slot.sourceInput) {
+              if (!rawComponent) throw new Error('Source input component unavailable');
+              validateComponentSourceInput(rawComponent, slot.sourceInput);
+            }
+            const inputName = slot.sourceInput?.inputName ?? slot.name;
+            const fact = rawComponent?.sourceCandidates?.find((candidate) => candidate.name === inputName)?.facts;
             if (fact?.certainty === 'certain' && fact.domain.openness === 'open') {
               slot.allowedComponents = [];
               continue;
@@ -313,7 +319,7 @@ async function execute(
             work.items.push({
               itemId: id,
               kind: 'factual',
-              hypothesis: 'Applicable independent declared/enforced finite restriction.',
+              hypothesis: `Check that the declared/enforced restriction applies to this exact input and its returned output conditions; unrelated predicates or compatible broad contracts are not support. ${JSON.stringify({ sourceInput: slot.sourceInput ?? null, inputName, componentDeclarationId: rawComponent?.componentFacts?.sourceObservations?.componentDeclarationId ?? null, inputOutput: rawComponent?.componentFacts?.sourceObservations?.inputOutput ?? null })}`,
               claims: [
                 {
                   id,
@@ -364,7 +370,9 @@ async function execute(
             });
       for (const slot of slots) {
         const rawComponent = selected.find((component) => component.component_id === slot.componentId);
-        const candidate = rawComponent?.sourceCandidates?.find((candidate) => candidate.name === slot.slot);
+        const candidate = rawComponent?.sourceCandidates?.find(
+          (candidate) => candidate.name === (slot.sourceInput?.inputName ?? slot.slot),
+        );
         const fact = candidate?.facts;
         if (
           fact?.certainty === 'certain' &&

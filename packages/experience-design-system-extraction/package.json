@@ -30,6 +30,7 @@
   },
   "dependencies": {
     "@vue/compiler-sfc": "^3.5.31",
+    "parse5": "7.3.0",
     "svelte": "^5.56.4",
     "ts-morph": "^27.0.2",
     "typescript": "^5.9.3"

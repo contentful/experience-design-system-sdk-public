@@ -87,6 +87,7 @@ type PropState = {
 };
 
 type SlotState = {
+  original?: CDFSlotDefinition;
   name: string;
   description: string;
   required: boolean;
@@ -210,6 +211,7 @@ export function parseToState(json: string): {
       name,
       description: typeof s.$description === 'string' ? s.$description : '',
       required: s.$required === true,
+      original: cloneJson(s as CDFSlotDefinition),
       allowedComponents: Array.isArray(s.$allowedComponents)
         ? (s.$allowedComponents as unknown[]).filter((v): v is string => typeof v === 'string')
         : [],
@@ -274,13 +276,16 @@ export function serializeState(state: EditorState, originalJson: string): string
   };
   if (state.componentDescription) entry.$description = state.componentDescription;
   if (state.slots.length > 0) {
-    entry.$slots = {};
+    const slots: Record<string, CDFSlotDefinition> = Object.create(null);
+    entry.$slots = slots;
     for (const s of state.slots) {
-      const slotDef: CDFSlotDefinition = {};
+      const slotDef: CDFSlotDefinition = s.original ? cloneJson(s.original) : {};
       if (s.description) slotDef.$description = s.description;
-      if (s.required) slotDef.$required = true;
-      if (s.allowedComponents.length > 0) slotDef.$allowedComponents = s.allowedComponents;
-      entry.$slots[s.name] = slotDef;
+      else delete slotDef.$description;
+      if (s.required || own(slotDef, '$required')) slotDef.$required = s.required;
+      if (s.allowedComponents.length > 0) slotDef.$allowedComponents = [...s.allowedComponents];
+      else delete slotDef.$allowedComponents;
+      slots[s.name] = slotDef;
     }
   }
 

@@ -27,6 +27,9 @@ import type {
   ExplorationDetailRecord,
 } from '@contentful/experience-design-system-types';
 import { projectAcceptedSlots } from '../../../../steps/exploration/src/services/project-accepted-slots.js';
+import { validateCDFSourceOwners } from '../../../../steps/exploration/src/services/source-input-ownership.js';
+import { validateSavedInputOutput } from './input-output-binding.js';
+import { CDFComponentSchema } from '@contentful/experience-design-system-types';
 import { readComponentFacts, readComponentFactsJson, type ComponentFactsRead } from './component-facts-validation.js';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -1628,11 +1631,29 @@ export function loadRawComponents(
   if ([...componentFactsByComponent.values()].some((read) => read.facts?.sourceClosure)) {
     const source = loadCompletedSourceEvidence(db, sessionId);
     for (const [id, read] of componentFactsByComponent) {
-      if (read.facts?.sourceClosure)
+      if (read.facts?.sourceClosure) {
+        const sourceClosure = validateSavedSourceClosure(read.facts.sourceClosure, source);
+        const observations = read.facts.sourceObservations;
         componentFactsByComponent.set(id, {
           ...read,
-          facts: { ...read.facts, sourceClosure: validateSavedSourceClosure(read.facts.sourceClosure, source) },
+          facts: {
+            ...read.facts,
+            sourceClosure,
+            ...(observations?.inputOutput
+              ? {
+                  sourceObservations: {
+                    ...observations,
+                    inputOutput: validateSavedInputOutput(
+                      observations.inputOutput,
+                      source,
+                      sourceClosure.binding === 'verified',
+                    ),
+                  },
+                }
+              : {}),
+          },
         });
+      }
     }
   }
   const sourceEvidenceByComponent = new Map<
@@ -2174,6 +2195,17 @@ export function storeCDFComponents(
 ): void {
   for (const { key, entry } of components) {
     const source = loadRawComponents(db, sessionId, new Set([key])).find((component) => component.name === key);
+    const completeValidation = CDFComponentSchema.safeParse(entry);
+    if (!completeValidation.success)
+      throw new Error(
+        `Invalid complete CDF entry: ${completeValidation.error.issues.map((issue) => issue.message).join('; ')}`,
+      );
+    if (source) validateCDFSourceOwners(source, entry);
+    else if (
+      Object.values(entry.$slots ?? {}).some((slot) => slot.$sourceInput) ||
+      Object.values(entry.$properties).some((property) => property.$sourceInput)
+    )
+      throw new Error('CDF source input component unavailable');
     const unsafe = jsonValueIssue(entry);
     if (unsafe) throw new Error(`${unsafe.path}: ${unsafe.message}`);
     for (const [name, property] of Object.entries(entry.$properties)) {

@@ -168,7 +168,18 @@ export async function runCdfGenerationService(
   async function worker(): Promise<void> {
     while (!options.signal?.aborted && cursor < total) {
       const i = cursor++;
-      const component = projectAcceptedRawSlots(components[i]!, options.acceptedSlots);
+      const raw = components[i]!;
+      const accepted = options.acceptedSlots?.filter(
+        (decision) => decision.name === raw.name && decision.source === raw.source,
+      );
+      if (accepted)
+        try {
+          validateAcceptedSourceOwners(raw, accepted);
+        } catch (error) {
+          failures.push({ componentName: raw.name, error: error instanceof Error ? error.message : String(error) });
+          continue;
+        }
+      const component = projectAcceptedRawSlots(raw, options.acceptedSlots);
       const result = await generateOne(component, options, i, total);
       throwIfAborted(options.signal);
       if (result.failure) {
@@ -187,3 +198,4 @@ export async function runCdfGenerationService(
 
   return { components: resultComponents, warnings: allWarnings, failures };
 }
+import { validateAcceptedSourceOwners } from '../../../exploration/src/services/source-input-ownership.js';

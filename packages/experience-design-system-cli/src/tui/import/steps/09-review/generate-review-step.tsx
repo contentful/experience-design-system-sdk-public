@@ -920,16 +920,21 @@ function GenerateReviewStepView({
     const next = components.map((component) =>
       component.key === target.key ? { ...component, entry: nextEntry } : component,
     );
-    setComponents(next);
-    const db = openPipelineDb();
     try {
-      storeCDFComponents(db, extractSessionId, [{ key: target.key, entry: nextEntry }]);
-    } finally {
-      db.close();
+      const db = openPipelineDb();
+      try {
+        storeCDFComponents(db, extractSessionId, [{ key: target.key, entry: nextEntry }]);
+      } finally {
+        db.close();
+      }
+      setComponents(next);
+      reviewEditor.setSaveError(null);
+      recomputeCycles(next);
+      livePreviewHook.trigger();
+      pushHistorySnapshot(next, 'break-cycle-edge');
+    } catch (error) {
+      reviewEditor.setSaveError(`Cannot save cycle edit: ${String(error)}`);
     }
-    recomputeCycles(next);
-    livePreviewHook.trigger();
-    pushHistorySnapshot(next, 'break-cycle-edge');
   };
 
   const handleRejectComponent = (key: string): void => {

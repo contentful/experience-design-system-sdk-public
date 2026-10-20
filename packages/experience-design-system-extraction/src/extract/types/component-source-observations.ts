@@ -104,6 +104,7 @@ export interface ComponentSourceObservation {
 }
 export interface ComponentSourceObservationCollection {
   schemaVersion: 1;
+  inputOutput?: import('./source-input-output.js').SourceInputOutputEvidence;
   componentDeclarationId: string;
   selectedSourcePaths: string[];
   repositoryRoot: string | null;

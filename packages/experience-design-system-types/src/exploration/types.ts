@@ -25,6 +25,7 @@ export interface SlotRestriction {
   supported?: boolean;
 }
 export interface ExploreSlotEvidence {
+  sourceInput?: import('../source-input-association.js').SourceInputAssociation;
   name: string;
   isRealSlot: boolean;
   allowedComponents?: string[];
@@ -203,6 +204,7 @@ export interface DerivedComponentSlots extends KnownComponent {
   slots: DerivedSlot[];
 }
 export interface SlotDecision extends KnownComponent {
+  sourceInput?: import('../source-input-association.js').SourceInputAssociation;
   slot: string;
   state: AcceptedSlotState;
   allowedComponents: string[];

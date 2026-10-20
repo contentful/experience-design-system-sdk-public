@@ -202,3 +202,12 @@ export type {
   SourceClosureFact,
 } from './source-closure/source-evidence.js';
 export { readSourceClosure, sourceClosureMatchesObservations } from './source-closure/validation.js';
+export { readInputOutput } from './extract/component-facts/input-output-validation.js';
+export { mapInputOutputLocations } from './extract/types/source-input-output.js';
+export type {
+  SourceInputOutputEvidence,
+  SourceDeclaredInput,
+  SourceInputOutputWitness,
+  SourceOutputDestination,
+} from './extract/types/source-input-output.js';
+export { canonicalSourceFactPath } from './extract/candidates/bind-source-candidates.js';

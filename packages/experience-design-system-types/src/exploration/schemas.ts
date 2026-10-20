@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { EXPLORE_SCOPES } from './constants.js';
+import { SourceInputAssociationSchema } from '../source-input-association.js';
 export const VerifyEvidenceSchema = z.object({
   source: z.string().min(1),
   line: z.string().min(1),
@@ -23,7 +24,12 @@ export const ExplorePropReportSchema = z.object({
   reasoning: z.string().optional(),
 });
 export const ExploreSlotEvidenceSchema = z.object({
-  name: z.string().min(1),
+  name: z.string().refine((value) => value.trim().length > 0),
+  sourceInput: z
+    .custom<
+      import('../source-input-association.js').SourceInputAssociation
+    >((value) => SourceInputAssociationSchema.safeParse(value).success)
+    .optional(),
   isRealSlot: z.boolean(),
   allowedComponents: z.array(z.string().min(1)).optional(),
   evidence: z.array(z.string()).optional(),

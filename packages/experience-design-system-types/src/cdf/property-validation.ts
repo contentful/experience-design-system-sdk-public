@@ -2,6 +2,7 @@ import type { CDFFieldDefinition } from './types.js';
 import { CDF_PROPERTY_TYPES, CDF_PROPERTY_CATEGORIES } from './vocabularies.js';
 import { childPath, jsonValueIssue, own, type PropertyIssue } from '../property-contract/json-value.js';
 import { validateTargetDefinition, type TargetDefinition } from '../property-contract/target-definition.js';
+import { SourceInputAssociationSchema } from '../source-input-association.js';
 
 const targetTypes = {
   string: 'String',
@@ -46,6 +47,12 @@ export function validateCDFProperty(
     if ((root && requireCategory) || own(d, '$category'))
       if (!CDF_PROPERTY_CATEGORIES.includes(d.$category!)) add('$category', 'Unknown category');
     const allowed = new Set(['$type', '$category', '$description', '$required', '$default', '$values']);
+    if (root) allowed.add('$sourceInput');
+    if (
+      own(d, '$sourceInput') &&
+      !SourceInputAssociationSchema.safeParse((d as { $sourceInput?: unknown }).$sourceInput).success
+    )
+      add('$sourceInput', 'Invalid source input association');
     if (d.$type === 'array') allowed.add('$items');
     if (d.$type === 'record') allowed.add('$fields');
     if (d.$type === 'token') {

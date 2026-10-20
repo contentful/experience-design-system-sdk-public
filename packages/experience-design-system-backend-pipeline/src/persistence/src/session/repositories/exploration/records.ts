@@ -9,6 +9,11 @@ import type {
   CDFComponentEntry,
 } from '@contentful/experience-design-system-types';
 import { withTransaction } from '../shared/with-transaction.js';
+import { loadRawComponents } from '../db.js';
+import {
+  validateAcceptedSourceOwners,
+  validateCDFSourceOwners,
+} from '../../../../../steps/exploration/src/services/source-input-ownership.js';
 export type ExplorationPhase = 'components' | 'detail';
 export interface ExplorationRun extends ExplorationIdentity {
   phase: ExplorationPhase;
@@ -226,6 +231,12 @@ export function publishExplorationRun(
   };
   records.inclusion?.forEach(validate);
   records.slots?.forEach(validate);
+  if (records.slots)
+    for (const component of loadRawComponents(db, run.sessionId))
+      validateAcceptedSourceOwners(
+        component,
+        records.slots.filter((slot) => slot.componentId === component.component_id),
+      );
   withTransaction(db, () => {
     assertCurrent(db, runId);
     for (const [family, payload] of Object.entries(records))
@@ -261,7 +272,16 @@ export function failExplorationRun(db: DatabaseSync, runId: string, error: strin
 }
 export function loadAcceptedSlotDecisions(db: DatabaseSync, sessionId: string): SlotDecision[] | undefined {
   if (!loadExplorationRun(db, sessionId, 'components')) return undefined;
-  return loadExplorationRecord<SlotDecision[]>(db, sessionId, 'components', 'slots') ?? [];
+  const decisions = loadExplorationRecord<SlotDecision[]>(db, sessionId, 'components', 'slots') ?? [];
+  const components = loadRawComponents(db, sessionId);
+  for (const component of components)
+    validateAcceptedSourceOwners(
+      component,
+      decisions.filter((decision) => decision.componentId === component.component_id),
+    );
+  if (decisions.some((decision) => !components.some((component) => component.component_id === decision.componentId)))
+    throw new Error('Accepted source owner component unavailable');
+  return decisions;
 }
 export function saveReviewedSlots(
   db: DatabaseSync,
@@ -277,6 +297,9 @@ export function saveReviewedSlots(
     .prepare('SELECT name,source FROM raw_components WHERE session_id=? AND component_id=?')
     .get(sessionId, componentId) as { name: string; source: string } | undefined;
   if (!component) throw new Error('Reviewed component identity unavailable');
+  const raw = loadRawComponents(db, sessionId).find((raw) => raw.component_id === componentId);
+  if (!raw) throw new Error('Reviewed source owner unavailable');
+  validateCDFSourceOwners(raw, entry);
   const names = new Set([
     ...previous.filter((slot) => slot.componentId === componentId).map((slot) => slot.slot),
     ...Object.keys(entry.$slots ?? {}),
@@ -296,6 +319,7 @@ export function saveReviewedSlots(
       before.state === state &&
       before.required === slot.$required &&
       before.description === slot.$description &&
+      JSON.stringify(before.sourceInput) === JSON.stringify(slot.$sourceInput) &&
       JSON.stringify([...before.allowedComponents].sort()) ===
         JSON.stringify([...(slot.$allowedComponents ?? [])].sort())
     ) {
@@ -315,6 +339,7 @@ export function saveReviewedSlots(
       realVotes: before?.realVotes ?? 0,
       provenance: 'human',
       description: slot?.$description,
+      sourceInput: slot?.$sourceInput,
     });
   }
   db.prepare("UPDATE exploration_records SET payload_json=? WHERE run_id=? AND family='slots'").run(

@@ -10,6 +10,7 @@ import type {
 import { SourceObservationReader, isWithinSourceBoundary, sourceRealPath } from './source-observation-reader.js';
 import { SourceInputPaths } from './source-input-path.js';
 import { resolve } from 'node:path';
+import { collectInputOutput } from './collect-input-output.js';
 
 export const DEFAULT_COMPONENT_OBSERVATION_LIMITS: Readonly<ComponentObservationLimits> = Object.freeze({
   maxNodes: 4096,
@@ -521,5 +522,6 @@ export function collectComponentSourceObservations(
       (a.location?.startOffset ?? 0) - (b.location?.startOffset ?? 0) ||
       a.reason.localeCompare(b.reason),
   );
+  collection.inputOutput = collectInputOutput(node, reader, options.signal);
   return collection;
 }

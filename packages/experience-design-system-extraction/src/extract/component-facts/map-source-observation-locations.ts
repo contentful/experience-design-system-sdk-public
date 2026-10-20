@@ -1,4 +1,5 @@
 import type { SourceFactLocation } from '../candidates/types.js';
+import { mapInputOutputLocations } from '../types/source-input-output.js';
 import type {
   ComponentSourceObservationCollection,
   SourceInputAccessPath,
@@ -38,6 +39,7 @@ export function mapSourceObservationLocations(
   });
   return {
     ...collection,
+    ...(collection.inputOutput ? { inputOutput: mapInputOutputLocations(collection.inputOutput, map) } : {}),
     observations: collection.observations.map((observation) => ({
       ...observation,
       location: map(observation.location),

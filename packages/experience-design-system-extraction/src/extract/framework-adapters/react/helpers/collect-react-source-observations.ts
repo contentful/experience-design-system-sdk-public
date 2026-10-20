@@ -21,8 +21,19 @@ export function collectReactSourceObservations(
     sourceDefaults: ReadonlyMap<string, string>;
   },
 ): SourceCandidateObservation[] {
+  const declared = new Map(props.map((prop) => [prop.name, prop]));
+  for (const property of type.getProperties()) {
+    if (declared.has(property.getName())) continue;
+    const declaration = property.getValueDeclaration() ?? property.getDeclarations()[0];
+    if (!declaration) continue;
+    declared.set(property.getName(), {
+      name: property.getName(),
+      type: property.getTypeAtLocation(declaration).getText(declaration),
+      required: !property.isOptional(),
+    });
+  }
   return [
-    ...observeTypeProps(type, props, sourcePath, { sourceDefaults: options.sourceDefaults }),
+    ...observeTypeProps(type, [...declared.values()], sourcePath, { sourceDefaults: options.sourceDefaults }),
     ...observeRawProps(options.syntheticDomProps, 'declaration', { origin: 'inherited-dom' }),
     ...observeRawProps(
       options.suppressProps ? [] : inferPrimitiveDomPropsFromImplementation(funcNode, parameter),

@@ -82,6 +82,7 @@ function location(value: unknown): boolean {
       (value.endOffset as number) >= (value.startOffset as number))
   );
 }
+export { json as isPlainSourceContract, location as isSourceFactLocation };
 function node(value: unknown): boolean {
   if (
     !plain(value) ||

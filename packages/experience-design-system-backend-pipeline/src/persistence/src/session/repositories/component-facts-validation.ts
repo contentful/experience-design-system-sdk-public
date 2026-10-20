@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { jsonValueIssue } from '@contentful/experience-design-system-types';
 import {
+  readInputOutput,
+  type SourceInputOutputEvidence,
   COMPONENT_FACT_SCHEMA_VERSION,
   readSourceClosure,
   sourceClosureMatchesObservations,
@@ -123,6 +125,9 @@ const callableSignature = z
   .strict();
 const sourceObservations = z
   .object({
+    inputOutput: z
+      .custom<SourceInputOutputEvidence>((value) => readInputOutput(value).status === 'available')
+      .optional(),
     schemaVersion: z.literal(1),
     componentDeclarationId: z.string(),
     selectedSourcePaths: z.array(z.string()),
@@ -309,6 +314,13 @@ export function readComponentFacts(value: unknown): ComponentFactsRead {
     if (
       collection &&
       typeof collection === 'object' &&
+      'inputOutput' in collection &&
+      readInputOutput(collection.inputOutput).status === 'unsupported'
+    )
+      return { status: 'unsupported' };
+    if (
+      collection &&
+      typeof collection === 'object' &&
       !Array.isArray(collection) &&
       'schemaVersion' in collection &&
       typeof collection.schemaVersion === 'number' &&
@@ -324,6 +336,30 @@ export function readComponentFacts(value: unknown): ComponentFactsRead {
   )
     return { status: 'unsupported' };
   const validated = facts.safeParse(value);
+  if (
+    validated.success &&
+    validated.data.schemaVersion === COMPONENT_FACT_SCHEMA_VERSION &&
+    validated.data.sourceObservations?.inputOutput &&
+    validated.data.sourceObservations.inputOutput.componentDeclarationId !==
+      validated.data.sourceObservations.componentDeclarationId
+  )
+    return { status: 'corrupt' };
+  if (validated.success && validated.data.schemaVersion === COMPONENT_FACT_SCHEMA_VERSION) {
+    const observations = validated.data.sourceObservations;
+    const roots = observations?.observations.flatMap((observation) =>
+      observation.kind === 'binding' && observation.inputPath?.segments.length === 0 ? [observation.inputPath] : [],
+    );
+    if (
+      roots?.length &&
+      observations?.inputOutput?.inputs.some(
+        (input) =>
+          !roots.some(
+            (root) => root.rootSymbolId === input.rootSymbolId && root.parameterIndex === input.parameterIndex,
+          ),
+      )
+    )
+      return { status: 'corrupt' };
+  }
   if (
     validated.success &&
     validated.data.schemaVersion === COMPONENT_FACT_SCHEMA_VERSION &&

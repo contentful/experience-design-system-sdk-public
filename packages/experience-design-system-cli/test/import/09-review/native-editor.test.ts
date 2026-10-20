@@ -19,3 +19,25 @@ it('refuses unsupported definitions instead of coercing their type', () => {
     ).error,
   ).toBeTruthy();
 });
+
+it('preserves source ownership and slot metadata through unrelated complete editor changes', () => {
+  const sourceInput = {
+    schemaVersion: 1,
+    componentId: 'surface',
+    componentDeclarationId: 'declaration',
+    rootSymbolId: 'parameter',
+    inputName: 'supplied',
+    inputPath: ['supplied'],
+  };
+  const slot = {
+    $sourceInput: sourceInput,
+    $allowedComponents: ['Example'],
+    $required: true,
+    $description: 'Original',
+  };
+  const original = JSON.stringify({ $type: 'component', $properties: {}, $slots: { region: slot } });
+  const parsed = parseToState(original);
+  expect(parsed.error).toBeNull();
+  parsed.state.componentDescription = 'Edited';
+  expect(JSON.parse(serializeState(parsed.state, original)).$slots.region).toEqual(slot);
+});

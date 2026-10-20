@@ -81,6 +81,16 @@ export function deriveSlotsFromExploration(
         realVotes: real.length,
         ...(required !== undefined ? { required } : {}),
       };
+      const associations = new Map<string, { value: NonNullable<SlotDecision['sourceInput']>; votes: number }>();
+      for (const vote of real)
+        if (vote.slot?.sourceInput) {
+          const key = JSON.stringify(vote.slot.sourceInput);
+          const before = associations.get(key);
+          associations.set(key, { value: vote.slot.sourceInput, votes: (before?.votes ?? 0) + 1 });
+        }
+      if (associations.size > 1) throw new Error('Conflicting source input association votes');
+      const association = [...associations.values()].find((association) => meets(association.votes, total));
+      if (association) decision.sourceInput = association.value;
       decisions.push(decision);
       if (state === 'open' || state === 'finite')
         accepted.slots.push({

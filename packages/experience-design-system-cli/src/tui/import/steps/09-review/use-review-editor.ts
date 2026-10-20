@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
+import { CDFComponentSchema, type CDFComponentEntry } from '@contentful/experience-design-system-types';
 import { openPipelineDb, storeCDFComponents } from '@contentful/experience-design-system-backend-pipeline';
 import { collectTokenSuggestions } from './token-suggestions.js';
 import type {
@@ -59,9 +59,9 @@ function parseReviewEntry(draftValue: string): CDFComponentEntry {
     keys.length === 1 && typeof parsed[keys[0]] === 'object' && parsed[keys[0]] !== null
       ? (parsed[keys[0]] as CDFComponentEntry)
       : (parsed as unknown as CDFComponentEntry);
-  if (entry.$type !== 'component' || typeof entry.$properties !== 'object' || entry.$properties === null) {
-    throw new Error('Invalid CDF entry: must have $type: "component" and $properties object');
-  }
+  const validation = CDFComponentSchema.safeParse(entry);
+  if (!validation.success)
+    throw new Error(`Invalid complete CDF entry: ${validation.error.issues.map((issue) => issue.message).join('; ')}`);
   return entry;
 }
 
