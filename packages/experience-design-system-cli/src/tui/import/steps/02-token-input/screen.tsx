@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Box, Text } from 'ink';
-import TextInput from 'ink-text-input';
 import { PALETTE } from '../../../theme.js';
+import { ClearableTextInput } from '../../../clear-shortcut.js';
 import { TOKEN_INPUT_CONTROLS, useTokenInputControls } from './controls.js';
 import { toTokenPath } from './logic.js';
 import { validateTokenPath } from './validate-path.js';
@@ -46,7 +46,7 @@ export function TokenInputScreen({ onConfirm, onBack, initialPath = '' }: TokenI
         <Box gap={1}>
           <Text color={PALETTE.accent}>?</Text>
           <Text>Token path:</Text>
-          <TextInput value={tokenPath} onChange={change} onSubmit={submit} />
+          <ClearableTextInput value={tokenPath} onChange={change} onSubmit={submit} />
         </Box>
         {failure && (
           <Box flexDirection="column">
