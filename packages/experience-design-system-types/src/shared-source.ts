@@ -11,6 +11,7 @@ export interface SharedSourceFile {
   content: string;
   partial: boolean;
   fileId?: string;
+  compilerContextId?: string;
   canonicalPath?: string;
   textHash?: string | null;
   coverage?: SharedSourceCoverage;
@@ -24,6 +25,16 @@ export interface SharedSourceFile {
   }>;
 }
 
+export interface SharedSourceCompilerContext {
+  contextId: string;
+  configPath: string | null;
+  status: 'configured' | 'fallback' | 'ambiguous' | 'invalid';
+  referenceOutcome: 'selected' | 'fallback' | 'missing' | 'ambiguous' | 'invalid' | 'cycle' | 'budget-exhausted';
+  compilerOptions: Record<string, unknown>;
+  configFiles: Array<{ fileId: string; textHash: string | null }>;
+  diagnostics: string[];
+}
+
 export interface SharedSourceReference {
   path: string;
   role: string;
@@ -34,6 +45,9 @@ export interface SharedSourceReference {
 /** Source files are stored once; lexical references do not prove runtime execution. */
 export interface SharedSource {
   files: SharedSourceFile[];
+  /** Absent on older snapshots; missing configuration is unknown. */
+  compilerContexts?: SharedSourceCompilerContext[];
+  omittedCompilerContexts?: number;
   components: Array<{
     component: string;
     source: string;

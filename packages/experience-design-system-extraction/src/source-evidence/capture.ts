@@ -2,9 +2,11 @@ import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { dirname, extname, isAbsolute, relative, resolve, sep } from 'node:path';
 import ts from 'typescript';
+import { selectCompilerConfiguration } from '../extract/compiler/configuration-policy.js';
 import type {
   CaptureSourceEvidenceRequest,
   CapturedSourceFile,
+  CapturedCompilerContext,
   SourceCapture,
   SourceCaptureDiagnostic,
   SourceCaptureLimits,
@@ -262,82 +264,117 @@ export async function captureSourceEvidence(request: CaptureSourceEvidenceReques
     return entry;
   };
 
-  let configuredOptions: ts.CompilerOptions = {};
-  const readConfig = (path: string): string | undefined => {
+  const contexts = new Map<string, CapturedCompilerContext>();
+  const contextsByDirectory = new Map<string, CapturedCompilerContext>();
+  const configReferenceUsage = { references: 0 };
+  const configExists = (path: string): boolean => {
+    if (!budgetCheck() || used.resolverProbes >= limits.maxResolverProbes) {
+      diagnostics.push({ kind: 'budget', reason: 'max-config-resolver-probes' });
+      incomplete = true;
+      exhausted = true;
+      return false;
+    }
+    used.resolverProbes++;
     const canonical = canonicalCandidate(path);
-    if (canonical.excluded || isDependencyPath(projectRoot, canonical.path)) {
-      diagnostics.push({ kind: 'config', reason: 'config-outside-admitted-source' });
-      incomplete = true;
-      return undefined;
+    // Report an existing escaped config when the policy attempts to read it.
+    if (isDependencyPath(projectRoot, canonical.path)) return false;
+    try {
+      return statSync(canonical.path).isFile();
+    } catch {
+      return false;
     }
-    const read = readBounded(canonical.path);
-    if (!('text' in read)) {
-      diagnostics.push({ kind: 'config', reason: `config-unreadable:${relative(projectRoot, canonical.path)}` });
-      incomplete = true;
-      return undefined;
-    }
-    addCapturedFile(canonical.path, 'config');
-    const config = ts.parseConfigFileTextToJson(canonical.path, read.text);
-    if (config.error) {
-      diagnostics.push({ kind: 'config', reason: `config-parse:${relative(projectRoot, canonical.path)}` });
-      incomplete = true;
-    }
-    const extended = config.config?.extends as unknown;
-    const extendsValues = typeof extended === 'string' ? [extended] : Array.isArray(extended) ? extended : [];
-    for (const value of extendsValues)
-      if (typeof value === 'string' && !value.startsWith('.') && !isAbsolute(value)) {
-        diagnostics.push({ kind: 'config', reason: `unsupported-package-config-extends:${value}` });
-        incomplete = true;
-      }
-    return read.text;
   };
-  const tsConfig = resolve(projectRoot, 'tsconfig.json');
-  if (existsSync(tsConfig)) {
-    const text = readConfig(tsConfig);
-    if (text !== undefined) {
-      const parsed = ts.parseConfigFileTextToJson(tsConfig, text);
-      if (!parsed.error) {
-        const host: ts.ParseConfigHost = {
-          useCaseSensitiveFileNames: true,
-          readDirectory: () => [], // Source admission is supplied, never expanded by config globs.
-          readFile: readConfig,
-          fileExists: (path) => {
-            if (!budgetCheck() || used.resolverProbes >= limits.maxResolverProbes) {
-              diagnostics.push({ kind: 'budget', reason: 'max-config-resolver-probes' });
-              incomplete = true;
-              exhausted = true;
-              return false;
-            }
-            used.resolverProbes++;
-            const canonical = canonicalCandidate(path);
-            if (canonical.excluded || isDependencyPath(projectRoot, canonical.path)) return false;
-            try {
-              return statSync(canonical.path).isFile();
-            } catch {
-              return false;
-            }
-          },
-        };
-        const config = ts.parseJsonConfigFileContent(parsed.config, host, dirname(tsConfig), undefined, tsConfig);
-        configuredOptions = config.options;
-        // Config discovery is deliberately excluded; supplied admission owns the source list.
-        const errors = config.errors.filter((error) => error.code !== 18003);
-        if (errors.length) {
-          diagnostics.push({
-            kind: 'config',
-            reason: `compiler-options:${errors.map((error) => error.code).join(',')}`,
-          });
-          incomplete = true;
-        }
-      }
+  const contextFor = (file: CapturedSourceFile): CapturedCompilerContext => {
+    const directory = dirname(file.canonicalPath);
+    const previous = contextsByDirectory.get(directory);
+    if (previous) {
+      file.compilerContextId = previous.contextId;
+      return previous;
     }
-  }
-  const compilerOptions: ts.CompilerOptions = {
-    module: ts.ModuleKind.Preserve,
-    moduleResolution: ts.ModuleResolutionKind.Bundler,
-    ...configuredOptions,
+    const configFiles = new Map<string, string | null>();
+    const failures: string[] = [];
+    const readConfig = (path: string): string | undefined => {
+      const canonical = canonicalCandidate(path);
+      if (canonical.excluded || isDependencyPath(projectRoot, canonical.path)) {
+        failures.push('config-outside-admitted-source');
+        return undefined;
+      }
+      const config = addCapturedFile(canonical.path, 'config');
+      if (config) configFiles.set(config.fileId, config.textHash);
+      if (!config || config.captured.kind !== 'full') {
+        failures.push(
+          `config-unreadable:${relative(projectRoot, canonical.path)}:${config?.captured.kind === 'unavailable' ? config.captured.reason : 'budget-exhausted'}`,
+        );
+        return undefined;
+      }
+      return config.captured.text;
+    };
+    const host: ts.ParseConfigHost = {
+      useCaseSensitiveFileNames: true,
+      readDirectory: () => [], // Supplied admission owns source discovery.
+      readFile: readConfig,
+      fileExists: configExists,
+    };
+    const selected = selectCompilerConfiguration(
+      file.canonicalPath,
+      projectRoot,
+      {
+        readFile: readConfig,
+        host,
+        used: configReferenceUsage,
+        canonicalizeConfigPath: (path) => canonicalCandidate(path).path,
+        maxReferences: limits.maxResolverProbes,
+        consumeReferences: (count) => {
+          if (!budgetCheck() || used.resolverProbes + count > limits.maxResolverProbes) {
+            diagnostics.push({ kind: 'budget', reason: 'max-config-reference-probes' });
+            incomplete = true;
+            exhausted = true;
+            return false;
+          }
+          used.resolverProbes += count;
+          return true;
+        },
+        explicitInputsOnly: true,
+        admittedRelativeExtendsOnly: true,
+      },
+      configExists,
+      limits.maxResolverProbes,
+    );
+    const compilerOptions: ts.CompilerOptions = {
+      module: ts.ModuleKind.Preserve,
+      moduleResolution: ts.ModuleResolutionKind.Bundler,
+      ...selected.config?.parsed.options,
+      // Analyze only admitted sources, without libraries, ambient packages or emission.
+      noEmit: true,
+      allowJs: true,
+      checkJs: false,
+      noLib: true,
+      types: [],
+      noResolve: false,
+    };
+    const contextData = {
+      configPath: selected.config?.path ?? null,
+      status: failures.length ? ('invalid' as const) : selected.status,
+      referenceOutcome: exhausted ? ('budget-exhausted' as const) : selected.referenceOutcome,
+      compilerOptions: JSON.parse(JSON.stringify(compilerOptions)) as Record<string, unknown>,
+      configFiles: [...configFiles]
+        .map(([fileId, textHash]) => ({ fileId, textHash }))
+        .sort((a, b) => a.fileId.localeCompare(b.fileId)),
+      diagnostics: [...new Set([...selected.diagnostics, ...failures])].sort(),
+    };
+    const contextId = `context-${sha256(JSON.stringify(contextData)).slice(0, 20)}`;
+    const context = contexts.get(contextId) ?? { ...contextData, contextId };
+    contexts.set(contextId, context);
+    contextsByDirectory.set(directory, context);
+    file.compilerContextId = contextId;
+    for (const reason of context.diagnostics) {
+      if (reason === 'config-not-found') continue; // Explicit fallback is preserved in context provenance.
+      diagnostics.push({ kind: 'config', fileId: file.fileId, reason });
+      incomplete = true;
+    }
+    if (context.referenceOutcome === 'cycle' || context.referenceOutcome === 'budget-exhausted') incomplete = true;
+    return context;
   };
-  const configAliasPaths = compilerOptions.paths as Record<string, readonly string[]> | undefined;
 
   let activeResolverFrom = '';
   const resolverHost: ts.ModuleResolutionHost = {
@@ -429,6 +466,9 @@ export async function captureSourceEvidence(request: CaptureSourceEvidenceReques
     if (contents === undefined) return;
     if (visiting.has(canonical.path)) return;
     if (visited.has(canonical.path)) return;
+    const context = contextFor(captured);
+    const compilerOptions = context.compilerOptions as ts.CompilerOptions;
+    const configAliasPaths = compilerOptions.paths;
     visiting.add(canonical.path);
     const sourceFile = ts.createSourceFile(
       canonical.path,
@@ -590,7 +630,7 @@ export async function captureSourceEvidence(request: CaptureSourceEvidenceReques
   const associationDiagnostics = associateCapturedReferences({
     files,
     resolution: resolutions,
-    compilerOptions,
+    compilerContexts: [...contexts.values()],
     componentPaths,
     checkBudget: budgetCheck,
     maxNodes: limits.maxReferenceNodes ?? 100_000,
@@ -627,6 +667,7 @@ export async function captureSourceEvidence(request: CaptureSourceEvidenceReques
     schemaVersion: 1 as const,
     projectRoot,
     files,
+    compilerContexts: [...contexts.values()].sort((a, b) => a.contextId.localeCompare(b.contextId)),
     resolution: sortedResolutions,
     diagnostics,
     bounds: { limits, used },

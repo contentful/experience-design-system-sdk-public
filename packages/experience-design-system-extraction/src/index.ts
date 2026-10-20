@@ -119,6 +119,7 @@ export { parseImportedNames } from './extract/helpers/evidence/parse-source-impo
 export { captureSourceEvidence, DEFAULT_SOURCE_CAPTURE_LIMITS } from './source-evidence/index.js';
 export type {
   CapturedSourceFile,
+  CapturedCompilerContext,
   CaptureSourceEvidenceRequest,
   ExtractionByteBinding,
   SourceCapture,

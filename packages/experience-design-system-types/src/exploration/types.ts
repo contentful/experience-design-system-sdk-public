@@ -84,6 +84,7 @@ export type ExploreStageResult =
   | { ok: true; scopes: ExploreScopeResult[] }
   | { ok: false; scope: ExploreScope; attempts: ExploreAttempt[]; error: string; scopes?: ExploreScopeResult[] };
 export interface ExploreSourceRef {
+  compilerContexts?: import('../shared-source.js').SharedSourceCompilerContext[];
   component: string;
   sourcePath: string;
   content: string | null;
@@ -94,11 +95,13 @@ export interface ExploreSourceRef {
     coverage: SourceCompleteness;
     extractionByteBinding: 'verified-same' | 'changed' | 'unverified';
     lineRanges: Array<{ startLine: number; endLine: number }>;
+    compilerContextId?: string;
   };
   siblingFiles?: Array<{ path: string; content: string; sourceEvidence?: ExploreSourceRef['sourceEvidence'] }>;
 }
 export interface BoundSourceFile {
   fileId: string;
+  compilerContextId?: string;
   path: string;
   textHash: string | null;
   ranges: Array<{ startLine: number; endLine: number; text: string }>;
@@ -114,6 +117,8 @@ export interface BoundSourceFile {
 export interface ExplorationSourceInput {
   projectionBounds?: { maxBytes: number; usedBytes: number };
   components?: import('../shared-source.js').SharedSource['components'];
+  compilerContexts?: import('../shared-source.js').SharedSourceCompilerContext[];
+  omittedCompilerContexts?: number;
   omittedComponents?: number;
   omittedRanges?: number;
   captureId: string;

@@ -10,6 +10,7 @@ import type {
   ExtractionDiagnostics,
 } from '../candidates/types.js';
 import type { ExtractorOptions } from '../types/options.js';
+import { selectCompilerConfiguration, type ParsedConfig } from './configuration-policy.js';
 
 const DEFAULT_LIMITS = {
   maxRoots: 256,
@@ -38,14 +39,6 @@ export interface CompilerContextResult {
 export interface VirtualCompilerSource {
   path: string;
   content: string;
-}
-
-interface ParsedConfig {
-  path: string;
-  parsed: ts.ParsedCommandLine;
-  text: string;
-  status: CompilerProjectDiagnostic['status'];
-  diagnostics: string[];
 }
 
 function isWithin(root: string, filePath: string): boolean {
@@ -91,41 +84,6 @@ function toPlainOptions(options: ts.CompilerOptions): Record<string, string | nu
     }
   }
   return plain;
-}
-
-function configNames(directory: string): string[] {
-  const tsConfig = resolve(directory, 'tsconfig.json');
-  const jsConfig = resolve(directory, 'jsconfig.json');
-  const found = [tsConfig, jsConfig].filter((path) => existsSync(path));
-  return found;
-}
-
-function findNearestConfig(
-  filePath: string,
-  projectRoot: string,
-  maxReads: number,
-): { path: string | null; ambiguous: boolean } {
-  let current = dirname(resolve(filePath));
-  let reads = 0;
-  while (isWithin(projectRoot, current) && reads < maxReads) {
-    const found = configNames(current);
-    if (found.length > 0)
-      return { path: found.find((path) => path.endsWith('tsconfig.json')) ?? found[0]!, ambiguous: found.length > 1 };
-    const parent = dirname(current);
-    if (parent === current || !isWithin(projectRoot, parent)) break;
-    current = parent;
-    reads += 1;
-  }
-  return { path: null, ambiguous: false };
-}
-
-function referencePath(reference: ts.ProjectReference): string {
-  const path = resolve(reference.path);
-  return path.endsWith('.json') ? path : resolve(path, 'tsconfig.json');
-}
-
-function configReferenceContains(reference: ts.ProjectReference, filePath: string): boolean {
-  return isWithin(dirname(referencePath(reference)), resolve(filePath));
 }
 
 function makeCompilerHost(projectRoot: string, limits: typeof DEFAULT_LIMITS, explicitRoots: readonly string[]) {
@@ -204,75 +162,6 @@ function makeCompilerHost(projectRoot: string, limits: typeof DEFAULT_LIMITS, ex
   return { host, readFile, hashByPath, diagnostics, used };
 }
 
-function parseConfig(path: string, reader: ReturnType<typeof makeCompilerHost>): ParsedConfig {
-  const text = reader.readFile(path);
-  if (text === undefined) {
-    return {
-      path,
-      text: '',
-      status: 'invalid',
-      diagnostics: ['config-unreadable-or-over-budget'],
-      parsed: { options: { noEmit: true }, fileNames: [], errors: [], projectReferences: undefined, raw: {} },
-    };
-  }
-  const json = ts.parseConfigFileTextToJson(path, text);
-  if (json.error || !json.config || typeof json.config !== 'object') {
-    return {
-      path,
-      text,
-      status: 'invalid',
-      diagnostics: json.error ? [formatDiagnostic(json.error)] : ['config-not-an-object'],
-      parsed: {
-        options: { noEmit: true },
-        fileNames: [],
-        errors: json.error ? [json.error] : [],
-        projectReferences: undefined,
-        raw: {},
-      },
-    };
-  }
-  const parsed = ts.parseJsonConfigFileContent(json.config, reader.host, dirname(path), { noEmit: true }, path);
-  const diagnostics = parsed.errors.map(formatDiagnostic);
-  return {
-    path,
-    text,
-    status: diagnostics.length > 0 ? 'invalid' : 'configured',
-    diagnostics,
-    parsed,
-  };
-}
-
-function selectReferencedConfig(
-  config: ParsedConfig,
-  filePath: string,
-  reader: ReturnType<typeof makeCompilerHost>,
-  visited = new Set<string>(),
-  depth = 0,
-  maxDepth = DEFAULT_LIMITS.maxReferenceDepth,
-): { config: ParsedConfig; outcome: CompilerReferenceDiagnostic['outcome']; details: string[] } {
-  if (depth >= maxDepth)
-    return { config, outcome: 'budget-exhausted', details: ['project-reference-depth-budget-exhausted'] };
-  if (visited.has(config.path)) return { config, outcome: 'cycle', details: ['project-reference-cycle'] };
-  visited.add(config.path);
-  const references = config.parsed.projectReferences ?? [];
-  reader.used.references += references.length;
-  if (reader.used.references > DEFAULT_LIMITS.maxReferences)
-    return { config, outcome: 'budget-exhausted', details: ['project-reference-count-budget-exhausted'] };
-  if (references.length === 0) {
-    return { config, outcome: config.status === 'configured' ? 'selected' : 'invalid', details: config.diagnostics };
-  }
-  const matching = references.filter((reference) => configReferenceContains(reference, filePath));
-  if (matching.length > 1)
-    return { config, outcome: 'ambiguous', details: ['root-matches-overlapping-project-references'] };
-  if (matching.length === 0)
-    return { config, outcome: 'ambiguous', details: ['root-not-covered-by-project-references', ...config.diagnostics] };
-  const selectedPath = referencePath(matching[0]!);
-  const referenced = parseConfig(selectedPath, reader);
-  if (referenced.status === 'invalid')
-    return { config: referenced, outcome: 'invalid', details: referenced.diagnostics };
-  return selectReferencedConfig(referenced, filePath, reader, visited, depth + 1, maxDepth);
-}
-
 function moduleDiagnostics(context: CompilerProjectContext): CompilerModuleDiagnostic[] {
   const diagnostics: CompilerModuleDiagnostic[] = [];
   for (const sourceFile of context.project.getSourceFiles()) {
@@ -338,28 +227,9 @@ export function createCompilerContexts(
       referenceDiagnostics.push({ root: rootPath, configPath: null, outcome: 'budget-exhausted' });
       continue;
     }
-    const nearest = findNearestConfig(rootPath, projectRoot, limits.maxConfigReads);
-    let selectedConfig: ParsedConfig | null = null;
-    let status: CompilerProjectDiagnostic['status'] = nearest.ambiguous ? 'ambiguous' : 'fallback';
-    let diagnostics: string[] = nearest.ambiguous ? ['multiple-config-files-at-same-root'] : [];
-    let referenceOutcome: CompilerReferenceDiagnostic['outcome'] = 'fallback';
-
-    if (nearest.path) {
-      const baseConfig = parseConfig(nearest.path, reader);
-      const referenceSelection = selectReferencedConfig(baseConfig, rootPath, reader);
-      selectedConfig = referenceSelection.config;
-      diagnostics = [...diagnostics, ...referenceSelection.details];
-      referenceOutcome = referenceSelection.outcome;
-      status = nearest.ambiguous
-        ? 'ambiguous'
-        : referenceSelection.outcome === 'ambiguous'
-          ? 'ambiguous'
-          : referenceSelection.outcome === 'invalid' || baseConfig.status === 'invalid'
-            ? 'invalid'
-            : 'configured';
-    } else {
-      diagnostics.push('config-not-found');
-    }
+    const selection = selectCompilerConfiguration(rootPath, projectRoot, reader, existsSync, limits.maxConfigReads);
+    const selectedConfig = selection.config;
+    const { status, diagnostics, referenceOutcome } = selection;
 
     const key = selectedConfig?.path ?? `fallback:${projectRoot}`;
     const group = groups.get(key) ?? { config: selectedConfig, status, roots: [], files: [], diagnostics: [] };

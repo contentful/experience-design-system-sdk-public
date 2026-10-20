@@ -44,6 +44,7 @@ export function projectCapturedFile(file: SourceCapture['files'][number]): Share
   });
   return {
     fileId: file.fileId,
+    ...(file.compilerContextId ? { compilerContextId: file.compilerContextId } : {}),
     path: file.displayPath,
     canonicalPath: file.canonicalPath,
     textHash: file.textHash,
@@ -81,6 +82,11 @@ export function buildSharedSource(envelope: SessionSourceEnvelope, componentIds?
         changed = true;
       }
   }
+  const contextIds = new Set(
+    capture.files.filter((file) => selected.has(file.fileId)).map((file) => file.compilerContextId),
+  );
+  const compilerContexts = capture.compilerContexts?.filter((context) => contextIds.has(context.contextId));
+  for (const context of compilerContexts ?? []) for (const config of context.configFiles) selected.add(config.fileId);
   const files = capture.files.filter((file) => selected.has(file.fileId)).map(projectCapturedFile);
   const owners = new Map<string, { componentId: string; name: string }>();
   for (const file of capture.files)
@@ -142,6 +148,7 @@ export function buildSharedSource(envelope: SessionSourceEnvelope, componentIds?
         : capture.coverage,
     extractionByteBinding: envelope.extractionByteBinding,
     files,
+    ...(compilerContexts ? { compilerContexts: structuredClone(compilerContexts) } : {}),
     components,
     omittedFiles: 0,
     omittedRanges: 0,
@@ -209,6 +216,8 @@ type ProjectionMetadata = Pick<
   | 'omittedObservations'
   | 'diagnostics'
   | 'observations'
+  | 'compilerContexts'
+  | 'omittedCompilerContexts'
 >;
 type TextRange = { startLine: number; endLine: number; text: string };
 
@@ -286,6 +295,11 @@ function fitProjection<File extends { fileId?: string; path: string }>(
     source.diagnostics = [];
     source.promptCoverage = 'partial';
   }
+  while (size() > maxBytes && source.compilerContexts?.length) {
+    source.compilerContexts.pop();
+    source.omittedCompilerContexts = (source.omittedCompilerContexts ?? 0) + 1;
+    source.promptCoverage = 'partial';
+  }
   while (size() > maxBytes && source.components?.length) {
     source.components.pop();
     source.omittedComponents = (source.omittedComponents ?? 0) + 1;
@@ -313,6 +327,7 @@ export function projectExplorationSource(
     extractionByteBinding: envelope.extractionByteBinding,
     files: envelope.capture.files.map((file) => ({
       fileId: file.fileId,
+      ...(file.compilerContextId ? { compilerContextId: file.compilerContextId } : {}),
       path: file.canonicalPath,
       textHash: file.textHash,
       ranges: capturedRanges(file),
@@ -326,6 +341,7 @@ export function projectExplorationSource(
       componentRefs: file.componentRefs.map((ref) => ({ ...ref, roles: [...ref.roles] })),
     })),
     components: index.components,
+    ...(index.compilerContexts ? { compilerContexts: index.compilerContexts } : {}),
     omittedFiles: 0,
     diagnostics: [
       ...envelope.capture.diagnostics,

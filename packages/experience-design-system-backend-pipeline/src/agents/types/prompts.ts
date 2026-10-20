@@ -36,6 +36,7 @@ export interface ComponentSourceRef {
   sourcePath: string;
   content: string | null;
   sourceEvidence?: CapturedSourceRefMetadata;
+  compilerContexts?: SharedSource['compilerContexts'];
   siblingFiles?: Array<{ path: string; content: string; sourceEvidence?: CapturedSourceRefMetadata }>;
   truncatedSiblingCount?: number;
   usesNotShown?: string[];
@@ -48,6 +49,7 @@ export interface CapturedSourceRefMetadata {
   coverage: 'complete-within-declared-bound' | 'partial' | 'unavailable';
   extractionByteBinding: 'verified-same' | 'changed' | 'unverified';
   lineRanges: Array<{ startLine: number; endLine: number }>;
+  compilerContextId?: string;
 }
 
 /** Plain-data shape of the CDF generated so far — component name → component entry. */

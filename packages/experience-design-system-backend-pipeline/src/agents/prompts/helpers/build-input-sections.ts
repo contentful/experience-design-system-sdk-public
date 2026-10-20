@@ -4,6 +4,7 @@ import type { PromptOptions } from '../../types/prompts.js';
 import { filterDesignTokenProps } from './filter-design-token-props.js';
 import { renderTokenCandidateSection } from './format-token-candidates.js';
 import { inferFenceLang } from './infer-fence-lang.js';
+import { renderSelectionEvidenceInline } from './build-selection-evidence-inline.js';
 
 /** Build the inline evidence/context sections that precede the per-skill preamble. */
 export function buildInputSections(options: PromptOptions): string[] {
@@ -56,9 +57,7 @@ export function buildInputSections(options: PromptOptions): string[] {
     );
   }
   if (selectionEvidenceInline) {
-    sections.push(
-      `Saved source evidence (bounded capture; advisory only, not compiler or execution proof):\n\`\`\`json\n${selectionEvidenceInline}\n\`\`\``,
-    );
+    sections.push(renderSelectionEvidenceInline(selectionEvidenceInline));
   }
   if (rawTokensInline) {
     const lang = inferFenceLang(rawTokensFilename);
@@ -106,7 +105,10 @@ export function buildInputSections(options: PromptOptions): string[] {
         const sourceMetadata = ref.sourceEvidence
           ? `\nSaved capture metadata: ${JSON.stringify(ref.sourceEvidence)}`
           : '';
-        const mainBlock = `#### ${ref.component} (\`${ref.sourcePath}\`)${sourceMetadata}\n\`\`\`${inferFenceLang(ref.sourcePath)}\n${ref.content}\n\`\`\``;
+        const contextsMetadata = ref.compilerContexts
+          ? `\nSaved compiler contexts: ${JSON.stringify(ref.compilerContexts)}`
+          : '';
+        const mainBlock = `#### ${ref.component} (\`${ref.sourcePath}\`)${sourceMetadata}${contextsMetadata}\n\`\`\`${inferFenceLang(ref.sourcePath)}\n${ref.content}\n\`\`\``;
         const siblingBlocks = (ref.siblingFiles ?? []).map(
           (sibling) =>
             `##### ${ref.component} — imported file \`${sibling.path}\`${sibling.sourceEvidence ? `\nSaved capture metadata: ${JSON.stringify(sibling.sourceEvidence)}` : ''}\n\`\`\`${inferFenceLang(sibling.path)}\n${sibling.content}\n\`\`\``,

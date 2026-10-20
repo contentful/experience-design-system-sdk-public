@@ -649,6 +649,7 @@ export interface ComponentReviewMetadata {
   sourceCoverage: SourceCapture['coverage'];
   extractionByteBinding: SourceCapture['extractionByteBinding'];
   sourceTextHash: string | null;
+  sourceCompilerContext?: NonNullable<SharedSource['compilerContexts']>[number];
   sourceLineRanges: Array<{ sourceStartLine: number; sourceEndLine: number; displayStartLine: number }>;
   scopeProvenance: ScopeDecisionProvenance | null;
   props: Record<
@@ -708,6 +709,7 @@ export function loadComponentReviewMetadata(
   let sourceCoverage: SourceCapture['coverage'] = 'unavailable';
   let extractionByteBinding: SourceCapture['extractionByteBinding'] = 'unverified';
   let sourceTextHash: string | null = null;
+  let sourceCompilerContext: ComponentReviewMetadata['sourceCompilerContext'];
   let sourceLineRanges: ComponentReviewMetadata['sourceLineRanges'] = [];
   const scopeProvenance = loadScopeDecisions(db, sessionId)?.acceptedProvenance?.[componentName] ?? null;
   const saved = loadCompletedSourceEvidence(db, sessionId);
@@ -735,6 +737,10 @@ export function loadComponentReviewMetadata(
       extractionByteBinding = saved.envelope.extractionByteBinding;
       sourceTextHash = file.textHash;
       sourceLineRanges = projection.ranges;
+      sourceCompilerContext =
+        shared.readiness === 'ready'
+          ? shared.source.compilerContexts?.find((context) => context.contextId === file.compilerContextId)
+          : undefined;
     }
   }
 
@@ -757,6 +763,7 @@ export function loadComponentReviewMetadata(
     sourceCoverage,
     extractionByteBinding,
     sourceTextHash,
+    ...(sourceCompilerContext ? { sourceCompilerContext } : {}),
     sourceLineRanges,
     scopeProvenance,
     props,
@@ -2042,6 +2049,7 @@ export function loadSavedComponentSourceRef(
     coverage: projected.promptCoverage ?? 'partial',
     extractionByteBinding: saved.envelope.extractionByteBinding,
     lineRanges: (file.ranges ?? []).map(({ startLine, endLine }) => ({ startLine, endLine })),
+    ...(file.compilerContextId ? { compilerContextId: file.compilerContextId } : {}),
   });
   const siblings = projected.files.filter((file) => file.fileId !== root.fileId && file.coverage !== 'unavailable');
   const partial = main.partial || (projected.omittedFiles ?? 0) > 0 || siblings.some((file) => file.partial);
@@ -2050,6 +2058,7 @@ export function loadSavedComponentSourceRef(
     sourcePath: main.path,
     content: main.content,
     sourceEvidence: metadata(main),
+    ...(projected.compilerContexts ? { compilerContexts: projected.compilerContexts } : {}),
     ...(siblings.length
       ? {
           siblingFiles: siblings.map((file) => ({

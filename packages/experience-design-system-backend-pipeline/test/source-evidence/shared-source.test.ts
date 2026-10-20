@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { SessionSourceEnvelope } from '../../src/persistence/src/session/repositories/db.js';
 import { buildSharedSource, projectSharedSource, renderSharedSource } from '../../src/source-evidence/shared-source.js';
+import {
+  buildSelectionEvidenceInline,
+  renderSelectionEvidenceInline,
+} from '../../src/agents/prompts/helpers/build-selection-evidence-inline.js';
 import { buildExplorationSourceInput } from '../../src/orchestrators/run-exploration-session/helpers/build-source-input.js';
 import { buildInputSections } from '../../src/agents/prompts/helpers/build-input-sections.js';
 import { runExploreStage } from '../../src/steps/exploration/src/services/run-explore-stage.js';
@@ -185,4 +189,63 @@ describe('shared saved source projections', () => {
     expect(JSON.stringify(original)).toBe(snapshot);
     expect(() => buildExplorationSourceInput(original, 1)).toThrow(/metadata.*bound/i);
   });
+});
+
+it('selects saved config provenance with its owners and counts context omission inside the prompt bound', () => {
+  const original = envelope();
+  original.capture.files[0]!.compilerContextId = 'context-a';
+  original.capture.files[1]!.compilerContextId = 'context-a';
+  original.capture.files.push({
+    fileId: 'config',
+    canonicalPath: '/example/tsconfig.json',
+    displayPath: 'tsconfig.json',
+    textHash: 'config-hash',
+    captured: { kind: 'full', text: '{"compilerOptions":{"strict":true}}' },
+    roles: ['config'],
+    componentRefs: [],
+  });
+  original.capture.compilerContexts = [
+    {
+      contextId: 'context-a',
+      configPath: '/example/tsconfig.json',
+      status: 'configured',
+      referenceOutcome: 'selected',
+      compilerOptions: { noEmit: true, strict: true },
+      configFiles: [{ fileId: 'config', textHash: 'config-hash' }],
+      diagnostics: [],
+    },
+  ];
+  const source = buildSharedSource(original, ['panel']);
+  expect(source.files).toHaveLength(3);
+  expect(source.files.filter((file) => file.roles?.includes('config'))).toHaveLength(1);
+  expect(source.compilerContexts).toEqual(original.capture.compilerContexts);
+  const oversized = structuredClone(source);
+  oversized.compilerContexts![0]!.compilerOptions.paths = { example: ['x'.repeat(10000)] };
+  const projected = projectSharedSource(oversized, 1000);
+  expect(projected.omittedCompilerContexts).toBe(1);
+  expect(projected.promptCoverage).toBe('partial');
+  expect(Buffer.byteLength(renderSharedSource(projected), 'utf8')).toBeLessThanOrEqual(1000);
+  expect(source.compilerContexts).toEqual(original.capture.compilerContexts);
+});
+
+it('bounds configured selection metadata including its rendered header and makes omitted contexts explicit', () => {
+  const original = envelope();
+  original.capture.compilerContexts = [
+    {
+      contextId: 'large-context',
+      configPath: '/example/tsconfig.json',
+      status: 'configured',
+      referenceOutcome: 'selected',
+      compilerOptions: { noEmit: true, paths: { example: ['é'.repeat(10000)] } },
+      configFiles: [],
+      diagnostics: [],
+    },
+  ];
+  original.capture.bounds.limits.maxPromptBytes = 1000;
+  const projected = buildSelectionEvidenceInline(original);
+  expect(Buffer.byteLength(renderSelectionEvidenceInline(projected), 'utf8')).toBeLessThanOrEqual(1000);
+  expect(JSON.parse(projected)).toMatchObject({ promptCoverage: 'partial', compilerContextsOmitted: 1 });
+  expect(original.capture.compilerContexts[0]!.compilerOptions.paths).toEqual({ example: ['é'.repeat(10000)] });
+  original.capture.bounds.limits.maxPromptBytes = 1;
+  expect(() => buildSelectionEvidenceInline(original)).toThrow(/metadata.*bound/i);
 });

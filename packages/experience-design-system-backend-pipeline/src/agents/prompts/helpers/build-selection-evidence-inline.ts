@@ -2,6 +2,7 @@ import type { SessionSourceEnvelope } from '../../../persistence/src/session/rep
 
 type EvidenceFile = {
   fileId: string;
+  compilerContextId?: string;
   path: string;
   textHash: string | null;
   roles: string[];
@@ -11,8 +12,13 @@ type EvidenceFile = {
     | { kind: 'unavailable'; reason: string };
 };
 
+const SOURCE_HEADER =
+  'Saved source evidence (bounded capture; advisory only, not compiler or execution proof):\n```json\n';
+export function renderSelectionEvidenceInline(value: string): string {
+  return `${SOURCE_HEADER}${value}\n\`\`\``;
+}
 function byteLength(value: string): number {
-  return Buffer.byteLength(value, 'utf8');
+  return Buffer.byteLength(renderSelectionEvidenceInline(value), 'utf8');
 }
 
 /** Build a deterministic prompt projection from saved evidence, never from the current filesystem. */
@@ -34,6 +40,11 @@ export function buildSelectionEvidenceInline(envelope: SessionSourceEnvelope): s
     captureId: envelope.capture.captureId,
     captureDigest: envelope.capture.digest,
     coverage: envelope.capture.coverage,
+    promptCoverage: envelope.capture.coverage,
+    ...(envelope.capture.compilerContexts
+      ? { compilerContexts: structuredClone(envelope.capture.compilerContexts) }
+      : {}),
+    compilerContextsOmitted: 0,
     extractionByteBinding: envelope.extractionByteBinding,
     observations,
     resolution: envelope.capture.resolution.slice(0, 64),
@@ -44,9 +55,14 @@ export function buildSelectionEvidenceInline(envelope: SessionSourceEnvelope): s
     filesOmitted: 0,
   };
   const serialize = (): string => JSON.stringify(payload, null, 2);
+  while (byteLength(serialize()) >= limit && payload.compilerContexts?.length) {
+    payload.compilerContexts.pop();
+    payload.compilerContextsOmitted++;
+    payload.promptCoverage = 'partial';
+  }
   const minimum = serialize();
   if (byteLength(minimum) >= limit) {
-    return JSON.stringify({
+    const fallback = JSON.stringify({
       readiness: envelope.readiness,
       captureId: envelope.capture.captureId,
       captureDigest: envelope.capture.digest,
@@ -55,7 +71,11 @@ export function buildSelectionEvidenceInline(envelope: SessionSourceEnvelope): s
       filesIncluded: 0,
       filesOmitted: envelope.capture.files.length,
       evidenceProjection: 'metadata-exceeds-prompt-bound',
+      promptCoverage: 'partial',
+      compilerContextsOmitted: envelope.capture.compilerContexts?.length ?? 0,
     });
+    if (byteLength(fallback) > limit) throw new Error('Source identity metadata exceeds prompt bound');
+    return fallback;
   }
 
   for (let index = 0; index < orderedFiles.length; index += 1) {
@@ -78,6 +98,7 @@ export function buildSelectionEvidenceInline(envelope: SessionSourceEnvelope): s
           : { kind: 'unavailable', reason: file.captured.reason };
     const candidate: EvidenceFile = {
       fileId: file.fileId,
+      ...(file.compilerContextId ? { compilerContextId: file.compilerContextId } : {}),
       path: file.displayPath,
       textHash: file.textHash,
       roles: file.roles,
@@ -88,6 +109,7 @@ export function buildSelectionEvidenceInline(envelope: SessionSourceEnvelope): s
     payload.filesOmitted = orderedFiles.length - payload.files.length;
     if (byteLength(serialize()) <= limit) continue;
     payload.files.pop();
+    payload.promptCoverage = 'partial';
     if (file.captured.kind === 'full') {
       const lines = file.captured.text.split('\n');
       let low = 0;
@@ -118,5 +140,14 @@ export function buildSelectionEvidenceInline(envelope: SessionSourceEnvelope): s
     payload.filesOmitted = orderedFiles.length - payload.files.length;
     break;
   }
+  if (
+    payload.filesOmitted ||
+    payload.resolutionOmitted ||
+    payload.diagnosticsOmitted ||
+    observations.acceptedOmitted ||
+    observations.rejectedOmitted
+  )
+    payload.promptCoverage = 'partial';
+  if (byteLength(serialize()) > limit) throw new Error('Source identity metadata exceeds prompt bound');
   return serialize();
 }

@@ -80,6 +80,7 @@ export * from './exploration/index.js';
 export type {
   SharedSource,
   SharedSourceFile,
+  SharedSourceCompilerContext,
   SharedSourceReference,
   SharedSourceRange,
   SharedSourceCoverage,

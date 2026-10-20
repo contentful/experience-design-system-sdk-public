@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises';
 import type { DatabaseSync } from 'node:sqlite';
 import type { RawComponentDefinition } from '../../../../steps/extraction/src/types/component.js';
-import { loadRawComponents, loadScopeDecisions } from '../../session/repositories/db.js';
+import { loadRawComponents, loadScopeDecisions, loadSavedSharedSource } from '../../session/repositories/db.js';
 import { getRefineArtifactsRoot } from '../repositories/review-artifacts-root.js';
 import { getRefineSessionPaths } from '../repositories/review-session-paths.js';
 import { saveReviewState } from '../repositories/save-review-state.js';
@@ -53,5 +53,5 @@ export async function writeScopeDecisionsSnapshot(db: DatabaseSync, sessionId: s
 
   const paths = await getRefineSessionPaths(sessionId, getRefineArtifactsRoot());
   await mkdir(paths.sessionDir, { recursive: true });
-  await saveReviewState(paths.statePath, { components: records });
+  await saveReviewState(paths.statePath, { components: records, sourceEvidence: loadSavedSharedSource(db, sessionId) });
 }

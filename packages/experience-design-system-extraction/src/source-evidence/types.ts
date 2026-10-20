@@ -44,6 +44,8 @@ export interface SourceComponentReference {
 
 export interface CapturedSourceFile {
   fileId: string;
+  /** Absent on older captures; configuration is then unknown. */
+  compilerContextId?: string;
   canonicalPath: string;
   displayPath: string;
   textHash: string | null;
@@ -53,6 +55,16 @@ export interface CapturedSourceFile {
     | { kind: 'unavailable'; reason: string };
   roles: string[];
   componentRefs: SourceComponentReference[];
+}
+
+export interface CapturedCompilerContext {
+  contextId: string;
+  configPath: string | null;
+  status: 'configured' | 'fallback' | 'ambiguous' | 'invalid';
+  referenceOutcome: 'selected' | 'fallback' | 'missing' | 'ambiguous' | 'invalid' | 'cycle' | 'budget-exhausted';
+  compilerOptions: Record<string, unknown>;
+  configFiles: Array<{ fileId: string; textHash: string | null }>;
+  diagnostics: string[];
 }
 
 export interface SourceResolution {
@@ -75,6 +87,7 @@ export interface SourceCapture {
   digest: string;
   projectRoot: string;
   files: CapturedSourceFile[];
+  compilerContexts?: CapturedCompilerContext[];
   resolution: SourceResolution[];
   diagnostics: SourceCaptureDiagnostic[];
   bounds: { limits: SourceCaptureLimits; used: Record<string, number> };
