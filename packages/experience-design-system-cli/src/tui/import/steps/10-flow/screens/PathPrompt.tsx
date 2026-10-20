@@ -6,6 +6,7 @@ import { useImmediateInput } from '../../07-scope-gate/sidebar/hooks/useImmediat
 import { normalizePath } from '../support/path-utils.js';
 import { useBlinkingCursor } from '../support/use-blinking-cursor.js';
 import { PALETTE } from '@tui/theme.js';
+import { ControlHints } from '@tui/control-hints.js';
 import { StepHeader } from '../../../shared/index.js';
 
 export type PathPromptProps = {
@@ -86,11 +87,13 @@ export function PathPrompt({
           <Text color={isPlaceholder ? PALETTE.muted : undefined}>{shown}</Text>
           <Text>{cursor}</Text>
         </Box>
-        <Box gap={3}>
-          <Text>[Enter] Confirm</Text>
-          <Text>[Tab] Autocomplete</Text>
-          <Text>[Esc] Cancel</Text>
-        </Box>
+        <ControlHints
+          hints={[
+            { keys: 'Enter', label: 'Confirm' },
+            { keys: 'Tab', label: 'Autocomplete' },
+            { keys: 'Esc', label: 'Cancel' },
+          ]}
+        />
       </Box>
     </Box>
   );

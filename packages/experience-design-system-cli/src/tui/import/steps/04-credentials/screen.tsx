@@ -14,6 +14,7 @@ import {
   type CredentialValues,
 } from './logic.js';
 import { validateCredentials, type ValidationResult } from './validate.js';
+import { ControlHints } from '@tui/control-hints.js';
 
 export type CredentialsResult = { skipped: false; credentials: CredentialValues } | { skipped: true };
 
@@ -126,12 +127,8 @@ export function CredentialsScreen({
         <Text color={PALETTE.muted}>Changed values are saved after they validate.</Text>
       )}
 
-      <Box marginTop={1} gap={3}>
-        {CREDENTIALS_CONTROLS.map((control) => (
-          <Text key={control.keys} color={PALETTE.muted}>
-            [{control.keys}] {control.label}
-          </Text>
-        ))}
+      <Box marginTop={1}>
+        <ControlHints hints={CREDENTIALS_CONTROLS} />
       </Box>
     </Box>
   );

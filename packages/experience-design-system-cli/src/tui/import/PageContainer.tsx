@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Text, useInput } from 'ink';
 import { PALETTE } from '../theme.js';
+import { ControlHints } from '../control-hints.js';
 
 export function ImportScreen({ exitCode, onDone }: { exitCode?: number; onDone: () => void }): React.ReactElement {
   useInput((input, key) => {
@@ -20,7 +21,7 @@ export function ImportScreen({ exitCode, onDone }: { exitCode?: number; onDone: 
         <Text color={PALETTE.error}>✗ Import failed: process exited with code {exitCode ?? 'unknown'}</Text>
       )}
       <Text> </Text>
-      <Text>[Enter] Back to Start</Text>
+      <ControlHints hints={[{ keys: 'Enter', label: 'Back to Start' }]} />
     </Box>
   );
 }

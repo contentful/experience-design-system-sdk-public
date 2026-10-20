@@ -5,6 +5,7 @@ import { ClearableTextInput } from '../../../ClearableTextInput.js';
 import { TOKEN_INPUT_CONTROLS, useTokenInputControls } from './controls.js';
 import { toTokenPath } from './logic.js';
 import { validateTokenPath } from './validate-path.js';
+import { ControlHints } from '@tui/control-hints.js';
 
 interface TokenInputScreenProps {
   onConfirm: (tokensPath: string) => void;
@@ -56,12 +57,8 @@ export function TokenInputScreen({ onConfirm, onBack, initialPath = '' }: TokenI
         )}
       </Box>
 
-      <Box marginTop={1} gap={3}>
-        {TOKEN_INPUT_CONTROLS.map((control) => (
-          <Text key={control.keys}>
-            [{control.keys}] {control.label}
-          </Text>
-        ))}
+      <Box marginTop={1}>
+        <ControlHints hints={TOKEN_INPUT_CONTROLS} />
       </Box>
     </Box>
   );

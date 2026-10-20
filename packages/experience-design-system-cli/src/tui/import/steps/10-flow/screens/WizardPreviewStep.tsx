@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { PALETTE } from '@tui/theme.js';
+import { ControlHints } from '@tui/control-hints.js';
 import { Box, Text } from 'ink';
 import { useImmediateInput } from '../../07-scope-gate/sidebar/hooks/useImmediateInput.js';
 import { useTerminalSize } from '../../07-scope-gate/sidebar/hooks/use-terminal-size.js';
@@ -360,12 +361,21 @@ export function WizardPreviewStep({
 
         <SpaceEnvironment spaceId={spaceId} environmentId={environmentId} />
 
-        <Box gap={3} marginTop={1}>
-          <Text>[Enter] Push to Contentful</Text>
-          <Text>[d] {diffExpanded ? 'Hide' : 'Show'} diff</Text>
-          {diffExpanded && <Text>[↑↓] Scroll [f/b] Page</Text>}
-          {onEdit && <Text>[e] Edit definitions</Text>}
-          <Text>[q] Cancel</Text>
+        <Box marginTop={1}>
+          <ControlHints
+            hints={[
+              { keys: 'Enter', label: 'Push to Contentful' },
+              { keys: 'd', label: `${diffExpanded ? 'Hide' : 'Show'} diff` },
+              ...(diffExpanded
+                ? [
+                    { keys: '↑↓', label: 'Scroll' },
+                    { keys: 'f/b', label: 'Page' },
+                  ]
+                : []),
+              ...(onEdit ? [{ keys: 'e', label: 'Edit definitions' }] : []),
+              { keys: 'q', label: 'Cancel' },
+            ]}
+          />
         </Box>
       </Box>
     </Box>

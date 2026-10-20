@@ -4,6 +4,7 @@ import { PALETTE } from '@tui/theme.js';
 import { ClearableTextInput } from '../../../ClearableTextInput.js';
 import { WELCOME_CONTROLS, useWelcomeControls } from './controls.js';
 import { toProjectPath } from './logic.js';
+import { ControlHints } from '@tui/control-hints.js';
 
 interface WelcomeScreenProps {
   onContinue: (projectPath: string) => void;
@@ -98,12 +99,8 @@ export function WelcomeScreen({ onContinue, onQuit, initialPath = '' }: WelcomeS
         </Box>
       </Box>
 
-      <Box gap={3}>
-        {WELCOME_CONTROLS.map((control) => (
-          <Text key={control.keys}>
-            [{control.keys}] {control.label}
-          </Text>
-        ))}
+      <Box>
+        <ControlHints hints={WELCOME_CONTROLS} />
       </Box>
     </Box>
   );

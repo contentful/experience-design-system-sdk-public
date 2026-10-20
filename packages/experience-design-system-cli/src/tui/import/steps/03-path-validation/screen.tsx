@@ -5,6 +5,7 @@ import { resolveUserPath } from '../../resolve-user-path.js';
 import { controlsFor, usePathValidationControls } from './controls.js';
 import { scanFiles } from './helpers/scan-files.js';
 import { describeFailure, phaseOf, summarize, type ScanResult, type SummaryRow } from './logic.js';
+import { ControlHints } from '@tui/control-hints.js';
 
 interface PathValidationScreenProps {
   projectPath: string;
@@ -88,12 +89,8 @@ export function PathValidationScreen({
       {scan?.ok === false && <Failure scan={scan} path={resolvedPath} />}
       {scan?.ok === true && <Summary scan={scan} path={resolvedPath} />}
 
-      <Box marginTop={1} gap={3}>
-        {controlsFor(phase).map((control) => (
-          <Text key={control.keys} color={PALETTE.muted}>
-            [{control.keys}] {control.label}
-          </Text>
-        ))}
+      <Box marginTop={1}>
+        <ControlHints hints={controlsFor(phase)} />
       </Box>
     </Box>
   );

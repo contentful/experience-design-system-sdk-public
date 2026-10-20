@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import { PALETTE } from '@tui/theme.js';
+import { ControlHints } from '@tui/control-hints.js';
 import { useGateControls } from './controls.js';
 import { gateControls } from './logic.js';
 import { StepHeader, type StepHeaderProps } from '../StepHeader.js';
@@ -48,12 +49,8 @@ export function GateStep({
             <Text>{context}</Text>
           </Box>
         )}
-        <Box marginTop={1} gap={3}>
-          {gateControls(continueLabel, skipLabel, onSkip !== undefined).map((control) => (
-            <Text key={control.keys} color={PALETTE.muted}>
-              [{control.keys}] {control.label}
-            </Text>
-          ))}
+        <Box marginTop={1}>
+          <ControlHints hints={gateControls(continueLabel, skipLabel, onSkip !== undefined)} />
         </Box>
       </Box>
     </Box>
