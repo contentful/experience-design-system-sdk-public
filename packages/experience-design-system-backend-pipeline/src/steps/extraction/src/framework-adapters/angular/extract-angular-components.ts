@@ -13,28 +13,6 @@ import { extractProps } from './helpers/props/extract-props.js';
 import { readComponentMetadata } from './helpers/read-component-metadata.js';
 import { extractSlots } from './helpers/slots/extract-slots.js';
 
-/**
- * Native Angular `.ts` extractor. Reads each file via ts-morph, walks every
- * exported class with a `@Component({...})` decorator, and emits one
- * `RawComponentDefinition` per class.
- *
- * Scope:
- *   - Props: `@Input()` decorator (incl. setter form + `{alias,required,transform}`),
- *     signal `input()` / `input.required()`, legacy `inputs: [...]` array.
- *   - Slots: `<ng-content>` tags (inline template or `templateUrl`),
- *     `contentChild()` / `contentChildren()` / `@ContentChild(X)` queries,
- *     TemplateRef-typed inputs promoted to slots.
- *   - Allowed-components: resolved from `contentChild(X)` type references
- *     when X is an imported class in the same package graph.
- *
- * Out of scope (v1):
- *   - DI-based composition (hostDirectives, provideXxxContext) — emits each
- *     sub-component as its own loose component.
- *   - `*ngProjectAs` — 0/25 real DS components used it.
- *   - Computed decorator args (identifier refs, spread) — 0/5 sampled DS
- *     components used them; the sibling adapters' React/Vue warning pattern
- *     applies if encountered.
- */
 export async function extractAngularComponents(
   filePaths: string[],
   onProgress?: (p: ExtractorProgress) => void,
@@ -64,7 +42,6 @@ export async function extractAngularComponents(
       for (const cls of sourceFile.getClasses()) {
         if (!hasComponentDecorator(cls)) continue;
         if (!findComponentDecorator(cls)) {
-          // Has @Component but arg isn't an object literal — surface and skip.
           warnings.push(
             `${filePath}: ${cls.getName() ?? '<anonymous>'} has @Component with a non-literal argument; skipped.`,
           );
@@ -92,7 +69,6 @@ export async function extractAngularComponents(
         components.push(partial);
       }
 
-      // Release memory for the next file.
       sourceFile.deleteImmediatelySync();
     } catch (err) {
       warnings.push(`${filePath}: Angular extractor failed — ${err instanceof Error ? err.message : String(err)}`);
@@ -108,12 +84,6 @@ export async function extractAngularComponents(
   };
 }
 
-/**
- * Ensure every slot has a non-empty `name`. The pipeline's validator treats
- * empty slot names as warnings (not errors), but the convention is: if we
- * can't name it, call it `children` for single-slot components or `slot_N`
- * for additional unnamed slots.
- */
 function normalizeSlots(slots: RawSlotDefinition[]): RawSlotDefinition[] {
   let fallbackIndex = 0;
   return slots.map((slot) => {

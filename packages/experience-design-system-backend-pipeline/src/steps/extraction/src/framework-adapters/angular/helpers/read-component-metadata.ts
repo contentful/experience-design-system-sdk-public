@@ -5,16 +5,6 @@ import { normalizeComponentName } from './resolution/normalize-component-name.js
 import { readDecoratorString, readDecoratorStringArray } from './read-decorator-string.js';
 import type { AngularComponentMetadata } from '../types/angular-metadata.js';
 
-/**
- * Pull everything the extractor cares about off a class's `@Component({...})`:
- *   - `selector` string (keep raw; parsing happens downstream)
- *   - `template` inline string
- *   - `templateUrl` relative path → resolved to absolute
- *   - `inputs: [...]` legacy array form (string literals only)
- *
- * Returns `null` when the class has no `@Component` decorator or the arg
- * isn't an object literal.
- */
 export function readComponentMetadata(cls: ClassDeclaration, sourceFilePath: string): AngularComponentMetadata | null {
   const obj = findComponentDecorator(cls);
   if (!obj) return null;

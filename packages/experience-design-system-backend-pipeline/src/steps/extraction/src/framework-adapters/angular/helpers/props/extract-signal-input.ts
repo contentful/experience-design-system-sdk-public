@@ -2,28 +2,16 @@ import { Node, type PropertyDeclaration } from 'ts-morph';
 import type { RawPropDefinition } from '../../../../types/component.js';
 import { resolvePropType } from './resolve-prop-type.js';
 
-/**
- * Handle the two signal-input forms:
- *   foo = input<T>(default?, { alias, transform }?)
- *   foo = input.required<T>({ alias, transform }?)
- *
- * The default lives on the first positional arg to `input()` (not on the
- * class field itself — the field stores the InputSignal instance).
- * `input.required()` has no positional default.
- *
- * Returns `null` when the initializer isn't a recognized `input()` call.
- */
 export function extractSignalInput(field: PropertyDeclaration): RawPropDefinition | null {
   const init = field.getInitializer();
   if (!init || !Node.isCallExpression(init)) return null;
 
   const callee = init.getExpression();
-  // input(...)
+
   let required = false;
   if (Node.isIdentifier(callee)) {
     if (callee.getText() !== 'input') return null;
   } else if (Node.isPropertyAccessExpression(callee)) {
-    // input.required(...)
     const left = callee.getExpression();
     const right = callee.getName();
     if (!Node.isIdentifier(left) || left.getText() !== 'input' || right !== 'required') return null;
@@ -38,10 +26,8 @@ export function extractSignalInput(field: PropertyDeclaration): RawPropDefinitio
   let defaultValue: string | undefined;
   let configArg: Node | undefined;
   if (required) {
-    // input.required<T>(opts?)
     configArg = args[0];
   } else {
-    // input<T>(default?, opts?)
     const first = args[0];
     if (first) {
       defaultValue = first.getText();
@@ -68,7 +54,6 @@ export function extractSignalInput(field: PropertyDeclaration): RawPropDefinitio
     }
   }
 
-  // Type comes from the generic: input<string>()  — ts-morph exposes it via getTypeArguments
   const typeArg = init.getTypeArguments()[0];
   const resolved = resolvePropType(typeArg);
   const typeText = transformIsBoolean ? 'boolean' : transformIsNumber ? 'number' : resolved.text;

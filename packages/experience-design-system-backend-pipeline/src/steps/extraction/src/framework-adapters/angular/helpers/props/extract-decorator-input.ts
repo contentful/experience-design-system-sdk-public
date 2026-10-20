@@ -2,18 +2,6 @@ import { Node, type GetAccessorDeclaration, type PropertyDeclaration, type SetAc
 import type { RawPropDefinition } from '../../../../types/component.js';
 import { resolvePropType } from './resolve-prop-type.js';
 
-/**
- * Handle the three decorator forms:
- *   @Input() foo
- *   @Input('alias') foo
- *   @Input({ required, transform, alias }) foo
- *
- * And both accessor forms (Angular treats @Input on get and set as equivalent):
- *   @Input() set foo(v: string) { ... }
- *   @Input() get foo(): string { ... }
- *
- * Returns `null` when the property has no `@Input()` decorator.
- */
 export function extractDecoratorInput(
   field: PropertyDeclaration | SetAccessorDeclaration | GetAccessorDeclaration,
 ): RawPropDefinition | null {
@@ -31,10 +19,8 @@ export function extractDecoratorInput(
   if (args.length === 1) {
     const arg = args[0]!;
     if (Node.isStringLiteral(arg) || Node.isNoSubstitutionTemplateLiteral(arg)) {
-      // @Input('alias') foo
       alias = arg.getLiteralText();
     } else if (Node.isObjectLiteralExpression(arg)) {
-      // @Input({ alias, required, transform }) foo
       const aliasProp = arg.getProperty('alias');
       if (aliasProp && Node.isPropertyAssignment(aliasProp)) {
         const init = aliasProp.getInitializer();
@@ -56,15 +42,12 @@ export function extractDecoratorInput(
     }
   }
 
-  // Pick the type node + default
   let typeNode;
   let defaultValue: string | undefined;
   if (Node.isSetAccessorDeclaration(field)) {
     const param = field.getParameters()[0];
     typeNode = param?.getTypeNode();
   } else if (Node.isGetAccessorDeclaration(field)) {
-    // Prefer the companion setter's parameter type when available (that's the
-    // input shape the user writes to); fall back to the getter's return type.
     const parent = field.getParent();
     const companionSetter = parent && Node.isClassDeclaration(parent) ? parent.getSetAccessor(fieldName) : undefined;
     if (companionSetter) {

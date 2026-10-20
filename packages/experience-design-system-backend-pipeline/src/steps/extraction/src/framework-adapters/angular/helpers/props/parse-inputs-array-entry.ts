@@ -3,11 +3,6 @@ export interface ParsedInputsArrayEntry {
   alias: string | null;
 }
 
-/**
- * Parse one entry of the legacy `@Component({ inputs: ['foo', 'bar: alias'] })`.
- * Grammar: `fieldName` or `fieldName: aliasName`. Returns `null` for malformed
- * entries (empty strings, more than one colon).
- */
 export function parseInputsArrayEntry(entry: string): ParsedInputsArrayEntry | null {
   const trimmed = entry.trim();
   if (!trimmed) return null;

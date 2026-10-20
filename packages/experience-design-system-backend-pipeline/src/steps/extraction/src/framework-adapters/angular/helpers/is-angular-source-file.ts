@@ -1,15 +1,8 @@
 import { openSync, readSync, closeSync, statSync } from 'node:fs';
 
-const HEAD_BYTES = 4 * 1024; // 4KB — more than enough for an `@angular/core` import at the top
+const HEAD_BYTES = 4 * 1024;
 const buffer = Buffer.alloc(HEAD_BYTES);
 
-/**
- * Fast content-sniff: does the file head mention `@angular/core`?
- * Used by the dispatcher's sync `fileFilter`. Reads at most 4KB; false
- * negatives on files with imports past that cut-off are acceptable because
- * every Angular DS component we sampled has `@angular/core` in the first
- * ~500 bytes.
- */
 export function isAngularSourceFile(filePath: string): boolean {
   if (!/\.[cm]?ts$/.test(filePath)) return false;
   if (filePath.endsWith('.d.ts')) return false;
