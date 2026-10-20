@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -16,7 +16,7 @@ afterEach(() => {
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
 function fixture(files: Record<string, string>) {
-  const directory = mkdtempSync(join(tmpdir(), 'wc-candidates-'));
+  const directory = realpathSync.native(mkdtempSync(join(tmpdir(), 'wc-candidates-')));
   directories.push(directory);
   for (const [name, content] of Object.entries(files)) writeFileSync(join(directory, name), content);
   return { directory, path: join(directory, 'Element.ts') };
@@ -163,6 +163,18 @@ export const INITIAL = Numeric.Two; export const LOOP = LOOP;`,
       value: { kind: 'number', value: '2' },
       locations: expect.arrayContaining([expect.objectContaining({ canonicalPath: resolve(directory, 'values.ts') })]),
     });
+    expect(
+      candidate('count')?.observations[0]?.syntax?.default.locations.map((location) => ({
+        path: location.canonicalPath,
+        startLine: location.startLine,
+        endLine: location.endLine,
+        binding: location.binding,
+      })),
+    ).toEqual([
+      { path, startLine: 3, endLine: 3, binding: 'unverified' },
+      { path: join(directory, 'values.ts'), startLine: 3, endLine: 3, binding: 'unverified' },
+      { path: join(directory, 'values.ts'), startLine: 1, endLine: 1, binding: 'unverified' },
+    ]);
     expect(candidate('loop')?.observations[0]?.syntax?.default).toMatchObject({ state: 'unresolved', reason: 'cycle' });
     expect(candidate('unknown')?.facts?.domain.openness).toBe('unknown');
   });

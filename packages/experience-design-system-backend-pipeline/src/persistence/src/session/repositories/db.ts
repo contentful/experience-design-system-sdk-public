@@ -29,6 +29,8 @@ import type {
 import { projectAcceptedSlots } from '../../../../steps/exploration/src/services/project-accepted-slots.js';
 import { validateCDFSourceOwners } from '../../../../steps/exploration/src/services/source-input-ownership.js';
 import { validateSavedInputOutput } from './input-output-binding.js';
+import { bindSavedSourceReferences } from './source-reference-binding.js';
+import { readSourceInventory, readSourceReferences } from '@contentful/experience-design-system-extraction';
 import { CDFComponentSchema } from '@contentful/experience-design-system-types';
 import { readComponentFacts, readComponentFactsJson, type ComponentFactsRead } from './component-facts-validation.js';
 import { DatabaseSync } from 'node:sqlite';
@@ -1639,15 +1641,27 @@ export function loadRawComponents(
           facts: {
             ...read.facts,
             sourceClosure,
-            ...(observations?.inputOutput
+            ...(observations
               ? {
                   sourceObservations: {
                     ...observations,
-                    inputOutput: validateSavedInputOutput(
-                      observations.inputOutput,
-                      source,
-                      sourceClosure.binding === 'verified',
-                    ),
+                    ...(observations.inputOutput
+                      ? {
+                          inputOutput: validateSavedInputOutput(
+                            observations.inputOutput,
+                            source,
+                            sourceClosure.binding === 'verified',
+                          ),
+                        }
+                      : {}),
+                    ...(observations.referenceIndex
+                      ? {
+                          referenceIndex: bindSavedSourceReferences(
+                            observations.referenceIndex,
+                            source.readiness === 'ready' ? source.envelope.capture.files : [],
+                          ),
+                        }
+                      : {}),
                   },
                 }
               : {}),
@@ -3389,6 +3403,18 @@ export function completeExtractionWithSourceEvidence(
     throw new Error('Extraction step is missing, belongs to another session, or is not pending');
   }
   const envelopeId = `source-${randomUUID()}`;
+  if (input.capture.inventory && readSourceInventory(input.capture.inventory).status !== 'available')
+    throw new Error('Invalid completed source inventory');
+  const referenceIndexes = input.components.flatMap((component) => {
+    const index = component.componentFacts?.sourceObservations?.referenceIndex;
+    if (!index) return [];
+    if (
+      readSourceReferences(index).status !== 'available' ||
+      index.componentDeclarationId !== component.componentFacts?.sourceObservations?.componentDeclarationId
+    )
+      throw new Error('Invalid completed source reference index');
+    return [bindSavedSourceReferences(index, input.capture.files)];
+  });
   const createdAt = new Date().toISOString();
   const payload: Omit<SessionSourceEnvelope, 'digest'> = {
     schemaVersion: 1,
@@ -3399,7 +3425,7 @@ export function completeExtractionWithSourceEvidence(
     readiness: 'ready',
     extractionByteBinding: input.capture.extractionByteBinding,
     capture: input.capture,
-    observations: input.observations,
+    observations: { ...input.observations, ...(referenceIndexes.length ? { referenceIndexes } : {}) },
   };
   const digest = sourceEnvelopeDigest(payload);
   const envelope: SessionSourceEnvelope = { ...payload, digest };
@@ -3524,6 +3550,13 @@ export function loadCompletedSourceEvidence(
       envelope.extractionStepId !== step.id ||
       envelope.envelopeId !== row.envelope_id ||
       digest !== row.digest ||
+      (envelope.capture.inventory !== undefined &&
+        readSourceInventory(envelope.capture.inventory).status !== 'available') ||
+      (envelope.observations.referenceIndexes !== undefined &&
+        (!Array.isArray(envelope.observations.referenceIndexes) ||
+          envelope.observations.referenceIndexes.some(
+            (index) => readSourceReferences(index).status !== 'available',
+          ))) ||
       digest !== sourceEnvelopeDigest(payload)
     ) {
       return { readiness: 'unavailable', reason: 'saved-source-envelope-corrupt' };

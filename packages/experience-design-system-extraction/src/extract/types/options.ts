@@ -5,6 +5,8 @@ import type { ComponentFactCollectors } from './component-facts.js';
  * pipeline to each extractor; supported settings are consumed by each adapter.
  */
 export interface ExtractorOptions {
+  /** Additional admitted compiler context; these paths never become output roots. */
+  evidenceFilePaths?: readonly string[];
   /** Optional field-local component observation collectors; overrides replace the React default field collector. */
   componentFactCollectors?: ComponentFactCollectors;
   sourceClosureMaxIterations?: number;

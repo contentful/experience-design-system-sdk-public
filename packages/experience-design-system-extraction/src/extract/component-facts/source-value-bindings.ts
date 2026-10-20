@@ -3,7 +3,8 @@ import ts from 'typescript';
 /** Writes resolve the value binding, including shorthand assignment targets. */
 export class SourceValueBindings {
   private readonly writes = new Set<ts.Declaration>();
-  private readonly scanned = new Set<ts.SourceFile>();
+  private readonly scanned = new Map<ts.SourceFile, boolean>();
+  scanNodes = 0;
   constructor(private readonly checker: ts.TypeChecker) {}
   declaration(node: ts.Node): ts.Declaration | undefined {
     let symbol = ts.isShorthandPropertyAssignment(node)
@@ -12,30 +13,49 @@ export class SourceValueBindings {
     if (symbol?.flags && symbol.flags & ts.SymbolFlags.Alias) symbol = this.checker.getAliasedSymbol(symbol);
     return symbol?.valueDeclaration ?? symbol?.declarations?.[0];
   }
-  private target(node: ts.Node): void {
+  private target(node: ts.Node, seen = new Set<ts.Node>()): void {
+    if (seen.has(node) || seen.size > 64) return;
+    seen.add(node);
     if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isNonNullExpression(node))
-      this.target(node.expression);
+      this.target(node.expression, seen);
     else if (ts.isIdentifier(node) || ts.isShorthandPropertyAssignment(node)) {
       const declaration = this.declaration(node);
-      if (declaration) this.writes.add(declaration);
-    } else if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) this.target(node.expression);
+      if (declaration) {
+        this.writes.add(declaration);
+        if (
+          ts.isVariableDeclaration(declaration) &&
+          declaration.initializer &&
+          (ts.isIdentifier(declaration.initializer) ||
+            ts.isPropertyAccessExpression(declaration.initializer) ||
+            ts.isElementAccessExpression(declaration.initializer))
+        )
+          this.target(declaration.initializer, seen);
+      }
+    } else if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node))
+      this.target(node.expression, seen);
     else if (ts.isObjectLiteralExpression(node)) {
       for (const property of node.properties) {
-        if (ts.isPropertyAssignment(property)) this.target(property.initializer);
-        else if (ts.isShorthandPropertyAssignment(property)) this.target(property);
-        else if (ts.isSpreadAssignment(property)) this.target(property.expression);
+        if (ts.isPropertyAssignment(property)) this.target(property.initializer, new Set(seen));
+        else if (ts.isShorthandPropertyAssignment(property)) this.target(property, new Set(seen));
+        else if (ts.isSpreadAssignment(property)) this.target(property.expression, new Set(seen));
       }
-    } else if (ts.isArrayLiteralExpression(node)) node.elements.forEach((element) => this.target(element));
-    else if (ts.isSpreadElement(node)) this.target(node.expression);
+    } else if (ts.isArrayLiteralExpression(node))
+      node.elements.forEach((element) => this.target(element, new Set(seen)));
+    else if (ts.isSpreadElement(node)) this.target(node.expression, seen);
     else if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken)
-      this.target(node.left);
+      this.target(node.left, seen);
   }
   scan(file: ts.SourceFile, maxNodes: number): boolean {
-    if (this.scanned.has(file)) return true;
-    this.scanned.add(file);
+    const cached = this.scanned.get(file);
+    if (cached !== undefined) return cached;
     let visited = 0;
+    let complete = true;
     const visit = (node: ts.Node): void => {
-      if (++visited > maxNodes) return;
+      if (visited >= maxNodes) {
+        complete = false;
+        return;
+      }
+      visited += 1;
       if (
         ts.isBinaryExpression(node) &&
         node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
@@ -49,10 +69,15 @@ export class SourceValueBindings {
         this.target(node.operand);
       if ((ts.isForOfStatement(node) || ts.isForInStatement(node)) && !ts.isVariableDeclarationList(node.initializer))
         this.target(node.initializer);
-      ts.forEachChild(node, visit);
+      ts.forEachChild(node, (child) => {
+        visit(child);
+        return complete ? undefined : true;
+      });
     };
     visit(file);
-    return visited <= maxNodes;
+    this.scanNodes += visited;
+    this.scanned.set(file, complete);
+    return complete;
   }
   mutated(declaration: ts.Declaration): boolean {
     return this.writes.has(declaration);

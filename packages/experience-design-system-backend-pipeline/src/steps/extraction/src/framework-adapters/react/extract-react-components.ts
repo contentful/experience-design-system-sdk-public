@@ -41,6 +41,7 @@ import {
 import {
   assembleComponentFacts,
   collectComponentSourceObservations,
+  compilerSourcesFromContexts,
   type ComponentSourceObservationOptions,
   type ComponentFactCollectors,
   mergeSourceCandidates,
@@ -2073,7 +2074,7 @@ export async function extractReactComponents(
   _onProgress?: (progress: { filesProcessed: number; componentsFound: number }) => void,
   options: ExtractorOptions = {},
 ): Promise<ComponentExtractionResult> {
-  const { components, warnings, exclusions, contexts, extractionDiagnostics } = extractTsxComponents(
+  const { components, warnings, exclusions, contexts, extractionDiagnostics, sourceInventory } = extractTsxComponents(
     filePaths,
     /\.[jt]sx$/,
     (sourceFile, exclusions, diagnostics) => {
@@ -2199,6 +2200,8 @@ export async function extractReactComponents(
     warnings,
     exclusions,
     extractionDiagnostics,
+    sourceInventory,
+    compilerSources: compilerSourcesFromContexts(contexts, sourceInventory),
   };
 }
 

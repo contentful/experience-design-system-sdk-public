@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
@@ -13,7 +13,7 @@ const directories: string[] = [];
 afterEach(() => directories.splice(0).forEach((directory) => rmSync(directory, { recursive: true, force: true })));
 
 it('preserves nested function-returned JS inheritance and own-file locations through the live backend adapter', async () => {
-  const directory = mkdtempSync(join(tmpdir(), 'backend-wc-completion-'));
+  const directory = realpathSync.native(mkdtempSync(join(tmpdir(), 'backend-wc-completion-')));
   directories.push(directory);
   const base = join(directory, 'Base.js');
   const mixins = join(directory, 'Mixins.js');
@@ -42,7 +42,7 @@ it('preserves nested function-returned JS inheritance and own-file locations thr
 it.each([false, true])(
   'keeps duplicate winner and loser separate across sorted compiler partitions (reverse=%s)',
   async (reverse) => {
-    const directory = mkdtempSync(join(tmpdir(), 'backend-wc-duplicates-'));
+    const directory = realpathSync.native(mkdtempSync(join(tmpdir(), 'backend-wc-duplicates-')));
     directories.push(directory);
     const family = join(directory, 'src', 'Example');
     const second = join(directory, 'src', 'Other');

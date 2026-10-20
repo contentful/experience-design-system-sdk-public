@@ -60,6 +60,8 @@ describe('extractComponents pipeline contract', () => {
     await expect(extractComponents([sourcePath])).resolves.toEqual({
       components: [],
       warnings: [],
+      compilerSources: [],
+      sourceInventory: undefined,
     });
   });
 });

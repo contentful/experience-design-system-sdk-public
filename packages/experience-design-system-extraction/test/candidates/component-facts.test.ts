@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -38,7 +38,7 @@ describe('component facts carrier', () => {
   });
 
   it('injects observations through both parameterful and parameterless public producers without changing ordinary fields', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'component-facts-'));
+    const directory = realpathSync.native(mkdtempSync(join(tmpdir(), 'component-facts-')));
     directories.push(directory);
     const path = join(directory, 'Panel.tsx');
     writeFileSync(

@@ -185,6 +185,8 @@ export async function runExtraction(
         projectPath: input.projectPath,
         outDir,
         filePaths: input.filePaths,
+        sourceInventory: input.sourceInventory,
+        evidenceFilePaths: input.evidenceFilePaths,
         agent: input.agent,
         ...(input.agentModel ? { agentModel: input.agentModel } : {}),
         promptOverrides: input.promptOverrides,

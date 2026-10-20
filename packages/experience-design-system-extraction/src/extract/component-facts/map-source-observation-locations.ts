@@ -1,5 +1,6 @@
 import type { SourceFactLocation } from '../candidates/types.js';
 import { mapInputOutputLocations } from '../types/source-input-output.js';
+import { mapReferenceIndexLocations } from '../types/source-references.js';
 import type {
   ComponentSourceObservationCollection,
   SourceInputAccessPath,
@@ -40,6 +41,9 @@ export function mapSourceObservationLocations(
   return {
     ...collection,
     ...(collection.inputOutput ? { inputOutput: mapInputOutputLocations(collection.inputOutput, map) } : {}),
+    ...(collection.referenceIndex
+      ? { referenceIndex: mapReferenceIndexLocations(collection.referenceIndex, map) }
+      : {}),
     observations: collection.observations.map((observation) => ({
       ...observation,
       location: map(observation.location),

@@ -91,7 +91,15 @@ describe('source call-site production wiring', () => {
         noCache: true,
       });
       expect(response.sourceCallSiteEvidence[0]!.inputs).toEqual(composed.sourceCallSiteEvidence[0]!.inputs);
-      expect(response.sourceCallSiteCoverage).toEqual(composed.sourceCallSiteCoverage);
+      expect(response.sourceCallSiteCoverage).toMatchObject({
+        analysis: 'configured-lexical-references',
+        coverage: 'partial',
+      });
+      expect(response.sourceCallSiteEvidence[0]!.parentDeclarationId).not.toBe(
+        response.components.find(({ name }) => name === 'Card')!.componentFacts!.sourceObservations!
+          .componentDeclarationId,
+      );
+      expect(response.sourceCallSiteEvidence[0]!.lexicalAncestors).toHaveLength(2);
       expect(vi.mocked(runAgent).mock.calls[0]![0].prompt).toContain(JSON.stringify(response.sourceCallSiteCoverage));
       await Promise.all(files.map((f) => writeFile(f.path, 'DISK_CHANGED_AFTER_SAVE')));
       const db = openPipelineDb();

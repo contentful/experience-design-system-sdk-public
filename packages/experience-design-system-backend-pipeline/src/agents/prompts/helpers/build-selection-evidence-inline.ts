@@ -24,16 +24,18 @@ function byteLength(value: string): number {
 /** Build a deterministic prompt projection from saved evidence, never from the current filesystem. */
 export function buildSelectionEvidenceInline(envelope: SessionSourceEnvelope): string {
   const limit = envelope.capture.bounds.limits.maxPromptBytes;
-  const orderedFiles = [...envelope.capture.files].sort((left, right) => {
-    const rank = (roles: string[]): number =>
-      roles.includes('definition') ? 0 : roles.includes('application') ? 1 : roles.includes('import') ? 2 : 3;
-    return rank(left.roles) - rank(right.roles) || left.displayPath.localeCompare(right.displayPath);
-  });
+  const orderedFiles = [...envelope.capture.files].sort((left, right) =>
+    left.displayPath.localeCompare(right.displayPath),
+  );
   const observations = {
     accepted: envelope.observations.accepted.slice(0, 32),
     rejected: envelope.observations.rejected.slice(0, 32),
     acceptedOmitted: Math.max(0, envelope.observations.accepted.length - 32),
     rejectedOmitted: Math.max(0, envelope.observations.rejected.length - 32),
+    ...(envelope.observations.callerCoverage
+      ? { callerCoverage: structuredClone(envelope.observations.callerCoverage) }
+      : {}),
+    referenceIndexes: structuredClone(envelope.observations.referenceIndexes ?? []),
   };
   const payload = {
     readiness: envelope.readiness,
@@ -47,6 +49,21 @@ export function buildSelectionEvidenceInline(envelope: SessionSourceEnvelope): s
     compilerContextsOmitted: 0,
     extractionByteBinding: envelope.extractionByteBinding,
     observations,
+    referenceIndexesOmitted: 0,
+    callerCoverageOmitted: 0,
+    inventoryOmitted: 0,
+    ...(envelope.capture.inventory
+      ? {
+          inventory: {
+            ...envelope.capture.inventory,
+            files: envelope.capture.inventory.files.map(({ text: _text, ...file }) => file),
+            sourceMaps: envelope.capture.inventory.sourceMaps.map((map) => ({
+              ...map,
+              sources: map.sources.map(({ text: _text, ...source }) => source),
+            })),
+          },
+        }
+      : {}),
     resolution: envelope.capture.resolution.slice(0, 64),
     resolutionOmitted: Math.max(0, envelope.capture.resolution.length - 64),
     diagnostics: envelope.capture.diagnostics.slice(0, 32),
@@ -55,6 +72,24 @@ export function buildSelectionEvidenceInline(envelope: SessionSourceEnvelope): s
     filesOmitted: 0,
   };
   const serialize = (): string => JSON.stringify(payload, null, 2);
+  // Preserve saved source bodies before spending their remaining bound on additive metadata.
+  const omitAdditiveMetadata = (): boolean => {
+    if (payload.inventory !== undefined) {
+      delete payload.inventory;
+      payload.inventoryOmitted++;
+    } else if (observations.referenceIndexes.length) {
+      observations.referenceIndexes.pop();
+      payload.referenceIndexesOmitted++;
+    } else if (observations.callerCoverage !== undefined) {
+      delete observations.callerCoverage;
+      payload.callerCoverageOmitted++;
+    } else return false;
+    payload.promptCoverage = 'partial';
+    return true;
+  };
+  while (byteLength(serialize()) >= limit && omitAdditiveMetadata()) {
+    // Each omission keeps its receipt in the bounded projection.
+  }
   while (byteLength(serialize()) >= limit && payload.compilerContexts?.length) {
     payload.compilerContexts.pop();
     payload.compilerContextsOmitted++;
@@ -73,6 +108,9 @@ export function buildSelectionEvidenceInline(envelope: SessionSourceEnvelope): s
       evidenceProjection: 'metadata-exceeds-prompt-bound',
       promptCoverage: 'partial',
       compilerContextsOmitted: envelope.capture.compilerContexts?.length ?? 0,
+      referenceIndexesOmitted: envelope.observations.referenceIndexes?.length ?? 0,
+      callerCoverageOmitted: envelope.observations.callerCoverage ? 1 : 0,
+      inventoryOmitted: envelope.capture.inventory ? 1 : 0,
     });
     if (byteLength(fallback) > limit) throw new Error('Source identity metadata exceeds prompt bound');
     return fallback;
@@ -107,6 +145,9 @@ export function buildSelectionEvidenceInline(envelope: SessionSourceEnvelope): s
     };
     payload.files.push(candidate);
     payload.filesOmitted = orderedFiles.length - payload.files.length;
+    while (byteLength(serialize()) > limit && omitAdditiveMetadata()) {
+      // Retry the complete source range before truncating any of its original lines.
+    }
     if (byteLength(serialize()) <= limit) continue;
     payload.files.pop();
     payload.promptCoverage = 'partial';

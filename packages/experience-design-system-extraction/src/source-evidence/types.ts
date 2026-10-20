@@ -82,6 +82,7 @@ export interface SourceCaptureDiagnostic {
 }
 
 export interface SourceCapture {
+  inventory?: import('./discovery.js').SourceEvidenceInventory;
   schemaVersion: 1;
   captureId: string;
   digest: string;
@@ -96,6 +97,10 @@ export interface SourceCapture {
 }
 
 export interface CaptureSourceEvidenceRequest {
+  evidenceFilePaths?: readonly string[];
+  inventory?: import('./discovery.js').SourceEvidenceInventory;
+  compilerSources?: readonly import('../extract/compiler/context.js').CompilerLoadedSource[];
+  discoveryLimits?: Partial<import('./discovery.js').SourceDiscoveryLimits>;
   projectRoot: string;
   filePaths: readonly string[];
   components?: ReadonlyArray<{ componentId: string; name: string; sourcePath?: string }>;

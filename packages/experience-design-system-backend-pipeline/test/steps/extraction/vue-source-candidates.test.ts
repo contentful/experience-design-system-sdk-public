@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -12,7 +12,7 @@ afterEach(() => {
 
 describe('backend Vue SFC source candidates', () => {
   it('uses the shared compiler-context owner for imported script setup declarations', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'backend-vue-source-candidates-'));
+    const directory = realpathSync.native(mkdtempSync(join(tmpdir(), 'backend-vue-source-candidates-')));
     temporaryDirectories.push(directory);
     writeFileSync(join(directory, 'props.ts'), `export type Props = { label: string; _internal: number };`);
     const componentPath = join(directory, 'Card.vue');
@@ -35,7 +35,7 @@ describe('backend Vue SFC source candidates', () => {
   });
 
   it('preserves imported Options API declarations through the backend SFC producer', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'backend-vue-options-candidates-'));
+    const directory = realpathSync.native(mkdtempSync(join(tmpdir(), 'backend-vue-options-candidates-')));
     temporaryDirectories.push(directory);
     const basePath = join(directory, 'Base.vue');
     writeFileSync(
@@ -61,7 +61,7 @@ describe('backend Vue SFC source candidates', () => {
     });
   });
   it('preserves literal Options keys as semantic source segments', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'vue-literal-keys-'));
+    const directory = realpathSync.native(mkdtempSync(join(tmpdir(), 'vue-literal-keys-')));
     temporaryDirectories.push(directory);
     const componentPath = join(directory, 'Notice.vue');
     writeFileSync(

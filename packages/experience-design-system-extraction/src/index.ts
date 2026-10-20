@@ -211,3 +211,16 @@ export type {
   SourceOutputDestination,
 } from './extract/types/source-input-output.js';
 export { canonicalSourceFactPath } from './extract/candidates/bind-source-candidates.js';
+export { discoverSourceEvidence, DEFAULT_SOURCE_DISCOVERY_LIMITS } from './source-evidence/discovery.js';
+export type { SourceEvidenceInventory, SourceDiscoveryLimits } from './source-evidence/discovery.js';
+export type {
+  SourceReferenceIndex,
+  SourceCompilerReference,
+  SourceCallerValue,
+  SourceCallerSummary,
+} from './extract/types/source-references.js';
+export { readSourceReferences } from './extract/component-facts/source-reference-validation.js';
+export { mapReferenceIndexLocations } from './extract/types/source-references.js';
+export { compilerSourcesFromContexts } from './extract/compiler/context.js';
+export type { CompilerLoadedSource } from './extract/compiler/context.js';
+export { readSourceInventory } from './source-evidence/discovery-validation.js';

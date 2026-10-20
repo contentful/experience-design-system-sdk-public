@@ -15,6 +15,9 @@ import type {
 } from './types.js';
 import { DEFAULT_SOURCE_CAPTURE_LIMITS } from './types.js';
 import { associateCapturedReferences } from './associate-references.js';
+import { discoverSourceEvidence } from './discovery.js';
+import { readSourceInventory } from './discovery-validation.js';
+import { canonicalSourceFactPath } from '../extract/candidates/bind-source-candidates.js';
 
 type ReadResult = { text: string; canonicalPath: string } | { reason: string; canonicalPath: string };
 
@@ -96,6 +99,40 @@ function hasMatchingPathAlias(specifier: string, paths: Record<string, readonly 
 
 export async function captureSourceEvidence(request: CaptureSourceEvidenceRequest): Promise<SourceCapture> {
   const limits: SourceCaptureLimits = { ...DEFAULT_SOURCE_CAPTURE_LIMITS, ...request.limits };
+  const inventory = structuredClone(
+    request.inventory ??
+      discoverSourceEvidence({
+        projectRoot: request.projectRoot,
+        filePaths: request.filePaths,
+        evidenceFilePaths: request.evidenceFilePaths,
+        limits: request.discoveryLimits,
+        signal: request.signal,
+      }),
+  );
+  if (
+    readSourceInventory(inventory).status !== 'available' ||
+    inventory.projectRoot !== canonicalSourceFactPath(request.projectRoot) ||
+    JSON.stringify(inventory.selectedSourcePaths) !==
+      JSON.stringify(
+        stableUnique(
+          request.filePaths.map((path) =>
+            canonicalSourceFactPath(isAbsolute(path) ? path : resolve(request.projectRoot, path)),
+          ),
+        ),
+      )
+  )
+    throw new Error('Invalid source inventory or selected-root identity');
+  const compilerSources = new Map(
+    (request.compilerSources ?? []).map((source) => {
+      let path = resolve(source.path);
+      try {
+        path = realpathSync.native(path);
+      } catch {
+        /* Preserve an unavailable compiler path. */
+      }
+      return [path, source] as const;
+    }),
+  );
   const startedAt = Date.now();
   const diagnostics: SourceCaptureDiagnostic[] = [];
   const filesByPath = new Map<string, CapturedSourceFile>();
@@ -167,7 +204,7 @@ export async function captureSourceEvidence(request: CaptureSourceEvidenceReques
       incomplete = true;
       return { canonicalPath: canonical.path, reason: 'excluded' };
     }
-    if (isDependencyPath(projectRoot, canonical.path)) {
+    if (isDependencyPath(projectRoot, canonical.path) && !compilerSources.has(canonical.path)) {
       const result: ReadResult = { canonicalPath: canonical.path, reason: 'external-dependency' };
       readCache.set(canonical.path, result);
       return result;
@@ -183,42 +220,56 @@ export async function captureSourceEvidence(request: CaptureSourceEvidenceReques
     }
     used.readAttempts += 1;
     let result: ReadResult;
+    const compilerSource = compilerSources.get(canonical.path);
+    if (compilerSource && sha256(compilerSource.content) !== compilerSource.textHash)
+      throw new Error('Invalid compiler source hash');
+    let filesystemText: string | undefined;
+    let filesystemReason: string | undefined;
     try {
       const stat = statSync(canonical.path);
-      if (!stat.isFile()) {
-        result = { canonicalPath: canonical.path, reason: 'not-a-file' };
-      } else if (stat.size > limits.maxFileBytes) {
-        result = { canonicalPath: canonical.path, reason: 'max-file-bytes' };
-        diagnostics.push({ kind: 'budget', reason: `max-file-bytes:${relative(projectRoot, canonical.path)}` });
-        incomplete = true;
-      } else if (used.totalBytes + stat.size > limits.maxTotalBytes) {
-        result = { canonicalPath: canonical.path, reason: 'max-total-bytes' };
-        diagnostics.push({ kind: 'budget', reason: 'max-total-bytes' });
-        incomplete = true;
-        exhausted = true;
-      } else {
-        const text = readFileSync(canonical.path, 'utf8');
-        const byteLength = Buffer.byteLength(text, 'utf8');
-        if (byteLength > limits.maxFileBytes || used.totalBytes + byteLength > limits.maxTotalBytes) {
-          result = {
-            canonicalPath: canonical.path,
-            reason: byteLength > limits.maxFileBytes ? 'max-file-bytes' : 'max-total-bytes',
-          };
-          diagnostics.push({ kind: 'budget', reason: result.reason });
-          incomplete = true;
-        } else {
-          used.fileBytes += byteLength;
-          used.totalBytes += byteLength;
-          result = { canonicalPath: canonical.path, text };
+      if (!stat.isFile()) filesystemReason = 'not-a-file';
+      else if (stat.size > limits.maxFileBytes) filesystemReason = 'max-file-bytes';
+      else {
+        filesystemText = readFileSync(canonical.path, 'utf8');
+        const after = statSync(canonical.path);
+        if (stat.size !== after.size || stat.mtimeMs !== after.mtimeMs) {
+          filesystemReason = 'source-changed-during-read';
+          filesystemText = undefined;
         }
       }
-    } catch (error) {
-      result = { canonicalPath: canonical.path, reason: 'unreadable' };
+    } catch {
+      filesystemReason = 'unreadable';
+    }
+    if (compilerSource && filesystemText !== compilerSource.content) {
       diagnostics.push({
         kind: 'read',
-        reason: `${relative(projectRoot, canonical.path)}:${error instanceof Error ? error.name : 'read-error'}`,
+        reason: `${filesystemReason ? 'filesystem-unavailable-compiler-snapshot-used' : 'filesystem-differs-from-compiler'}:${relative(projectRoot, canonical.path)}${filesystemReason ? ':' + filesystemReason : ''}`,
       });
       incomplete = true;
+    }
+    const text = compilerSource?.content ?? filesystemText;
+    if (text === undefined) {
+      result = { canonicalPath: canonical.path, reason: filesystemReason ?? 'unreadable' };
+      diagnostics.push({ kind: 'read', reason: `${relative(projectRoot, canonical.path)}:${result.reason}` });
+      incomplete = true;
+    } else {
+      const byteLength = Buffer.byteLength(text, 'utf8');
+      if (byteLength > limits.maxFileBytes || used.totalBytes + byteLength > limits.maxTotalBytes) {
+        result = {
+          canonicalPath: canonical.path,
+          reason: byteLength > limits.maxFileBytes ? 'max-file-bytes' : 'max-total-bytes',
+        };
+        diagnostics.push({ kind: 'budget', reason: result.reason });
+        incomplete = true;
+      } else {
+        used.fileBytes += byteLength;
+        used.totalBytes += byteLength;
+        result = { canonicalPath: canonical.path, text };
+        diagnostics.push({
+          kind: 'read',
+          reason: `${compilerSource ? 'compiler-loaded-bytes' : 'filesystem-fallback-bytes'}:${relative(projectRoot, canonical.path)}`,
+        });
+      }
     }
     readCache.set(canonical.path, result);
     return result;
@@ -431,6 +482,8 @@ export async function captureSourceEvidence(request: CaptureSourceEvidenceReques
 
   const rootPaths = stableUnique([
     ...request.filePaths,
+    ...inventory.files.map((file) => file.canonicalPath),
+    ...compilerSources.keys(),
     ...(request.components ?? []).flatMap((component) => (component.sourcePath ? [component.sourcePath] : [])),
   ]).map((path) => canonicalCandidate(path));
   const componentPaths = new Map<string, Array<{ componentId: string; name: string }>>();
@@ -467,6 +520,7 @@ export async function captureSourceEvidence(request: CaptureSourceEvidenceReques
     if (visiting.has(canonical.path)) return;
     if (visited.has(canonical.path)) return;
     const context = contextFor(captured);
+    if (!/\.[cm]?[jt]sx?$/.test(canonical.path)) return;
     const compilerOptions = context.compilerOptions as ts.CompilerOptions;
     const configAliasPaths = compilerOptions.paths;
     visiting.add(canonical.path);
@@ -601,7 +655,12 @@ export async function captureSourceEvidence(request: CaptureSourceEvidenceReques
       continue;
     }
     const componentMatches = componentPaths.get(root.path) ?? [];
-    const roles = componentMatches.length > 0 ? ['definition'] : ['entrypoint'];
+    const roles =
+      componentMatches.length > 0
+        ? ['definition']
+        : inventory.selectedSourcePaths.includes(root.path)
+          ? ['entrypoint']
+          : ['evidence'];
     for (const role of roles) resolveFile(root.path, 0, role);
   }
 
@@ -664,6 +723,7 @@ export async function captureSourceEvidence(request: CaptureSourceEvidenceReques
         ? 'unavailable'
         : 'partial';
   const captureWithoutIdentity = {
+    inventory,
     schemaVersion: 1 as const,
     projectRoot,
     files,

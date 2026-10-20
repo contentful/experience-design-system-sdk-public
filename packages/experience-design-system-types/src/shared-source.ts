@@ -2,7 +2,7 @@ export type SharedSourceCoverage = 'complete-within-declared-bound' | 'partial' 
 
 export interface SharedSourceCallerCoverage {
   scope: 'admitted-source';
-  analysis: 'lexical-jsx-in-known-component-bodies';
+  analysis: 'lexical-jsx-in-known-component-bodies' | 'configured-lexical-references';
   coverage: 'partial';
   files: Array<{ path: string; status: 'analyzed' | 'unsupported' | 'parse-error' }>;
   unresolvedReferences: number;
@@ -60,6 +60,8 @@ export interface SharedSourceReference {
 
 /** Source files are stored once; lexical references do not prove runtime execution. */
 export interface SharedSource {
+  inventory?: unknown;
+  omittedInventory?: number;
   files: SharedSourceFile[];
   /** Absent on older snapshots; missing configuration is unknown. */
   compilerContexts?: SharedSourceCompilerContext[];
@@ -86,5 +88,10 @@ export interface SharedSource {
   omittedDiagnostics?: number;
   omittedObservations?: number;
   diagnostics?: unknown[];
-  observations?: { accepted: unknown[]; rejected: unknown[]; callerCoverage?: SharedSourceCallerCoverage };
+  observations?: {
+    accepted: unknown[];
+    rejected: unknown[];
+    callerCoverage?: SharedSourceCallerCoverage;
+    referenceIndexes?: unknown[];
+  };
 }

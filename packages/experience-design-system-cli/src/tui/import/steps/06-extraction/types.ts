@@ -5,6 +5,8 @@ import type { ExtractionHandoff, ImportHandoff } from '@contentful/experience-de
 export type TokenStrategy = ImportHandoff['tokens']['strategy'];
 
 export interface ExtractionInput {
+  sourceInventory?: import('@contentful/experience-design-system-backend-pipeline').SourceEvidenceInventory;
+  evidenceFilePaths?: readonly string[];
   signal?: AbortSignal;
   projectPath: string;
   /** Where the stage writes tokens.json and the other files. Defaults to `<projectPath>/.contentful`. */

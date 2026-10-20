@@ -12,6 +12,12 @@ import type { RawComponentDefinition } from '../../../../extraction/src/types/co
 import { createHash } from 'node:crypto';
 import type { SharedSourceCallerCoverage } from '@contentful/experience-design-system-types';
 import { callerLocation, readCallerInputs, type SourceCallerInput } from './read-caller-inputs.js';
+import {
+  canonicalSourceFactPath,
+  readSourceReferences,
+  type SourceCallerValue,
+  type SourceReferenceIndex,
+} from '@contentful/experience-design-system-extraction';
 export type { SourceCallerInput } from './read-caller-inputs.js';
 
 export type SourceCallSiteEvidence = {
@@ -30,6 +36,9 @@ export type SourceCallSiteEvidence = {
   startOffset?: number;
   endOffset?: number;
   context?: Array<{ expression: string; startLine: number; endLine: number }>;
+  parentDeclarationId?: string | null;
+  childDeclarationId?: string;
+  lexicalAncestors?: import('@contentful/experience-design-system-extraction').SourceFactLocation[];
 };
 
 export type SourceCallSiteRejection = {
@@ -53,6 +62,8 @@ export function collectSourceCallSiteEvidence(
   files: readonly { path: string; content: string }[],
   components: readonly RawComponentDefinition[],
 ): SourceCallSiteEvidenceResult {
+  if (components.some((component) => component.componentFacts?.sourceObservations?.referenceIndex))
+    return collectConfiguredCallSites(files, components);
   const project = new Project({
     useInMemoryFileSystem: true,
     skipAddingFilesFromTsConfig: true,
@@ -239,6 +250,142 @@ export function collectSourceCallSiteEvidence(
       .sort((a, b) => JSON.stringify([a.name, a.sourcePath]).localeCompare(JSON.stringify([b.name, b.sourcePath]))),
   };
   return { accepted, rejected, coverage };
+}
+
+function collectConfiguredCallSites(
+  files: readonly { path: string; content: string }[],
+  components: readonly RawComponentDefinition[],
+): SourceCallSiteEvidenceResult {
+  const hashes = new Map(
+    files.map((file) => [canonicalSourceFactPath(file.path), createHash('sha256').update(file.content).digest('hex')]),
+  );
+  const indexes = components.flatMap((component) => {
+    const read = readSourceReferences(component.componentFacts?.sourceObservations?.referenceIndex);
+    return read.status === 'available' ? [{ component, index: read.evidence }] : [];
+  });
+  const declarations = new Map(indexes.map(({ component, index }) => [index.componentDeclarationId, component]));
+  const locationId = (location: SourceReferenceIndex['declaration']) =>
+    `${location.canonicalPath}:${location.textHash}:${location.startOffset}:${location.endOffset}`;
+  const input = (value: SourceCallerValue): SourceCallerInput => ({
+    kind: value.name === 'children' ? 'children' : value.name === '*' ? 'spread' : 'property',
+    ...(value.name !== '*' && value.name !== 'children' ? { name: value.name } : {}),
+    state: value.state === 'provided' ? (typeof value.value === 'string' ? 'text' : 'supplied') : value.state,
+    ...(value.state !== 'omitted' ? { representation: value.representation } : {}),
+    ...(value.value !== undefined ? { value: value.value } : {}),
+    ...(value.expression !== null && value.value === undefined ? { expression: value.expression } : {}),
+    ...(value.reasons.length ? { reason: value.reasons.join(';') } : {}),
+    startLine: value.location.startLine!,
+    endLine: value.location.endLine!,
+    startOffset: value.location.startOffset!,
+    endOffset: value.location.endOffset!,
+    ...(value.name === 'children' ? { parts: value.parts.map(input) } : {}),
+    ...(value.valueLocation
+      ? {
+          valueSource: {
+            sourcePath: value.valueLocation.canonicalPath!,
+            startLine: value.valueLocation.startLine!,
+            endLine: value.valueLocation.endLine!,
+            sourceTextHash: value.valueLocation.textHash!,
+          },
+        }
+      : {}),
+  });
+  const accepted: SourceCallSiteEvidence[] = [];
+  const rejections = new Map<string, SourceCallSiteRejection>();
+  let unowned = 0,
+    unresolved = 0;
+  for (const { component, index } of indexes)
+    for (const reference of index.references.filter((reference) => reference.kind === 'jsx')) {
+      const ownerId = reference.owner ? locationId(reference.owner) : null;
+      const owner = ownerId ? declarations.get(ownerId) : undefined;
+      const contextualOwner = [...reference.ancestors]
+        .reverse()
+        .map((ancestor) => declarations.get(locationId(ancestor)))
+        .find(Boolean);
+      const parent = owner?.name ?? contextualOwner?.name ?? (ownerId ? `lexical:${ownerId}` : 'unowned');
+      const sourceMatches =
+        hashes.get(reference.location.canonicalPath!) === reference.location.textHash &&
+        hashes.get(index.declaration.canonicalPath!) === index.declaration.textHash;
+      if (
+        !reference.targets.some((target) => target.declarationId === index.componentDeclarationId) ||
+        !sourceMatches
+      ) {
+        unresolved++;
+        rejections.set(reference.id, {
+          parent,
+          candidate: reference.expression.match(/^<([^\s/>]+)/)?.[1] ?? reference.expression,
+          sourcePath: reference.location.canonicalPath!,
+          startLine: reference.location.startLine!,
+          endLine: reference.location.endLine!,
+          excerpt: reference.expression,
+          reason: sourceMatches ? 'unknown-component' : 'unbound-component',
+        });
+        continue;
+      }
+      if (!ownerId) unowned++;
+      if (reference.reasons.length) unresolved++;
+      accepted.push({
+        parent,
+        child: component.name,
+        sourcePath: reference.location.canonicalPath!,
+        startLine: reference.location.startLine!,
+        endLine: reference.location.endLine!,
+        startOffset: reference.location.startOffset!,
+        endOffset: reference.location.endOffset!,
+        sourceTextHash: reference.location.textHash!,
+        excerpt: reference.expression,
+        kind: 'jsx-render',
+        execution: 'lexical-reference',
+        inputs: [...reference.inputs.map(input), ...reference.history.filter((value) => value.name === '*').map(input)],
+        parentSourcePath: reference.owner?.canonicalPath ?? undefined,
+        childSourcePath: index.declaration.canonicalPath!,
+        parentDeclarationId: ownerId,
+        childDeclarationId: index.componentDeclarationId,
+        lexicalAncestors: reference.ancestors,
+        context: reference.conditions.map((condition) => ({
+          expression: condition.expression,
+          startLine: condition.location.startLine!,
+          endLine: condition.location.endLine!,
+        })),
+      });
+    }
+  accepted.sort(
+    (a, b) =>
+      a.sourcePath.localeCompare(b.sourcePath) ||
+      (a.startOffset ?? 0) - (b.startOffset ?? 0) ||
+      a.childDeclarationId!.localeCompare(b.childDeclarationId!),
+  );
+  const paths = [
+    ...new Set(indexes.flatMap(({ index }) => index.files.map((file) => file.location.canonicalPath!))),
+  ].sort();
+  return {
+    accepted,
+    rejected: [...rejections.values()],
+    coverage: {
+      scope: 'admitted-source',
+      analysis: 'configured-lexical-references',
+      coverage: 'partial',
+      files: paths.map((path) => ({ path, status: 'analyzed' })),
+      unresolvedReferences: unresolved,
+      unownedReferences: unowned,
+      components: components.map((component) => {
+        const match = indexes.find((item) => item.component === component);
+        const referenceCount =
+          match?.index.references.filter(
+            (item) =>
+              (item.kind === 'jsx' || item.kind === 'call') &&
+              item.targets.some((target) => target.declarationId === match.index.componentDeclarationId),
+          ).length ?? 0;
+        return {
+          name: component.name,
+          sourcePath: component.sourcePath ?? component.source,
+          referenceCount,
+          outcome: referenceCount ? 'observed' : match ? 'not-observed' : 'unknown',
+          reason: 'Configured lexical observations are partial and do not prove execution or missing consumers.',
+        };
+      }),
+    },
+  };
 }
 
 function resolveDeclarations(reference: Node, seen = new Set<Node>()): Node[] {

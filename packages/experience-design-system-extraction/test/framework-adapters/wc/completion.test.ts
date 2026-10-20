@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
@@ -10,11 +10,28 @@ import { readdirSync } from 'node:fs';
 const directories: string[] = [];
 afterEach(() => directories.splice(0).forEach((directory) => rmSync(directory, { recursive: true, force: true })));
 function fixture(files: Record<string, string>) {
-  const directory = mkdtempSync(join(tmpdir(), 'wc-completion-'));
+  const directory = realpathSync.native(mkdtempSync(join(tmpdir(), 'wc-completion-')));
   directories.push(directory);
   for (const [name, content] of Object.entries(files)) writeFileSync(join(directory, name), content);
   return { directory, file: join(directory, 'Element.ts') };
 }
+
+it('preserves the supplied component path while evidence locations identify canonical bytes', async () => {
+  const { directory, file } = fixture({
+    'Element.ts':
+      "class ExampleElement extends HTMLElement { label: string = ''; } customElements.define('example-element', ExampleElement);",
+  });
+  const aliases = fixture({}).directory;
+  const alias = join(aliases, 'project');
+  symlinkSync(directory, alias, 'dir');
+  const supplied = join(alias, 'Element.ts');
+  const result = await extractWebComponentDefinitions([supplied], undefined, { projectRoot: alias });
+  expect(result.components[0]).toMatchObject({ source: supplied, sourcePath: supplied });
+  expect(
+    result.components[0]?.sourceCandidates?.find((candidate) => candidate.name === 'label')?.facts?.declarations[0]
+      ?.canonicalPath,
+  ).toBe(realpathSync.native(file));
+});
 
 it('resolves nested supplied-base lexical bindings and function-returned classes without erasing lineage', async () => {
   const { file, directory } = fixture({

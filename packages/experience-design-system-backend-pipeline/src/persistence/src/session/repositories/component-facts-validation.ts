@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { jsonValueIssue } from '@contentful/experience-design-system-types';
 import {
   readInputOutput,
+  readSourceReferences,
+  type SourceReferenceIndex,
   type SourceInputOutputEvidence,
   COMPONENT_FACT_SCHEMA_VERSION,
   readSourceClosure,
@@ -125,6 +127,9 @@ const callableSignature = z
   .strict();
 const sourceObservations = z
   .object({
+    referenceIndex: z
+      .custom<SourceReferenceIndex>((value) => readSourceReferences(value).status === 'available')
+      .optional(),
     inputOutput: z
       .custom<SourceInputOutputEvidence>((value) => readInputOutput(value).status === 'available')
       .optional(),
@@ -314,6 +319,13 @@ export function readComponentFacts(value: unknown): ComponentFactsRead {
     if (
       collection &&
       typeof collection === 'object' &&
+      'referenceIndex' in collection &&
+      readSourceReferences(collection.referenceIndex).status === 'unsupported'
+    )
+      return { status: 'unsupported' };
+    if (
+      collection &&
+      typeof collection === 'object' &&
       'inputOutput' in collection &&
       readInputOutput(collection.inputOutput).status === 'unsupported'
     )
@@ -336,6 +348,14 @@ export function readComponentFacts(value: unknown): ComponentFactsRead {
   )
     return { status: 'unsupported' };
   const validated = facts.safeParse(value);
+  if (
+    validated.success &&
+    validated.data.schemaVersion === COMPONENT_FACT_SCHEMA_VERSION &&
+    validated.data.sourceObservations?.referenceIndex &&
+    validated.data.sourceObservations.referenceIndex.componentDeclarationId !==
+      validated.data.sourceObservations.componentDeclarationId
+  )
+    return { status: 'corrupt' };
   if (
     validated.success &&
     validated.data.schemaVersion === COMPONENT_FACT_SCHEMA_VERSION &&

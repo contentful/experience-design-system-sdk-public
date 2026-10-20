@@ -1,4 +1,5 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -11,8 +12,28 @@ afterEach(() => {
 });
 
 describe('Vue SFC source candidates', () => {
+  it('keeps own Vue origin and original SFC byte hashes through a supplied symlink path', async () => {
+    const directory = realpathSync.native(mkdtempSync(join(tmpdir(), 'vue-symlink-candidates-')));
+    temporaryDirectories.push(directory);
+    const path = join(directory, 'Notice.vue');
+    const alias = join(directory, 'Alias.vue');
+    const source =
+      '<script lang="ts">export default { props: { label: { type: String, default: "ready" } } };</script><template><section/></template>';
+    writeFileSync(path, source);
+    symlinkSync(path, alias);
+    const result = await extractVueComponents([alias], undefined, { projectRoot: directory });
+    expect(result.components[0]).toMatchObject({ source: alias, sourcePath: alias });
+    expect(
+      result.components[0]?.sourceCandidates?.find((candidate) => candidate.name === 'label')?.facts,
+    ).toMatchObject({
+      origin: 'own',
+      declarations: [
+        { canonicalPath: realpathSync.native(path), textHash: createHash('sha256').update(source).digest('hex') },
+      ],
+    });
+  });
   it('resolves imported setup declarations in a configured compiler context and preserves projected keys', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'vue-source-candidates-'));
+    const directory = realpathSync.native(mkdtempSync(join(tmpdir(), 'vue-source-candidates-')));
     temporaryDirectories.push(directory);
     writeFileSync(
       join(directory, 'props.ts'),
@@ -48,7 +69,7 @@ describe('Vue SFC source candidates', () => {
   });
 
   it('captures hidden Options API prop keys and exact local defaults with source locations', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'vue-options-candidates-'));
+    const directory = realpathSync.native(mkdtempSync(join(tmpdir(), 'vue-options-candidates-')));
     temporaryDirectories.push(directory);
     const componentPath = join(directory, 'Notice.vue');
     writeFileSync(
@@ -72,7 +93,7 @@ describe('Vue SFC source candidates', () => {
   });
 
   it('retains imported Options API props with their declaring SFC origin and bytes', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'vue-inherited-candidates-'));
+    const directory = realpathSync.native(mkdtempSync(join(tmpdir(), 'vue-inherited-candidates-')));
     temporaryDirectories.push(directory);
     const basePath = join(directory, 'Base.vue');
     writeFileSync(
@@ -100,7 +121,7 @@ describe('Vue SFC source candidates', () => {
   });
 
   it('reports imported Options API traversal when its depth budget is exhausted', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'vue-import-budget-'));
+    const directory = realpathSync.native(mkdtempSync(join(tmpdir(), 'vue-import-budget-')));
     temporaryDirectories.push(directory);
     const files = Array.from({ length: 66 }, (_, index) => join(directory, `Layer${index}.vue`));
     files.forEach((filePath, index) => {
@@ -126,7 +147,7 @@ describe('Vue SFC source candidates', () => {
     expect(result.extractionDiagnostics?.limits.maxVueImportedDepth).toBe(64);
   });
   it('preserves literal Options keys as semantic source segments', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'vue-literal-keys-'));
+    const directory = realpathSync.native(mkdtempSync(join(tmpdir(), 'vue-literal-keys-')));
     temporaryDirectories.push(directory);
     const componentPath = join(directory, 'Notice.vue');
     writeFileSync(

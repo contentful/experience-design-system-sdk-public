@@ -93,6 +93,7 @@ export async function runExtractAndComposeSession(
     const { extraction, cacheHits } = await extractComponentsWithCache({
       db,
       sourceFiles,
+      evidenceFilePaths: request.evidenceFilePaths ?? request.sourceInventory?.files.map((file) => file.canonicalPath),
       projectPath,
       cacheVersion,
       noCache,
@@ -145,6 +146,9 @@ export async function runExtractAndComposeSession(
     const sourceCapture = await captureSourceEvidence({
       projectRoot: projectPath,
       filePaths: sourceFiles,
+      evidenceFilePaths: request.evidenceFilePaths,
+      inventory: extraction.sourceInventory,
+      compilerSources: extraction.compilerSources,
       components: initialValidatedComponents.map((component) => ({
         componentId: deriveComponentId(component.name, component.source),
         name: component.name,

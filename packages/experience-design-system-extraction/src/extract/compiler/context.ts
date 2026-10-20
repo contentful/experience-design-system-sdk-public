@@ -12,6 +12,12 @@ import type {
 import type { ExtractorOptions } from '../types/options.js';
 import { selectCompilerConfiguration, type ParsedConfig } from './configuration-policy.js';
 import { createObservedCompilerFileSystem, COMPILER_READ_LIMITS } from './observed-file-system.js';
+import { canonicalSourceFactPath } from '../candidates/bind-source-candidates.js';
+import {
+  DEFAULT_SOURCE_DISCOVERY_LIMITS,
+  discoverSourceEvidence,
+  type SourceEvidenceInventory,
+} from '../../source-evidence/discovery.js';
 
 const DEFAULT_LIMITS = {
   maxRoots: 256,
@@ -35,6 +41,57 @@ export interface CompilerProjectContext {
 export interface CompilerContextResult {
   contexts: CompilerProjectContext[];
   diagnostics: ExtractionDiagnostics;
+  sourceInventory: SourceEvidenceInventory;
+}
+export interface CompilerLoadedSource {
+  path: string;
+  content: string;
+  textHash: string;
+  configPath: string | null;
+}
+export function compilerSourcesFromContexts(
+  contexts: readonly CompilerProjectContext[],
+  inventory?: SourceEvidenceInventory,
+): CompilerLoadedSource[] {
+  const sources = new Map<string, CompilerLoadedSource>();
+  let bytes = 0;
+  for (const context of contexts) {
+    let program: ts.Program;
+    try {
+      program = context.project.getProgram().compilerObject;
+    } catch {
+      if (inventory) {
+        inventory.omissions.push({ path: context.root, reason: 'compiler-loaded-source-program-unavailable' });
+        inventory.coverage = 'partial';
+      }
+      continue;
+    }
+    for (const file of program.getSourceFiles()) {
+      if (program.isSourceFileDefaultLibrary(file)) continue;
+      const path = canonicalCompilerPath(file.fileName);
+      const size = Buffer.byteLength(file.text);
+      if (sources.has(path)) {
+        if (sources.get(path)!.textHash !== createHash('sha256').update(file.text).digest('hex'))
+          inventory?.omissions.push({ path, reason: 'compiler-context-byte-conflict' });
+        continue;
+      }
+      if (sources.size >= 256 || size > 256 * 1024 || bytes + size > 8 * 1024 * 1024) {
+        inventory?.omissions.push({ path, reason: 'compiler-loaded-source-byte-or-file-budget' });
+        continue;
+      }
+      sources.set(path, {
+        path,
+        content: file.text,
+        textHash: createHash('sha256').update(file.text).digest('hex'),
+        configPath: context.configPath,
+      });
+      bytes += size;
+    }
+  }
+  return [...sources.values()].sort((a, b) => a.path.localeCompare(b.path));
+}
+function canonicalCompilerPath(path: string): string {
+  return canonicalSourceFactPath(path);
 }
 
 export interface VirtualCompilerSource {
@@ -213,21 +270,62 @@ function moduleDiagnostics(context: CompilerProjectContext): CompilerModuleDiagn
   );
 }
 
+function discoverCompilerSourceInventory(
+  projectRoot: string,
+  filePaths: readonly string[],
+  options: ExtractorOptions,
+): SourceEvidenceInventory {
+  if (!options.signal?.aborted) {
+    try {
+      return discoverSourceEvidence({
+        projectRoot,
+        filePaths,
+        evidenceFilePaths: options.evidenceFilePaths,
+        signal: options.signal,
+      });
+    } catch (error) {
+      if (!options.signal?.aborted || !(error instanceof Error) || error.name !== 'AbortError') throw error;
+    }
+  }
+  return {
+    schemaVersion: 1,
+    projectRoot,
+    selectedSourcePaths: [...new Set(filePaths.map(canonicalCompilerPath))].sort(),
+    files: [],
+    packages: [],
+    sourceMaps: [],
+    omissions: [{ path: projectRoot, reason: 'source-discovery-aborted' }],
+    coverage: 'unavailable',
+    bounds: {
+      limits: { ...DEFAULT_SOURCE_DISCOVERY_LIMITS },
+      used: { files: 0, totalBytes: 0, directories: 0, directoryEntries: 0, readAttempts: 0, depth: 0, discoveryMs: 0 },
+    },
+  };
+}
+
 export function createCompilerContexts(
   filePaths: readonly string[],
   componentFilePattern: RegExp,
   options: ExtractorOptions = {},
   virtualSources: readonly VirtualCompilerSource[] = [],
 ): CompilerContextResult {
-  const projectRoot = resolve(options.projectRoot ?? commonDirectory(filePaths));
+  const projectRoot = canonicalCompilerPath(options.projectRoot ?? commonDirectory(filePaths));
   const limits = DEFAULT_LIMITS;
-  const eligibleFiles = [...new Set(filePaths.map((path) => resolve(path)))].sort((left, right) =>
-    left.localeCompare(right),
-  );
+  const sourceInventory = discoverCompilerSourceInventory(projectRoot, filePaths, options);
+  const selectedFiles = new Set(filePaths.map(canonicalCompilerPath));
+  const eligibleFiles = [...selectedFiles]
+    .sort()
+    .concat(
+      sourceInventory.files
+        .filter((file) => /\.[cm]?[jt]sx?$/.test(file.canonicalPath) && !selectedFiles.has(file.canonicalPath))
+        .map((file) => file.canonicalPath),
+    );
   const rootPaths = eligibleFiles.slice(0, limits.maxRoots);
   const reader = makeCompilerHost(projectRoot, limits, rootPaths, options.signal);
   const observed = createObservedCompilerFileSystem(projectRoot, options.signal);
-  const virtualSourceByPath = new Map(virtualSources.map((source) => [resolve(source.path), source.content]));
+  const virtualSourceByPath = new Map(
+    virtualSources.map((source) => [canonicalCompilerPath(source.path), source.content]),
+  );
   const groups = new Map<
     string,
     {
@@ -341,7 +439,7 @@ export function createCompilerContexts(
     }
     const componentFiles = assignedFiles.filter((path) => {
       componentFilePattern.lastIndex = 0;
-      return componentFilePattern.test(path);
+      return selectedFiles.has(path) && componentFilePattern.test(path);
     });
     contexts.push({
       root: group.roots[0] ?? projectRoot,
@@ -387,12 +485,12 @@ export function createCompilerContexts(
     });
   for (const source of virtualSources)
     diagnostics.reads!.push({
-      path: resolve(source.path),
+      path: canonicalCompilerPath(source.path),
       kind: 'virtual',
       textHash: createHash('sha256').update(source.content).digest('hex'),
       byteLength: Buffer.byteLength(source.content, 'utf8'),
       outcome: 'read',
       reason: null,
     });
-  return { contexts, diagnostics };
+  return { contexts, diagnostics, sourceInventory };
 }

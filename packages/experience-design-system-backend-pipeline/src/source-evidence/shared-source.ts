@@ -73,6 +73,12 @@ export function buildSharedSource(envelope: SessionSourceEnvelope, componentIds?
       .filter((file) => !wanted || file.componentRefs.some((ref) => wanted.has(ref.componentId)))
       .map((file) => file.fileId),
   );
+  for (const value of envelope.observations.referenceIndexes ?? []) {
+    const index = value as import('@contentful/experience-design-system-extraction').SourceReferenceIndex;
+    for (const reference of index.references)
+      for (const file of capture.files)
+        if (file.canonicalPath === reference.location.canonicalPath) selected.add(file.fileId);
+  }
   // Follow captured outgoing edges; no disk discovery or reverse package expansion.
   for (let changed = true; changed; ) {
     changed = false;
@@ -129,11 +135,7 @@ export function buildSharedSource(envelope: SessionSourceEnvelope, componentIds?
         refs,
       };
     });
-  const ownsDefinition = (file: SharedSourceFile) =>
-    (file.componentRefs ?? []).some(
-      (ref) => (!wanted || wanted.has(ref.componentId)) && ref.roles.includes('definition'),
-    );
-  files.sort((a, b) => Number(ownsDefinition(b)) - Number(ownsDefinition(a)) || a.path.localeCompare(b.path));
+  files.sort((a, b) => a.path.localeCompare(b.path));
   return {
     captureId: capture.captureId,
     captureDigest: capture.digest,
@@ -155,6 +157,18 @@ export function buildSharedSource(envelope: SessionSourceEnvelope, componentIds?
     omittedComponents: 0,
     diagnostics: capture.diagnostics,
     observations: envelope.observations,
+    ...(capture.inventory
+      ? {
+          inventory: {
+            ...capture.inventory,
+            files: capture.inventory.files.map(({ text: _text, ...file }) => file),
+            sourceMaps: capture.inventory.sourceMaps.map((map) => ({
+              ...map,
+              sources: map.sources.map(({ text: _text, ...source }) => source),
+            })),
+          },
+        }
+      : {}),
   };
 }
 
@@ -218,6 +232,8 @@ type ProjectionMetadata = Pick<
   | 'observations'
   | 'compilerContexts'
   | 'omittedCompilerContexts'
+  | 'inventory'
+  | 'omittedInventory'
 >;
 type TextRange = { startLine: number; endLine: number; text: string };
 
@@ -245,6 +261,17 @@ function fitProjection<File extends { fileId?: string; path: string }>(
   rangesFor: (file: File) => TextRange[],
   setRanges: (file: File, ranges: TextRange[]) => void,
 ): void {
+  // Additive metadata has its own omission receipts when the existing body projection cannot fit it.
+  if (size() > maxBytes && source.inventory !== undefined) {
+    source.inventory = undefined;
+    source.omittedInventory = (source.omittedInventory ?? 0) + 1;
+    source.promptCoverage = 'partial';
+  }
+  while (size() > maxBytes && source.observations?.referenceIndexes?.length) {
+    source.observations.referenceIndexes.pop();
+    source.omittedObservations = (source.omittedObservations ?? 0) + 1;
+    source.promptCoverage = 'partial';
+  }
   while (size() > maxBytes && source.files.length) {
     const file = source.files.at(-1)!;
     const ranges = rangesFor(file);
@@ -290,10 +317,16 @@ function fitProjection<File extends { fileId?: string; path: string }>(
       (source.omittedObservations ?? 0) +
       (source.observations?.accepted.length ?? 0) +
       (source.observations?.rejected.length ?? 0) +
+      (source.observations?.referenceIndexes?.length ?? 0) +
       (source.observations?.callerCoverage ? 1 : 0);
     source.omittedDiagnostics = (source.omittedDiagnostics ?? 0) + (source.diagnostics?.length ?? 0);
     source.observations = { accepted: [], rejected: [] };
     source.diagnostics = [];
+    source.promptCoverage = 'partial';
+  }
+  if (size() > maxBytes && source.inventory !== undefined) {
+    source.inventory = undefined;
+    source.omittedInventory = (source.omittedInventory ?? 0) + 1;
     source.promptCoverage = 'partial';
   }
   while (size() > maxBytes && source.compilerContexts?.length) {
@@ -349,6 +382,7 @@ export function projectExplorationSource(
       ...(compilerDiagnostics ? [{ kind: 'compiler-run', diagnostics: compilerDiagnostics }] : []),
     ],
     observations: envelope.observations,
+    ...(index.inventory ? { inventory: index.inventory } : {}),
   };
   return projectExplorationSourceInput(result, maxBytes);
 }

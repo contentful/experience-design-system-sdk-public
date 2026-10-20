@@ -1,4 +1,6 @@
 import { Node, type Project, type SourceFile } from 'ts-morph';
+import { resolve } from 'node:path';
+import { canonicalSourceFactPath } from '../../candidates/bind-source-candidates.js';
 import type { RawComponentDefinition, ComponentExtractionResult, ExtractorProgress } from '../../types/component.js';
 import type { ExtractorOptions } from '../../types/options.js';
 import { SOURCE_FACT_SCHEMA_VERSION } from '../../candidates/types.js';
@@ -65,7 +67,14 @@ export async function extractWebComponentDefinitions(
         continue;
       }
       try {
+        const componentStart = result.components.length;
         extractFromSourceFile(sourceFile, context.project, result);
+        const suppliedPath = filePaths.find((path) => canonicalSourceFactPath(path) === filePath);
+        if (suppliedPath)
+          for (const component of result.components.slice(componentStart)) {
+            component.source = resolve(suppliedPath);
+            component.sourcePath = resolve(suppliedPath);
+          }
       } catch (error) {
         result.warnings.push(`${filePath}: ${error instanceof Error ? error.message : String(error)}`);
       }

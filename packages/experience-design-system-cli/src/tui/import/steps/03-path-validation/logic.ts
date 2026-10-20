@@ -5,7 +5,13 @@ export type FileCounts = Record<FileCategory, number> & { total: number };
 export type ScanFailureCode = 'not-found' | 'permission-denied' | 'is-file' | 'not-directory' | 'unreadable';
 
 export type ScanResult =
-  | { ok: true; counts: FileCounts; filePaths: string[]; warnings: string[] }
+  | {
+      ok: true;
+      counts: FileCounts;
+      filePaths: string[];
+      warnings: string[];
+      sourceInventory?: import('@contentful/experience-design-system-backend-pipeline').SourceEvidenceInventory;
+    }
   | { ok: false; failure: ScanFailureCode };
 
 export type PathPhase = 'scanning' | 'ready' | 'failed';

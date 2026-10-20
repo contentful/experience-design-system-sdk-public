@@ -10,7 +10,7 @@ const deps = vi.hoisted(() => ({
   navigate: undefined as ((screen: 'import') => void) | undefined,
   project: undefined as ((path: string) => void) | undefined,
   tokens: undefined as ((path: string) => void) | undefined,
-  files: undefined as ((value: { filePaths: string[] }) => void) | undefined,
+  files: undefined as ((value: { filePaths: string[]; sourceInventory?: object }) => void) | undefined,
   credentials: undefined as ((value: { skipped: true }) => void) | undefined,
 }));
 vi.mock('@contentful/experience-design-system-types/config', () => ({ readSettings: deps.settings }));
@@ -111,7 +111,8 @@ describe('App attempt replacement cancellation', () => {
       await vi.waitFor(() => expect(deps.tokens).toBeDefined());
       deps.tokens!('');
       await vi.waitFor(() => expect(deps.files).toBeDefined());
-      deps.files!({ filePaths: [] });
+      const sourceInventory = { schemaVersion: 1, files: [], selectedSourcePaths: [] };
+      deps.files!({ filePaths: [], sourceInventory });
       await vi.waitFor(() => expect(deps.credentials).toBeDefined());
 
       let rejectOld!: (error: Error) => void;
@@ -127,6 +128,7 @@ describe('App attempt replacement cancellation', () => {
       await vi.waitFor(() => expect(deps.extraction.mock.calls.some(([input]) => input?.signal)).toBe(true));
       const liveInput = deps.extraction.mock.calls.findLast(([input]) => input?.signal)?.[0] as { signal: AbortSignal };
       expect(liveInput.signal.aborted).toBe(false);
+      expect(liveInput).toHaveProperty('sourceInventory', sourceInventory);
 
       rejectOld(Object.assign(new Error('retired preparation'), { name }));
       await new Promise<void>((resolve) => setImmediate(resolve));
@@ -168,7 +170,8 @@ it('routes failed import defaults to the actual error screen and clears them on 
   await vi.waitFor(() => expect(deps.tokens).toBeDefined());
   deps.tokens!('');
   await vi.waitFor(() => expect(deps.files).toBeDefined());
-  deps.files!({ filePaths: [] });
+  const sourceInventory = { schemaVersion: 1, files: [], selectedSourcePaths: [] };
+  deps.files!({ filePaths: [], sourceInventory });
   await vi.waitFor(() => expect(deps.credentials).toBeDefined());
   deps.settings.mockRejectedValueOnce(new Error('Preparation unavailable'));
   deps.credentials!({ skipped: true });

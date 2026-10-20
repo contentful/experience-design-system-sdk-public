@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -9,12 +9,12 @@ import {
   createObservedCompilerFileSystem,
   COMPILER_READ_LIMITS,
 } from '../../src/extract/compiler/observed-file-system.js';
-import { createCompilerContexts } from '../../src/extract/compiler/context.js';
+import { compilerSourcesFromContexts, createCompilerContexts } from '../../src/extract/compiler/context.js';
 import { extractEndpoint } from '../../src/index.js';
 
 const roots: string[] = [];
 function fixture(files: Record<string, string>): string {
-  const root = mkdtempSync(join(tmpdir(), 'compiler-completion-'));
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'compiler-completion-')));
   roots.push(root);
   for (const [name, content] of Object.entries(files)) {
     const path = join(root, name);
@@ -27,6 +27,53 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 describe('actual compiler controls', () => {
+  it('keeps configured missing and virtual roots under a canonical symlink parent', () => {
+    const root = fixture({ 'tsconfig.json': '{"compilerOptions":{"module":"ESNext","moduleResolution":"Bundler"}}' });
+    const aliases = fixture({});
+    const alias = join(aliases, 'project');
+    symlinkSync(root, alias, 'dir');
+    const missing = createCompilerContexts([join(alias, 'missing.tsx')], /\.tsx$/, { projectRoot: alias });
+    expect(missing.diagnostics.projects[0]).toMatchObject({
+      root: join(realpathSync.native(root), 'missing.tsx'),
+      configPath: join(realpathSync.native(root), 'tsconfig.json'),
+      status: 'configured',
+    });
+    expect(missing.diagnostics.projects[0]?.diagnostics).toContain('project-source-unavailable:missing.tsx');
+    const virtualPath = join(alias, 'Example.vue.source-evidence.ts');
+    const virtual = createCompilerContexts([virtualPath], /\.ts$/, { projectRoot: alias }, [
+      { path: virtualPath, content: 'export const value = 1;' },
+    ]);
+    expect(
+      virtual.contexts[0]?.project
+        .getSourceFile(join(realpathSync.native(root), 'Example.vue.source-evidence.ts'))
+        ?.getFullText(),
+    ).toBe('export const value = 1;');
+    expect(virtual.diagnostics.reads).toContainEqual(
+      expect.objectContaining({
+        path: join(realpathSync.native(root), 'Example.vue.source-evidence.ts'),
+        kind: 'virtual',
+        outcome: 'read',
+      }),
+    );
+  });
+  it('retains bounded uncertainty when a loaded compiler program is unavailable', () => {
+    const root = fixture({
+      'tsconfig.json': '{"compilerOptions":{"module":"ESNext","moduleResolution":"Bundler"}}',
+      'Props.d.ts': 'export interface Props { label: string }' + ' '.repeat(COMPILER_READ_LIMITS.maxCompilerFileBytes),
+      'Example.tsx':
+        'import type { Props } from "./Props"; export const Example = (props: Props) => <section>{props.label}</section>;',
+    });
+    const result = createCompilerContexts([join(root, 'Example.tsx')], /\.tsx$/, { projectRoot: root });
+    expect(compilerSourcesFromContexts(result.contexts, result.sourceInventory)).toEqual([]);
+    expect(result.sourceInventory.omissions).toContainEqual({
+      path: result.contexts[0]!.root,
+      reason: 'compiler-loaded-source-program-unavailable',
+    });
+    expect(result.sourceInventory.coverage).toBe('partial');
+    expect(result.diagnostics.reads).toContainEqual(
+      expect.objectContaining({ outcome: 'unavailable', reason: 'compiler-byte-budget-exhausted' }),
+    );
+  });
   it('records unavailable assigned source in the saved per-root diagnostic', () => {
     const root = fixture({ 'tsconfig.json': '{"compilerOptions":{"module":"ESNext","moduleResolution":"Bundler"}}' });
     const result = createCompilerContexts([join(root, 'missing.tsx')], /\.tsx$/, { projectRoot: root });

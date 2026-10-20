@@ -10,6 +10,7 @@ type Extraction = Awaited<ReturnType<typeof extractComponents>>;
 export interface ExtractComponentsWithCacheRequest {
   db: DatabaseSync;
   sourceFiles: string[];
+  evidenceFilePaths?: readonly string[];
   projectPath: string;
   cacheVersion: string;
   noCache: boolean;
@@ -33,6 +34,7 @@ export interface ExtractComponentsWithCacheResult {
 export async function extractComponentsWithCache({
   db,
   sourceFiles,
+  evidenceFilePaths,
   projectPath,
   cacheVersion,
   noCache,
@@ -70,7 +72,7 @@ export async function extractComponentsWithCache({
   const extraction = await extractComponents({
     filePaths: sourceFiles,
     projectRoot: projectPath,
-    opts: { resolveUnreachable },
+    opts: { resolveUnreachable, evidenceFilePaths },
     onProgress: ({ filesProcessed, componentsFound }) => {
       onProgress?.({
         kind: 'extract',

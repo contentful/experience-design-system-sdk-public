@@ -11,6 +11,7 @@ import { SourceObservationReader, isWithinSourceBoundary, sourceRealPath } from 
 import { SourceInputPaths } from './source-input-path.js';
 import { resolve } from 'node:path';
 import { collectInputOutput } from './collect-input-output.js';
+import { collectSourceReferences } from './collect-source-references.js';
 
 export const DEFAULT_COMPONENT_OBSERVATION_LIMITS: Readonly<ComponentObservationLimits> = Object.freeze({
   maxNodes: 4096,
@@ -523,5 +524,11 @@ export function collectComponentSourceObservations(
       a.reason.localeCompare(b.reason),
   );
   collection.inputOutput = collectInputOutput(node, reader, options.signal);
+  collection.referenceIndex = collectSourceReferences(
+    node,
+    reader,
+    (options.componentBindings ?? []).map((binding) => binding.compilerNode),
+    options.signal,
+  );
   return collection;
 }

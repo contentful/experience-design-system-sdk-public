@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ts from 'typescript';
@@ -14,7 +14,7 @@ import * as saved from '../../../src/persistence/src/session/repositories/db.js'
 
 const roots: string[] = [];
 function fixture(files: Record<string, string | undefined>): string {
-  const root = mkdtempSync(join(tmpdir(), 'configured-endpoints-'));
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'configured-endpoints-')));
   roots.push(root);
   for (const [name, source] of Object.entries(files)) {
     if (source === undefined) continue;

@@ -6,6 +6,8 @@ import { synthesizeReactStructuralSlots } from './helpers/synthesize-react-struc
 import { resolveReactPropForwarding } from './helpers/resolve-react-prop-forwarding.js';
 import { extractFromReactSourceFile } from './helpers/extract-from-react-source-file.js';
 import type { ExtractorOptions } from '../../types/options.js';
+import { canonicalSourceFactPath } from '../../candidates/bind-source-candidates.js';
+import { compilerSourcesFromContexts } from '../../compiler/context.js';
 
 function isStencilFile(sourceFile: SourceFile): boolean {
   return sourceFile.getImportDeclarations().some((imp) => imp.getModuleSpecifierValue() === '@stencil/core');
@@ -23,7 +25,7 @@ export async function extractReactComponents(
   _onProgress?: (progress: { filesProcessed: number; componentsFound: number }) => void,
   options: ExtractorOptions = {},
 ): Promise<ComponentExtractionResult> {
-  const { components, warnings, exclusions, contexts, extractionDiagnostics } = extractTsxComponents(
+  const { components, warnings, exclusions, contexts, extractionDiagnostics, sourceInventory } = extractTsxComponents(
     filePaths,
     /\.[jt]sx$/,
     (sourceFile, exclusions, diagnostics) => {
@@ -45,7 +47,9 @@ export async function extractReactComponents(
   for (const context of contexts) {
     const componentPaths = new Set(context.componentFiles);
     synthesizeReactStructuralSlots(
-      components.filter((component) => componentPaths.has(component.sourcePath ?? component.source)),
+      components.filter((component) =>
+        componentPaths.has(canonicalSourceFactPath(component.sourcePath ?? component.source)),
+      ),
       context.project,
     );
   }
@@ -56,5 +60,7 @@ export async function extractReactComponents(
     warnings,
     exclusions,
     extractionDiagnostics,
+    sourceInventory,
+    compilerSources: compilerSourcesFromContexts(contexts, sourceInventory),
   };
 }

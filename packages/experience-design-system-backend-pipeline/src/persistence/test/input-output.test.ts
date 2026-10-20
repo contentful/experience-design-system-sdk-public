@@ -28,6 +28,11 @@ async function fixture(finite = false, observationLimits?: { maxObservations: nu
   const root = mkdtempSync(join(tmpdir(), 'saved-input-output-'));
   directories.push(root);
   const path = join(root, 'Surface.tsx');
+  const caller = join(root, 'Caller.test.tsx');
+  writeFileSync(
+    caller,
+    `import {Surface} from './Surface';const sighting=()=> <Surface supplied="observed" label="sample"/>;`,
+  );
   writeFileSync(
     path,
     `export function Surface(props: { supplied: ${finite ? "'Child'" : 'string'}; label?: string; opaque?: unknown }) { return <section>{props.supplied}</section>; } ${finite ? 'export function Child() { return <b/>; }' : ''}`,
@@ -35,10 +40,12 @@ async function fixture(finite = false, observationLimits?: { maxObservations: nu
   const backend = await extractReactComponents([path], undefined, {
     projectRoot: root,
     componentObservationLimits: observationLimits,
+    evidenceFilePaths: [caller],
   });
   const library = await extractPublic([path], undefined, {
     projectRoot: root,
     componentObservationLimits: observationLimits,
+    evidenceFilePaths: [caller],
   });
   expect(backend.components[0]!.componentFacts!.sourceObservations!.inputOutput).toEqual(
     library.components[0]!.componentFacts!.sourceObservations!.inputOutput,
@@ -47,7 +54,13 @@ async function fixture(finite = false, observationLimits?: { maxObservations: nu
   const db = api.openPipelineDb(dbPath);
   const { sessionId } = api.getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
   const stepId = api.createStep(db, sessionId, 'analyze extract', {});
-  const capture = await captureSourceEvidence({ projectRoot: root, filePaths: [path] });
+  const capture = await captureSourceEvidence({
+    projectRoot: root,
+    filePaths: [path],
+    evidenceFilePaths: [caller],
+    inventory: backend.sourceInventory,
+    compilerSources: backend.compilerSources,
+  });
   const handle = api.completeExtractionWithSourceEvidence(db, {
     sessionId,
     stepId,
@@ -128,6 +141,8 @@ it('publishes exact associations from mounted default extraction and exploration
   });
   expect(result.ok).toBe(true);
   expect(prompts).toHaveLength(7);
+  expect(prompts.some((prompt) => prompt.includes('referenceIndexes'))).toBe(true);
+  expect(prompts.some((prompt) => prompt.includes('incoming-caller-coverage-open'))).toBe(true);
   expect(prompts.filter((prompt) => prompt.includes('"inputOutput":'))).toHaveLength(5);
   let db = api.openPipelineDb(f.dbPath);
   expect(api.loadAcceptedSlotDecisions(db, f.sessionId)?.[0]?.sourceInput).toEqual(f.association);
@@ -170,6 +185,7 @@ it('publishes exact associations from mounted default extraction and exploration
     expect(generated.allOk).toBe(true);
     expect(invoke.mock.calls.at(-1)![0].prompt).toContain('"inputOutput":');
     expect(invoke.mock.calls.at(-1)![0].prompt).toContain('"sourceInput":');
+    expect(invoke.mock.calls.at(-1)![0].prompt).toContain('"referenceIndex":');
   } finally {
     if (oldPath === undefined) delete process.env.EDS_PIPELINE_DB_PATH;
     else process.env.EDS_PIPELINE_DB_PATH = oldPath;
@@ -349,6 +365,11 @@ it('keeps mapped internal markup separate from supplied-input slots in both defa
   const root = mkdtempSync(join(tmpdir(), 'mapped-input-output-'));
   directories.push(root);
   const path = join(root, 'Surface.tsx');
+  const caller = join(root, 'Caller.test.tsx');
+  writeFileSync(
+    caller,
+    `import {Surface} from './Surface';const sighting=()=> <Surface supplied="observed" label="sample"/>;`,
+  );
   writeFileSync(
     path,
     `export function Item(props: { label: string }) { return <span>{props.label}</span>; }
@@ -496,7 +517,13 @@ it.each(['supports', 'does-not-support'])(
                           kind: 'declared',
                           applicable: true,
                           evidence: [
-                            { source: input.sourceInput.files[0].path, line: '1', quote: "supplied: 'Child'" },
+                            {
+                              source: input.sourceInput.files.find((file: { path: string }) =>
+                                file.path.endsWith('/Surface.tsx'),
+                              ).path,
+                              line: '1',
+                              quote: "supplied: 'Child'",
+                            },
                           ],
                         },
                       },

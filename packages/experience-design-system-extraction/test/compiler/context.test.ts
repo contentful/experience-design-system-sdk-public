@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, realpathSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ts from 'typescript';
@@ -8,7 +8,7 @@ import { createCompilerContexts } from '../../src/extract/compiler/context.js';
 const temporaryDirectories: string[] = [];
 
 function temporaryRoot(): string {
-  const root = mkdtempSync(join(tmpdir(), 'compiler-context-'));
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'compiler-context-')));
   temporaryDirectories.push(root);
   return root;
 }

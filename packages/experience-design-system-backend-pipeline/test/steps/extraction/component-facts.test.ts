@@ -1,11 +1,11 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { extractReactComponents } from '../../../src/steps/extraction/src/framework-adapters/react/extract-react-components.js';
 
 it('uses the shared field-local seam in normal and parameterless backend React producers', async () => {
-  const directory = mkdtempSync(join(tmpdir(), 'backend-component-facts-'));
+  const directory = realpathSync.native(mkdtempSync(join(tmpdir(), 'backend-component-facts-')));
   try {
     const path = join(directory, 'Panel.tsx');
     writeFileSync(

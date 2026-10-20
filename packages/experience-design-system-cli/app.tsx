@@ -64,6 +64,7 @@ interface ImportLaunch extends Partial<ImportOptions> {
   projectPath?: string;
   tokens?: string;
   filePaths?: string[];
+  sourceInventory?: ExtractionInput['sourceInventory'];
 }
 
 interface PendingLaunch {
@@ -115,6 +116,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
   const [projectPath, setProjectPath] = useState<string>();
   const [tokensPath, setTokensPath] = useState<string>();
   const [scannedFiles, setScannedFiles] = useState<string[]>();
+  const [sourceInventory, setSourceInventory] = useState<ExtractionInput['sourceInventory']>();
   // Set once credentials are done while the token catalog is checked; shown as the token reuse screen when it needs a choice.
   const [pendingLaunch, setPendingLaunch] = useState<PendingLaunch>();
   // Set once the token step has an answer; the extraction stage runs for it before the legacy wizard starts.
@@ -202,7 +204,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
         );
         if (!saved.current) return;
       }
-      const launch: ImportLaunch = { projectPath, tokens, filePaths, ...importOptions };
+      const launch: ImportLaunch = { projectPath, tokens, filePaths, sourceInventory, ...importOptions };
       // earlier catalogs sit in the .contentful folder, in each session's dsi-import folder
       const inspected = await awaitForCurrentImportAttempt(attempt, attemptOwner.isCurrent, () =>
         inspectTokens({
@@ -273,6 +275,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
           projectPath: resolveUserPath(launch.projectPath ?? ''),
           outDir,
           filePaths: launch.filePaths ?? [],
+          sourceInventory: launch.sourceInventory,
           rawTokensPath: launch.tokens ?? '',
           tokenStrategy,
           credentials: credentials.skipped ? null : credentials.credentials,
@@ -356,6 +359,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
     setProjectPath(undefined);
     setTokensPath(undefined);
     setScannedFiles(undefined);
+    setSourceInventory(undefined);
     setPendingLaunch(undefined);
     setExtractionRun(undefined);
     setScopeRun(undefined);
@@ -408,7 +412,10 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
         return (
           <PathValidationScreen
             projectPath={projectPath}
-            onConfirm={({ filePaths }) => setScannedFiles(filePaths)}
+            onConfirm={({ filePaths, sourceInventory }) => {
+              setScannedFiles(filePaths);
+              setSourceInventory(sourceInventory);
+            }}
             onChangePath={resetImport}
             onBack={() => setTokensPath(undefined)}
           />

@@ -84,6 +84,8 @@ export interface RawComponentDefinition {
 }
 
 export interface ComponentExtractionResult {
+  compilerSources?: import('../compiler/context.js').CompilerLoadedSource[];
+  sourceInventory?: import('../../source-evidence/discovery.js').SourceEvidenceInventory;
   components: RawComponentDefinition[];
   warnings: string[];
   exclusions?: ExtractionExclusion[];

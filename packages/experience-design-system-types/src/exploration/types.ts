@@ -123,6 +123,8 @@ export interface BoundSourceFile {
   }>;
 }
 export interface ExplorationSourceInput {
+  inventory?: unknown;
+  omittedInventory?: number;
   projectionBounds?: { maxBytes: number; usedBytes: number };
   components?: import('../shared-source.js').SharedSource['components'];
   compilerContexts?: import('../shared-source.js').SharedSourceCompilerContext[];

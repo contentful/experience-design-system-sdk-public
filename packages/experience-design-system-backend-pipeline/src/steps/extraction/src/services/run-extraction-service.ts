@@ -433,6 +433,8 @@ export async function extractComponents(
     warnings: allWarnings,
     exclusions,
     extractionDiagnostics: mergeExtractionDiagnostics(results.map((result) => result.extractionDiagnostics)),
+    compilerSources: results.flatMap((result) => result.compilerSources ?? []),
+    sourceInventory: results.find((result) => result.sourceInventory)?.sourceInventory,
   };
 }
 

@@ -15,6 +15,8 @@ export type ExtractAndComposeProgress =
   | { kind: 'composition'; phase: 'resolving' | 'cache-hit' | `agent:${string}` | 'done' };
 
 export interface RunExtractAndComposeSessionRequest {
+  evidenceFilePaths?: readonly string[];
+  sourceInventory?: import('@contentful/experience-design-system-extraction').SourceEvidenceInventory;
   signal?: AbortSignal;
   /** Absolute project root. Used as the session's inputPath and for relative file-path storage. */
   projectPath: string;

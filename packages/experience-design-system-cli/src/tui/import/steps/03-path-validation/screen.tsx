@@ -8,7 +8,11 @@ import { describeFailure, phaseOf, summarize, type ScanResult, type SummaryRow }
 
 interface PathValidationScreenProps {
   projectPath: string;
-  onConfirm: (result: { projectPath: string; filePaths: string[] }) => void;
+  onConfirm: (result: {
+    projectPath: string;
+    filePaths: string[];
+    sourceInventory?: import('@contentful/experience-design-system-backend-pipeline').SourceEvidenceInventory;
+  }) => void;
   onChangePath: () => void;
   onBack: () => void;
 }
@@ -72,7 +76,8 @@ export function PathValidationScreen({
 
   usePathValidationControls(phase, {
     onConfirm: () => {
-      if (scan?.ok) onConfirm({ projectPath: resolvedPath, filePaths: scan.filePaths });
+      if (scan?.ok)
+        onConfirm({ projectPath: resolvedPath, filePaths: scan.filePaths, sourceInventory: scan.sourceInventory });
     },
     onChangePath,
     onBack,

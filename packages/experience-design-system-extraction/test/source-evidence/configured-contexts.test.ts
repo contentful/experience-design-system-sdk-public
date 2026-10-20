@@ -109,7 +109,7 @@ it('records deduplicated nearest JSONC and relative array bases with effective n
     expect(capture.files.find((file) => file.fileId === config.fileId)).toMatchObject({
       textHash: config.textHash,
       captured: { kind: 'full' },
-      roles: ['config'],
+      roles: ['config', 'evidence'],
     });
   expect(capture.resolution.find((edge) => edge.specifier === '@parts/widget')?.outcome).toBe('resolved');
   expect(capture.files.filter((file) => file.roles.includes('config'))).toHaveLength(3);

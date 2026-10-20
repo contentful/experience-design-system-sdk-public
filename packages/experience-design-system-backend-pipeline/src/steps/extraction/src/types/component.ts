@@ -90,6 +90,8 @@ export interface RawComponentDefinition {
 }
 
 export interface ComponentExtractionResult {
+  compilerSources?: import('@contentful/experience-design-system-extraction').CompilerLoadedSource[];
+  sourceInventory?: import('@contentful/experience-design-system-extraction').SourceEvidenceInventory;
   components: RawComponentDefinition[];
   warnings: string[];
   exclusions?: ExtractionExclusion[];

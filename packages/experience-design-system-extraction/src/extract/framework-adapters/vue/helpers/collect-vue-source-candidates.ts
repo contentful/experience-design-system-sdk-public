@@ -8,6 +8,7 @@ import type { ExtractorOptions } from '../../../types/options.js';
 import { mergeSourceCandidates, observeRawProps, observeTypeProps } from '../../../candidates/source-candidates.js';
 import { SOURCE_FACT_SCHEMA_VERSION, type ExtractionDiagnostics } from '../../../candidates/types.js';
 import { createCompilerContexts, type CompilerContextResult } from '../../../compiler/context.js';
+import { canonicalSourceFactPath } from '../../../candidates/bind-source-candidates.js';
 import { parseVueObjectProps } from './extract-vue-object-props.js';
 import {
   isVueMacroCall,
@@ -39,7 +40,7 @@ export interface VueSfcCompilerContexts {
 }
 
 export function virtualScriptPath(filePath: string): string {
-  return `${resolve(filePath)}${VIRTUAL_SUFFIX}`;
+  return `${canonicalSourceFactPath(filePath)}${VIRTUAL_SUFFIX}`;
 }
 
 /** Preserve every source line and UTF-16 offset while exposing both SFC script blocks. */
@@ -296,12 +297,12 @@ export function collectVueSourceCandidates(
   options: ExtractorOptions = {},
   compiler?: { project?: Project; diagnostics: ExtractionDiagnostics },
 ): VueSourceCandidateResult {
-  const canonicalSfcPath = resolve(filePath);
+  const canonicalSfcPath = canonicalSourceFactPath(filePath);
   const virtualPath = virtualScriptPath(canonicalSfcPath);
   const localContext = compiler
     ? undefined
     : createVueSfcCompilerContexts([{ filePath, scriptContent, source }], options);
-  const project = compiler?.project ?? localContext?.projectBySfcPath.get(canonicalSfcPath);
+  const project = compiler?.project ?? localContext?.projectBySfcPath.get(resolve(filePath));
   const diagnostics = compiler?.diagnostics ?? localContext!.diagnostics;
   const sourceFile = project?.getSourceFile(virtualPath);
   const observations = [] as ReturnType<typeof observeRawProps>;

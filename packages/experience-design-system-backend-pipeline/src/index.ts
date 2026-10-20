@@ -520,3 +520,5 @@ export {
   loadExistingExplorationContext,
   type ExistingExplorationContext,
 } from './orchestrators/run-exploration-session/helpers/load-existing-context.js';
+export { discoverSourceEvidence } from '@contentful/experience-design-system-extraction';
+export type { SourceEvidenceInventory } from '@contentful/experience-design-system-extraction';

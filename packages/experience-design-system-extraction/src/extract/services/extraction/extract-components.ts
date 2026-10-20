@@ -30,5 +30,7 @@ export async function extractComponents(
     warnings: deduplicated.warnings,
     ...(allExclusions.length > 0 ? { exclusions: allExclusions } : {}),
     ...(extractionDiagnostics ? { extractionDiagnostics } : {}),
+    compilerSources: results.flatMap((result) => result.compilerSources ?? []),
+    sourceInventory: results.find((result) => result.sourceInventory)?.sourceInventory,
   };
 }

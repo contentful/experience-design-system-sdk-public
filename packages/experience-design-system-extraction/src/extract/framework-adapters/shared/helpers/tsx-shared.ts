@@ -1,4 +1,6 @@
 import type { SourceFile } from 'ts-morph';
+import { canonicalSourceFactPath } from '../../../candidates/bind-source-candidates.js';
+import { resolve } from 'node:path';
 import type { ExtractionExclusion } from '../../../types/component.js';
 import type { ExtractionDiagnostics } from '../../../candidates/types.js';
 import type { ExtractorOptions } from '../../../types/options.js';
@@ -36,6 +38,7 @@ export function extractTsxComponents<T>(
   exclusions: ExtractionExclusion[];
   contexts: CompilerContextResult['contexts'];
   extractionDiagnostics: CompilerContextResult['diagnostics'];
+  sourceInventory: CompilerContextResult['sourceInventory'];
 } {
   const extractionContext = getTsxExtractionContext(filePaths, componentFilePattern, options);
   const components: T[] = [];
@@ -70,7 +73,17 @@ export function extractTsxComponents<T>(
           warnings.push(`Failed to parse source ${filePath}`);
           continue;
         }
-        components.push(...extract(sourceFile, exclusions, extractionContext.diagnostics));
+        const extracted = extract(sourceFile, exclusions, extractionContext.diagnostics);
+        const declaredPath = filePaths.find((path) => canonicalSourceFactPath(path) === sourceFile.getFilePath());
+        if (declaredPath)
+          for (const component of extracted) {
+            if (component && typeof component === 'object') {
+              const value = component as Record<string, unknown>;
+              for (const field of ['source', 'sourcePath'])
+                if (value[field] === sourceFile.getFilePath()) value[field] = resolve(declaredPath);
+            }
+          }
+        components.push(...extracted);
       } catch (e) {
         extractionContext.diagnostics.coverage = 'partial';
         extractionContext.diagnostics.modules.push({
@@ -90,5 +103,6 @@ export function extractTsxComponents<T>(
     exclusions,
     contexts: extractionContext.contexts,
     extractionDiagnostics: extractionContext.diagnostics,
+    sourceInventory: extractionContext.sourceInventory,
   };
 }
