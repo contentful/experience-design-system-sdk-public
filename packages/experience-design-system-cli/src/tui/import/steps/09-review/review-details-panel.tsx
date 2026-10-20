@@ -9,6 +9,8 @@ import type {
   ComponentReviewMetadata,
 } from '@contentful/experience-design-system-backend-pipeline';
 import { FixedPanel } from '../07-scope-gate/sidebar/components/windowed-panel.js';
+import { sourceObservationRows } from './components/source-observation-rows.js';
+import { wrapText } from './components/wrap-text.js';
 import { PALETTE } from './theme.js';
 
 type ReviewPanel = 'none' | 'prop-rationale' | 'component-rationale' | 'source' | 'token-review';
@@ -136,20 +138,17 @@ export function ReviewDetailsPanel({
       ...(diagnostics?.projects.flatMap((project) =>
         project.diagnostics.map((message) => `compiler warning: ${project.root}: ${message}`),
       ) ?? []),
-      ...candidates.map(
-        (candidate) =>
-          `candidate ${candidate.name || '<empty>'}: ${candidate.facts?.sourceTypeText ?? candidate.type} · ${candidate.facts?.origin ?? 'unknown'} · ${candidate.facts?.certainty ?? 'unknown'} · projection ${candidate.projection.kind}`,
-      ),
-    ];
+      ...candidates.flatMap((candidate) => [
+        `candidate ${candidate.name || '<empty>'}: ${candidate.facts?.sourceTypeText ?? candidate.type} · ${candidate.facts?.origin ?? 'unknown'} · ${candidate.facts?.certainty ?? 'unknown'} · projection ${candidate.projection.kind}`,
+        ...sourceObservationRows(candidate),
+      ]),
+    ].flatMap((row) => wrapText(row, Math.max(1, width - 4)));
     const scopeRows = reviewMetadata?.scopeProvenance ? 1 : 0;
     // Reserve space for source and navigation before displaying advisory details.
-    const detailCapacity = Math.max(0, height - 8 - scopeRows);
-    const visibleCompilerRows = compilerRows.slice(0, detailCapacity);
-    if (compilerRows.length > detailCapacity && visibleCompilerRows.length > 1) {
-      visibleCompilerRows[visibleCompilerRows.length - 1] =
-        `compiler details: ${compilerRows.length - visibleCompilerRows.length + 1} more rows; field facts are available in the field source view`;
-    }
-    const sourceLineCount = Math.max(1, height - 5 - visibleCompilerRows.length - scopeRows);
+    const detailCapacity = Math.max(0, height - 9 - scopeRows);
+    const detailOffset = Math.max(0, Math.min(panelScrollOffset, Math.max(0, compilerRows.length - detailCapacity)));
+    const visibleCompilerRows = compilerRows.slice(detailOffset, detailOffset + detailCapacity);
+    const sourceLineCount = Math.max(1, height - 6 - visibleCompilerRows.length - scopeRows);
     const lines = source ? source.split('\n').slice(panelScrollOffset, panelScrollOffset + sourceLineCount) : [];
     return (
       <FixedPanel width={width} height={height} borderStyle="single" borderColor={sourceBorderColor} paddingLeft={1}>
@@ -162,6 +161,12 @@ export function ReviewDetailsPanel({
             {row}
           </Text>
         ))}
+        {compilerRows.length > detailCapacity && (
+          <Text
+            color={PALETTE.muted}
+            wrap="truncate-end"
+          >{`compiler details: ${detailOffset + 1}-${detailOffset + visibleCompilerRows.length}/${compilerRows.length} · ↑/↓ scroll`}</Text>
+        )}
         {reviewMetadata?.scopeProvenance && (
           <Text color={PALETTE.muted} wrap="truncate-end">
             {reviewMetadata.scopeProvenance.kind === 'closure'

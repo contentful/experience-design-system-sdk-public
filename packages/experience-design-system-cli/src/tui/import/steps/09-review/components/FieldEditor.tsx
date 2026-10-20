@@ -18,29 +18,14 @@ import type {
 import { useImmediateInput } from '../../07-scope-gate/sidebar/hooks/useImmediateInput.js';
 import { computeNextScrollOffset } from '../scroll-offset.js';
 import { findSlotCycles, type ComponentSlotInfo } from '../../07-scope-gate/graph/cycle-detection.js';
+import { sourceObservationRows, type ReviewSourceCandidate } from './source-observation-rows.js';
 import { FixedPanel } from '../../07-scope-gate/sidebar/components/windowed-panel.js';
 
 type PropMetadata = {
   rationale?: string | null;
   sourceStartLine?: number | null;
   sourceEndLine?: number | null;
-  sourceCandidate?: {
-    type: string;
-    facts?: {
-      sourceTypeText: string;
-      origin: string;
-      certainty: string;
-      declaredRequired: boolean | null;
-      domain: { openness: string };
-      sourceDefault: { expression: string } | null;
-      declarations: Array<{
-        canonicalPath: string | null;
-        startLine: number | null;
-        endLine: number | null;
-        binding: string;
-      }>;
-    } | null;
-  } | null;
+  sourceCandidate?: ReviewSourceCandidate | null;
 };
 
 export type FieldEditorMetadata = {
@@ -2307,6 +2292,7 @@ export function FieldEditor({
           const headerPath = path ?? '<unknown source path>';
           const candidate = propMeta?.sourceCandidate;
           const fact = candidate?.facts;
+          const syntaxRows = candidate ? sourceObservationRows(candidate) : [];
           const declarationLocations = fact?.declarations
             .map(
               (location) =>
@@ -2334,6 +2320,11 @@ export function FieldEditor({
                 {declarationLocations && (
                   <Text color={PALETTE.muted} wrap="truncate-end">{`declarations: ${declarationLocations}`}</Text>
                 )}
+                {syntaxRows.map((row, index) => (
+                  <Text key={`syntax-${index}`} color={PALETTE.muted}>
+                    {row}
+                  </Text>
+                ))}
                 <Text color={PALETTE.muted}>(no source location captured for this prop)</Text>
                 <Text>[s] close</Text>
               </Box>
@@ -2362,6 +2353,11 @@ export function FieldEditor({
               {declarationLocations && (
                 <Text color={PALETTE.muted} wrap="truncate-end">{`declarations: ${declarationLocations}`}</Text>
               )}
+              {syntaxRows.map((row, index) => (
+                <Text key={`syntax-${index}`} color={PALETTE.muted}>
+                  {row}
+                </Text>
+              ))}
               {metadata?.scopeProvenance && (
                 <Text color={PALETTE.muted}>
                   {metadata.scopeProvenance.kind === 'closure'

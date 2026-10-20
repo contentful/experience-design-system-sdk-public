@@ -22,6 +22,7 @@ import { extractSlotsFromTemplate } from './extract-wc-slots.js';
 export type WebComponentClass = ClassDeclaration | ClassExpression;
 const MAX_CLASS_DEPTH = 64;
 const MAX_DECLARATIONS = 2048;
+type BaseEnvironment = ReadonlyMap<string, { node: Node; environment: BaseEnvironment }>;
 
 export function createWebComponentCompilerContexts(filePaths: readonly string[], options: ExtractorOptions = {}) {
   const result = createCompilerContexts(
@@ -130,7 +131,7 @@ export function readWebComponentSyntax(classNode: WebComponentClass, componentSo
   const props = new Map<string, RawPropDefinition>();
   const declaredProps = new Set<string>();
   const slots = new Map<string, RawSlotDefinition>();
-  const visited = new Set<Node>();
+  const visited = new Map<Node, Set<BaseEnvironment>>();
   let declarationCount = 0;
   const report = (node: Node, reason: string) =>
     diagnostics.push({
@@ -473,7 +474,7 @@ export function readWebComponentSyntax(classNode: WebComponentClass, componentSo
   };
   const walk = (
     node: Node,
-    environment: ReadonlyMap<string, Node>,
+    environment: BaseEnvironment,
     lineage: WebComponentSyntaxObservation['lineage'],
     depth: number,
   ) => {
@@ -481,7 +482,7 @@ export function readWebComponentSyntax(classNode: WebComponentClass, componentSo
       report(node, 'wc-inheritance-depth-exhausted');
       return;
     }
-    if (visited.has(node)) {
+    if (visited.get(node)?.has(environment)) {
       report(node, 'wc-inheritance-cycle');
       return;
     }
@@ -492,7 +493,7 @@ export function readWebComponentSyntax(classNode: WebComponentClass, componentSo
     if (Node.isIdentifier(node)) {
       const supplied = environment.get(node.getText());
       if (supplied) {
-        walk(supplied, new Map(), 'base', depth + 1);
+        walk(supplied.node, supplied.environment, 'base', depth + 1);
         return;
       }
       const declarations = wcDeclarations(node);
@@ -504,14 +505,14 @@ export function readWebComponentSyntax(classNode: WebComponentClass, componentSo
       return;
     }
     if (Node.isVariableDeclaration(node)) {
-      visited.add(node);
+      visited.set(node, new Set(visited.get(node)).add(environment));
       const initializer = node.getInitializer();
       if (initializer) walk(initializer, environment, lineage, depth + 1);
       else report(node, 'wc-unresolved-base');
       return;
     }
     if (Node.isCallExpression(node)) {
-      visited.add(node);
+      visited.set(node, new Set(visited.get(node)).add(environment));
       const expression = node.getExpression();
       if (!Node.isIdentifier(expression)) {
         report(node, 'wc-unresolved-mixin');
@@ -526,7 +527,7 @@ export function readWebComponentSyntax(classNode: WebComponentClass, componentSo
         const nextEnvironment = new Map(environment);
         fn.getParameters().forEach((parameter, index) => {
           const argument = node.getArguments()[index];
-          if (argument) nextEnvironment.set(parameter.getName(), argument);
+          if (argument) nextEnvironment.set(parameter.getName(), { node: argument, environment });
         });
         const body = fn.getBody();
         const result =
@@ -540,7 +541,7 @@ export function readWebComponentSyntax(classNode: WebComponentClass, componentSo
       return;
     }
     if (Node.isClassDeclaration(node) || Node.isClassExpression(node)) {
-      visited.add(node);
+      visited.set(node, new Set(visited.get(node)).add(environment));
       const source = node.getSourceFile();
       if (source.isDeclarationFile() && origin(node) === 'inherited-dom') return;
       processClass(node, lineage);
