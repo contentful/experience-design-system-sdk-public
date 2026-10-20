@@ -1,3 +1,5 @@
+import type { SourceClosureCaptureBinding, SourceClosureEvidence } from '../../source-closure/source-evidence.js';
+import { mapSourceClosureLocations } from '../../source-closure/source-evidence.js';
 import type { RawComponentDefinition } from '../types/component.js';
 import { mapSourceObservationLocations } from '../component-facts/map-source-observation-locations.js';
 import type { ComponentFacts } from '../types/component-facts.js';
@@ -155,10 +157,25 @@ function bindComponentFacts(facts: ComponentFacts, captured: ReadonlyMap<string,
   };
 }
 
+/** Recompute binding from accepted captured hashes, independently from summary convergence. */
+export function bindSourceClosureToCapture(
+  evidence: SourceClosureEvidence,
+  capturedFiles: readonly CapturedSourceHash[],
+  identity: SourceClosureCaptureBinding | null = null,
+): SourceClosureEvidence {
+  const captured = new Map(capturedFiles.map((file) => [canonicalPath(file.canonicalPath), file.textHash]));
+  for (const file of capturedFiles)
+    if (!captured.has(resolve(file.canonicalPath))) captured.set(resolve(file.canonicalPath), file.textHash);
+  return {
+    ...mapSourceClosureLocations(evidence, (location) => bindLocation(location, captured)!),
+    captureBinding: identity,
+  };
+}
 /** Bind compiler-read hashes to the exact files in the accepted saved capture. */
 export function bindSourceCandidatesToCapture<T extends RawComponentDefinition>(
   components: readonly T[],
   capturedFiles: readonly CapturedSourceHash[],
+  identity: SourceClosureCaptureBinding | null = null,
 ): T[] {
   const capturedByPath = new Map(capturedFiles.map((file) => [canonicalPath(file.canonicalPath), file.textHash]));
   const normalizedCaptured = new Map(capturedFiles.map((file) => [resolve(file.canonicalPath), file.textHash]));
@@ -168,7 +185,20 @@ export function bindSourceCandidatesToCapture<T extends RawComponentDefinition>(
   return components.map((component) => ({
     ...component,
     ...(component.componentFacts
-      ? { componentFacts: bindComponentFacts(component.componentFacts, capturedByPath) }
+      ? {
+          componentFacts: {
+            ...bindComponentFacts(component.componentFacts, capturedByPath),
+            ...(component.componentFacts.sourceClosure
+              ? {
+                  sourceClosure: bindSourceClosureToCapture(
+                    component.componentFacts.sourceClosure,
+                    capturedFiles,
+                    identity,
+                  ),
+                }
+              : {}),
+          },
+        }
       : {}),
     ...(component.sourceCandidates !== undefined
       ? { sourceCandidates: component.sourceCandidates.map((candidate) => bindCandidate(candidate, capturedByPath)) }

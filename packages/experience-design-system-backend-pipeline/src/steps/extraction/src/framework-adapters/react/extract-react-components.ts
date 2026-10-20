@@ -2085,6 +2085,7 @@ export async function extractReactComponents(
         repositoryRoot: options.projectRoot,
         limits: options.componentObservationLimits,
         signal: options.signal,
+        closureMaxIterations: options.sourceClosureMaxIterations,
       });
     },
     options,
@@ -2257,6 +2258,7 @@ function extractFromSourceFile(
           collectComponentSourceObservations(funcNode, { ...observationOptions, componentBindings: declarations }),
         ...collectors,
       },
+      { maxIterations: observationOptions?.closureMaxIterations, signal: observationOptions?.signal },
     );
     const evidence = componentFacts ? { componentFacts } : {};
     if (params.length === 0) {

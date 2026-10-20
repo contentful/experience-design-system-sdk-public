@@ -56,6 +56,7 @@ export { extractSourceDefaultExpressions } from './extract/framework-adapters/re
 export { SOURCE_FACT_SCHEMA_VERSION, SUPPORTED_SOURCE_FACT_SCHEMA_VERSIONS } from './extract/candidates/types.js';
 export {
   bindSourceCandidatesToCapture,
+  bindSourceClosureToCapture,
   bindCompilerReadsToCapture,
 } from './extract/candidates/bind-source-candidates.js';
 export { mergeExtractionDiagnostics, recordSourceCandidateDiagnostics } from './extract/compiler/diagnostics.js';
@@ -189,3 +190,15 @@ export type {
 
 export { collectReactSourceObservations } from './extract/framework-adapters/react/helpers/collect-react-source-observations.js';
 export { extractTsxComponents } from './extract/framework-adapters/shared/helpers/tsx-shared.js';
+
+export * from './source-closure/index.js';
+export { collectSourceClosure } from './source-closure/source-adapter.js';
+export { SOURCE_CLOSURE_SCHEMA_VERSION, mapSourceClosureLocations } from './source-closure/source-evidence.js';
+export type {
+  SourceClosureCaptureBinding,
+  SourceClosureEvidence,
+  SourceClosureNode,
+  SourceClosureEnd,
+  SourceClosureFact,
+} from './source-closure/source-evidence.js';
+export { readSourceClosure, sourceClosureMatchesObservations } from './source-closure/validation.js';

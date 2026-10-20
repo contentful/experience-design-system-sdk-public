@@ -80,6 +80,7 @@ export interface ComponentSourceObservation {
     | 'annotation'
     | 'throw'
     | 'assertion'
+    | 'jsx-attribute'
     | 'jsx'
     | 'spread';
   expression: string;
@@ -92,6 +93,7 @@ export interface ComponentSourceObservation {
   candidateKeyPath?: string[];
   type?: SourceObservationType;
   operands?: SourceObservationOperand[];
+  destination?: { kind: 'reference' | 'markup-attribute'; name: string };
   operator?: string;
   initializer?: string | null;
   resultUse?: {

@@ -1,6 +1,7 @@
 import type { SourceFactCertainty, SourceFactLocation, SourceFactOrigin } from '../candidates/types.js';
 
 export const COMPONENT_FACT_SCHEMA_VERSION = 2;
+import type { SourceClosureEvidence } from '../../source-closure/source-evidence.js';
 import type { ComponentSourceObservationCollection } from './component-source-observations.js';
 export type ComponentEvidenceReadStatus = 'available' | 'unknown-legacy' | 'corrupt' | 'unsupported';
 
@@ -55,6 +56,7 @@ export interface ReferencedOriginFact extends ComponentFactObservation {
 export interface ComponentFacts {
   schemaVersion: 1 | typeof COMPONENT_FACT_SCHEMA_VERSION;
   sourceObservations?: ComponentSourceObservationCollection;
+  sourceClosure?: SourceClosureEvidence;
   renderables?: RenderableFact[];
   members?: MemberFact[];
   childFilters?: ChildFilterFact[];

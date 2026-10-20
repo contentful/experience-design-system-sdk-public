@@ -90,6 +90,7 @@ export function extractReactComponentFromExport(
         collectComponentSourceObservations(funcNode, { ...observationOptions, componentBindings: declarations }),
       ...collectors,
     },
+    { maxIterations: observationOptions?.closureMaxIterations, signal: observationOptions?.signal },
   );
   const evidence = componentFacts ? { componentFacts } : {};
   if (params.length === 0) {

@@ -1,3 +1,4 @@
+import { validateSavedSourceClosure } from './source-closure-binding.js';
 import {
   validateCDFProperty,
   jsonValueIssue,
@@ -1624,6 +1625,16 @@ export function loadRawComponents(
   const componentFactsByComponent = new Map<string, ComponentFactsRead>(
     sourceEvidenceRows.map((row) => [row.component_id, readComponentFactsJson(row.component_facts_json)]),
   );
+  if ([...componentFactsByComponent.values()].some((read) => read.facts?.sourceClosure)) {
+    const source = loadCompletedSourceEvidence(db, sessionId);
+    for (const [id, read] of componentFactsByComponent) {
+      if (read.facts?.sourceClosure)
+        componentFactsByComponent.set(id, {
+          ...read,
+          facts: { ...read.facts, sourceClosure: validateSavedSourceClosure(read.facts.sourceClosure, source) },
+        });
+    }
+  }
   const sourceEvidenceByComponent = new Map<
     string,
     {
@@ -3381,11 +3392,17 @@ export function completeExtractionWithSourceEvidence(
     return raw;
   });
   // Unavailable sidecars retain their read status without preventing valid candidate binding and final save.
-  const boundComponents = bindSourceCandidatesToCapture(bindingComponents, input.capture.files).map(
-    (component, index) =>
-      unavailableComponentFacts.has(index)
-        ? { ...component, componentFacts: unavailableComponentFacts.get(index) }
-        : component,
+  const boundComponents = bindSourceCandidatesToCapture(bindingComponents, input.capture.files, {
+    captureId: envelope.capture.captureId,
+    captureDigest: envelope.capture.digest,
+    envelopeId: envelope.envelopeId,
+    envelopeDigest: envelope.digest,
+    sessionId: envelope.sessionId,
+    extractionStepId: envelope.extractionStepId,
+  }).map((component, index) =>
+    unavailableComponentFacts.has(index)
+      ? { ...component, componentFacts: unavailableComponentFacts.get(index) }
+      : component,
   );
 
   db.exec('BEGIN');

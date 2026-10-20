@@ -1,7 +1,5 @@
-import type {
-  ComponentObservationLimits,
-  ComponentFactCollectors,
-} from '@contentful/experience-design-system-extraction';
+import type { ExtractorOptions } from '@contentful/experience-design-system-extraction';
+export type { ExtractorOptions } from '@contentful/experience-design-system-extraction';
 import type { ComponentFacts, ComponentEvidenceReadStatus } from '@contentful/experience-design-system-extraction';
 export type ExtractionValidationIssueCode =
   | 'EMPTY_COMPONENT_NAME'
@@ -111,26 +109,6 @@ export type ExtractorProgress = {
   filesProcessed: number;
   componentsFound: number;
 };
-
-/**
- * Optional extraction-time settings forwarded from the CLI through the
- * pipeline to each extractor; supported settings are consumed by each adapter.
- */
-export interface ExtractorOptions {
-  /** Optional field-local component observation collectors; overrides replace the React default field collector. */
-  componentFactCollectors?: ComponentFactCollectors;
-  componentObservationLimits?: Partial<ComponentObservationLimits>;
-  /**
-   * Whether the Svelte extractor should run a retry pass for components whose
-   * declared Props type couldn't be resolved on the first pass (cross-package
-   * extends, path-alias-only types, etc.). See svelte.ts for the policy.
-   */
-  resolveUnreachable?: 'auto' | 'always' | 'never';
-  /** Absolute project root — used by the retry pass to locate tsconfig.json and node_modules. */
-  projectRoot?: string;
-  /** Optional cooperative cancellation for bounded compiler analysis. */
-  signal?: AbortSignal;
-}
 
 export interface ComponentExtractor {
   name: string;

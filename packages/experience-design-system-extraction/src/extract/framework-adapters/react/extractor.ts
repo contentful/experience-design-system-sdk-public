@@ -35,6 +35,7 @@ export async function extractReactComponents(
         repositoryRoot: options.projectRoot,
         limits: options.componentObservationLimits,
         signal: options.signal,
+        closureMaxIterations: options.sourceClosureMaxIterations,
       });
     },
     options,

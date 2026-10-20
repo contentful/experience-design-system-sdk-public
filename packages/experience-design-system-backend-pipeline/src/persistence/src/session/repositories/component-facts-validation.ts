@@ -2,6 +2,9 @@ import { z } from 'zod';
 import { jsonValueIssue } from '@contentful/experience-design-system-types';
 import {
   COMPONENT_FACT_SCHEMA_VERSION,
+  readSourceClosure,
+  sourceClosureMatchesObservations,
+  type SourceClosureEvidence,
   type ComponentFacts,
   type ComponentEvidenceReadStatus,
 } from '@contentful/experience-design-system-extraction';
@@ -141,6 +144,7 @@ const sourceObservations = z
             'throw',
             'assertion',
             'jsx',
+            'jsx-attribute',
             'spread',
           ]),
           expression: z.string(),
@@ -174,6 +178,10 @@ const sourceObservations = z
             .strict()
             .optional(),
           operands: z.array(operand).optional(),
+          destination: z
+            .object({ kind: z.enum(['reference', 'markup-attribute']), name: z.string() })
+            .strict()
+            .optional(),
           operator: z.string().optional(),
           initializer: z.string().nullable().optional(),
           resultUse: z
@@ -274,6 +282,9 @@ const facts = z.union([
     .extend({
       schemaVersion: z.literal(COMPONENT_FACT_SCHEMA_VERSION),
       sourceObservations: sourceObservations.optional(),
+      sourceClosure: z
+        .custom<SourceClosureEvidence>((value) => readSourceClosure(value).status === 'available')
+        .optional(),
     })
     .strict(),
 ]);
@@ -305,7 +316,22 @@ export function readComponentFacts(value: unknown): ComponentFactsRead {
     )
       return { status: 'unsupported' };
   }
+  if (
+    value &&
+    typeof value === 'object' &&
+    'sourceClosure' in value &&
+    readSourceClosure(value.sourceClosure).status === 'unsupported'
+  )
+    return { status: 'unsupported' };
   const validated = facts.safeParse(value);
+  if (
+    validated.success &&
+    validated.data.schemaVersion === COMPONENT_FACT_SCHEMA_VERSION &&
+    validated.data.sourceClosure &&
+    (!validated.data.sourceObservations ||
+      !sourceClosureMatchesObservations(validated.data.sourceClosure, validated.data.sourceObservations))
+  )
+    return { status: 'corrupt' };
   return validated.success ? { status: 'available', facts: validated.data } : { status: 'corrupt' };
 }
 

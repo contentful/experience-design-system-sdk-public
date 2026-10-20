@@ -1,3 +1,4 @@
+import { collectSourceClosure } from '../../source-closure/source-adapter.js';
 import { sourceTextLocation } from '../candidates/source-location.js';
 import { COMPONENT_FACT_SCHEMA_VERSION } from '../types/component-facts.js';
 import type {
@@ -11,6 +12,7 @@ import type {
 export function assembleComponentFacts(
   input: ComponentFactInput,
   collectors: ComponentFactCollectors = {},
+  options: { maxIterations?: number; signal?: AbortSignal } = {},
 ): ComponentFacts | undefined {
   const context: ComponentFactContext = {
     name: input.name,
@@ -26,6 +28,8 @@ export function assembleComponentFacts(
     if (value !== undefined && (!Array.isArray(value) || value.length > 0)) facts[field] = value;
   }
   collect('sourceObservations');
+  if (facts.sourceObservations) facts.sourceClosure = collectSourceClosure(facts.sourceObservations, options);
+  collect('sourceClosure');
   collect('renderables');
   collect('members');
   collect('childFilters');

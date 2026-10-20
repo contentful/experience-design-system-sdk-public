@@ -389,6 +389,27 @@ React components commonly extend `HTMLAttributes<T>`, `ButtonHTMLAttributes<T>`,
 
 ---
 
+## Source closure evidence
+
+The two default React extraction fronts use the shared component-fact assembly path to adapt bounded compiler observations into `ComponentFacts.sourceClosure` (schema version 1).
+The generic `source-closure/index` seam provides deduplicated reachable reads, iterative deterministic strongly connected ordering, memoized acyclic summaries and a finite cyclic fixpoint.
+Proof strength (`exact`, `inferred`, `unknown`), used-open dependence, lexical observation identity and provenance are separate fields; no strength represents authoring eligibility.
+
+Summaries reference observations already carried in `sourceObservations`, retaining direct and transitive lexical evidence without copying compiler objects or mutating declared props, candidates, slots or DOM facts.
+The syntax reader keeps conditional callee alternatives and distinct reference and markup destinations; unsupported bodies, unresolved targets, resource omissions and external or input-supplied dependencies remain explicit.
+This contract does not establish runtime execution, complete output flow, caller-value contracts or finite slot domains.
+
+The strict public guard is reused by the backend sidecar reader, which also checks observation membership against the same source snapshot.
+Completed extraction binds declaration hashes and the capture/session/step/envelope identity in the existing transaction.
+Reopen validates that identity and recomputes hash binding from saved capture receipts before actual selection, generation and review consumers receive the evidence.
+Uncaptured, changed or unverified source and failed closure remain explicit; a converged fixpoint cannot improve source binding or completed-source readiness.
+After successful completion, saved bytes remain the source snapshot even if the files on disk subsequently change.
+
+Generic fact equality supports immutable acyclic finite primitives, arrays, maps, sets and plain records; persistence accepts only plain JSON evidence.
+In-place value mutation, arbitrary class instances and cyclic values are unsupported.
+Cycle iterations are finite and configurable with `sourceClosureMaxIterations`; existing observation/compiler/capture budgets and cooperative cancellation remain separate from total graph size, compiler latency and nested equality work.
+The new summaries travel in the existing compiler evidence channel, while shared-source text projection continues to account for its existing bounded files and omissions.
+
 ## Internal Generation
 
 The CLI resolves the component, token, and selection skill files from its packaged `skills/` assets and passes those paths to backend-pipeline operations. The CLI build copies the primary markdown sources from `packages/experience-design-system-generation/skills/`; matching fallback copies live under `packages/experience-design-system-backend-pipeline/src/agents/skills/`.

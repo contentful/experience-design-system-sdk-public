@@ -25,6 +25,7 @@ export interface ComponentSourceObservationOptions {
   repositoryRoot?: string;
   limits?: Partial<ComponentObservationLimits>;
   signal?: AbortSignal;
+  closureMaxIterations?: number;
   componentBindings?: readonly MorphNode[];
 }
 function isCallable(
@@ -190,6 +191,26 @@ export function collectComponentSourceObservations(
       ],
     };
   }
+  function calleeAlternatives(expression: ts.Expression, depth = 0): ts.Expression[] {
+    if (depth > limits.maxDepth) {
+      reader.omit('maxDepth-limit', expression);
+      return [expression];
+    }
+    if (ts.isParenthesizedExpression(expression)) return calleeAlternatives(expression.expression, depth + 1);
+    if (ts.isConditionalExpression(expression))
+      return [
+        ...calleeAlternatives(expression.whenTrue, depth + 1),
+        ...calleeAlternatives(expression.whenFalse, depth + 1),
+      ];
+    if (
+      ts.isBinaryExpression(expression) &&
+      [ts.SyntaxKind.BarBarToken, ts.SyntaxKind.AmpersandAmpersandToken, ts.SyntaxKind.QuestionQuestionToken].includes(
+        expression.operatorToken.kind,
+      )
+    )
+      return [...calleeAlternatives(expression.left, depth + 1), ...calleeAlternatives(expression.right, depth + 1)];
+    return [expression];
+  }
   function enqueueReferenced(callee: ts.Node, depth: number): void {
     const symbol = reader.checker.getSymbolAtLocation(ts.isPropertyAccessExpression(callee) ? callee.name : callee);
     for (const declaration of reader.declarations(symbol, callee)) {
@@ -274,13 +295,13 @@ export function collectComponentSourceObservations(
       emit('call', site, lexical, {
         subject: reader.symbol(site.expression),
         operands: [
-          operand(site.expression, 'callee'),
+          ...calleeAlternatives(site.expression).map((alternative) => operand(alternative, 'callee')),
           ...(site.arguments ?? []).map((arg, index) => operand(arg, 'argument', index)),
         ],
         type: reader.callType(site),
         resultUse: resultUse(site, reader),
       });
-      enqueueReferenced(site.expression, depth);
+      for (const alternative of calleeAlternatives(site.expression)) enqueueReferenced(alternative, depth);
     }
     if (ts.isReturnStatement(site))
       emit('return', site, lexical, { operands: site.expression ? [operand(site.expression, 'value')] : [] });
@@ -339,8 +360,21 @@ export function collectComponentSourceObservations(
       ts.isSatisfiesExpression(site)
     )
       emit('assertion', site, lexical, { type: reader.type(site), operands: [operand(site.expression, 'value')] });
-    if (ts.isJsxOpeningElement(site) || ts.isJsxSelfClosingElement(site))
+    if (ts.isJsxOpeningElement(site) || ts.isJsxSelfClosingElement(site)) {
       emit('jsx', site, lexical, { subject: reader.symbol(site.tagName), operands: [operand(site.tagName, 'target')] });
+      enqueueReferenced(site.tagName, depth);
+    }
+    if (ts.isJsxAttribute(site))
+      emit('jsx-attribute', site, lexical, {
+        destination: {
+          kind: site.name.getText() === 'ref' ? 'reference' : 'markup-attribute',
+          name: site.name.getText(),
+        },
+        operands:
+          site.initializer && ts.isJsxExpression(site.initializer) && site.initializer.expression
+            ? [operand(site.initializer.expression, 'value')]
+            : [],
+      });
     if (ts.isSpreadAssignment(site) || ts.isSpreadElement(site) || ts.isJsxSpreadAttribute(site))
       emit('spread', site, lexical, { operands: [operand(site.expression, 'value')] });
     if (ts.isIfStatement(site) || ts.isConditionalExpression(site)) {

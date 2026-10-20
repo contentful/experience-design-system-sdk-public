@@ -7,6 +7,7 @@ import type { ComponentFactCollectors } from './component-facts.js';
 export interface ExtractorOptions {
   /** Optional field-local component observation collectors; overrides replace the React default field collector. */
   componentFactCollectors?: ComponentFactCollectors;
+  sourceClosureMaxIterations?: number;
   componentObservationLimits?: Partial<ComponentObservationLimits>;
   /**
    * Whether the Svelte extractor should run a retry pass for components whose
