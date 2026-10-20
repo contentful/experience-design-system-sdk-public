@@ -116,4 +116,16 @@ describe('React source candidates', () => {
       sourceDefault: { expression: 'false' },
     });
   });
+  it('distinguishes known required advisory omission from unavailable source shape', async () => {
+    const files = fixture({
+      'Summary.tsx': `type Props = { complete: { required: string; optional?: number }; loss: { required: () => void; optional?: string }; unavailable: unknown }; export function Summary(props: Props) { return <div/>; }`,
+    });
+    const candidates = (await extractReactComponents(files)).components[0]!.sourceCandidates!;
+    expect(candidates.find((candidate) => candidate.name === 'complete')?.facts?.requiredFieldDropped).toBe(false);
+    expect(candidates.find((candidate) => candidate.name === 'loss')?.facts).toMatchObject({
+      requiredFieldDropped: true,
+      advisoryShape: null,
+    });
+    expect(candidates.find((candidate) => candidate.name === 'unavailable')?.facts?.requiredFieldDropped).toBeNull();
+  });
 });

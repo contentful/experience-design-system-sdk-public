@@ -228,7 +228,7 @@ export function observeTypeProps(
       advisoryShape: resolved?.shape ?? null,
       ...(resolved ? { sourceGraph: resolved.graph } : {}),
       shapeNotes: resolved?.notes ?? ['source-type-location-unavailable'],
-      requiredFieldDropped: null,
+      requiredFieldDropped: resolved?.requiredFieldDropped ?? null,
     };
     return {
       name: prop.name,

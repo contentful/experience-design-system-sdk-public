@@ -3,7 +3,10 @@ import { dirname, join, resolve } from 'node:path';
 import { Node, Project, SyntaxKind, type SourceFile, type Type } from 'ts-morph';
 import ts from 'typescript';
 import type { ExtractionExclusion, ExtractorOptions } from '../../types/component.js';
-import { createCompilerContexts } from '@contentful/experience-design-system-extraction';
+import {
+  createCompilerContexts,
+  extractTsxComponents as sharedExtractTsxComponents,
+} from '@contentful/experience-design-system-extraction';
 
 type WorkspacePackageManifest = {
   name: string;
@@ -23,43 +26,7 @@ export function getTsxExtractionContext(
   return createCompilerContexts(filePaths, componentFilePattern, options);
 }
 
-export function extractTsxComponents<T>(
-  filePaths: string[],
-  componentFilePattern: RegExp,
-  extract: (sourceFile: SourceFile, exclusions: ExtractionExclusion[]) => T[],
-  options: ExtractorOptions = {},
-): {
-  components: T[];
-  warnings: string[];
-  exclusions: ExtractionExclusion[];
-  contexts: ReturnType<typeof createCompilerContexts>['contexts'];
-  extractionDiagnostics: ReturnType<typeof createCompilerContexts>['diagnostics'];
-} {
-  const extractionContext = getTsxExtractionContext(filePaths, componentFilePattern, options);
-  const components: T[] = [];
-  const warnings: string[] = [];
-  const exclusions: ExtractionExclusion[] = [];
-
-  for (const context of extractionContext.contexts) {
-    for (const filePath of context.componentFiles) {
-      try {
-        const sourceFile = context.project.getSourceFile(filePath);
-        if (!sourceFile) continue;
-        components.push(...extract(sourceFile, exclusions));
-      } catch (e) {
-        warnings.push(`Failed to extract from ${filePath}: ${e instanceof Error ? e.message : String(e)}`);
-      }
-    }
-  }
-
-  return {
-    components,
-    warnings,
-    exclusions,
-    contexts: extractionContext.contexts,
-    extractionDiagnostics: extractionContext.diagnostics,
-  };
-}
+export const extractTsxComponents = sharedExtractTsxComponents;
 
 export function resolveDefaultExportName(
   declarations: Node[],

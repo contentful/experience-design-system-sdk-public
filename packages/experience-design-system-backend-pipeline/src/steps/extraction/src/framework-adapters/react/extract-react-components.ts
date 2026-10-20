@@ -40,8 +40,9 @@ import {
 } from '../../helpers/evidence/structural-slot-evidence.js';
 import {
   mergeSourceCandidates,
-  observeRawProps,
-  observeTypeProps,
+  collectReactSourceObservations,
+  recordSourceCandidateDiagnostics,
+  type ExtractionDiagnostics,
   SOURCE_FACT_SCHEMA_VERSION,
   extractSourceDefaultExpressions,
 } from '@contentful/experience-design-system-extraction';
@@ -2071,11 +2072,11 @@ export async function extractReactComponents(
   const { components, warnings, exclusions, contexts, extractionDiagnostics } = extractTsxComponents(
     filePaths,
     /\.[jt]sx$/,
-    (sourceFile, exclusions) => {
+    (sourceFile, exclusions, diagnostics) => {
       if (isStencilFile(sourceFile)) return [];
       const fileExports = [...sourceFile.getExportedDeclarations().keys()];
       const isNext = isNextJsComponent(sourceFile.getFilePath(), fileExports);
-      return extractFromSourceFile(sourceFile, isNext, exclusions);
+      return extractFromSourceFile(sourceFile, isNext, exclusions, diagnostics);
     },
     options,
   );
@@ -2212,6 +2213,7 @@ function extractFromSourceFile(
   sourceFile: SourceFile,
   isNext: boolean,
   exclusions: ExtractionExclusion[],
+  diagnostics?: ExtractionDiagnostics,
 ): RawComponentDefinitionInternal[] {
   const components: RawComponentDefinitionInternal[] = [];
   const usesCreateContext = sourceFileUsesCreateContext(sourceFile);
@@ -2338,16 +2340,18 @@ function extractFromSourceFile(
     });
     const finalSlots = [...slots, ...expandedSlots];
     const sourceCandidateResult = mergeSourceCandidates(
-      [
-        ...observeTypeProps(firstParamType, props, sourceFile.getFilePath(), { sourceDefaults }),
-        ...observeRawProps(syntheticDomProps, 'declaration', { origin: 'inherited-dom' }),
-        ...observeRawProps(implementationPrimitiveDomProps, 'implementation', { sourceDefaults }),
-        ...observeRawProps(bindingFallbackProps, 'binding', { sourceDefaults }),
-        ...(finalProps === resolvedProps ? [] : observeRawProps(finalProps, 'runtime-object', { sourceDefaults })),
-      ],
+      collectReactSourceObservations(firstParamType, props, sourceFile.getFilePath(), funcNode, params[0], {
+        suppressProps: resolvedPropsType.suppressProps,
+        renderPropSlotNames,
+        syntheticDomProps,
+        sourceDefaults,
+        runtimeProps: finalProps === resolvedProps ? [] : finalProps,
+      }),
       propsAfterSlotExpansion,
       finalSlots,
     );
+
+    recordSourceCandidateDiagnostics(diagnostics, sourceFile.getFilePath(), name, sourceCandidateResult);
 
     const propsTypeName = firstParamTypeNode?.getText?.().trim();
     const propsTypeNameCapture = propsTypeName && /^[A-Za-z_$][\w$]*$/.test(propsTypeName) ? propsTypeName : undefined;

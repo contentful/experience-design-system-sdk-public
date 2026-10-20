@@ -1,5 +1,6 @@
 import type { SourceFile } from 'ts-morph';
 import type { ExtractionExclusion } from '../../../types/component.js';
+import type { ExtractionDiagnostics } from '../../../candidates/types.js';
 import type { ExtractorOptions } from '../../../types/options.js';
 import { createCompilerContexts, type CompilerContextResult } from '../../../compiler/context.js';
 
@@ -27,7 +28,7 @@ export function getTsxExtractionContext(
 export function extractTsxComponents<T>(
   filePaths: string[],
   componentFilePattern: RegExp,
-  extract: (sourceFile: SourceFile, exclusions: ExtractionExclusion[]) => T[],
+  extract: (sourceFile: SourceFile, exclusions: ExtractionExclusion[], diagnostics: ExtractionDiagnostics) => T[],
   options: ExtractorOptions = {},
 ): {
   components: T[];
@@ -43,11 +44,41 @@ export function extractTsxComponents<T>(
 
   for (const context of extractionContext.contexts) {
     for (const filePath of context.componentFiles) {
+      if (options.signal?.aborted) {
+        extractionContext.diagnostics.coverage = 'partial';
+        extractionContext.diagnostics.modules.push({
+          specifier: 'compiler-analysis',
+          fromPath: filePath,
+          outcome: 'unavailable',
+          reason: 'compiler-analysis-cancelled',
+        });
+        continue;
+      }
       try {
         const sourceFile = context.project.getSourceFile(filePath);
         if (!sourceFile) continue;
-        components.push(...extract(sourceFile, exclusions));
+        const parseDiagnostics = (sourceFile.compilerNode as unknown as { parseDiagnostics?: readonly unknown[] })
+          .parseDiagnostics;
+        if (parseDiagnostics?.length) {
+          extractionContext.diagnostics.coverage = 'partial';
+          extractionContext.diagnostics.modules.push({
+            specifier: 'compiler-analysis',
+            fromPath: filePath,
+            outcome: 'unavailable',
+            reason: 'compiler-source-parse-failed',
+          });
+          warnings.push(`Failed to parse source ${filePath}`);
+          continue;
+        }
+        components.push(...extract(sourceFile, exclusions, extractionContext.diagnostics));
       } catch (e) {
+        extractionContext.diagnostics.coverage = 'partial';
+        extractionContext.diagnostics.modules.push({
+          specifier: 'compiler-analysis',
+          fromPath: filePath,
+          outcome: 'unavailable',
+          reason: 'compiler-source-reader-throw',
+        });
         warnings.push(`Failed to extract from ${filePath}: ${e instanceof Error ? e.message : String(e)}`);
       }
     }

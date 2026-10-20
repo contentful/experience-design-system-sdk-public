@@ -1,3 +1,4 @@
+import type { ExtractionDiagnostics } from '../../../candidates/types.js';
 import { SyntaxKind, type SourceFile } from 'ts-morph';
 import type { ExtractionExclusion } from '../../../types/component.js';
 import { getRenderableExports } from '../../shared/helpers/tsx-shared.js';
@@ -18,6 +19,7 @@ export function extractFromReactSourceFile(
   sourceFile: SourceFile,
   isNext: boolean,
   exclusions: ExtractionExclusion[],
+  diagnostics?: ExtractionDiagnostics,
 ): RawComponentDefinitionInternal[] {
   const components: RawComponentDefinitionInternal[] = [];
   const usesCreateContext = sourceFileUsesCreateContext(sourceFile);
@@ -26,7 +28,14 @@ export function extractFromReactSourceFile(
     allowVariableDeclaration: true,
     hookReason: 'React hook names are not renderable components',
   })) {
-    const component = extractReactComponentFromExport(name, declarations, sourceFile, isNext, usesCreateContext);
+    const component = extractReactComponentFromExport(
+      name,
+      declarations,
+      sourceFile,
+      isNext,
+      usesCreateContext,
+      diagnostics,
+    );
     if (component) components.push(component);
   }
 

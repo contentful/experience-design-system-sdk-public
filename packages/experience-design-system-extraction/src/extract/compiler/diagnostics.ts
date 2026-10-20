@@ -1,4 +1,4 @@
-import type { ExtractionDiagnostics } from '../candidates/types.js';
+import type { ExtractionDiagnostics, SourceCandidateCollection } from '../candidates/types.js';
 
 function uniqueByJson<T>(values: readonly T[]): T[] {
   const unique = new Map(values.map((value) => [JSON.stringify(value), value]));
@@ -8,7 +8,7 @@ function uniqueByJson<T>(values: readonly T[]): T[] {
 export function mergeExtractionDiagnostics(
   values: readonly (ExtractionDiagnostics | undefined)[],
 ): ExtractionDiagnostics | undefined {
-  const available = values.filter((value): value is ExtractionDiagnostics => value !== undefined);
+  const available = uniqueByJson(values.filter((value): value is ExtractionDiagnostics => value !== undefined));
   if (available.length === 0) return undefined;
 
   const limits: Record<string, number> = {};
@@ -32,4 +32,25 @@ export function mergeExtractionDiagnostics(
     limits,
     used,
   };
+}
+
+export function recordSourceCandidateDiagnostics(
+  diagnostics: ExtractionDiagnostics | undefined,
+  sourcePath: string,
+  componentName: string,
+  result: SourceCandidateCollection,
+): void {
+  if (!diagnostics) return;
+  const receipt = {
+    specifier: `source-candidates:${componentName}`,
+    fromPath: sourcePath,
+    outcome: result.omittedCount ? ('unavailable' as const) : ('resolved' as const),
+    reason: result.omittedCount ? `source-candidate-budget-exhausted:${result.omittedCount}` : null,
+  };
+  if (diagnostics.modules.some((item) => JSON.stringify(item) === JSON.stringify(receipt))) return;
+  diagnostics.modules.push(receipt);
+  diagnostics.limits.maxSourceCandidates = 2048;
+  diagnostics.used.sourceCandidates = (diagnostics.used.sourceCandidates ?? 0) + result.candidates.length;
+  diagnostics.used.sourceCandidatesOmitted = (diagnostics.used.sourceCandidatesOmitted ?? 0) + result.omittedCount;
+  if (result.omittedCount) diagnostics.coverage = 'partial';
 }

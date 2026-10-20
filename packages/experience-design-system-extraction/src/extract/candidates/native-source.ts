@@ -121,7 +121,7 @@ export function captureNativeSource(
   fallback: Node,
   required: boolean,
   keyPath: string[],
-): { graph: SourceTypeGraph; shape: NativeSourceShape | null; notes: string[] } {
+): { graph: SourceTypeGraph; shape: NativeSourceShape | null; notes: string[]; requiredFieldDropped: boolean | null } {
   const graph: SourceTypeGraph = {
     schemaVersion: 1,
     rootId: '',
@@ -132,6 +132,7 @@ export function captureNativeSource(
   };
   const ancestors = new Map<object, string>();
   let fieldCount = 0;
+  let knownRequiredFieldDropped = false;
   const walk = (
     t: Type,
     at: Node,
@@ -275,7 +276,10 @@ export function captureNativeSource(
                 .join('');
             if (description) field.shape.$description = description;
             fields[symbol.getName()] = field.shape;
-          } else all = false;
+          } else {
+            all = false;
+            if (!symbol.isOptional()) knownRequiredFieldDropped = true;
+          }
         }
         node.indexSignatures = [];
         for (const [key, index] of [
@@ -307,6 +311,11 @@ export function captureNativeSource(
   return {
     graph,
     shape: result.shape,
+    requiredFieldDropped: knownRequiredFieldDropped
+      ? true
+      : graph.coverage === 'complete-within-declared-bound' && result.shape
+        ? false
+        : null,
     notes: graph.nodes.flatMap((node) => (node.reason ? [`${node.id}: ${node.reason}`] : [])),
   };
 }

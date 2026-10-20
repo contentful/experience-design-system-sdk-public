@@ -19,7 +19,7 @@ export {
 export { extractSourceDefaultExpressions } from './extract/framework-adapters/react/helpers/extract-react-binding-defaults.js';
 export { SOURCE_FACT_SCHEMA_VERSION, SUPPORTED_SOURCE_FACT_SCHEMA_VERSIONS } from './extract/candidates/types.js';
 export { bindSourceCandidatesToCapture } from './extract/candidates/bind-source-candidates.js';
-export { mergeExtractionDiagnostics } from './extract/compiler/diagnostics.js';
+export { mergeExtractionDiagnostics, recordSourceCandidateDiagnostics } from './extract/compiler/diagnostics.js';
 export { createCompilerContexts } from './extract/compiler/context.js';
 export type {
   CompilerPropFact,
@@ -153,3 +153,6 @@ export type {
   SourceTypeNode,
   SourceJsonValue,
 } from './extract/candidates/types.js';
+
+export { collectReactSourceObservations } from './extract/framework-adapters/react/helpers/collect-react-source-observations.js';
+export { extractTsxComponents } from './extract/framework-adapters/shared/helpers/tsx-shared.js';

@@ -26,11 +26,11 @@ export async function extractReactComponents(
   const { components, warnings, exclusions, contexts, extractionDiagnostics } = extractTsxComponents(
     filePaths,
     /\.[jt]sx$/,
-    (sourceFile, exclusions) => {
+    (sourceFile, exclusions, diagnostics) => {
       if (isStencilFile(sourceFile)) return [];
       const fileExports = [...sourceFile.getExportedDeclarations().keys()];
       const isNext = isNextJsComponent(sourceFile.getFilePath(), fileExports);
-      return extractFromReactSourceFile(sourceFile, isNext, exclusions);
+      return extractFromReactSourceFile(sourceFile, isNext, exclusions, diagnostics);
     },
     options,
   );

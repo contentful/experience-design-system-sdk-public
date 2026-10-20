@@ -20,7 +20,10 @@ import {
 } from './extract-react-binding-defaults.js';
 import { inferPrimitiveDomPropsFromImplementation, hasImplementationChildrenHint } from './collect-react-impl-hints.js';
 import { extractPropTypes } from './extract-react-prop-types.js';
-import { mergeSourceCandidates, observeRawProps, observeTypeProps } from '../../../candidates/source-candidates.js';
+import { mergeSourceCandidates } from '../../../candidates/source-candidates.js';
+import { collectReactSourceObservations } from './collect-react-source-observations.js';
+import { recordSourceCandidateDiagnostics } from '../../../compiler/diagnostics.js';
+import type { ExtractionDiagnostics } from '../../../candidates/types.js';
 import { SOURCE_FACT_SCHEMA_VERSION } from '../../../candidates/types.js';
 
 const REACT_ELEMENT_GENERIC_TEST = /(?:React\.)?ReactElement\s*<\s*[A-Za-z_$][\w$.]*/;
@@ -43,6 +46,7 @@ export function extractReactComponentFromExport(
   sourceFile: SourceFile,
   isNext: boolean,
   usesCreateContext: boolean,
+  diagnostics?: ExtractionDiagnostics,
 ): RawComponentDefinitionInternal | null {
   const funcNode = resolveBestFunctionNode(declarations);
   if (!funcNode) return null;
@@ -137,16 +141,18 @@ export function extractReactComponentFromExport(
     return true;
   });
   const sourceCandidateResult = mergeSourceCandidates(
-    [
-      ...observeTypeProps(firstParamType, props, source, { sourceDefaults }),
-      ...observeRawProps(syntheticDomProps, 'declaration', { origin: 'inherited-dom' }),
-      ...observeRawProps(allImplementationPrimitiveDomProps, 'implementation'),
-      ...observeRawProps(sourceBindingFallbackProps, 'binding', { sourceDefaults }),
-      ...(finalProps === resolvedProps ? [] : observeRawProps(finalProps, 'runtime-object', { sourceDefaults })),
-    ],
+    collectReactSourceObservations(firstParamType, props, source, funcNode, params[0], {
+      suppressProps: resolvedPropsType.suppressProps,
+      renderPropSlotNames,
+      syntheticDomProps,
+      sourceDefaults,
+      runtimeProps: finalProps === resolvedProps ? [] : finalProps,
+    }),
     propsAfterSlotExpansion,
     [...slots, ...expandedSlots],
   );
+
+  recordSourceCandidateDiagnostics(diagnostics, source, name, sourceCandidateResult);
 
   const propsTypeName = firstParamTypeNode?.getText?.().trim();
   const propsTypeNameCapture = propsTypeName && /^[A-Za-z_$][\w$]*$/.test(propsTypeName) ? propsTypeName : undefined;
