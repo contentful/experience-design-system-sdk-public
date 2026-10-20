@@ -82,8 +82,8 @@ export function CredentialsScreen({
 
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
-      <Box flexDirection="column">
-        <Text bold>Contentful credentials</Text>
+      <Box flexDirection="column" gap={1}>
+        <Text bold>Contentful Credentials</Text>
         <Text>
           {prefilled
             ? 'Credentials pre-filled from the configuration settings.'

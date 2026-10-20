@@ -10,7 +10,6 @@ import { useElapsed } from './use-elapsed.js';
 
 interface RunningStepProps {
   step: ImportStepId;
-  title?: string;
   description: string;
   lines?: readonly RunningLine[];
 }
@@ -43,23 +42,24 @@ function Line({ line }: { line: RunningLine }): React.ReactElement {
 
 export function RunningStep({
   step,
-  title,
   description,
   lines = [{ text: 'Running...' }],
 }: RunningStepProps): React.ReactElement {
   const elapsed = useElapsed();
 
   return (
-    <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
-      <StepHeader step={step} {...(title ? { title } : {})} />
-      <Text>{description}</Text>
-      <Box marginTop={1} flexDirection="column" gap={1}>
-        {lines.map((line, index) => (
-          <Line key={index} line={line} />
-        ))}
-      </Box>
-      <Box marginTop={1}>
-        <Text color={PALETTE.muted}>Elapsed: {elapsed}</Text>
+    <Box flexDirection="column">
+      <StepHeader step={step} />
+      <Box flexDirection="column" gap={1} paddingX={2} paddingBottom={1}>
+        <Text>{description}</Text>
+        <Box marginTop={1} flexDirection="column" gap={1}>
+          {lines.map((line, index) => (
+            <Line key={index} line={line} />
+          ))}
+        </Box>
+        <Box marginTop={1}>
+          <Text color={PALETTE.muted}>Elapsed: {elapsed}</Text>
+        </Box>
       </Box>
     </Box>
   );

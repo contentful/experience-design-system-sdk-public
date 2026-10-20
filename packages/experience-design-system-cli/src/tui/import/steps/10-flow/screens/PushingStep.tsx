@@ -20,42 +20,43 @@ export function PushingStep({ progress }: PushingStepProps): React.ReactElement 
   const showCurrent = progress && progress.kind === 'progress' && progress.current ? progress.current : null;
 
   return (
-    <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
+    <Box flexDirection="column">
       <StepHeader step="push" />
+      <Box flexDirection="column" gap={1} paddingX={2} paddingBottom={1}>
+        <Text>Writing component types and design tokens to your Contentful space...</Text>
 
-      <Text>Writing component types and design tokens to your Contentful space...</Text>
-
-      {operationId && (
-        <Box gap={1}>
-          <Text color={PALETTE.muted}>Operation:</Text>
-          <Text>{operationId}</Text>
-        </Box>
-      )}
-
-      {showGlobal && progress && progress.kind === 'progress' && (
-        <Box gap={1} flexDirection="column">
-          <Box gap={2}>
-            <Box width={40}>
-              <ThemeProvider theme={PROGRESS_THEME}>
-                <ProgressBar value={Math.round((progress.processed / progress.total) * 100)} />
-              </ThemeProvider>
-            </Box>
-            <Text color={PALETTE.muted}>
-              {progress.processed}/{progress.total} entities
-            </Text>
+        {operationId && (
+          <Box gap={1}>
+            <Text color={PALETTE.muted}>Operation:</Text>
+            <Text>{operationId}</Text>
           </Box>
-        </Box>
-      )}
+        )}
 
-      {showCurrent && (
-        <Box gap={1}>
-          <Text color={PALETTE.muted}>Now processing:</Text>
-          <Text>{showCurrent}</Text>
-        </Box>
-      )}
+        {showGlobal && progress && progress.kind === 'progress' && (
+          <Box gap={1} flexDirection="column">
+            <Box gap={2}>
+              <Box width={40}>
+                <ThemeProvider theme={PROGRESS_THEME}>
+                  <ProgressBar value={Math.round((progress.processed / progress.total) * 100)} />
+                </ThemeProvider>
+              </Box>
+              <Text color={PALETTE.muted}>
+                {progress.processed}/{progress.total} entities
+              </Text>
+            </Box>
+          </Box>
+        )}
 
-      <Box marginTop={1}>
-        <Text color={PALETTE.muted}>Elapsed: {elapsed}</Text>
+        {showCurrent && (
+          <Box gap={1}>
+            <Text color={PALETTE.muted}>Now processing:</Text>
+            <Text>{showCurrent}</Text>
+          </Box>
+        )}
+
+        <Box marginTop={1}>
+          <Text color={PALETTE.muted}>Elapsed: {elapsed}</Text>
+        </Box>
       </Box>
     </Box>
   );

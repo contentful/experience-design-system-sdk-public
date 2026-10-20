@@ -57,9 +57,9 @@ export function FinalizeDialog({
   const hasMoreAbove = offset > 0;
 
   return (
-    <Box width="100%" justifyContent="center">
-      <Box flexDirection="column" alignItems="center" borderStyle="round" padding={1} width={58}>
-        <Text bold>{'─'.repeat(22) + ' Finalize ' + '─'.repeat(22)}</Text>
+    <Box width="100%" paddingX={2}>
+      <Box flexDirection="column" alignItems="flex-start" borderStyle="round" padding={1} width={58}>
+        <Text bold>Finalize</Text>
         <Text> </Text>
         <Text>
           <Text color={PALETTE.success}>{accepted} accepted</Text>

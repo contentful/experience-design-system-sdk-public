@@ -57,13 +57,7 @@ export function FlowScreen({
         );
 
       case 'previewing':
-        return (
-          <RunningStep
-            step="push"
-            title="Computing diff"
-            description="Computing diff against your Contentful space..."
-          />
-        );
+        return <RunningStep step="push" description="Computing diff against your Contentful space..." />;
 
       case 'preview-gate':
         if (!state.serverPreview) return null;
@@ -92,7 +86,7 @@ export function FlowScreen({
         );
 
       case 'printing':
-        return <RunningStep step="push" title="Writing files" description="Writing output files to disk..." />;
+        return <RunningStep step="push" description="Writing output files to disk..." />;
 
       case 'print-gate': {
         const teaser = buildRunTeaserLine(state.lastRunId);

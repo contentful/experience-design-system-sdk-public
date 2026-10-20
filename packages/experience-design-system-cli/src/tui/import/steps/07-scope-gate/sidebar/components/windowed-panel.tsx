@@ -100,6 +100,11 @@ function formatWindowIndicator(direction: WindowDirection, count: number): strin
   return `${direction === 'up' ? '↑' : '↓'} ${count} more`;
 }
 
+export function WindowFooter({ above, below }: { above: number; below: number }): ReactElement {
+  const parts = [above > 0 ? `↑ ${above}` : '', below > 0 ? `↓ ${below}` : ''].filter(Boolean);
+  return <Text color={PALETTE.muted}>{parts.length === 0 ? ' ' : `${parts.join(' · ')} more`}</Text>;
+}
+
 export function WindowIndicator({ direction, count }: { direction: WindowDirection; count: number }): ReactElement {
   return <Text color={PALETTE.muted}>{formatWindowIndicator(direction, count)}</Text>;
 }

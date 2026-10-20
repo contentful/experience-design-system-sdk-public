@@ -13,7 +13,7 @@ import {
 import type { PreviewAnnotation, RenderStatus } from '../types.js';
 import { PreviewBadge, previewBadge } from './badge.js';
 import { PALETTE } from '@tui/theme.js';
-import { WindowIndicator, WindowedPanel } from './windowed-panel.js';
+import { WindowFooter, WindowedPanel } from './windowed-panel.js';
 
 export interface GroupedSidebarItem {
   key: string;
@@ -561,13 +561,13 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
 
   const windowed = scrollOffset !== undefined && visibleCount !== undefined;
   const start = windowed ? Math.max(0, scrollOffset ?? 0) : 0;
-  const end = windowed ? start + (visibleCount ?? allRows.length) : allRows.length;
+  // The up indicator shares the footer line, so the row it would have used shows one more entry instead.
+  const end = windowed ? start + (visibleCount ?? allRows.length) + 1 : allRows.length;
   const rows = windowed ? allRows.slice(start, end) : allRows;
 
   return (
     <WindowedPanel width={width} height={props.height} title={title} focused={focused}>
       {allRows.length === 0 && emptyMessage !== undefined && <Text color={PALETTE.warning}> {emptyMessage}</Text>}
-      {windowed && <WindowIndicator direction="up" count={start} />}
       {rows.map((row, i) => {
         const absoluteRowIdx = start + i;
         const isSelected =
@@ -663,7 +663,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
           </Box>
         );
       })}
-      {windowed && <WindowIndicator direction="down" count={allRows.length - end} />}
+      {windowed && <WindowFooter above={start} below={Math.max(0, allRows.length - end)} />}
     </WindowedPanel>
   );
 }

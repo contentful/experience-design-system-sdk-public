@@ -324,48 +324,49 @@ export function WizardPreviewStep({
   });
 
   return (
-    <Box flexDirection="column" gap={1} paddingX={2} paddingY={2}>
+    <Box flexDirection="column">
       <StepHeader step="push" />
-
-      {hasAnything ? (
-        <>
-          <Text>Here&apos;s what will happen in your space:</Text>
-          <WindowedPanel
-            width={Math.max(20, terminalColumns - 4)}
-            height={panelHeight}
-            title={diffExpanded ? `Diff (${diffLines.length} lines)` : ''}
-            focused={false}
-          >
-            {activeLines.slice(boundedScrollOffset, boundedScrollOffset + viewportHeight).map((line) => (
-              <Text key={line.key} color={line.color} wrap="truncate-end">
-                {line.text}
+      <Box flexDirection="column" gap={1} paddingX={2} paddingBottom={2}>
+        {hasAnything ? (
+          <>
+            <Text>Here&apos;s what will happen in your space:</Text>
+            <WindowedPanel
+              width={Math.max(20, terminalColumns - 4)}
+              height={panelHeight}
+              title={diffExpanded ? `Diff (${diffLines.length} lines)` : ''}
+              focused={false}
+            >
+              {activeLines.slice(boundedScrollOffset, boundedScrollOffset + viewportHeight).map((line) => (
+                <Text key={line.key} color={line.color} wrap="truncate-end">
+                  {line.text}
+                </Text>
+              ))}
+              <Text color={PALETTE.muted} wrap="truncate-end">
+                {formatPreviewScrollIndicator(activeLines.length, boundedScrollOffset, viewportHeight)}
               </Text>
-            ))}
-            <Text color={PALETTE.muted} wrap="truncate-end">
-              {formatPreviewScrollIndicator(activeLines.length, boundedScrollOffset, viewportHeight)}
+            </WindowedPanel>
+          </>
+        ) : (
+          <Text color={PALETTE.muted}>Nothing to push — everything is already up to date.</Text>
+        )}
+
+        {breakingWithImpact && (
+          <Box marginTop={1}>
+            <Text color={PALETTE.error} bold>
+              ⚠ Breaking changes will affect downstream entities. Press Enter to acknowledge and apply.
             </Text>
-          </WindowedPanel>
-        </>
-      ) : (
-        <Text color={PALETTE.muted}>Nothing to push — everything is already up to date.</Text>
-      )}
+          </Box>
+        )}
 
-      {breakingWithImpact && (
-        <Box marginTop={1}>
-          <Text color={PALETTE.error} bold>
-            ⚠ Breaking changes will affect downstream entities. Press Enter to acknowledge and apply.
-          </Text>
+        <SpaceEnvironment spaceId={spaceId} environmentId={environmentId} />
+
+        <Box gap={3} marginTop={1}>
+          <Text>[Enter] Push to Contentful</Text>
+          <Text>[d] {diffExpanded ? 'Hide' : 'Show'} diff</Text>
+          {diffExpanded && <Text>[↑↓] Scroll [f/b] Page</Text>}
+          {onEdit && <Text>[e] Edit definitions</Text>}
+          <Text>[q] Cancel</Text>
         </Box>
-      )}
-
-      <SpaceEnvironment spaceId={spaceId} environmentId={environmentId} />
-
-      <Box gap={3} marginTop={1}>
-        <Text>[Enter] Push to Contentful</Text>
-        <Text>[d] {diffExpanded ? 'Hide' : 'Show'} diff</Text>
-        {diffExpanded && <Text>[↑↓] Scroll [f/b] Page</Text>}
-        {onEdit && <Text>[e] Edit definitions</Text>}
-        <Text>[q] Cancel</Text>
       </Box>
     </Box>
   );
