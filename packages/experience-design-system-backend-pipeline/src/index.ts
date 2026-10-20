@@ -514,3 +514,8 @@ export type {
 } from '@contentful/experience-design-system-types';
 
 export { loadPropertyDecisions } from './persistence/src/session/repositories/db.js';
+
+export {
+  loadExistingExplorationContext,
+  type ExistingExplorationContext,
+} from './orchestrators/run-exploration-session/helpers/load-existing-context.js';

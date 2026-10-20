@@ -530,3 +530,41 @@ describe('selected detail caller', () => {
     expect(detail).not.toHaveBeenCalled();
   });
 });
+
+describe('selected detail options', () => {
+  it('forwards independent detail and consensus overrides with optional context to the actual caller', async () => {
+    const { deps } = fakes();
+    const detail = vi.fn(async () => ({ ok: true as const }));
+    const promptOverrides = [
+      'detail=Inspect selected source.',
+      'tier=Tier claims.',
+      'verify=Read declarations.',
+      'check=Check exact evidence.',
+    ];
+    const result = await runGeneration(
+      input({ promptOverrides, existingEntitiesPath: '/example/existing.json', agentModel: 'example-model' }),
+      () => {},
+      { ...deps, runDetail: detail },
+    );
+    expect(result.ok).toBe(true);
+    expect(detail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        promptOverrides,
+        existingEntitiesPath: '/example/existing.json',
+        model: 'example-model',
+      }),
+    );
+    expect(deps.runGenerate).toHaveBeenCalledWith(expect.objectContaining({ promptOverrides }));
+  });
+  it('rejects malformed detail override syntax before detail or generation dispatch', async () => {
+    const { deps } = fakes();
+    const detail = vi.fn(async () => ({ ok: true as const }));
+    const result = await runGeneration(input({ promptOverrides: ['detail='] }), () => {}, {
+      ...deps,
+      runDetail: detail,
+    });
+    expect(result).toMatchObject({ ok: false, step: 'explore selected components' });
+    expect(detail).not.toHaveBeenCalled();
+    expect(deps.runGenerate).not.toHaveBeenCalled();
+  });
+});

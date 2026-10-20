@@ -34,7 +34,9 @@ export async function buildPrompt(options: PromptOptions): Promise<string> {
     const { dirname, join } = await import('node:path');
     const rulesPath = join(dirname(resolveSkillPath('explore-components')), 'rules.md');
     const rules = await readFile(rulesPath, 'utf8');
-    return buildStructuredStagePrompt(options, `${rules}\n${skillContent}`, buildInputSections(options).join('\n\n'));
+    const sections = buildInputSections(options);
+    const inputBlock = sections.length > 0 ? `\n\n${sections.join('\n\n')}` : '';
+    return buildStructuredStagePrompt(options, `${rules}\n${skillContent}`, inputBlock);
   }
   const preamble = buildSkillPreamble(options);
   return `${preamble}\n\nSkill instructions follow:\n---\n${skillContent}`;

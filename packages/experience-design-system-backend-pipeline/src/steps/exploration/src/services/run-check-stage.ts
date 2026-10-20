@@ -8,6 +8,7 @@ import { buildPrompt } from '../../../../agents/index.js';
 import { runStageWithRetries } from '../../../../agents/helpers/run-stage-with-retries.js';
 import { buildCheckWork } from '../helpers/build-check-work.js';
 import { parseCheckOutput } from '../parsers/parse-check-output.js';
+import { runStageWork } from '../helpers/run-stage-work.js';
 import type { CheckStageRequest } from '../types.js';
 export function applyChecks(verified: VerifiedItem[], checks: EvidenceCheck[]): VerifiedItem[] {
   return verified.map((item) => {
@@ -28,40 +29,50 @@ export function applyChecks(verified: VerifiedItem[], checks: EvidenceCheck[]): 
 export async function runCheckStage(request: CheckStageRequest): Promise<CheckStageResult> {
   const checks: EvidenceCheck[] = [],
     attempts: VerifyAttempt[] = [];
-  for (const work of buildCheckWork(request.components, request.verified, request.sourceInput)) {
-    const result = await runStageWithRetries(
-      {
-        ...request,
-        component: work.component,
-        source: work.source,
-        workIds: work.entries.map((entry) => entry.checkId),
-        onAttempt: (attempt) => request.onAttempt?.({ ...attempt, component: work.component }),
-      },
-      'check',
-      () =>
-        buildPrompt({
-          skill: 'check',
-          mode: 'autonomous',
-          outDir: request.outDir,
-          stageAssignmentInline: JSON.stringify({
-            component: work.component,
-            source: work.source,
-            checkIds: work.entries.map((entry) => entry.checkId),
-            identity: request.identity,
+  const results = await runStageWork(
+    buildCheckWork(request.components, request.verified, request.sourceInput),
+    request.concurrency,
+    async (work) => {
+      const result = await runStageWithRetries(
+        {
+          ...request,
+          component: work.component,
+          source: work.source,
+          workIds: work.entries.map((entry) => entry.checkId),
+          onAttempt: (attempt) => request.onAttempt?.({ ...attempt, component: work.component }),
+        },
+        'check',
+        () =>
+          buildPrompt({
+            skill: 'check',
+            mode: 'autonomous',
+            existingComponentsInline: request.existingComponentsInline,
+            existingTokensInline: request.existingTokensInline,
+            outDir: request.outDir,
+            stageAssignmentInline: JSON.stringify({
+              component: work.component,
+              source: work.source,
+              checkIds: work.entries.map((entry) => entry.checkId),
+              identity: request.identity,
+            }),
+            stageInputInline: JSON.stringify({ ...work, existingContext: request.existingContextStatus }),
+            skillContentOverride: request.skillContentOverride,
+            skillPathOverride: request.skillPathOverride,
           }),
-          stageInputInline: JSON.stringify(work),
-          skillContentOverride: request.skillContentOverride,
-          skillPathOverride: request.skillPathOverride,
-        }),
-      (output) => {
-        const parsed = parseCheckOutput(output, work);
-        if (!parsed.ok) throw new Error(parsed.error);
-        return parsed.checks;
-      },
-    );
-    attempts.push(...result.attempts.map((attempt) => ({ ...attempt, component: work.component })));
-    if (!result.ok) return { ok: false, component: work.component, error: result.error, attempts };
-    checks.push(...result.value);
-  }
+        (output) => {
+          const parsed = parseCheckOutput(output, work);
+          if (!parsed.ok) throw new Error(parsed.error);
+          return parsed.checks;
+        },
+      );
+      return { ...result, component: work.component };
+    },
+    request.signal,
+  );
+  for (const result of results)
+    if (result) attempts.push(...result.attempts.map((attempt) => ({ ...attempt, component: result.component })));
+  const failed = results.find((result) => result && !result.ok);
+  if (failed && !failed.ok) return { ok: false, component: failed.component, error: failed.error, attempts };
+  for (const result of results) if (result?.ok) checks.push(...result.value);
   return { ok: true, items: applyChecks(request.verified, checks), checks, attempts };
 }

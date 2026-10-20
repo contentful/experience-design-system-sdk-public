@@ -54,13 +54,17 @@ A component report consists of optional narrative followed by a final fenced JSO
 }
 ```
 
-Names, sources and IDs must match the assigned session entities; every assigned candidate on an included component requires a boolean ruling, and true slots require evidence.
+Names, sources and IDs must exactly cover `requestedComponents` when a roster is assigned; missing, foreign or duplicate report identities consume failed attempts. Explicit exclusions remain valid and require `included:false`, with no invented slot votes. Every assigned candidate on an included component requires a boolean ruling, and true slots require evidence. Successful reports retain requested, answered and excluded component coverage through saved artifacts and database reopen.
 
 Custom `select` prompt overrides for this flow must return this scope protocol instead of legacy selection tool calls; generation prompt overrides retain the existing tool-call protocol.
 
-`projectRoot`, `sdkReferencePath`, `existingModelPath` and `callSiteEvidencePath` on the low-level exploration request are compatibility metadata; provide inline source/reference data or use the session adapter. `sharedSource` accepts the public `SharedSource` contract and is rendered when no assurance `sourceInput` is supplied, so source bodies occur once.
+`sdkReferencePath`, `existingModelPath` and `callSiteEvidencePath` on the low-level exploration request read explicit UTF-8 context files within a 64 KiB per-file bound, using `projectRoot` for relative paths. Explicit inline reference/caller input takes precedence; missing or oversized requested files fail with attempt receipts. `projectRoot` does not grant repository traversal or filesystem tools to the invoker. `sharedSource` accepts the public `SharedSource` contract and is rendered when no assurance `sourceInput` is supplied, so source bodies occur once.
 
-`concurrency` remains accepted on verify/check requests, but these adapters execute work serially; `noCache` is unnecessary for new exploration because it always runs fresh.
+`concurrency` on verify/check requests defaults to one and is capped at eight active component operations. Results and attempts retain assignment order; failures stop queued dispatch and drain started work before returning. Session requests forward `concurrency` and `operationTimeoutMs`; each operation deadline spans all attempts and backoff, and late successful invocations cannot publish a successful stage. `noCache` is unnecessary for new exploration because it always runs fresh.
+
+The ordinary CLI `--prompt stage=value` options support `select` for component exploration, `detail` for selected inventories, and independent `tier`, `verify` and `check` overrides. Values use the existing text/path parser and last-write precedence; malformed syntax, missing paths and oversized prompt files fail before invocation. Direct session `promptText`/`promptPath` preserve their precedence for exploration only. Generation and map-token overrides retain their existing names and behavior.
+
+An optional `existingEntitiesPath` supplies bounded component/token summaries to fresh exploration and consensus stages. Missing, malformed or oversized optional context is explicitly unavailable and does not reject otherwise valid source input; prior choices are observations and cannot narrow declared domains. Detail values remain record/review-only.
 
 ## Source and renderer reference
 

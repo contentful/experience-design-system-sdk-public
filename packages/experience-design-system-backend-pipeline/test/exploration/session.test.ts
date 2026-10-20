@@ -452,3 +452,64 @@ it('records an abort after a durable sibling scope without publishing accepted d
     reopened.close();
   }
 });
+
+it('persists assigned coverage and earlier exclusions when a whole assigned component is omitted later', async () => {
+  const { db, dbPath, sessionId, component, handle, source } = await fixture();
+  db.close();
+  const result = await api.runExplorationComponentsSession({
+    dbPath,
+    sessionId,
+    sourceEvidenceHandle: handle,
+    agent: 'codex',
+    maxAttempts: 2,
+    backoffMs: 0,
+    rendererReference: { kind: 'text', text: 'Declared inputs.', origin: 'fixture' },
+    invoker: {
+      invoke: async ({ prompt }) => {
+        const scope = /"scope":"([^"]+)"/.exec(prompt)?.[1];
+        return {
+          stdout: JSON.stringify({
+            agentRole: scope,
+            components:
+              scope === 'components-1'
+                ? [{ name: 'Panel', source, componentId: component.component_id, included: false }]
+                : [],
+          }),
+          stderr: '',
+          exitCode: 0,
+          timedOut: false,
+        };
+      },
+    },
+  });
+  expect(result.ok).toBe(false);
+  const reopened = api.openPipelineDb(dbPath);
+  try {
+    const reports = api.loadExplorationReports(reopened, sessionId, 'components');
+    expect(reports).toHaveLength(1);
+    expect(reports[0]?.coverage).toMatchObject({
+      complete: true,
+      requested: [{ name: 'Panel', source, componentId: component.component_id }],
+      excluded: [{ name: 'Panel', source, componentId: component.component_id }],
+    });
+    expect(
+      api
+        .loadExplorationAttempts(reopened, sessionId, 'components')
+        .filter((attempt) => attempt.scope === 'components-2'),
+    ).toHaveLength(2);
+    expect(api.loadExplorationRun(reopened, sessionId, 'components')?.status).toBe('failed');
+    expect(api.loadAcceptedSlotDecisions(reopened, sessionId)).toEqual([]);
+    expect(api.loadScopeComponents(reopened, sessionId)).toEqual([]);
+    const artifact = join(
+      dir,
+      'exploration-artifacts',
+      encodeURIComponent(sessionId),
+      result.runId!,
+      'components',
+      'components-1.json',
+    );
+    expect(JSON.parse(readFileSync(artifact, 'utf8')).coverage).toEqual(reports[0]?.coverage);
+  } finally {
+    reopened.close();
+  }
+});

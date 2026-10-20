@@ -43,8 +43,10 @@ export async function runStageWithRetries<T>(
       throwIfAborted(options.signal);
       if (result.timedOut || result.exitCode !== 0)
         throw new Error(result.timedOut ? 'Stage invocation timed out' : 'Stage invocation failed');
+      if (Date.now() >= deadline) throw new Error('Stage operation deadline exhausted');
       value = parse(result.stdout);
       throwIfAborted(options.signal);
+      if (Date.now() >= deadline) throw new Error('Stage operation deadline exhausted');
       if (complete)
         await complete(value, [
           ...attempts,
@@ -62,6 +64,7 @@ export async function runStageWithRetries<T>(
           },
         ]);
       throwIfAborted(options.signal);
+      if (Date.now() >= deadline) throw new Error('Stage operation deadline exhausted');
     } catch (error) {
       failure = error instanceof Error ? error.message : String(error);
     }

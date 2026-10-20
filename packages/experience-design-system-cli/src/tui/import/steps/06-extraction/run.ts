@@ -161,6 +161,7 @@ export async function runExtraction(
         if (entities) await awaitWithSignal(entities, signal);
         throwIfAborted(signal);
         await deps.runSelection({
+          promptOverrides: input.promptOverrides,
           sessionId,
           sourceEvidenceHandle,
           existingEntitiesPath,

@@ -3,6 +3,7 @@ import {
   CANDIDATE_FREE_SCOPES,
   type ExploreScope,
   type ExploreCompanion,
+  type KnownComponent,
 } from '@contentful/experience-design-system-types';
 import type { SlotCandidates } from '../types.js';
 import { assertUnique } from '../helpers/identity.js';
@@ -25,13 +26,37 @@ export function unansweredSlotCandidates(
       .map((name) => `${candidate.component}:${name}`);
   });
 }
-function parseCompanion(output: string, scope: ExploreScope, candidates: SlotCandidates = []): ExploreCompanion {
+function parseCompanion(
+  output: string,
+  scope: ExploreScope,
+  candidates: SlotCandidates = [],
+  requestedComponents?: readonly KnownComponent[],
+): ExploreCompanion {
   const companion = ExploreCompanionSchema.parse(parseJsonOutput(output));
   if (companion.agentRole !== scope) throw new Error('Exploration scope mismatch');
   assertUnique(
     companion.components.map((component) => JSON.stringify([component.name, component.source])),
     'report components',
   );
+  if (requestedComponents) {
+    assertUnique(
+      requestedComponents.map((component) => JSON.stringify([component.name, component.source])),
+      'requested components',
+    );
+    if (
+      companion.components.length !== requestedComponents.length ||
+      companion.components.some(
+        (component) =>
+          !requestedComponents.some(
+            (requested) =>
+              requested.name === component.name &&
+              requested.source === component.source &&
+              (requested.componentId === undefined || requested.componentId === component.componentId),
+          ),
+      )
+    )
+      throw new Error('Exploration report must exactly cover assigned component/source identities');
+  }
   for (const component of companion.components) {
     assertUnique(
       (component.props ?? []).map((prop) => prop.name),
@@ -62,11 +87,12 @@ export function parseExploreOutput(
   output: string,
   scope: ExploreScope,
   candidates: SlotCandidates = [],
+  requestedComponents?: readonly KnownComponent[],
 ): ParsedExploreOutput {
   try {
     const fences = [...output.matchAll(/```json\s*\n([\s\S]*?)\n```/g)];
     const last = fences.at(-1);
-    const companion = parseCompanion(last ? last[1]! : output, scope, candidates);
+    const companion = parseCompanion(last ? last[1]! : output, scope, candidates, requestedComponents);
     return { ok: true, report: last ? output.slice(0, last.index).trim() : '', companion };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };

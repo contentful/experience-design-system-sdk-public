@@ -1,6 +1,7 @@
 import type { AgentInvoker, AgentName } from '../../../agents/index.js';
 import type {
   AgentCallAttempt,
+  KnownComponent,
   ExploreScope,
   ExploreScopeResult,
   ExploreAttempt,
@@ -38,10 +39,14 @@ export interface StageOptions {
   sourceInput?: ExplorationSourceInput;
   sourceRefs?: ExploreSourceRef[];
   maxPromptBytes?: number;
+  existingComponentsInline?: string;
+  existingTokensInline?: string;
+  existingContextStatus?: { status: 'absent' | 'available' | 'unavailable' | 'omitted'; reason?: string };
   onAttempt?: (attempt: AgentCallAttempt) => void | Promise<void>;
 }
 export interface ExploreStageRequest extends StageOptions {
   scopes: readonly ExploreScope[];
+  requestedComponents?: readonly KnownComponent[];
   rawComponentsInline: string;
   slotCandidates?: SlotCandidates;
   propBucketsInline?: string;
@@ -50,8 +55,6 @@ export interface ExploreStageRequest extends StageOptions {
   sharedSource?: import('@contentful/experience-design-system-types').SharedSource;
   rawTokensInline?: string;
   rawTokensFilename?: string;
-  existingTokensInline?: string;
-  existingComponentsInline?: string;
   projectRoot?: string;
   sdkReferencePath?: string;
   rendererReferenceInline?: string;

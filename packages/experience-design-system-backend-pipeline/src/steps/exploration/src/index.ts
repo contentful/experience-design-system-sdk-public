@@ -22,6 +22,7 @@ export {
   type AgentCallAttempt,
   type ExploreAttempt,
   type ExploreScopeResult,
+  type ExploreReportCoverage,
   type ExploreStageResult,
   type ExploreSourceRef,
   type BoundSourceFile,

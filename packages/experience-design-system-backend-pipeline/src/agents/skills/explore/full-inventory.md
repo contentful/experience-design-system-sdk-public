@@ -1,5 +1,5 @@
 # Selected component inventory
-Inventory only the supplied human-confirmed accepted entities in the assigned full-inventory scope.
+Inventory every requestedComponents entity from the supplied human-confirmed accepted selection in the assigned full-inventory scope. Return exactly one entry for every assigned name/source/componentId; do not omit an entity when its evidence is unavailable, and record that uncertainty in modelingNotes.
 Return one JSON object: {"agentRole":"<assigned scope>","components":[{"name":"<name>","source":"<source>","componentId":"<id>","props":[{"name":"<source name>","type":"<declared type>","description":"<purpose>","required":false,"reasoning":"<source evidence>"}],"slots":[]}]}.
 Preserve the complete declared alternatives, open/finite domain, source default and requiredness. Omit unsupported fields and record modelingNotes.
 A few caller literals, defaults, switch/lookup observations or shape/category guesses are not an exhaustive source domain.

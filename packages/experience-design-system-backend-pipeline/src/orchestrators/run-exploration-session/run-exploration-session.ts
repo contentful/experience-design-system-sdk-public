@@ -44,6 +44,8 @@ import {
 } from '../../steps/exploration/src/index.js';
 import { checkBoundEvidence } from '../../steps/exploration/src/helpers/check-evidence.js';
 import { buildExplorationSourceInput } from './helpers/build-source-input.js';
+import { loadExistingExplorationContext } from './helpers/load-existing-context.js';
+import { resolveStagePrompts } from './helpers/resolve-stage-prompts.js';
 import { loadRendererReference } from './helpers/load-renderer-reference.js';
 import { writePhaseArtifact } from './helpers/write-phase-artifact.js';
 import { finalizePhaseArtifacts } from './helpers/finalize-phase-artifacts.js';
@@ -61,6 +63,11 @@ export interface RunExplorationSessionRequest {
   timeoutMs?: number;
   maxAttempts?: number;
   backoffMs?: number;
+  promptOverrides?: string[];
+  existingEntitiesPath?: string | null;
+  existingContextStatus?: { status: 'absent' | 'available' | 'unavailable' | 'omitted'; reason?: string };
+  concurrency?: number;
+  operationTimeoutMs?: number;
   promptText?: string;
   promptPath?: string;
   selectedNames?: string[];
@@ -113,10 +120,24 @@ async function execute(
       runId,
       phase,
     );
+    let prompts: Awaited<ReturnType<typeof resolveStagePrompts>>;
+    let existingContext: Awaited<ReturnType<typeof loadExistingExplorationContext>>;
     let sourceInput: ReturnType<typeof buildExplorationSourceInput>;
     let reference: Awaited<ReturnType<typeof loadRendererReference>>;
     const prepareStarted = Date.now();
     try {
+      prompts = await resolveStagePrompts({
+        ...request,
+        phase,
+        maxBytes: saved.envelope.capture.bounds.limits.maxPromptBytes,
+      });
+      existingContext = request.existingContextStatus
+        ? {
+            ...request.existingContextStatus,
+            existingComponentsInline: request.existingComponentsInline,
+            existingTokensInline: request.existingTokensInline,
+          }
+        : await loadExistingExplorationContext(request.existingEntitiesPath, { signal: request.signal });
       sourceInput = buildExplorationSourceInput(
         saved.envelope,
         Math.min(160 * 1024, Math.floor(saved.envelope.capture.bounds.limits.maxPromptBytes * 0.6)),
@@ -150,6 +171,17 @@ async function execute(
       timeoutMs: request.timeoutMs ?? 300000,
       maxAttempts: request.maxAttempts,
       backoffMs: request.backoffMs,
+      operationTimeoutMs: request.operationTimeoutMs,
+      concurrency: request.concurrency,
+      existingComponentsInline: request.existingComponentsInline ?? existingContext.existingComponentsInline,
+      existingTokensInline: request.existingTokensInline ?? existingContext.existingTokensInline,
+      existingContextStatus: {
+        status:
+          request.existingComponentsInline !== undefined || request.existingTokensInline !== undefined
+            ? ('available' as const)
+            : existingContext.status,
+        ...(existingContext.reason ? { reason: existingContext.reason } : {}),
+      },
       signal: request.signal,
       identity: run,
       sourceInput,
@@ -175,11 +207,9 @@ async function execute(
       scopes: phase === 'components' ? COMPONENT_SCOPES : DETAIL_SCOPES,
       rawComponentsInline: JSON.stringify(selected),
       slotCandidates,
+      requestedComponents: known,
       rendererReferenceInline: JSON.stringify(reference),
-      existingTokensInline: request.existingTokensInline,
-      existingComponentsInline: request.existingComponentsInline,
-      skillContentOverride: request.promptText,
-      skillPathOverride: request.promptPath,
+      ...prompts.explore,
       onScopeComplete: async (report) => {
         throwIfAborted(request.signal);
         assertScopeCurrent();
@@ -310,7 +340,7 @@ async function execute(
             reason: 'Independent source restriction requires support check.',
           };
         });
-        const checked = await runCheckStage({ ...common, components: proofs, verified });
+        const checked = await runCheckStage({ ...common, ...prompts.check, components: proofs, verified });
         if (!checked.ok) throw new Error(checked.error);
         for (const item of checked.items)
           if (item.outcome !== 'conflicting')
@@ -363,12 +393,17 @@ async function execute(
         },
       }));
       const diff = diffExploration([...components, ...exploration.scopes], known);
-      const tier = await runTierStage({ ...common, disagreements: diff.disagreements });
+      const tier = await runTierStage({ ...common, ...prompts.tier, disagreements: diff.disagreements });
       if (!tier.ok) throw new Error(tier.error);
       const work = buildVerifyWork({ diff, hypotheses: tier.hypotheses });
-      const verification = await runVerifyStage({ ...common, components: work });
+      const verification = await runVerifyStage({ ...common, ...prompts.verify, components: work });
       if (!verification.ok) throw new Error(verification.error);
-      const check = await runCheckStage({ ...common, components: work, verified: verification.items });
+      const check = await runCheckStage({
+        ...common,
+        ...prompts.check,
+        components: work,
+        verified: verification.items,
+      });
       if (!check.ok) throw new Error(check.error);
       const detail = {
         diff,

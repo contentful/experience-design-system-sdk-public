@@ -21,6 +21,7 @@ import {
   storeSelectCache,
   stripPropProvenance,
   summarizeForSelect,
+  loadExistingExplorationContext,
   type SourceEvidenceHandle,
   type RendererReferenceInput,
   runExplorationComponentsSession,
@@ -62,6 +63,7 @@ export interface SelectionOptions {
   promptPath?: string;
   noCache: boolean;
   sourceEvidenceHandle?: SourceEvidenceHandle;
+  promptOverrides?: string[];
   existingEntitiesPath?: string | null;
 }
 
@@ -76,21 +78,10 @@ export interface SelectionOptions {
 export async function runSelection(options: SelectionOptions): Promise<void> {
   throwIfAborted(options.signal);
   if (options.sourceEvidenceHandle) {
-    let existingComponentsInline: string | undefined;
-    let existingTokensInline: string | undefined;
-    if (options.existingEntitiesPath) {
-      const entities = await readExistingContentfulEntitiesFromSession({ path: options.existingEntitiesPath });
-      throwIfAborted(options.signal);
-      if (entities) {
-        try {
-          const summary = summarizeForSelect({ entities });
-          existingComponentsInline = JSON.stringify(summary.components);
-          existingTokensInline = JSON.stringify(summary.tokens);
-        } catch {
-          // Optional alignment context remains unavailable when its model data cannot be summarized.
-        }
-      }
-    }
+    const existingContext = await loadExistingExplorationContext(options.existingEntitiesPath, {
+      signal: options.signal,
+    });
+    const { existingComponentsInline, existingTokensInline } = existingContext;
     const result = await runExplorationComponentsSession({
       sessionId: options.sessionId,
       sourceEvidenceHandle: options.sourceEvidenceHandle,
@@ -99,9 +90,14 @@ export async function runSelection(options: SelectionOptions): Promise<void> {
       signal: options.signal,
       promptText: options.promptText,
       promptPath: options.promptPath,
+      promptOverrides: options.promptOverrides,
       invoker: createLocalCliAgentInvoker({}),
       existingComponentsInline,
       existingTokensInline,
+      existingContextStatus: {
+        status: existingContext.status,
+        ...(existingContext.reason ? { reason: existingContext.reason } : {}),
+      },
       rendererReference: options.rendererReference,
     });
     throwIfAborted(options.signal);

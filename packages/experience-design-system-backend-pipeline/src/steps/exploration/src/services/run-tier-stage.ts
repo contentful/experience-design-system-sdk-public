@@ -17,12 +17,15 @@ export async function runTierStage(request: TierStageRequest): Promise<TierStage
         buildPrompt({
           skill: 'tier',
           mode: 'autonomous',
+          existingComponentsInline: request.existingComponentsInline,
+          existingTokensInline: request.existingTokensInline,
           outDir: request.outDir,
           stageAssignmentInline: JSON.stringify({ ids: batch.map((entry) => entry.id), identity: request.identity }),
           stageInputInline: JSON.stringify({
             disagreements: batch,
             source: request.sourceInput,
             sourceRefs: request.sourceRefs,
+            existingContext: request.existingContextStatus,
           }),
           skillContentOverride: request.skillContentOverride,
           skillPathOverride: request.skillPathOverride,

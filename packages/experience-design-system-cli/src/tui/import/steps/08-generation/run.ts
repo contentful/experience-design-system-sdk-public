@@ -96,11 +96,15 @@ export async function runGeneration(
 
   try {
     throwIfAborted(signal);
+    const { errors } = parsePromptOverrides(input.promptOverrides);
+    if (errors.length) throw new Error(errors.join('; '));
     const detail = await deps.runDetail?.({
       sessionId: input.sessionId,
       agent: input.agent as AgentName,
       model: input.agentModel,
       selectedNames: accepted,
+      promptOverrides: input.promptOverrides,
+      existingEntitiesPath: input.existingEntitiesPath,
       signal,
     });
     throwIfAborted(signal);

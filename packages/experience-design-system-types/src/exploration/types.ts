@@ -74,7 +74,14 @@ export interface AgentCallAttempt {
 export interface ExploreAttempt extends AgentCallAttempt {
   scope: ExploreScope;
 }
+export interface ExploreReportCoverage {
+  requested: KnownComponent[];
+  answered: KnownComponent[];
+  excluded: KnownComponent[];
+  complete: true;
+}
 export interface ExploreScopeResult {
+  coverage?: ExploreReportCoverage;
   scope: ExploreScope;
   report: string;
   companion: ExploreCompanion;
