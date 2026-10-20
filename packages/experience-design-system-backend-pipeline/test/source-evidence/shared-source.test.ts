@@ -84,6 +84,15 @@ describe('shared saved source projections', () => {
     'preserves exact source byte receipts and limits after filtering candidate observations for %s',
     async (scope) => {
       const original = envelope();
+      original.observations.callerCoverage = {
+        scope: 'admitted-source',
+        analysis: 'lexical-jsx-in-known-component-bodies',
+        coverage: 'partial',
+        files: [],
+        unresolvedReferences: 0,
+        unownedReferences: 0,
+        components: [],
+      };
       const full = buildExplorationSourceInput(original, 10000);
       const limit = full.projectionBounds!.usedBytes;
       const sourceInput = buildExplorationSourceInput(original, limit);
@@ -113,6 +122,8 @@ describe('shared saved source projections', () => {
       const bytes = Buffer.byteLength(JSON.stringify(delivered), 'utf8');
       expect(bytes).toBeLessThanOrEqual(limit);
       expect(delivered?.projectionBounds).toEqual({ maxBytes: limit, usedBytes: bytes });
+      expect(delivered?.observations).not.toHaveProperty('callerCoverage');
+      expect(delivered?.omittedObservations).toBe(1);
       expect(JSON.stringify(sourceInput)).toBe(snapshot);
     },
   );

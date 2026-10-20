@@ -53,7 +53,8 @@ export async function runExploreStage(request: ExploreStageRequest): Promise<Exp
                 omittedObservations:
                   (request.sourceInput.omittedObservations ?? 0) +
                   request.sourceInput.observations.accepted.length +
-                  request.sourceInput.observations.rejected.length,
+                  request.sourceInput.observations.rejected.length +
+                  (request.sourceInput.observations.callerCoverage ? 1 : 0),
               }
             : request.sourceInput;
         if (candidateFree && sourceInput?.projectionBounds)

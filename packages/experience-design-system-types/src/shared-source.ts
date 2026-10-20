@@ -1,5 +1,21 @@
 export type SharedSourceCoverage = 'complete-within-declared-bound' | 'partial' | 'unavailable';
 
+export interface SharedSourceCallerCoverage {
+  scope: 'admitted-source';
+  analysis: 'lexical-jsx-in-known-component-bodies';
+  coverage: 'partial';
+  files: Array<{ path: string; status: 'analyzed' | 'unsupported' | 'parse-error' }>;
+  unresolvedReferences: number;
+  unownedReferences: number;
+  components: Array<{
+    name: string;
+    sourcePath: string;
+    referenceCount: number;
+    outcome: 'observed' | 'not-observed' | 'unknown';
+    reason: string;
+  }>;
+}
+
 export interface SharedSourceRange {
   startLine: number;
   endLine: number;
@@ -70,5 +86,5 @@ export interface SharedSource {
   omittedDiagnostics?: number;
   omittedObservations?: number;
   diagnostics?: unknown[];
-  observations?: { accepted: unknown[]; rejected: unknown[] };
+  observations?: { accepted: unknown[]; rejected: unknown[]; callerCoverage?: SharedSourceCallerCoverage };
 }

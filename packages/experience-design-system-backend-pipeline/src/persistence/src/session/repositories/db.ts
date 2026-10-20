@@ -3281,7 +3281,7 @@ export interface SessionSourceEnvelope {
   readiness: 'ready';
   extractionByteBinding: SourceCapture['extractionByteBinding'];
   capture: SourceCapture;
-  observations: { accepted: unknown[]; rejected: unknown[] };
+  observations: NonNullable<import('@contentful/experience-design-system-types').SharedSource['observations']>;
 }
 
 export interface SourceEvidenceHandle {
@@ -3309,7 +3309,7 @@ export function completeExtractionWithSourceEvidence(
     cycles: Array<SlotCycle & { suggestedBreak?: SlotEdge | null }>;
     scannedFiles: string[];
     capture: SourceCapture;
-    observations: { accepted: unknown[]; rejected: unknown[] };
+    observations: NonNullable<import('@contentful/experience-design-system-types').SharedSource['observations']>;
     extractionDiagnostics?: ExtractionDiagnostics;
   },
 ): SourceEvidenceHandle {
@@ -3338,6 +3338,9 @@ export function completeExtractionWithSourceEvidence(
     sessionId: input.sessionId,
     compositionEvidence: JSON.stringify(input.observations.accepted),
     compositionRejections: JSON.stringify(input.observations.rejected),
+    ...(input.observations.callerCoverage
+      ? { compositionCallerCoverage: JSON.stringify(input.observations.callerCoverage) }
+      : {}),
     sourceEnvelopeId: envelope.envelopeId,
     sourceEnvelopeDigest: envelope.digest,
     sourceExtractionStepId: String(input.stepId),

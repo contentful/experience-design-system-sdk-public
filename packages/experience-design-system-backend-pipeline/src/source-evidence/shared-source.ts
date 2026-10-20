@@ -289,7 +289,8 @@ function fitProjection<File extends { fileId?: string; path: string }>(
     source.omittedObservations =
       (source.omittedObservations ?? 0) +
       (source.observations?.accepted.length ?? 0) +
-      (source.observations?.rejected.length ?? 0);
+      (source.observations?.rejected.length ?? 0) +
+      (source.observations?.callerCoverage ? 1 : 0);
     source.omittedDiagnostics = (source.omittedDiagnostics ?? 0) + (source.diagnostics?.length ?? 0);
     source.observations = { accepted: [], rejected: [] };
     source.diagnostics = [];

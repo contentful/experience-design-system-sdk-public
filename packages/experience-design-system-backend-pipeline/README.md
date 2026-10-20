@@ -68,6 +68,10 @@ An optional `existingEntitiesPath` supplies bounded component/token summaries to
 
 ## Source and renderer reference
 
+Composition caller observations retain resolved component/source identities, caller hashes and exact ranges, supplied property syntax, bounded constant/enum value provenance, nested JSX/callback context and separate child parts. Text, explicit empty/null syntax, omitted declared inputs and unknown expressions/spreads remain distinct facts; the records do not establish runtime execution, named-slot edges or finite domains.
+
+`sourceCallSiteCoverage` describes only lexical JSX inside known component bodies in the admitted files. It records analyzed/unsupported/parse-error inputs and observed/not-observed/unknown caller outcomes; its coverage remains partial because other sources, unowned calls and runtime flow are outside that proof. Missing callers cannot remove an input or narrow its allowed values. Both composition producers deliver this context to default and override prompts; completed extraction saves it with the immutable envelope and shared source projections. Candidate-free exploration scopes omit caller hints with explicit omission accounting.
+
 Session source prompts are built from the immutable saved evidence envelope, preserving captured canonical paths, line ranges, hashes, diagnostics, omissions and coverage; the whole stage prompt is bounded by the saved capture limit, with source text capped at 160 KiB and 60% of that prompt limit.
 
 Renderer reference input accepts `{ kind: 'text', text, origin }`, `{ kind: 'path', path }` or `{ kind: 'url', url? }`; the default URL is `https://raw.githubusercontent.com/contentful/experiences/main/README.md`.

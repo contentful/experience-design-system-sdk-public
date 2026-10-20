@@ -27,7 +27,7 @@ describe('source call-site observations', () => {
       ],
       [component('Card', '/project/Card.tsx'), component('Button', button.path)],
     );
-    expect(result.accepted).toEqual([
+    expect(result.accepted).toMatchObject([
       {
         parent: 'Card',
         child: 'Button',

@@ -48,7 +48,7 @@ export interface RunExtractAndComposeSessionRequest {
 
 export interface RunExtractAndComposeSessionResponse extends Pick<
   ResolveCompositionServiceResult,
-  'sourceCallSiteEvidence' | 'sourceCallSiteRejections'
+  'sourceCallSiteEvidence' | 'sourceCallSiteRejections' | 'sourceCallSiteCoverage'
 > {
   /** Pipeline session id. Downstream commands (select, generate, apply) read the session by this id. */
   sessionId: string;

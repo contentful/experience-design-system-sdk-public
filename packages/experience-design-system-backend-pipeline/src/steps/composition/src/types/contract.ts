@@ -25,7 +25,7 @@ export interface ResolveCompositionServiceOptions {
 
 export interface ResolveCompositionServiceResult extends Pick<
   ResolveMappingResult,
-  'sourceCallSiteEvidence' | 'sourceCallSiteRejections'
+  'sourceCallSiteEvidence' | 'sourceCallSiteRejections' | 'sourceCallSiteCoverage'
 > {
   components: RawComponentDefinition[];
   warnings: string[];

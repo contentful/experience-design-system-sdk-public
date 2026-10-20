@@ -84,6 +84,7 @@ export type {
   SharedSourceReference,
   SharedSourceRange,
   SharedSourceCoverage,
+  SharedSourceCallerCoverage,
 } from './shared-source.js';
 
 export * from './property-contract/index.js';

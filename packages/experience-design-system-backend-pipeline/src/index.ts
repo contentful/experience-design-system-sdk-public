@@ -55,6 +55,7 @@ export type {
   SourceCallSiteEvidence,
   SourceCallSiteRejection,
   SourceCallSiteEvidenceResult,
+  SourceCallerInput,
 } from './steps/composition/src/helpers/edges/source-call-site-evidence.js';
 export { loadPrompt } from './steps/composition/src/helpers/prompt/prompt-loader.js';
 export { buildCompositionInputHash } from './steps/composition/src/helpers/candidates/composition-cache-key.js';
@@ -511,6 +512,7 @@ export type {
   SharedSourceFile,
   SharedSourceReference,
   SharedSourceRange,
+  SharedSourceCallerCoverage,
 } from '@contentful/experience-design-system-types';
 
 export { loadPropertyDecisions } from './persistence/src/session/repositories/db.js';

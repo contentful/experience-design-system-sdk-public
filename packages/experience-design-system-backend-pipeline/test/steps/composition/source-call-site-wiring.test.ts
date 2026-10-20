@@ -1,8 +1,13 @@
-import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { composeComponents, runExtractAndComposeSession } from '../../../src/index.js';
+import {
+  composeComponents,
+  runExtractAndComposeSession,
+  buildExplorationSourceInput,
+  runExploreStage,
+} from '../../../src/index.js';
 import { runAgent } from '../../../src/agents/services/run-agent.js';
 import {
   openPipelineDb,
@@ -41,7 +46,7 @@ describe('source call-site production wiring', () => {
   let components: RawComponentDefinition[];
 
   beforeEach(async () => {
-    projectPath = await mkdtemp(join(tmpdir(), 'source-observations-'));
+    projectPath = await realpath(await mkdtemp(join(tmpdir(), 'source-observations-')));
     vi.stubEnv('EDS_PIPELINE_DB_PATH', join(projectPath, 'pipeline.db'));
     vi.stubEnv('DISABLE_ANALYTICS', '1');
     files = definitions.map(({ name, content }) => ({ path: join(projectPath, `${name}.tsx`), content }));
@@ -61,6 +66,77 @@ describe('source call-site production wiring', () => {
     vi.unstubAllEnvs();
     await rm(projectPath, { recursive: true, force: true });
   });
+
+  it.each([false, true])(
+    'delivers richer caller facts through both producers and cold saved reasoning (override=%s)',
+    async (override) => {
+      const composed = await composeComponents({
+        components,
+        allFiles: files,
+        forceAgent: true,
+        ...(override ? { promptOverride: 'OVERRIDE_CALLER_CONTEXT' } : {}),
+      });
+      expect(composed.sourceCallSiteEvidence[0]!.inputs).toEqual(
+        expect.arrayContaining([expect.objectContaining({ name: 'label', state: 'text', value: 'Continue' })]),
+      );
+      expect(composed.sourceCallSiteCoverage).toMatchObject({ scope: 'admitted-source', coverage: 'partial' });
+      expect(vi.mocked(runAgent).mock.calls[0]![0].prompt).toContain('Caller coverage');
+      vi.mocked(runAgent).mockClear();
+      const response = await runExtractAndComposeSession({
+        projectPath,
+        outDir: join(projectPath, 'caller-output'),
+        filePaths: files.map((f) => f.path),
+        agent: 'claude',
+        promptOverrides: override ? ['composition=OVERRIDE_CALLER_CONTEXT'] : [],
+        noCache: true,
+      });
+      expect(response.sourceCallSiteEvidence[0]!.inputs).toEqual(composed.sourceCallSiteEvidence[0]!.inputs);
+      expect(response.sourceCallSiteCoverage).toEqual(composed.sourceCallSiteCoverage);
+      expect(vi.mocked(runAgent).mock.calls[0]![0].prompt).toContain(JSON.stringify(response.sourceCallSiteCoverage));
+      await Promise.all(files.map((f) => writeFile(f.path, 'DISK_CHANGED_AFTER_SAVE')));
+      const db = openPipelineDb();
+      try {
+        const saved = loadCompletedSourceEvidence(db, response.sessionId, response.sourceEvidenceHandle);
+        expect(saved.readiness).toBe('ready');
+        if (saved.readiness !== 'ready') throw new Error('Completed source missing');
+        const input = buildExplorationSourceInput(saved.envelope);
+        expect(input.observations.accepted).toEqual(response.sourceCallSiteEvidence);
+        expect(input.observations.callerCoverage).toEqual(response.sourceCallSiteCoverage);
+        const before = JSON.stringify(input);
+        const result = await runExploreStage({
+          scopes: ['components-1'],
+          rawComponentsInline: JSON.stringify(response.components),
+          sourceInput: input,
+          agent: 'codex',
+          outDir: projectPath,
+          timeoutMs: 1000,
+          maxAttempts: 1,
+          skillContentOverride: 'Use supplied caller evidence.',
+          invoker: {
+            invoke: async ({ prompt }) => {
+              const data = JSON.parse(prompt.split('\nInput data:\n')[1]!.split('\n')[0]!);
+              expect(data.sourceInput.observations).toEqual(input.observations);
+              expect(prompt).not.toContain('DISK_CHANGED_AFTER_SAVE');
+              const assignment = JSON.parse(prompt.split('\nAssignment:\n')[1]!.split('\n')[0]!);
+              return {
+                stdout: JSON.stringify({
+                  agentRole: assignment.scope,
+                  components: assignment.requestedComponents.map((c: object) => ({ ...c, included: false })),
+                }),
+                stderr: '',
+                exitCode: 0,
+                timedOut: false,
+              };
+            },
+          },
+        });
+        expect(result.ok).toBe(true);
+        expect(JSON.stringify(input)).toBe(before);
+      } finally {
+        db.close();
+      }
+    },
+  );
 
   it('collects from the full supplied source set and supplies lexical observations to an override prompt', async () => {
     const result = await composeComponents({ components, allFiles: files, forceAgent: true, promptOverride: 'custom' });

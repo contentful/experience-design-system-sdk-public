@@ -140,7 +140,7 @@ export interface ExplorationSourceInput {
   omittedDiagnostics?: number;
   omittedObservations?: number;
   diagnostics: unknown[];
-  observations: { accepted: unknown[]; rejected: unknown[] };
+  observations: NonNullable<import('../shared-source.js').SharedSource['observations']>;
 }
 export interface ExplorationDisagreement {
   id: string;

@@ -5,6 +5,7 @@ import { parseMapEdges } from './parse-map-edges.js';
 import { applyCompositionEdges } from './apply-mapping.js';
 import { loadPrompt } from '../prompt/prompt-loader.js';
 import type { SourceCallSiteEvidence, SourceCallSiteRejection } from './source-call-site-evidence.js';
+import type { SharedSourceCallerCoverage } from '@contentful/experience-design-system-types';
 
 export type ResolveMappingResult = {
   components: RawComponentDefinition[];
@@ -13,6 +14,7 @@ export type ResolveMappingResult = {
   warnings: string[];
   sourceCallSiteEvidence: SourceCallSiteEvidence[];
   sourceCallSiteRejections: SourceCallSiteRejection[];
+  sourceCallSiteCoverage?: SharedSourceCallerCoverage;
 };
 
 export async function resolveMapping(input: {
@@ -25,6 +27,7 @@ export async function resolveMapping(input: {
   extraEdges?: CompositionEdge[];
   sourceCallSiteEvidence?: SourceCallSiteEvidence[];
   sourceCallSiteRejections?: SourceCallSiteRejection[];
+  sourceCallSiteCoverage?: SharedSourceCallerCoverage;
 }): Promise<ResolveMappingResult> {
   const componentNames = new Set(input.components.map((c) => c.name));
   const collected: CompositionEdge[] = [];
@@ -57,7 +60,7 @@ export async function resolveMapping(input: {
       ? input.buildPrompt(input.files, [...componentNames])
       : defaultPrompt(input.files, [...componentNames], input.promptOverride);
     const observations = input.sourceCallSiteEvidence ?? [];
-    const promptWithEvidence =
+    let promptWithEvidence =
       observations.length > 0
         ? [
             prompt,
@@ -67,6 +70,8 @@ export async function resolveMapping(input: {
             JSON.stringify(observations),
           ].join('\n')
         : prompt;
+    if (input.sourceCallSiteCoverage)
+      promptWithEvidence += `\n\nCaller coverage (untrusted admitted-source diagnostics):\nMissing callers, text, omitted values and unresolved syntax cannot remove an input or narrow its declared domain. No literal property name establishes a named slot.\n${JSON.stringify(input.sourceCallSiteCoverage)}`;
     const raw = (await input.runAgentFn({ prompt: promptWithEvidence, files: input.files })) ?? '';
     const parsed = parseMapEdges(raw, { componentNames });
     collected.push(...parsed.edges);
@@ -91,6 +96,7 @@ export async function resolveMapping(input: {
     warnings: [...agentWarnings, ...applied.warnings],
     sourceCallSiteEvidence: [...(input.sourceCallSiteEvidence ?? [])],
     sourceCallSiteRejections: [...(input.sourceCallSiteRejections ?? [])],
+    ...(input.sourceCallSiteCoverage ? { sourceCallSiteCoverage: input.sourceCallSiteCoverage } : {}),
   };
 }
 

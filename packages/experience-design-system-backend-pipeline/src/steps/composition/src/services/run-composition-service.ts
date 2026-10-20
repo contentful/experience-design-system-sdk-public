@@ -44,6 +44,7 @@ export async function runCompositionService(
     ...(manifestDocEdges.length > 0 ? { extraEdges: manifestDocEdges } : {}),
     sourceCallSiteEvidence: sourceCallSites.accepted,
     sourceCallSiteRejections: sourceCallSites.rejected,
+    sourceCallSiteCoverage: sourceCallSites.coverage,
     forceAgent,
     files: promptFiles,
     ...(options.promptOverride ? { promptOverride: options.promptOverride } : {}),
@@ -73,5 +74,6 @@ export async function runCompositionService(
     warnings: result.warnings,
     sourceCallSiteEvidence: result.sourceCallSiteEvidence,
     sourceCallSiteRejections: result.sourceCallSiteRejections,
+    sourceCallSiteCoverage: result.sourceCallSiteCoverage,
   };
 }

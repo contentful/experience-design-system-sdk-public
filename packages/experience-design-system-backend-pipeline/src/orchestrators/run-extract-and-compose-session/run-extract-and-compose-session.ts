@@ -187,6 +187,7 @@ export async function runExtractAndComposeSession(
           observations: {
             accepted: composition.sourceCallSiteEvidence,
             rejected: composition.sourceCallSiteRejections,
+            ...(composition.sourceCallSiteCoverage ? { callerCoverage: composition.sourceCallSiteCoverage } : {}),
           },
           extractionDiagnostics: extraction.extractionDiagnostics,
         }),
@@ -207,6 +208,7 @@ export async function runExtractAndComposeSession(
       scannedFileCount: sourceFiles.length,
       sourceCallSiteEvidence: composition.sourceCallSiteEvidence,
       sourceCallSiteRejections: composition.sourceCallSiteRejections,
+      sourceCallSiteCoverage: composition.sourceCallSiteCoverage,
       sourceEvidenceHandle,
     };
   } finally {

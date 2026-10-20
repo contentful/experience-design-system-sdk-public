@@ -139,6 +139,7 @@ export async function resolveComposition(request: ResolveCompositionRequest): Pr
     ...(extraEdges.length > 0 ? { extraEdges } : {}),
     sourceCallSiteEvidence: sourceCallSites.accepted,
     sourceCallSiteRejections: sourceCallSites.rejected,
+    sourceCallSiteCoverage: sourceCallSites.coverage,
     forceAgent,
     files: promptFiles,
     ...(compositionPrompt ? { promptOverride: compositionPrompt } : {}),
@@ -177,5 +178,6 @@ export async function resolveComposition(request: ResolveCompositionRequest): Pr
     warnings,
     sourceCallSiteEvidence: result.sourceCallSiteEvidence,
     sourceCallSiteRejections: result.sourceCallSiteRejections,
+    sourceCallSiteCoverage: result.sourceCallSiteCoverage,
   };
 }
