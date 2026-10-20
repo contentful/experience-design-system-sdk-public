@@ -1,3 +1,21 @@
+export { assembleComponentFacts } from './extract/component-facts/assemble-component-facts.js';
+export { COMPONENT_FACT_SCHEMA_VERSION } from './extract/types/component-facts.js';
+export type {
+  ComponentFacts,
+  ComponentFactObservation,
+  ComponentEvidenceReadStatus,
+  ComponentFactContext,
+  ComponentFactInput,
+  ComponentFactCollectors,
+  RenderableFact,
+  MemberFact,
+  ChildFilterFact,
+  RequiresParentFact,
+  NonStaticFact,
+  ComponentOriginFact,
+  ReferencedOriginFact,
+} from './extract/types/component-facts.js';
+
 // Models and public contracts
 export type {
   RawComponentDefinition,

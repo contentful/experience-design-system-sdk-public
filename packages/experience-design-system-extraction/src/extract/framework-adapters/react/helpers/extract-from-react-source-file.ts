@@ -1,3 +1,4 @@
+import type { ComponentFactCollectors } from '../../../types/component-facts.js';
 import type { ExtractionDiagnostics } from '../../../candidates/types.js';
 import { SyntaxKind, type SourceFile } from 'ts-morph';
 import type { ExtractionExclusion } from '../../../types/component.js';
@@ -20,6 +21,7 @@ export function extractFromReactSourceFile(
   isNext: boolean,
   exclusions: ExtractionExclusion[],
   diagnostics?: ExtractionDiagnostics,
+  collectors?: ComponentFactCollectors,
 ): RawComponentDefinitionInternal[] {
   const components: RawComponentDefinitionInternal[] = [];
   const usesCreateContext = sourceFileUsesCreateContext(sourceFile);
@@ -35,6 +37,7 @@ export function extractFromReactSourceFile(
       isNext,
       usesCreateContext,
       diagnostics,
+      collectors,
     );
     if (component) components.push(component);
   }

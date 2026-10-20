@@ -39,6 +39,8 @@ import {
   collectArrayMapRenderComponentReferences,
 } from '../../helpers/evidence/structural-slot-evidence.js';
 import {
+  assembleComponentFacts,
+  type ComponentFactCollectors,
   mergeSourceCandidates,
   collectReactSourceObservations,
   recordSourceCandidateDiagnostics,
@@ -2076,7 +2078,7 @@ export async function extractReactComponents(
       if (isStencilFile(sourceFile)) return [];
       const fileExports = [...sourceFile.getExportedDeclarations().keys()];
       const isNext = isNextJsComponent(sourceFile.getFilePath(), fileExports);
-      return extractFromSourceFile(sourceFile, isNext, exclusions, diagnostics);
+      return extractFromSourceFile(sourceFile, isNext, exclusions, diagnostics, options.componentFactCollectors);
     },
     options,
   );
@@ -2214,6 +2216,7 @@ function extractFromSourceFile(
   isNext: boolean,
   exclusions: ExtractionExclusion[],
   diagnostics?: ExtractionDiagnostics,
+  collectors?: ComponentFactCollectors,
 ): RawComponentDefinitionInternal[] {
   const components: RawComponentDefinitionInternal[] = [];
   const usesCreateContext = sourceFileUsesCreateContext(sourceFile);
@@ -2227,8 +2230,26 @@ function extractFromSourceFile(
     if (funcNode.getSourceFile().getFilePath() !== sourceFile.getFilePath()) continue;
 
     const params = funcNode.getParameters();
+    const componentFacts = assembleComponentFacts(
+      {
+        name,
+        sourcePath: sourceFile.getFilePath(),
+        framework: isNext ? 'next' : 'react',
+        sourceText: sourceFile.getFullText(),
+        sourceRange: {
+          startLine: funcNode.getStartLineNumber(),
+          endLine: funcNode.getEndLineNumber(),
+          startOffset: funcNode.getStart(),
+          endOffset: funcNode.getEnd(),
+        },
+        declaredTypeText: params[0]?.getTypeNode()?.getText() ?? null,
+      },
+      collectors,
+    );
+    const evidence = componentFacts ? { componentFacts } : {};
     if (params.length === 0) {
       components.push({
+        ...evidence,
         name,
         source: sourceFile.getFilePath(),
         sourcePath: sourceFile.getFilePath(),
@@ -2357,6 +2378,7 @@ function extractFromSourceFile(
     const propsTypeNameCapture = propsTypeName && /^[A-Za-z_$][\w$]*$/.test(propsTypeName) ? propsTypeName : undefined;
 
     components.push({
+      ...evidence,
       name,
       source: sourceFile.getFilePath(),
       sourcePath: sourceFile.getFilePath(),

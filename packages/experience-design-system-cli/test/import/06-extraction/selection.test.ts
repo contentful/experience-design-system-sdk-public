@@ -189,6 +189,38 @@ describe('runSelection', () => {
     expect(agent.invocations[0]?.prompt).toContain('Hero');
   });
 
+  it('omits component observations from its raw selection projection and delivers them in saved evidence', async () => {
+    seed(['Card']);
+    const sourcePath = join(dir, 'Card.tsx');
+    await writeFile(sourcePath, 'export const Card = () => null;');
+    const facts = {
+      schemaVersion: 1 as const,
+      members: [{ name: 'Item', certainty: 'unknown' as const, location: null }],
+    };
+    const db = openPipelineDb();
+    try {
+      const capture = await captureSourceEvidence({ projectRoot: dir, filePaths: [sourcePath] });
+      completeExtractionWithSourceEvidence(db, {
+        sessionId,
+        stepId: createStep(db, sessionId, 'analyze extract', {}),
+        components: [{ ...component('Card'), source: sourcePath, sourcePath, componentFacts: facts }],
+        cycles: [],
+        scannedFiles: ['Card.tsx'],
+        capture,
+        observations: { accepted: [], rejected: [] },
+      });
+    } finally {
+      db.close();
+    }
+    agent.result.stdout = lines({ tool: 'select_component', name: 'Card' });
+    await runSelection(options({ noCache: true, promptText: 'Select from saved source.' }));
+    const prompt = agent.invocations[0]!.prompt;
+    const raw = prompt.match(/Raw component data \(JSON\):\n```json\n([\s\S]*?)\n```/)![1]!;
+    expect(raw).not.toContain('componentFacts');
+    const evidence = prompt.match(/Compiler evidence and source candidates[^\n]*\n```json\n([\s\S]*?)\n```/)![1]!;
+    expect(JSON.parse(evidence).componentFacts[0]).toMatchObject({ status: 'available', facts });
+  });
+
   it('uses the completed saved capture after the source file changes', async () => {
     seed(['Card']);
     const sourcePath = join(dir, 'Card.tsx');

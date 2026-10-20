@@ -1,3 +1,8 @@
+import type { RawComponentDefinition } from '../../../extraction/src/types/component.js';
+import {
+  buildComponentEvidence,
+  countComponentObservations,
+} from '../../../../agents/prompts/helpers/build-component-evidence.js';
 import {
   CANDIDATE_FREE_SCOPES,
   EXPLORE_SCOPES,
@@ -45,6 +50,8 @@ export async function runExploreStage(request: ExploreStageRequest): Promise<Exp
               ...(componentId !== undefined ? { componentId } : {}),
             };
           });
+        const componentEvidence = buildComponentEvidence(raw as unknown as RawComponentDefinition[], 'caller-provided');
+        const omittedComponentFacts = candidateFree ? countComponentObservations(componentEvidence) : 0;
         let sourceInput =
           candidateFree && request.sourceInput
             ? {
@@ -52,6 +59,7 @@ export async function runExploreStage(request: ExploreStageRequest): Promise<Exp
                 observations: { accepted: [], rejected: [] },
                 omittedObservations:
                   (request.sourceInput.omittedObservations ?? 0) +
+                  omittedComponentFacts +
                   request.sourceInput.observations.accepted.length +
                   request.sourceInput.observations.rejected.length +
                   (request.sourceInput.observations.callerCoverage ? 1 : 0),
@@ -87,7 +95,8 @@ export async function runExploreStage(request: ExploreStageRequest): Promise<Exp
                   sourcePath,
                   framework,
                 }))
-              : raw,
+              : raw.map(({ componentFacts: _facts, ...component }) => component),
+            ...(candidateFree ? { omittedComponentFacts } : { componentEvidence }),
             sourceInput,
             sourceRefs: request.sourceRefs,
             rendererReference: loadedContext.rendererReference,

@@ -1,3 +1,4 @@
+import type { ComponentFacts, ComponentEvidenceReadStatus } from './component-facts.js';
 export type ExtractionValidationIssueCode =
   | 'EMPTY_COMPONENT_NAME'
   | 'EMPTY_PROP_NAME'
@@ -54,6 +55,9 @@ export interface RawSlotDefinition {
 }
 
 export interface RawComponentDefinition {
+  /** Optional component observations; this sidecar has an independent schema and read status. */
+  componentFacts?: ComponentFacts;
+  componentEvidenceReadStatus?: ComponentEvidenceReadStatus;
   name: string;
   source: string;
   framework: 'react' | 'next' | 'vue' | 'astro' | 'web-component' | 'stencil' | 'svelte'; // BOI type this

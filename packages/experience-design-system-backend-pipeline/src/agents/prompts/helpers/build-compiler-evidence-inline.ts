@@ -2,6 +2,8 @@ import { SUPPORTED_SOURCE_FACT_SCHEMA_VERSIONS } from '@contentful/experience-de
 import type { RawComponentDefinition } from '../../../steps/extraction/src/types/component.js';
 import type { ExtractionDiagnostics } from '@contentful/experience-design-system-extraction';
 
+import { buildComponentEvidence } from './build-component-evidence.js';
+
 export type CompilerEvidenceReadiness = 'ready' | 'caller-provided' | 'unavailable';
 
 /** Serialize the same bounded candidate and run-diagnostic channel for selection and generation. */
@@ -37,11 +39,13 @@ export function buildCompilerEvidenceInline(
       alternateSources: available ? (component.sourceCandidateSources ?? []) : null,
     };
   });
+  const componentFacts = buildComponentEvidence(components, options.readiness);
   return JSON.stringify({
     schemaVersion: 1,
     readiness: options.readiness,
     ...(options.reason ? { reason: options.reason } : {}),
     sourceCandidates: candidates,
+    componentFacts,
     compilerEvidence: {
       status: options.diagnosticsStatus ?? (options.diagnostics ? 'available' : 'absent'),
       runDiagnostics: options.diagnostics ?? null,

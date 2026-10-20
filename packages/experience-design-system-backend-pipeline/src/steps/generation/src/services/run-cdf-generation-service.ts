@@ -77,7 +77,7 @@ async function generateOne(
     skill: 'components',
     mode: 'autonomous',
     rawComponentsInline: JSON.stringify(
-      (({ sourceCandidates: _candidates, sourceCandidateSources: _sources, ...raw }) => ({
+      (({ sourceCandidates: _candidates, sourceCandidateSources: _sources, componentFacts: _facts, ...raw }) => ({
         ...raw,
         props: component.props.map(stripPropProvenance),
       }))(component),

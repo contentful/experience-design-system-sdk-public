@@ -29,6 +29,10 @@ export async function writeScopeDecisionsSnapshot(db: DatabaseSync, sessionId: s
       framework: c.framework,
       props: c.props,
       slots: c.slots,
+      ...(c.componentFacts !== undefined ? { componentFacts: c.componentFacts } : {}),
+      ...(c.componentEvidenceReadStatus !== undefined
+        ? { componentEvidenceReadStatus: c.componentEvidenceReadStatus }
+        : {}),
       ...(c.factSchemaVersion !== undefined ? { factSchemaVersion: c.factSchemaVersion } : {}),
       ...(c.sourceCandidates !== undefined ? { sourceCandidates: c.sourceCandidates } : {}),
       ...(c.sourceCandidateSources !== undefined ? { sourceCandidateSources: c.sourceCandidateSources } : {}),

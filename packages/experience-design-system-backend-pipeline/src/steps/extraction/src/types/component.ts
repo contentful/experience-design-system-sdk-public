@@ -1,3 +1,5 @@
+import type { ComponentFactCollectors } from '@contentful/experience-design-system-extraction';
+import type { ComponentFacts, ComponentEvidenceReadStatus } from '@contentful/experience-design-system-extraction';
 export type ExtractionValidationIssueCode =
   | 'EMPTY_COMPONENT_NAME'
   | 'EMPTY_PROP_NAME'
@@ -58,6 +60,9 @@ export interface RawSlotDefinition {
 }
 
 export interface RawComponentDefinition {
+  /** Optional component observations; this sidecar has an independent schema and read status. */
+  componentFacts?: ComponentFacts;
+  componentEvidenceReadStatus?: ComponentEvidenceReadStatus;
   name: string;
   source: string;
   framework: 'react' | 'next' | 'vue' | 'astro' | 'web-component' | 'stencil' | 'svelte';
@@ -107,10 +112,11 @@ export type ExtractorProgress = {
 
 /**
  * Optional extraction-time settings forwarded from the CLI through the
- * pipeline to each extractor. Only the Svelte extractor currently consumes
- * any of these; other extractors ignore the value.
+ * pipeline to each extractor; supported settings are consumed by each adapter.
  */
 export interface ExtractorOptions {
+  /** Optional field-local component observation collectors; defaults collect nothing. */
+  componentFactCollectors?: ComponentFactCollectors;
   /**
    * Whether the Svelte extractor should run a retry pass for components whose
    * declared Props type couldn't be resolved on the first pass (cross-package

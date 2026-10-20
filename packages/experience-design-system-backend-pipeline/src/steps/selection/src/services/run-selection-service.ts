@@ -33,10 +33,17 @@ export async function runSelectionService(options: RunSelectionServiceOptions): 
     skill: 'select',
     mode: 'autonomous',
     rawComponentsInline: JSON.stringify(
-      components.map(({ sourceCandidates: _candidates, sourceCandidateSources: _sources, ...component }) => ({
-        ...component,
-        props: component.props.map(stripPropProvenance),
-      })),
+      components.map(
+        ({
+          sourceCandidates: _candidates,
+          sourceCandidateSources: _sources,
+          componentFacts: _facts,
+          ...component
+        }) => ({
+          ...component,
+          props: component.props.map(stripPropProvenance),
+        }),
+      ),
       null,
       2,
     ),

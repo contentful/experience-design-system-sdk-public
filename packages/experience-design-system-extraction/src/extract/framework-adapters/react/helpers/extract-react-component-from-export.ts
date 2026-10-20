@@ -1,4 +1,6 @@
 import { Node, type SourceFile } from 'ts-morph';
+import { assembleComponentFacts } from '../../../component-facts/assemble-component-facts.js';
+import type { ComponentFactCollectors } from '../../../types/component-facts.js';
 import type { RawComponentDefinition, RawPropDefinition, RawSlotDefinition } from '../../../types/component.js';
 import { shouldBeSlot } from '../../../helpers/evidence/detect-slot-from-prop.js';
 import { collectPropDataflow, getComponentIdentity, type PropForwardingEdge } from './collect-prop-dataflow.js';
@@ -47,6 +49,7 @@ export function extractReactComponentFromExport(
   isNext: boolean,
   usesCreateContext: boolean,
   diagnostics?: ExtractionDiagnostics,
+  collectors?: ComponentFactCollectors,
 ): RawComponentDefinitionInternal | null {
   const funcNode = resolveBestFunctionNode(declarations);
   if (!funcNode) return null;
@@ -63,8 +66,32 @@ export function extractReactComponentFromExport(
   };
 
   const params = funcNode.getParameters();
+  const componentFacts = assembleComponentFacts(
+    {
+      name,
+      sourcePath: source,
+      framework,
+      sourceText: sourceFile.getFullText(),
+      sourceRange: {
+        startLine: funcNode.getStartLineNumber(),
+        endLine: funcNode.getEndLineNumber(),
+        startOffset: funcNode.getStart(),
+        endOffset: funcNode.getEnd(),
+      },
+      declaredTypeText: params[0]?.getTypeNode()?.getText() ?? null,
+    },
+    collectors,
+  );
+  const evidence = componentFacts ? { componentFacts } : {};
   if (params.length === 0) {
-    return { ...base, props: [], slots: [], sourceCandidates: [], factSchemaVersion: SOURCE_FACT_SCHEMA_VERSION };
+    return {
+      ...base,
+      ...evidence,
+      props: [],
+      slots: [],
+      sourceCandidates: [],
+      factSchemaVersion: SOURCE_FACT_SCHEMA_VERSION,
+    };
   }
 
   const resolvedPropsType = resolvePropsType(params[0]);
@@ -159,6 +186,7 @@ export function extractReactComponentFromExport(
 
   return {
     ...base,
+    ...evidence,
     props: propsAfterSlotExpansion,
     slots: [...slots, ...expandedSlots],
     sourceCandidates: sourceCandidateResult.candidates,

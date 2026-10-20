@@ -1,9 +1,11 @@
+import type { ComponentFactCollectors } from './component-facts.js';
 /**
  * Optional extraction-time settings forwarded from the CLI through the
- * pipeline to each extractor. Only the Svelte extractor currently consumes
- * any of these; other extractors ignore the value.
+ * pipeline to each extractor; supported settings are consumed by each adapter.
  */
 export interface ExtractorOptions {
+  /** Optional field-local component observation collectors; defaults collect nothing. */
+  componentFactCollectors?: ComponentFactCollectors;
   /**
    * Whether the Svelte extractor should run a retry pass for components whose
    * declared Props type could not be resolved on the first pass (cross-package

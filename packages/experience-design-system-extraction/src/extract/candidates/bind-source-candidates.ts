@@ -1,4 +1,5 @@
 import type { RawComponentDefinition } from '../types/component.js';
+import type { ComponentFacts } from '../types/component-facts.js';
 import type { ExtractionDiagnostics, SourceCandidate, SourceCandidateSource, SourceFactLocation } from './types.js';
 import { existsSync, realpathSync } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
@@ -121,6 +122,30 @@ function bindSource(candidateSource: SourceCandidateSource, capturedByPath: Read
   };
 }
 
+function bindComponentFacts(facts: ComponentFacts, captured: ReadonlyMap<string, string | null>): ComponentFacts {
+  const bindObservation = <T extends { location: SourceFactLocation | null }>(observation: T): T => ({
+    ...observation,
+    location: bindLocation(observation.location, captured),
+  });
+  return {
+    ...facts,
+    ...(facts.renderables ? { renderables: facts.renderables.map(bindObservation) } : {}),
+    ...(facts.members ? { members: facts.members.map(bindObservation) } : {}),
+    ...(facts.childFilters ? { childFilters: facts.childFilters.map(bindObservation) } : {}),
+    ...(facts.requiresParent ? { requiresParent: facts.requiresParent.map(bindObservation) } : {}),
+    ...(facts.nonStatic ? { nonStatic: facts.nonStatic.map(bindObservation) } : {}),
+    ...(facts.origin ? { origin: bindObservation(facts.origin) } : {}),
+    ...(facts.referencedOrigins
+      ? {
+          referencedOrigins: facts.referencedOrigins.map((reference) => ({
+            ...bindObservation(reference),
+            origin: bindObservation(reference.origin),
+          })),
+        }
+      : {}),
+  };
+}
+
 /** Bind compiler-read hashes to the exact files in the accepted saved capture. */
 export function bindSourceCandidatesToCapture<T extends RawComponentDefinition>(
   components: readonly T[],
@@ -133,6 +158,9 @@ export function bindSourceCandidatesToCapture<T extends RawComponentDefinition>(
   }
   return components.map((component) => ({
     ...component,
+    ...(component.componentFacts
+      ? { componentFacts: bindComponentFacts(component.componentFacts, capturedByPath) }
+      : {}),
     ...(component.sourceCandidates !== undefined
       ? { sourceCandidates: component.sourceCandidates.map((candidate) => bindCandidate(candidate, capturedByPath)) }
       : {}),

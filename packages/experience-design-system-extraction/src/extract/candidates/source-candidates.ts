@@ -1,6 +1,6 @@
 import ts from 'typescript';
 import { captureNativeSource, decodeSourceDefault } from './native-source.js';
-import { createHash } from 'node:crypto';
+import { sourceLocation } from './source-location.js';
 import { resolve } from 'node:path';
 import type { Node, Type } from 'ts-morph';
 import type { RawComponentDefinition, RawPropDefinition, RawSlotDefinition } from '../types/component.js';
@@ -179,21 +179,6 @@ function declarationOrigin(declaration: Node, componentSourcePath: string): Sour
   }
   if (program.isSourceFileFromExternalLibrary(compilerSource)) return 'inherited-library';
   return 'imported';
-}
-
-function sourceLocation(declaration: Node): NonNullable<SourceCandidateObservation['location']> {
-  const sourceFile = declaration.getSourceFile();
-  const canonicalPath = resolve(sourceFile.getFilePath());
-  return {
-    fileId: null,
-    canonicalPath,
-    textHash: createHash('sha256').update(sourceFile.getFullText()).digest('hex'),
-    startLine: declaration.getStartLineNumber(),
-    endLine: declaration.getEndLineNumber(),
-    startOffset: declaration.getStart(),
-    endOffset: declaration.getEnd(),
-    binding: 'unverified',
-  };
 }
 
 /** Capture facts from actual checker declarations while keeping compiler objects out of the result. */

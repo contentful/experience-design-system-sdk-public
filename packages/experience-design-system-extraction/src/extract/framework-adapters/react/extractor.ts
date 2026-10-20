@@ -30,7 +30,7 @@ export async function extractReactComponents(
       if (isStencilFile(sourceFile)) return [];
       const fileExports = [...sourceFile.getExportedDeclarations().keys()];
       const isNext = isNextJsComponent(sourceFile.getFilePath(), fileExports);
-      return extractFromReactSourceFile(sourceFile, isNext, exclusions, diagnostics);
+      return extractFromReactSourceFile(sourceFile, isNext, exclusions, diagnostics, options.componentFactCollectors);
     },
     options,
   );

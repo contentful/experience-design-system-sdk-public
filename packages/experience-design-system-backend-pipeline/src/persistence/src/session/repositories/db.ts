@@ -26,6 +26,7 @@ import type {
   ExplorationDetailRecord,
 } from '@contentful/experience-design-system-types';
 import { projectAcceptedSlots } from '../../../../steps/exploration/src/services/project-accepted-slots.js';
+import { readComponentFacts, readComponentFactsJson, type ComponentFactsRead } from './component-facts-validation.js';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
@@ -149,6 +150,7 @@ CREATE TABLE IF NOT EXISTS raw_component_source_evidence (
   fact_schema_version INTEGER,
   candidates_json     TEXT,
   alternate_sources_json TEXT,
+  component_facts_json TEXT,
   PRIMARY KEY (session_id, component_id),
   FOREIGN KEY (session_id, component_id) REFERENCES raw_components(session_id, component_id) ON DELETE CASCADE
 );
@@ -359,6 +361,10 @@ export function openPipelineDb(dbPath?: string): DatabaseSync {
 }
 
 function applyDbMigrations(db: DatabaseSync): void {
+  const evidenceCols = db.prepare('PRAGMA table_info(raw_component_source_evidence)').all() as Array<{ name: string }>;
+  if (!evidenceCols.some((column) => column.name === 'component_facts_json')) {
+    db.exec('ALTER TABLE raw_component_source_evidence ADD COLUMN component_facts_json TEXT');
+  }
   const cols = db.prepare('PRAGMA table_info(raw_slots)').all() as Array<{
     name: string;
   }>;
@@ -662,6 +668,8 @@ export interface ComponentReviewMetadata {
       sourceCandidate: SourceCandidate | null;
     }
   >;
+  componentEvidenceReadStatus?: NonNullable<RawComponentDefinition['componentEvidenceReadStatus']>;
+  componentFacts?: RawComponentDefinition['componentFacts'] | null;
   sourceEvidenceReadStatus: NonNullable<RawComponentDefinition['sourceEvidenceReadStatus']>;
   sourceCandidates: SourceCandidate[] | null;
   sourceCandidateSources: SourceCandidateSource[] | null;
@@ -768,6 +776,9 @@ export function loadComponentReviewMetadata(
     sourceLineRanges,
     scopeProvenance,
     props,
+    componentEvidenceReadStatus: rawComponent?.componentEvidenceReadStatus ?? 'unknown-legacy',
+    componentFacts:
+      rawComponent?.componentEvidenceReadStatus === 'available' ? (rawComponent.componentFacts ?? null) : null,
     sourceEvidenceReadStatus: rawComponent?.sourceEvidenceReadStatus ?? 'unknown-legacy',
     sourceCandidates:
       rawComponent?.sourceEvidenceReadStatus === 'available' ? (rawComponent.sourceCandidates ?? []) : null,
@@ -1230,8 +1241,8 @@ export function storeRawComponents(
   );
   const insertSourceEvidence = db.prepare(
     `INSERT INTO raw_component_source_evidence
-       (session_id, component_id, fact_schema_version, candidates_json, alternate_sources_json)
-     VALUES (?, ?, ?, ?, ?)`,
+       (session_id, component_id, fact_schema_version, candidates_json, alternate_sources_json, component_facts_json)
+     VALUES (?, ?, ?, ?, ?, ?)`,
   );
   const insertProp = db.prepare(
     `INSERT INTO raw_props
@@ -1347,7 +1358,8 @@ export function storeRawComponents(
       if (
         comp.factSchemaVersion !== undefined ||
         comp.sourceCandidates !== undefined ||
-        comp.sourceCandidateSources !== undefined
+        comp.sourceCandidateSources !== undefined ||
+        comp.componentFacts !== undefined
       ) {
         insertSourceEvidence.run(
           sessionId,
@@ -1355,6 +1367,11 @@ export function storeRawComponents(
           comp.factSchemaVersion ?? null,
           comp.sourceCandidates === undefined ? null : JSON.stringify(comp.sourceCandidates),
           comp.sourceCandidateSources === undefined ? null : JSON.stringify(comp.sourceCandidateSources),
+          comp.componentFacts === undefined
+            ? null
+            : jsonValueIssue(comp.componentFacts)
+              ? 'null'
+              : JSON.stringify(comp.componentFacts),
         );
       }
 
@@ -1596,7 +1613,7 @@ export function loadRawComponents(
 
   const sourceEvidenceRows = db
     .prepare(
-      `SELECT component_id, fact_schema_version, candidates_json, alternate_sources_json
+      `SELECT component_id, fact_schema_version, candidates_json, alternate_sources_json, component_facts_json
        FROM raw_component_source_evidence WHERE session_id = ?`,
     )
     .all(sessionId) as Array<{
@@ -1604,7 +1621,11 @@ export function loadRawComponents(
     fact_schema_version: number | null;
     candidates_json: string | null;
     alternate_sources_json: string | null;
+    component_facts_json: string | null;
   }>;
+  const componentFactsByComponent = new Map<string, ComponentFactsRead>(
+    sourceEvidenceRows.map((row) => [row.component_id, readComponentFactsJson(row.component_facts_json)]),
+  );
   const sourceEvidenceByComponent = new Map<
     string,
     {
@@ -1615,6 +1636,10 @@ export function loadRawComponents(
     }
   >();
   for (const row of sourceEvidenceRows) {
+    if (row.fact_schema_version === null && row.candidates_json === null && row.alternate_sources_json === null) {
+      sourceEvidenceByComponent.set(row.component_id, { status: 'unknown-legacy' });
+      continue;
+    }
     if (
       row.fact_schema_version === null ||
       !SUPPORTED_SOURCE_FACT_SCHEMA_VERSIONS.includes(row.fact_schema_version as 3 | 4)
@@ -1654,6 +1679,10 @@ export function loadRawComponents(
       reviewReasons: parseReviewReasons(c.review_reasons),
       needsReview: Boolean(c.needs_review),
       sourcePath: c.source_path ?? undefined,
+      componentEvidenceReadStatus: componentFactsByComponent.get(c.component_id)?.status ?? 'unknown-legacy',
+      ...(componentFactsByComponent.get(c.component_id)?.status === 'available'
+        ? { componentFacts: componentFactsByComponent.get(c.component_id)!.facts! }
+        : {}),
       sourceEvidenceReadStatus: sourceEvidenceByComponent.get(c.component_id)?.status ?? 'unknown-legacy',
       ...(sourceEvidenceByComponent.get(c.component_id)?.factSchemaVersion !== undefined
         ? { factSchemaVersion: sourceEvidenceByComponent.get(c.component_id)!.factSchemaVersion! }
@@ -3345,7 +3374,22 @@ export function completeExtractionWithSourceEvidence(
     sourceEnvelopeDigest: envelope.digest,
     sourceExtractionStepId: String(input.stepId),
   };
-  const boundComponents = bindSourceCandidatesToCapture(input.components, input.capture.files);
+  const unavailableComponentFacts = new Map<number, RawComponentDefinition['componentFacts']>();
+  const bindingComponents = input.components.map((component, index) => {
+    const read = readComponentFacts(component.componentFacts);
+    if (read.status === 'available') return { ...component, componentFacts: read.facts! };
+    if (component.componentFacts === undefined) return component;
+    unavailableComponentFacts.set(index, component.componentFacts);
+    const { componentFacts: _facts, ...raw } = component;
+    return raw;
+  });
+  // Unavailable sidecars retain their read status without preventing valid candidate binding and final save.
+  const boundComponents = bindSourceCandidatesToCapture(bindingComponents, input.capture.files).map(
+    (component, index) =>
+      unavailableComponentFacts.has(index)
+        ? { ...component, componentFacts: unavailableComponentFacts.get(index) }
+        : component,
+  );
 
   db.exec('BEGIN');
   try {
