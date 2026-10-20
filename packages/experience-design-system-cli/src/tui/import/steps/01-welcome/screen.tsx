@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Box, Text } from 'ink';
-import TextInput from 'ink-text-input';
 import { PALETTE } from '../../../theme.js';
+import { ClearableTextInput } from '../../../ClearableTextInput.js';
 import { WELCOME_CONTROLS, useWelcomeControls } from './controls.js';
 import { toProjectPath } from './logic.js';
 
@@ -94,7 +94,7 @@ export function WelcomeScreen({ onContinue, onQuit, initialPath = '' }: WelcomeS
         <Box>
           <Text color={PALETTE.accent}>? </Text>
           <Text>Project path: </Text>
-          <TextInput value={projectPath} onChange={setProjectPath} onSubmit={submit} />
+          <ClearableTextInput value={projectPath} onChange={setProjectPath} onSubmit={submit} />
         </Box>
       </Box>
 
