@@ -74,12 +74,21 @@ export function readVueSlots(
         return;
       }
       const properties = type.getProperties();
-      const partial = type.isUnion() || Boolean(type.getStringIndexType() || type.getNumberIndexType());
+      let partial = type.isUnion() || Boolean(type.getStringIndexType() || type.getNumberIndexType());
       for (const property of properties) {
         const declaration = property.getDeclarations()[0];
         if (!declaration) {
           vueDiagnostic(context, 'vue-slots-partial', node);
           continue;
+        }
+        let propertyType = 'unknown';
+        let propertyFailure = false;
+        try {
+          propertyType = property.getTypeAtLocation(declaration).getText(declaration);
+        } catch {
+          propertyFailure = true;
+          partial = true;
+          vueDiagnostic(context, 'vue-slots-declaration-throw', declaration);
         }
         add(
           property.getName(),
@@ -88,9 +97,10 @@ export function readVueSlots(
           vueLocation(declaration, context),
           {
             resolution: partial ? 'partial' : 'resolved',
+            resolutionReason: propertyFailure ? 'vue-slots-declaration-throw' : null,
             typeLocations: [vueLocation(declaration, context)],
           },
-          property.getTypeAtLocation(declaration).getText(declaration),
+          propertyType,
           !property.isOptional(),
         );
       }
@@ -132,18 +142,28 @@ export function readVueSlots(
       const initializer = variable.getInitializer();
       if (!initializer || !Node.isCallExpression(initializer)) continue;
       const expression = initializer.getExpression();
-      if (!Node.isIdentifier(expression)) continue;
-      if (expression.getText() === 'defineSlots' && isVueMacroCall(initializer, context)) slotBindings.add(variable);
-      if (expression.getText() === 'useSlots') {
-        const imported = (expression.getSymbol()?.getDeclarations() ?? []).some(
-          (declaration) =>
-            Node.isImportSpecifier(declaration) &&
-            declaration.getName() === 'useSlots' &&
-            declaration.getFirstAncestorByKind(SyntaxKind.ImportDeclaration)?.getModuleSpecifierValue() === 'vue',
-        );
-        if (imported) slotBindings.add(variable);
-        else vueDiagnostic(context, 'vue-slots-binding-unresolved', variable);
-      }
+      if (
+        Node.isIdentifier(expression) &&
+        expression.getText() === 'defineSlots' &&
+        isVueMacroCall(initializer, context)
+      )
+        slotBindings.add(variable);
+      const imported = Node.isIdentifier(expression)
+        ? (expression.getSymbol()?.getDeclarations() ?? []).some(
+            (declaration) =>
+              Node.isImportSpecifier(declaration) &&
+              declaration.getName() === 'useSlots' &&
+              declaration.getFirstAncestorByKind(SyntaxKind.ImportDeclaration)?.getModuleSpecifierValue() === 'vue',
+          )
+        : Node.isPropertyAccessExpression(expression) &&
+          expression.getName() === 'useSlots' &&
+          (expression.getExpression().getSymbol()?.getDeclarations() ?? []).some(
+            (declaration) =>
+              Node.isNamespaceImport(declaration) &&
+              declaration.getFirstAncestorByKind(SyntaxKind.ImportDeclaration)?.getModuleSpecifierValue() === 'vue',
+          );
+      if (imported) slotBindings.add(variable);
+      else if (expression.getText() === 'useSlots') vueDiagnostic(context, 'vue-slots-binding-unresolved', variable);
     }
     const options = componentOptions
       ? [componentOptions]
@@ -172,20 +192,60 @@ export function readVueSlots(
     const bound = (node: Node, bindings: Set<Node>) =>
       Node.isIdentifier(node) &&
       (node.getSymbol()?.getDeclarations() ?? []).some((declaration) => bindings.has(declaration));
-    const slotObject = (node: Node): boolean => {
-      if (bound(node, slotBindings)) return true;
-      if (
-        Node.isPropertyAccessExpression(node) &&
-        node.getName() === 'slots' &&
-        bound(node.getExpression(), contextBindings)
-      )
-        return true;
-      return (
-        Node.isPropertyAccessExpression(node) &&
-        node.getName() === '$slots' &&
-        node.getExpression().getKind() === SyntaxKind.ThisKeyword
-      );
+    const memberName = (node: Node): string | undefined => {
+      if (Node.isPropertyAccessExpression(node)) return node.getName();
+      if (Node.isElementAccessExpression(node)) {
+        const key = node.getArgumentExpression();
+        if (key && (Node.isStringLiteral(key) || Node.isNoSubstitutionTemplateLiteral(key)))
+          return key.getLiteralValue();
+      }
+      return undefined;
     };
+    const aliasInitializer = (node: Node): Node | undefined => {
+      if (!Node.isIdentifier(node)) return undefined;
+      const declarations = node.getSymbol()?.getDeclarations() ?? [];
+      if (declarations.length !== 1) return undefined;
+      const declaration = declarations[0]!;
+      if (
+        !Node.isVariableDeclaration(declaration) ||
+        declaration.getFirstAncestorByKind(SyntaxKind.VariableDeclarationList)?.getDeclarationKind() !== 'const'
+      )
+        return undefined;
+      return declaration.getInitializer();
+    };
+    const contextObject = (node: Node, active = new Set<Node>()): boolean => {
+      if (bound(node, contextBindings)) return true;
+      if (active.has(node) || active.size >= 64) return false;
+      active.add(node);
+      const initializer = aliasInitializer(node);
+      return Boolean(initializer && contextObject(initializer, active));
+    };
+    const slotObject = (node: Node, active = new Set<Node>()): boolean => {
+      if (bound(node, slotBindings)) return true;
+      if (active.has(node) || active.size >= 64) return false;
+      active.add(node);
+      if (Node.isPropertyAccessExpression(node) || Node.isElementAccessExpression(node)) {
+        if (memberName(node) === 'slots' && contextObject(node.getExpression())) return true;
+        if (memberName(node) === '$slots' && node.getExpression().getKind() === SyntaxKind.ThisKeyword) return true;
+      }
+      const initializer = aliasInitializer(node);
+      return Boolean(initializer && slotObject(initializer, active));
+    };
+    for (const variable of scope!.getDescendantsOfKind(SyntaxKind.VariableDeclaration)) {
+      const name = variable.getNameNode();
+      const initializer = variable.getInitializer();
+      if (!Node.isObjectBindingPattern(name) || !initializer || !slotObject(initializer)) continue;
+      for (const binding of name.getElements()) {
+        if (binding.getDotDotDotToken()) continue;
+        const key = binding.getPropertyNameNode() ?? binding.getNameNode();
+        const name = Node.isIdentifier(key)
+          ? key.getText()
+          : Node.isStringLiteral(key)
+            ? key.getLiteralValue()
+            : undefined;
+        add(name, 'slot-access', binding.getText(), vueLocation(binding, context));
+      }
+    }
     for (const access of scope!.getDescendants()) {
       if (!Node.isPropertyAccessExpression(access) && !Node.isElementAccessExpression(access)) continue;
       if (!slotObject(access.getExpression())) continue;

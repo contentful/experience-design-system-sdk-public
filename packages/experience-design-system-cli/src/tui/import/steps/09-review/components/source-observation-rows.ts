@@ -5,8 +5,33 @@ export type ReviewSourceCandidate = NonNullable<ComponentReviewMetadata['sourceC
 export function sourceObservationRows(candidate: ReviewSourceCandidate): string[] {
   return (candidate.observations ?? []).flatMap((observation) => {
     const syntax = observation.syntax;
-    if (syntax?.reader !== 'web-component') return [];
+    if (!syntax) return [];
     const location = observation.location;
+    if (syntax.reader === 'vue') {
+      return [
+        `syntax ${candidate.name || '<empty>'}: ${syntax.channel} · occurrence ${syntax.occurrence} · ${syntax.resolution}${syntax.resolutionReason ? ` · ${syntax.resolutionReason}` : ''} · ${observation.evidenceKind} · ${observation.origin}`,
+        `expression: ${syntax.expression}`,
+        `spread: ${syntax.spreadPath.join(' → ') || '<none>'} · conditions: ${syntax.conditions.join(', ') || '<none>'} · loops: ${syntax.loops.join(', ') || '<none>'}`,
+        `fallback: ${syntax.fallback ?? '<none>'} · default: ${syntax.default.state} · ${syntax.default.expression ?? '<none>'}${syntax.default.reason ? ` · ${syntax.default.reason}` : ''}`,
+        ...(syntax.default.value
+          ? [`resolved default: ${syntax.default.value.kind} ${syntax.default.value.value}`]
+          : []),
+        ...syntax.default.locations.map(
+          (item) =>
+            `default location: ${item.canonicalPath ?? '<unknown>'}:${item.startLine ?? '?'}-${item.endLine ?? '?'} · ${item.binding}`,
+        ),
+        ...syntax.typeLocations.map(
+          (item) =>
+            `type location: ${item.canonicalPath ?? '<unknown>'}:${item.startLine ?? '?'}-${item.endLine ?? '?'} · ${item.binding}`,
+        ),
+        ...(location
+          ? [
+              `declaration: ${location.canonicalPath ?? '<unknown>'}:${location.startLine ?? '?'}-${location.endLine ?? '?'} · ${location.binding}`,
+            ]
+          : []),
+      ];
+    }
+    if (syntax.reader !== 'web-component') return [];
     return [
       `syntax ${candidate.name || '<empty>'}: ${syntax.lineage} · ${syntax.declaringClass ?? '<anonymous>'} · ${observation.evidenceKind} · ${observation.origin}`,
       `converter: ${syntax.converter.state} · ${syntax.converter.expression ?? '<none>'} · attribute: ${syntax.attribute.state} · ${syntax.attribute.name === null ? '<none>' : JSON.stringify(syntax.attribute.name)} · reflect: ${syntax.reflect.state} · ${syntax.reflect.value === null ? 'unknown' : String(syntax.reflect.value)}`,

@@ -199,7 +199,14 @@ export function readVueRuntimeProps(root: Node, context: VueReaderContext): VueR
       requiredNode = read('required');
       defaultNode = read('default');
     }
-    const type = runtimeType(typeNode);
+    let type = 'unknown';
+    let typeFailure = false;
+    try {
+      type = runtimeType(typeNode);
+    } catch {
+      typeFailure = true;
+      vueDiagnostic(context, 'vue-runtime-type-throw', typeNode ?? property);
+    }
     const required = !unknownOptions && requiredNode?.getText() === 'true';
     const definition = {
       name,
@@ -214,6 +221,10 @@ export function readVueRuntimeProps(root: Node, context: VueReaderContext): VueR
     syntax.typeLocations = typeNode ? [vueLocation(typeNode, context)] : [];
     if (unknownOptions || type === 'unknown' || (requiredNode && !['true', 'false'].includes(requiredNode.getText())))
       syntax.resolution = 'partial';
+    if (typeFailure) {
+      syntax.resolution = 'partial';
+      syntax.resolutionReason = 'vue-runtime-type-throw';
+    }
     if (unknownOptions) {
       syntax.resolutionReason = 'vue-runtime-options-unresolved';
       syntax.default = {
@@ -241,6 +252,17 @@ export function readVueRuntimeProps(root: Node, context: VueReaderContext): VueR
         unknownOptions ? 'vue-runtime-options-unresolved' : 'vue-runtime-declaration-partial',
         property,
       );
+  }
+
+  function valueDeclarations(node: Node): Node[] {
+    if (Node.isIdentifier(node)) return getValueTargetDeclarations(node);
+    if (Node.isPropertyAccessExpression(node)) return getValueTargetDeclarations(node.getNameNode());
+    if (Node.isElementAccessExpression(node)) {
+      const key = node.getArgumentExpression();
+      if (!key || (!Node.isStringLiteral(key) && !Node.isNoSubstitutionTemplateLiteral(key))) return [];
+      return node.getExpression().getType().getProperty(key.getLiteralValue())?.getDeclarations() ?? [];
+    }
+    return [];
   }
 
   function visit(node: Node, spreadPath: string[], depth: number): void {
@@ -296,12 +318,18 @@ export function readVueRuntimeProps(root: Node, context: VueReaderContext): VueR
         }
         return;
       }
-      if (Node.isIdentifier(node)) {
-        const declarations = getValueTargetDeclarations(node);
+      if (Node.isIdentifier(node) || Node.isPropertyAccessExpression(node) || Node.isElementAccessExpression(node)) {
+        const declarations = valueDeclarations(node);
         let resolved = false;
         for (const declaration of declarations) {
-          if (Node.isVariableDeclaration(declaration)) {
-            const initializer = declaration.getInitializer();
+          if (
+            Node.isVariableDeclaration(declaration) ||
+            Node.isPropertyAssignment(declaration) ||
+            Node.isExportAssignment(declaration)
+          ) {
+            const initializer = Node.isExportAssignment(declaration)
+              ? declaration.getExpression()
+              : declaration.getInitializer();
             if (initializer) {
               resolved = true;
               visit(initializer, spreadPath, depth + 1);
@@ -313,7 +341,7 @@ export function readVueRuntimeProps(root: Node, context: VueReaderContext): VueR
       }
       if (Node.isCallExpression(node)) {
         const expression = node.getExpression();
-        const declarations = Node.isIdentifier(expression) ? getValueTargetDeclarations(expression) : [];
+        const declarations = valueDeclarations(expression);
         for (const declaration of declarations) {
           let fn: Node | undefined = declaration;
           if (Node.isVariableDeclaration(declaration)) fn = declaration.getInitializer();
@@ -344,6 +372,8 @@ export function readVueRuntimeProps(root: Node, context: VueReaderContext): VueR
         return;
       }
       unavailable(node, 'vue-runtime-expression-unresolved', spreadPath);
+    } catch {
+      unavailable(node, 'vue-runtime-resolution-throw', spreadPath);
     } finally {
       active.delete(node);
     }

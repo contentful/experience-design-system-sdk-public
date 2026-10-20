@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -18,7 +18,7 @@ import {
 const directories: string[] = [];
 afterEach(() => directories.splice(0).forEach((path) => rmSync(path, { recursive: true, force: true })));
 function fixture(files: Record<string, string>): string {
-  const directory = mkdtempSync(join(tmpdir(), 'backend-vue-reader-'));
+  const directory = realpathSync.native(mkdtempSync(join(tmpdir(), 'backend-vue-reader-')));
   directories.push(directory);
   for (const [name, source] of Object.entries(files)) writeFileSync(join(directory, name), source);
   return directory;
@@ -175,5 +175,29 @@ describe('actual backend shared Vue producers', () => {
       expect.objectContaining({ reason: 'vue-analysis-cancelled' }),
     );
     expect(isExtractionDiagnosticsPayload(cancelled.extractionDiagnostics)).toBe(true);
+  });
+  it('retains symbol-backed member props and aliased slot accesses through both actual adapters', async () => {
+    const options = `{ props: { ...values.group['nested'], ...values.direct }, setup(_, context) { const alias = context; const slots = alias['slots']; const again = slots; again['footer']; again[dynamic]; function unrelated(again: any) { again.pretend; } return () => null; } }`;
+    const root = fixture({
+      'props.ts': `export const group = { nested: { label: { type: String, default: '' } } }; export const direct = { enabled: Boolean };`,
+      'Members.vue': `<script lang="ts">import * as values from './props.js'; export default ${options};</script>`,
+      'Members.tsx': `import * as values from './props.js'; import { defineComponent } from 'vue'; export const Members = defineComponent(${options});`,
+    });
+    for (const [name, extract, direct] of [
+      ['Members.vue', extractVueComponents, publicSfc],
+      ['Members.tsx', extractVueTsxComponents, publicTsx],
+    ] as const) {
+      const result = await extract([join(root, name)], undefined, { projectRoot: root });
+      expect(result).toEqual(await direct([join(root, name)], undefined, { projectRoot: root }));
+      const component = result.components[0]!;
+      expect(component.sourceCandidates?.find((candidate) => candidate.name === 'label')).toMatchObject({
+        sourceDefault: "''",
+        facts: { origin: 'imported' },
+      });
+      expect(component.slots.map((slot) => slot.name)).toEqual(['footer']);
+      expect(component.sourceCandidates?.some((candidate) => candidate.name === 'pretend')).toBe(false);
+      expect(isSourceCandidatePayload(component.sourceCandidates)).toBe(true);
+      expect(isExtractionDiagnosticsPayload(result.extractionDiagnostics)).toBe(true);
+    }
   });
 });
