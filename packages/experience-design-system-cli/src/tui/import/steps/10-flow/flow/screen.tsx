@@ -22,12 +22,6 @@ interface FlowScreenProps {
   onExit: (exitCode: number) => void;
 }
 
-/** How many steps the import has, as the wizard counted them. */
-function totalStepsFor(state: Pick<FlowState, 'tokensPath' | 'rawTokensPath' | 'mapTokensEligible'>): number {
-  const hasTokenStage = !!state.tokensPath || !!state.rawTokensPath;
-  return 3 + (hasTokenStage ? 1 : 0) + 2 + (state.mapTokensEligible === true ? 1 : 0);
-}
-
 /** Whether the preview gate offers "[e] Edit definitions": only when the document has components to edit. */
 function canEditFromPreview(cdf: FlowState['cdf']): boolean {
   if (!cdf) return false;
@@ -41,7 +35,6 @@ export function FlowScreen({
   generatePromptPath,
   onExit,
 }: FlowScreenProps): React.ReactElement {
-  const totalSteps = totalStepsFor(state);
   const quit = (): void => onExit(0);
 
   const content = ((): React.ReactElement | null => {
@@ -66,8 +59,7 @@ export function FlowScreen({
       case 'previewing':
         return (
           <RunningStep
-            stepNumber={totalSteps}
-            totalSteps={totalSteps}
+            step="push"
             title="Computing diff"
             description="Computing diff against your Contentful space..."
           />
@@ -80,8 +72,6 @@ export function FlowScreen({
             preview={state.serverPreview}
             spaceId={state.spaceId}
             environmentId={state.environmentId}
-            stepNumber={totalSteps}
-            totalSteps={totalSteps}
             onConfirm={controller.confirmPreview}
             // Editing would dead-end on "No generated definitions found" when the document is empty (delete-all).
             {...(canEditFromPreview(state.cdf) ? { onEdit: controller.editDefinitions } : {})}
@@ -90,7 +80,7 @@ export function FlowScreen({
         );
 
       case 'pushing':
-        return <PushingStep stepNumber={totalSteps} totalSteps={totalSteps} progress={state.pushProgress} />;
+        return <PushingStep progress={state.pushProgress} />;
 
       case 'path-prompt':
         return (
@@ -102,14 +92,7 @@ export function FlowScreen({
         );
 
       case 'printing':
-        return (
-          <RunningStep
-            stepNumber={totalSteps}
-            totalSteps={totalSteps}
-            title="Writing files"
-            description="Writing output files to disk..."
-          />
-        );
+        return <RunningStep step="push" title="Writing files" description="Writing output files to disk..." />;
 
       case 'print-gate': {
         const teaser = buildRunTeaserLine(state.lastRunId);

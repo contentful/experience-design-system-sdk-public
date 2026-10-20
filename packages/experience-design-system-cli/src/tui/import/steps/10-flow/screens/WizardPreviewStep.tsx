@@ -10,7 +10,7 @@ import type {
 } from '@contentful/experience-design-system-types';
 import { hasBreakingChangesWithImpact } from '@contentful/experience-design-system-backend-pipeline';
 import { computeComponentDiffLines } from '../support/preview-diff.js';
-import { StepHeader } from '../components/StepHeader.js';
+import { StepHeader } from '../../../shared/index.js';
 import { SpaceEnvironment } from '../components/SpaceEnvironment.js';
 import { usePreviewConfirmationInput } from '../support/preview-confirmation-input.js';
 import { WindowedPanel, terminalPanelHeight } from '../../07-scope-gate/sidebar/components/windowed-panel.js';
@@ -243,8 +243,6 @@ type WizardPreviewStepProps = {
   preview: ServerPreviewResponse;
   spaceId: string;
   environmentId: string;
-  stepNumber: number;
-  totalSteps: number;
   onConfirm: (acknowledge: boolean) => void;
   onEdit?: () => void;
   onQuit: () => void;
@@ -254,8 +252,6 @@ export function WizardPreviewStep({
   preview,
   spaceId,
   environmentId,
-  stepNumber,
-  totalSteps,
   onConfirm,
   onEdit,
   onQuit,
@@ -329,7 +325,7 @@ export function WizardPreviewStep({
 
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={2}>
-      <StepHeader stepNumber={stepNumber} totalSteps={totalSteps} title="Push to Contentful" />
+      <StepHeader step="push" />
 
       {hasAnything ? (
         <>

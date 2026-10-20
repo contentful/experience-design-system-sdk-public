@@ -7,7 +7,6 @@ import {
   noComponentsMessage,
   progressRows,
   resolveAgentChoice,
-  stepNumbers,
 } from '../../../src/tui/import/steps/06-extraction/logic.js';
 import type { ExtractionProgress } from '../../../src/tui/import/steps/06-extraction/types.js';
 
@@ -168,26 +167,6 @@ describe('isFullCacheHit', () => {
     ['token generation failed', { tokens: 'failed' as const }],
   ])('is false while %s', (_name, overrides) => {
     expect(isFullCacheHit(done(overrides))).toBe(false);
-  });
-});
-
-describe('stepNumbers', () => {
-  it('is step 2 of 6 with a token stage', () => {
-    expect(stepNumbers({ hasRawTokens: true })).toEqual({ stepNumber: 2, totalSteps: 6 });
-  });
-
-  it('is step 1 of 5 without one', () => {
-    expect(stepNumbers({ hasRawTokens: false })).toEqual({ stepNumber: 1, totalSteps: 5 });
-  });
-
-  it('drops the component steps when components are skipped', () => {
-    expect(stepNumbers({ hasRawTokens: true, skipComponents: true }).totalSteps).toBe(4);
-  });
-
-  it('adds the map tokens step only once it is known to run', () => {
-    expect(stepNumbers({ hasRawTokens: true, mapTokensEligible: true }).totalSteps).toBe(7);
-    expect(stepNumbers({ hasRawTokens: true, mapTokensEligible: false }).totalSteps).toBe(6);
-    expect(stepNumbers({ hasRawTokens: true, mapTokensEligible: null }).totalSteps).toBe(6);
   });
 });
 

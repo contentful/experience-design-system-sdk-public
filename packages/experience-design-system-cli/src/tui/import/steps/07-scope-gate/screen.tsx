@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, Text } from 'ink';
+import { StepHeader } from '../../shared/index.js';
 import { AddedColumn } from './panels/added-column.js';
 import { CyclesPanel } from './panels/cycles-panel.js';
 import { RejectPrompt } from './panels/reject-prompt.js';
@@ -82,6 +83,7 @@ function ScopeGateView({ components, onConfirm, onQuit }: ScopeGateScreenProps):
 
   return (
     <Box flexDirection="column" paddingX={2}>
+      <StepHeader step="scope-gate" />
       <Box flexDirection="row" flexWrap="wrap">
         <CounterStrip counters={counters} totalWidth={gate.totalWidth} />
         {gate.aiExcludedCount > 0 && (

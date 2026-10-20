@@ -17,6 +17,7 @@ const MIN_PANEL_ROWS = 4;
 export const FALLBACK_ROWS = 40;
 
 const HEADER_ROWS = 2;
+const STEP_HEADER_ROWS = 3;
 const COUNTER_STRIP_ROWS = 2;
 const FOCUSED_DETAIL_ROWS = 2;
 const LEGEND_ROWS = 3;
@@ -26,7 +27,7 @@ const LEGEND_ROWS = 3;
  * shares the columns row, so the fit constraint while open is simply
  * `FIXED_OVERHEAD + panelBoxHeight <= rows`.
  */
-const FIXED_OVERHEAD = HEADER_ROWS + COUNTER_STRIP_ROWS + FOCUSED_DETAIL_ROWS + LEGEND_ROWS;
+const FIXED_OVERHEAD = STEP_HEADER_ROWS + HEADER_ROWS + COUNTER_STRIP_ROWS + FOCUSED_DETAIL_ROWS + LEGEND_ROWS;
 
 // Panel box rows that are NOT entry rows: top border + header + footer hint +
 // bottom border (+ up to two scroll indicators on large lineages).
@@ -41,7 +42,7 @@ const PANEL_BOX_CHROME = 6;
  * focused-detail block, and the wrapping legend region. The value intentionally
  * leaves a small safety margin so resize-induced wrapping does not overflow.
  */
-const BASE_CHROME_OVERHEAD = 18;
+const BASE_CHROME_OVERHEAD = STEP_HEADER_ROWS + 18;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));

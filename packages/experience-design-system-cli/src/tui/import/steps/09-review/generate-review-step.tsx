@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import figures from 'figures';
 import { PALETTE } from '../../../theme.js';
+import { StepHeader } from '../../shared/index.js';
 import { getReviewJsonPanelValue } from './review-json-panel.js';
 import { Box, Text } from 'ink';
 import type {
@@ -1411,6 +1412,7 @@ function GenerateReviewStepView({
 
   return (
     <Box flexDirection="column">
+      <StepHeader step="review" />
       <ReviewStepDialogs
         surfaceState={reviewSurface}
         components={components}

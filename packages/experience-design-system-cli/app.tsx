@@ -11,7 +11,7 @@ import {
   WelcomeScreen,
 } from './src/tui/import/steps/index.js';
 import { ErrorStep } from './src/tui/import/shared/index.js';
-import { resolveAgentChoice, stepNumbers } from './src/tui/import/steps/06-extraction/logic.js';
+import { resolveAgentChoice } from './src/tui/import/steps/06-extraction/logic.js';
 import { readSettings } from '@contentful/experience-design-system-types/config';
 import { useExtraction } from './src/tui/import/steps/06-extraction/use-extraction.js';
 import { ScopeGateScreen } from './src/tui/import/steps/07-scope-gate/screen.js';
@@ -326,13 +326,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
           );
         }
         if (extraction?.status === 'running') {
-          return (
-            <ExtractionScreen
-              progress={extraction.progress}
-              agent={extractionRun.input.agent}
-              {...stepNumbers({ hasRawTokens: extractionRun.input.rawTokensPath !== '' })}
-            />
-          );
+          return <ExtractionScreen progress={extraction.progress} agent={extractionRun.input.agent} />;
         }
         return <></>;
       }
@@ -355,20 +349,12 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
           );
         }
         if (generation?.status === 'running') {
-          // the generating step comes right after extraction; the count grows by one once token mapping is known to run
-          const hasRawTokens = scopeRun.input.rawTokensPath !== '';
-          const counted = stepNumbers({
-            hasRawTokens,
-            mapTokensEligible: generation.progress.mapTokensEligible,
-          });
           return (
             <GenerationScreen
               progress={generation.progress}
               agent={scopeRun.input.agent}
               acceptedCount={scopeFlow.decisions.accepted.length}
               hasTokens={scopeRun.extraction.tokensPath !== ''}
-              stepNumber={hasRawTokens ? 4 : 3}
-              totalSteps={counted.totalSteps}
             />
           );
         }

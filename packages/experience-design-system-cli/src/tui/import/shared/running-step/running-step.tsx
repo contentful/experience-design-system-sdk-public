@@ -2,19 +2,18 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import { ProgressBar, Spinner, ThemeProvider } from '@inkjs/ui';
 import { PALETTE } from '../../../theme.js';
-import { progressPercent, stepLabel, type RunningLine } from './logic.js';
+import { progressPercent, type RunningLine } from './logic.js';
 import { PROGRESS_THEME } from './theme.js';
+import { StepHeader } from '../StepHeader.js';
+import type { ImportStepId } from '../StepHeader.js';
 import { useElapsed } from './use-elapsed.js';
 
 interface RunningStepProps {
-  stepNumber: number;
-  totalSteps: number;
-  title: string;
+  step: ImportStepId;
+  title?: string;
   description: string;
   lines?: readonly RunningLine[];
 }
-
-const RULE = '─'.repeat(40);
 
 function Line({ line }: { line: RunningLine }): React.ReactElement {
   if (line.progress) {
@@ -43,8 +42,7 @@ function Line({ line }: { line: RunningLine }): React.ReactElement {
 }
 
 export function RunningStep({
-  stepNumber,
-  totalSteps,
+  step,
   title,
   description,
   lines = [{ text: 'Running...' }],
@@ -53,11 +51,7 @@ export function RunningStep({
 
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
-      <Box flexDirection="column">
-        <Text color={PALETTE.muted}>{RULE}</Text>
-        <Text bold>{stepLabel(stepNumber, totalSteps, title)}</Text>
-        <Text color={PALETTE.muted}>{RULE}</Text>
-      </Box>
+      <StepHeader step={step} {...(title ? { title } : {})} />
       <Text>{description}</Text>
       <Box marginTop={1} flexDirection="column" gap={1}>
         {lines.map((line, index) => (

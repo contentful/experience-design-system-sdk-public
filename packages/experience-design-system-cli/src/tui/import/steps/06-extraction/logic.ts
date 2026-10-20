@@ -105,26 +105,6 @@ export function isFullCacheHit(progress: ExtractionProgress): boolean {
   );
 }
 
-/**
- * The wizard's step counts: three fixed steps, one more when there is a token stage, two more when components are
- * imported, and one more when the tokens can be mapped (not known yet at this stage, so it adds nothing here).
- * Extraction is step 2 when there is a token stage, otherwise step 1.
- */
-export function stepNumbers(input: {
-  hasRawTokens: boolean;
-  skipComponents?: boolean;
-  mapTokensEligible?: boolean | null;
-}): {
-  stepNumber: number;
-  totalSteps: number;
-} {
-  const { hasRawTokens, skipComponents = false, mapTokensEligible = null } = input;
-  return {
-    stepNumber: hasRawTokens ? 2 : 1,
-    totalSteps: 3 + (hasRawTokens ? 1 : 0) + (skipComponents ? 0 : 2) + (mapTokensEligible === true ? 1 : 0),
-  };
-}
-
 export function noComponentsMessage(projectPath: string): string {
   return `No components found in ${projectPath}.\n\nMake sure this path contains TypeScript/React/Vue component files (.tsx, .ts, .vue, etc.).`;
 }

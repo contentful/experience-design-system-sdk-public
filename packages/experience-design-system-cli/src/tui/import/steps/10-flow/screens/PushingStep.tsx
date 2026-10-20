@@ -2,18 +2,16 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import { ProgressBar, ThemeProvider } from '@inkjs/ui';
 import type { PushProgress } from '../support/push-progress.js';
-import { StepHeader } from '../components/StepHeader.js';
+import { StepHeader } from '../../../shared/index.js';
 import { useTimedSpinner } from '../support/use-timed-spinner.js';
 import { PROGRESS_THEME } from '../../../shared/running-step/theme.js';
 import { PALETTE } from '../../../../theme.js';
 
 type PushingStepProps = {
-  stepNumber: number;
-  totalSteps: number;
   progress: PushProgress;
 };
 
-export function PushingStep({ stepNumber, totalSteps, progress }: PushingStepProps): React.ReactElement {
+export function PushingStep({ progress }: PushingStepProps): React.ReactElement {
   const { elapsed } = useTimedSpinner();
 
   const operationId = progress && progress.kind === 'queued' ? progress.operationId : null;
@@ -23,7 +21,7 @@ export function PushingStep({ stepNumber, totalSteps, progress }: PushingStepPro
 
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
-      <StepHeader stepNumber={stepNumber} totalSteps={totalSteps} title="Push to Contentful" />
+      <StepHeader step="push" />
 
       <Text>Writing component types and design tokens to your Contentful space...</Text>
 
