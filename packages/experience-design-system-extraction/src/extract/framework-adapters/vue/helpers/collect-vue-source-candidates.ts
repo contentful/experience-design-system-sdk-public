@@ -9,7 +9,6 @@ import { mergeSourceCandidates, observeRawProps, observeTypeProps } from '../../
 import { SOURCE_FACT_SCHEMA_VERSION, type ExtractionDiagnostics } from '../../../candidates/types.js';
 import { createCompilerContexts, type CompilerContextResult } from '../../../compiler/context.js';
 import { parseVueObjectProps } from './extract-vue-object-props.js';
-import { describeSourceDomain } from '../../../candidates/source-candidates.js';
 import {
   isVueMacroCall,
   readVueRuntimeProps,
@@ -420,7 +419,6 @@ export function collectVueSourceCandidates(
           const syntax = vueSyntax(context, 'prop', call.getText(), defaultNode);
           syntax.typeLocations = [vueLocation(typeArgument, context)];
           if (observation.fact) {
-            observation.fact.domain = describeSourceDomain(observation.type);
             if (observation.fact.sourceDefault)
               observation.fact.sourceDefault.location = defaultNode ? vueLocation(defaultNode, context) : null;
           }

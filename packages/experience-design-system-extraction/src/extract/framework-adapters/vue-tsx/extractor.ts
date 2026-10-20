@@ -3,7 +3,13 @@ import type { RawComponentDefinition, ComponentExtractionResult, ExtractionExclu
 import { getTsxExtractionContext, getRenderableExports } from '../shared/helpers/tsx-shared.js';
 import { extractVueTsxComponentProps } from './helpers/extract-vue-tsx-props.js';
 import { readVueSlots } from '../vue/helpers/read-vue-slots.js';
-import { readVueRuntimeProps, vueDiagnostic, type VueReaderContext } from '../vue/helpers/read-vue-runtime.js';
+import {
+  isVueImport,
+  readVueRuntimeProps,
+  resolveVueRuntimeValue,
+  vueDiagnostic,
+  type VueReaderContext,
+} from '../vue/helpers/read-vue-runtime.js';
 import { mergeSourceCandidates, observeRawProps } from '../../candidates/source-candidates.js';
 import { SOURCE_FACT_SCHEMA_VERSION, type ExtractionDiagnostics } from '../../candidates/types.js';
 import type { ExtractorOptions } from '../../types/options.js';
@@ -13,7 +19,7 @@ export async function extractVueTsxComponents(
   _onProgress?: (progress: { filesProcessed: number; componentsFound: number }) => void,
   options: ExtractorOptions = {},
 ): Promise<ComponentExtractionResult> {
-  const extractionContext = getTsxExtractionContext(filePaths, /\.tsx$/, options);
+  const extractionContext = getTsxExtractionContext(filePaths, /\.[jt]sx$/, options);
   const extractionDiagnostics = extractionContext.diagnostics;
   const components: RawComponentDefinition[] = [];
   const warnings: string[] = [];
@@ -78,18 +84,22 @@ function extractVueTsxComponent(
     if (!Node.isVariableDeclaration(declaration)) continue;
     if (declaration.getSourceFile().getFilePath() !== sourceFile.getFilePath()) continue;
 
-    const resolved = resolveDefineComponentCall(declaration.getInitializer());
-    if (!resolved) continue;
-
-    const name = readComponentName(resolved.options) ?? exportName;
     const context: VueReaderContext = {
       sourcePath: sourceFile.getFilePath(),
       source: sourceFile.getFullText(),
       diagnostics,
       occurrence: 0,
     };
+    const resolved = resolveDefineComponentCall(declaration.getInitializer(), context);
+    if (!resolved) continue;
+    const name = readComponentName(resolved.options) ?? exportName;
     const propsMember = resolved.options.getProperty('props');
-    const expression = propsMember && Node.isPropertyAssignment(propsMember) ? propsMember.getInitializer() : undefined;
+    const expression =
+      propsMember && Node.isPropertyAssignment(propsMember)
+        ? propsMember.getInitializer()
+        : propsMember && Node.isShorthandPropertyAssignment(propsMember)
+          ? propsMember.getNameNode()
+          : undefined;
     const runtime = expression
       ? readVueRuntimeProps(expression, context)
       : { props: [], observations: [], resolution: 'resolved' as const };
@@ -104,6 +114,30 @@ function extractVueTsxComponent(
       props,
       slots,
     );
+    if (!resolved.bindingResolved) {
+      for (const candidate of collection.candidates) {
+        if (candidate.facts?.certainty === 'certain')
+          candidate.facts = {
+            ...candidate.facts,
+            certainty: 'unknown',
+            ambiguityReason: 'vue-component-binding-unresolved',
+          };
+        for (const observation of candidate.observations) {
+          if (observation.fact?.certainty === 'certain')
+            observation.fact = {
+              ...observation.fact,
+              certainty: 'unknown',
+              ambiguityReason: 'vue-component-binding-unresolved',
+            };
+          if (observation.syntax?.reader === 'vue')
+            observation.syntax = {
+              ...observation.syntax,
+              resolution: 'unresolved',
+              resolutionReason: observation.syntax.resolutionReason ?? 'vue-component-binding-unresolved',
+            };
+        }
+      }
+    }
     if (collection.omittedCount) vueDiagnostic(context, 'vue-source-candidate-budget-exhausted');
     if (!expression) vueDiagnostic(context, 'vue-props-absent', undefined, true);
     else
@@ -128,35 +162,50 @@ function extractVueTsxComponent(
   return undefined;
 }
 
-function resolveDefineComponentCall(node: Node | undefined):
+function resolveDefineComponentCall(
+  node: Node | undefined,
+  context: VueReaderContext,
+):
   | {
       options: import('ts-morph').ObjectLiteralExpression;
+      bindingResolved: boolean;
       slotsTypeNode?: Node;
     }
   | undefined {
   if (!node || !Node.isCallExpression(node)) return undefined;
 
   const directExpressionText = node.getExpression().getText();
-  if (/(^|\.)defineComponent$/.test(directExpressionText)) {
-    const optionsArg = node.getArguments()[0];
-    if (!optionsArg || !Node.isObjectLiteralExpression(optionsArg)) return undefined;
-    return { options: optionsArg };
+  if (isVueImport(node.getExpression(), 'defineComponent') || /(^|\.)defineComponent$/.test(directExpressionText)) {
+    const argument = node.getArguments()[0];
+    const optionsArg = argument ? resolveVueRuntimeValue(argument) : undefined;
+    const bindingResolved = isVueImport(node.getExpression(), 'defineComponent');
+    if (!bindingResolved) vueDiagnostic(context, 'vue-component-binding-unresolved', node);
+    if (!optionsArg || !Node.isObjectLiteralExpression(optionsArg)) {
+      vueDiagnostic(context, 'vue-component-options-unresolved', node);
+      return undefined;
+    }
+    return { options: optionsArg, bindingResolved };
   }
 
   if (!Node.isCallExpression(node.getExpression())) return undefined;
 
   const outerArgs = node.getArguments();
   if (outerArgs.length !== 1) return undefined;
-  const optionsArg = outerArgs[0];
-  if (!Node.isObjectLiteralExpression(optionsArg)) return undefined;
+  const optionsArg = outerArgs[0] ? resolveVueRuntimeValue(outerArgs[0]) : undefined;
+  if (!optionsArg || !Node.isObjectLiteralExpression(optionsArg)) return undefined;
 
   const innerCall = node.getExpression();
   if (!Node.isCallExpression(innerCall)) return undefined;
-  if (!/(^|\.)genericComponent$/.test(innerCall.getExpression().getText())) return undefined;
+  const callable = resolveVueRuntimeValue(innerCall);
+  const bindingResolved = Boolean(callable && isVueImport(callable, 'defineComponent'));
+  const legacyGeneric = /(^|\.)genericComponent$/.test(innerCall.getExpression().getText());
+  if (!bindingResolved && !legacyGeneric) return undefined;
 
+  if (!bindingResolved) vueDiagnostic(context, 'vue-component-binding-unresolved', innerCall);
   return {
     options: optionsArg,
-    slotsTypeNode: innerCall.getTypeArguments()[0],
+    bindingResolved,
+    slotsTypeNode: legacyGeneric ? innerCall.getTypeArguments()[0] : undefined,
   };
 }
 

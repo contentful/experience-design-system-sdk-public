@@ -111,6 +111,38 @@ export function describeSourceDomain(typeText: string): SourceDomain {
   };
 }
 
+/** Combine source spelling with checker alternatives without promoting open or unknown members. */
+export function describeCompilerDomain(type: Type, sourceTypeText: string): SourceDomain {
+  const source = describeSourceDomain(sourceTypeText);
+  const alternatives = type.isUnion() ? type.getUnionTypes() : [type];
+  const observed = [...source.observedLiterals];
+  let openness: SourceDomain['openness'] = 'closed';
+  for (const member of alternatives.slice(0, 2048)) {
+    if (member.isUndefined() || member.isNever()) continue;
+    if (member.isStringLiteral()) observed.push({ kind: 'string', value: String(member.getLiteralValue()) });
+    else if (member.isNumberLiteral()) {
+      const value = member.getLiteralValue();
+      observed.push({ kind: 'number', value: String(value) });
+      if (
+        typeof value !== 'number' ||
+        !Number.isFinite(value) ||
+        (Number.isInteger(value) && !Number.isSafeInteger(value))
+      )
+        openness = 'unknown';
+    } else if (member.isBooleanLiteral()) observed.push({ kind: 'boolean', value: member.getText() });
+    else if (member.isNull()) observed.push({ kind: 'null', value: 'null' });
+    else if (member.isString() || member.isNumber() || member.isBoolean())
+      openness = openness === 'unknown' ? 'unknown' : 'open';
+    else openness = 'unknown';
+  }
+  if (alternatives.length > 2048) openness = 'unknown';
+  if (source.openness === 'open' && openness === 'closed') openness = 'open';
+  return {
+    observedLiterals: [...new Map(observed.map((value) => [`${value.kind}:${value.value}`, value])).values()],
+    openness,
+  };
+}
+
 export function observeRawProps(
   props: readonly RawPropDefinition[],
   evidenceKind: SourceEvidenceKind,
@@ -222,7 +254,10 @@ export function observeTypeProps(
             : null,
       declarations: locations,
       sourceTypeText,
-      domain: describeSourceDomain(sourceTypeText),
+      domain:
+        property && fallback
+          ? describeCompilerDomain(property.getTypeAtLocation(fallback), sourceTypeText)
+          : describeSourceDomain(sourceTypeText),
       declaredRequired,
       sourceDefault: sourceDefault !== null ? decodeSourceDefault(sourceDefault, locations[0] ?? null) : null,
       advisoryShape: resolved?.shape ?? null,
@@ -271,7 +306,7 @@ function resolvedKind(typeText: string): string {
   return 'unknown';
 }
 
-function createFact(observation: SourceCandidateObservation): CompilerPropFact {
+export function createFact(observation: SourceCandidateObservation): CompilerPropFact {
   return (
     observation.fact ?? {
       origin: observation.origin,

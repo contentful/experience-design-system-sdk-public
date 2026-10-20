@@ -444,7 +444,13 @@ describe('configured Vue source reader', () => {
         { kind: 'number', value: '2' },
       ],
     });
-    expect(candidates.find((candidate) => candidate.name === 'aliased')?.facts?.domain.openness).toBe('unknown');
+    expect(candidates.find((candidate) => candidate.name === 'aliased')?.facts?.domain).toMatchObject({
+      openness: 'closed',
+      observedLiterals: [
+        { kind: 'string', value: 'first' },
+        { kind: 'string', value: 'second' },
+      ],
+    });
     for (const name of ['mixed', 'open', 'wrapped'])
       expect(candidates.find((candidate) => candidate.name === name)?.facts?.domain.openness).toBe('open');
     expect(candidates.find((candidate) => candidate.name === 'wrapped')?.type).toBe('string');
