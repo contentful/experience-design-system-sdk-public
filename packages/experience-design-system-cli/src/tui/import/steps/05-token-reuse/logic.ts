@@ -56,15 +56,3 @@ export async function inspectTokens({ rawTokensPath, contentfulDir, cache }: Ins
   const [generated, source] = await Promise.all([stat(tokensPath), stat(rawTokensPath).catch(() => null)]);
   return { kind: 'cached', tokensPath, sourceChanged: source ? source.mtimeMs > generated.mtimeMs : false };
 }
-
-export function gateText({ tokensPath, sourceChanged }: { tokensPath: string; sourceChanged: boolean }): {
-  summary: string;
-  context?: string;
-} {
-  const summary = sourceChanged
-    ? `Source file has been modified since tokens were last generated.\n\nTokens Path: ${tokensPath}`
-    : `Source file has not changed since tokens were last generated.\n\nTokens Path: ${tokensPath}`;
-  return sourceChanged
-    ? { summary, context: 'The source tokens file changed — regenerating is recommended.' }
-    : { summary };
-}
