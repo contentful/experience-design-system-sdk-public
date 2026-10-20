@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { PALETTE } from '../../theme.js';
 import { ControlHints } from '../../control-hints.js';
-import { CLEAR_CONTROL, ClearableTextInput, isClearKey } from '../../clear-shortcut.js';
+import { ClearableTextInput, isClearKey } from '../../ClearableTextInput.js';
 
 export interface FormField<K extends string> {
   key: K;
@@ -108,7 +108,7 @@ export function FieldForm<K extends string>({
     if (busy) return;
 
     if (editing) {
-      // <ClearableTextInput> handles typing, the cursor, left/right, Ctrl+D and Enter (onSubmit) itself.
+      // <TextInput> handles typing, the cursor, left/right and Enter (onSubmit) itself.
       if (key.escape && currentField) {
         onChange(currentField.key, valueBeforeEdit);
         setEditing(false);
@@ -220,13 +220,13 @@ export function FieldForm<K extends string>({
                 { keys: 'type', label: 'edit' },
                 { keys: '←/→', label: 'move cursor' },
                 { keys: '⏎', label: 'done' },
-                { keys: CLEAR_CONTROL.keys, label: 'clear' },
+                { keys: 'Ctrl+D', label: 'clear' },
                 { keys: 'Esc', label: 'cancel edit' },
               ]
             : [
                 { keys: '↑/↓', label: 'move' },
                 { keys: '⏎', label: currentAction ? currentAction.hint : 'edit' },
-                ...(currentField ? [{ keys: CLEAR_CONTROL.keys, label: 'clear' }] : []),
+                ...(currentField ? [{ keys: 'Ctrl+D', label: 'clear' }] : []),
                 { keys: 's', label: 'save' },
                 { keys: 'Esc/q', label: 'back without saving' },
               ]

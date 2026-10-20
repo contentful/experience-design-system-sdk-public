@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Box, Text } from 'ink';
 import { PALETTE } from '../../../theme.js';
-import { ClearableTextInput } from '../../../clear-shortcut.js';
+import { ClearableTextInput } from '../../../ClearableTextInput.js';
 import { TOKEN_INPUT_CONTROLS, useTokenInputControls } from './controls.js';
 import { toTokenPath } from './logic.js';
 import { validateTokenPath } from './validate-path.js';

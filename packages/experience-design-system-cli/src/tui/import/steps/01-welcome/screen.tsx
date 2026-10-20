@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Box, Text } from 'ink';
 import { PALETTE } from '../../../theme.js';
-import { ClearableTextInput } from '../../../clear-shortcut.js';
+import { ClearableTextInput } from '../../../ClearableTextInput.js';
 import { WELCOME_CONTROLS, useWelcomeControls } from './controls.js';
 import { toProjectPath } from './logic.js';
 

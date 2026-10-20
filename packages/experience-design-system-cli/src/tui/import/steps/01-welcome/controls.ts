@@ -1,10 +1,9 @@
 import { useInput } from 'ink';
-import { CLEAR_CONTROL } from '../../../clear-shortcut.js';
 import { shouldQuit } from './logic.js';
 
 export const WELCOME_CONTROLS = [
   { keys: 'Enter', label: 'Continue' },
-  CLEAR_CONTROL,
+  { keys: 'Ctrl+D', label: 'Clear' },
   { keys: 'Esc', label: 'Back to menu' },
 ] as const;
 
