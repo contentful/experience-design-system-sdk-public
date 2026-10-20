@@ -2,7 +2,7 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import figures from 'figures';
 import { computeColumnWindow, sideColumnLabelStyle, type AddedComponentEntry } from '../columns.js';
-import { PALETTE } from '../sidebar/theme.js';
+import { PALETTE } from '@tui/theme.js';
 import { WindowIndicator, WindowedPanel } from '../sidebar/components/windowed-panel.js';
 
 interface AddedColumnProps {
@@ -40,7 +40,7 @@ export function AddedColumn(props: AddedColumnProps): React.ReactElement {
               {showSeparator && <Text color={PALETTE.muted}>{'─'.repeat(Math.max(0, width - 2))}</Text>}
               <Box>
                 {isCursor ? (
-                  <Text color={PALETTE.info} bold>
+                  <Text color={PALETTE.accent} bold>
                     {figures.pointer}
                   </Text>
                 ) : (
@@ -55,7 +55,7 @@ export function AddedColumn(props: AddedColumnProps): React.ReactElement {
                     <Text>{'    '}</Text>
                   ))}
                 {entry.isCycle && (
-                  <Text color={isCursor ? PALETTE.info : PALETTE.warning} bold underline={style.nameUnderline}>
+                  <Text color={isCursor ? PALETTE.accent : PALETTE.warning} bold underline={style.nameUnderline}>
                     {' ⚠'}
                   </Text>
                 )}

@@ -9,7 +9,7 @@ import type {
   ComponentReviewMetadata,
 } from '@contentful/experience-design-system-backend-pipeline';
 import { FixedPanel } from '../07-scope-gate/sidebar/components/windowed-panel.js';
-import { PALETTE } from '../../../theme.js';
+import { PALETTE } from '@tui/theme.js';
 
 type ReviewPanel = 'none' | 'prop-rationale' | 'component-rationale' | 'source' | 'token-review';
 

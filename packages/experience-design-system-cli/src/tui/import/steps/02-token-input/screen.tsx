@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Text } from 'ink';
-import { PALETTE } from '../../../theme.js';
+import { PALETTE } from '@tui/theme.js';
 import { ClearableTextInput } from '../../../ClearableTextInput.js';
 import { TOKEN_INPUT_CONTROLS, useTokenInputControls } from './controls.js';
 import { toTokenPath } from './logic.js';

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Text } from 'ink';
-import { PALETTE } from '../theme.js';
+import { PALETTE } from '@tui/theme.js';
 import type { PreviewAnnotation } from '../types.js';
 
 export type PreviewBadgeValue = { char: string; color: string; bold?: boolean; dim?: boolean };

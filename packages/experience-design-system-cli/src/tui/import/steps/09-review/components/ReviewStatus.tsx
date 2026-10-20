@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import type { ReviewComponentStatus } from '../types.js';
-import { PALETTE } from '../../../../theme.js';
+import { PALETTE } from '@tui/theme.js';
 
 export type ReviewStatusCounts = {
   accepted: number;

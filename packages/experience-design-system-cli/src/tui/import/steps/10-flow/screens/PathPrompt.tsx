@@ -5,7 +5,7 @@ import { dirname, basename, join } from 'node:path';
 import { useImmediateInput } from '../../07-scope-gate/sidebar/hooks/useImmediateInput.js';
 import { normalizePath } from '../support/path-utils.js';
 import { useBlinkingCursor } from '../support/use-blinking-cursor.js';
-import { PALETTE } from '../../../../theme.js';
+import { PALETTE } from '@tui/theme.js';
 
 export type PathPromptProps = {
   defaultPath: string;

@@ -5,7 +5,7 @@ import type { PushProgress } from '../support/push-progress.js';
 import { StepHeader } from '../../../shared/index.js';
 import { useTimedSpinner } from '../support/use-timed-spinner.js';
 import { PROGRESS_THEME } from '../../../shared/running-step/theme.js';
-import { PALETTE } from '../../../../theme.js';
+import { PALETTE } from '@tui/theme.js';
 
 type PushingStepProps = {
   progress: PushProgress;

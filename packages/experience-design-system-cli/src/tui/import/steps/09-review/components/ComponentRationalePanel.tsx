@@ -1,5 +1,5 @@
 import React from 'react';
-import { PALETTE } from '../../../../theme.js';
+import { PALETTE } from '@tui/theme.js';
 import { Box, Text } from 'ink';
 import type { ComponentRationale } from '@contentful/experience-design-system-backend-pipeline';
 import { wrapText } from './wrap-text.js';

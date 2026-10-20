@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import { PALETTE } from '../theme.js';
+import { PALETTE } from '@tui/theme.js';
 import { formatSearchMatchSummary } from '../sidebar-input.js';
 
 export type SearchMatchSummaryProps = {
@@ -30,7 +30,7 @@ export function SearchMatchSummary({
         <Box marginTop={marginTop} flexDirection="column">
           <Text>
             {`/${query}`}
-            <Text color={PALETTE.info}>{'▎'}</Text>
+            <Text color={PALETTE.accent}>{'▎'}</Text>
             {query && <Text color={PALETTE.muted}>{formatSearchMatchSummary(matches, total)}</Text>}
             <Text>{'  · [Esc] leave'}</Text>
           </Text>

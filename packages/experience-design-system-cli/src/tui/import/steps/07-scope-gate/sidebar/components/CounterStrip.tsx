@@ -1,6 +1,6 @@
 import { Box, Text } from 'ink';
 import React from 'react';
-import { PALETTE } from '../theme.js';
+import { PALETTE } from '@tui/theme.js';
 
 export type CounterStripCounters = {
   accepted: number;

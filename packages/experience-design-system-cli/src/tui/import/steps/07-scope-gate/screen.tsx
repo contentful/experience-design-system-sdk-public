@@ -11,7 +11,7 @@ import { GroupedSidebar } from './sidebar/components/GroupedSidebar.js';
 import { HelpOverlay, type HelpSection } from './sidebar/components/HelpOverlay.js';
 import { SearchMatchSummary } from './sidebar/components/SearchMatchSummary.js';
 import { createSidebarViewsHelpSection } from './sidebar/sidebar-help.js';
-import { PALETTE } from './sidebar/theme.js';
+import { PALETTE } from '@tui/theme.js';
 import type { ScopeComponent, ScopeDecisions } from './types.js';
 import { useScopeGate } from './use-scope-gate.js';
 
@@ -89,7 +89,7 @@ function ScopeGateView({ components, onConfirm, onQuit }: ScopeGateScreenProps):
         {gate.aiExcludedCount > 0 && (
           <Text color={PALETTE.muted}>
             {`${gate.aiExcludedCount} component${gate.aiExcludedCount === 1 ? '' : 's'} flagged by AI`}
-            {gate.aiRows.length > 0 && <Text color={PALETTE.info}>{' — press [x] to see why'}</Text>}
+            {gate.aiRows.length > 0 && <Text color={PALETTE.accent}>{' — press [x] to see why'}</Text>}
           </Text>
         )}
       </Box>

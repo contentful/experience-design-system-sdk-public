@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import { ProgressBar, Spinner, ThemeProvider } from '@inkjs/ui';
-import { PALETTE } from '../../../theme.js';
+import { PALETTE } from '@tui/theme.js';
 import { progressPercent, type RunningLine } from './logic.js';
 import { PROGRESS_THEME } from './theme.js';
 import { StepHeader } from '../StepHeader.js';

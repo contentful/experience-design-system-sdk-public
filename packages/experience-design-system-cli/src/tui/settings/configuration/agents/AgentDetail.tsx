@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text } from 'ink';
 import { AGENT_BINARIES, type AgentName } from '@contentful/experience-design-system-backend-pipeline';
-import { PALETTE } from '../../../theme.js';
+import { PALETTE } from '@tui/theme.js';
 import {
   FieldForm,
   FormReadOnlyRow,

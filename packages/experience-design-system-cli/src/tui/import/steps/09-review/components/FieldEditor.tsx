@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useState } from 'react';
 import figures from 'figures';
-import { PALETTE } from '../../../../theme.js';
+import { PALETTE } from '@tui/theme.js';
 import { Box, measureElement, Text, type DOMElement } from 'ink';
 import {
   CDF_PROPERTY_TYPES,

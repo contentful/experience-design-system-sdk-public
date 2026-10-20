@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { PALETTE } from '../../../theme.js';
+import { PALETTE } from '@tui/theme.js';
 import { ControlHints } from '../../../control-hints.js';
 import { startDebugRun, finishDebugRun, startDebugSessionIn } from '../../../debug-store.js';
 import {

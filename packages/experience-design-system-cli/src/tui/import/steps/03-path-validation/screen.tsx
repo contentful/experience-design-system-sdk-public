@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Text } from 'ink';
-import { PALETTE } from '../../../theme.js';
+import { PALETTE } from '@tui/theme.js';
 import { resolveUserPath } from '../../resolve-user-path.js';
 import { controlsFor, usePathValidationControls } from './controls.js';
 import { scanFiles } from './helpers/scan-files.js';

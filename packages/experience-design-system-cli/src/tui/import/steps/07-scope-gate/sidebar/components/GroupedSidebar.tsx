@@ -12,7 +12,7 @@ import {
 } from '../../graph/composite-closure.js';
 import type { PreviewAnnotation, RenderStatus } from '../types.js';
 import { PreviewBadge, previewBadge } from './badge.js';
-import { PALETTE } from '../theme.js';
+import { PALETTE } from '@tui/theme.js';
 import { WindowIndicator, WindowedPanel } from './windowed-panel.js';
 
 export interface GroupedSidebarItem {
@@ -480,7 +480,7 @@ function labelStyleFor(input: { row: VisibleRow; isCursor: boolean; wouldDim: bo
 } {
   const { row, isCursor, wouldDim } = input;
   if (isCursor) {
-    return { color: PALETTE.info, bold: true, dim: false };
+    return { color: PALETTE.accent, bold: true, dim: false };
   }
   return {
     color: rowColor(row, row.aggregateGlyph),
@@ -622,7 +622,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
         return (
           <Box key={row.key}>
             {isCursor ? (
-              <Text color={PALETTE.info} bold>
+              <Text color={PALETTE.accent} bold>
                 {figures.pointer}
               </Text>
             ) : (
@@ -646,7 +646,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
                 <Text>{'    '}</Text>
               ))}
             <Text
-              color={isSelected ? PALETTE.info : labelStyle.dim ? PALETTE.muted : labelStyle.color}
+              color={isSelected ? PALETTE.accent : labelStyle.dim ? PALETTE.muted : labelStyle.color}
               bold={isSelected || labelStyle.bold}
               inverse={false}
               underline={isSelected && !focused}

@@ -1,5 +1,5 @@
 import { Box, Text } from 'ink';
-import { PALETTE } from '../../../../theme.js';
+import { PALETTE } from '@tui/theme.js';
 import React from 'react';
 
 export interface CustomPromptBannerProps {

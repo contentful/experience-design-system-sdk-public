@@ -1,10 +1,17 @@
 import { Box } from 'ink';
-import { PALETTE } from '../theme.js';
+import { PALETTE } from '@tui/theme.js';
 import { legendEntry } from './LegendEntry.js';
 
 export function CompactControlBar({ hasGroupRoots, searchActive }: { hasGroupRoots: boolean; searchActive: boolean }) {
   return (
-    <Box borderStyle="single" borderColor={PALETTE.border} paddingX={1} flexWrap="wrap" columnGap={2}>
+    <Box
+      alignSelf="flex-start"
+      borderStyle="single"
+      borderColor={PALETTE.border}
+      paddingX={1}
+      flexWrap="wrap"
+      columnGap={2}
+    >
       {legendEntry('[↑/↓]', 'move')}
       {legendEntry('[a/r]', 'accept/reject')}
       {legendEntry('[f]', 'continue/finalize')}
