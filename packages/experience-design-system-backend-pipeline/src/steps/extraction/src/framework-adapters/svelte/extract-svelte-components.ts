@@ -447,7 +447,7 @@ async function extractFromSvelteFile(
 
   if (instance && hasV4ExportLetProps(instance)) {
     warnings.push(
-      `${name}: Svelte 4 export let syntax not yet supported (${filePath}); see INTEG-4267 for v5-only scope and follow-up`,
+      `${name}: Svelte export let props are not extracted; prop extraction uses $props() syntax; this component was skipped (${filePath})`,
     );
     return { component: null, warnings };
   }
