@@ -9,7 +9,6 @@ export function createReviewSessionSummary(session: ReviewSessionSnapshot): Revi
         id: component.id,
         name: component.name,
         status: component.status,
-        extractionConfidence: component.originalProposal.extractionConfidence ?? null,
         needsReview: component.originalProposal.needsReview ?? false,
         validationErrorCount: counts.errors,
         validationWarningCount: counts.warnings,

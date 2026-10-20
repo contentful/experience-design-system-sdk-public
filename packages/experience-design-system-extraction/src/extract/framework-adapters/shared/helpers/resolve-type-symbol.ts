@@ -8,7 +8,7 @@ type TypeProperty = {
   isOptional(): boolean;
 };
 
-export type ResolvedTypeProperty = {
+type ResolvedTypeProperty = {
   name: string;
   declaration: Node;
   typeText: string;

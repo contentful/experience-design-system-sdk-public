@@ -1236,8 +1236,8 @@ export function storeRawComponents(
   const now = new Date().toISOString();
 
   const insertComp = db.prepare(
-    `INSERT INTO raw_components (session_id, component_id, name, source, framework, extracted_at, extraction_confidence, review_reasons, needs_review, source_path)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO raw_components (session_id, component_id, name, source, framework, extracted_at, review_reasons, needs_review, source_path)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const insertSourceEvidence = db.prepare(
     `INSERT INTO raw_component_source_evidence
@@ -1349,7 +1349,6 @@ export function storeRawComponents(
         comp.source,
         comp.framework,
         now,
-        comp.extractionConfidence ?? null,
         JSON.stringify(comp.reviewReasons ?? []),
         comp.needsReview ? 1 : 0,
         comp.sourcePath ?? null,
@@ -1535,14 +1534,13 @@ export function loadRawComponents(
 ): RawComponentWithId[] {
   const all = db
     .prepare(
-      'SELECT component_id, name, source, framework, extraction_confidence, review_reasons, needs_review, source_path FROM raw_components WHERE session_id = ? ORDER BY rowid',
+      'SELECT component_id, name, source, framework, review_reasons, needs_review, source_path FROM raw_components WHERE session_id = ? ORDER BY rowid',
     )
     .all(sessionId) as Array<{
     component_id: string;
     name: string;
     source: string;
     framework: string;
-    extraction_confidence: number | null;
     review_reasons: string;
     needs_review: number;
     source_path: string | null;
@@ -1675,7 +1673,6 @@ export function loadRawComponents(
       name: c.name,
       source: c.source,
       framework: c.framework as RawComponentDefinition['framework'],
-      extractionConfidence: c.extraction_confidence ?? null,
       reviewReasons: parseReviewReasons(c.review_reasons),
       needsReview: Boolean(c.needs_review),
       sourcePath: c.source_path ?? undefined,

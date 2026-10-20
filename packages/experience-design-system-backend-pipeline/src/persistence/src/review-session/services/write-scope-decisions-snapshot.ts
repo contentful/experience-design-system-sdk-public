@@ -37,7 +37,6 @@ export async function writeScopeDecisionsSnapshot(db: DatabaseSync, sessionId: s
       ...(c.sourceCandidates !== undefined ? { sourceCandidates: c.sourceCandidates } : {}),
       ...(c.sourceCandidateSources !== undefined ? { sourceCandidateSources: c.sourceCandidateSources } : {}),
       ...(c.sourceEvidenceReadStatus !== undefined ? { sourceEvidenceReadStatus: c.sourceEvidenceReadStatus } : {}),
-      ...(c.extractionConfidence !== undefined ? { extractionConfidence: c.extractionConfidence } : {}),
       ...(c.reviewReasons !== undefined ? { reviewReasons: c.reviewReasons } : {}),
       ...(c.needsReview !== undefined ? { needsReview: c.needsReview } : {}),
     };

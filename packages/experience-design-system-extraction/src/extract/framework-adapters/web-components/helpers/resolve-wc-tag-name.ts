@@ -49,7 +49,7 @@ export function chooseComponentName(
   return className;
 }
 
-export function getElementTagNameFromJsDoc(classDecl: ClassDeclaration): string | null {
+function getElementTagNameFromJsDoc(classDecl: ClassDeclaration): string | null {
   for (const doc of classDecl.getJsDocs()) {
     for (const tag of doc.getTags()) {
       if (tag.getTagName() !== 'element') continue;

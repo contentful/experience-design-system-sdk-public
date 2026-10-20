@@ -80,7 +80,7 @@ describe('executeExtractionOrchestrator integration contract', () => {
     vi.resetModules();
   });
 
-  it('returns scored and validated components without CLI persistence', async () => {
+  it('returns reviewed and validated components without CLI persistence', async () => {
     const projectRoot = await mkdtemp(join(tmpdir(), 'extraction-orchestrator-'));
     tempDirs.push(projectRoot);
     const sourcePath = join(projectRoot, 'Button.tsx');
@@ -100,7 +100,6 @@ describe('executeExtractionOrchestrator integration contract', () => {
     expect(result.components[0]).toEqual(
       expect.objectContaining({
         name: 'Button',
-        extractionConfidence: 5,
         validationIssues: [],
       }),
     );

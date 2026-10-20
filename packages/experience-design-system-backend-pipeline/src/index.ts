@@ -431,7 +431,6 @@ export type {
   ExtractionExclusion,
   ExtractorProgress,
 } from './steps/extraction/src/types/component.js';
-export { stripScoringFields } from './steps/extraction/src/types/component.js';
 export { runExtractAndComposeSession } from './orchestrators/run-extract-and-compose-session/run-extract-and-compose-session.js';
 export type {
   RunExtractAndComposeSessionRequest,

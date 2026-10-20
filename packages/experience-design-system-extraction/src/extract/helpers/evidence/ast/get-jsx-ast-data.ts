@@ -39,7 +39,7 @@ export function getReturnedJsxTagName(callback: ArrowFunction | FunctionExpressi
 }
 
 /** Unwraps a JSX node from an expression body, block body return, or parenthesized expression. */
-export function unwrapReturnedJsx(bodyOrExpr: Node): Node | undefined {
+function unwrapReturnedJsx(bodyOrExpr: Node): Node | undefined {
   if (
     Node.isJsxElement(bodyOrExpr) ||
     Node.isJsxSelfClosingElement(bodyOrExpr) ||
@@ -64,7 +64,7 @@ export function unwrapReturnedJsx(bodyOrExpr: Node): Node | undefined {
 }
 
 /** Returns the single JSX child of a fragment, or undefined if the fragment has 0 or 2+ children. */
-export function unwrapSingleJsxChildOfFragment(fragment: Node): Node | undefined {
+function unwrapSingleJsxChildOfFragment(fragment: Node): Node | undefined {
   if (!Node.isJsxFragment(fragment)) return undefined;
   const jsxChildren = fragment
     .getJsxChildren()

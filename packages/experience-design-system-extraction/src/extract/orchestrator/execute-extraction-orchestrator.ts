@@ -13,7 +13,7 @@ export interface ExtractionOrchestratorRequest extends ExtractorOptions {
 /**
  * Executes the extraction use case after the controller has validated the
  * public request. Owns extraction-time classification, inspection,
- * quality signals, scoring, and validation, but not transport or persistence.
+ * quality signals, review, and validation, but not transport or persistence.
  */
 export async function executeExtractionOrchestrator(
   request: ExtractionOrchestratorRequest,

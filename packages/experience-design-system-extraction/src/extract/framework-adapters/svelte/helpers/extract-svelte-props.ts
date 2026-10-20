@@ -8,7 +8,7 @@ import { formatAnnotation, classifyUnresolved } from './classify-svelte-props-an
 export { extractFromTypeMembersOnly };
 export { getPropsTypeName, getRetryAnnotation } from './classify-svelte-props-annotation.js';
 
-export interface PropsCallContext {
+interface PropsCallContext {
   propsCall: AstNode;
   instance: AstNode;
   moduleScript?: AstNode;

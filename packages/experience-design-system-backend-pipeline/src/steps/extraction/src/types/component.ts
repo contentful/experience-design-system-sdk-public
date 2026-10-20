@@ -77,7 +77,6 @@ export interface RawComponentDefinition {
    * non-authorable context-provider components.
    */
   usesCreateContext?: boolean;
-  extractionConfidence?: number | null; // 1–5 scale; null = not yet scored
   reviewReasons?: string[];
   needsReview?: boolean;
   validationIssues?: ExtractionValidationIssue[];
@@ -141,14 +140,4 @@ export interface ComponentExtractor {
     onProgress?: (p: ExtractorProgress) => void,
     opts?: ExtractorOptions,
   ): Promise<ComponentExtractionResult>;
-}
-
-/** Strip internal scoring fields before serialising a RawComponentDefinition for display or editing. */
-export function stripScoringFields({
-  extractionConfidence: _c,
-  reviewReasons: _r,
-  needsReview: _n,
-  ...rest
-}: RawComponentDefinition): Omit<RawComponentDefinition, 'extractionConfidence' | 'reviewReasons' | 'needsReview'> {
-  return rest;
 }

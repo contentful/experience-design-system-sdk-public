@@ -5,7 +5,7 @@ export const DATA_WRAPPER_REASON_PREFIX = 'data-wrapper:';
 
 const INFRA_PROP_NAMES = new Set(['id', 'locale', 'preview', 'slug', 'topic', 'previousComponent', '__typename']);
 
-export const VISIBLE_UI_TAG_PATTERN =
+const VISIBLE_UI_TAG_PATTERN =
   /<(?:[A-Z][A-Za-z0-9_.]*|div|span|section|main|article|header|footer|nav|aside|img|video|p|h[1-6]|ul|ol|li|button|input|textarea|select|form|label|table|tbody|thead|tr|td|th)\b/;
 
 export const GENERATED_IMPORT_PATTERN = /from\s+['"][^'"]*__generated[^'"]*['"]/;

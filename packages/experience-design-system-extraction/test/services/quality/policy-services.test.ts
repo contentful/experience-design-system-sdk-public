@@ -55,7 +55,7 @@ describe('classification service', () => {
 });
 
 describe('quality service', () => {
-  it('scores and validates an authorable component without adding review warnings', async () => {
+  it('reviews and validates an authorable component without adding review warnings', async () => {
     const projectRoot = await mkdtemp(join(tmpdir(), 'quality-service-valid-'));
     tempDirs.push(projectRoot);
     const source = join(projectRoot, 'Button.tsx');
@@ -68,10 +68,10 @@ describe('quality service', () => {
 
     expect(result.components[0]).toEqual(
       expect.objectContaining({
-        extractionConfidence: 5,
         validationIssues: [],
       }),
     );
+    expect(result.components[0]).not.toHaveProperty('extractionConfidence');
     expect(result.warnings).toEqual([]);
   });
 

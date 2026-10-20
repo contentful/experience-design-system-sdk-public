@@ -69,7 +69,7 @@ export async function extractVueOptionsProps(
   return [];
 }
 
-export async function extractInheritedVueProps(filePath: string, visited: Set<string>): Promise<RawPropDefinition[]> {
+async function extractInheritedVueProps(filePath: string, visited: Set<string>): Promise<RawPropDefinition[]> {
   const source = await readFile(filePath, 'utf-8');
   const { descriptor } = parseSFC(source);
   if (!descriptor.script) return [];

@@ -4,10 +4,6 @@ import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { RawComponentDefinition, RawPropDefinition } from '../../../src/extract/types/component.js';
 import { hasNoAuthoringSurface } from '../../../src/extract/services/quality/helpers/authorability/evaluate-authorability.js';
-import {
-  computeExtractionScore,
-  deriveNeedsReview,
-} from '../../../src/extract/services/quality/helpers/scoring/compute-extraction-score.js';
 import { inspectComponentSource } from '../../../src/extract/services/quality/helpers/inspection/inspect-component-source.js';
 import { validateExtractedComponents } from '../../../src/extract/services/quality/helpers/inspection/validate-extracted-components.js';
 
@@ -41,14 +37,6 @@ describe('quality policy boundaries', () => {
         }),
       ),
     ).toEqual({ skip: true, reason: 'every prop is a handler or ref' });
-  });
-
-  it('scores clear components and derives review thresholds from confidence', () => {
-    const score = computeExtractionScore(component());
-
-    expect(score).toEqual({ confidence: 5, reasons: [] });
-    expect(deriveNeedsReview(score.confidence)).toBe(false);
-    expect(deriveNeedsReview(2)).toBe(true);
   });
 
   it('reports validation issues without changing extracted component data', () => {

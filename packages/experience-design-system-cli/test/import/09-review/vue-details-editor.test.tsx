@@ -125,6 +125,7 @@ it('makes saved syntax observations accessible through the actual review editor 
       editing.stdin.write('\r');
       await new Promise((resolve) => setTimeout(resolve, 30));
       expect(JSON.parse(changed).$description).toBe('X');
+      expect(JSON.parse(changed).$properties).toEqual(JSON.parse(value).$properties);
     } finally {
       editing.unmount();
     }

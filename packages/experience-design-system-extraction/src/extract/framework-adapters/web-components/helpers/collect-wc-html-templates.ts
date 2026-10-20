@@ -1,7 +1,7 @@
 import { Node, type Project } from 'ts-morph';
 import { loadSourceFile, resolveImportSourcePath } from './resolve-wc-import.js';
 
-export function collectHtmlTaggedTemplates(root: Node): string[] {
+function collectHtmlTaggedTemplates(root: Node): string[] {
   const templates: string[] = [];
   root.forEachDescendant((node) => {
     if (!Node.isTaggedTemplateExpression(node)) return;
@@ -15,7 +15,7 @@ export function collectHtmlTaggedTemplates(root: Node): string[] {
   return templates;
 }
 
-export function resolveTemplateHelperDeclarations(
+function resolveTemplateHelperDeclarations(
   callExpression: import('ts-morph').CallExpression,
   project: Project,
 ): Node[] {

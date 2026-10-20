@@ -84,7 +84,6 @@ export type {
   SourceFactOrigin,
 } from './extract/candidates/types.js';
 export type { CompilerContextResult, CompilerProjectContext } from './extract/compiler/context.js';
-export { stripScoringFields } from './extract/types/display.js';
 export type { ExtractorOptions } from './extract/types/options.js';
 export type { ComponentExtractor } from './extract/types/component-extractor.js';
 
@@ -124,16 +123,11 @@ export {
   extractAllowedComponentsFromJsdoc,
 } from './extract/helpers/evidence/collect-allowed-component-names.js';
 
-// Post-extraction filtering and scoring
+// Post-extraction quality review
 export { evaluateExtractionQuality } from './extract/services/quality/evaluate-extraction-quality.js';
 export { hasNoAuthoringSurface } from './extract/services/quality/helpers/authorability/evaluate-authorability.js';
 // Backwards-compatible alias for callers that used the pre-refactor name
 export { hasNoAuthoringSurface as isNonAuthorableComponent } from './extract/services/quality/helpers/authorability/evaluate-authorability.js';
-export {
-  computeExtractionScore,
-  deriveNeedsReview,
-} from './extract/services/quality/helpers/scoring/compute-extraction-score.js';
-export type { ExtractionScore, ExtractionScoreOptions, ExtractionConfidence } from './extract/types/scoring.js';
 export {
   inspectComponentSource,
   describeReviewReasons,

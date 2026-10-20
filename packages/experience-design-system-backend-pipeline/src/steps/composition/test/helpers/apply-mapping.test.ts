@@ -12,7 +12,6 @@ function makeComponent(
     framework: 'react' as const,
     props: [],
     slots: slots.map((s) => ({ isDefault: false, ...s })),
-    extractionConfidence: 4,
     needsReview: false,
     validationIssues: [],
     reviewReasons: [],

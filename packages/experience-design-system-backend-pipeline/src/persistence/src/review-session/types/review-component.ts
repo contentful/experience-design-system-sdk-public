@@ -30,7 +30,6 @@ export type ReviewComponentSummary = {
   name: string;
   status: ReviewComponentStatus;
   previewAnnotation?: PreviewAnnotation;
-  extractionConfidence: number | null;
   needsReview: boolean;
   validationErrorCount: number;
   validationWarningCount: number;

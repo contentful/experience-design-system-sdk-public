@@ -11,7 +11,6 @@ import type {
   ComponentExtractionResult,
   ExtractorOptions,
 } from '../../types/component.js';
-import { computeExtractionScore, deriveNeedsReview } from '../../helpers/quality/scoring.js';
 import { extractAllowedComponentsFromTypeText } from '../react/slot-allowed-components.js';
 import { runFileExtractionWorkers } from '../shared/file-extraction-workers.js';
 import { resolveLocalModule } from '../shared/resolve-local-module.js';
@@ -235,13 +234,8 @@ async function retryComponentWithProject(
   component.slots = finalSlots;
 
   const remainingReasons = (component.reviewReasons ?? []).filter((r) => r !== 'props-type-unresolved');
-  const score = computeExtractionScore(component, {
-    additionalIssueCount: remainingReasons.length,
-    additionalReasons: remainingReasons,
-  });
-  component.extractionConfidence = score.confidence;
-  component.reviewReasons = score.reasons;
-  component.needsReview = deriveNeedsReview(score.confidence);
+  component.reviewReasons = [...new Set(remainingReasons)];
+  component.needsReview = remainingReasons.length > 0;
 
   const componentName = component.name;
   const idx = warnings.findIndex(
@@ -505,15 +499,8 @@ async function extractFromSvelteFile(
     ...(propsTypeNameCapture ? { _propsTypeName: propsTypeNameCapture } : {}),
   };
 
-  const score = computeExtractionScore(component, {
-    additionalIssueCount: extractionReasons.length,
-    additionalReasons: extractionReasons,
-  });
-  component.extractionConfidence = score.confidence;
-  component.reviewReasons = score.reasons;
-  // A type-resolution failure is a strong signal something is wrong; force
-  // human review even when other heuristics keep confidence above the threshold.
-  component.needsReview = deriveNeedsReview(score.confidence) || extractionReasons.includes('props-type-unresolved');
+  component.reviewReasons = [...new Set(extractionReasons)];
+  component.needsReview = extractionReasons.includes('props-type-unresolved');
 
   void propNamesTreatedAsSnippet;
 

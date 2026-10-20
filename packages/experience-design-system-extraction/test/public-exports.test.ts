@@ -2,7 +2,10 @@ import * as extraction from '../src/index.js';
 import { describe, expect, it } from 'vitest';
 
 const existingRuntimeExports = [
-  'stripScoringFields',
+  'collectComponentSourceObservations',
+  'collectReactSourceObservations',
+  'assembleComponentFacts',
+  'captureSourceEvidence',
   'extractComponents',
   'extractEndpoint',
   'extractReactComponents',
@@ -15,8 +18,6 @@ const existingRuntimeExports = [
   'extractAllowedComponentsFromTypeText',
   'extractAllowedComponentsFromJsdoc',
   'hasNoAuthoringSurface',
-  'computeExtractionScore',
-  'deriveNeedsReview',
   'inspectComponentSource',
   'describeReviewReasons',
   'describeReviewReason',
@@ -49,9 +50,15 @@ const internalRuntimeExports = [
 ] as const;
 
 describe('extraction package root exports', () => {
-  it('preserves the existing runtime export surface', () => {
+  it('preserves unrelated live runtime exports', () => {
     for (const exportName of existingRuntimeExports) {
       expect(extraction, `missing root export: ${exportName}`).toHaveProperty(exportName);
+    }
+  });
+
+  it('retires score-only runtime exports', () => {
+    for (const name of ['stripScoringFields', 'computeExtractionScore', 'deriveNeedsReview']) {
+      expect(extraction).not.toHaveProperty(name);
     }
   });
 

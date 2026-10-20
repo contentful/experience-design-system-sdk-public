@@ -46,7 +46,7 @@ function createTextControlSurface(onChangeType: string, specificProps: RawPropDe
   ];
 }
 
-export const DOM_ATTRIBUTE_PROP_SURFACES: Record<ExpandableDomAttributeWrapperName, RawPropDefinition[]> = {
+const DOM_ATTRIBUTE_PROP_SURFACES: Record<ExpandableDomAttributeWrapperName, RawPropDefinition[]> = {
   HTMLProps: [],
   HTMLAttributes: [
     { name: 'className', type: 'string', required: false },
@@ -178,7 +178,7 @@ export const DOM_ATTRIBUTE_PROP_SURFACES: Record<ExpandableDomAttributeWrapperNa
   ],
 };
 
-export const DOM_ATTRIBUTE_WRAPPER_PARENTS: Partial<
+const DOM_ATTRIBUTE_WRAPPER_PARENTS: Partial<
   Record<ExpandableDomAttributeWrapperName, ExpandableDomAttributeWrapperName[]>
 > = {
   HTMLProps: ['HTMLAttributes'],

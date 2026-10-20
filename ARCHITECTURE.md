@@ -166,7 +166,7 @@ Database initialization also runs a one-time cleanup migration for obsolete step
 
 `DatabaseSync` (Node.js built-in) is used throughout. Synchronous writes are safe from SIGINT and uncaught exceptions without async ceremony — the database is always consistent at the moment of a signal.
 
-Sessions are created by extraction and passed to the wizard's internal subprocesses as `--session <id>`.
+Sessions are created by extraction; the wizard passes the session ID to later in-process backend operations.
 
 ### pipeline.db — Entity Relationship Diagram
 

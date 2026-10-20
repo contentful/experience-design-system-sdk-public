@@ -52,7 +52,7 @@ export function resolveReturnedObjectLiteral(
 }
 
 /** Scans a list of statements for a `return <object literal>` and resolves it. */
-export function resolveObjectLiteralFromStatements(
+function resolveObjectLiteralFromStatements(
   statements: import('ts-morph').Statement[],
   seen: Set<Node>,
 ): import('ts-morph').ObjectLiteralExpression | undefined {

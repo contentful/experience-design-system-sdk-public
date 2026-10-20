@@ -219,7 +219,7 @@ function getMappedOmitEquivalentArgs(typeNode: Node): { wrappedType: Node; omitt
   return undefined;
 }
 
-export function extractPropsFromTypeNode(
+function extractPropsFromTypeNode(
   typeNode: Node,
   slotNames: Set<string>,
   seen = new Set<Node>(),
@@ -404,7 +404,7 @@ export function extractPropsFromTypeNode(
   return { props: [], hasChildren: false };
 }
 
-export function extractPickedPropsFromTypeNode(
+function extractPickedPropsFromTypeNode(
   typeNode: Node,
   slotNames: Set<string>,
   excludedProps = new Set<string>(),

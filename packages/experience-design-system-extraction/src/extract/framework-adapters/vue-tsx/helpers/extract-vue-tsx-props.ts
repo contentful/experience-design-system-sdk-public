@@ -164,7 +164,7 @@ function resolvePropsObjectLiteral(node: Node): import('ts-morph').ObjectLiteral
   return undefined;
 }
 
-export function extractPropsFromExpression(node: Node, seen: Set<Node>): RawPropDefinition[] {
+function extractPropsFromExpression(node: Node, seen: Set<Node>): RawPropDefinition[] {
   if (seen.has(node)) return [];
   seen.add(node);
 

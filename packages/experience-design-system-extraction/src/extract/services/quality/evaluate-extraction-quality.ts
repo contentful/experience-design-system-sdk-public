@@ -1,17 +1,10 @@
 import type { RawComponentDefinition } from '../../types/component.js';
 import type { ExtractionEndpointResponse } from '../../types/contract.js';
 import { hasNoAuthoringSurface } from './helpers/authorability/evaluate-authorability.js';
-import { computeExtractionScore, deriveNeedsReview } from './helpers/scoring/compute-extraction-score.js';
 import { inspectComponentSource, describeReviewReasons } from './helpers/inspection/inspect-component-source.js';
 import { validateExtractedComponents } from './helpers/inspection/validate-extracted-components.js';
 
-function wrapperConfidenceToIssueCount(confidence: number): number {
-  if (confidence >= 4) return 2;
-  if (confidence === 3) return 1;
-  return 0;
-}
-
-/** Applies inspection, authorability, scoring, review, and validation policies to extracted models. */
+/** Applies inspection, authorability, reason-based review, and validation policies to extracted models. */
 export async function evaluateExtractionQuality(
   components: readonly RawComponentDefinition[],
   initialWarnings: readonly string[] = [],
@@ -23,7 +16,7 @@ export async function evaluateExtractionQuality(
     })),
   );
 
-  const scoredComponents: RawComponentDefinition[] = [];
+  const reviewedComponents: RawComponentDefinition[] = [];
   const warnings: string[] = [...initialWarnings];
 
   for (const { component, inspection } of inspectedComponents) {
@@ -51,20 +44,12 @@ export async function evaluateExtractionQuality(
 
     const extractorReasons = component.reviewReasons ?? [];
     const nonAuthorableReason = retainedForReview ? [`non-authorable:${verdict.reason}`] : [];
-    const { confidence, reasons } = computeExtractionScore(component, {
-      additionalIssueCount:
-        wrapperConfidenceToIssueCount(inspection.wrapperConfidence) +
-        extractorReasons.length +
-        nonAuthorableReason.length,
-      additionalReasons: [...extractorReasons, ...inspection.reviewReasons, ...nonAuthorableReason],
-    });
+    const reasons = [...new Set([...extractorReasons, ...inspection.reviewReasons, ...nonAuthorableReason])];
 
-    scoredComponents.push({
+    reviewedComponents.push({
       ...component,
-      extractionConfidence: confidence,
       reviewReasons: reasons,
       needsReview:
-        deriveNeedsReview(confidence) ||
         inspection.wrapperConfidence >= 4 ||
         inspection.keepDespiteZeroSurface ||
         retainedForReview ||
@@ -74,7 +59,7 @@ export async function evaluateExtractionQuality(
   }
 
   return {
-    components: validateExtractedComponents(scoredComponents),
+    components: validateExtractedComponents(reviewedComponents),
     warnings,
   };
 }

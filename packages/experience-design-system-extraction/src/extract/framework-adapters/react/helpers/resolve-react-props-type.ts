@@ -6,7 +6,7 @@ const PROP_WRAPPER_TYPE_NAMES = new Set(['ExpandProps']);
 const CHILD_WRAPPER_TYPE_NAMES = new Set(['PropsWithChildren']);
 const FC_TYPE_NAMES = new Set(['FC', 'FunctionComponent', 'VFC', 'VoidFunctionComponent']);
 
-export function normalizePropsTypeNode(typeNode: Node): {
+function normalizePropsTypeNode(typeNode: Node): {
   typeNode: Node;
   hasWrappedChildren: boolean;
   suppressProps: boolean;
@@ -45,7 +45,7 @@ export function normalizePropsTypeNode(typeNode: Node): {
   return { typeNode, hasWrappedChildren: false, suppressProps: false };
 }
 
-export function resolveForwardRefGenericPropsTypeNode(param: ParameterDeclaration): Node | undefined {
+function resolveForwardRefGenericPropsTypeNode(param: ParameterDeclaration): Node | undefined {
   const parent = param.getParent();
   if (!Node.isArrowFunction(parent) && !Node.isFunctionExpression(parent)) return undefined;
 
@@ -59,7 +59,7 @@ export function resolveForwardRefGenericPropsTypeNode(param: ParameterDeclaratio
   return propsTypeNode;
 }
 
-export function resolveFCGenericPropsTypeNode(param: ParameterDeclaration): Node | undefined {
+function resolveFCGenericPropsTypeNode(param: ParameterDeclaration): Node | undefined {
   const funcNode = param.getParent();
   if (!Node.isArrowFunction(funcNode) && !Node.isFunctionExpression(funcNode)) return undefined;
 

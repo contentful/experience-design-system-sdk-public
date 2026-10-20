@@ -4,7 +4,7 @@ import type { FunctionLike } from './resolve-component-function.js';
 export { isImplementationOnlyAliasProp, filterImplementationOnlyAliasProps } from './filter-impl-alias-props.js';
 export { extractDestructuredBindingFallbackProps } from './extract-binding-fallback-props.js';
 
-export function recordBindingPatternDefaults(nameNode: Node, defaults: Map<string, string>): void {
+function recordBindingPatternDefaults(nameNode: Node, defaults: Map<string, string>): void {
   if (!Node.isObjectBindingPattern(nameNode)) return;
 
   for (const element of nameNode.getElements()) {

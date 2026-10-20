@@ -1,9 +1,5 @@
 import { parse as parseSvelte } from 'svelte/compiler';
 import type { RawComponentDefinition, RawPropDefinition, RawSlotDefinition } from '../../../types/component.js';
-import {
-  computeExtractionScore,
-  deriveNeedsReview,
-} from '../../../services/quality/helpers/scoring/compute-extraction-score.js';
 import type { AstNode } from '../types/svelte-ast-node.js';
 import { getSvelteComponentName } from './get-svelte-component-name.js';
 import { extractTemplateSlots, mergeSlots } from './extract-svelte-template-slots.js';
@@ -87,13 +83,8 @@ export async function extractFromSvelteFile(
     ...(propsTypeNameCapture ? { _propsTypeName: propsTypeNameCapture } : {}),
   };
 
-  const score = computeExtractionScore(component, {
-    additionalIssueCount: extractionReasons.length,
-    additionalReasons: extractionReasons,
-  });
-  component.extractionConfidence = score.confidence;
-  component.reviewReasons = score.reasons;
-  component.needsReview = deriveNeedsReview(score.confidence) || extractionReasons.includes('props-type-unresolved');
+  component.reviewReasons = [...new Set(extractionReasons)];
+  component.needsReview = extractionReasons.includes('props-type-unresolved');
 
   void propNamesTreatedAsSnippet;
 

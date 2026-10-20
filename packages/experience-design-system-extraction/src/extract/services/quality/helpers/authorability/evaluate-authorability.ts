@@ -1,6 +1,6 @@
 import type { RawComponentDefinition, RawPropDefinition, RawSlotDefinition } from '../../../../types/component.js';
 
-export interface AuthoringSurfaceCheck {
+interface AuthoringSurfaceCheck {
   skip: boolean;
   reason?: string;
 }

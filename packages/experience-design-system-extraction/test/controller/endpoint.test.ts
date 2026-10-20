@@ -83,7 +83,7 @@ describe('extractEndpoint', () => {
     });
   });
 
-  it('preserves endpoint ordering for classification, scoring, and validation', async () => {
+  it('preserves endpoint ordering for classification, review, and validation', async () => {
     const projectRoot = await mkdtemp(join(tmpdir(), 'extraction-endpoint-contract-'));
     tempDirs.push(projectRoot);
     const sourcePath = join(projectRoot, 'Card.tsx');
@@ -110,12 +110,12 @@ describe('extractEndpoint', () => {
     expect(card?.props.find((prop) => prop.name === 'onClick')).toBeUndefined();
     expect(card).toEqual(
       expect.objectContaining({
-        extractionConfidence: 4,
         needsReview: false,
         validationIssues: [],
       }),
     );
-    expect(card?.reviewReasons).toContain('opaque-type:payload');
+    expect(card).not.toHaveProperty('extractionConfidence');
+    expect(card?.reviewReasons).toEqual([]);
   });
 
   it('preserves non-authorable signals as reviewable output instead of silently dropping components', async () => {

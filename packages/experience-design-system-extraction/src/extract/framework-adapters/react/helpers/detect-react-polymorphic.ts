@@ -4,7 +4,7 @@ import { getTypeReferenceTargetNode, getTypeReferenceArguments } from '../../sha
 
 export const TRANSPARENT_POLYMORPHIC_TYPE_NAMES = new Set(['PolymorphicProps', 'PropsWithAs', 'PropsWithHTMLElement']);
 
-export function isRepoLocalTransparentPolymorphicWrapperDeclaration(declaration: Node, typeName: string): boolean {
+function isRepoLocalTransparentPolymorphicWrapperDeclaration(declaration: Node, typeName: string): boolean {
   if (!Node.isTypeAliasDeclaration(declaration)) return false;
   if (declaration.getSourceFile().getFilePath().includes('/node_modules/')) return false;
   if (!TRANSPARENT_POLYMORPHIC_TYPE_NAMES.has(typeName)) return false;

@@ -9,7 +9,7 @@ import {
   type RawComponentDefinitionInternal,
 } from './extract-react-component-from-export.js';
 
-export function sourceFileUsesCreateContext(sourceFile: SourceFile): boolean {
+function sourceFileUsesCreateContext(sourceFile: SourceFile): boolean {
   return sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression).some((call) => {
     const expr = call.getExpression();
     const text = expr.getText();

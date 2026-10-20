@@ -13,7 +13,7 @@ export type PropForwardingEdge = {
   targetProp: string;
 };
 
-export type PropDataflow = {
+type PropDataflow = {
   intrinsicDomProps: Set<string>;
   componentEdges: PropForwardingEdge[];
 };

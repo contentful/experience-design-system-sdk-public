@@ -1,12 +1,12 @@
 import { readFile } from 'node:fs/promises';
 
-export type FileExtractionOutcome<T, M = undefined> = {
+type FileExtractionOutcome<T, M = undefined> = {
   item: T | null;
   warnings?: string[];
   metadata?: M;
 };
 
-export type FileExtractionProgress = {
+type FileExtractionProgress = {
   filesProcessed: number;
   componentsFound: number;
 };
