@@ -23,7 +23,11 @@ interface FlowScreenProps {
 }
 
 /** How many steps the import has, as the wizard counted them. */
-function totalStepsFor(state: Pick<FlowState, 'tokensPath' | 'rawTokensPath' | 'mapTokensEligible'>): number {
+function totalStepsFor(
+  state: Pick<FlowState, 'tokensPath' | 'rawTokensPath' | 'mapTokensEligible' | 'extractSessionId'>,
+): number {
+  // Only tokens were generated, so there was no extraction: generate the tokens, then push them.
+  if (!state.extractSessionId) return 2;
   const hasTokenStage = !!state.tokensPath || !!state.rawTokensPath;
   return 3 + (hasTokenStage ? 1 : 0) + 2 + (state.mapTokensEligible === true ? 1 : 0);
 }
