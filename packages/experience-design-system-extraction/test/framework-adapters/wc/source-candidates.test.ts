@@ -4,7 +4,12 @@ import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { extractWebComponentDefinitions } from '../../../src/extract/framework-adapters/web-components/extractor.js';
 
+import type { SourceSyntaxObservation } from '../../../src/extract/candidates/types.js';
 import { bindSourceCandidatesToCapture } from '../../../src/extract/candidates/bind-source-candidates.js';
+
+function webSyntax(syntax: SourceSyntaxObservation | undefined) {
+  return syntax?.reader === 'web-component' ? syntax : undefined;
+}
 
 const directories: string[] = [];
 afterEach(() => {
@@ -55,9 +60,9 @@ describe('WC syntax source observations', () => {
       reflect: { state: 'unknown', value: null },
       converter: { state: 'unknown' },
     });
-    expect(label?.observations.find((item) => item.evidenceKind === 'runtime-object')?.syntax?.attribute.state).toBe(
-      'unknown',
-    );
+    expect(
+      webSyntax(label?.observations.find((item) => item.evidenceKind === 'runtime-object')?.syntax)?.attribute.state,
+    ).toBe('unknown');
     expect(result.extractionDiagnostics?.modules).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ reason: 'wc-unknown-static-properties' }),
@@ -92,18 +97,21 @@ describe('WC syntax source observations', () => {
       attribute: { state: 'explicit', name: 'data-mode' },
       reflect: { state: 'explicit', value: false },
     });
-    expect(candidate('_internal')?.observations[0]?.syntax?.exposure).toContain('state');
+    expect(webSyntax(candidate('_internal')?.observations[0]?.syntax)?.exposure).toContain('state');
     expect(candidate('enabled')?.observations[0]?.syntax).toMatchObject({
       attribute: { state: 'disabled', name: null },
       exposure: expect.arrayContaining(['private']),
     });
-    expect(candidate('$value')?.observations[0]?.syntax?.attribute).toMatchObject({ state: 'explicit', name: '' });
-    expect(candidate('camelCase')?.observations[0]?.syntax?.attribute).toMatchObject({
+    expect(webSyntax(candidate('$value')?.observations[0]?.syntax)?.attribute).toMatchObject({
+      state: 'explicit',
+      name: '',
+    });
+    expect(webSyntax(candidate('camelCase')?.observations[0]?.syntax)?.attribute).toMatchObject({
       state: 'implicit',
       name: 'camelcase',
     });
     for (const name of ['dynamic', 'spread'])
-      expect(candidate(name)?.observations[0]?.syntax?.attribute.state).toBe('unknown');
+      expect(webSyntax(candidate(name)?.observations[0]?.syntax)?.attribute.state).toBe('unknown');
     expect(candidate('dynamic')?.observations[0]?.syntax?.default).toMatchObject({
       expression: 'compute()',
       state: 'unresolved',
@@ -171,17 +179,18 @@ export const INITIAL = Numeric.Two; export const LOOP = LOOP;`,
     const title = component.sourceCandidates?.find((item) => item.name === 'title');
     expect(component.props.find((prop) => prop.name === 'title')?.type).toBe("'own'");
     expect(title?.observations).toHaveLength(2);
-    expect(title?.observations[0]?.syntax?.lineage).toBe('own');
-    expect(title?.observations[1]?.syntax?.lineage).toBe('base');
+    expect(webSyntax(title?.observations[0]?.syntax)?.lineage).toBe('own');
+    expect(webSyntax(title?.observations[1]?.syntax)?.lineage).toBe('base');
     expect(title?.facts?.certainty).toBe('ambiguous');
-    expect(component.sourceCandidates?.find((item) => item.name === 'label')?.observations[0]?.syntax?.lineage).toBe(
-      'mixin',
-    );
+    expect(
+      webSyntax(component.sourceCandidates?.find((item) => item.name === 'label')?.observations[0]?.syntax)?.lineage,
+    ).toBe('mixin');
     expect(
       component.sourceCandidates?.find((item) => item.name === 'baseOnly')?.facts?.declarations[0]?.canonicalPath,
     ).toBe(resolve(directory, 'base.ts'));
     expect(
-      component.sourceCandidates?.find((item) => item.name === 'base-template')?.observations[0]?.syntax?.slotKind,
+      webSyntax(component.sourceCandidates?.find((item) => item.name === 'base-template')?.observations[0]?.syntax)
+        ?.slotKind,
     ).toBe('literal-template');
     expect(component.slots.map((slot) => slot.name)).toEqual(expect.arrayContaining(['inherited', 'base-template']));
   });
@@ -249,9 +258,9 @@ export const INITIAL = Numeric.Two; export const LOOP = LOOP;`,
     expect(label?.facts?.certainty).toBe('ambiguous');
     expect(label?.facts?.declarations).toHaveLength(2);
     expect(label?.sourceDefault).toBe("'own'");
-    expect(component.sourceCandidates?.find((item) => item.name === 'header')?.observations[0]?.syntax?.slotKind).toBe(
-      'literal-template',
-    );
+    expect(
+      webSyntax(component.sourceCandidates?.find((item) => item.name === 'header')?.observations[0]?.syntax)?.slotKind,
+    ).toBe('literal-template');
   });
 
   it('terminates inheritance cycles and reports malformed config with no components', async () => {

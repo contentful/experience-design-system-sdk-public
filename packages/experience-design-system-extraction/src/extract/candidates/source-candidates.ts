@@ -157,6 +157,8 @@ function sourceLocation(declaration: Node): NonNullable<SourceCandidateObservati
     textHash: createHash('sha256').update(sourceFile.getFullText()).digest('hex'),
     startLine: declaration.getStartLineNumber(),
     endLine: declaration.getEndLineNumber(),
+    startOffset: declaration.getStart(),
+    endOffset: declaration.getEnd(),
     binding: 'unverified',
   };
 }
@@ -309,7 +311,7 @@ function mergeFact(observations: readonly SourceCandidateObservation[]): Compile
   const declaredFacts = authoritative.map(createFact);
   const origins = new Set(declaredFacts.map((item) => item.origin));
   const sourceTypes = new Set(declaredFacts.map((item) => item.sourceTypeText));
-  const syntaxDeclarations = authoritative.filter((observation) => observation.syntax?.reader === 'web-component');
+  const syntaxDeclarations = authoritative.filter((observation) => observation.syntax !== undefined);
   const syntaxDefaults = new Set(syntaxDeclarations.map((observation) => observation.sourceDefault));
   const syntaxRequired = new Set(syntaxDeclarations.map((observation) => observation.declaredRequired));
   if (origins.size > 1 || sourceTypes.size > 1 || syntaxDefaults.size > 1 || syntaxRequired.size > 1) {

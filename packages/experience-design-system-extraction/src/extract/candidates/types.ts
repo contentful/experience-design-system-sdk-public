@@ -11,6 +11,9 @@ export interface SourceFactLocation {
   textHash: string | null;
   startLine: number | null;
   endLine: number | null;
+  /** UTF-16 source offsets; absent on older or line-only observations. */
+  startOffset?: number | null;
+  endOffset?: number | null;
   binding: SourceFactBinding;
 }
 
@@ -44,7 +47,7 @@ export interface CompilerPropFact {
   requiredFieldDropped: boolean | null;
 }
 
-export interface SourceSyntaxObservation {
+export interface WebComponentSyntaxObservation {
   reader: 'web-component';
   lineage: 'own' | 'base' | 'mixin';
   declaringClass: string | null;
@@ -62,6 +65,23 @@ export interface SourceSyntaxObservation {
   typeLocations: SourceFactLocation[];
   slotKind: 'jsdoc' | 'literal-template' | null;
 }
+
+export interface VueSyntaxObservation {
+  reader: 'vue';
+  channel: 'prop' | 'slot-contract' | 'slot-template' | 'slot-access';
+  occurrence: number;
+  resolution: 'resolved' | 'partial' | 'unresolved';
+  resolutionReason: string | null;
+  expression: string;
+  spreadPath: string[];
+  conditions: string[];
+  loops: string[];
+  fallback: string | null;
+  default: WebComponentSyntaxObservation['default'];
+  typeLocations: SourceFactLocation[];
+}
+
+export type SourceSyntaxObservation = WebComponentSyntaxObservation | VueSyntaxObservation;
 
 export interface SourceCandidateObservation {
   name: string;

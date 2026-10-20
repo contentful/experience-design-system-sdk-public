@@ -32,6 +32,8 @@ export type {
   SourceCandidateCollection,
   SourceCandidateObservation,
   SourceSyntaxObservation,
+  VueSyntaxObservation,
+  WebComponentSyntaxObservation,
   SourceCandidateSource,
   SourceDefaultFact,
   SourceDomain,

@@ -9,6 +9,18 @@ import { mergeSourceCandidates, observeRawProps, observeTypeProps } from '../../
 import { SOURCE_FACT_SCHEMA_VERSION, type ExtractionDiagnostics } from '../../../candidates/types.js';
 import { createCompilerContexts, type CompilerContextResult } from '../../../compiler/context.js';
 import { parseVueObjectProps } from './extract-vue-object-props.js';
+import { describeSourceDomain } from '../../../candidates/source-candidates.js';
+import {
+  isVueMacroCall,
+  readVueRuntimeProps,
+  vueComponentOptions,
+  vueDiagnostic,
+  vueLocation,
+  vuePropertyName,
+  vueSyntax,
+  type VueReaderContext,
+} from './read-vue-runtime.js';
+import { readVueSlots } from './read-vue-slots.js';
 
 const VIRTUAL_SUFFIX = '.source-evidence.ts';
 const MAX_IMPORTED_VUE_DEPTH = 64;
@@ -19,6 +31,7 @@ const MAX_IMPORTED_VUE_BYTES = 16 * 1024 * 1024;
 export interface VueSfcCompilerInput {
   filePath: string;
   scriptContent: string;
+  source?: string;
 }
 
 export interface VueSfcCompilerContexts {
@@ -26,8 +39,23 @@ export interface VueSfcCompilerContexts {
   diagnostics: ExtractionDiagnostics;
 }
 
-function virtualScriptPath(filePath: string): string {
+export function virtualScriptPath(filePath: string): string {
   return `${resolve(filePath)}${VIRTUAL_SUFFIX}`;
+}
+
+/** Preserve every source line and UTF-16 offset while exposing both SFC script blocks. */
+export function vueScriptSource(source: string): string {
+  const { descriptor } = parseSFC(source);
+  const chunks = source.split('');
+  for (let index = 0; index < chunks.length; index++) {
+    if (chunks[index] !== '\n' && chunks[index] !== '\r') chunks[index] = ' ';
+  }
+  for (const block of [descriptor.script, descriptor.scriptSetup]) {
+    if (!block) continue;
+    for (let index = 0; index < block.content.length; index++)
+      chunks[block.loc.start.offset + index] = block.content[index]!;
+  }
+  return chunks.join('');
 }
 
 /** Build one bounded configured context for the actual Vue script roots in an extraction run. */
@@ -37,7 +65,7 @@ export function createVueSfcCompilerContexts(
 ): VueSfcCompilerContexts {
   const virtualSources = inputs.map((input) => ({
     path: virtualScriptPath(input.filePath),
-    content: input.scriptContent,
+    content: input.source === undefined ? input.scriptContent : vueScriptSource(input.source),
   }));
   const result: CompilerContextResult = createCompilerContexts(
     virtualSources.map((source) => source.path),
@@ -58,22 +86,9 @@ export interface VueSourceCandidateResult {
   sourceCandidates: NonNullable<RawComponentDefinition['sourceCandidates']>;
   factSchemaVersion: number;
   diagnostics: ExtractionDiagnostics;
-}
-
-function initializerSourceDefaults(sourceFile: import('ts-morph').SourceFile): Map<string, string> {
-  const defaults = new Map<string, string>();
-  for (const call of sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression)) {
-    const expression = call.getExpression();
-    if (!Node.isIdentifier(expression) || expression.getText() !== 'withDefaults') continue;
-    const values = call.getArguments()[1];
-    if (!values || !Node.isObjectLiteralExpression(values)) continue;
-    for (const property of values.getProperties()) {
-      if (!Node.isPropertyAssignment(property)) continue;
-      const initializer = property.getInitializer();
-      if (initializer) defaults.set(property.getName(), initializer.getText());
-    }
-  }
-  return defaults;
+  props: RawPropDefinition[];
+  slots: RawSlotDefinition[];
+  name?: string;
 }
 
 function sourcePropertyName(property: import('ts-morph').PropertyAssignment): string {
@@ -95,8 +110,9 @@ function localOptionsProps(sourceFile: import('ts-morph').SourceFile): {
   const defaults = new Map<string, string>();
   const locations = new Map<string, NonNullable<import('../../../candidates/types.js').SourceFactLocation>>();
   const keyAliases = new Map<string, string>();
-  for (const property of sourceFile.getDescendants()) {
-    if (!Node.isPropertyAssignment(property) || property.getName() !== 'props') continue;
+  for (const owner of vueComponentOptions(sourceFile)) {
+    const property = owner.getProperty('props');
+    if (!property || !Node.isPropertyAssignment(property)) continue;
     const initializer = property.getInitializer();
     if (!initializer || !Node.isObjectLiteralExpression(initializer)) continue;
     const parsedProps = new Map(parseVueObjectProps(initializer, true).map((prop) => [prop.name, prop]));
@@ -114,6 +130,8 @@ function localOptionsProps(sourceFile: import('ts-morph').SourceFile): {
         textHash: createHash('sha256').update(sourceFile.getFullText()).digest('hex'),
         startLine,
         endLine,
+        startOffset: propNode.getStart(),
+        endOffset: propNode.getEnd(),
         binding: 'unverified',
       });
       const option = propNode.getInitializer();
@@ -214,14 +232,15 @@ function collectImportedOptionsProps(
     if (!script) return empty;
     const virtualPath = virtualScriptPath(importedPath);
     const importedSourceFile =
-      project.getSourceFile(virtualPath) ?? project.createSourceFile(virtualPath, script.content, { overwrite: true });
+      project.getSourceFile(virtualPath) ??
+      project.createSourceFile(virtualPath, vueScriptSource(source), { overwrite: true });
     const inherited = collectImportedOptionsProps(importedSourceFile, project, diagnostics, visited);
     const local = localOptionsProps(importedSourceFile);
     const propsByName = new Map(inherited.props.map((prop) => [prop.name, prop]));
     const defaults = new Map(inherited.defaults);
     const locations = new Map(inherited.locations);
     const keyAliases = new Map(inherited.keyAliases);
-    const lineOffset = source.slice(0, script.loc.start.offset).split('\n').length - 1;
+    const lineOffset = 0;
     const sourceHash = createHash('sha256').update(source).digest('hex');
     for (const [name, location] of local.locations) {
       local.locations.set(name, {
@@ -264,9 +283,9 @@ export function collectVueSourceCandidates(
   filePath: string,
   source: string,
   scriptContent: string,
-  scriptOffset: number,
+  _scriptOffset: number,
   projectedProps: readonly RawPropDefinition[],
-  slots: readonly RawSlotDefinition[],
+  _slots: readonly RawSlotDefinition[],
   options: ExtractorOptions = {},
   compiler?: { project?: Project; diagnostics: ExtractionDiagnostics },
 ): VueSourceCandidateResult {
@@ -274,94 +293,168 @@ export function collectVueSourceCandidates(
   const virtualPath = virtualScriptPath(canonicalSfcPath);
   const localContext = compiler
     ? undefined
-    : createCompilerContexts(
-        [virtualPath],
-        /\.vue\.source-evidence\.ts$/,
-        { ...options, projectRoot: options.projectRoot ?? dirname(canonicalSfcPath) },
-        [{ path: virtualPath, content: scriptContent }],
-      );
-  const sourceFile = (compiler?.project ?? localContext?.contexts[0]?.project)?.getSourceFile(virtualPath);
+    : createVueSfcCompilerContexts([{ filePath, scriptContent, source }], options);
+  const project = compiler?.project ?? localContext?.projectBySfcPath.get(canonicalSfcPath);
+  const diagnostics = compiler?.diagnostics ?? localContext!.diagnostics;
+  const sourceFile = project?.getSourceFile(virtualPath);
   const observations = [] as ReturnType<typeof observeRawProps>;
-  const sfcHash = createHash('sha256').update(source).digest('hex');
-  const lineOffset = source.slice(0, scriptOffset).split('\n').length - 1;
-  const sourceDefaults = new Map<string, string>();
-  const keyAliases = new Map<string, string>();
+  const context: VueReaderContext = { sourcePath: canonicalSfcPath, source, diagnostics, occurrence: 0 };
+  const propsByName = new Map(projectedProps.map((prop) => [prop.name, prop]));
+  let name: string | undefined;
+  let propsDeclarations = 0;
+  const { descriptor } = parseSFC(source);
 
   if (sourceFile) {
-    const optionsProps = localOptionsProps(sourceFile);
-    const typedCall = sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression).find((call) => {
-      const expression = call.getExpression();
-      return (
-        Node.isIdentifier(expression) && expression.getText() === 'defineProps' && call.getTypeArguments().length > 0
-      );
-    });
-    const typeArgument = typedCall?.getTypeArguments()[0];
-    if (typeArgument) {
-      const type = typeArgument.getType();
-      const props = typeProps(type);
-      const defaults = initializerSourceDefaults(sourceFile);
-      for (const [name, expression] of defaults) sourceDefaults.set(name, expression);
-      observations.push(
-        ...observeTypeProps(type, props, virtualPath, {
-          sourceDefaults: defaults,
+    const inherited = collectImportedOptionsProps(sourceFile, project!, diagnostics);
+    observations.push(
+      ...observeRawProps(inherited.props, 'declaration', {
+        origin: 'imported',
+        sourceDefaults: inherited.defaults,
+        locations: inherited.locations,
+      }),
+    );
+    for (const prop of inherited.props) propsByName.set(prop.name, prop);
+    for (const owner of vueComponentOptions(sourceFile, context)) {
+      const nameProperty = owner.getProperty('name');
+      const initializer =
+        nameProperty && Node.isPropertyAssignment(nameProperty) ? nameProperty.getInitializer() : undefined;
+      if (initializer && Node.isStringLiteral(initializer)) name = initializer.getLiteralValue();
+      const property = owner.getProperty('props');
+      if (property && Node.isPropertyAssignment(property)) {
+        propsDeclarations++;
+        const expression = property.getInitializer();
+        if (expression) {
+          const result = readVueRuntimeProps(expression, context);
+          observations.push(...result.observations);
+          for (const prop of result.props) propsByName.set(prop.name, prop);
+          vueDiagnostic(
+            context,
+            `vue-props-${result.resolution === 'resolved' ? (result.props.length ? 'resolved' : 'empty') : result.resolution}`,
+            property,
+            result.resolution === 'resolved',
+          );
+        } else vueDiagnostic(context, 'vue-props-unresolved', property);
+      }
+    }
+    for (const call of sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression)) {
+      if (call.getExpression().getText() !== 'defineProps') continue;
+      if (!isVueMacroCall(call, context)) continue;
+      if (
+        call.getFirstAncestor(
+          (node) => Node.isFunctionDeclaration(node) || Node.isArrowFunction(node) || Node.isFunctionExpression(node),
+        )
+      )
+        continue;
+      propsDeclarations++;
+      const typeArgument = call.getTypeArguments()[0];
+      if (!typeArgument) {
+        const expression = call.getArguments()[0];
+        if (!expression) {
+          vueDiagnostic(context, 'vue-props-unresolved', call);
+          continue;
+        }
+        const result = readVueRuntimeProps(expression, context);
+        observations.push(...result.observations);
+        for (const prop of result.props) propsByName.set(prop.name, prop);
+        vueDiagnostic(
+          context,
+          `vue-props-${result.resolution === 'resolved' ? (result.props.length ? 'resolved' : 'empty') : result.resolution}`,
+          call,
+          result.resolution === 'resolved',
+        );
+        continue;
+      }
+      try {
+        const type = typeArgument.getType();
+        if (type.isAny() || type.isUnknown() || type.isNever()) {
+          vueDiagnostic(context, 'vue-props-unresolved', typeArgument);
+          continue;
+        }
+        const props = typeProps(type);
+        const defaults = new Map<string, import('ts-morph').Node>();
+        const parent = call.getParent();
+        if (
+          Node.isCallExpression(parent) &&
+          parent.getExpression().getText() === 'withDefaults' &&
+          parent.getArguments()[0] === call &&
+          isVueMacroCall(parent, context)
+        ) {
+          const values = parent.getArguments()[1];
+          if (values && Node.isObjectLiteralExpression(values)) {
+            for (const property of values.getProperties()) {
+              if (!Node.isPropertyAssignment(property)) continue;
+              const key = vuePropertyName(property.getNameNode());
+              const initializer = property.getInitializer();
+              if (key !== undefined && initializer) defaults.set(key, initializer);
+            }
+          } else vueDiagnostic(context, 'vue-defaults-unresolved', parent);
+        }
+        const variable = call.getFirstAncestorByKind(SyntaxKind.VariableDeclaration);
+        const binding = variable?.getNameNode();
+        if (binding && Node.isObjectBindingPattern(binding)) {
+          for (const element of binding.getElements()) {
+            const key = vuePropertyName(element.getPropertyNameNode() ?? element.getNameNode());
+            const initializer = element.getInitializer();
+            if (key !== undefined && initializer) defaults.set(key, initializer);
+          }
+        }
+        const observed = observeTypeProps(type, props, virtualPath, {
+          sourceDefaults: new Map([...defaults].map(([key, node]) => [key, node.getText()])),
           virtualSource: {
             path: virtualPath,
             originalPath: canonicalSfcPath,
-            sourceHash: sfcHash,
-            lineOffset,
+            sourceHash: createHash('sha256').update(source).digest('hex'),
+            lineOffset: 0,
           },
-        }),
-      );
+        });
+        for (const observation of observed) {
+          const defaultNode = defaults.get(observation.name);
+          const syntax = vueSyntax(context, 'prop', call.getText(), defaultNode);
+          syntax.typeLocations = [vueLocation(typeArgument, context)];
+          if (observation.fact) {
+            observation.fact.domain = describeSourceDomain(observation.type);
+            if (observation.fact.sourceDefault)
+              observation.fact.sourceDefault.location = defaultNode ? vueLocation(defaultNode, context) : null;
+          }
+          observations.push({ ...observation, syntax });
+        }
+        for (const prop of props)
+          propsByName.set(prop.name, {
+            ...prop,
+            type: prop.type.replace(/\s*\|\s*undefined$/, '').replace(/^undefined\s*\|\s*/, ''),
+            ...(defaults.has(prop.name) ? { defaultValue: defaults.get(prop.name)!.getText() } : {}),
+          });
+        const partial =
+          type.isUnion() ||
+          Boolean(type.getStringIndexType() || type.getNumberIndexType()) ||
+          observed.some((observation) => observation.type === 'unknown' || observation.type === 'any');
+        const empty =
+          !props.length && !partial && (type.getText(typeArgument) === '{}' || Node.isTypeLiteral(typeArgument));
+        vueDiagnostic(
+          context,
+          `vue-props-${partial ? 'partial' : props.length ? 'resolved' : empty ? 'empty' : 'unresolved'}`,
+          typeArgument,
+          !partial && (props.length > 0 || empty),
+        );
+      } catch {
+        vueDiagnostic(context, 'vue-props-throw', typeArgument);
+      }
     }
-    for (const [name, expression] of optionsProps.defaults) sourceDefaults.set(name, expression);
-    const importedOptions = collectImportedOptionsProps(
-      sourceFile,
-      sourceFile.getProject(),
-      compiler?.diagnostics ?? localContext!.diagnostics,
-    );
-    for (const [syntaxName, name] of importedOptions.keyAliases) keyAliases.set(syntaxName, name);
-    for (const [syntaxName, name] of optionsProps.keyAliases) keyAliases.set(syntaxName, name);
-    const localOptionNames = new Set(optionsProps.props.map((prop) => prop.name));
-    const importedEvidence = observeRawProps(importedOptions.props, 'runtime-object', {
-      origin: 'imported',
-      sourceDefaults: importedOptions.defaults,
-      locations: importedOptions.locations,
-    }).map((observation) => ({
-      ...observation,
-      evidenceKind: localOptionNames.has(observation.name) ? ('runtime-object' as const) : ('declaration' as const),
-    }));
-    observations.push(...importedEvidence);
-    observations.push(
-      ...observeRawProps(optionsProps.props, 'declaration', {
-        origin: 'own',
-        sourceDefaults: optionsProps.defaults,
-        locations: new Map(
-          [...optionsProps.locations].map(([name, location]) => [
-            name,
-            {
-              ...location,
-              canonicalPath: canonicalSfcPath,
-              textHash: sfcHash,
-              startLine: location.startLine === null ? null : location.startLine + lineOffset,
-              endLine: location.endLine === null ? null : location.endLine + lineOffset,
-            },
-          ]),
-        ),
-      }),
-    );
   }
-
-  observations.push(
-    ...observeRawProps(
-      projectedProps.map((prop) => ({ ...prop, name: keyAliases.get(prop.name) ?? prop.name })),
-      'runtime-object',
-      { sourceDefaults },
-    ),
-  );
-  const collection = mergeSourceCandidates(observations, projectedProps, slots);
+  if (!propsDeclarations) vueDiagnostic(context, 'vue-props-absent', undefined, true);
+  const slotResult = readVueSlots(sourceFile, context, descriptor.template?.ast);
+  observations.push(...slotResult.observations);
+  const props = [...propsByName.values()]
+    .filter((prop) => !/^[_$]/.test(prop.name))
+    .sort((left, right) => left.name.localeCompare(right.name));
+  const collection = mergeSourceCandidates(observations, props, slotResult.slots);
+  if (collection.omittedCount) vueDiagnostic(context, 'vue-source-candidate-budget-exhausted');
   return {
     sourceCandidates: collection.candidates,
     factSchemaVersion: SOURCE_FACT_SCHEMA_VERSION,
-    diagnostics: compiler?.diagnostics ?? localContext!.diagnostics,
+    diagnostics,
+    props,
+    slots: slotResult.slots,
+    ...(name ? { name } : {}),
   };
 }

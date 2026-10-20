@@ -11,7 +11,7 @@ import type { RawPropDefinition, RawSlotDefinition } from '../../../types/compon
 import type {
   CompilerModuleDiagnostic,
   SourceCandidateObservation,
-  SourceSyntaxObservation,
+  WebComponentSyntaxObservation,
 } from '../../../candidates/types.js';
 import { createCompilerContexts } from '../../../compiler/context.js';
 import type { ExtractorOptions } from '../../../types/options.js';
@@ -61,7 +61,7 @@ function metadataFor(
   present: boolean,
   unknownStatic: boolean,
   exposure: string[],
-): Pick<SourceSyntaxObservation, 'converter' | 'attribute' | 'reflect' | 'exposure'> {
+): Pick<WebComponentSyntaxObservation, 'converter' | 'attribute' | 'reflect' | 'exposure'> {
   const object = optionsObject(options);
   const uncertain =
     (options !== undefined && !object) ||
@@ -88,7 +88,7 @@ function metadataFor(
   };
   const attributeNode = field('attribute');
   const attributeValue = resolveWcValue(attributeNode).value;
-  const attribute: SourceSyntaxObservation['attribute'] = attributeNode
+  const attribute: WebComponentSyntaxObservation['attribute'] = attributeNode
     ? attributeValue?.kind === 'string'
       ? { state: 'explicit', name: attributeValue.value }
       : attributeValue?.kind === 'boolean' && attributeValue.value === 'false'
@@ -103,7 +103,7 @@ function metadataFor(
         : { state: 'absent', name: null };
   const reflectNode = field('reflect');
   const reflectValue = resolveWcValue(reflectNode).value;
-  const reflect: SourceSyntaxObservation['reflect'] = reflectNode
+  const reflect: WebComponentSyntaxObservation['reflect'] = reflectNode
     ? reflectValue?.kind === 'boolean'
       ? { state: 'explicit', value: reflectValue.value === 'true' }
       : { state: 'unknown', value: null }
@@ -164,8 +164,8 @@ export function readWebComponentSyntax(classNode: WebComponentClass, componentSo
   };
   const syntaxBase = (
     owner: WebComponentClass,
-    lineage: SourceSyntaxObservation['lineage'],
-  ): SourceSyntaxObservation => ({
+    lineage: WebComponentSyntaxObservation['lineage'],
+  ): WebComponentSyntaxObservation => ({
     reader: 'web-component',
     lineage,
     declaringClass: declaredName(owner),
@@ -182,9 +182,9 @@ export function readWebComponentSyntax(classNode: WebComponentClass, componentSo
     type: string,
     node: Node,
     owner: WebComponentClass,
-    lineage: SourceSyntaxObservation['lineage'],
+    lineage: WebComponentSyntaxObservation['lineage'],
     evidenceKind: SourceCandidateObservation['evidenceKind'],
-    syntax?: Partial<SourceSyntaxObservation>,
+    syntax?: Partial<WebComponentSyntaxObservation>,
   ) => {
     add(
       {
@@ -205,7 +205,7 @@ export function readWebComponentSyntax(classNode: WebComponentClass, componentSo
     slot: RawSlotDefinition,
     node: Node,
     owner: WebComponentClass,
-    lineage: SourceSyntaxObservation['lineage'],
+    lineage: WebComponentSyntaxObservation['lineage'],
     slotKind: 'jsdoc' | 'literal-template',
   ) => {
     if (!slots.has(slot.name)) slots.set(slot.name, slot);
@@ -221,7 +221,7 @@ export function readWebComponentSyntax(classNode: WebComponentClass, componentSo
       syntax: { ...syntaxBase(owner, lineage), slotKind },
     });
   };
-  const processClass = (owner: WebComponentClass, lineage: SourceSyntaxObservation['lineage']) => {
+  const processClass = (owner: WebComponentClass, lineage: WebComponentSyntaxObservation['lineage']) => {
     const staticOptions = new Map<string, Node>();
     let unknownStatic = false;
     const staticProperty = owner.getStaticMember('properties');
@@ -474,7 +474,7 @@ export function readWebComponentSyntax(classNode: WebComponentClass, componentSo
   const walk = (
     node: Node,
     environment: ReadonlyMap<string, Node>,
-    lineage: SourceSyntaxObservation['lineage'],
+    lineage: WebComponentSyntaxObservation['lineage'],
     depth: number,
   ) => {
     if (depth >= MAX_CLASS_DEPTH) {

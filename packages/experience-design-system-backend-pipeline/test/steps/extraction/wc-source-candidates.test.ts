@@ -4,12 +4,17 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  type SourceSyntaxObservation,
   bindSourceCandidatesToCapture,
   extractWebComponentDefinitions as extractPublic,
 } from '@contentful/experience-design-system-extraction';
 import { extractWebComponentDefinitions } from '../../../src/steps/extraction/src/framework-adapters/web-components/extract-web-components.js';
 
 import { isSourceCandidatePayload } from '../../../src/persistence/src/session/repositories/source-evidence-validation.js';
+
+function webSyntax(syntax: SourceSyntaxObservation | undefined) {
+  return syntax?.reader === 'web-component' ? syntax : undefined;
+}
 
 const directories: string[] = [];
 afterEach(() => {
@@ -53,8 +58,8 @@ describe('backend shared WC syntax reader', () => {
       reflect: { state: 'unknown', value: null },
     });
     expect(
-      candidate('Example')?.observations.find((item) => item.evidenceKind === 'runtime-object')?.syntax?.attribute
-        .state,
+      webSyntax(candidate('Example')?.observations.find((item) => item.evidenceKind === 'runtime-object')?.syntax)
+        ?.attribute.state,
     ).toBe('unknown');
     expect(candidate('LiteralExample')?.observations[0]?.syntax).toMatchObject({
       converter: { state: 'known', expression: 'String' },

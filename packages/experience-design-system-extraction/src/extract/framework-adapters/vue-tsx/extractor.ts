@@ -1,8 +1,11 @@
 import { Node, type SourceFile } from 'ts-morph';
 import type { RawComponentDefinition, ComponentExtractionResult, ExtractionExclusion } from '../../types/component.js';
-import { extractTsxComponents, getRenderableExports } from '../shared/helpers/tsx-shared.js';
+import { getTsxExtractionContext, getRenderableExports } from '../shared/helpers/tsx-shared.js';
 import { extractVueTsxComponentProps } from './helpers/extract-vue-tsx-props.js';
-import { extractVueTsxComponentSlots } from './helpers/extract-vue-tsx-slots.js';
+import { readVueSlots } from '../vue/helpers/read-vue-slots.js';
+import { readVueRuntimeProps, vueDiagnostic, type VueReaderContext } from '../vue/helpers/read-vue-runtime.js';
+import { mergeSourceCandidates, observeRawProps } from '../../candidates/source-candidates.js';
+import { SOURCE_FACT_SCHEMA_VERSION, type ExtractionDiagnostics } from '../../candidates/types.js';
 import type { ExtractorOptions } from '../../types/options.js';
 
 export async function extractVueTsxComponents(
@@ -10,12 +13,35 @@ export async function extractVueTsxComponents(
   _onProgress?: (progress: { filesProcessed: number; componentsFound: number }) => void,
   options: ExtractorOptions = {},
 ): Promise<ComponentExtractionResult> {
-  const { components, warnings, exclusions, extractionDiagnostics } = extractTsxComponents(
-    filePaths,
-    /\.tsx$/,
-    extractFromSourceFile,
-    options,
-  );
+  const extractionContext = getTsxExtractionContext(filePaths, /\.tsx$/, options);
+  const extractionDiagnostics = extractionContext.diagnostics;
+  const components: RawComponentDefinition[] = [];
+  const warnings: string[] = [];
+  const exclusions: ExtractionExclusion[] = [];
+  let filesProcessed = 0;
+  for (const context of extractionContext.contexts) {
+    for (const path of context.componentFiles) {
+      const sourceFile = context.project.getSourceFile(path);
+      if (!sourceFile) continue;
+      const reader: VueReaderContext = {
+        sourcePath: path,
+        source: sourceFile.getFullText(),
+        diagnostics: extractionDiagnostics,
+        occurrence: 0,
+      };
+      if (options.signal?.aborted) {
+        vueDiagnostic(reader, 'vue-analysis-cancelled');
+        continue;
+      }
+      try {
+        components.push(...extractFromSourceFile(sourceFile, exclusions, extractionDiagnostics));
+      } catch (error) {
+        vueDiagnostic(reader, 'vue-tsx-reader-throw');
+        warnings.push(`Failed to extract from ${path}: ${String(error)}`);
+      }
+      _onProgress?.({ filesProcessed: ++filesProcessed, componentsFound: components.length });
+    }
+  }
 
   return {
     components: components.sort((a, b) => a.name.localeCompare(b.name)),
@@ -25,13 +51,17 @@ export async function extractVueTsxComponents(
   };
 }
 
-function extractFromSourceFile(sourceFile: SourceFile, exclusions: ExtractionExclusion[]): RawComponentDefinition[] {
+function extractFromSourceFile(
+  sourceFile: SourceFile,
+  exclusions: ExtractionExclusion[],
+  diagnostics: ExtractionDiagnostics,
+): RawComponentDefinition[] {
   const components: RawComponentDefinition[] = [];
 
   for (const { name, declarations } of getRenderableExports(sourceFile, exclusions, {
     hookReason: 'Vue composition hook names are not renderable components',
   })) {
-    const component = extractVueTsxComponent(declarations, name, sourceFile);
+    const component = extractVueTsxComponent(declarations, name, sourceFile, diagnostics);
     if (component) components.push(component);
   }
 
@@ -42,6 +72,7 @@ function extractVueTsxComponent(
   declarations: Node[],
   exportName: string,
   sourceFile: SourceFile,
+  diagnostics: ExtractionDiagnostics,
 ): RawComponentDefinition | undefined {
   for (const declaration of declarations) {
     if (!Node.isVariableDeclaration(declaration)) continue;
@@ -51,8 +82,37 @@ function extractVueTsxComponent(
     if (!resolved) continue;
 
     const name = readComponentName(resolved.options) ?? exportName;
-    const props = extractVueTsxComponentProps(resolved.options);
-    const slots = extractVueTsxComponentSlots(resolved.options, resolved.slotsTypeNode);
+    const context: VueReaderContext = {
+      sourcePath: sourceFile.getFilePath(),
+      source: sourceFile.getFullText(),
+      diagnostics,
+      occurrence: 0,
+    };
+    const propsMember = resolved.options.getProperty('props');
+    const expression = propsMember && Node.isPropertyAssignment(propsMember) ? propsMember.getInitializer() : undefined;
+    const runtime = expression
+      ? readVueRuntimeProps(expression, context)
+      : { props: [], observations: [], resolution: 'resolved' as const };
+    const legacyProps = extractVueTsxComponentProps(resolved.options);
+    const props = [...new Map([...legacyProps, ...runtime.props].map((prop) => [prop.name, prop])).values()].sort(
+      (left, right) => left.name.localeCompare(right.name),
+    );
+    const slotResult = readVueSlots(sourceFile, context, undefined, resolved.slotsTypeNode, resolved.options);
+    const slots = slotResult.slots;
+    const collection = mergeSourceCandidates(
+      runtime.observations.concat(observeRawProps(legacyProps, 'runtime-object'), slotResult.observations),
+      props,
+      slots,
+    );
+    if (collection.omittedCount) vueDiagnostic(context, 'vue-source-candidate-budget-exhausted');
+    if (!expression) vueDiagnostic(context, 'vue-props-absent', undefined, true);
+    else
+      vueDiagnostic(
+        context,
+        `vue-props-${runtime.resolution === 'resolved' ? (runtime.props.length ? 'resolved' : 'empty') : runtime.resolution}`,
+        expression,
+        runtime.resolution === 'resolved',
+      );
 
     return {
       name,
@@ -60,6 +120,8 @@ function extractVueTsxComponent(
       framework: 'vue',
       props,
       slots,
+      sourceCandidates: collection.candidates,
+      factSchemaVersion: SOURCE_FACT_SCHEMA_VERSION,
     };
   }
 

@@ -13,6 +13,8 @@ const location = z.object({
   textHash: z.string().nullable(),
   startLine: z.number().int().positive().nullable(),
   endLine: z.number().int().positive().nullable(),
+  startOffset: z.number().int().nonnegative().nullable().optional(),
+  endOffset: z.number().int().nonnegative().nullable().optional(),
   binding: z.enum(['verified', 'changed', 'unverified', 'unavailable']),
 });
 const fact = z.object({
@@ -32,7 +34,7 @@ const fact = z.object({
   shapeNotes: z.array(z.string()),
   requiredFieldDropped: z.boolean().nullable(),
 });
-const syntax = z.object({
+const webComponentSyntax = z.object({
   reader: z.literal('web-component'),
   lineage: z.enum(['own', 'base', 'mixin']),
   declaringClass: z.string().nullable(),
@@ -53,6 +55,23 @@ const syntax = z.object({
   typeLocations: z.array(location),
   slotKind: z.enum(['jsdoc', 'literal-template']).nullable(),
 });
+const syntax = z.discriminatedUnion('reader', [
+  webComponentSyntax,
+  z.object({
+    reader: z.literal('vue'),
+    channel: z.enum(['prop', 'slot-contract', 'slot-template', 'slot-access']),
+    occurrence: z.number().int().nonnegative(),
+    resolution: z.enum(['resolved', 'partial', 'unresolved']),
+    resolutionReason: z.string().nullable(),
+    expression: z.string(),
+    spreadPath: z.array(z.string()),
+    conditions: z.array(z.string()),
+    loops: z.array(z.string()),
+    fallback: z.string().nullable(),
+    default: webComponentSyntax.shape.default,
+    typeLocations: z.array(location),
+  }),
+]);
 const candidate = z.object({
   name: z.string(),
   keyPath: z.array(z.string()),
