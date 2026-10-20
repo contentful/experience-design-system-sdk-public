@@ -18,7 +18,10 @@ export {
 } from './extract/candidates/source-candidates.js';
 export { extractSourceDefaultExpressions } from './extract/framework-adapters/react/helpers/extract-react-binding-defaults.js';
 export { SOURCE_FACT_SCHEMA_VERSION, SUPPORTED_SOURCE_FACT_SCHEMA_VERSIONS } from './extract/candidates/types.js';
-export { bindSourceCandidatesToCapture } from './extract/candidates/bind-source-candidates.js';
+export {
+  bindSourceCandidatesToCapture,
+  bindCompilerReadsToCapture,
+} from './extract/candidates/bind-source-candidates.js';
 export { mergeExtractionDiagnostics, recordSourceCandidateDiagnostics } from './extract/compiler/diagnostics.js';
 export { createCompilerContexts } from './extract/compiler/context.js';
 export type {

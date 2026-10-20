@@ -18,6 +18,7 @@ export async function runFileExtractionWorkers<T, M = undefined>(
   formatError: (filePath: string, error: unknown) => string,
   onProgress?: (progress: FileExtractionProgress) => void,
   onResult?: (filePath: string, outcome: FileExtractionOutcome<T, M>) => void,
+  loadSource: (path: string) => Promise<string> = (path) => readFile(path, 'utf-8'),
 ): Promise<{ items: T[]; warnings: string[] }> {
   const warnings: string[] = [];
   const items: T[] = [];
@@ -30,7 +31,7 @@ export async function runFileExtractionWorkers<T, M = undefined>(
       if (!filePath) break;
 
       try {
-        const source = await readFile(filePath, 'utf-8');
+        const source = await loadSource(filePath);
         const outcome = await extractFile(filePath, source);
         warnings.push(...(outcome.warnings ?? []));
         if (outcome.item) items.push(outcome.item);

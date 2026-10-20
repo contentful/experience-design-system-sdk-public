@@ -227,6 +227,14 @@ function collectImportedOptionsProps(
     }
     diagnostics.used.vueImportedFiles += 1;
     diagnostics.used.vueImportedBytes += sourceBytes;
+    diagnostics.reads?.push({
+      path: resolve(importedPath),
+      kind: 'framework',
+      textHash: createHash('sha256').update(source).digest('hex'),
+      byteLength: sourceBytes,
+      outcome: 'read',
+      reason: null,
+    });
     const { descriptor } = parseSFC(source);
     const script = descriptor.scriptSetup ?? descriptor.script;
     if (!script) return empty;

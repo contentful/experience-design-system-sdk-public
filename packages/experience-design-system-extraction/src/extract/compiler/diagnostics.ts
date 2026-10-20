@@ -21,6 +21,7 @@ export function mergeExtractionDiagnostics(
 
   return {
     schemaVersion: 1,
+    reads: uniqueByJson(available.flatMap((item) => item.reads ?? [])),
     projects: uniqueByJson(available.flatMap((item) => item.projects)),
     modules: uniqueByJson(available.flatMap((item) => item.modules)),
     references: uniqueByJson(available.flatMap((item) => item.references)),

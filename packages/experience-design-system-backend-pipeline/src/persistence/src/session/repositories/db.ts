@@ -61,6 +61,7 @@ import {
 import type { SourceCapture } from '@contentful/experience-design-system-extraction';
 import {
   bindSourceCandidatesToCapture,
+  bindCompilerReadsToCapture,
   SUPPORTED_SOURCE_FACT_SCHEMA_VERSIONS,
 } from '@contentful/experience-design-system-extraction';
 import type {
@@ -3348,7 +3349,7 @@ export function completeExtractionWithSourceEvidence(
     storeRawComponents(db, input.sessionId, boundComponents, {
       preserveStatus: true,
       withinTransaction: true,
-      extractionDiagnostics: input.extractionDiagnostics,
+      extractionDiagnostics: bindCompilerReadsToCapture(input.extractionDiagnostics, input.capture.files),
     });
     storeSlotCycles(db, input.sessionId, input.cycles, { withinTransaction: true });
     storeScannedFiles(db, input.sessionId, input.scannedFiles, { withinTransaction: true });

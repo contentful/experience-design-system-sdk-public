@@ -154,8 +154,20 @@ export interface CompilerReferenceDiagnostic {
   outcome: 'selected' | 'fallback' | 'missing' | 'invalid' | 'ambiguous' | 'cycle' | 'budget-exhausted';
 }
 
+export interface CompilerReadReceipt {
+  path: string;
+  kind: 'config' | 'compiler' | 'framework' | 'virtual';
+  textHash: string | null;
+  byteLength: number;
+  outcome: 'read' | 'unavailable';
+  reason: string | null;
+  binding?: SourceFactBinding;
+}
+
 export interface ExtractionDiagnostics {
   schemaVersion: 1;
+  /** Exact bytes delivered by the configured compiler filesystem host. */
+  reads?: CompilerReadReceipt[];
   projects: CompilerProjectDiagnostic[];
   modules: CompilerModuleDiagnostic[];
   references: CompilerReferenceDiagnostic[];
@@ -195,6 +207,9 @@ export interface SourceTypeNode {
 }
 export interface SourceTypeGraph {
   schemaVersion: 1;
+  /** SDK traversal counts; checker-internal type resolution is not preemptible. */
+  used?: { propertyEnumerations: number; enumeratedProperties: number; wrappedProperties: number };
+  limitations?: string[];
   rootId: string;
   nodes: SourceTypeNode[];
   coverage: CompilerCoverage;

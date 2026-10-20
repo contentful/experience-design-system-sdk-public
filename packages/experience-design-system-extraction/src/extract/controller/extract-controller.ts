@@ -20,6 +20,7 @@ export async function extractEndpoint(request: ExtractionEndpointRequest): Promi
   const filePaths = [...request.filePaths];
   const result = await executeExtractionOrchestrator({
     filePaths,
+    ...(request.signal !== undefined ? { signal: request.signal } : {}),
     ...(request.resolveUnreachable !== undefined ? { resolveUnreachable: request.resolveUnreachable } : {}),
     ...(request.projectRoot !== undefined ? { projectRoot: request.projectRoot } : {}),
     onProgress: ({ filesProcessed, componentsFound }) => {

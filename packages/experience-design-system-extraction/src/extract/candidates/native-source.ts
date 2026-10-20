@@ -124,6 +124,8 @@ export function captureNativeSource(
 ): { graph: SourceTypeGraph; shape: NativeSourceShape | null; notes: string[]; requiredFieldDropped: boolean | null } {
   const graph: SourceTypeGraph = {
     schemaVersion: 1,
+    used: { propertyEnumerations: 0, enumeratedProperties: 0, wrappedProperties: 0 },
+    limitations: ['compiler-internal-type-resolution-is-not-preemptible'],
     rootId: '',
     nodes: [],
     coverage: 'complete-within-declared-bound',
@@ -243,10 +245,20 @@ export function captureNativeSource(
         node.fields = [];
         const fields: Record<string, NativeSourceShape> = Object.create(null);
         let all = true;
+        const rawProperties = t.compilerType.getProperties();
+        graph.used!.propertyEnumerations++;
+        graph.used!.enumeratedProperties += rawProperties.length;
+        const remaining = Math.min(graph.limits.maxFields - fieldCount, graph.limits.maxNodes - graph.nodes.length);
+        if (rawProperties.length > remaining) {
+          graph.omittedCount += rawProperties.length;
+          incomplete('field-enumeration-budget');
+          return { id, shape: null };
+        }
         const properties = t.getProperties();
-        for (const symbol of properties) {
+        graph.used!.wrappedProperties += properties.length;
+        for (const [index, symbol] of properties.entries()) {
           if (++fieldCount > graph.limits.maxFields || graph.nodes.length >= graph.limits.maxNodes) {
-            graph.omittedCount += properties.length - node.fields.length;
+            graph.omittedCount += properties.length - index;
             incomplete('field-budget');
             all = false;
             break;

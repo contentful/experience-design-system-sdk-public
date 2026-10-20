@@ -1,5 +1,5 @@
 import type { RawComponentDefinition } from '../types/component.js';
-import type { SourceCandidate, SourceCandidateSource, SourceFactLocation } from './types.js';
+import type { ExtractionDiagnostics, SourceCandidate, SourceCandidateSource, SourceFactLocation } from './types.js';
 import { existsSync, realpathSync } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 
@@ -140,4 +140,34 @@ export function bindSourceCandidatesToCapture<T extends RawComponentDefinition>(
       ? { sourceCandidateSources: component.sourceCandidateSources.map((item) => bindSource(item, capturedByPath)) }
       : {}),
   }));
+}
+
+/** Bind observed read receipts without upgrading files absent from the saved capture. */
+export function bindCompilerReadsToCapture(
+  diagnostics: ExtractionDiagnostics | undefined,
+  capturedFiles: readonly CapturedSourceHash[],
+): ExtractionDiagnostics | undefined {
+  if (!diagnostics) return undefined;
+  const captured = new Map(capturedFiles.map((file) => [canonicalPath(file.canonicalPath), file.textHash]));
+  return {
+    ...diagnostics,
+    ...(diagnostics.reads
+      ? {
+          reads: diagnostics.reads.map((read) => {
+            const saved = captured.get(canonicalPath(read.path));
+            const binding =
+              read.outcome !== 'read' || !read.textHash
+                ? 'unavailable'
+                : saved === undefined
+                  ? 'unavailable'
+                  : saved === null
+                    ? 'unverified'
+                    : saved === read.textHash
+                      ? 'verified'
+                      : 'changed';
+            return { ...read, binding };
+          }),
+        }
+      : {}),
+  };
 }

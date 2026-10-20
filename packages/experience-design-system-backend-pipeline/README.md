@@ -115,3 +115,12 @@ The current scope gate rejects ambiguous duplicate component names before explor
 The index retains canonical file identities, content hashes, original excerpt ranges, supplied component identities, incoming lexical references and outgoing captured imports. Files appear once even with multiple component owners or roles; export aliases are bindings and declaration files retain definition identity. TypeScript config parsing supports admitted relative inheritance, arrays and JSONC; package/external config expansion remains unsupported and explicit. Broader runtime/value-flow evidence remains separate.
 
 Generation, exploration/assurance and review use the saved session/step snapshot after disk changes or deletion. Source projections count UTF-8 serialization and the shared source renderer header against the declared source-section limit, preserve original-range mappings, and record omitted files/metadata; an irreducible identity payload fails explicitly. This limit does not bound the rest of an assembled prompt. Source-snapshot citations do not establish extraction/runtime byte equivalence; production byte binding remains unverified.
+
+
+### Compiler read evidence
+
+Configured TypeScript and Vue analysis uses a read-only compiler filesystem with per-run read, byte, probe and directory-entry budgets. `extractionDiagnostics.reads` records exact UTF-8 hashes delivered to the compiler, configuration reads and Vue source snapshots; budget/read/cancellation failures remain explicit unavailable outcomes. Configured module/resolution/strict options are preserved, analysis forces `noEmit`, and only caller-supplied component files are eligible for output.
+
+Saved diagnostics bind observed hashes to the immutable source capture. Matching hashes are verified, changed bytes remain changed, and compiler support files absent from the capture remain unavailable; later disk edits do not replace saved evidence. Vue virtual script receipts describe transformed compiler input separately from original SFC bytes.
+
+Native type graphs record raw property enumeration and admitted wrapper counts. An object exceeding the remaining field/node budget keeps its type/declaration facts and records omitted fields before creating property wrappers. The TypeScript checker's internal synchronous resolution is not preemptible, so these traversal/read limits do not establish a global CPU or semantic-completeness bound.

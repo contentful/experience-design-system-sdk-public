@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { closeSync, existsSync, fstatSync, openSync, readSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { Project } from 'ts-morph';
 import ts from 'typescript';
@@ -11,6 +11,7 @@ import type {
 } from '../candidates/types.js';
 import type { ExtractorOptions } from '../types/options.js';
 import { selectCompilerConfiguration, type ParsedConfig } from './configuration-policy.js';
+import { createObservedCompilerFileSystem, COMPILER_READ_LIMITS } from './observed-file-system.js';
 
 const DEFAULT_LIMITS = {
   maxRoots: 256,
@@ -86,7 +87,12 @@ function toPlainOptions(options: ts.CompilerOptions): Record<string, string | nu
   return plain;
 }
 
-function makeCompilerHost(projectRoot: string, limits: typeof DEFAULT_LIMITS, explicitRoots: readonly string[]) {
+function makeCompilerHost(
+  projectRoot: string,
+  limits: typeof DEFAULT_LIMITS,
+  explicitRoots: readonly string[],
+  signal?: AbortSignal,
+) {
   const reads = new Map<string, string | null>();
   const hashByPath = new Map<string, string>();
   const diagnostics: string[] = [];
@@ -94,6 +100,10 @@ function makeCompilerHost(projectRoot: string, limits: typeof DEFAULT_LIMITS, ex
 
   const readFile = (path: string): string | undefined => {
     const canonicalPath = resolve(path);
+    if (signal?.aborted) {
+      diagnostics.push('config-analysis-cancelled');
+      return undefined;
+    }
     const cached = reads.get(canonicalPath);
     if (cached !== undefined) return cached ?? undefined;
     if (!isWithin(projectRoot, canonicalPath)) {
@@ -105,8 +115,10 @@ function makeCompilerHost(projectRoot: string, limits: typeof DEFAULT_LIMITS, ex
       return undefined;
     }
     used.configReads += 1;
+    let fd: number | undefined;
     try {
-      const stat = statSync(canonicalPath);
+      fd = openSync(canonicalPath, 'r');
+      const stat = fstatSync(fd);
       if (!stat.isFile()) {
         reads.set(canonicalPath, null);
         return undefined;
@@ -116,20 +128,34 @@ function makeCompilerHost(projectRoot: string, limits: typeof DEFAULT_LIMITS, ex
         reads.set(canonicalPath, null);
         return undefined;
       }
-      const text = readFileSync(canonicalPath, 'utf8');
-      const byteLength = Buffer.byteLength(text, 'utf8');
-      if (byteLength > limits.maxConfigFileBytes || used.configBytes + byteLength > limits.maxConfigBytes) {
-        diagnostics.push(`config-byte-budget-exhausted:${relative(projectRoot, canonicalPath)}`);
+      const bytes = Buffer.alloc(stat.size);
+      let offset = 0;
+      while (offset < bytes.length) {
+        if (signal?.aborted) {
+          diagnostics.push('config-analysis-cancelled');
+          reads.set(canonicalPath, null);
+          return undefined;
+        }
+        const count = readSync(fd, bytes, offset, bytes.length - offset, offset);
+        if (!count) break;
+        offset += count;
+        used.configBytes += count;
+      }
+      const after = fstatSync(fd);
+      if (offset !== stat.size || after.size !== stat.size || after.mtimeMs !== stat.mtimeMs) {
+        diagnostics.push(`config-source-changed-during-read:${relative(projectRoot, canonicalPath)}`);
         reads.set(canonicalPath, null);
         return undefined;
       }
-      used.configBytes += byteLength;
+      const text = bytes.toString('utf8');
       hashByPath.set(canonicalPath, createHash('sha256').update(text).digest('hex'));
       reads.set(canonicalPath, text);
       return text;
     } catch {
       reads.set(canonicalPath, null);
       return undefined;
+    } finally {
+      if (fd !== undefined) closeSync(fd);
     }
   };
 
@@ -199,7 +225,8 @@ export function createCompilerContexts(
     left.localeCompare(right),
   );
   const rootPaths = eligibleFiles.slice(0, limits.maxRoots);
-  const reader = makeCompilerHost(projectRoot, limits, rootPaths);
+  const reader = makeCompilerHost(projectRoot, limits, rootPaths, options.signal);
+  const observed = createObservedCompilerFileSystem(projectRoot, options.signal);
   const virtualSourceByPath = new Map(virtualSources.map((source) => [resolve(source.path), source.content]));
   const groups = new Map<
     string,
@@ -227,9 +254,11 @@ export function createCompilerContexts(
       referenceDiagnostics.push({ root: rootPath, configPath: null, outcome: 'budget-exhausted' });
       continue;
     }
+    const readerDiagnosticStart = reader.diagnostics.length;
     const selection = selectCompilerConfiguration(rootPath, projectRoot, reader, existsSync, limits.maxConfigReads);
     const selectedConfig = selection.config;
-    const { status, diagnostics, referenceOutcome } = selection;
+    const { status, referenceOutcome } = selection;
+    const diagnostics = [...new Set([...selection.diagnostics, ...reader.diagnostics.slice(readerDiagnosticStart)])];
 
     const key = selectedConfig?.path ?? `fallback:${projectRoot}`;
     const group = groups.get(key) ?? { config: selectedConfig, status, roots: [], files: [], diagnostics: [] };
@@ -278,7 +307,12 @@ export function createCompilerContexts(
           allowJs: true,
           noEmit: true,
         };
-    const project = new Project({ compilerOptions, skipAddingFilesFromTsConfig: true });
+    const project = new Project({
+      compilerOptions,
+      skipAddingFilesFromTsConfig: true,
+      fileSystem: observed.host,
+      libFolderPath: dirname(ts.sys.getExecutingFilePath()),
+    });
     const assignedFiles = group.files.slice(0, limits.maxProjectFiles);
     reader.used.projectFiles += assignedFiles.length;
     if (group.files.length > assignedFiles.length) group.diagnostics.push('project-input-file-budget-exhausted');
@@ -287,9 +321,23 @@ export function createCompilerContexts(
         const virtualSource = virtualSourceByPath.get(filePath);
         if (virtualSource !== undefined) project.createSourceFile(filePath, virtualSource, { overwrite: true });
         else project.addSourceFileAtPath(filePath);
-      } catch {
+      } catch (error) {
         group.diagnostics.push(`project-source-unavailable:${relative(projectRoot, filePath)}`);
+        group.diagnostics.push(`project-source-error:${error instanceof Error ? error.message : String(error)}`);
       }
+    }
+    let optionDiagnostics: string[];
+    try {
+      optionDiagnostics = project.getProgram().compilerObject.getOptionsDiagnostics().map(formatDiagnostic);
+    } catch {
+      optionDiagnostics = ['compiler-options-read-unavailable'];
+    }
+    if (optionDiagnostics.length) group.status = 'invalid';
+    group.diagnostics.push(...optionDiagnostics);
+    for (const receipt of projectDiagnostics.filter((receipt) => group.roots.includes(receipt.root))) {
+      receipt.diagnostics = [...new Set([...receipt.diagnostics, ...group.diagnostics])];
+      if (optionDiagnostics.length) receipt.status = 'invalid';
+      receipt.options = toPlainOptions(compilerOptions);
     }
     const componentFiles = assignedFiles.filter((path) => {
       componentFilePattern.lastIndex = 0;
@@ -310,6 +358,7 @@ export function createCompilerContexts(
   );
   const diagnostics: ExtractionDiagnostics = {
     schemaVersion: 1,
+    reads: observed.reads,
     projects: projectDiagnostics.map((project) =>
       project.configPath && fileDiscoveryDiagnostics.length > 0
         ? { ...project, diagnostics: [...new Set([...project.diagnostics, ...fileDiscoveryDiagnostics])] }
@@ -318,14 +367,32 @@ export function createCompilerContexts(
     modules,
     references: referenceDiagnostics,
     coverage: 'partial',
-    limits: { ...limits },
-    used: {
+    limits: { ...limits, ...COMPILER_READ_LIMITS },
+    used: Object.assign(observed.used, {
       ...reader.used,
       roots: rootPaths.length,
       suppliedFiles: eligibleFiles.length,
       discoveredModules: modules.length,
-      hiddenTypeScriptReads: 1,
-    },
+      hiddenTypeScriptReads: 0,
+    }),
   };
+  for (const [path, textHash] of reader.hashByPath)
+    diagnostics.reads!.push({
+      path,
+      kind: 'config',
+      textHash,
+      byteLength: Buffer.byteLength(reader.readFile(path) ?? '', 'utf8'),
+      outcome: 'read',
+      reason: null,
+    });
+  for (const source of virtualSources)
+    diagnostics.reads!.push({
+      path: resolve(source.path),
+      kind: 'virtual',
+      textHash: createHash('sha256').update(source.content).digest('hex'),
+      byteLength: Buffer.byteLength(source.content, 'utf8'),
+      outcome: 'read',
+      reason: null,
+    });
   return { contexts, diagnostics };
 }

@@ -1,6 +1,6 @@
 import os from 'node:os';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { createObservedCompilerFileSystem, COMPILER_READ_LIMITS } from '../../compiler/observed-file-system.js';
 import type { ComponentExtractionResult } from '../../types/component.js';
 import { runFileExtractionWorkers } from '../shared/helpers/file-processing/file-workers.js';
 import { createSortedExtractionResult } from '../shared/helpers/file-processing/result-normalizer.js';
@@ -20,23 +20,39 @@ export async function extractVueComponents(
   options: ExtractorOptions = {},
 ): Promise<ComponentExtractionResult> {
   const vueFiles = filePaths.filter((path) => path.endsWith('.vue'));
+  const sourceReader = createObservedCompilerFileSystem(
+    resolve(options.projectRoot ?? dirname(vueFiles[0] ?? process.cwd())),
+    options.signal,
+  );
   const sourceByPath = new Map<string, string>();
   const unreadable: string[] = [];
   const compilerInputs = vueFiles.flatMap((filePath) => {
     try {
-      const source = readFileSync(filePath, 'utf8');
+      const source = sourceReader.host.readFileSync(filePath);
       sourceByPath.set(resolve(filePath), source);
       return [{ filePath, source, scriptContent: '' }];
     } catch {
       unreadable.push(filePath);
-      return [];
+      return [{ filePath, scriptContent: '' }];
     }
   });
   const compilerContexts = createVueSfcCompilerContexts(compilerInputs, options);
+  compilerContexts.diagnostics.reads!.push(
+    ...sourceReader.reads.map((read) => ({ ...read, kind: 'framework' as const })),
+  );
+  Object.assign(compilerContexts.diagnostics.used, {
+    frameworkSourceReads: sourceReader.used.compilerReads,
+    frameworkSourceBytes: sourceReader.used.compilerBytes,
+  });
+  Object.assign(compilerContexts.diagnostics.limits, {
+    maxFrameworkSourceReads: COMPILER_READ_LIMITS.maxCompilerReads,
+    maxFrameworkSourceBytes: COMPILER_READ_LIMITS.maxCompilerBytes,
+    maxFrameworkSourceFileBytes: COMPILER_READ_LIMITS.maxCompilerFileBytes,
+  });
   for (const path of unreadable)
     vueDiagnostic(
       { sourcePath: path, source: '', diagnostics: compilerContexts.diagnostics, occurrence: 0 },
-      'vue-sfc-read-failed',
+      options.signal?.aborted ? 'vue-analysis-cancelled' : 'vue-sfc-read-failed',
     );
   const { items: components, warnings } = await runFileExtractionWorkers(
     vueFiles,
@@ -89,6 +105,12 @@ export async function extractVueComponents(
     (filePath, error) =>
       `Failed to extract from ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
     onProgress,
+    undefined,
+    async (path) => {
+      const source = sourceByPath.get(resolve(path));
+      if (source === undefined) throw new Error('Vue source unavailable in bounded snapshot');
+      return source;
+    },
   );
   return { ...createSortedExtractionResult(components, warnings), extractionDiagnostics: compilerContexts.diagnostics };
 }

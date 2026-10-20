@@ -134,6 +134,19 @@ const alternateSource = z.object({
 
 const diagnostics = z.object({
   schemaVersion: z.literal(1),
+  reads: z
+    .array(
+      z.object({
+        path: z.string(),
+        kind: z.enum(['config', 'compiler', 'framework', 'virtual']),
+        textHash: z.string().nullable(),
+        byteLength: z.number().nonnegative(),
+        outcome: z.enum(['read', 'unavailable']),
+        reason: z.string().nullable(),
+        binding: z.enum(['verified', 'changed', 'unverified', 'unavailable']).optional(),
+      }),
+    )
+    .optional(),
   projects: z.array(
     z.object({
       root: z.string(),
