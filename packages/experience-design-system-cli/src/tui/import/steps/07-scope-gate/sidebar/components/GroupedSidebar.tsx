@@ -3,7 +3,8 @@ import figures from 'figures';
 import { Box, Text } from 'ink';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 import {
-  computeAllClosures,
+  computeClosure,
+  findRoots,
   findSharedDeps,
   type ComponentGraphNode,
   type Closure,
@@ -70,6 +71,10 @@ export interface VisibleRow {
   rootName?: string;
 }
 
+function hasDirectChild(node: ComponentGraphNode): boolean {
+  return node.slots.some((slot) => (slot.allowedComponents ?? []).some((target) => target !== node.name));
+}
+
 function isEmpty(entry: CDFComponentEntry): boolean {
   return Object.keys(entry.$properties ?? {}).length === 0 && Object.keys(entry.$slots ?? {}).length === 0;
 }
@@ -125,10 +130,12 @@ export function buildVisibleRows(props: {
     otherKeys.sort();
     const otherKeySet = new Set(otherKeys);
     const flatGraph = graph.filter((n) => otherKeySet.has(n.name));
-    const closures = computeAllClosures(flatGraph);
     const depCountByKey = new Map<string, number>();
-    for (const [name, closure] of closures) {
-      if (closure.nodes.length > 1) depCountByKey.set(name, closure.nodes.length - 1);
+    for (const node of flatGraph) {
+      const direct = new Set(
+        node.slots.flatMap((slot) => slot.allowedComponents ?? []).filter((t) => t !== node.name && otherKeySet.has(t)),
+      );
+      if (direct.size > 0) depCountByKey.set(node.name, direct.size);
     }
     for (const key of cycleKeys) {
       const rec = itemByKey.get(key);
@@ -180,28 +187,13 @@ export function buildVisibleRows(props: {
 
   const computeCycleMemberSubtree = (root: string): Array<{ name: string; depth: number; isCycleMember: boolean }> => {
     const out: Array<{ name: string; depth: number; isCycleMember: boolean }> = [];
-    const visited = new Set<string>([root]);
-    const queue: Array<{ name: string; depth: number }> = [{ name: root, depth: 0 }];
-    while (queue.length > 0) {
-      const cur = queue.shift()!;
-      const parentItem = itemByKey.get(cur.name)?.it;
-      if (!parentItem) continue;
-      const slotTargets: string[] = [];
-      const seenTarget = new Set<string>();
-      for (const target of allowedComponentNames(parentItem.entry)) {
-        if (!itemByKey.has(target)) continue;
-        if (seenTarget.has(target)) continue;
-        seenTarget.add(target);
-        slotTargets.push(target);
-      }
-      slotTargets.sort();
-      for (const target of slotTargets) {
-        if (visited.has(target)) continue;
-        visited.add(target);
-        const isCycleMember = cycleParticipants.has(target);
-        out.push({ name: target, depth: cur.depth + 1, isCycleMember });
-        queue.push({ name: target, depth: cur.depth + 1 });
-      }
+    const parentItem = itemByKey.get(root)?.it;
+    if (!parentItem) return out;
+    const slotTargets = [...new Set(allowedComponentNames(parentItem.entry))]
+      .filter((target) => target !== root && itemByKey.has(target))
+      .sort();
+    for (const target of slotTargets) {
+      out.push({ name: target, depth: 1, isCycleMember: cycleParticipants.has(target) });
     }
     return out;
   };
@@ -265,7 +257,17 @@ export function buildVisibleRows(props: {
 
   const otherKeySet = new Set(otherKeys);
   const subgraph = graph.filter((n) => otherKeySet.has(n.name));
-  const closures = computeAllClosures(subgraph);
+  // One level only: every component with children is a parent row, and each row lists just its direct children.
+  // A component that is both a child and a parent shows up under its own parent and as a parent row itself.
+  const closures = new Map<string, Closure>();
+  const parentNames = new Set([
+    ...findRoots(subgraph),
+    ...subgraph.filter((n) => hasDirectChild(n)).map((n) => n.name),
+  ]);
+  for (const name of [...parentNames].sort()) {
+    const full = computeClosure(name, subgraph);
+    closures.set(name, { ...full, nodes: full.nodes.filter((n) => n.depth <= 1) });
+  }
   const sharedDeps = findSharedDeps(closures);
 
   const hasCycleDepDirect = (name: string): boolean => {
@@ -306,7 +308,6 @@ export function buildVisibleRows(props: {
       }
     };
     countInjections(root);
-    for (const n of closure.nodes) if (n.name !== root) countInjections(n.name);
     const depCount = closure.nodes.length - 1 + injectedCycleCount;
     const expanded = alwaysExpanded ? true : props.expandedGroups.has(root);
     const glyphExpand = expanded ? GLYPH_EXPAND_EXPANDED : GLYPH_EXPAND_COLLAPSED;
@@ -353,7 +354,6 @@ export function buildVisibleRows(props: {
     emitCycleChildrenOf(root, 0);
     for (const c of closureChildren) {
       injectedChildren.push({ name: c.name, depth: c.depth, isCycleChild: false });
-      emitCycleChildrenOf(c.name, c.depth);
     }
 
     // A child is "last at its depth" when no later child in the flat list
