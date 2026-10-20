@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import type { AngularComponentMetadata } from '../types/angular-metadata.js';
+import type { AngularComponentMetadata } from '../../types/angular-metadata.js';
 
 /**
  * Return the template HTML for a component — either the inline `template:`

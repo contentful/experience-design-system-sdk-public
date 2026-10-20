@@ -1,6 +1,6 @@
 import type { ClassDeclaration } from 'ts-morph';
 import type { RawPropDefinition, RawSlotDefinition } from '../../../../types/component.js';
-import type { AngularComponentMetadata } from '../types/angular-metadata.js';
+import type { AngularComponentMetadata } from '../../types/angular-metadata.js';
 import { parseNgContentElements } from '../template/parse-ng-content-elements.js';
 import { resolveTemplateSource } from '../template/resolve-template-source.js';
 import { deriveSlotName } from './derive-slot-name.js';

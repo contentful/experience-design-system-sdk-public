@@ -15,33 +15,15 @@ export interface AngularComponentMetadata {
    * or `null` when none (abstract/host-less directive).
    */
   rawSelector: string | null;
-  /**
-   * Parsed selector alternatives:
-   * - element: `mat-card` (name only)
-   * - attribute: `[matCard]`
-   * - class: `.hlm-card`
-   * - compound: `button[mat-button]` (combinations)
-   */
-  selectors: Array<
-    | { kind: 'element'; value: string }
-    | { kind: 'attribute'; value: string }
-    | { kind: 'class'; value: string }
-    | { kind: 'compound'; value: string }
-  >;
-  /** Inline template string, or `null` when the component uses `templateUrl` / has no template. */
+  /** Inline template HTML, or `null` when the component uses `templateUrl` or has no template. */
   inlineTemplate: string | null;
   /** Resolved absolute path to the external template file, when `templateUrl` is set. */
   templatePath: string | null;
-  /** Whether the component declared `standalone: true` (default on Angular 19+). */
-  standalone: boolean;
-  /**
-   * `imports: [...]` identifier list for standalone components. Used to resolve
-   * selector references in `<ng-content select="...">` to known classes.
-   */
-  importedIdentifiers: string[];
   /**
    * Raw entries from the legacy `@Component({ inputs: [...] })` array. Each
    * entry is either `'propName'` or `'propName: aliasName'`.
    */
   inputsArray: string[];
+  /** 1-indexed line in the source file where the decorator starts. */
+  decoratorLine: number;
 }

@@ -1,4 +1,4 @@
-import { Node, type PropertyDeclaration, type SetAccessorDeclaration } from 'ts-morph';
+import { Node, type GetAccessorDeclaration, type PropertyDeclaration, type SetAccessorDeclaration } from 'ts-morph';
 import type { RawPropDefinition } from '../../../../types/component.js';
 import { resolvePropType } from './resolve-prop-type.js';
 
@@ -8,12 +8,15 @@ import { resolvePropType } from './resolve-prop-type.js';
  *   @Input('alias') foo
  *   @Input({ required, transform, alias }) foo
  *
- * And the setter form:
+ * And both accessor forms (Angular treats @Input on get and set as equivalent):
  *   @Input() set foo(v: string) { ... }
+ *   @Input() get foo(): string { ... }
  *
  * Returns `null` when the property has no `@Input()` decorator.
  */
-export function extractDecoratorInput(field: PropertyDeclaration | SetAccessorDeclaration): RawPropDefinition | null {
+export function extractDecoratorInput(
+  field: PropertyDeclaration | SetAccessorDeclaration | GetAccessorDeclaration,
+): RawPropDefinition | null {
   const decorator = field.getDecorator('Input');
   if (!decorator) return null;
 
@@ -59,6 +62,15 @@ export function extractDecoratorInput(field: PropertyDeclaration | SetAccessorDe
   if (Node.isSetAccessorDeclaration(field)) {
     const param = field.getParameters()[0];
     typeNode = param?.getTypeNode();
+  } else if (Node.isGetAccessorDeclaration(field)) {
+    // Prefer the companion setter's parameter type when available (that's the
+    // input shape the user writes to); fall back to the getter's return type.
+    const parent = field.getParent();
+    const companionSetter = parent && Node.isClassDeclaration(parent) ? parent.getSetAccessor(fieldName) : undefined;
+    if (companionSetter) {
+      typeNode = companionSetter.getParameters()[0]?.getTypeNode();
+    }
+    if (!typeNode) typeNode = field.getReturnTypeNode();
   } else {
     typeNode = field.getTypeNode();
     const initializer = field.getInitializer();

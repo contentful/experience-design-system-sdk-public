@@ -202,6 +202,108 @@ describe('extractAngularComponents — contentChild queries', () => {
   });
 });
 
+describe('extractAngularComponents — @Input setter accessor form', () => {
+  it('extracts @Input on a setter and reads the parameter type', async () => {
+    const tsPath = writeFile(
+      'checkbox.ts',
+      `
+      import { Component, Input } from '@angular/core';
+
+      @Component({ selector: 'app-checkbox', template: '' })
+      export class AppCheckbox {
+        private _disabled = false;
+        @Input() set disabled(value: boolean) { this._disabled = value; }
+        get disabled(): boolean { return this._disabled; }
+      }
+    `,
+    );
+
+    const result = await extractAngularComponents([tsPath]);
+    const c = result.components[0]!;
+    const disabled = c.props.find((p) => p.name === 'disabled')!;
+    expect(disabled).toBeDefined();
+    expect(disabled.type).toBe('boolean');
+    expect(disabled.required).toBe(false);
+  });
+});
+
+describe('extractAngularComponents — @Input getter accessor form', () => {
+  it('extracts @Input on a getter accessor (Material-style aliased getter)', async () => {
+    // Mirrors Angular Material's MatButton pattern:
+    //   @Input('matButton') get appearance(): ButtonAppearance { return this._appearance; }
+    //   set appearance(value) { ... }
+    const tsPath = writeFile(
+      'button.ts',
+      `
+      import { Component, Input } from '@angular/core';
+
+      @Component({ selector: 'mat-button', template: '' })
+      export class MatButton {
+        private _appearance: 'text' | 'filled' | 'outlined' = 'text';
+        @Input('matButton') get appearance(): 'text' | 'filled' | 'outlined' { return this._appearance; }
+        set appearance(value: 'text' | 'filled' | 'outlined') { this._appearance = value; }
+      }
+    `,
+    );
+
+    const result = await extractAngularComponents([tsPath]);
+    const c = result.components[0]!;
+    // Alias wins — prop name is 'matButton', not 'appearance'
+    const appearance = c.props.find((p) => p.name === 'matButton')!;
+    expect(appearance).toBeDefined();
+    expect(appearance.type).toBe("'text' | 'filled' | 'outlined'");
+    expect(appearance.allowedValues).toEqual(['text', 'filled', 'outlined']);
+    expect(appearance.required).toBe(false);
+  });
+
+  it('dedups when both @Input get and @Input set exist for the same prop', async () => {
+    // Angular treats @Input on either accessor as declaring the same input.
+    // The extractor should emit the prop exactly once.
+    const tsPath = writeFile(
+      'select.ts',
+      `
+      import { Component, Input } from '@angular/core';
+
+      @Component({ selector: 'mat-select', template: '' })
+      export class MatSelect {
+        private _value: string | null = null;
+        @Input() get value(): string | null { return this._value; }
+        set value(v: string | null) { this._value = v; }
+      }
+    `,
+    );
+
+    const result = await extractAngularComponents([tsPath]);
+    const c = result.components[0]!;
+    const matches = c.props.filter((p) => p.name === 'value');
+    expect(matches).toHaveLength(1);
+  });
+});
+
+describe('extractAngularComponents — legacy inputs: array form', () => {
+  it('extracts props declared via @Component({ inputs: [...] })', async () => {
+    const tsPath = writeFile(
+      'legacy.ts',
+      `
+      import { Component } from '@angular/core';
+
+      @Component({
+        selector: 'app-legacy',
+        template: '',
+        inputs: ['color', 'size: aliasedSize']
+      })
+      export class LegacyComponent {}
+    `,
+    );
+
+    const result = await extractAngularComponents([tsPath]);
+    const c = result.components[0]!;
+    const propNames = c.props.map((p) => p.name).sort();
+    expect(propNames).toContain('color');
+    expect(propNames).toContain('aliasedSize'); // alias wins over field name
+  });
+});
+
 describe('extractAngularComponents — not-a-component files', () => {
   it('skips classes without @Component and files without any', async () => {
     const tsPath = writeFile(

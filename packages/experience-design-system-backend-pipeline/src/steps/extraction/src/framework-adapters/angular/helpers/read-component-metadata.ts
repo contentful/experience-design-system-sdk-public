@@ -3,7 +3,7 @@ import type { ClassDeclaration } from 'ts-morph';
 import { findComponentDecorator } from './find-component-decorator.js';
 import { normalizeComponentName } from './resolution/normalize-component-name.js';
 import { readDecoratorString, readDecoratorStringArray } from './read-decorator-string.js';
-import type { AngularComponentMetadata } from './types/angular-metadata.js';
+import type { AngularComponentMetadata } from '../types/angular-metadata.js';
 
 /**
  * Pull everything the extractor cares about off a class's `@Component({...})`:

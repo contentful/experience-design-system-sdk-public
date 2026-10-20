@@ -1,7 +1,7 @@
 // Prefixes observed in the real-world Angular DS corpus:
-// Material (Mat/Cdk), NG-ZORRO (Nz), Carbon (Cds/Ibm), Clarity (Clr),
+// Material (Mat/Cdk), NG-ZORRO (Nz/Ng), Carbon (Cds/Ibm), Clarity (Clr),
 // Spartan (Hlm/Brn), Taiga (Tui), Nebular (Nb), SAP Fundamentals (Fd), PrimeNG (P).
-const KNOWN_PREFIXES = ['Mat', 'Cdk', 'Nz', 'Cds', 'Ibm', 'Clr', 'Hlm', 'Brn', 'Tui', 'Nb', 'Fd', 'P'];
+const KNOWN_PREFIXES = ['Mat', 'Cdk', 'Nz', 'Cds', 'Ibm', 'Clr', 'Hlm', 'Brn', 'Tui', 'Nb', 'Fd', 'P', 'Ng'];
 
 /**
  * Strip a known library prefix from a PascalCase identifier.
