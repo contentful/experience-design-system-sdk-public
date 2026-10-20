@@ -13,14 +13,14 @@ export const IMPORT_STEPS = [
 
 export type ImportStepId = (typeof IMPORT_STEPS)[number]['id'];
 
-interface StepHeaderProps {
-  step: ImportStepId;
+export interface StepHeaderProps {
+  step: ImportStepId | 'done';
 }
 
 const version = readPackageVersion();
 
 export function StepHeader({ step }: StepHeaderProps): React.ReactElement {
-  const current = IMPORT_STEPS.findIndex((candidate) => candidate.id === step);
+  const current = step === 'done' ? IMPORT_STEPS.length : IMPORT_STEPS.findIndex((candidate) => candidate.id === step);
 
   return (
     <Box

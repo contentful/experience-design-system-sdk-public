@@ -92,6 +92,7 @@ export function FlowScreen({
         const teaser = buildRunTeaserLine(state.lastRunId);
         return (
           <GateStep
+            step="push"
             message="Files saved"
             summary={state.componentsPath ? `components.json → ${state.componentsPath}` : undefined}
             context={
