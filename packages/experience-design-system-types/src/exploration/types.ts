@@ -103,8 +103,19 @@ export interface BoundSourceFile {
   textHash: string | null;
   ranges: Array<{ startLine: number; endLine: number; text: string }>;
   coverage: SourceCompleteness;
+  roles?: string[];
+  componentRefs?: Array<{
+    componentId: string;
+    name: string;
+    roles: string[];
+    observations?: Array<{ role: string; startLine: number; endLine: number }>;
+  }>;
 }
 export interface ExplorationSourceInput {
+  projectionBounds?: { maxBytes: number; usedBytes: number };
+  components?: import('../shared-source.js').SharedSource['components'];
+  omittedComponents?: number;
+  omittedRanges?: number;
   captureId: string;
   captureDigest: string;
   envelopeId: string;

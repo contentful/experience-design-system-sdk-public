@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
-import { basename, dirname, extname, isAbsolute, relative, resolve, sep } from 'node:path';
+import { dirname, extname, isAbsolute, relative, resolve, sep } from 'node:path';
 import ts from 'typescript';
 import type {
   CaptureSourceEvidenceRequest,
@@ -12,6 +12,7 @@ import type {
   SourceCoverage,
 } from './types.js';
 import { DEFAULT_SOURCE_CAPTURE_LIMITS } from './types.js';
+import { associateCapturedReferences } from './associate-references.js';
 
 type ReadResult = { text: string; canonicalPath: string } | { reason: string; canonicalPath: string };
 
@@ -109,6 +110,7 @@ export async function captureSourceEvidence(request: CaptureSourceEvidenceReques
     resolverProbes: 0,
     captureMs: 0,
     promptBytes: 0,
+    referenceNodes: 0,
   };
   let incomplete = false;
   let exhausted = false;
@@ -260,72 +262,80 @@ export async function captureSourceEvidence(request: CaptureSourceEvidenceReques
     return entry;
   };
 
-  const rawCompilerOptions: Record<string, unknown> = {};
-  const loadConfig = (path: string, chain: Set<string>): void => {
+  let configuredOptions: ts.CompilerOptions = {};
+  const readConfig = (path: string): string | undefined => {
     const canonical = canonicalCandidate(path);
-    if (canonical.excluded) {
-      diagnostics.push({ kind: 'config', reason: 'config-outside-project-root' });
+    if (canonical.excluded || isDependencyPath(projectRoot, canonical.path)) {
+      diagnostics.push({ kind: 'config', reason: 'config-outside-admitted-source' });
       incomplete = true;
-      return;
-    }
-    if (chain.has(canonical.path)) {
-      diagnostics.push({ kind: 'config', reason: `config-extends-cycle:${relative(projectRoot, canonical.path)}` });
-      incomplete = true;
-      return;
+      return undefined;
     }
     const read = readBounded(canonical.path);
     if (!('text' in read)) {
       diagnostics.push({ kind: 'config', reason: `config-unreadable:${relative(projectRoot, canonical.path)}` });
       incomplete = true;
-      return;
+      return undefined;
     }
     addCapturedFile(canonical.path, 'config');
-    let config: Record<string, unknown>;
-    try {
-      const parsed = JSON.parse(read.text) as unknown;
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('invalid-config-shape');
-      config = parsed as Record<string, unknown>;
-    } catch {
+    const config = ts.parseConfigFileTextToJson(canonical.path, read.text);
+    if (config.error) {
       diagnostics.push({ kind: 'config', reason: `config-parse:${relative(projectRoot, canonical.path)}` });
       incomplete = true;
-      return;
     }
-    const nextChain = new Set(chain).add(canonical.path);
-    const extendsValue = config.extends;
-    if (typeof extendsValue === 'string') {
-      if (extendsValue.startsWith('.') || isAbsolute(extendsValue)) {
-        const extended = resolve(
-          dirname(canonical.path),
-          extendsValue.endsWith('.json') ? extendsValue : `${extendsValue}.json`,
-        );
-        loadConfig(extended, nextChain);
-      } else {
-        diagnostics.push({ kind: 'config', reason: `unsupported-package-config-extends:${basename(extendsValue)}` });
+    const extended = config.config?.extends as unknown;
+    const extendsValues = typeof extended === 'string' ? [extended] : Array.isArray(extended) ? extended : [];
+    for (const value of extendsValues)
+      if (typeof value === 'string' && !value.startsWith('.') && !isAbsolute(value)) {
+        diagnostics.push({ kind: 'config', reason: `unsupported-package-config-extends:${value}` });
         incomplete = true;
       }
-    } else if (extendsValue !== undefined) {
-      diagnostics.push({ kind: 'config', reason: 'unsupported-config-extends-shape' });
-      incomplete = true;
-    }
-    const options = config.compilerOptions;
-    if (options && typeof options === 'object' && !Array.isArray(options)) Object.assign(rawCompilerOptions, options);
+    return read.text;
   };
-
   const tsConfig = resolve(projectRoot, 'tsconfig.json');
-  if (existsSync(tsConfig)) loadConfig(tsConfig, new Set());
-
-  const converted = ts.convertCompilerOptionsFromJson(rawCompilerOptions, projectRoot);
-  if (converted.errors.length > 0) {
-    diagnostics.push({
-      kind: 'config',
-      reason: `compiler-options:${converted.errors.map((error) => error.code).join(',')}`,
-    });
-    incomplete = true;
+  if (existsSync(tsConfig)) {
+    const text = readConfig(tsConfig);
+    if (text !== undefined) {
+      const parsed = ts.parseConfigFileTextToJson(tsConfig, text);
+      if (!parsed.error) {
+        const host: ts.ParseConfigHost = {
+          useCaseSensitiveFileNames: true,
+          readDirectory: () => [], // Source admission is supplied, never expanded by config globs.
+          readFile: readConfig,
+          fileExists: (path) => {
+            if (!budgetCheck() || used.resolverProbes >= limits.maxResolverProbes) {
+              diagnostics.push({ kind: 'budget', reason: 'max-config-resolver-probes' });
+              incomplete = true;
+              exhausted = true;
+              return false;
+            }
+            used.resolverProbes++;
+            const canonical = canonicalCandidate(path);
+            if (canonical.excluded || isDependencyPath(projectRoot, canonical.path)) return false;
+            try {
+              return statSync(canonical.path).isFile();
+            } catch {
+              return false;
+            }
+          },
+        };
+        const config = ts.parseJsonConfigFileContent(parsed.config, host, dirname(tsConfig), undefined, tsConfig);
+        configuredOptions = config.options;
+        // Config discovery is deliberately excluded; supplied admission owns the source list.
+        const errors = config.errors.filter((error) => error.code !== 18003);
+        if (errors.length) {
+          diagnostics.push({
+            kind: 'config',
+            reason: `compiler-options:${errors.map((error) => error.code).join(',')}`,
+          });
+          incomplete = true;
+        }
+      }
+    }
   }
   const compilerOptions: ts.CompilerOptions = {
     module: ts.ModuleKind.Preserve,
     moduleResolution: ts.ModuleResolutionKind.Bundler,
-    ...converted.options,
+    ...configuredOptions,
   };
   const configAliasPaths = compilerOptions.paths as Record<string, readonly string[]> | undefined;
 
@@ -459,10 +469,19 @@ export async function captureSourceEvidence(request: CaptureSourceEvidenceReques
           continue;
         }
       }
+      activeResolverFrom = canonical.path;
       const result = ts.resolveModuleName(specifier, canonical.path, compilerOptions, resolverHost);
       const resolvedPath = result.resolvedModule?.resolvedFileName;
       if (!resolvedPath) {
-        if (hasMatchingPathAlias(specifier, configAliasPaths)) {
+        if (exhausted) {
+          resolutions.push({
+            fromFileId: captured.fileId,
+            specifier,
+            outcome: 'budget-exhausted',
+            reason: 'resolver-budget',
+          });
+          incomplete = true;
+        } else if (hasMatchingPathAlias(specifier, configAliasPaths)) {
           resolutions.push({
             fromFileId: captured.fileId,
             specifier,
@@ -568,6 +587,22 @@ export async function captureSourceEvidence(request: CaptureSourceEvidenceReques
   }
   used.captureMs = Date.now() - startedAt;
   const files = [...filesByPath.values()].sort((left, right) => left.displayPath.localeCompare(right.displayPath));
+  const associationDiagnostics = associateCapturedReferences({
+    files,
+    resolution: resolutions,
+    compilerOptions,
+    componentPaths,
+    checkBudget: budgetCheck,
+    maxNodes: limits.maxReferenceNodes ?? 100_000,
+    recordNodes: (nodes) => {
+      used.referenceNodes = nodes;
+    },
+  });
+  if (associationDiagnostics.length) {
+    diagnostics.push(...associationDiagnostics);
+    incomplete = true;
+  }
+  used.captureMs = Date.now() - startedAt;
   const sortedResolutions = resolutions.sort(
     (left, right) =>
       left.fromFileId.localeCompare(right.fromFileId) ||

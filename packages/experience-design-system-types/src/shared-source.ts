@@ -1,0 +1,60 @@
+export type SharedSourceCoverage = 'complete-within-declared-bound' | 'partial' | 'unavailable';
+
+export interface SharedSourceRange {
+  startLine: number;
+  endLine: number;
+  displayStartLine: number;
+}
+
+export interface SharedSourceFile {
+  path: string;
+  content: string;
+  partial: boolean;
+  fileId?: string;
+  canonicalPath?: string;
+  textHash?: string | null;
+  coverage?: SharedSourceCoverage;
+  ranges?: SharedSourceRange[];
+  roles?: string[];
+  componentRefs?: Array<{
+    componentId: string;
+    name: string;
+    roles: string[];
+    observations?: Array<{ role: string; startLine: number; endLine: number }>;
+  }>;
+}
+
+export interface SharedSourceReference {
+  path: string;
+  role: string;
+  partial: boolean;
+  fileId?: string;
+}
+
+/** Source files are stored once; lexical references do not prove runtime execution. */
+export interface SharedSource {
+  files: SharedSourceFile[];
+  components: Array<{
+    component: string;
+    source: string;
+    refs: SharedSourceReference[];
+    componentId?: string;
+  }>;
+  captureId?: string;
+  captureDigest?: string;
+  envelopeId?: string;
+  envelopeDigest?: string;
+  sessionId?: string;
+  extractionStepId?: number;
+  coverage?: SharedSourceCoverage;
+  promptCoverage?: SharedSourceCoverage;
+  projectionBounds?: { maxBytes: number; usedBytes: number };
+  extractionByteBinding?: 'verified-same' | 'changed' | 'unverified';
+  omittedFiles?: number;
+  omittedRanges?: number;
+  omittedComponents?: number;
+  omittedDiagnostics?: number;
+  omittedObservations?: number;
+  diagnostics?: unknown[];
+  observations?: { accepted: unknown[]; rejected: unknown[] };
+}

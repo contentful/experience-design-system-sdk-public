@@ -78,7 +78,14 @@ describe('captureSourceEvidence', () => {
     ]);
     expect(capture.files.filter((file) => file.canonicalPath === resolve(componentPath))).toHaveLength(1);
     const componentFile = capture.files.find((file) => file.canonicalPath === resolve(componentPath))!;
-    expect(componentFile.componentRefs).toEqual([{ componentId: 'button-id', name: 'Button', roles: ['definition'] }]);
+    expect(componentFile.componentRefs).toEqual([
+      {
+        componentId: 'button-id',
+        name: 'Button',
+        roles: ['definition'],
+        observations: [{ role: 'definition', startLine: 5, endLine: 5 }],
+      },
+    ]);
     expect(componentFile.roles).toContain('definition');
     expect(componentFile.textHash).toMatch(/^[a-f0-9]{64}$/);
     expect(capture.resolution).toEqual(

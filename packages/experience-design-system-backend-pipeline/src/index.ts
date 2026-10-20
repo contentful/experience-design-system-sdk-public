@@ -307,6 +307,7 @@ export {
   loadComponentSourceRef,
   loadComponentSourceRefs,
   loadSavedComponentSourceRef,
+  loadSavedSharedSource,
   loadExtractionSourceDiagnostics,
   renameEmptySlots,
 } from './persistence/src/index.js';
@@ -501,3 +502,13 @@ export {
 } from './steps/exploration/src/services/project-accepted-slots.js';
 
 export * from './orchestrators/run-exploration-session/index.js';
+
+export type { CompletedSharedSourceEvidence } from './persistence/src/session/repositories/db.js';
+
+export { buildSharedSource, projectSharedSource, renderSharedSource } from './source-evidence/shared-source.js';
+export type {
+  SharedSource,
+  SharedSourceFile,
+  SharedSourceReference,
+  SharedSourceRange,
+} from '@contentful/experience-design-system-types';

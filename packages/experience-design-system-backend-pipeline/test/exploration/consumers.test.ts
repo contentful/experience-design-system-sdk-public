@@ -46,7 +46,7 @@ async function seed() {
     const source = join(directory, `${name}.tsx`);
     writeFileSync(
       source,
-      `export interface ${name}Props { title?: string }\nexport const allowedComponents = ['Text'];\n`,
+      `export interface ${name}Props { title?: string }\nexport const allowedComponents = ['Text'];\nexport const ${name} = (props: ${name}Props) => <section>{props.title}</section>;\n`,
     );
     return {
       name,

@@ -77,3 +77,10 @@ export type {
 } from './sources-api/apply/index.js';
 
 export * from './exploration/index.js';
+export type {
+  SharedSource,
+  SharedSourceFile,
+  SharedSourceReference,
+  SharedSourceRange,
+  SharedSourceCoverage,
+} from './shared-source.js';

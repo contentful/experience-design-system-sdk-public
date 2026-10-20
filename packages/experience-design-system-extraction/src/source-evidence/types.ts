@@ -20,6 +20,7 @@ export interface SourceCaptureLimits {
   maxResolverProbes: number;
   maxCaptureMs: number;
   maxPromptBytes: number;
+  maxReferenceNodes?: number;
 }
 
 export const DEFAULT_SOURCE_CAPTURE_LIMITS: Readonly<SourceCaptureLimits> = {
@@ -31,12 +32,14 @@ export const DEFAULT_SOURCE_CAPTURE_LIMITS: Readonly<SourceCaptureLimits> = {
   maxResolverProbes: 4096,
   maxCaptureMs: 10_000,
   maxPromptBytes: 256 * 1024,
+  maxReferenceNodes: 100_000,
 };
 
 export interface SourceComponentReference {
   componentId: string;
   name: string;
   roles: string[];
+  observations?: Array<{ role: string; startLine: number; endLine: number }>;
 }
 
 export interface CapturedSourceFile {

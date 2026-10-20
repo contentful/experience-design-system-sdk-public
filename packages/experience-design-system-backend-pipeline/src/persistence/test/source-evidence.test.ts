@@ -17,6 +17,7 @@ import {
   loadExtractionSourceDiagnostics,
   loadRawComponents,
   loadSavedComponentSourceRef,
+  loadSavedSharedSource,
   openPipelineDb,
   storeRawComponents,
 } from '../src/session/repositories/db.js';
@@ -32,6 +33,8 @@ describe('saved extraction source evidence', () => {
     dir = mkdtempSync(join(tmpdir(), 'saved-source-evidence-'));
     const sourcePath = join(dir, 'src', 'Card.ts');
     mkdirSync(join(dir, 'src'));
+    const callerPath = join(dir, 'src', 'Caller.tsx');
+    writeFileSync(callerPath, 'import { Card as Region } from "./Card.js";\nexport const Caller = () => <Region />;\n');
     writeFileSync(sourcePath, 'export const Card = () => "FROZEN_SOURCE_A";\n', 'utf8');
     const dbPath = join(dir, 'pipeline.db');
     const sourceText = 'export const Card = () => "FROZEN_SOURCE_A";\n';
@@ -105,7 +108,7 @@ describe('saved extraction source evidence', () => {
     const storedComponent = loadRawComponents(db, sessionId)[0]!;
     const capture = await captureSourceEvidence({
       projectRoot: dir,
-      filePaths: [sourcePath],
+      filePaths: [sourcePath, callerPath],
       components: [{ componentId: storedComponent.component_id, name: 'Card', sourcePath }],
     });
     const handle = completeExtractionWithSourceEvidence(db, {
@@ -151,6 +154,17 @@ describe('saved extraction source evidence', () => {
       );
       expect(sourceRef.content).toContain('FROZEN_SOURCE_A');
       expect(sourceRef.content).not.toContain('CHANGED_SOURCE_B');
+      expect(sourceRef.siblingFiles?.some((file) => file.content.includes('const Caller'))).toBe(true);
+      const shared = loadSavedSharedSource(reopened, sessionId, {
+        componentIds: [storedComponent.component_id],
+        handle,
+      });
+      expect(shared.readiness).toBe('ready');
+      if (shared.readiness !== 'ready') throw new Error(shared.reason);
+      expect(shared.source.components[0]?.source).toBe('src/Card.ts');
+      expect(shared.source.files).toHaveLength(2);
+      expect(shared.source.sessionId).toBe(sessionId);
+      expect(shared.source.extractionStepId).toBe(stepId);
       expect(sourceRef.sourceEvidence).toMatchObject({
         captureId: capture.captureId,
         captureDigest: saved.envelope.digest,
@@ -161,6 +175,7 @@ describe('saved extraction source evidence', () => {
       expect(review?.componentSource).toContain('FROZEN_SOURCE_A');
       expect(review?.componentSource).not.toContain('CHANGED_SOURCE_B');
       expect(review?.sourceCoverage).toBe(capture.coverage);
+      expect(review?.sourcePath).toBe('src/Card.ts');
       expect(review?.extractionByteBinding).toBe('unverified');
       expect(review?.sourceLineRanges).toEqual([{ sourceStartLine: 1, sourceEndLine: 2, displayStartLine: 1 }]);
       expect(review?.sourceEvidenceReadStatus).toBe('available');
@@ -222,6 +237,8 @@ describe('saved extraction source evidence', () => {
         expect(prompts.at(-1)).toContain(capture.captureId);
         expect(prompts.at(-1)).toContain(capture.files[0]!.textHash!);
         expect(prompts.at(-1)).toContain('Compiler evidence and source candidates');
+        expect(prompts.at(-1)).toContain('Shared source evidence');
+        expect(prompts.at(-1)?.match(/const Caller/g)).toHaveLength(1);
         expect(prompts.at(-1)).toContain('"keyPath":["__proto__"]');
         expect(prompts.at(-1)).toContain('"test-config-warning"');
       }
@@ -317,8 +334,75 @@ describe('saved extraction source evidence', () => {
       expect(db.prepare('SELECT path FROM scanned_files WHERE session_id = ?').all(sessionId)).toEqual([]);
       expect(loadRawComponents(db, sessionId).map((row) => row.name)).toEqual(['Card']);
       expect(loadCompletedSourceEvidence(db, sessionId).readiness).toBe('unavailable');
+      expect(loadSavedSharedSource(db, sessionId).readiness).toBe('unavailable');
     } finally {
       db.close();
+    }
+  });
+
+  it('preserves disjoint original saved ranges in compatibility and review projections after source deletion', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'saved-source-ranges-'));
+    const sourcePath = join(dir, 'Panel.tsx');
+    const lines = Array.from({ length: 90 }, (_, index) =>
+      index === 39 ? 'export const Panel = () => "😀";' : index === 89 ? 'export const Text = () => "é";' : '',
+    );
+    writeFileSync(sourcePath, lines.join('\n'));
+    const dbPath = join(dir, 'pipeline.db');
+    const db = openPipelineDb(dbPath);
+    const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+    const component: RawComponentDefinition = {
+      name: 'Panel',
+      source: sourcePath,
+      sourcePath,
+      framework: 'react',
+      props: [],
+      slots: [],
+    };
+    storeRawComponents(db, sessionId, [component]);
+    const stored = loadRawComponents(db, sessionId)[0]!;
+    const stepId = createStep(db, sessionId, 'analyze extract', { project: dir });
+    const capture = await captureSourceEvidence({
+      projectRoot: dir,
+      filePaths: [sourcePath],
+      components: [{ componentId: stored.component_id, name: 'Panel', sourcePath }],
+    });
+    capture.files[0]!.captured = {
+      kind: 'excerpts',
+      ranges: [
+        { startLine: 40, endLine: 40, text: lines[39]! },
+        { startLine: 90, endLine: 90, text: lines[89]! },
+      ],
+    };
+    capture.coverage = 'partial';
+    const { digest: _previousDigest, ...capturePayload } = capture;
+    capture.digest = createHash('sha256').update(JSON.stringify(capturePayload)).digest('hex');
+    completeExtractionWithSourceEvidence(db, {
+      sessionId,
+      stepId,
+      components: [component],
+      cycles: [],
+      scannedFiles: ['Panel.tsx'],
+      capture,
+      observations: { accepted: [], rejected: [] },
+    });
+    db.close();
+    rmSync(sourcePath);
+    const reopened = openPipelineDb(dbPath);
+    try {
+      const source = loadSavedComponentSourceRef(reopened, sessionId, stored.component_id, 'Panel', sourcePath);
+      expect(source.sourceEvidence?.lineRanges).toEqual([
+        { startLine: 40, endLine: 40 },
+        { startLine: 90, endLine: 90 },
+      ]);
+      expect(source.content).toContain('😀');
+      const review = loadComponentReviewMetadata(reopened, sessionId, 'Panel');
+      expect(review?.sourceLineRanges).toEqual([
+        { sourceStartLine: 40, sourceEndLine: 40, displayStartLine: 1 },
+        { sourceStartLine: 90, sourceEndLine: 90, displayStartLine: 4 },
+      ]);
+      expect(review?.sourceCoverage).toBe('partial');
+    } finally {
+      reopened.close();
     }
   });
 
@@ -403,6 +487,10 @@ describe('saved extraction source evidence', () => {
         handle.envelopeId,
       );
       expect(loadCompletedSourceEvidence(db, sessionId, handle)).toMatchObject({
+        readiness: 'unavailable',
+        reason: 'saved-source-envelope-corrupt',
+      });
+      expect(loadSavedSharedSource(db, sessionId, { handle })).toMatchObject({
         readiness: 'unavailable',
         reason: 'saved-source-envelope-corrupt',
       });

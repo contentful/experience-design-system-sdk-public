@@ -58,7 +58,7 @@ Names, sources and IDs must match the assigned session entities; every assigned 
 
 Custom `select` prompt overrides for this flow must return this scope protocol instead of legacy selection tool calls; generation prompt overrides retain the existing tool-call protocol.
 
-`projectRoot`, `sdkReferencePath`, `existingModelPath`, `callSiteEvidencePath` and `sharedSource` on the low-level exploration request are compatibility metadata, not executed file readers; provide actual inline source/reference data or use the session adapter.
+`projectRoot`, `sdkReferencePath`, `existingModelPath` and `callSiteEvidencePath` on the low-level exploration request are compatibility metadata; provide inline source/reference data or use the session adapter. `sharedSource` accepts the public `SharedSource` contract and is rendered when no assurance `sourceInput` is supplied, so source bodies occur once.
 
 `concurrency` remains accepted on verify/check requests, but these adapters execute work serially; `noCache` is unnecessary for new exploration because it always runs fresh.
 
@@ -103,3 +103,11 @@ Ordinary legacy callers without a completed exploration handle retain their exis
 This documentation makes no package retirement or publication claim.
 
 The current scope gate rejects ambiguous duplicate component names before exploration; raw entities remain saved, and resolving that limitation belongs to the broader entity-identity contract.
+
+### Saved shared source
+
+`loadSavedSharedSource(db, sessionId, { componentIds, maxBytes, handle })` reads the completed extraction envelope and returns explicit ready/unavailable state; it does not read current source files. `buildSharedSource`, `projectSharedSource` and `renderSharedSource` are callable backend adapters with additive public types at the types package. Existing `ComponentSourceRef` and disk-reader callers remain supported.
+
+The index retains canonical file identities, content hashes, original excerpt ranges, supplied component identities, incoming lexical references and outgoing captured imports. Files appear once even with multiple component owners or roles; export aliases are bindings and declaration files retain definition identity. TypeScript config parsing supports admitted relative inheritance, arrays and JSONC; package/external config expansion remains unsupported and explicit. Broader runtime/value-flow evidence remains separate.
+
+Generation, exploration/assurance and review use the saved session/step snapshot after disk changes or deletion. Source projections count UTF-8 serialization and the shared source renderer header against the declared source-section limit, preserve original-range mappings, and record omitted files/metadata; an irreducible identity payload fails explicitly. This limit does not bound the rest of an assembled prompt. Source-snapshot citations do not establish extraction/runtime byte equivalence; production byte binding remains unverified.

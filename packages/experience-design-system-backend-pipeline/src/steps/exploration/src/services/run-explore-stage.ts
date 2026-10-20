@@ -10,6 +10,7 @@ import { runStageWithRetries } from '../../../../agents/helpers/run-stage-with-r
 import { parseExploreOutput } from '../parsers/parse-explore-output.js';
 import { assertUnique } from '../helpers/identity.js';
 import type { ExploreStageRequest } from '../types.js';
+import { projectExplorationSourceInput } from '../../../../source-evidence/shared-source.js';
 export async function runExploreStage(request: ExploreStageRequest): Promise<ExploreStageResult> {
   assertUnique(request.scopes, 'requested scopes');
   if (request.scopes.some((scope) => !EXPLORE_SCOPES.includes(scope))) throw new Error('Unknown exploration scope');
@@ -22,16 +23,28 @@ export async function runExploreStage(request: ExploreStageRequest): Promise<Exp
       () => {
         const raw = JSON.parse(request.rawComponentsInline) as Array<Record<string, unknown>>;
         if (!Array.isArray(raw)) throw new Error('Exploration components must be an array');
-        const sourceInput =
+        let sourceInput =
           candidateFree && request.sourceInput
             ? {
                 ...request.sourceInput,
                 observations: { accepted: [], rejected: [] },
                 omittedObservations:
-                  request.sourceInput.observations.accepted.length + request.sourceInput.observations.rejected.length,
+                  (request.sourceInput.omittedObservations ?? 0) +
+                  request.sourceInput.observations.accepted.length +
+                  request.sourceInput.observations.rejected.length,
               }
             : request.sourceInput;
+        if (candidateFree && sourceInput?.projectionBounds)
+          sourceInput = projectExplorationSourceInput(sourceInput, sourceInput.projectionBounds.maxBytes);
+        const sharedSource =
+          request.sharedSource && !sourceInput
+            ? candidateFree
+              ? { ...request.sharedSource, observations: { accepted: [], rejected: [] } }
+              : request.sharedSource
+            : undefined;
         return buildPrompt({
+          sharedSource,
+          sourceProjectionMaxBytes: request.maxPromptBytes,
           skill: scope.startsWith('components-') ? 'explore-components' : 'explore-inventory',
           mode: 'autonomous',
           outDir: request.outDir,

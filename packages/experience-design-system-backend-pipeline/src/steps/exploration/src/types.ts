@@ -47,7 +47,7 @@ export interface ExploreStageRequest extends StageOptions {
   propBucketsInline?: string;
   callSiteEvidenceInline?: string;
   callSiteEvidencePath?: string;
-  sharedSource?: unknown;
+  sharedSource?: import('@contentful/experience-design-system-types').SharedSource;
   rawTokensInline?: string;
   rawTokensFilename?: string;
   existingTokensInline?: string;

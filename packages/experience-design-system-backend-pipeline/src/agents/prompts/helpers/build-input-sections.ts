@@ -1,3 +1,4 @@
+import { projectSharedSource, renderSharedSource } from '../../../source-evidence/shared-source.js';
 import { flattenDTCG } from '../../../steps/shared/index.js';
 import type { PromptOptions } from '../../types/prompts.js';
 import { filterDesignTokenProps } from './filter-design-token-props.js';
@@ -93,7 +94,11 @@ export function buildInputSections(options: PromptOptions): string[] {
     }
   }
 
-  if (componentSourceRefs && componentSourceRefs.length > 0) {
+  if (options.sharedSource) {
+    sections.push(
+      renderSharedSource(projectSharedSource(options.sharedSource, options.sourceProjectionMaxBytes ?? 256 * 1024)),
+    );
+  } else if (componentSourceRefs && componentSourceRefs.length > 0) {
     const withContent = componentSourceRefs.filter((ref) => ref.content != null);
     const withoutContent = componentSourceRefs.filter((ref) => ref.content == null);
     if (withContent.length > 0) {

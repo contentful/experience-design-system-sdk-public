@@ -1,3 +1,4 @@
+import type { SharedSource } from '@contentful/experience-design-system-types';
 import type { CDFComponentEntry } from '../../steps/shared/index.js';
 
 /**
@@ -79,6 +80,9 @@ export interface PromptOptions {
   tokenTree?: Record<string, unknown>;
   /** Component source file references — consumption evidence for the components skill, explicit-restriction evidence (comments, allowlists) for map-tokens. */
   componentSourceRefs?: ComponentSourceRef[];
+  /** Deduplicated source snapshot; its bound covers this source section only. */
+  sharedSource?: SharedSource;
+  sourceProjectionMaxBytes?: number;
   /** Custom prompt path override — bundled invariants do NOT apply under an override. */
   skillPathOverride?: string;
   /** Inline prompt instructions, taking precedence over the bundled skill or path override. */

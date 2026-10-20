@@ -14,6 +14,7 @@ import {
   computeComponentInputHash,
   copyComponentFromCache,
   loadSavedComponentSourceRef,
+  loadSavedSharedSource,
   renameEmptySlots,
   storeCache,
   type RawComponentWithId,
@@ -177,6 +178,7 @@ export async function runOneGenerateComponent(
     null,
     2,
   );
+  const shared = loadSavedSharedSource(db, sessionId, { componentIds: [component.component_id] });
   const sourceRef = loadSavedComponentSourceRef(
     db,
     sessionId,
@@ -200,6 +202,7 @@ export async function runOneGenerateComponent(
     tokenMapInline,
     outDir: process.cwd(),
     componentName: component.name,
+    sharedSource: shared.readiness === 'ready' && shared.source.components.length ? shared.source : undefined,
     componentSourceRefs: [sourceRef],
     skillPathOverride,
     skillContentOverride,

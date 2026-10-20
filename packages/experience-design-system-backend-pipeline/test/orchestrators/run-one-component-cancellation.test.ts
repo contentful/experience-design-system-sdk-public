@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const deps = vi.hoisted(() => ({
   renameEmptySlots: vi.fn(() => ({ renames: [] })),
+  loadSavedSharedSource: vi.fn(),
   loadSavedComponentSourceRef: vi.fn(),
   buildPrompt: vi.fn(),
   invokeAgentWithOutput: vi.fn(),
@@ -12,6 +13,7 @@ const deps = vi.hoisted(() => ({
 }));
 vi.mock('../../src/persistence/src/session/repositories/db.js', () => ({
   renameEmptySlots: deps.renameEmptySlots,
+  loadSavedSharedSource: deps.loadSavedSharedSource,
   loadSavedComponentSourceRef: deps.loadSavedComponentSourceRef,
   copyComponentFromCache: deps.copyComponentFromCache,
   computeComponentInputHash: deps.computeComponentInputHash,
@@ -30,6 +32,7 @@ import { runOneGenerateComponent } from '../../src/orchestrators/run-generate-co
 beforeEach(() => {
   vi.clearAllMocks();
   deps.renameEmptySlots.mockReturnValue({ renames: [] });
+  deps.loadSavedSharedSource.mockReturnValue({ readiness: 'unavailable' });
   deps.loadSavedComponentSourceRef.mockReturnValue({ sourcePath: 'src/Button.tsx', props: [] });
   deps.buildPrompt.mockResolvedValue('prompt');
   deps.resolveComponentCache.mockReset();
@@ -76,6 +79,7 @@ describe('component generation preparation cancellation', () => {
       name: 'AbortError',
     });
     expect(deps.renameEmptySlots).not.toHaveBeenCalled();
+    expect(deps.loadSavedSharedSource).not.toHaveBeenCalled();
     expect(deps.loadSavedComponentSourceRef).not.toHaveBeenCalled();
     expect(deps.invokeAgentWithOutput).not.toHaveBeenCalled();
   });

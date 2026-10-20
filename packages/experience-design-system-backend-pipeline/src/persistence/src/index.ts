@@ -113,6 +113,7 @@ export {
   loadComponentSourceRef,
   loadComponentSourceRefs,
   loadSavedComponentSourceRef,
+  loadSavedSharedSource,
   loadExtractionSourceDiagnostics,
   renameEmptySlots,
 } from './session/repositories/db.js';
@@ -213,3 +214,5 @@ export { hashComponentShape } from './session/helpers/components/hash-component-
 export { hashTokenContent } from './session/helpers/tokens/hash-token-content.js';
 export { buildDtcgGroups } from './session/helpers/tokens/build-dtcg-groups.js';
 export { buildDtcgTokens } from './session/helpers/tokens/build-dtcg-tokens.js';
+
+export type { CompletedSharedSourceEvidence } from './session/repositories/db.js';

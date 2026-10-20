@@ -1,3 +1,10 @@
+import {
+  buildSharedSource,
+  projectSharedSource,
+  projectCapturedFile,
+  findSourceOwnerFile,
+} from '../../../../source-evidence/shared-source.js';
+import type { SharedSource } from '@contentful/experience-design-system-types';
 import { initializeExplorationSchema } from './exploration/schema.js';
 import {
   loadAcceptedSlotDecisions,
@@ -685,18 +692,26 @@ export function loadComponentReviewMetadata(
   const scopeProvenance = loadScopeDecisions(db, sessionId)?.acceptedProvenance?.[componentName] ?? null;
   const saved = loadCompletedSourceEvidence(db, sessionId);
   if (saved.readiness === 'ready') {
-    const file =
-      saved.envelope.capture.files.find((entry) =>
-        entry.componentRefs.some((component) => component.componentId === compRow.component_id),
-      ) ??
-      saved.envelope.capture.files.find(
-        (entry) => entry.canonicalPath === compRow.source_path || entry.displayPath === compRow.source_path,
-      );
+    const file = findSourceOwnerFile(
+      saved.envelope.capture,
+      compRow.component_id,
+      compRow.source_path ?? rawComponent?.source,
+    );
     if (file) {
-      const projection = buildReviewSourceProjection(file);
+      const shared = loadSavedSharedSource(db, sessionId, { componentIds: [compRow.component_id] });
+      const projected =
+        shared.readiness === 'ready' ? shared.source.files.find((entry) => entry.fileId === file.fileId) : undefined;
+      const projection = {
+        text: projected?.coverage === 'unavailable' ? null : (projected?.content ?? null),
+        ranges: (projected?.ranges ?? []).map((range) => ({
+          sourceStartLine: range.startLine,
+          sourceEndLine: range.endLine,
+          displayStartLine: range.displayStartLine,
+        })),
+      };
       sourcePath = file.displayPath;
       componentSource = projection.text;
-      sourceCoverage = saved.envelope.capture.coverage;
+      sourceCoverage = shared.readiness === 'ready' ? (shared.source.promptCoverage ?? 'partial') : 'unavailable';
       extractionByteBinding = saved.envelope.extractionByteBinding;
       sourceTextHash = file.textHash;
       sourceLineRanges = projection.ranges;
@@ -1817,91 +1832,28 @@ export async function loadComponentSourceRefs(db: DatabaseSync, sessionId: strin
   );
 }
 
-function excerptSavedText(
-  text: string,
-  names: string[],
-  maxChars: number,
-): {
-  content: string;
-  lineRanges: Array<{ startLine: number; endLine: number }>;
-  usesNotShown: string[];
-} {
-  if (text.length <= maxChars) {
-    return { content: text, lineRanges: [{ startLine: 1, endLine: text.split('\n').length }], usesNotShown: [] };
-  }
-  const lines = text.split('\n');
-  const patterns = names
-    .filter(Boolean)
-    .map((name) => ({ name, pattern: new RegExp(`(?<![A-Za-z0-9_$])${escapeForRegExp(name)}(?![A-Za-z0-9_$])`) }));
-  const windows: Array<{ start: number; end: number }> = [];
-  lines.forEach((line, index) => {
-    if (!patterns.some(({ pattern }) => pattern.test(line))) return;
-    const start = Math.max(0, index - 6);
-    const end = Math.min(lines.length - 1, index + 6);
-    const previous = windows.at(-1);
-    if (previous && start <= previous.end + 1) previous.end = Math.max(previous.end, end);
-    else windows.push({ start, end });
-  });
-  if (windows.length === 0) {
-    let end = 0;
-    while (end < lines.length && lines.slice(0, end + 1).join('\n').length <= maxChars - 20) end += 1;
-    const range = { startLine: 1, endLine: Math.max(1, end) };
-    return { content: `${lines.slice(0, end).join('\n')}\n/* truncated */`, lineRanges: [range], usesNotShown: [] };
-  }
-  const kept: Array<{ start: number; end: number; text: string }> = [];
-  let spent = 0;
-  for (const window of [...windows].reverse()) {
-    const chunk = lines.slice(window.start, window.end + 1).join('\n');
-    const separator = kept.length > 0 ? '\n/* … */\n' : '';
-    if (spent + separator.length + chunk.length > maxChars) continue;
-    kept.push({ ...window, text: chunk });
-    spent += separator.length + chunk.length;
-  }
-  kept.sort((left, right) => left.start - right.start);
-  const lastLineByName = new Map<string, number>();
-  for (const { name, pattern } of patterns) {
-    lines.forEach((line, index) => {
-      if (pattern.test(line)) lastLineByName.set(name, index);
-    });
-  }
-  const included = new Set(
-    kept.flatMap((window) => Array.from({ length: window.end - window.start + 1 }, (_, index) => window.start + index)),
-  );
-  const usesNotShown = names.filter((name) => {
-    const last = lastLineByName.get(name);
-    return last !== undefined && !included.has(last);
-  });
-  const lineRanges = kept.map((window) => ({ startLine: window.start + 1, endLine: window.end + 1 }));
-  const body = kept.map((window, index) => `${index > 0 ? '\n/* … */\n' : ''}${window.text}`).join('');
-  return { content: `${body}\n/* truncated */`, lineRanges, usesNotShown };
-}
+export type CompletedSharedSourceEvidence =
+  | { readiness: 'ready'; handle: SourceEvidenceHandle; source: SharedSource }
+  | { readiness: 'unavailable'; reason: string };
 
-function capturedFileText(file: SourceCapture['files'][number]): string | null {
-  if (file.captured.kind === 'full') return file.captured.text;
-  if (file.captured.kind === 'excerpts') return file.captured.ranges.map((range) => range.text).join('\n/* … */\n');
-  return null;
-}
-
-function buildReviewSourceProjection(file: SourceCapture['files'][number]): {
-  text: string | null;
-  ranges: Array<{ sourceStartLine: number; sourceEndLine: number; displayStartLine: number }>;
-} {
-  if (file.captured.kind === 'unavailable') return { text: null, ranges: [] };
-  if (file.captured.kind === 'full') {
-    return {
-      text: file.captured.text,
-      ranges: [{ sourceStartLine: 1, sourceEndLine: file.captured.text.split('\n').length, displayStartLine: 1 }],
-    };
-  }
-  const ranges: Array<{ sourceStartLine: number; sourceEndLine: number; displayStartLine: number }> = [];
-  let displayLine = 1;
-  const chunks = file.captured.ranges.map((range, index) => {
-    if (index > 0) displayLine += 2;
-    ranges.push({ sourceStartLine: range.startLine, sourceEndLine: range.endLine, displayStartLine: displayLine });
-    displayLine += range.text.split('\n').length;
-    return range.text;
-  });
-  return { text: chunks.join('\n/* … */\n'), ranges };
+export function loadSavedSharedSource(
+  db: DatabaseSync,
+  sessionId: string,
+  options: { componentIds?: readonly string[]; maxBytes?: number; handle?: SourceEvidenceHandle } = {},
+): CompletedSharedSourceEvidence {
+  const saved = loadCompletedSourceEvidence(db, sessionId, options.handle);
+  if (saved.readiness !== 'ready') return saved;
+  return {
+    readiness: 'ready',
+    handle: saved.handle,
+    source: projectSharedSource(
+      buildSharedSource(saved.envelope, options.componentIds),
+      Math.min(
+        options.maxBytes ?? saved.envelope.capture.bounds.limits.maxPromptBytes,
+        saved.envelope.capture.bounds.limits.maxPromptBytes,
+      ),
+    ),
+  };
 }
 
 export function loadSavedComponentSourceRef(
@@ -1913,90 +1865,46 @@ export function loadSavedComponentSourceRef(
   propNames: string[] = [],
   propTypes: string[] = [],
 ): ComponentSourceRef {
+  // Preserve the callable compatibility adapter; saved projections never consult disk.
   const saved = loadCompletedSourceEvidence(db, sessionId);
   const unavailable: ComponentSourceRef = { component: name, sourcePath, content: null };
   if (saved.readiness !== 'ready') return unavailable;
-  const { envelope } = saved;
-  const { capture } = envelope;
-  const byId = new Map(capture.files.map((file) => [file.fileId, file]));
-  const root =
-    capture.files.find((file) => file.componentRefs.some((component) => component.componentId === componentId)) ??
-    capture.files.find((file) => file.canonicalPath === sourcePath || file.displayPath === sourcePath);
+  const root = findSourceOwnerFile(saved.envelope.capture, componentId, sourcePath);
   if (!root) return unavailable;
-  const rootText = capturedFileText(root);
-  if (rootText === null) return unavailable;
-  const names = [...new Set([...propNames, ...identifiersIn(propTypes)])];
-  const mainExcerpt = excerptSavedText(rootText, names, MAX_COMPONENT_SOURCE_CHARS);
-  const ref: ComponentSourceRef = {
-    component: name,
-    sourcePath: root.displayPath,
-    content: mainExcerpt.content,
-    sourceEvidence: {
-      captureId: capture.captureId,
-      captureDigest: envelope.digest,
-      textHash: root.textHash,
-      coverage: capture.coverage,
-      extractionByteBinding: envelope.extractionByteBinding,
-      lineRanges: mainExcerpt.lineRanges,
-    },
-  };
-
-  const discovered = new Map<string, { file: SourceCapture['files'][number]; depth: number }>();
-  let frontier = new Set([root.fileId]);
-  for (let depth = 1; depth <= MAX_SIBLING_DEPTH && discovered.size < MAX_SIBLING_CANDIDATES_EXPLORED; depth += 1) {
-    const next = new Set<string>();
-    for (const fromFileId of frontier) {
-      for (const edge of capture.resolution.filter(
-        (resolution) => resolution.fromFileId === fromFileId && resolution.targetFileId,
-      )) {
-        const targetFileId = edge.targetFileId!;
-        if (targetFileId === root.fileId || discovered.has(targetFileId)) continue;
-        const file = byId.get(targetFileId);
-        if (!file) continue;
-        discovered.set(targetFileId, { file, depth });
-        next.add(targetFileId);
-        if (discovered.size >= MAX_SIBLING_CANDIDATES_EXPLORED) break;
-      }
-      if (discovered.size >= MAX_SIBLING_CANDIDATES_EXPLORED) break;
-    }
-    frontier = next;
-  }
-  const candidates = [...discovered.values()].sort((left, right) =>
-    left.file.displayPath.localeCompare(right.file.displayPath),
-  );
-  let enlarged = 0;
-  const siblingUsesNotShown = new Set<string>();
-  const siblings = candidates.slice(0, MAX_SIBLING_FILES).flatMap(({ file }) => {
-    const text = capturedFileText(file);
-    if (text === null) return [];
-    const declaresType = identifiersIn(propTypes).some((typeName) =>
-      new RegExp(`\\b(type|interface)\\s+${escapeForRegExp(typeName)}\\b`).test(text),
-    );
-    const maxChars =
-      declaresType && enlarged < MAX_ENLARGED_SIBLINGS ? MAX_TYPE_DECLARING_SIBLING_CHARS : MAX_SIBLING_SNIPPET_CHARS;
-    if (declaresType && maxChars === MAX_TYPE_DECLARING_SIBLING_CHARS) enlarged += 1;
-    const excerpt = excerptSavedText(text, names, maxChars);
-    excerpt.usesNotShown.forEach((propName) => siblingUsesNotShown.add(propName));
-    return [
-      {
-        path: file.displayPath,
-        content: excerpt.content,
-        sourceEvidence: {
-          captureId: capture.captureId,
-          captureDigest: envelope.digest,
-          textHash: file.textHash,
-          coverage: capture.coverage,
-          extractionByteBinding: envelope.extractionByteBinding,
-          lineRanges: excerpt.lineRanges,
-        },
-      },
-    ];
+  const source = buildSharedSource(saved.envelope, [componentId]);
+  if (!source.files.some((file) => file.fileId === root.fileId)) source.files.unshift(projectCapturedFile(root));
+  // Stable definition-first priority within the total serialized source-section budget.
+  source.files.sort((a, b) => Number(b.fileId === root.fileId) - Number(a.fileId === root.fileId));
+  const projected = projectSharedSource(source, saved.envelope.capture.bounds.limits.maxPromptBytes);
+  const main = projected.files.find((file) => file.fileId === root.fileId);
+  if (!main || main.coverage === 'unavailable') return unavailable;
+  const metadata = (file: SharedSource['files'][number]) => ({
+    captureId: saved.envelope.capture.captureId,
+    captureDigest: saved.envelope.digest,
+    textHash: file.textHash ?? null,
+    coverage: projected.promptCoverage ?? 'partial',
+    extractionByteBinding: saved.envelope.extractionByteBinding,
+    lineRanges: (file.ranges ?? []).map(({ startLine, endLine }) => ({ startLine, endLine })),
   });
-  if (siblings.length > 0) ref.siblingFiles = siblings;
-  if (candidates.length > MAX_SIBLING_FILES) ref.truncatedSiblingCount = candidates.length - MAX_SIBLING_FILES;
-  const usesNotShown = [...new Set([...mainExcerpt.usesNotShown, ...siblingUsesNotShown])];
-  if (usesNotShown.length > 0) ref.usesNotShown = usesNotShown;
-  return ref;
+  const siblings = projected.files.filter((file) => file.fileId !== root.fileId && file.coverage !== 'unavailable');
+  const partial = main.partial || (projected.omittedFiles ?? 0) > 0 || siblings.some((file) => file.partial);
+  return {
+    component: name,
+    sourcePath: main.path,
+    content: main.content,
+    sourceEvidence: metadata(main),
+    ...(siblings.length
+      ? {
+          siblingFiles: siblings.map((file) => ({
+            path: file.path,
+            content: file.content,
+            sourceEvidence: metadata(file),
+          })),
+        }
+      : {}),
+    ...(projected.omittedFiles ? { truncatedSiblingCount: projected.omittedFiles } : {}),
+    ...(partial ? { usesNotShown: [...new Set([...propNames, ...identifiersIn(propTypes)])] } : {}),
+  };
 }
 
 export function renameEmptySlots(
