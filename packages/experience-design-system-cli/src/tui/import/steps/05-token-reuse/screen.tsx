@@ -21,6 +21,7 @@ export function TokenReuseScreen({
 
   return (
     <GateStep
+      step="setup"
       message="Existing tokens.json found"
       summary={summary}
       context={context}

@@ -4,6 +4,7 @@ import { PALETTE } from '@tui/theme.js';
 import { readPackageVersion } from '@tui/home/version.js';
 
 const IMPORT_STEPS = [
+  { id: 'setup', label: 'Setup' },
   { id: 'extraction', label: 'Extract' },
   { id: 'scope-gate', label: 'Select' },
   { id: 'generation', label: 'Generate' },
