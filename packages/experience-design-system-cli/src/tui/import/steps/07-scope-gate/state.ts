@@ -1,6 +1,6 @@
 import { acceptCascade, rejectCascade, reachableCycleMembers, type ScopeGraph } from './graph/index.js';
 import { isAiFlagged } from './sidebar/ai-flag.js';
-import type { Decision, ScopeComponent, ScopeDecisions } from './types.js';
+import type { Decision, ParentChildEdge, ScopeComponent, ScopeDecisions } from './types.js';
 
 // The decisions the user has made, as a pure reducer. The component with the same name shares one decision.
 // Everything that used to be inline `useState` handlers in ScopeGateStep.
@@ -77,13 +77,37 @@ export function rejectNeedsConfirmation(graph: ScopeGraph, name: string, state: 
   return ancestors.length + toDeselect.length >= 2;
 }
 
+function removeSlotChild(components: ScopeComponent[], edge: ParentChildEdge): ScopeComponent[] {
+  return components.map((component) =>
+    component.name === edge.parent
+      ? {
+          ...component,
+          slots: component.slots?.map((slot) => ({
+            ...slot,
+            allowedComponents: slot.allowedComponents.filter((name) => name !== edge.child),
+          })),
+        }
+      : component,
+  );
+}
+
+export function withoutSlotChildren(components: ScopeComponent[], removedEdges: ParentChildEdge[]): ScopeComponent[] {
+  return removedEdges.reduce(removeSlotChild, components);
+}
+
 /** Everything not accepted counts as rejected, as legacy's `partition` did. */
-export function partitionDecisions(components: ScopeComponent[], state: DecisionState): ScopeDecisions {
+export function partitionDecisions(
+  components: ScopeComponent[],
+  state: DecisionState,
+  removedEdges: ParentChildEdge[],
+): ScopeDecisions {
   const accepted: string[] = [];
   const rejected: string[] = [];
   for (const c of components) {
     if (state.get(c.name) === 'accepted') accepted.push(c.name);
     else rejected.push(c.name);
   }
-  return { accepted, rejected };
+  const rejectedNames = new Set(rejected);
+  const excludedSlotEdges = removedEdges.filter((e) => !rejectedNames.has(e.parent) && !rejectedNames.has(e.child));
+  return { accepted, rejected, excludedSlotEdges };
 }

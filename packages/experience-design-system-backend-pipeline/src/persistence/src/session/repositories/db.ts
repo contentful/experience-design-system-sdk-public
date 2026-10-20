@@ -2020,10 +2020,16 @@ export function loadScopeComponents(db: DatabaseSync, sessionId: string): ScopeC
   });
 }
 
+/** A parent component's slot allowing a child component. */
+export interface ParentChildEdge {
+  parent: string;
+  child: string;
+}
+
 export function applyScopeDecisions(
   db: DatabaseSync,
   sessionId: string,
-  decisions: { accepted: string[]; rejected: string[] },
+  decisions: { accepted: string[]; rejected: string[]; excludedSlotEdges?: ParentChildEdge[] },
 ): void {
   const now = new Date().toISOString();
   const acceptedSet = new Set(decisions.accepted);
@@ -2043,7 +2049,40 @@ export function applyScopeDecisions(
       ...accepted,
     );
   }
+  removeSlotAllowedComponents(db, sessionId, decisions.excludedSlotEdges ?? [], rejected);
   db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
+}
+
+/**
+ * Drops excluded parent→child edges from slot allowed lists. Rejected
+ * components are also removed from every slot, since they will not exist.
+ */
+export function removeSlotAllowedComponents(
+  db: DatabaseSync,
+  sessionId: string,
+  edges: ParentChildEdge[],
+  rejectedNames: string[],
+): void {
+  if (edges.length === 0 && rejectedNames.length === 0) return;
+  const componentId = db.prepare('SELECT component_id FROM raw_components WHERE session_id = ? AND name = ?');
+  const removeEdge = db.prepare(
+    'DELETE FROM raw_slot_allowed_components WHERE session_id = ? AND component_id = ? AND allowed_component = ?',
+  );
+  const removeEverywhere = db.prepare(
+    'DELETE FROM raw_slot_allowed_components WHERE session_id = ? AND allowed_component = ?',
+  );
+  db.exec('BEGIN');
+  try {
+    for (const edge of edges) {
+      const row = componentId.get(sessionId, edge.parent) as { component_id: string } | undefined;
+      if (row) removeEdge.run(sessionId, row.component_id, edge.child);
+    }
+    for (const name of rejectedNames) removeEverywhere.run(sessionId, name);
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
 }
 
 export function findLatestSessionForCommand(db: DatabaseSync, command: CommandName): string | null {

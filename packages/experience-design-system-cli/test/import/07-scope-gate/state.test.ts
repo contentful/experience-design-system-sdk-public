@@ -4,6 +4,7 @@ import {
   partitionDecisions,
   rejectNeedsConfirmation,
   reduceDecisions,
+  withoutSlotChildren,
   type DecisionState,
 } from '../../../src/tui/import/steps/07-scope-gate/state.js';
 import type { ScopeComponent } from '../../../src/tui/import/steps/07-scope-gate/types.js';
@@ -154,12 +155,83 @@ describe('accept non-flagged', () => {
 });
 
 describe('partitionDecisions', () => {
+  const state: DecisionState = new Map([
+    ['A', 'accepted'],
+    ['B', 'undecided'],
+  ]);
+
   it('counts everything that is not accepted as rejected', () => {
     const components = [component('A'), component('B'), component('C')];
-    const state: DecisionState = new Map([
+    expect(partitionDecisions(components, state, [])).toEqual({
+      accepted: ['A'],
+      rejected: ['B', 'C'],
+      excludedSlotEdges: [],
+    });
+  });
+
+  it('keeps a removed slot edge while both of its components are accepted', () => {
+    const components = [component('A'), component('B')];
+    const accepted: DecisionState = new Map([
       ['A', 'accepted'],
-      ['B', 'undecided'],
+      ['B', 'accepted'],
     ]);
-    expect(partitionDecisions(components, state)).toEqual({ accepted: ['A'], rejected: ['B', 'C'] });
+    const edge = { parent: 'A', child: 'B' };
+    expect(partitionDecisions(components, accepted, [edge]).excludedSlotEdges).toEqual([edge]);
+  });
+
+  it.each([
+    ['parent', { parent: 'B', child: 'A' }],
+    ['child', { parent: 'A', child: 'B' }],
+  ])('drops a removed slot edge whose %s is rejected', (_which, edge) => {
+    const components = [component('A'), component('B')];
+    expect(partitionDecisions(components, state, [edge]).excludedSlotEdges).toEqual([]);
+  });
+});
+
+describe('withoutSlotChildren', () => {
+  const components = [
+    component('Flex', slot('Text', 'Button')),
+    component('Card', slot('Text')),
+    component('Text'),
+    component('Button'),
+  ];
+  const slotsOf = (list: ScopeComponent[], name: string) => list.find((c) => c.name === name)?.slots;
+
+  it('changes nothing when no edge was removed', () => {
+    expect(withoutSlotChildren(components, [])).toEqual(components);
+  });
+
+  it('removes the child from that parent only, so the same child under another parent stays', () => {
+    const next = withoutSlotChildren(components, [{ parent: 'Flex', child: 'Text' }]);
+    expect(slotsOf(next, 'Flex')).toEqual(slot('Button'));
+    expect(slotsOf(next, 'Card')).toEqual(slot('Text'));
+  });
+
+  it('keeps every component in the list and does not change the input', () => {
+    const next = withoutSlotChildren(components, [{ parent: 'Flex', child: 'Text' }]);
+    expect(next.map((c) => c.name)).toEqual(['Flex', 'Card', 'Text', 'Button']);
+    expect(slotsOf(components, 'Flex')).toEqual(slot('Text', 'Button'));
+  });
+
+  it('removes the child from every slot of the parent', () => {
+    const twoSlots = [
+      component('Flex', [
+        { name: 'start', allowedComponents: ['Text'] },
+        { name: 'end', allowedComponents: ['Text', 'Button'] },
+      ]),
+    ];
+    const next = withoutSlotChildren(twoSlots, [{ parent: 'Flex', child: 'Text' }]);
+    expect(slotsOf(next, 'Flex')).toEqual([
+      { name: 'start', allowedComponents: [] },
+      { name: 'end', allowedComponents: ['Button'] },
+    ]);
+  });
+
+  it('applies several removals', () => {
+    const next = withoutSlotChildren(components, [
+      { parent: 'Flex', child: 'Text' },
+      { parent: 'Flex', child: 'Button' },
+    ]);
+    expect(slotsOf(next, 'Flex')).toEqual(slot());
   });
 });

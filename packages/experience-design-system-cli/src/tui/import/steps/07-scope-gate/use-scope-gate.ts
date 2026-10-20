@@ -21,8 +21,14 @@ import {
   describeEmptyFilter,
   intersectFilterKeys,
 } from './sidebar/step-filters.js';
-import { partitionDecisions, rejectNeedsConfirmation, reduceDecisions, type DecisionState } from './state.js';
-import type { ScopeComponent, ScopeDecisions } from './types.js';
+import {
+  partitionDecisions,
+  rejectNeedsConfirmation,
+  reduceDecisions,
+  withoutSlotChildren,
+  type DecisionState,
+} from './state.js';
+import type { ParentChildEdge, ScopeComponent, ScopeDecisions } from './types.js';
 
 // The state and the key handling of the gate. Everything legacy kept in one 1,064-line component, except what is drawn:
 // the reducer (state.ts) decides what a decision changes, the keymap (keymap.ts) what a key means, and this hook puts
@@ -42,11 +48,16 @@ export interface PendingRejectCascade {
   descendants: string[];
 }
 
-export function useScopeGate({ components, onConfirm, onQuit }: UseScopeGateOptions) {
+export function useScopeGate({ components: loadedComponents, onConfirm, onQuit }: UseScopeGateOptions) {
   const { columns: totalWidth, rows: terminalRows } = useTerminalSize();
   const columnPlan = useMemo(() => computeColumnWidths(totalWidth), [totalWidth]);
 
   const [decisions, setDecisions] = useState<DecisionState>(new Map());
+  const [removedEdges, setRemovedEdges] = useState<ParentChildEdge[]>([]);
+  const components = useMemo(
+    () => withoutSlotChildren(loadedComponents, removedEdges),
+    [loadedComponents, removedEdges],
+  );
   const [nav, setNav] = useState<{ cursor: number; scrollOffset: number }>({ cursor: 0, scrollOffset: 0 });
   const [focusedColumn, setFocusedColumn] = useState<FocusedColumn>('main');
   const [addedComponentsCursor, setAddedComponentsCursor] = useState(0);
@@ -246,6 +257,18 @@ export function useScopeGate({ components, onConfirm, onQuit }: UseScopeGateOpti
     }
   };
 
+  /** The slot edge under the cursor, when the cursor is on a nested row. */
+  const focusedNestedEdge = (): ParentChildEdge | undefined => {
+    const row = visibleRows[safeCursor];
+    if (row?.kind !== 'group-child' || !row.parentName || row.itemIdx < 0) return undefined;
+    const child = groupedItems[row.itemIdx]?.key;
+    return child ? { parent: row.parentName, child } : undefined;
+  };
+
+  const removeFromParentSlot = (edge: ParentChildEdge): void => setRemovedEdges((edges) => [...edges, edge]);
+
+  const undoSlotRemoval = (): void => setRemovedEdges((edges) => edges.slice(0, -1));
+
   const jumpCursorTo = (name: string): void => {
     let idx = -1;
     for (let i = 0; i < visibleRows.length; i++) {
@@ -363,7 +386,7 @@ export function useScopeGate({ components, onConfirm, onQuit }: UseScopeGateOpti
         onQuit();
         return;
       case 'confirm':
-        onConfirm(partitionDecisions(components, decisions));
+        onConfirm(partitionDecisions(components, decisions, removedEdges));
         return;
       case 'close-help':
         setShowHelp(false);
@@ -416,6 +439,11 @@ export function useScopeGate({ components, onConfirm, onQuit }: UseScopeGateOpti
         return;
       }
       case 'reject': {
+        const edge = focusedColumn === 'main' ? focusedNestedEdge() : undefined;
+        if (edge) {
+          removeFromParentSlot(edge);
+          return;
+        }
         const key =
           focusedColumn === 'added-components' ? addedComponents[safeAddedComponentsCursor]?.name : focusedRowKey();
         if (key) requestReject(key);
@@ -423,6 +451,9 @@ export function useScopeGate({ components, onConfirm, onQuit }: UseScopeGateOpti
       }
       case 'toggle-all':
         decide({ type: 'toggle-all' });
+        return;
+      case 'undo':
+        undoSlotRemoval();
         return;
       case 'accept-unflagged':
         decide({ type: 'accept-unflagged' });

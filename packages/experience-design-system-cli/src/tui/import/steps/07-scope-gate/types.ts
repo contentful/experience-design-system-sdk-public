@@ -13,10 +13,18 @@ export type ScopeComponent = Omit<ScopeComponentRow, 'aiDecision' | 'aiReason' |
 
 export type Decision = 'accepted' | 'rejected' | 'undecided';
 
+/** One slot edge: `parent` allows `child` in a slot. */
+export interface ParentChildEdge {
+  parent: string;
+  child: string;
+}
+
 /** What the user confirmed. Becomes `ImportHandoff.scope`; the legacy wizard saves it and starts generation. */
 export interface ScopeDecisions {
   accepted: string[];
   rejected: string[];
+  /** Slot edges removed at the gate. The child keeps its own decision. Missing means none were removed. */
+  excludedSlotEdges?: ParentChildEdge[];
 }
 
 export type ScopeGateLoad = { ok: true; components: ScopeComponent[] } | { ok: false; message: string };

@@ -123,9 +123,11 @@ export {
   loadComponentRationale,
   applyToolCalls,
   applyScopeDecisions,
+  removeSlotAllowedComponents,
   markCacheHumanEdited,
 } from './session/repositories/db.js';
 export type {
+  ParentChildEdge,
   ComponentReviewMetadata,
   ComponentRationale,
   ApplyToolCallsResult,

@@ -1908,8 +1908,10 @@ export function FieldEditor({
         <Text color={PALETTE.warning}>
           {"⚠ No properties classified for this component. The LLM didn't find anything to classify."}
         </Text>
-        <Text color={PALETTE.muted}>You can add fields manually below or reject this component.</Text>
-        <Text color={PALETTE.muted}>Enter to save · Esc to discard</Text>
+        <Text color={PALETTE.muted}>There is nothing to edit here.</Text>
+        <Text color={PALETTE.muted}>
+          {active ? '[Esc] go back to the list' : 'In the list: [r] reject this component · [a] accept it'}
+        </Text>
       </Box>
     );
   }
@@ -2175,7 +2177,7 @@ export function FieldEditor({
       {header}
 
       <Box flexDirection="column" width={innerWidth} flexShrink={0}>
-        {focusLevel === 'field' && !inComponentDesc && currentProp ? (
+        {focusLevel === 'field' && !inComponentDesc && !inSlots && currentProp ? (
           <PropRow
             prop={currentProp}
             selected
