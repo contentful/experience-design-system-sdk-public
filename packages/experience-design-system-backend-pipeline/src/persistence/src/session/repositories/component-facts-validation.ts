@@ -35,9 +35,184 @@ const origin = observation
     packageName: z.string().optional(),
   })
   .strict();
-const facts = z
+const certainty = z.enum(['certain', 'ambiguous', 'unknown']);
+const limits = z
   .object({
-    schemaVersion: z.literal(COMPONENT_FACT_SCHEMA_VERSION),
+    maxNodes: z.number().int().nonnegative(),
+    maxDepth: z.number().int().nonnegative(),
+    maxReferences: z.number().int().nonnegative(),
+    maxDeclarations: z.number().int().nonnegative(),
+    maxSignatures: z.number().int().nonnegative(),
+    maxObservations: z.number().int().nonnegative(),
+    maxManifestReads: z.number().int().nonnegative(),
+  })
+  .strict();
+const declarationOrigin = z
+  .object({
+    realPath: z.string().nullable(),
+    realpathStatus: z.enum(['resolved', 'unavailable']),
+    selected: z.enum(['inside', 'outside', 'unknown']),
+    repository: z.enum(['inside', 'outside', 'unknown']),
+    packageStatus: z.enum(['resolved', 'absent', 'unavailable']),
+    package: z
+      .object({
+        name: z.string(),
+        private: z.boolean().nullable(),
+        publication: z.literal('unknown'),
+        manifest: location,
+      })
+      .strict()
+      .nullable(),
+  })
+  .strict();
+const symbol = z
+  .object({
+    id: z.string().nullable(),
+    name: z.string(),
+    resolution: z.enum(['resolved', 'ambiguous', 'unresolved']),
+    defaultLibrary: z.boolean().nullable(),
+    aliases: z.array(z.object({ name: z.string(), location }).strict()),
+    declarations: z.array(z.object({ id: z.string(), kind: z.string(), location, origin: declarationOrigin }).strict()),
+  })
+  .strict();
+const inputPath = z
+  .object({
+    rootSymbolId: z.string(),
+    rootDeclaration: location,
+    parameterIndex: z.number().int().nonnegative(),
+    segments: z.array(
+      z.discriminatedUnion('kind', [
+        z.object({ kind: z.literal('field'), name: z.string() }).strict(),
+        z.object({ kind: z.literal('index'), value: z.string() }).strict(),
+        z.object({ kind: z.literal('computed'), expression: z.string() }).strict(),
+        z.object({ kind: z.literal('rest') }).strict(),
+      ]),
+    ),
+    certainty,
+    reason: z.string().nullable(),
+  })
+  .strict();
+const operand = z
+  .object({
+    role: z.enum(['callee', 'argument', 'target', 'value', 'left', 'right', 'owner', 'condition']),
+    index: z.number().int().nonnegative().nullable(),
+    expression: z.string(),
+    location,
+    symbol: symbol.nullable(),
+    inputPath: inputPath.nullable(),
+  })
+  .strict();
+const callableSignature = z
+  .object({
+    declaration: location.nullable(),
+    parameters: z.array(
+      z
+        .object({
+          name: z.string(),
+          typeText: z.string(),
+          required: z.boolean().nullable(),
+          location: location.nullable(),
+        })
+        .strict(),
+    ),
+    returnTypeText: z.string(),
+  })
+  .strict();
+const sourceObservations = z
+  .object({
+    schemaVersion: z.literal(1),
+    componentDeclarationId: z.string(),
+    selectedSourcePaths: z.array(z.string()),
+    repositoryRoot: z.string().nullable(),
+    observations: z.array(
+      z
+        .object({
+          id: z.string(),
+          kind: z.enum([
+            'declaration',
+            'binding',
+            'call',
+            'return',
+            'assignment',
+            'comparison',
+            'condition',
+            'member-read',
+            'annotation',
+            'throw',
+            'assertion',
+            'jsx',
+            'spread',
+          ]),
+          expression: z.string(),
+          location,
+          certainty,
+          context: z
+            .object({
+              lexicalDeclaration: location.nullable(),
+              execution: z.enum(['component-body', 'deferred', 'referenced-body', 'source-file']),
+              conditions: z.array(
+                z
+                  .object({
+                    expression: z.string(),
+                    branch: z.enum(['then', 'else', 'truthy', 'falsy', 'body', 'case', 'nullish']),
+                    location,
+                  })
+                  .strict(),
+              ),
+            })
+            .strict(),
+          subject: symbol.nullable(),
+          inputPath: inputPath.nullable().optional(),
+          candidateKeyPath: z.array(z.string()).optional(),
+          type: z
+            .object({
+              typeText: z.string(),
+              signatures: z.array(callableSignature),
+              resolvedSignature: callableSignature.nullable().optional(),
+              resultTypeText: z.string().optional(),
+            })
+            .strict()
+            .optional(),
+          operands: z.array(operand).optional(),
+          operator: z.string().optional(),
+          initializer: z.string().nullable().optional(),
+          resultUse: z
+            .object({
+              kind: z.enum([
+                'discarded',
+                'returned',
+                'argument',
+                'initializer',
+                'member',
+                'condition',
+                'assigned',
+                'expression',
+              ]),
+              parentKind: z.string(),
+              location,
+            })
+            .strict()
+            .optional(),
+        })
+        .strict(),
+    ),
+    coverage: z.enum(['complete-within-declared-bound', 'partial', 'unavailable']),
+    limits,
+    used: limits,
+    omissions: z.array(
+      z.object({ reason: z.string(), location: location.nullable(), count: z.number().int().positive() }).strict(),
+    ),
+  })
+  .strict()
+  .refine(
+    (value) =>
+      Object.entries(value.used).every(([key, used]) => used <= value.limits[key as keyof typeof value.limits]) &&
+      value.observations.length <= value.used.maxObservations,
+  );
+
+const legacyFacts = z
+  .object({
+    schemaVersion: z.literal(1),
     renderables: z
       .array(
         observation
@@ -93,6 +268,16 @@ const facts = z
   })
   .strict();
 
+const facts = z.union([
+  legacyFacts,
+  legacyFacts
+    .extend({
+      schemaVersion: z.literal(COMPONENT_FACT_SCHEMA_VERSION),
+      sourceObservations: sourceObservations.optional(),
+    })
+    .strict(),
+]);
+
 export type ComponentFactsRead = { status: ComponentEvidenceReadStatus; facts?: ComponentFacts };
 /** Validate independently from candidate evidence; never serialize compiler objects or unknown fields. */
 export function readComponentFacts(value: unknown): ComponentFactsRead {
@@ -104,9 +289,22 @@ export function readComponentFacts(value: unknown): ComponentFactsRead {
     !Array.isArray(value) &&
     'schemaVersion' in value &&
     typeof value.schemaVersion === 'number' &&
+    value.schemaVersion !== 1 &&
     value.schemaVersion !== COMPONENT_FACT_SCHEMA_VERSION
   )
     return { status: 'unsupported' };
+  if (value && typeof value === 'object' && !Array.isArray(value) && 'sourceObservations' in value) {
+    const collection = value.sourceObservations;
+    if (
+      collection &&
+      typeof collection === 'object' &&
+      !Array.isArray(collection) &&
+      'schemaVersion' in collection &&
+      typeof collection.schemaVersion === 'number' &&
+      collection.schemaVersion !== 1
+    )
+      return { status: 'unsupported' };
+  }
   const validated = facts.safeParse(value);
   return validated.success ? { status: 'available', facts: validated.data } : { status: 'corrupt' };
 }

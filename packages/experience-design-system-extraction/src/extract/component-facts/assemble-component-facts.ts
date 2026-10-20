@@ -25,6 +25,7 @@ export function assembleComponentFacts(
     const value = collectors[field]?.(context);
     if (value !== undefined && (!Array.isArray(value) || value.length > 0)) facts[field] = value;
   }
+  collect('sourceObservations');
   collect('renderables');
   collect('members');
   collect('childFilters');

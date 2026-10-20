@@ -40,6 +40,8 @@ import {
 } from '../../helpers/evidence/structural-slot-evidence.js';
 import {
   assembleComponentFacts,
+  collectComponentSourceObservations,
+  type ComponentSourceObservationOptions,
   type ComponentFactCollectors,
   mergeSourceCandidates,
   collectReactSourceObservations,
@@ -2078,7 +2080,12 @@ export async function extractReactComponents(
       if (isStencilFile(sourceFile)) return [];
       const fileExports = [...sourceFile.getExportedDeclarations().keys()];
       const isNext = isNextJsComponent(sourceFile.getFilePath(), fileExports);
-      return extractFromSourceFile(sourceFile, isNext, exclusions, diagnostics, options.componentFactCollectors);
+      return extractFromSourceFile(sourceFile, isNext, exclusions, diagnostics, options.componentFactCollectors, {
+        selectedSourcePaths: filePaths,
+        repositoryRoot: options.projectRoot,
+        limits: options.componentObservationLimits,
+        signal: options.signal,
+      });
     },
     options,
   );
@@ -2217,6 +2224,7 @@ function extractFromSourceFile(
   exclusions: ExtractionExclusion[],
   diagnostics?: ExtractionDiagnostics,
   collectors?: ComponentFactCollectors,
+  observationOptions?: ComponentSourceObservationOptions,
 ): RawComponentDefinitionInternal[] {
   const components: RawComponentDefinitionInternal[] = [];
   const usesCreateContext = sourceFileUsesCreateContext(sourceFile);
@@ -2244,7 +2252,11 @@ function extractFromSourceFile(
         },
         declaredTypeText: params[0]?.getTypeNode()?.getText() ?? null,
       },
-      collectors,
+      {
+        sourceObservations: () =>
+          collectComponentSourceObservations(funcNode, { ...observationOptions, componentBindings: declarations }),
+        ...collectors,
+      },
     );
     const evidence = componentFacts ? { componentFacts } : {};
     if (params.length === 0) {

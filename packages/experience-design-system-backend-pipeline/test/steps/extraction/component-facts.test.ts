@@ -25,7 +25,10 @@ it('uses the shared field-local seam in normal and parameterless backend React p
     expect(names.sort()).toEqual(['Empty', 'Panel']);
     for (const component of supplied.components) {
       const { componentFacts, ...ordinary } = component;
-      expect(ordinary).toEqual(baseline.components.find((candidate) => candidate.name === component.name));
+      const { componentFacts: _baselineFacts, ...baselineOrdinary } = baseline.components.find(
+        (candidate) => candidate.name === component.name,
+      )!;
+      expect(ordinary).toEqual(baselineOrdinary);
       expect(componentFacts?.members?.[0]).toMatchObject({
         name: 'Item',
         location: { canonicalPath: path, textHash: expect.any(String) },

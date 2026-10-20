@@ -1,4 +1,5 @@
 import type { RawComponentDefinition } from '../types/component.js';
+import { mapSourceObservationLocations } from '../component-facts/map-source-observation-locations.js';
 import type { ComponentFacts } from '../types/component-facts.js';
 import type { ExtractionDiagnostics, SourceCandidate, SourceCandidateSource, SourceFactLocation } from './types.js';
 import { existsSync, realpathSync } from 'node:fs';
@@ -129,6 +130,14 @@ function bindComponentFacts(facts: ComponentFacts, captured: ReadonlyMap<string,
   });
   return {
     ...facts,
+    ...(facts.sourceObservations
+      ? {
+          sourceObservations: mapSourceObservationLocations(
+            facts.sourceObservations,
+            (location) => bindLocation(location, captured)!,
+          ),
+        }
+      : {}),
     ...(facts.renderables ? { renderables: facts.renderables.map(bindObservation) } : {}),
     ...(facts.members ? { members: facts.members.map(bindObservation) } : {}),
     ...(facts.childFilters ? { childFilters: facts.childFilters.map(bindObservation) } : {}),

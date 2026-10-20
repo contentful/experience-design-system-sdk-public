@@ -65,10 +65,15 @@ describe('component facts carrier', () => {
       },
     });
     expect(calls.sort()).toEqual(['Empty', 'Panel']);
-    expect(baseline.components.every((component) => component.componentFacts === undefined)).toBe(true);
+    expect(
+      baseline.components.every((component) => component.componentFacts?.sourceObservations?.observations.length),
+    ).toBe(true);
     for (const component of supplied.components) {
       const { componentFacts, ...ordinary } = component;
-      expect(ordinary).toEqual(baseline.components.find((candidate) => candidate.name === component.name));
+      const { componentFacts: _baselineFacts, ...baselineOrdinary } = baseline.components.find(
+        (candidate) => candidate.name === component.name,
+      )!;
+      expect(ordinary).toEqual(baselineOrdinary);
       expect(componentFacts?.nonStatic?.[0]?.location).toMatchObject({
         canonicalPath: path,
         textHash: expect.any(String),

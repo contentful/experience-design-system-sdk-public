@@ -1,4 +1,5 @@
 import ts from 'typescript';
+import { resolveSourceSymbolDeclarations } from './resolve-symbol-declarations.js';
 import type {
   CapturedSourceFile,
   CapturedCompilerContext,
@@ -80,22 +81,8 @@ export function associateCapturedReferences(options: {
     }
     type Owner = { componentId: string; name: string };
     const declarations = new Map<ts.Declaration, Owner[]>();
-    const resolveSymbol = (symbol: ts.Symbol | undefined, seen = new Set<ts.Symbol>()): ts.Declaration[] => {
-      if (!symbol || seen.has(symbol)) return [];
-      seen.add(symbol);
-      if (symbol.flags & ts.SymbolFlags.Alias) return resolveSymbol(checker.getAliasedSymbol(symbol), seen);
-      return (symbol.declarations ?? []).flatMap((declaration) => {
-        if (
-          ts.isVariableDeclaration(declaration) &&
-          declaration.initializer &&
-          declaration.parent.flags & ts.NodeFlags.Const &&
-          (ts.isIdentifier(declaration.initializer) || ts.isPropertyAccessExpression(declaration.initializer))
-        ) {
-          return resolveSymbol(checker.getSymbolAtLocation(declaration.initializer), seen);
-        }
-        return [declaration];
-      });
-    };
+    const resolveSymbol = (symbol: ts.Symbol | undefined): ts.Declaration[] =>
+      resolveSourceSymbolDeclarations(checker, symbol);
     const add = (file: CapturedSourceFile, owner: Owner, roles: string[], node?: ts.Node): void => {
       let ref = file.componentRefs.find((ref) => ref.componentId === owner.componentId && ref.name === owner.name);
       if (!ref) {

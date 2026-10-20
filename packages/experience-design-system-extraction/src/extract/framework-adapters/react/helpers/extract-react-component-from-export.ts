@@ -1,4 +1,8 @@
 import { Node, type SourceFile } from 'ts-morph';
+import {
+  collectComponentSourceObservations,
+  type ComponentSourceObservationOptions,
+} from '../../../component-facts/collect-component-source-observations.js';
 import { assembleComponentFacts } from '../../../component-facts/assemble-component-facts.js';
 import type { ComponentFactCollectors } from '../../../types/component-facts.js';
 import type { RawComponentDefinition, RawPropDefinition, RawSlotDefinition } from '../../../types/component.js';
@@ -50,6 +54,7 @@ export function extractReactComponentFromExport(
   usesCreateContext: boolean,
   diagnostics?: ExtractionDiagnostics,
   collectors?: ComponentFactCollectors,
+  observationOptions?: ComponentSourceObservationOptions,
 ): RawComponentDefinitionInternal | null {
   const funcNode = resolveBestFunctionNode(declarations);
   if (!funcNode) return null;
@@ -80,7 +85,11 @@ export function extractReactComponentFromExport(
       },
       declaredTypeText: params[0]?.getTypeNode()?.getText() ?? null,
     },
-    collectors,
+    {
+      sourceObservations: () =>
+        collectComponentSourceObservations(funcNode, { ...observationOptions, componentBindings: declarations }),
+      ...collectors,
+    },
   );
   const evidence = componentFacts ? { componentFacts } : {};
   if (params.length === 0) {

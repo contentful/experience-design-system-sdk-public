@@ -1,6 +1,7 @@
 import type { SourceFactCertainty, SourceFactLocation, SourceFactOrigin } from '../candidates/types.js';
 
-export const COMPONENT_FACT_SCHEMA_VERSION = 1;
+export const COMPONENT_FACT_SCHEMA_VERSION = 2;
+import type { ComponentSourceObservationCollection } from './component-source-observations.js';
 export type ComponentEvidenceReadStatus = 'available' | 'unknown-legacy' | 'corrupt' | 'unsupported';
 
 /** Plain observations, independent of authoring decisions and prop candidates. */
@@ -52,7 +53,8 @@ export interface ReferencedOriginFact extends ComponentFactObservation {
   origin: ComponentOriginFact;
 }
 export interface ComponentFacts {
-  schemaVersion: typeof COMPONENT_FACT_SCHEMA_VERSION;
+  schemaVersion: 1 | typeof COMPONENT_FACT_SCHEMA_VERSION;
+  sourceObservations?: ComponentSourceObservationCollection;
   renderables?: RenderableFact[];
   members?: MemberFact[];
   childFilters?: ChildFilterFact[];

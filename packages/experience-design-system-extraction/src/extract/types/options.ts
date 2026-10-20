@@ -1,11 +1,13 @@
+import type { ComponentObservationLimits } from './component-source-observations.js';
 import type { ComponentFactCollectors } from './component-facts.js';
 /**
  * Optional extraction-time settings forwarded from the CLI through the
  * pipeline to each extractor; supported settings are consumed by each adapter.
  */
 export interface ExtractorOptions {
-  /** Optional field-local component observation collectors; defaults collect nothing. */
+  /** Optional field-local component observation collectors; overrides replace the React default field collector. */
   componentFactCollectors?: ComponentFactCollectors;
+  componentObservationLimits?: Partial<ComponentObservationLimits>;
   /**
    * Whether the Svelte extractor should run a retry pass for components whose
    * declared Props type could not be resolved on the first pass (cross-package

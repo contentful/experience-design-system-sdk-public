@@ -1,3 +1,21 @@
+export {
+  collectComponentSourceObservations,
+  DEFAULT_COMPONENT_OBSERVATION_LIMITS,
+} from './extract/component-facts/collect-component-source-observations.js';
+export type { ComponentSourceObservationOptions } from './extract/component-facts/collect-component-source-observations.js';
+export type {
+  ComponentObservationLimits,
+  ComponentSourceObservationCollection,
+  ComponentSourceObservation,
+  SourceObservationContext,
+  SourceInputAccessPath,
+  SourceAccessSegment,
+  SourceObservationOperand,
+  SourceSymbolEvidence,
+  SourceDeclarationOrigin,
+  SourceCallableSignature,
+  SourceObservationType,
+} from './extract/types/component-source-observations.js';
 export { assembleComponentFacts } from './extract/component-facts/assemble-component-facts.js';
 export { COMPONENT_FACT_SCHEMA_VERSION } from './extract/types/component-facts.js';
 export type {

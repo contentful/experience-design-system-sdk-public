@@ -40,6 +40,7 @@ export function countComponentObservations(entries: readonly ComponentEvidenceEn
     const facts = entry.facts;
     return (
       count +
+      (facts?.sourceObservations?.observations.length ?? 0) +
       (facts?.renderables?.length ?? 0) +
       (facts?.members?.length ?? 0) +
       (facts?.childFilters?.length ?? 0) +
