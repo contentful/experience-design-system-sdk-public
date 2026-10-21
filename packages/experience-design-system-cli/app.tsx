@@ -10,10 +10,12 @@ import {
   WelcomeScreen,
 } from './src/tui/import/steps/index.js';
 import {
-  previousStep,
-  stepsFor,
+  currentInputStep,
+  goBack,
+  runBaseDir,
   type ImportStepId,
   type ImportTarget,
+  type InputAnswers,
 } from './src/tui/import/steps/00-preflight/logic.js';
 import { ErrorStep, RunningStep } from './src/tui/import/shared/index.js';
 import { resolveAgentChoice, stepNumbers } from './src/tui/import/steps/06-extraction/logic.js';
@@ -101,11 +103,11 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
   // Set when the import has ended, with the exit code the result screen shows.
   const [importExitCode, setImportExitCode] = useState<number>();
   const showImportResult = importExitCode !== undefined;
-  // What the user chose to generate, asked first. Every screen after it follows the choice (see `stepsFor`).
+  // What the user chose to generate, asked first. The screens after it are the ones that mode lists (00-preflight/logic).
   const [target, setTarget] = useState<ImportTarget>();
-  const [projectPath, setProjectPath] = useState<string>();
-  const [tokensPath, setTokensPath] = useState<string>();
-  const [scannedFiles, setScannedFiles] = useState<string[]>();
+  // What the input screens have collected so far. The screen to show is the first one of the mode still unanswered.
+  const [answers, setAnswers] = useState<InputAnswers>({});
+  const answer = (patch: InputAnswers): void => setAnswers((current) => ({ ...current, ...patch }));
   // Set once credentials are done; the extraction stage runs for it before the legacy wizard starts.
   const [extractionRun, setExtractionRun] = useState<ExtractionRun>();
   const extraction = useExtraction(extractionRun?.input);
@@ -154,14 +156,15 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
     );
   }, [screen]);
 
-  const finishCredentials = async (
-    result: CredentialsResult,
-    projectPath: string,
-    tokens: string,
-    filePaths: string[],
-  ): Promise<void> => {
+  const finishCredentials = async (result: CredentialsResult, collected: InputAnswers): Promise<void> => {
     if (!result.skipped) await writeCredentials({ ...result.credentials });
-    const launch: ImportLaunch = { projectPath, tokens, filePaths, ...importOptions };
+    const launch: ImportLaunch = {
+      // a tokens-only import has no project, so its files go where runBaseDir says
+      projectPath: runBaseDir({ ...collected, configuredBaseDir: importDefaults?.credentials.contentfulBaseDir }),
+      tokens: collected.tokensPath ?? '',
+      filePaths: collected.scannedFiles ?? [],
+      ...importOptions,
+    };
     // Every run generates new files; reusing an earlier tokens.json is not offered.
     if (target === 'tokens') await startTokensOnly(launch, result);
     else await startExtraction(launch, 'generate', result);
@@ -304,9 +307,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
 
   const resetImport = (keepTarget = false): void => {
     if (!keepTarget) setTarget(undefined);
-    setProjectPath(undefined);
-    setTokensPath(undefined);
-    setScannedFiles(undefined);
+    setAnswers({});
     setExtractionRun(undefined);
     setTokensOnlyRun(undefined);
     setScopeRun(undefined);
@@ -326,14 +327,11 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
   };
 
   // Back from a screen goes to the one before it in the chosen mode, which skips the screens the mode does not have.
-  // Each screen only clears its own answer, so the answers of the screens before it stay.
   const goBackFrom = (current: ImportStepId): void => {
     if (!target) return;
-    const previous = previousStep(target, current);
-    if (previous === 'preflight') setTarget(undefined);
-    else if (previous === 'project') setProjectPath(undefined);
-    else if (previous === 'token-file') setTokensPath(undefined);
-    else if (previous === 'path-validation') setScannedFiles(undefined);
+    const back = goBack(target, current, answers);
+    if (back.to === 'preflight') setTarget(undefined);
+    else setAnswers(back.answers);
   };
 
   switch (screen) {
@@ -353,35 +351,36 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
       if (target === undefined) {
         return <PreflightScreen onChoose={setTarget} onQuit={leaveImport} />;
       }
-      const steps = stepsFor(target);
-      if (projectPath === undefined) {
-        return (
-          <WelcomeScreen
-            target={target}
-            onContinue={setProjectPath}
-            onQuit={() => goBackFrom('project')}
-            initialPath={importDefaults.componentDir}
-          />
-        );
-      }
-      if (steps.includes('token-file') && tokensPath === undefined) {
-        return (
-          <TokenInputScreen
-            initialPath={importDefaults.tokenFile}
-            onConfirm={setTokensPath}
-            onBack={() => goBackFrom('token-file')}
-          />
-        );
-      }
-      if (steps.includes('path-validation') && scannedFiles === undefined) {
-        return (
-          <PathValidationScreen
-            projectPath={projectPath}
-            onConfirm={({ filePaths }) => setScannedFiles(filePaths)}
-            onChangePath={() => resetImport(true)}
-            onBack={() => goBackFrom('path-validation')}
-          />
-        );
+      const inputStep = currentInputStep(target, answers);
+      if (!extractionRun && !tokensOnlyRun && inputStep !== 'credentials') {
+        switch (inputStep) {
+          case 'project':
+            return (
+              <WelcomeScreen
+                target={target}
+                onContinue={(projectPath) => answer({ projectPath })}
+                onQuit={() => goBackFrom('project')}
+                initialPath={importDefaults.componentDir}
+              />
+            );
+          case 'token-file':
+            return (
+              <TokenInputScreen
+                initialPath={importDefaults.tokenFile}
+                onConfirm={(tokensPath) => answer({ tokensPath })}
+                onBack={() => goBackFrom('token-file')}
+              />
+            );
+          case 'path-validation':
+            return (
+              <PathValidationScreen
+                projectPath={answers.projectPath ?? ''}
+                onConfirm={({ filePaths }) => answer({ scannedFiles: filePaths })}
+                onChangePath={() => resetImport(true)}
+                onBack={() => goBackFrom('path-validation')}
+              />
+            );
+        }
       }
       if (tokensOnlyRun) {
         if (tokensOnly?.status === 'done' && !tokensOnly.result.ok) {
@@ -458,7 +457,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
         <CredentialsScreen
           initial={importDefaults.credentials}
           onBack={() => goBackFrom('credentials')}
-          onDone={(result) => void finishCredentials(result, projectPath, tokensPath ?? '', scannedFiles ?? [])}
+          onDone={(result) => void finishCredentials(result, answers)}
         />
       );
     case 'help':
