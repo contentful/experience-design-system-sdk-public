@@ -1,7 +1,14 @@
 import React, { useRef, useState } from 'react';
-import { Text } from 'ink';
+import { Box, Text, useInput } from 'ink';
 import { PALETTE } from '@tui/theme.js';
-import { FieldForm, type FormField, type FormNotice } from '@tui/shared/components/FieldForm.js';
+import {
+  FieldForm,
+  FormReadOnlyRow,
+  formLabelWidth,
+  type FormField,
+  type FormNotice,
+} from '@tui/shared/components/FieldForm.js';
+import { ControlHints } from '@tui/shared/components/ControlHints.js';
 import { StepHeader } from '@tui/shared/components/StepHeader.js';
 import {
   credentialsPurpose,
@@ -31,6 +38,102 @@ const FIELDS: readonly FormField<CredentialField>[] = [
   { key: 'host', label: 'API Host', hint: '(default: api.contentful.com · EU spaces: api.eu.contentful.com)' },
 ];
 
+type MenuChoice = 'continue' | 'edit' | 'skip' | 'quit';
+
+const MENU: readonly { choice: MenuChoice; label: string; description: string }[] = [
+  { choice: 'continue', label: 'Continue', description: 'Check the credentials and go on' },
+  { choice: 'edit', label: 'Edit', description: 'Change the credentials' },
+  { choice: 'skip', label: 'Skip', description: 'Save files only, nothing is pushed' },
+  { choice: 'quit', label: 'Quit', description: 'Go back' },
+];
+
+interface CredentialsReviewProps {
+  values: CredentialValues;
+  subtitle: string;
+  notice: FormNotice | null;
+  validating: boolean;
+  onChoose: (choice: MenuChoice) => void;
+  children?: React.ReactNode;
+}
+
+/** The credentials as read-only text with a menu above them, so Enter on Continue is all it takes to go on. */
+function CredentialsReview({
+  values,
+  subtitle,
+  notice,
+  validating,
+  onChoose,
+  children,
+}: CredentialsReviewProps): React.ReactElement {
+  const [focus, setFocus] = useState(0);
+
+  useInput((_input, key) => {
+    if (validating) return;
+    if (key.escape) onChoose('quit');
+    else if (key.return) onChoose(MENU[focus]!.choice);
+    else if (key.upArrow) setFocus((current) => (current - 1 + MENU.length) % MENU.length);
+    else if (key.downArrow || key.tab) setFocus((current) => (current + 1) % MENU.length);
+  });
+
+  const labelWidth = formLabelWidth([...FIELDS, ...MENU]);
+
+  return (
+    <Box flexDirection="column">
+      <StepHeader step="setup" />
+      <Box flexDirection="column" paddingX={2} paddingBottom={1}>
+        <Text bold>Contentful Credentials</Text>
+        <Text> </Text>
+        <Text color={PALETTE.muted}>{subtitle}</Text>
+        <Text> </Text>
+        {MENU.map((item, index) => {
+          const focused = index === focus;
+          return (
+            <Box key={item.choice} gap={1}>
+              <Text color={focused ? PALETTE.accent : undefined}>{focused ? '❯' : ' '}</Text>
+              <Box width={labelWidth} flexShrink={0}>
+                <Text bold={focused} color={focused ? PALETTE.accent : PALETTE.muted}>
+                  {item.label}
+                </Text>
+              </Box>
+              <Text color={PALETTE.muted}>{item.description}</Text>
+            </Box>
+          );
+        })}
+        <Text> </Text>
+        {FIELDS.map((field) => {
+          const value = values[field.key];
+          return (
+            <FormReadOnlyRow key={field.key} label={field.label} labelWidth={labelWidth}>
+              <Text bold={value !== ''}>{field.masked ? '•'.repeat(value.length) : value || '(empty)'}</Text>
+            </FormReadOnlyRow>
+          );
+        })}
+        {notice && (
+          <>
+            <Text> </Text>
+            <Text color={PALETTE.error}>✗ {notice.text}</Text>
+          </>
+        )}
+        {validating && (
+          <>
+            <Text> </Text>
+            <Text color={PALETTE.accent}>Validating credentials...</Text>
+          </>
+        )}
+        {children}
+        <Text> </Text>
+        <ControlHints
+          hints={[
+            { keys: '↑/↓', label: 'move' },
+            { keys: '⏎', label: MENU[focus]!.label.toLowerCase() },
+            { keys: 'Esc', label: 'back' },
+          ]}
+        />
+      </Box>
+    </Box>
+  );
+}
+
 export function CredentialsScreen({
   onDone,
   onBack,
@@ -50,6 +153,8 @@ export function CredentialsScreen({
   const [notice, setNotice] = useState<FormNotice | null>(null);
   const [validating, setValidating] = useState(false);
   const prefilled = initialValues.spaceId !== '' && initialValues.cmaToken !== '';
+  // Prefilled credentials open read-only with the menu. With nothing to review, go straight to filling them in.
+  const [editing, setEditing] = useState(!prefilled);
 
   const submit = async (): Promise<void> => {
     const credentials = normalize(values);
@@ -64,15 +169,37 @@ export function CredentialsScreen({
     else setNotice({ kind: 'error', text: result.error });
   };
 
+  const subtitle = prefilled
+    ? 'Credentials pre-filled from the configuration settings.'
+    : 'Enter the Contentful space you want to import into.';
+
+  const choose = (choice: MenuChoice): void => {
+    if (choice === 'continue') void submit();
+    else if (choice === 'edit') {
+      setNotice(null);
+      setEditing(true);
+    } else if (choice === 'skip') onDone({ skipped: true });
+    else onBack();
+  };
+
+  if (!editing) {
+    return (
+      <CredentialsReview values={values} subtitle={subtitle} notice={notice} validating={validating} onChoose={choose}>
+        {!isUnchanged(normalize(values), initialValues) && (
+          <>
+            <Text> </Text>
+            <Text color={PALETTE.muted}>Changed values are saved after they validate.</Text>
+          </>
+        )}
+      </CredentialsReview>
+    );
+  }
+
   return (
     <FieldForm
       header={<StepHeader step="setup" />}
       title="Contentful Credentials"
-      subtitle={
-        prefilled
-          ? 'Credentials pre-filled from the configuration settings.'
-          : 'Enter the Contentful space you want to import into.'
-      }
+      subtitle={subtitle}
       fields={FIELDS}
       values={values}
       onChange={(key, value) => {
@@ -82,10 +209,9 @@ export function CredentialsScreen({
       enterAdvances
       onSave={() => void submit()}
       saveLabel="continue"
-      onSkip={() => onDone({ skipped: true })}
-      skipLabel="skip, save files only"
-      onQuit={onBack}
-      quitLabel="back"
+      // With nothing prefilled there is no review to return to, so Esc leaves the step.
+      onQuit={prefilled ? () => setEditing(false) : onBack}
+      quitLabel={prefilled ? 'stop editing' : 'back'}
       notice={notice}
       busy={validating}
     >
