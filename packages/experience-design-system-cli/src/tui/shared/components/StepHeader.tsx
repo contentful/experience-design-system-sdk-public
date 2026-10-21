@@ -35,6 +35,7 @@ export function StepHeader({ step }: StepHeaderProps): React.ReactElement {
     <Box
       justifyContent="space-between"
       paddingX={2}
+      paddingTop={1}
       marginBottom={1}
       borderStyle="single"
       borderColor={PALETTE.border}

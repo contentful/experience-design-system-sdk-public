@@ -5,6 +5,7 @@ import { ClearableTextInput } from '../../../shared/components/ClearableTextInpu
 import { WELCOME_CONTROLS, useWelcomeControls } from './controls.js';
 import { toProjectPath } from './logic.js';
 import { ControlHints } from '@tui/shared/components/ControlHints.js';
+import { StepHeader } from '@tui/shared/components/StepHeader.js';
 
 interface WelcomeScreenProps {
   onContinue: (projectPath: string) => void;
@@ -23,22 +24,21 @@ export function WelcomeScreen({ onContinue, onQuit, initialPath = '' }: WelcomeS
   };
 
   return (
-    <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
-      <Text bold color={PALETTE.accent}>
-        Let&apos;s import your design system into Contentful.
-      </Text>
-
-      <Box flexDirection="column" gap={1}>
-        <Text>Where is your component library?</Text>
-        <Box>
-          <Text color={PALETTE.accent}>? </Text>
-          <Text>Project path: </Text>
-          <ClearableTextInput value={projectPath} onChange={setProjectPath} onSubmit={submit} />
+    <Box flexDirection="column">
+      <StepHeader step="setup" />
+      <Box flexDirection="column" gap={1} paddingX={2} paddingBottom={1}>
+        <Box flexDirection="column" gap={1}>
+          <Text color={PALETTE.text}>Where is your component library?</Text>
+          <Box>
+            <Text color={PALETTE.accent}>? </Text>
+            <Text>Project path: </Text>
+            <ClearableTextInput value={projectPath} onChange={setProjectPath} onSubmit={submit} />
+          </Box>
         </Box>
-      </Box>
 
-      <Box>
-        <ControlHints hints={WELCOME_CONTROLS} />
+        <Box>
+          <ControlHints hints={WELCOME_CONTROLS} />
+        </Box>
       </Box>
     </Box>
   );

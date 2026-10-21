@@ -8,7 +8,7 @@ import { useTerminalWidth } from '../use-terminal-width.js';
 import { ControlHints } from '@tui/shared/components/ControlHints.js';
 
 const VERSION = readPackageVersion();
-const HEADING = 'Contentful Experiences';
+const HEADING = 'Design System Import';
 const MIN_TERMINAL_WIDTH = 164;
 
 const START_ITEMS: { label: string; screen: Screen }[] = [
