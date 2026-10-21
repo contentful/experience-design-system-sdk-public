@@ -1,6 +1,6 @@
 import { openSync, readSync, closeSync, statSync } from 'node:fs';
 
-const HEAD_BYTES = 4 * 1024;
+const HEAD_BYTES = 32 * 1024;
 const buffer = Buffer.alloc(HEAD_BYTES);
 
 export function isAngularSourceFile(filePath: string): boolean {

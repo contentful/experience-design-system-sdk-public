@@ -23,6 +23,8 @@ export const EXCLUDED_SUFFIXES = [
   '.spec.tsx',
   '.test.ts',
   '.test.tsx',
+  '.harness.ts',
+  '.harness.tsx',
 ];
 
 /** Directories skipped entirely during the walk. */
@@ -42,9 +44,12 @@ export const IGNORED_DIRS = new Set([
   'dist',
   'example',
   'examples',
+  'harness',
+  'harnesses',
   'node_modules',
   'out',
   'storybook-static',
+  'testing',
 ]);
 
 /** Exact filenames inside `DENYLIST_GATED_EXTENSIONS` that are known-noise and always skipped. */

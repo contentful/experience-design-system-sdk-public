@@ -10,13 +10,22 @@ export interface RunAgentOptions {
   prompt: string;
   timeoutMs: number;
   model?: string;
-  /** Apply the selected agent's Bedrock-routing env vars when enabled. */
   bedrock?: boolean;
   onOutput?: (chunk: string) => void;
-  /** Deliver the prompt on stdin instead of as an argv positional (large prompts overflow ARG_MAX). */
   promptViaStdin?: boolean;
-  /** Optional debug-event sink; callers own how/where events get logged. */
   onDebugEvent?: AgentDebugEvent;
+}
+
+const WATCHDOG_GRACE_MS = 10 * 1000;
+
+function killProcessTree(pid: number, signal: NodeJS.Signals): void {
+  try {
+    process.kill(-pid, signal);
+  } catch {
+    try {
+      process.kill(pid, signal);
+    } catch {}
+  }
 }
 
 export async function runAgent(options: RunAgentOptions): Promise<AgentRunResult> {
@@ -42,8 +51,10 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentRunResult
     const bedrockEnv = bedrock ? BEDROCK_ENV_BY_AGENT[agent] : undefined;
     const child = spawn(binary, args, {
       stdio: ['pipe', 'pipe', 'pipe'],
+      detached: true,
       ...(bedrockEnv ? { env: { ...process.env, ...bedrockEnv } } : {}),
     });
+
     if (useStdin && child.stdin) {
       child.stdin.on('error', () => {});
       child.stdin.write(prompt, () => {
@@ -53,44 +64,75 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentRunResult
       child.stdin?.end();
     }
 
-    let stdout = '';
-    let stderr = '';
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
     let timedOut = false;
+    let settled = false;
+    const pid = child.pid;
 
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill('SIGTERM');
-    }, timeoutMs);
-
-    child.stdout?.on('data', (chunk: Buffer) => {
-      const text = chunk.toString();
-      stdout += text;
-      onOutput?.(text);
-    });
-    child.stderr?.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString();
-    });
-
-    child.on('close', (code, signal) => {
-      clearTimeout(timer);
-      const result: AgentRunResult = {
-        exitCode: signal ? 1 : (code ?? 1),
-        stdout,
-        stderr,
-        timedOut,
-      };
+    const settle = (result: AgentRunResult): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(softTimer);
+      clearTimeout(hardTimer);
       onDebugEvent?.('run.end', {
         agent,
         model,
         durationMs: Date.now() - startedAt,
         exitCode: result.exitCode,
-        signal,
-        timedOut,
-        stdoutLen: stdout.length,
-        stderrLen: stderr.length,
-        stderrTail: stderr.slice(-1000),
+        timedOut: result.timedOut,
+        stdoutLen: result.stdout.length,
+        stderrLen: result.stderr.length,
+        stderrTail: result.stderr.slice(-1000),
       });
       resolve(result);
+    };
+
+    const softTimer = setTimeout(() => {
+      timedOut = true;
+      if (pid) killProcessTree(pid, 'SIGTERM');
+    }, timeoutMs);
+
+    const hardTimer = setTimeout(() => {
+      if (settled) return;
+      if (pid) killProcessTree(pid, 'SIGKILL');
+      try {
+        child.stdout?.destroy();
+        child.stderr?.destroy();
+        child.stdin?.destroy();
+      } catch {}
+      settle({
+        exitCode: 1,
+        stdout: Buffer.concat(stdoutChunks).toString('utf8'),
+        stderr: Buffer.concat(stderrChunks).toString('utf8'),
+        timedOut: true,
+      });
+    }, timeoutMs + WATCHDOG_GRACE_MS);
+
+    child.stdout?.on('data', (chunk: Buffer) => {
+      stdoutChunks.push(chunk);
+      if (onOutput) onOutput(chunk.toString('utf8'));
+    });
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderrChunks.push(chunk);
+    });
+
+    child.on('error', (err) => {
+      settle({
+        exitCode: 1,
+        stdout: Buffer.concat(stdoutChunks).toString('utf8'),
+        stderr: `${err instanceof Error ? err.message : String(err)}\n${Buffer.concat(stderrChunks).toString('utf8')}`,
+        timedOut,
+      });
+    });
+
+    child.on('close', (code, signal) => {
+      settle({
+        exitCode: signal ? 1 : (code ?? 1),
+        stdout: Buffer.concat(stdoutChunks).toString('utf8'),
+        stderr: Buffer.concat(stderrChunks).toString('utf8'),
+        timedOut,
+      });
     });
   });
 }

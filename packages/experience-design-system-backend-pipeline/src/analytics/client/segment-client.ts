@@ -9,6 +9,7 @@ import { analyticsEnabled } from './opt-out.js';
 const DEFAULT_WRITE_KEY = '6DmxiEPN3SV1vbRTTMcNqDzCvkfwT06N';
 
 let analyticsClient: Analytics | null = null;
+let flushChain: Promise<void> = Promise.resolve();
 
 // SEGMENT_WRITE_KEY overrides the default so engineers can point a local run at
 // their own staging connection.
@@ -56,16 +57,20 @@ export async function trackEvent(
 // event so terminal telemetry survives process.exit. Do not "optimize" this into
 // a deferred batch flush on process exit; Node will not await async exit hooks.
 export async function flushAnalytics(): Promise<void> {
-  if (!analyticsClient) return;
-  try {
-    await analyticsClient.closeAndFlush();
-  } catch {
-    // Swallow — telemetry must never affect CLI behavior.
-  } finally {
+  flushChain = flushChain.then(async () => {
+    const client = analyticsClient;
+    if (!client) return;
     analyticsClient = null;
-  }
+    try {
+      await client.closeAndFlush();
+    } catch {
+      // Swallow — telemetry must never affect CLI behavior.
+    }
+  });
+  return flushChain;
 }
 
 export function resetSegmentClientForTests(): void {
   analyticsClient = null;
+  flushChain = Promise.resolve();
 }
