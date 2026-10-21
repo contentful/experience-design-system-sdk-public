@@ -2,14 +2,10 @@
 // Every run generates new files: reusing files from an earlier run is a separate piece of work.
 export type ImportTarget = 'both' | 'tokens' | 'components';
 
-export const IMPORT_TARGET_OPTIONS: ReadonlyArray<{ target: ImportTarget; label: string; description: string }> = [
-  {
-    target: 'both',
-    label: 'Tokens and components',
-    description: 'Generate the design tokens and the component definitions',
-  },
-  { target: 'tokens', label: 'Tokens only', description: 'Generate the design tokens from your token file' },
-  { target: 'components', label: 'Components only', description: 'Generate the component definitions from your code' },
+export const IMPORT_TARGET_OPTIONS: ReadonlyArray<{ target: ImportTarget; label: string }> = [
+  { target: 'both', label: 'Tokens and components' },
+  { target: 'tokens', label: 'Tokens only' },
+  { target: 'components', label: 'Components only' },
 ];
 
 // The screens and stages of an import, in the order they run. Everything that depends on the chosen target (the screens

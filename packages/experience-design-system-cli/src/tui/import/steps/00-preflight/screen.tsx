@@ -20,13 +20,17 @@ export function PreflightScreen({ onChoose, onQuit }: PreflightScreenProps): Rea
         What do you want to generate?
       </Text>
       <Box flexDirection="column">
-        {IMPORT_TARGET_OPTIONS.map((option, index) => (
-          <Box key={option.target} gap={1}>
-            <Text color={PALETTE.accent}>{index === focus ? '❯' : ' '}</Text>
-            <Text bold={index === focus}>{option.label}</Text>
-            <Text color={PALETTE.muted}>{option.description}</Text>
-          </Box>
-        ))}
+        {IMPORT_TARGET_OPTIONS.map((option, index) => {
+          const focused = index === focus;
+          return (
+            <Box key={option.target} gap={1}>
+              <Text color={PALETTE.accent}>{focused ? '❯' : ' '}</Text>
+              <Text bold={focused} color={focused ? PALETTE.accent : undefined}>
+                {option.label}
+              </Text>
+            </Box>
+          );
+        })}
       </Box>
       <Box gap={3}>
         {PREFLIGHT_CONTROLS.map((control) => (
