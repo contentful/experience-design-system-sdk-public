@@ -3,11 +3,9 @@ import { Box, Text } from 'ink';
 import { PALETTE } from '../../../theme.js';
 import { ClearableTextInput } from '../../../ClearableTextInput.js';
 import { WELCOME_CONTROLS, useWelcomeControls } from './controls.js';
-import type { ImportTarget } from '../00-preflight/logic.js';
-import { overviewFor, toProjectPath } from './logic.js';
+import { toProjectPath } from './logic.js';
 
 interface WelcomeScreenProps {
-  target: ImportTarget;
   onContinue: (projectPath: string) => void;
   onQuit: () => void;
   initialPath?: string;
@@ -17,16 +15,27 @@ const OVERVIEW_BOX_MAX_WIDTH = 90;
 
 const AI_MARKER = '✻';
 
+const OVERVIEW = [
+  {
+    label: 'Step 1',
+    description: 'Extract components from your codebase',
+    ai: true,
+  },
+  { label: 'Step 2', description: 'Review what was extracted', ai: false },
+  {
+    label: 'Step 3',
+    description: 'Generate component definitions',
+    ai: true,
+  },
+  { label: 'Step 4', description: 'Review generated definitions', ai: false },
+  { label: 'Step 5', description: 'Push to Contentful', ai: false },
+] as const;
+
 const AI_DISCLOSURE = [
   'Steps marked ✻ use your local AI agent, which may send relevant code to your AI provider under your agreement with them. Contentful does not receive that code, or the prompts and responses. AI suggestions can be wrong or incomplete, so review and edit them before importing.',
 ];
 
-export function WelcomeScreen({
-  target,
-  onContinue,
-  onQuit,
-  initialPath = '',
-}: WelcomeScreenProps): React.ReactElement {
+export function WelcomeScreen({ onContinue, onQuit, initialPath = '' }: WelcomeScreenProps): React.ReactElement {
   const [projectPath, setProjectPath] = useState(initialPath);
 
   useWelcomeControls(onQuit);
@@ -51,10 +60,10 @@ export function WelcomeScreen({
           width={OVERVIEW_BOX_MAX_WIDTH}
           flexShrink={1}
         >
-          {overviewFor(target).map((item, index) => (
-            <Box key={item.description} gap={1}>
+          {OVERVIEW.map((item) => (
+            <Box key={item.label} gap={1}>
               <Box flexShrink={0}>
-                <Text bold>Step {index + 1}</Text>
+                <Text bold>{item.label}</Text>
               </Box>
               <Text color={PALETTE.muted} wrap="truncate-end">
                 {item.description}
