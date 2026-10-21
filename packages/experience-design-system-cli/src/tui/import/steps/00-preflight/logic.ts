@@ -1,3 +1,5 @@
+import type { OverviewStep } from '../../shared/index.js';
+
 // What the import generates. The user chooses once, on the preflight screen, and the choice is held until the import ends.
 // Every run generates new files: reusing files from an earlier run is a separate piece of work.
 export type ImportTarget = 'both' | 'tokens' | 'components';
@@ -10,7 +12,7 @@ export const IMPORT_TARGET_OPTIONS: ReadonlyArray<{ target: ImportTarget; label:
 
 // What a tokens-only import goes through, for the intro it opens on. The other modes open on the welcome screen, which
 // lists its own steps. The step numbers its screens show come from this list too, so the intro and the headers agree.
-export const TOKENS_ONLY_OVERVIEW: ReadonlyArray<{ description: string; ai: boolean }> = [
+export const TOKENS_ONLY_OVERVIEW: readonly OverviewStep[] = [
   { description: 'Generate design tokens from your token file', ai: true },
   { description: 'Push to Contentful', ai: false },
 ];
