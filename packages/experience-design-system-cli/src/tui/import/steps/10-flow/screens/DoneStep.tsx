@@ -107,7 +107,7 @@ export function DoneStep({
           </Text>
         ) : (
           <Box flexDirection="column">
-            <EntityRows entity={componentTypes} label="Component Type" />
+            <EntityRows entity={componentTypes} label="Component" />
             <EntityRows entity={designTokens} label="Design Token" />
             {summary && (
               <Box marginTop={1}>
