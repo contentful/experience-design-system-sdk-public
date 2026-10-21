@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Box, Text } from 'ink';
 import { PALETTE } from '../../../theme.js';
 import { ClearableTextInput } from '../../../ClearableTextInput.js';
+import { OverviewBox, type OverviewStep } from '../../shared/index.js';
 import { TOKEN_INPUT_CONTROLS, useTokenInputControls } from './controls.js';
 import { toTokenPath } from './logic.js';
 import { validateTokenPath } from './validate-path.js';
@@ -10,9 +11,16 @@ interface TokenInputScreenProps {
   onConfirm: (tokensPath: string) => void;
   onBack: () => void;
   initialPath?: string;
+  /** The steps of the import, shown above the prompt when this is the first screen the user sees (tokens only). */
+  overview?: readonly OverviewStep[];
 }
 
-export function TokenInputScreen({ onConfirm, onBack, initialPath = '' }: TokenInputScreenProps): React.ReactElement {
+export function TokenInputScreen({
+  onConfirm,
+  onBack,
+  initialPath = '',
+  overview,
+}: TokenInputScreenProps): React.ReactElement {
   const [tokenPath, setTokenPath] = useState(initialPath);
   const [failure, setFailure] = useState<{ error: string; resolvedPath?: string } | null>(null);
 
@@ -36,6 +44,14 @@ export function TokenInputScreen({ onConfirm, onBack, initialPath = '' }: TokenI
 
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
+      {overview && (
+        <>
+          <Text bold color={PALETTE.accent}>
+            Let&apos;s import your design tokens into Contentful.
+          </Text>
+          <OverviewBox steps={overview} />
+        </>
+      )}
       <Text bold>Design tokens</Text>
       <Text color={PALETTE.muted}>
         Point me to your raw token file (e.g. ~/design-tokens/tokens.json). You can use ~, relative, or absolute paths.

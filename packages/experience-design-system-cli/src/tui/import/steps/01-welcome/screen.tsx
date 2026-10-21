@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Box, Text } from 'ink';
 import { PALETTE } from '../../../theme.js';
 import { ClearableTextInput } from '../../../ClearableTextInput.js';
+import { OverviewBox, type OverviewStep } from '../../shared/index.js';
 import { WELCOME_CONTROLS, useWelcomeControls } from './controls.js';
 import { toProjectPath } from './logic.js';
 
@@ -11,28 +12,12 @@ interface WelcomeScreenProps {
   initialPath?: string;
 }
 
-const OVERVIEW_BOX_MAX_WIDTH = 90;
-
-const AI_MARKER = '✻';
-
-const OVERVIEW = [
-  {
-    label: 'Step 1',
-    description: 'Extract components from your codebase',
-    ai: true,
-  },
-  { label: 'Step 2', description: 'Review what was extracted', ai: false },
-  {
-    label: 'Step 3',
-    description: 'Generate component definitions',
-    ai: true,
-  },
-  { label: 'Step 4', description: 'Review generated definitions', ai: false },
-  { label: 'Step 5', description: 'Push to Contentful', ai: false },
-] as const;
-
-const AI_DISCLOSURE = [
-  'Steps marked ✻ use your local AI agent, which may send relevant code to your AI provider under your agreement with them. Contentful does not receive that code, or the prompts and responses. AI suggestions can be wrong or incomplete, so review and edit them before importing.',
+const OVERVIEW: readonly OverviewStep[] = [
+  { description: 'Extract components from your codebase', ai: true },
+  { description: 'Review what was extracted', ai: false },
+  { description: 'Generate component definitions', ai: true },
+  { description: 'Review generated definitions', ai: false },
+  { description: 'Push to Contentful', ai: false },
 ];
 
 export function WelcomeScreen({ onContinue, onQuit, initialPath = '' }: WelcomeScreenProps): React.ReactElement {
@@ -50,44 +35,7 @@ export function WelcomeScreen({ onContinue, onQuit, initialPath = '' }: WelcomeS
       <Text bold color={PALETTE.accent}>
         Let&apos;s import your design system into Contentful.
       </Text>
-      <Box flexDirection="row">
-        <Box
-          flexDirection="column"
-          borderStyle="round"
-          borderColor={PALETTE.border}
-          paddingX={2}
-          paddingY={1}
-          width={OVERVIEW_BOX_MAX_WIDTH}
-          flexShrink={1}
-        >
-          {OVERVIEW.map((item) => (
-            <Box key={item.label} gap={1}>
-              <Box flexShrink={0}>
-                <Text bold>{item.label}</Text>
-              </Box>
-              <Text color={PALETTE.muted} wrap="truncate-end">
-                {item.description}
-              </Text>
-              {item.ai && (
-                <Text bold color={PALETTE.accent}>
-                  {AI_MARKER}
-                </Text>
-              )}
-            </Box>
-          ))}
-
-          <Box flexDirection="column" marginTop={1}>
-            <Text bold>
-              <Text color={PALETTE.accent}>{AI_MARKER}</Text> AI disclosure
-            </Text>
-            {AI_DISCLOSURE.map((paragraph) => (
-              <Text key={paragraph} color={PALETTE.muted}>
-                {paragraph}
-              </Text>
-            ))}
-          </Box>
-        </Box>
-      </Box>
+      <OverviewBox steps={OVERVIEW} />
 
       <Box flexDirection="column" gap={1}>
         <Text>Where is your component library?</Text>

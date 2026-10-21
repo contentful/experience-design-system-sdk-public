@@ -176,4 +176,24 @@ describe('the flow controller', () => {
       expect(controller.getState().step).toBe('path-prompt');
     });
   });
+
+  describe('an import that only generates tokens', () => {
+    const tokensOnly = (): FlowStart =>
+      start({
+        handoff: { credentialsSkipped: false, tokens: { strategy: 'generate' } },
+        tokensOnly: { tokensPath: '/p/run/tokens.json', tokenSessionId: 'tok-2', tokenCount: 9, outDir: '/p/run' },
+      });
+
+    it('goes straight on to saving the tokens, with no components and no review', () => {
+      const controller = createFlowController(tokensOnly(), deps());
+
+      expect(controller.getState()).toMatchObject({
+        step: 'path-prompt',
+        extractSessionId: null,
+        tokensPath: '/p/run/tokens.json',
+        tokenSessionId: 'tok-2',
+        tokenCount: 9,
+      });
+    });
+  });
 });

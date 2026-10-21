@@ -27,7 +27,6 @@ export function useExtraction(input: ExtractionInput | undefined): ExtractionSta
       progress: initialProgress({
         hasCredentials: input.credentials !== null,
         hasRawTokens: input.rawTokensPath !== '',
-        reuseTokens: input.tokenStrategy === 'reuse',
       }),
     });
     void runExtraction(input, (progress) => {
