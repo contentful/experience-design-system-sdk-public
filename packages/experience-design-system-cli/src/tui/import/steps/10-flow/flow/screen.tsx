@@ -10,6 +10,7 @@ import { DoneStep } from '../screens/DoneStep.js';
 import { PathPrompt } from '../screens/PathPrompt.js';
 import { PushingStep } from '../screens/PushingStep.js';
 import { WizardPreviewStep } from '../screens/WizardPreviewStep.js';
+import { fileSummaryLabel, producedOf } from '../support/produced.js';
 import { buildRunTeaserLine } from '../support/run-teaser.js';
 import type { FlowController } from './controller.js';
 import type { FlowState } from './types.js';
@@ -47,6 +48,7 @@ export function FlowScreen({
   onExit,
 }: FlowScreenProps): React.ReactElement {
   const totalSteps = totalStepsFor(state);
+  const produced = producedOf(state);
   const quit = (): void => onExit(0);
 
   const content = ((): React.ReactElement | null => {
@@ -95,7 +97,14 @@ export function FlowScreen({
         );
 
       case 'pushing':
-        return <PushingStep stepNumber={totalSteps} totalSteps={totalSteps} progress={state.pushProgress} />;
+        return (
+          <PushingStep
+            stepNumber={totalSteps}
+            totalSteps={totalSteps}
+            progress={state.pushProgress}
+            produced={produced}
+          />
+        );
 
       case 'path-prompt':
         return (
@@ -121,7 +130,7 @@ export function FlowScreen({
         return (
           <GateStep
             message="Files saved"
-            summary={state.componentsPath ? `components.json → ${state.componentsPath}` : undefined}
+            summary={state.componentsPath ? `${fileSummaryLabel(produced)} → ${state.componentsPath}` : undefined}
             context={
               teaser
                 ? `Your files are saved to disk. ${teaser}`
@@ -145,6 +154,8 @@ export function FlowScreen({
             spaceId={state.spaceId}
             environmentId={state.environmentId}
             host={state.host}
+            produced={produced}
+            credentialsSkipped={state.credentialsSkipped}
             onExit={() => onExit(totalFailed > 0 ? 1 : 0)}
           />
         );

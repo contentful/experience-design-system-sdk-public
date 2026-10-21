@@ -5,6 +5,7 @@ import { PALETTE } from '../../../theme.js';
 import { CREDENTIALS_CONTROLS, useCredentialsControls } from './controls.js';
 import { DEFAULT_CONFIGURED_HOST } from '@contentful/experience-design-system-backend-pipeline';
 import {
+  credentialsPurpose,
   FIELDS,
   isUnchanged,
   missingField,
@@ -22,6 +23,8 @@ interface CredentialsScreenProps {
   onBack: () => void;
   initial?: Partial<CredentialValues>;
   validate?: (values: CredentialValues) => Promise<ValidationResult>;
+  /** The import only generates tokens, so there are no components to look up in the space. */
+  tokensOnly?: boolean;
 }
 
 const LABELS: Record<CredentialField, string> = {
@@ -36,6 +39,7 @@ export function CredentialsScreen({
   onBack,
   initial = {},
   validate = validateCredentials,
+  tokensOnly = false,
 }: CredentialsScreenProps): React.ReactElement {
   const initialValues = useRef(
     normalize({
@@ -91,10 +95,7 @@ export function CredentialsScreen({
         </Text>
         {!prefilled && (
           <>
-            <Text color={PALETTE.muted}>
-              We use it to check what components already exist and to push your import. If you skip, files are saved
-              locally and nothing is pushed.
-            </Text>
+            <Text color={PALETTE.muted}>{credentialsPurpose(tokensOnly)}</Text>
             <Text color={PALETTE.muted}>Tip: save these under Settings → Configuration so they pre-fill here.</Text>
           </>
         )}

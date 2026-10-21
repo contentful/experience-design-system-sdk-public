@@ -367,6 +367,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
             return (
               <PathValidationScreen
                 projectPath={answers.projectPath ?? ''}
+                hasTokens={target !== 'components'}
                 onConfirm={({ filePaths }) => answer({ scannedFiles: filePaths })}
                 onChangePath={() => resetImport(true)}
                 onBack={() => goBackFrom('path-validation')}
@@ -448,6 +449,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
       return (
         <CredentialsScreen
           initial={importDefaults.credentials}
+          tokensOnly={target === 'tokens'}
           onBack={() => goBackFrom('credentials')}
           onDone={(result) => void finishCredentials(result, answers)}
         />
