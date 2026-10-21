@@ -67,10 +67,11 @@ export function currentRepresentationModel(
     defaultIntent?: PropertyModel['defaultIntent'];
     disposition?: string;
     reviewAuthority?: unknown;
+    call?: import('@contentful/experience-design-system-types').ClassifiedPropertyCall;
   };
   if (record.disposition === 'exclude') throw new Error('Excluded property cannot receive a representation');
   const call = saved.definition
-    ? definitionCall(propertyName, saved.definition, record.defaultIntent)
+    ? definitionCall(propertyName, saved.definition, record.defaultIntent, record.call?.representation_proposal)
     : {
         tool: 'classify_prop' as const,
         prop: propertyName,

@@ -112,6 +112,18 @@ export async function runExploreStage(request: ExploreStageRequest): Promise<Exp
             existingComponents: request.existingComponentsInline,
             tokensFilename: request.rawTokensFilename,
             propBuckets: candidateFree ? undefined : request.propBucketsInline,
+            representationProposalSources: scope.startsWith('components-')
+              ? undefined
+              : request.representationProposalSources?.map(({ component, source, properties }) => ({
+                  component,
+                  source,
+                  properties: properties.map((model) => ({
+                    ...model.identity,
+                    name: model.identity.key,
+                    sourceNodeIds: model.source.graph.nodes.map((node) => node.id),
+                    sourceUseEvidence: model.source.useEvidence ?? [],
+                  })),
+                })),
           }),
           skillContentOverride: request.skillContentOverride,
           skillPathOverride: request.skillPathOverride,
@@ -123,6 +135,7 @@ export async function runExploreStage(request: ExploreStageRequest): Promise<Exp
           scope,
           candidateFree ? [] : request.slotCandidates,
           requestedComponents,
+          request.representationProposalSources,
         );
         if (!parsed.ok) throw new Error(parsed.error);
         const coverage: ExploreReportCoverage | undefined = requestedComponents

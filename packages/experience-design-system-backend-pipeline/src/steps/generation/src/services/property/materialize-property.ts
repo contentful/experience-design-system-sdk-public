@@ -17,6 +17,8 @@ import {
   type JsonValue,
   type CDFFieldDefinition,
   type TargetDefinition,
+  isSourceBoundRepresentation,
+  cdfToTarget,
 } from '@contentful/experience-design-system-types';
 import type { RawComponentDefinition } from '../../../../extraction/src/types/component.js';
 
@@ -45,15 +47,24 @@ export function materializeProperty(
   const intent =
     call.default_intent ??
     (own(call, 'default') ? { action: 'set' as const, value: call.default! } : { action: 'absent' as const });
-  if (definition && !own(definition, '$default') && intent.action === 'absent') {
+  if (
+    definition &&
+    !isSourceBoundRepresentation(definition.$type) &&
+    !own(definition, '$default') &&
+    intent.action === 'absent'
+  ) {
     if (fact?.sourceDefault?.state === 'value' && own(fact.sourceDefault, 'value'))
       definition.$default = cloneJson(fact.sourceDefault.value!);
     else if (!fact && raw?.defaultValue !== undefined) {
       if (definition.$type === 'boolean' && ['true', 'false'].includes(raw.defaultValue))
         definition.$default = raw.defaultValue === 'true';
-      else if (definition.$type === 'number' && raw.defaultValue.trim() && Number.isFinite(Number(raw.defaultValue)))
+      else if (
+        ['number', 'Integer'].includes(definition.$type) &&
+        raw.defaultValue.trim() &&
+        Number.isFinite(Number(raw.defaultValue))
+      )
         definition.$default = Number(raw.defaultValue);
-      else if (['string', 'richtext', 'token', 'media', 'link'].includes(definition.$type))
+      else if (['string', 'richtext', 'token', 'media', 'link', 'DateTime'].includes(definition.$type))
         definition.$default = raw.defaultValue;
     }
   }
@@ -70,7 +81,11 @@ export function materializeProperty(
   if (definition && fact?.advisoryShape) inheritRequired(definition, fact.advisoryShape);
   const validation = definition ? validateCDFProperty(definition) : { valid: true, issues: [] };
   if (!validation.valid) throw new Error(validation.issues.map((i) => `${i.path}: ${i.message}`).join('; '));
-  if (!fact?.sourceGraph) return { definition, call: cloneJson(call) };
+  if (!fact?.sourceGraph) {
+    if (definition && ['Integer', 'DateTime', 'Literal', 'RichText', 'JSON', 'ResourceLink'].includes(definition.$type))
+      throw new Error('Richer representation requires current complete source evidence');
+    return { definition, call: cloneJson(call) };
+  }
   const sourceRevision = [
     ...new Set(
       [...fact.declarations, ...fact.sourceGraph.nodes.flatMap((node) => node.declarations)].map(
@@ -98,10 +113,20 @@ export function materializeProperty(
       shape: cloneJson(fact.advisoryShape),
       ...(fact.sourceDefault ? { default: cloneJson(fact.sourceDefault) } : {}),
       observations: [],
+      useEvidence: (component.componentFacts?.sourceObservations?.inputOutput?.witnesses ?? [])
+        .filter((witness) => witness.inputName === call.prop)
+        .map((witness) => ({
+          reference: witness.id,
+          status:
+            witness.context === 'returned' && witness.strength === 'exact'
+              ? ('output-flow-found' as const)
+              : ('unresolved' as const),
+        })),
       originalFacts: cloneJson(candidate) as unknown as JsonValue,
     },
     category: call.cdf_category,
     ...(definition ? { representation: cloneJson(definition) } : {}),
+    ...(call.representation_proposal ? { representationProposal: cloneJson(call.representation_proposal) } : {}),
     defaultIntent: intent,
     defaultAuthority: options.defaultAuthority ?? 'generation',
   };
@@ -111,13 +136,23 @@ export function materializeProperty(
     capabilities[`${path}:mapper`] = 'enabled';
     capabilities[`${path}:default`] = 'enabled';
     if (d.$items) context(d.$items, `${path}/items`);
+    if (d.valueType) context(d.valueType as CDFPropertyDefinition, `${path}/valueType`);
     if (d.$fields)
       for (const [key, field] of Object.entries(d.$fields)) context(field, childPath(childPath(path, 'fields'), key));
   };
   if (definition) context(definition, '');
   const projection = projectProperty(model, LOCAL_NATIVE_PROPERTY_PROFILE, { capabilities });
   const alternatives = deriveRepresentationAlternatives(model);
-  const representationPlans = deriveEditableRepresentationPlans(model);
+  const representationPlans = deriveEditableRepresentationPlans(model, {
+    ...(call.representation_proposal && definition
+      ? {
+          proposal: {
+            ...cloneJson(call.representation_proposal),
+            desiredDefinition: cdfToTarget(definition),
+          },
+        }
+      : {}),
+  });
   if (projection.outcome === 'unsupported') {
     if (
       projection.issues.some(
@@ -128,6 +163,7 @@ export function materializeProperty(
             'No representation decision',
             'Source domain contains unrepresentable values',
             'Source default unresolved; source retained',
+            'Finite source domain is not enforced; source retained',
           ].includes(issue.message),
       )
     )

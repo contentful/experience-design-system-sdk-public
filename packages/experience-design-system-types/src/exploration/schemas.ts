@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import { EXPLORE_SCOPES } from './constants.js';
 import { SourceInputAssociationSchema } from '../source-input-association.js';
+import {
+  validateProposalDraft,
+  type RepresentationProposalDraft,
+} from '../property-contract/representation-proposal.js';
 export const VerifyEvidenceSchema = z.object({
   source: z.string().min(1),
   line: z.string().min(1),
@@ -22,6 +26,9 @@ export const ExplorePropReportSchema = z.object({
   default: z.unknown().optional(),
   description: z.string().optional(),
   reasoning: z.string().optional(),
+  representationProposal: z
+    .custom<RepresentationProposalDraft>((value) => validateProposalDraft(value).length === 0)
+    .optional(),
 });
 export const ExploreSlotEvidenceSchema = z.object({
   name: z.string().refine((value) => value.trim().length > 0),

@@ -8,6 +8,7 @@ import { abortableDelay, throwIfAborted } from '../../../../../helpers/abort.js'
 import { validateGenerationPropertyDecision, type PropertyRepresentationFeedback } from './representation-feedback.js';
 import { createGenerationRepresentationValidator } from './representation-validator-artifact.js';
 import type { RepresentationValidationEvidence } from './validate-representation-draft.js';
+import { buildRepresentationContext } from './representation-context.js';
 
 export interface CompleteDecisionOperation {
   originalPrompt: string;
@@ -95,6 +96,8 @@ ${JSON.stringify(options.inventory)}
 - Each name in slots requires exactly one classify_slot. A slot accounts for a source property only through an explicit sourceInput association in this inventory; that owned property is already omitted from properties. Matching names alone do not establish ownership.
 - Every classify_prop requires cdf_category set to content, design or state, including decisions with unresolved representation. When cdf_type is omitted, also omit required, values, token_kind, default, default_intent, items and fields; retain the semantic category and a nonblank reason identifying the missing evidence or capability. Source requiredness and defaults remain in the independent evidence. Never infer a category just to satisfy validation.
 - If source semantics justify excluding a property, use exclude_prop with a nonblank reason rather than a classify_prop missing its category.
+
+${options.representationValidation ? `## Current property representation identities\n${JSON.stringify(buildRepresentationContext({ ...options.representationValidation, inventory: options.inventory }))}\nSource-bound proposals must copy the current identities and cite these output-use references; mapper readiness remains caller-owned.` : ''}
 
 ${validator?.instructions ?? notes.join('\n')}
 

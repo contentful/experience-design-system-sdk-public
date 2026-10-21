@@ -45,6 +45,8 @@ export interface ExplorePropReport {
   default?: unknown;
   description?: string;
   reasoning?: string;
+  /** One source-bound draft; mapper readiness remains caller-owned. */
+  representationProposal?: import('../property-contract/representation-proposal.js').RepresentationProposalDraft;
 }
 export interface ExploreComponentReport extends KnownComponent {
   included?: boolean;

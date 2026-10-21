@@ -1,4 +1,4 @@
-import { TARGET_PROPERTY_TYPES } from '../property-contract/target-definition.js';
+import { TARGET_PROPERTY_TYPES, SAME_SPACE_RESOURCE_SOURCE } from '../property-contract/target-definition.js';
 import { CDF_PROPERTY_TYPES, CDF_PROPERTY_CATEGORIES } from './vocabularies.js';
 import { DESIGN_TOKEN_TYPES } from '../dtcg/token-types.js';
 
@@ -59,6 +59,9 @@ export const cdfJsonSchema = {
         $sourceInput: { $ref: '#/definitions/sourceInput' },
         '$token.kind': { type: 'string' },
         '$token.allowed': { type: 'array', items: { type: 'string' } },
+        value: {},
+        valueType: { $ref: '#/definitions/field' },
+        allowedResources: { $ref: '#/definitions/allowedResources' },
       },
       additionalProperties: false,
     },
@@ -76,8 +79,32 @@ export const cdfJsonSchema = {
         $fields: { type: 'object', minProperties: 1, additionalProperties: { $ref: '#/definitions/field' } },
         '$token.kind': { type: 'string' },
         '$token.allowed': { type: 'array', items: { type: 'string' } },
+        value: {},
+        valueType: { $ref: '#/definitions/field' },
+        allowedResources: { $ref: '#/definitions/allowedResources' },
       },
       additionalProperties: false,
+    },
+    allowedResources: {
+      type: 'array',
+      minItems: 1,
+      items: {
+        type: 'object',
+        required: ['type', 'source'],
+        properties: {
+          type: { enum: ['Contentful:Entry', 'Contentful:Asset'] },
+          source: { const: SAME_SPACE_RESOURCE_SOURCE },
+          allowedTypes: { type: 'array', items: { type: 'string' } },
+        },
+        allOf: [
+          {
+            if: { properties: { type: { const: 'Contentful:Entry' } } },
+            then: { required: ['allowedTypes'] },
+            else: { not: { required: ['allowedTypes'] } },
+          },
+        ],
+        additionalProperties: false,
+      },
     },
     sourceInput: {
       type: 'object',
@@ -128,15 +155,7 @@ export const cdfJsonSchema = {
         defaultValue: {},
         items: { $ref: '#/definitions/targetDefinition' },
         fields: { type: 'object', additionalProperties: { $ref: '#/definitions/targetDefinition' } },
-        allowedResources: {
-          type: 'array',
-          items: {
-            type: 'object',
-            required: ['type', 'source'],
-            properties: { type: { enum: ['Entry', 'Asset'] }, source: { enum: ['same-space'] } },
-            additionalProperties: false,
-          },
-        },
+        allowedResources: { $ref: '#/definitions/allowedResources' },
         value: {},
         valueType: { $ref: '#/definitions/targetDefinition' },
       },
@@ -195,6 +214,16 @@ export const cdfJsonSchema = {
         judgment: { type: 'string' },
         desiredType: { enum: [...TARGET_PROPERTY_TYPES] },
         desiredDefinition: { $ref: '#/definitions/targetDefinition' },
+        compatibility: {
+          type: 'object',
+          required: ['status', 'sourceUseRefs', 'unresolvedRequirements'],
+          properties: {
+            status: { enum: ['judged-compatible', 'unresolved', 'contradicted'] },
+            sourceUseRefs: { type: 'array', uniqueItems: true, items: { type: 'string', minLength: 1 } },
+            unresolvedRequirements: { type: 'array', items: { type: 'string', minLength: 1 } },
+          },
+          additionalProperties: false,
+        },
       },
       additionalProperties: false,
     },
@@ -289,6 +318,12 @@ export const cdfJsonSchema = {
               slot: { type: 'string' },
               targetNodeId: { type: 'string' },
               reason: { type: 'string' },
+              withinValue: {
+                type: 'object',
+                required: ['ownerNodeId', 'path'],
+                properties: { ownerNodeId: { type: 'string' }, path: { type: 'array', items: { type: 'object' } } },
+                additionalProperties: false,
+              },
             },
             additionalProperties: false,
           },

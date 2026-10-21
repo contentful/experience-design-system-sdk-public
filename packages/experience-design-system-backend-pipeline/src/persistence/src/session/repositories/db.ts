@@ -7,7 +7,10 @@ import {
   expandRepresentationClosure,
   loadRepresentationPlans,
 } from './representation-plans.js';
-import { definitionCall } from '../../../../steps/generation/src/services/property/definition-call.js';
+import {
+  definitionCall,
+  reviewRepresentationProposal,
+} from '../../../../steps/generation/src/services/property/definition-call.js';
 import { validateSavedSourceClosure } from './source-closure-binding.js';
 import {
   validateCDFProperty,
@@ -18,6 +21,8 @@ import {
   jsonValueIssue,
   cloneJson,
   own,
+  propertyMapperBlockers,
+  type RepresentationProposalDraft,
   type CDFPropertyDefinition,
   type ClassifiedPropertyCall,
 } from '@contentful/experience-design-system-types';
@@ -1032,8 +1037,11 @@ export function evaluateComponentReadiness(
     const saved = decisions.find((decision) => decision.propertyName === call.prop);
     if (!saved?.definition) return call;
     const definition = saved.definition;
-    const record = saved.decision as { defaultIntent?: ClassifiedPropertyCall['default_intent'] };
-    return definitionCall(call.prop, definition, record.defaultIntent);
+    const record = saved.decision as {
+      defaultIntent?: ClassifiedPropertyCall['default_intent'];
+      call?: ClassifiedPropertyCall;
+    };
+    return definitionCall(call.prop, definition, record.defaultIntent, record.call?.representation_proposal);
   });
   const accounting = accountClassificationCalls(inventory, effective);
   const sourceIssues: string[] = slotIssue ? [slotIssue] : [];
@@ -1141,6 +1149,7 @@ export function evaluateComponentReadiness(
         importIssues.push(`Property held ${call.prop}`);
         definitionIssues.push(`Property held ${call.prop}`);
       }
+      if (current.definition) importIssues.push(...propertyMapperBlockers(current.definition, call.prop));
     } catch (error) {
       const issue = error instanceof Error ? error.message : 'Invalid current property decision';
       importIssues.push(issue);
@@ -1243,6 +1252,7 @@ export function applyToolCalls(
       call.prop,
       human.definition,
       (human.decision as { defaultIntent?: ClassifiedPropertyCall['default_intent'] }).defaultIntent,
+      (human.decision as { call?: ClassifiedPropertyCall }).call?.representation_proposal,
     );
     materializeProperty(rawComponent, retained, componentId, { defaultAuthority: 'review' });
     return retained;
@@ -2666,6 +2676,11 @@ export function storeCDFComponents(
               : own(property, '$default')
                 ? { action: 'set', value: property.$default! }
                 : { action: 'clear' },
+            reviewRepresentationProposal(
+              property,
+              (previous?.decision as { call?: { representation_proposal?: RepresentationProposalDraft } } | undefined)
+                ?.call?.representation_proposal,
+            ),
           ),
           source.component_id,
           { defaultAuthority: 'review' },
@@ -2678,6 +2693,7 @@ export function storeCDFComponents(
         )
           throw new Error('Native position unavailable; source and saved decisions retained');
         if (
+          own(property, '$default') &&
           materialized.projection?.issues.some(
             (issue) => issue.message === 'Source mapper and mapped target must both support default',
           )
@@ -2884,6 +2900,7 @@ export function storeCDFComponents(
                 definition,
                 (saved?.decision as { defaultIntent?: ClassifiedPropertyCall['default_intent'] } | undefined)
                   ?.defaultIntent,
+                (saved?.decision as { call?: ClassifiedPropertyCall } | undefined)?.call?.representation_proposal,
               ),
             );
           else {

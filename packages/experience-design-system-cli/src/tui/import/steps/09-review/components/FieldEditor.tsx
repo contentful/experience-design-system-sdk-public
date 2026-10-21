@@ -11,6 +11,7 @@ import {
   own,
   jsonValueIssue,
   parseStrictJson,
+  isDateTimeValue,
 } from '@contentful/experience-design-system-types';
 import type {
   CDFComponentEntry,
@@ -143,9 +144,15 @@ function swapValues<T>(values: T[], firstIndex: number, secondIndex: number): T[
 
 export function parseTypedDefault(text: string, type: string): { value: JsonValue } | { error: string } {
   try {
-    if (type === 'number' && !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(text))
+    if (['number', 'Integer'].includes(type) && !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(text))
       throw new Error('Enter a complete finite number');
-    const value: unknown = type === 'number' ? Number(text) : parseStrictJson(text);
+    const value: unknown = ['number', 'Integer'].includes(type)
+      ? Number(text)
+      : type === 'DateTime'
+        ? text
+        : parseStrictJson(text);
+    if (type === 'Integer' && !Number.isSafeInteger(value)) throw new Error('Enter a safe integer');
+    if (type === 'DateTime' && !isDateTimeValue(value)) throw new Error('Enter a timezone-qualified ISO datetime');
     const issue = jsonValueIssue(value);
     if (issue) throw new Error(issue.message);
     return { value: value as JsonValue };
@@ -261,6 +268,11 @@ export function serializeState(state: EditorState, originalJson: string): string
     if (!sameType) {
       if (p.type !== 'array') delete def.$items;
       if (p.type !== 'record') delete def.$fields;
+      if (p.type !== 'Literal') {
+        delete def.value;
+        delete def.valueType;
+      }
+      if (p.type !== 'ResourceLink') delete def.allowedResources;
       delete def.$values;
       delete def['$token.kind'];
       delete def['$token.allowed'];
@@ -525,7 +537,7 @@ function DefaultSubRow({
   cursorVisible: boolean;
 }): React.ReactElement {
   const cursor = cursorVisible ? '█' : ' ';
-  if (prop.type === 'richtext' || prop.type === 'media' || prop.type === 'link') {
+  if (['richtext', 'media', 'link', 'RichText', 'JSON', 'ResourceLink'].includes(prop.type)) {
     return (
       <Box gap={1} flexShrink={0}>
         <Text color={focused ? PALETTE.warning : PALETTE.muted} bold={focused}>
@@ -536,8 +548,14 @@ function DefaultSubRow({
     );
   }
 
-  if (['array', 'record', 'number'].includes(prop.type)) {
-    const display = prop.defaultDraft ?? (prop.default === undefined ? '(unset)' : JSON.stringify(prop.default));
+  if (['array', 'record', 'number', 'Integer', 'Literal', 'DateTime'].includes(prop.type)) {
+    const display =
+      prop.defaultDraft ??
+      (prop.default === undefined
+        ? '(unset)'
+        : prop.type === 'DateTime'
+          ? String(prop.default)
+          : JSON.stringify(prop.default));
     return (
       <DefaultValueRow
         display={display.length > 72 ? `${display.slice(0, 69)}...` : display}
@@ -958,7 +976,7 @@ function propFields(prop: PropState): PropField[] {
     fields.push('tokenKind');
   }
   if (prop.type === 'string' && prop.values.length > 0) fields.push('values');
-  if (prop.type !== 'richtext' && prop.type !== 'media' && prop.type !== 'link') {
+  if (!['richtext', 'media', 'link', 'RichText', 'JSON', 'ResourceLink'].includes(prop.type)) {
     fields.push('default');
   }
   if (prop.type === 'token' && prop.category === 'design') fields.push('allowed');
@@ -1795,7 +1813,10 @@ export function FieldEditor({
         const next = key.leftArrow
           ? options[(idx - 1 + options.length) % options.length]
           : options[(idx + 1) % options.length];
-        if ((next === 'array' || next === 'record') && next !== currentProp.type) {
+        if (
+          ['array', 'record', 'Literal', 'RichText', 'JSON', 'ResourceLink'].includes(next) &&
+          next !== currentProp.type
+        ) {
           setValidationError('Press Ctrl+J to edit the recursive definition in component JSON');
           return;
         }
@@ -1811,6 +1832,7 @@ export function FieldEditor({
           updated.tokenKind ||= DESIGN_TOKEN_TYPES[0] ?? '';
         } else {
           updated.tokenKind = '';
+          if (['Integer', 'DateTime'].includes(next)) updated.category = 'content';
         }
         if (next !== 'string') updated.values = [];
         const nextProps = props.map((p, i) => (i === propIdx ? updated : p));
@@ -1855,9 +1877,14 @@ export function FieldEditor({
           setProp({ ...currentProp, default: undefined, defaultDraft: undefined, defaultError: undefined });
           return;
         }
-        if (['number', 'array', 'record'].includes(currentProp.type)) {
+        if (['number', 'array', 'record', 'Integer', 'Literal', 'DateTime'].includes(currentProp.type)) {
           const cur =
-            currentProp.defaultDraft ?? (currentProp.default === undefined ? '' : JSON.stringify(currentProp.default));
+            currentProp.defaultDraft ??
+            (currentProp.default === undefined
+              ? ''
+              : currentProp.type === 'DateTime'
+                ? String(currentProp.default)
+                : JSON.stringify(currentProp.default));
           if (key.leftArrow) {
             setTextCursor((cursor) => Math.max(0, cursor - 1));
             return;

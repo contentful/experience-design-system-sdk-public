@@ -45,6 +45,7 @@ import {
 } from '../../steps/exploration/src/index.js';
 import { checkBoundEvidence } from '../../steps/exploration/src/helpers/check-evidence.js';
 import { buildExplorationSourceInput } from './helpers/build-source-input.js';
+import { buildProposalSources } from './helpers/build-proposal-sources.js';
 import { loadExistingExplorationContext } from './helpers/load-existing-context.js';
 import { resolveStagePrompts } from './helpers/resolve-stage-prompts.js';
 import { loadRendererReference } from './helpers/load-renderer-reference.js';
@@ -209,6 +210,7 @@ async function execute(
       rawComponentsInline: JSON.stringify(selected),
       slotCandidates,
       requestedComponents: known,
+      ...(phase === 'detail' ? { representationProposalSources: buildProposalSources(selected) } : {}),
       rendererReferenceInline: JSON.stringify(reference),
       ...prompts.explore,
       onScopeComplete: async (report) => {

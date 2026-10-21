@@ -1,4 +1,5 @@
 import { childPath, jsonEqual, jsonValueIssue, own, type JsonValue, type PropertyIssue } from './json-value.js';
+import { isDateTimeValue } from './date-time-value.js';
 
 export const TARGET_PROPERTY_TYPES = [
   'String',
@@ -14,6 +15,10 @@ export const TARGET_PROPERTY_TYPES = [
   'Literal',
 ] as const;
 export type TargetPropertyType = (typeof TARGET_PROPERTY_TYPES)[number];
+export const SAME_SPACE_RESOURCE_SOURCE = 'crn:contentful:::content:spaces/$self/environments/$self';
+export type AllowedResourceDefinition =
+  | { type: 'Contentful:Entry'; source: typeof SAME_SPACE_RESOURCE_SOURCE; allowedTypes: string[] }
+  | { type: 'Contentful:Asset'; source: typeof SAME_SPACE_RESOURCE_SOURCE };
 export interface TargetDefinition {
   type: TargetPropertyType;
   id?: string;
@@ -24,7 +29,7 @@ export interface TargetDefinition {
   defaultValue?: JsonValue;
   items?: TargetDefinition;
   fields?: Record<string, TargetDefinition>;
-  allowedResources?: Array<{ type: 'Entry' | 'Asset'; source: 'same-space' }>;
+  allowedResources?: AllowedResourceDefinition[];
   value?: JsonValue;
   valueType?: TargetDefinition;
 }
@@ -40,6 +45,7 @@ export function validateTargetValue(definition: TargetDefinition, value: JsonVal
     return fail('Value outside declared domain');
   if (type === 'String' || type === 'DateTime') {
     if (typeof value !== 'string') return fail('Expected string');
+    if (type === 'DateTime' && !isDateTimeValue(value)) return fail('Expected timezone-qualified ISO datetime');
   } else if (type === 'Number' || type === 'Integer') {
     if (typeof value !== 'number' || !Number.isFinite(value) || (type === 'Integer' && !Number.isSafeInteger(value)))
       return fail(type === 'Integer' ? 'Expected safe integer' : 'Expected finite number');
@@ -115,9 +121,13 @@ export function validateTargetDefinition(input: unknown): DefinitionValidation {
         d.allowedResources.forEach((r, i) => {
           if (
             !r ||
-            !['Entry', 'Asset'].includes(r.type) ||
-            r.source !== 'same-space' ||
-            Object.keys(r).some((key) => !['type', 'source'].includes(key))
+            !['Contentful:Entry', 'Contentful:Asset'].includes(r.type) ||
+            r.source !== SAME_SPACE_RESOURCE_SOURCE ||
+            Object.keys(r).some(
+              (key) => !['type', 'source', ...(r.type === 'Contentful:Entry' ? ['allowedTypes'] : [])].includes(key),
+            ) ||
+            (r.type === 'Contentful:Entry' &&
+              (!Array.isArray(r.allowedTypes) || !r.allowedTypes.every((type) => typeof type === 'string')))
           )
             add(`allowedResources/${i}`, 'Expected same-space Entry/Asset resource');
         });
@@ -171,7 +181,18 @@ export const targetDefinitionJsonSchema = {
           items: {
             type: 'object',
             required: ['type', 'source'],
-            properties: { type: { enum: ['Entry', 'Asset'] }, source: { const: 'same-space' } },
+            properties: {
+              type: { enum: ['Contentful:Entry', 'Contentful:Asset'] },
+              source: { const: SAME_SPACE_RESOURCE_SOURCE },
+              allowedTypes: { type: 'array', items: { type: 'string' } },
+            },
+            allOf: [
+              {
+                if: { properties: { type: { const: 'Contentful:Entry' } } },
+                then: { required: ['allowedTypes'] },
+                else: { not: { required: ['allowedTypes'] } },
+              },
+            ],
             additionalProperties: false,
           },
         },

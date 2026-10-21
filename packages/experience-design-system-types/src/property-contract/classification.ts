@@ -1,7 +1,9 @@
 import type { CDFFieldDefinition, CDFPropertyDefinition } from '../cdf/types.js';
-import { validateCDFProperty } from '../cdf/property-validation.js';
+import { validateCDFProperty, targetToCDF } from '../cdf/property-validation.js';
+import { isSourceBoundRepresentation } from './source-representation.js';
 import { cloneJson, own, type JsonValue } from './json-value.js';
 import type { DefaultIntent } from './property-model.js';
+import type { RepresentationProposalDraft } from './representation-proposal.js';
 
 export interface ClassifiedPropertyCall {
   tool: 'classify_prop';
@@ -19,10 +21,17 @@ export interface ClassifiedPropertyCall {
   source_revision?: string;
   source_node_id?: string;
   reason?: string;
+  value?: JsonValue;
+  valueType?: CDFFieldDefinition;
+  allowedResources?: CDFFieldDefinition['allowedResources'];
+  representation_proposal?: RepresentationProposalDraft;
 }
 export function classificationDefinition(call: ClassifiedPropertyCall): CDFPropertyDefinition {
   if (!call.cdf_type) throw new Error('Absent representation has no field definition');
   const definition: CDFPropertyDefinition = {
+    ...(call.representation_proposal && isSourceBoundRepresentation(call.cdf_type)
+      ? targetToCDF(call.representation_proposal.desiredDefinition)
+      : {}),
     $type: (call.cdf_type === 'enum' ? 'string' : call.cdf_type) as CDFPropertyDefinition['$type'],
     $category: call.cdf_category,
   };
@@ -30,6 +39,9 @@ export function classificationDefinition(call: ClassifiedPropertyCall): CDFPrope
   if (typeof call.description === 'string') definition.$description = call.description;
   if (call.items) definition.$items = cloneJson(call.items);
   if (call.fields) definition.$fields = cloneJson(call.fields);
+  if (own(call, 'value')) definition.value = cloneJson(call.value!);
+  if (call.valueType) definition.valueType = cloneJson(call.valueType);
+  if (call.allowedResources) definition.allowedResources = cloneJson(call.allowedResources);
   if (call.values?.length && call.cdf_type !== 'token') definition.$values = cloneJson(call.values);
   if (call.token_kind && call.cdf_type === 'token') definition['$token.kind'] = call.token_kind;
   if (own(call, 'default')) definition.$default = cloneJson(call.default!);

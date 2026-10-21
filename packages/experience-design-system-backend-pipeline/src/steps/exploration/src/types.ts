@@ -12,6 +12,7 @@ import type {
   VerifyComponentWork,
   VerifyAttempt,
   VerifiedItem,
+  PropertyModel,
 } from '@contentful/experience-design-system-types';
 export type SlotCandidates = ReadonlyArray<{
   component: string;
@@ -45,6 +46,7 @@ export interface StageOptions {
   onAttempt?: (attempt: AgentCallAttempt) => void | Promise<void>;
 }
 export interface ExploreStageRequest extends StageOptions {
+  representationProposalSources?: readonly ExploreRepresentationProposalSource[];
   scopes: readonly ExploreScope[];
   requestedComponents?: readonly KnownComponent[];
   rawComponentsInline: string;
@@ -60,6 +62,11 @@ export interface ExploreStageRequest extends StageOptions {
   rendererReferenceInline?: string;
   existingModelPath?: string;
   onScopeComplete?: (result: ExploreScopeResult) => void | Promise<void>;
+}
+export interface ExploreRepresentationProposalSource {
+  component: string;
+  source: string;
+  properties: readonly PropertyModel[];
 }
 export interface TierStageRequest extends StageOptions {
   disagreements: ExplorationDisagreement[];

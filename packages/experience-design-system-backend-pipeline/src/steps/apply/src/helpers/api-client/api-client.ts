@@ -1,4 +1,8 @@
-import { parseCDFComponents, type CDFComponentEntry } from '@contentful/experience-design-system-types';
+import {
+  parseCDFComponents,
+  mapperApplyBlockers,
+  type CDFComponentEntry,
+} from '@contentful/experience-design-system-types';
 import {
   designSystemImportApply,
   designSystemImportGetOperation,
@@ -125,12 +129,17 @@ export class ApiClient {
   }
 
   private admitRepresentations(cdf: CDFDocument): void {
-    for (const { entry } of parseCDFComponents(cdf).components) {
+    const components = parseCDFComponents(cdf).components;
+    const blockers = mapperApplyBlockers(components);
+    if (blockers.length) throw new Error(`Property mapper prerequisites unavailable: ${blockers.join('; ')}`);
+    for (const { entry } of components) {
       const component = entry as CDFComponentEntry;
       if (
         component.$model ||
         Object.values(component.$slots ?? {}).some((slot) => slot.$modelBinding || slot.$cardinality) ||
-        Object.values(component.$representationPlans ?? {}).some((plan) => plan.kind !== 'native' || !plan.sdkValid)
+        Object.values(component.$representationPlans ?? {}).some(
+          (plan) => plan.kind !== 'native' || !plan.sdkValid || plan.requirements.length > 0,
+        )
       )
         throw new Error('Component model mapper, cardinality and reconstruction prerequisites are unavailable');
     }

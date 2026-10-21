@@ -1,6 +1,6 @@
 import type { CDFFieldDefinition } from './types.js';
 import { CDF_PROPERTY_TYPES, CDF_PROPERTY_CATEGORIES } from './vocabularies.js';
-import { childPath, jsonValueIssue, own, type PropertyIssue } from '../property-contract/json-value.js';
+import { childPath, cloneJson, jsonValueIssue, own, type PropertyIssue } from '../property-contract/json-value.js';
 import { validateTargetDefinition, type TargetDefinition } from '../property-contract/target-definition.js';
 import { SourceInputAssociationSchema } from '../source-input-association.js';
 
@@ -14,6 +14,12 @@ const targetTypes = {
   media: 'String',
   link: 'String',
   token: 'String',
+  Integer: 'Integer',
+  DateTime: 'DateTime',
+  Literal: 'Literal',
+  RichText: 'RichText',
+  JSON: 'JSON',
+  ResourceLink: 'ResourceLink',
 } as const;
 export function cdfToTarget(d: CDFFieldDefinition): TargetDefinition {
   const t: TargetDefinition = { type: targetTypes[d.$type] };
@@ -21,10 +27,42 @@ export function cdfToTarget(d: CDFFieldDefinition): TargetDefinition {
   if (own(d, '$description')) t.description = d.$description;
   if (own(d, '$default')) t.defaultValue = d.$default;
   if (d.$values) t.values = d.$values;
+  if (own(d, 'value')) t.value = d.value;
+  if (d.valueType) t.valueType = cdfToTarget(d.valueType);
+  if (d.allowedResources) t.allowedResources = d.allowedResources;
   if (d.$items) t.items = cdfToTarget(d.$items);
   if (d.$fields)
     t.fields = Object.fromEntries(Object.entries(d.$fields).map(([key, field]) => [key, cdfToTarget(field)]));
   return t;
+}
+
+/** Decode complete target metadata without narrowing it to a type name. */
+export function targetToCDF(d: TargetDefinition): CDFFieldDefinition {
+  const types = {
+    String: 'string',
+    Number: 'number',
+    Boolean: 'boolean',
+    Array: 'array',
+    Record: 'record',
+    Integer: 'Integer',
+    DateTime: 'DateTime',
+    Literal: 'Literal',
+    RichText: 'RichText',
+    JSON: 'JSON',
+    ResourceLink: 'ResourceLink',
+  } as const;
+  const field: CDFFieldDefinition = { $type: types[d.type] };
+  if (own(d, 'required')) field.$required = d.required;
+  if (own(d, 'description')) field.$description = d.description;
+  if (own(d, 'defaultValue')) field.$default = cloneJson(d.defaultValue!);
+  if (d.values) field.$values = cloneJson(d.values);
+  if (d.items) field.$items = targetToCDF(d.items);
+  if (d.fields)
+    field.$fields = Object.fromEntries(Object.entries(d.fields).map(([key, child]) => [key, targetToCDF(child)]));
+  if (own(d, 'value')) field.value = cloneJson(d.value!);
+  if (d.valueType) field.valueType = targetToCDF(d.valueType);
+  if (d.allowedResources) field.allowedResources = cloneJson(d.allowedResources);
+  return field;
 }
 export function validateCDFProperty(
   input: unknown,
@@ -55,6 +93,18 @@ export function validateCDFProperty(
       add('$sourceInput', 'Invalid source input association');
     if (d.$type === 'array') allowed.add('$items');
     if (d.$type === 'record') allowed.add('$fields');
+    if (
+      ['Integer', 'DateTime', 'Literal', 'RichText', 'JSON', 'ResourceLink'].includes(d.$type) &&
+      d.$category !== undefined &&
+      d.$category !== 'content'
+    )
+      add('$category', 'Richer representations require content category');
+    if (d.$type === 'Literal') {
+      allowed.add('value');
+      allowed.add('valueType');
+      walk(d.valueType, childPath(path, 'valueType'), false, depth + 1);
+    }
+    if (d.$type === 'ResourceLink') allowed.add('allowedResources');
     if (d.$type === 'token') {
       allowed.add('$token.kind');
       allowed.add('$token.allowed');

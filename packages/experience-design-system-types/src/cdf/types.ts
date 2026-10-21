@@ -21,6 +21,9 @@ export interface CDFFieldDefinition {
   $values?: import('../property-contract/json-value.js').JsonValue[];
   $items?: CDFFieldDefinition;
   $fields?: Record<string, CDFFieldDefinition>;
+  value?: import('../property-contract/json-value.js').JsonValue;
+  valueType?: CDFFieldDefinition;
+  allowedResources?: import('../property-contract/target-definition.js').TargetDefinition['allowedResources'];
   '$token.kind'?: string;
   '$token.allowed'?: string[];
 }

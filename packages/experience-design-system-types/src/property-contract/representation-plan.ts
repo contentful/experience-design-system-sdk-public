@@ -13,6 +13,8 @@ import {
   type PropertyIssue,
 } from './json-value.js';
 import { contentDigest } from './content-digest.js';
+import { propertyMapperBlockers } from './mapper-readiness.js';
+import { isSourceBoundRepresentation } from './source-representation.js';
 import {
   LOCAL_NATIVE_PROPERTY_PROFILE,
   projectProperty,
@@ -49,6 +51,7 @@ export interface LogicalPhysicalMapping {
   slot?: string;
   targetNodeId?: string;
   reason?: string;
+  withinValue?: { ownerNodeId: string; path: NonNullable<SourceGraphNode['path']> };
 }
 export interface RepresentationPlan {
   schemaVersion: 1;
@@ -79,6 +82,7 @@ function localContext(definition: CDFPropertyDefinition): Record<string, 'enable
     result[path + ':mapper'] = 'enabled';
     result[path + ':default'] = 'enabled';
     if (field.$items) visit(field.$items, path + '/items');
+    if (field.valueType) visit(field.valueType as CDFPropertyDefinition, path + '/valueType');
     if (field.$fields)
       for (const [key, child] of Object.entries(field.$fields))
         visit(child, path + '/fields/' + key.replace(/~/g, '~0').replace(/\//g, '~1'));
@@ -205,10 +209,31 @@ export function deriveEditableRepresentationPlans(
             undefinable: node.undefinable ?? null,
             disposition: 'native-field' as const,
             field: model.identity.key,
+            ...(isSourceBoundRepresentation(native.$type)
+              ? {
+                  withinValue: {
+                    ownerNodeId: graph.rootId,
+                    path: cloneJson(
+                      (node.path ?? node.keyPath.map((key) => ({ kind: 'field' as const, key }))).slice(
+                        (root.path ?? root.keyPath).length,
+                      ),
+                    ),
+                  },
+                }
+              : {}),
           })),
           issues: defaultIssues,
           sdkValid: !defaultIssues.length && graph.coverage === 'complete-within-declared-bound',
-          requirements: [],
+          requirements: [
+            ...propertyMapperBlockers(native).map((path) => ({ path, capability: 'deployed-mapper' })),
+            ...(['RichText', 'JSON', 'ResourceLink'].includes(native.$type) && model.source.default
+              ? [{ path: '/', capability: 'source-default-materialization' }]
+              : []),
+            ...(model.representationProposal?.compatibility?.unresolvedRequirements ?? []).map((capability) => ({
+              path: '/',
+              capability,
+            })),
+          ],
         }),
       );
     }

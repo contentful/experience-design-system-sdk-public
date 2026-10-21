@@ -44,12 +44,15 @@ export function summarizeForGenerateAgent(
             id: p.id,
             name: p.name,
             type: p.type,
+            definition: p,
           })),
           contentProperties: match.contentProperties.map((p: ContentProperty) => ({
             id: p.id,
             name: p.name,
             type: p.type,
+            definition: p,
           })),
+          propertyEvidence: 'existing-platform-definition-unverified-against-source',
           slots: (match.slots ?? []).map((s: Slot) => ({ id: s.id, name: s.name })),
         }
       : undefined,

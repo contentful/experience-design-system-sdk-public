@@ -287,3 +287,16 @@ The preamble's "Existing design tokens" section lists tokens (by name + DTCG typ
 
 1. When classifying a `design`-category, `token`-typed prop, prefer binding to an existing token name over inventing a new one. Cite the target token in `reason`.
 2. If no existing token semantically matches, proceed with the current rules — propose a new token. The diff surfaces this for review.
+
+## Richer content representations
+
+The desired CDF vocabulary additionally includes `Integer`, `DateTime`, `Literal`, `RichText`, `JSON` and `ResourceLink`; these are content representations. Local file validity does not establish deployed mapper support.
+
+- `Integer` requires a complete, compiler-established integral source domain; names, a numeric default and observed callers do not prove it.
+- `DateTime` requires a complete source domain of timezone-qualified ISO strings; preserve their spelling and do not convert Date objects or infer semantics from names.
+- `Literal` requires an exact source singleton, `value` and recursive CDF `valueType` in the same call; a default is separate from its intrinsic value and must equal it. Singleton proof does not establish RichText or ResourceLink semantics for an underlying type.
+- `RichText`, `JSON` and `ResourceLink` require `representation_proposal` in the same classification call. Copy the host-supplied `componentId`, `propertyId`, `key`, `sourceRevision` and source-node identities; use `name` equal to the exact source property. Supply independent `declaredConstraints`, `provenConstraints`, `observations`, `judgment`, `desiredType`, complete target `desiredDefinition`, and `compatibility` with `status`, `sourceUseRefs` and `unresolvedRequirements`. Readiness is host-owned and must not be included in the draft.
+- A judged-compatible proposal must cite current positive output-flow references. A primitive string is not a RichText document; lowercase `richtext` retains its existing markup projection. JSON requires proven JSON-compatible semantics and an explicitly justified opaque contract, rather than a fallback for unknown or meaningful editable structure.
+- ResourceLink restrictions use `Contentful:Entry` with `allowedTypes`, or `Contentful:Asset`, and the exact same-space source `crn:contentful:::content:spaces/$self/environments/$self`. Keep resource and delivery prerequisites explicit; neither a URL nor a matching name proves a resource identity.
+- RichText and JSON cannot have target defaults; source defaults remain evidence. ResourceLink defaults require a verified delivery contract and remain held. Retain unresolved proposals and source facts instead of inventing proof.
+- When no representation is established, omit `value`, `valueType`, `allowedResources` and `representation_proposal` as well as all other representation companions.

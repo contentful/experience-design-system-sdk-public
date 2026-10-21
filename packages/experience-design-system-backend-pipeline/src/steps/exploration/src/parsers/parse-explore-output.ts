@@ -4,8 +4,9 @@ import {
   type ExploreScope,
   type ExploreCompanion,
   type KnownComponent,
+  validateRepresentationProposalSource,
 } from '@contentful/experience-design-system-types';
-import type { SlotCandidates } from '../types.js';
+import type { SlotCandidates, ExploreRepresentationProposalSource } from '../types.js';
 import { assertUnique } from '../helpers/identity.js';
 export function parseJsonOutput(output: string): unknown {
   const trimmed = output.trim();
@@ -31,6 +32,7 @@ function parseCompanion(
   scope: ExploreScope,
   candidates: SlotCandidates = [],
   requestedComponents?: readonly KnownComponent[],
+  proposalSources?: readonly ExploreRepresentationProposalSource[],
 ): ExploreCompanion {
   const companion = ExploreCompanionSchema.parse(parseJsonOutput(output));
   if (companion.agentRole !== scope) throw new Error('Exploration scope mismatch');
@@ -66,6 +68,18 @@ function parseCompanion(
       (component.slots ?? []).map((slot) => slot.name),
       'reported slots',
     );
+    for (const prop of component.props ?? []) {
+      if (!prop.representationProposal) continue;
+      const source = proposalSources
+        ?.find((source) => source.component === component.name && source.source === component.source)
+        ?.properties.find((property) => property.identity.key === prop.name);
+      if (!source) throw new Error(`Current source evidence missing for ${component.name}.${prop.name} proposal`);
+      const validation = validateRepresentationProposalSource(prop.representationProposal, source);
+      if (!validation.valid)
+        throw new Error(
+          `Invalid representation proposal for ${component.name}.${prop.name}: ${validation.issues.map((issue) => `${issue.path}: ${issue.message}`).join('; ')}`,
+        );
+    }
     for (const slot of component.slots ?? [])
       if (slot.isRealSlot && !slot.evidence?.some((evidence) => evidence.trim()))
         throw new Error('True slot evidence missing');
@@ -88,11 +102,12 @@ export function parseExploreOutput(
   scope: ExploreScope,
   candidates: SlotCandidates = [],
   requestedComponents?: readonly KnownComponent[],
+  proposalSources?: readonly ExploreRepresentationProposalSource[],
 ): ParsedExploreOutput {
   try {
     const fences = [...output.matchAll(/```json\s*\n([\s\S]*?)\n```/g)];
     const last = fences.at(-1);
-    const companion = parseCompanion(last ? last[1]! : output, scope, candidates, requestedComponents);
+    const companion = parseCompanion(last ? last[1]! : output, scope, candidates, requestedComponents, proposalSources);
     return { ok: true, report: last ? output.slice(0, last.index).trim() : '', companion };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };

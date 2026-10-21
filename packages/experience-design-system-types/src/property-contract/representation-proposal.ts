@@ -6,6 +6,7 @@ import {
   type TargetDefinition,
 } from './target-definition.js';
 import { validateSourceGraph, type MapperAvailability, type PropertyModel } from './property-model.js';
+import { isSourceBoundRepresentation, sourceDomainHasKind, sourceJsonCompatibility } from './source-representation.js';
 
 export interface RepresentationProposalDraft {
   componentId: string;
@@ -20,6 +21,11 @@ export interface RepresentationProposalDraft {
   judgment: string;
   desiredType: TargetPropertyType;
   desiredDefinition: TargetDefinition;
+  compatibility?: {
+    status: 'judged-compatible' | 'unresolved' | 'contradicted';
+    sourceUseRefs: string[];
+    unresolvedRequirements: string[];
+  };
 }
 export interface MapperReadiness {
   requirements: Array<{ path: string; capability: string; availability: MapperAvailability }>;
@@ -49,6 +55,7 @@ export function validateProposalDraft(input: unknown): PropertyIssue[] {
     'judgment',
     'desiredType',
     'desiredDefinition',
+    'compatibility',
   ];
   for (const key of Object.keys(draft))
     if (!keys.includes(key))
@@ -87,13 +94,27 @@ export function validateProposalDraft(input: unknown): PropertyIssue[] {
     issues.push({ path: '/desiredType', message: 'Desired type disagrees with definition' });
   for (const issue of validateTargetDefinition(draft.desiredDefinition).issues)
     issues.push({ path: `/desiredDefinition${issue.path}`, message: issue.message });
+  if (draft.compatibility !== undefined) {
+    const compatibility = draft.compatibility;
+    if (
+      !compatibility ||
+      !['judged-compatible', 'unresolved', 'contradicted'].includes(compatibility.status) ||
+      !Array.isArray(compatibility.sourceUseRefs) ||
+      !compatibility.sourceUseRefs.every((ref) => typeof ref === 'string' && ref.length > 0) ||
+      new Set(compatibility.sourceUseRefs).size !== compatibility.sourceUseRefs.length ||
+      !Array.isArray(compatibility.unresolvedRequirements) ||
+      !compatibility.unresolvedRequirements.every((ref) => typeof ref === 'string' && ref.length > 0) ||
+      Object.keys(compatibility).some((key) => !['status', 'sourceUseRefs', 'unresolvedRequirements'].includes(key))
+    )
+      issues.push({ path: '/compatibility', message: 'Invalid source compatibility judgment' });
+  }
   return issues;
 }
-export function validateRepresentationProposal(
+/** Check source binding independently of caller-owned mapper readiness. */
+export function validateRepresentationProposalSource(
   input: unknown,
   model: PropertyModel,
-  mapperReadinessFor: (draft: Readonly<RepresentationProposalDraft>) => MapperReadiness,
-): { valid: boolean; issues: PropertyIssue[]; proposal?: ValidatedRepresentationProposal } {
+): { valid: boolean; issues: PropertyIssue[]; draft?: Readonly<RepresentationProposalDraft> } {
   const issues = validateProposalDraft(input);
   if (issues.length) return { valid: false, issues };
   const draft = input as RepresentationProposalDraft;
@@ -111,8 +132,64 @@ export function validateRepresentationProposal(
     if (!ids.has(id)) issues.push({ path: '/sourceNodeIds', message: 'Unknown source node reference' });
   if (!draft.sourceNodeIds.includes(model.identity.nodeId))
     issues.push({ path: '/sourceNodeIds', message: 'Property source root missing' });
+  if (isSourceBoundRepresentation(draft.desiredType)) {
+    const compatibility = draft.compatibility;
+    const add = (message: string): void => {
+      issues.push({ path: '/compatibility', message });
+    };
+    if (!compatibility) add('Source-bound representation requires an explicit compatibility judgment');
+    else {
+      const uses = new Map((model.source.useEvidence ?? []).map((use) => [use.reference, use.status]));
+      if (compatibility.sourceUseRefs.some((ref) => !uses.has(ref))) add('Unknown current source use reference');
+      if (compatibility.status === 'judged-compatible') {
+        if (
+          !compatibility.sourceUseRefs.length ||
+          compatibility.sourceUseRefs.some((ref) => uses.get(ref) !== 'output-flow-found')
+        )
+          add('Compatible judgment requires current positive output-flow evidence');
+        if (
+          draft.desiredType === 'RichText' &&
+          sourceDomainHasKind(model.source.graph, [
+            'string',
+            'number',
+            'boolean',
+            'bigint',
+            'symbol',
+            'function',
+            'never',
+          ])
+        )
+          add('Primitive source domain contradicts document compatibility');
+        if (draft.desiredType === 'JSON' && sourceJsonCompatibility(model.source.graph) !== 'compatible')
+          add('Complete JSON-compatible source semantics are required');
+        if (draft.desiredType === 'ResourceLink') {
+          const root = model.source.graph.nodes.find((node) => node.id === model.source.graph.rootId);
+          if (
+            model.source.graph.coverage !== 'complete-within-declared-bound' ||
+            root?.nullability?.null.state !== 'absent' ||
+            root.nullability.undefined.state !== 'absent' ||
+            sourceDomainHasKind(model.source.graph, ['boolean'])
+          )
+            add('Complete nonnullable resource-compatible source semantics are required');
+          if (!compatibility.unresolvedRequirements.length)
+            add('Resource and delivery prerequisites must remain explicit');
+        }
+      }
+    }
+    if (draft.desiredType === 'ResourceLink' && Object.hasOwn(draft.desiredDefinition, 'defaultValue'))
+      add('Resource defaults require a verified resource-value delivery contract');
+  }
   if (issues.length) return { valid: false, issues };
-  const frozen = freezeJson(cloneJson(draft));
+  return { valid: true, issues: [], draft: freezeJson(cloneJson(draft)) };
+}
+export function validateRepresentationProposal(
+  input: unknown,
+  model: PropertyModel,
+  mapperReadinessFor: (draft: Readonly<RepresentationProposalDraft>) => MapperReadiness,
+): { valid: boolean; issues: PropertyIssue[]; proposal?: ValidatedRepresentationProposal } {
+  const source = validateRepresentationProposalSource(input, model);
+  if (!source.valid || !source.draft) return { valid: false, issues: source.issues };
+  const frozen = source.draft;
   const readiness = mapperReadinessFor(frozen);
   const unsafe = jsonValueIssue(readiness);
   if (

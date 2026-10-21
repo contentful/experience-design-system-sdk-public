@@ -14,6 +14,7 @@ import {
   ExploreScope,
   ExploreScopeResult,
   ExploreSlotEvidence,
+  jsonEqual,
 } from '@contentful/experience-design-system-types';
 
 const PROP_FIELDS = [
@@ -25,6 +26,7 @@ const PROP_FIELDS = [
   'required',
   'default',
   'description',
+  'representationProposal',
 ] as const;
 const SLOT_FIELDS = ['isRealSlot', 'allowedComponents', 'required'] as const;
 
@@ -128,7 +130,8 @@ export function diffExploration(scopes: ExploreScopeResult[], known?: KnownCompo
       return;
     }
 
-    if (absent.length === 0 && stated.every((provider) => sameValue(provider.value, stated[0]!.value))) {
+    const equal = field === 'representationProposal' ? jsonEqual : sameValue;
+    if (absent.length === 0 && stated.every((provider) => equal(provider.value, stated[0]!.value))) {
       consensus.push({
         path,
         value: stated[0]!.value,

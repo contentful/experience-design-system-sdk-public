@@ -17,6 +17,8 @@ import {
   type TargetDefinition,
   type TargetPropertyType,
 } from './target-definition.js';
+import { finiteSourceValueDomain, isSourceBoundRepresentation } from './source-representation.js';
+import { validateRepresentationProposal, type RepresentationProposalDraft } from './representation-proposal.js';
 
 export type MapperAvailability = 'enabled' | 'unavailable' | 'unknown';
 export interface SourceGraphNode {
@@ -73,10 +75,12 @@ export interface PropertyModel {
     shape: CDFFieldDefinition | null;
     default?: { expression: string; state?: 'value' | 'unsupported'; value?: JsonValue; reason?: string | null };
     observations: JsonValue[];
+    useEvidence?: Array<{ reference: string; status: 'output-flow-found' | 'closed-absence' | 'unresolved' }>;
     originalFacts?: JsonValue;
   };
   category?: 'content' | 'design' | 'state' | 'unattached';
   representation?: CDFFieldDefinition;
+  representationProposal?: RepresentationProposalDraft;
   defaultIntent: DefaultIntent;
   defaultAuthority?: 'generation' | 'review' | 'existing' | 'token';
 }
@@ -100,7 +104,16 @@ export interface PropertyProjection {
   issues: PropertyIssue[];
   requirements: Array<{ path: string; capability: string; availability: MapperAvailability }>;
 }
-const DEFAULT_TARGETS: TargetPropertyType[] = ['String', 'Number', 'Boolean', 'Array', 'Record'];
+const DEFAULT_TARGETS: TargetPropertyType[] = [
+  'String',
+  'Number',
+  'Boolean',
+  'Array',
+  'Record',
+  'Integer',
+  'DateTime',
+  'Literal',
+];
 export function createPropertyProfile(profile: PropertyProfile): Readonly<PropertyProfile> {
   if (!profile || typeof profile.id !== 'string' || !profile.id || profile.revision !== 2)
     throw new Error('Profile requires identity and revision 2');
@@ -132,9 +145,36 @@ export function createPropertyProfile(profile: PropertyProfile): Readonly<Proper
 export const LOCAL_NATIVE_PROPERTY_PROFILE = createPropertyProfile({
   id: 'local-native-cdf',
   revision: 2,
-  mapperTypes: ['string', 'number', 'boolean', 'array', 'record', 'richtext', 'media', 'link', 'token'],
-  targetTypes: ['String', 'Number', 'Boolean', 'Array', 'Record'],
-  defaultSourceTypes: ['string', 'number', 'boolean', 'array', 'record', 'richtext', 'token'],
+  mapperTypes: [
+    'string',
+    'number',
+    'boolean',
+    'array',
+    'record',
+    'richtext',
+    'media',
+    'link',
+    'token',
+    'Integer',
+    'DateTime',
+    'Literal',
+    'RichText',
+    'JSON',
+    'ResourceLink',
+  ],
+  targetTypes: [...TARGET_PROPERTY_TYPES],
+  defaultSourceTypes: [
+    'string',
+    'number',
+    'boolean',
+    'array',
+    'record',
+    'richtext',
+    'token',
+    'Integer',
+    'DateTime',
+    'Literal',
+  ],
   defaultTargetTypes: DEFAULT_TARGETS,
   requirements: [],
 });
@@ -490,6 +530,26 @@ export function validateSourceDomain(graph: PropertySourceGraph, definition: Tar
     if (!node) return;
     const next = new Set(seen);
     next.add(id);
+    if (target.type === 'Literal' || target.type === 'Integer' || target.type === 'DateTime') {
+      const values = finiteSourceValueDomain(graph, id);
+      if (
+        !values?.length ||
+        values.some((value) => validateTargetValue(target, value).length) ||
+        (target.type === 'Literal' && (values.length !== 1 || !jsonEqual(values[0], target.value)))
+      )
+        issues.push({ path, message: `${target.type} requires a proven compatible source domain` });
+      if (target.required !== undefined && node.required !== target.required)
+        issues.push({ path, message: 'Representation does not preserve source requiredness' });
+      if (
+        values?.length &&
+        target.type !== 'Literal' &&
+        (!target.values?.length ||
+          values.some((value) => !target.values!.some((allowed) => jsonEqual(allowed, value))) ||
+          target.values.some((allowed) => !values.some((value) => jsonEqual(allowed, value))))
+      )
+        issues.push({ path, message: 'Finite source domain is not enforced; source retained' });
+      return;
+    }
     if (node.kind === 'reference' || node.kind === 'union' || node.kind === 'intersection') {
       const memberTarget = { ...target };
       if (node.kind === 'union') delete memberTarget.defaultValue;
@@ -605,6 +665,33 @@ export function projectProperty(
       requirements,
     };
   const target = cdfToTarget(cloneJson(representation));
+  if (isSourceBoundRepresentation(target.type)) {
+    const proposal = model.representationProposal;
+    const validation = validateRepresentationProposal(proposal, model, () => ({
+      status: 'unknown',
+      requirements: [{ path: '', capability: 'deployed-mapper', availability: 'unknown' }],
+    }));
+    const compared = cloneJson(target);
+    if (proposal?.desiredDefinition.required === undefined) delete compared.required;
+    if (!validation.valid || !proposal || !jsonEqual(proposal.desiredDefinition, compared)) {
+      unsupported = true;
+      issues.push(...validation.issues, {
+        path: '/representationProposal',
+        message: 'Source-bound proposal must match the complete desired definition',
+      });
+    } else if (proposal.compatibility?.status !== 'judged-compatible') {
+      conditional = true;
+      issues.push({
+        path: '/representationProposal/compatibility',
+        message: 'Source compatibility remains unresolved',
+      });
+    }
+    const root = model.source.graph.nodes.find((node) => node.id === model.source.graph.rootId);
+    if (target.required !== undefined && target.required !== root?.required) {
+      unsupported = true;
+      issues.push({ path: '/required', message: 'Representation does not preserve source requiredness' });
+    }
+  }
   const sourceDefault = model.source.default;
   if (sourceDefault?.state === 'unsupported') {
     issues.push({ path: '/source/default', message: 'Source default unresolved; source retained' });
@@ -630,20 +717,30 @@ export function projectProperty(
     t: TargetDefinition,
     path: string,
     position: 'root' | 'item' | 'field',
+    literalUnderlying = false,
   ): void => {
     if (!profile.mapperTypes.includes(d.$type) || !profile.targetTypes.includes(t.type)) {
       unsupported = true;
       issues.push({ path, message: 'Mapper type unavailable' });
     }
     require(path, 'mapper');
+    if (path && isSourceBoundRepresentation(d.$type) && !literalUnderlying) {
+      unsupported = true;
+      issues.push({ path, message: 'Nested source-bound representation requires its own compatibility judgment' });
+    }
+    if (literalUnderlying && ['RichText', 'ResourceLink'].includes(d.$type)) {
+      unsupported = true;
+      issues.push({ path, message: 'Literal singleton does not prove source-bound underlying semantics' });
+    }
     if ((d.$type === 'array' && position !== 'root') || (d.$type === 'record' && position === 'field')) {
       unsupported = true;
       issues.push({ path, message: 'Native position unavailable; source retained' });
     }
-    if (d.$items) visit(d.$items, t.items!, `${path}/items`, 'item');
+    if (d.$items) visit(d.$items, t.items!, `${path}/items`, 'item', literalUnderlying);
     if (d.$fields)
       for (const [key, field] of Object.entries(d.$fields))
-        visit(field, t.fields![key]!, childPath(childPath(path, 'fields'), key), 'field');
+        visit(field, t.fields![key]!, childPath(childPath(path, 'fields'), key), 'field', literalUnderlying);
+    if (d.valueType) visit(d.valueType, t.valueType!, `${path}/valueType`, position, true);
   };
   visit(representation, target, '', 'root');
   if (model.defaultIntent.action === 'clear') delete target.defaultValue;
@@ -667,6 +764,7 @@ export function projectProperty(
       } else require(path, 'default');
     }
     if (d.$items) defaults(d.$items, t.items!, `${path}/items`);
+    if (d.valueType) defaults(d.valueType, t.valueType!, `${path}/valueType`);
     if (d.$fields)
       for (const [key, field] of Object.entries(d.$fields))
         defaults(field, t.fields![key]!, childPath(childPath(path, 'fields'), key));
@@ -675,7 +773,9 @@ export function projectProperty(
   const validation = validateTargetDefinition(target);
   issues.push(...validation.issues);
   if (validation.valid) {
-    const domainIssues = validateSourceDomain(model.source.graph, target);
+    const domainIssues = isSourceBoundRepresentation(target.type)
+      ? []
+      : validateSourceDomain(model.source.graph, target);
     issues.push(...domainIssues);
     if (domainIssues.length) unsupported = true;
   }

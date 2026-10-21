@@ -89,7 +89,7 @@ export type {
 } from './shared-source.js';
 
 export * from './property-contract/index.js';
-export { validateCDFProperty, cdfToTarget } from './cdf/property-validation.js';
+export { validateCDFProperty, cdfToTarget, targetToCDF } from './cdf/property-validation.js';
 
 export * from './source-input-association.js';
 

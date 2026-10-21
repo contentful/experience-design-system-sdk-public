@@ -8,6 +8,12 @@ export const CDF_PROPERTY_TYPES = [
   'boolean',
   'array',
   'record',
+  'Integer',
+  'DateTime',
+  'Literal',
+  'RichText',
+  'JSON',
+  'ResourceLink',
 ] as const;
 
 export const CDF_PROPERTY_CATEGORIES = ['content', 'design', 'state', 'unattached'] as const;
