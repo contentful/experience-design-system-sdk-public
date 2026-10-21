@@ -81,12 +81,15 @@ it('retains real default source observations through initial/final/cold/review s
             invoke: async ({ prompt }) => {
               prompts.push(prompt);
               return {
-                stdout: JSON.stringify({
-                  tool: 'classify_prop',
-                  prop: 'label',
-                  cdf_type: 'string',
-                  cdf_category: 'content',
-                }),
+                stdout:
+                  JSON.stringify({ tool: 'classify_component' }) +
+                  '\n' +
+                  JSON.stringify({
+                    tool: 'classify_prop',
+                    prop: 'label',
+                    cdf_type: 'string',
+                    cdf_category: 'content',
+                  }),
                 stderr: '',
                 exitCode: 0,
                 timedOut: false,

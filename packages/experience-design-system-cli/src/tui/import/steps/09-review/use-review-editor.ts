@@ -1,6 +1,7 @@
+import { parseStrictJson } from '@contentful/experience-design-system-types';
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { CDFComponentSchema, type CDFComponentEntry } from '@contentful/experience-design-system-types';
-import { openPipelineDb, storeCDFComponents } from '@contentful/experience-design-system-backend-pipeline';
+import { persistReviewEntry } from './persist-review-entry.js';
 import { collectTokenSuggestions } from './token-suggestions.js';
 import type {
   CdfReviewEntry,
@@ -47,13 +48,14 @@ export type UseReviewEditorResult = {
   setTokenReviewEditSelection: Dispatch<SetStateAction<Set<string>>>;
   pendingGRef: { current: boolean };
   currentTokenSuggestions: () => TokenPropSuggestion[];
-  handleEditSave: () => void;
+  handleEditSave: (value?: string) => boolean;
+  setDraftValid: Dispatch<SetStateAction<boolean>>;
   handleEditDiscard: () => void;
-  handleTokenEditSave: (suggestion: TokenPropSuggestion) => void;
+  handleTokenEditSave: (suggestion: TokenPropSuggestion) => boolean;
 };
 
 function parseReviewEntry(draftValue: string): CDFComponentEntry {
-  const parsed = JSON.parse(draftValue) as Record<string, unknown>;
+  const parsed = parseStrictJson(draftValue) as Record<string, unknown>;
   const keys = Object.keys(parsed);
   const entry =
     keys.length === 1 && typeof parsed[keys[0]] === 'object' && parsed[keys[0]] !== null
@@ -82,6 +84,7 @@ export function useReviewEditor({
   const [showJson, setShowJson] = useState(false);
   const [showHiddenProps, setShowHiddenProps] = useState(false);
   const [draftValue, setDraftValue] = useState('');
+  const [draftValid, setDraftValid] = useState(true);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [tokenReviewRow, setTokenReviewRow] = useState(0);
   const [tokenReviewEditing, setTokenReviewEditing] = useState(false);
@@ -109,12 +112,17 @@ export function useReviewEditor({
     });
   };
 
-  const handleEditSave = (): void => {
+  const handleEditSave = (value?: string): boolean => {
     const current = components[selectedIdx];
-    if (!current) return;
-    if (draftValue.trim() === '') return;
+    if (!current) return false;
+    if (!draftValid) {
+      setSaveError('Correct the visible draft before saving');
+      return false;
+    }
+    const draft = value ?? draftValue;
+    if (draft.trim() === '') return true;
     try {
-      const entry = parseReviewEntry(draftValue);
+      const entry = parseReviewEntry(draft);
       const next = components.map((component, index) =>
         index === selectedIdx
           ? {
@@ -124,31 +132,36 @@ export function useReviewEditor({
             }
           : component,
       );
-      const db = openPipelineDb();
-      try {
-        storeCDFComponents(db, extractSessionId, [{ key: current.key, entry }]);
-      } finally {
-        db.close();
-      }
+      const persisted = persistReviewEntry(extractSessionId, current, entry);
+      if (!persisted.ok) throw new Error(persisted.error);
       setComponents(next);
       setDraftValue('');
       setSaveError(null);
-      onEditSaved(next);
+      const warnings = [...persisted.warnings];
+      try {
+        onEditSaved(next);
+      } catch (error) {
+        warnings.push(error instanceof Error ? error.message : 'Saved callback failed');
+      }
+      if (warnings.length) setSaveError(`Saved; warning: ${warnings.join('; ')}`);
+      return true;
     } catch (error: unknown) {
-      setSaveError(String(error));
+      setSaveError(error instanceof Error ? error.message : 'Save failed');
+      return false;
     }
   };
 
   const handleEditDiscard = (): void => {
     setDraftValue('');
+    setDraftValid(true);
     setSaveError(null);
   };
 
-  const persistTokenFields = (propName: string, allowed: string[]): void => {
+  const persistTokenFields = (propName: string, allowed: string[]): string[] => {
     const current = components[selectedIdx];
-    if (!current) return;
+    if (!current) throw new Error('No selected component');
     const prop = current.entry.$properties[propName];
-    if (!prop) return;
+    if (!prop) throw new Error('No selected property');
     const nextEntry: CDFComponentEntry = {
       ...current.entry,
       $properties: {
@@ -159,26 +172,30 @@ export function useReviewEditor({
     const next = components.map((component, index) =>
       index === selectedIdx ? { ...component, entry: nextEntry } : component,
     );
-    const db = openPipelineDb();
-    try {
-      storeCDFComponents(db, extractSessionId, [{ key: current.key, entry: nextEntry }]);
-    } finally {
-      db.close();
-    }
+    const persisted = persistReviewEntry(extractSessionId, current, nextEntry);
+    if (!persisted.ok) throw new Error(persisted.error);
     setComponents(next);
-    pushHistorySnapshot(next, `token-review:${propName}`);
-    onTokenSaved(next);
+    const warnings = [...persisted.warnings];
+    try {
+      pushHistorySnapshot(next, `token-review:${propName}`);
+      onTokenSaved(next);
+    } catch (error) {
+      warnings.push(error instanceof Error ? error.message : 'Saved callback failed');
+    }
+    return warnings;
   };
 
-  const handleTokenEditSave = (suggestion: TokenPropSuggestion): void => {
+  const handleTokenEditSave = (suggestion: TokenPropSuggestion): boolean => {
     const allowed = suggestion.paths.filter((path) => tokenReviewEditSelection.has(path));
-    if (allowed.length === 0) return;
+    if (allowed.length === 0) return false;
     try {
-      persistTokenFields(suggestion.propName, allowed);
+      const warnings = persistTokenFields(suggestion.propName, allowed);
       setTokenReviewEditing(false);
-      setSaveError(null);
+      setSaveError(warnings.length ? `Saved; warning: ${warnings.join('; ')}` : null);
+      return true;
     } catch (error) {
-      setSaveError(String(error));
+      setSaveError(error instanceof Error ? error.message : 'Save failed');
+      return false;
     }
   };
 
@@ -210,6 +227,7 @@ export function useReviewEditor({
     pendingGRef,
     currentTokenSuggestions,
     handleEditSave,
+    setDraftValid,
     handleEditDiscard,
     handleTokenEditSave,
   };

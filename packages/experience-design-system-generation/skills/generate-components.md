@@ -59,7 +59,7 @@ interface RawComponentDefinition {
 }
 ```
 
-The `category` field and deterministic prop buckets are advisory hints. Verify each classification against the declared contract and supplied source evidence. Property names and general domain knowledge are cues for investigation, not proof of a category, value domain, requiredness, or binding behavior. Never produce zero output; preserve uncertain properties and explain unresolved evidence in `reason`.
+The `category` field and deterministic prop buckets are advisory hints. Verify each classification against the declared contract and supplied source evidence. Property names and general domain knowledge are cues for investigation, not proof of a category, value domain, requiredness, or binding behavior. Account for the complete retained inventory; preserve uncertain properties and explain unresolved evidence in `reason`.
 
 ## Source evidence and uncertainty
 
@@ -215,10 +215,10 @@ A declared `string` alternative alongside literal alternatives stays open; a fal
 
 ## Edge cases
 
-- **Prop with unresolvable type** (generics, intersection, callback) → `exclude_prop` with reason `"complex type — not representable in CDF"`.
+- **Unresolved representation** → retain the input with a reasoned `classify_prop` that omits `cdf_type`; exclude only when its semantics justify exclusion.
 - **Component with zero classified props after exclusions** → still emit `classify_component`. The DB entry will have an empty `$properties` object.
-- **Slot not in DB** → skipped with a warning; does not abort the run.
-- **Prop not in DB** → skipped with a warning; does not abort the run.
+- **Unknown slot** → explicit protocol failure; use only retained source slots.
+- **Unknown property** → explicit protocol failure; preserve exact inventory names.
 
 ## Validation step — Pre-emit checklist
 
@@ -230,25 +230,22 @@ Before emitting any tool calls, verify:
 4. Every finite enum has the complete source-supported alternatives; Missing evidence does not close a domain.
 5. Every token-typed property has a source-supported token kind and no `values`.
 6. `required` is a source-supported JSON boolean; omitted requiredness remains unknown.
-7. Use only supported output types; the tool protocol represents numeric inputs as strings and reserves `link`.
+7. Use current supported output types and typed numeric values; do not coerce numbers into strings or infer a ResourceLink contract.
 8. Every slot uses its original source name and authoritative accepted state; unknown restrictions are unset.
 9. Every `classify_slot` has a non-empty rationale; descriptions follow Description content rules.
 10. Input names, structural shapes, framework labels and observed children do not substitute for source reasoning.
 
 Before finishing, review the component output against this checklist and iterate on any warning the supplied evidence can resolve. Preserve unresolved warnings in the relevant `description` or `reason`; do not invent values.
 
-## CRITICAL: Zero-output is a failure
+## Complete source decisions
 
-You MUST produce at least one classify_prop call for this component. A response with zero
-classify_prop/exclude_prop calls means the component will be pushed with no configurable
-properties — this is never acceptable.
-
-If you are genuinely uncertain about every prop, classify each as:
-{"tool":"classify_prop","prop":"<name>","cdf_type":"string","cdf_category":"content","required":false,"description":"Uncertain classification — review recommended"}
-
-An imperfect classification is infinitely better than no classification. That is
-about **classifying a prop rather than dropping it** — it is not a licence to
-invent a `values` list. The uncertain answer is `cdf_type: "string"`, every time.
+Use the independent source inventory, including retained inputs absent from advisory props, to account for every subject exactly once.
+Emit exactly one component decision even when there are no properties; accepted source-owned slots account for their original inputs without a conflicting property decision.
+For an input whose semantics are retained but whose representation is unresolved, emit `classify_prop` with its exact `prop`, a non-empty `reason`, and no `cdf_type` or representation companions.
+This is an accounted held decision requiring review; do not invent String or another native type.
+Use reasoned `exclude_prop` only for an explicit semantic exclusion.
+Defaults remain typed JSON with independent original source evidence; absent intent preserves a known source default, while generation must never set or clear a different known default.
+When a correction is requested, emit decisions only for the reported missing subjects; preserve the original source, previous response, and accepted decisions.
 
 ---
 

@@ -67,6 +67,13 @@ function bindCandidate(
             ? {
                 ...candidate.facts.sourceDefault,
                 location: bindLocation(candidate.facts.sourceDefault.location, capturedByPath),
+                ...(candidate.facts.sourceDefault.dependencies
+                  ? {
+                      dependencies: candidate.facts.sourceDefault.dependencies.map(
+                        (item) => bindLocation(item, capturedByPath)!,
+                      ),
+                    }
+                  : {}),
               }
             : null,
         }
@@ -110,6 +117,13 @@ function bindCandidate(
                 ? {
                     ...observation.fact.sourceDefault,
                     location: bindLocation(observation.fact.sourceDefault.location, capturedByPath),
+                    ...(observation.fact.sourceDefault.dependencies
+                      ? {
+                          dependencies: observation.fact.sourceDefault.dependencies.map(
+                            (item) => bindLocation(item, capturedByPath)!,
+                          ),
+                        }
+                      : {}),
                   }
                 : null,
             },

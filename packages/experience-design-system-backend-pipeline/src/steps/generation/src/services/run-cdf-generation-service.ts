@@ -1,8 +1,10 @@
+import { generateCompleteDecisions } from './property/complete-decisions.js';
+import { componentDecisionInventory } from './property/decision-inventory.js';
 import { materializeProperty, PropertyAdmissionError } from './property/materialize-property.js';
 import { bucketComponentProps } from '@contentful/experience-design-system-extraction';
 import { stripPropProvenance } from '../../../../agents/prompts/helpers/strip-prop-provenance.js';
 import { createHash } from 'node:crypto';
-import { buildPrompt, createLocalCliAgentInvoker, parseToolCalls, type ToolCall } from '../../../../agents/index.js';
+import { buildPrompt, createLocalCliAgentInvoker, type ToolCall } from '../../../../agents/index.js';
 import type { RawComponentDefinition } from '../../../extraction/src/types/component.js';
 import type { CDFComponentEntry, CDFPropertyDefinition, CDFSlotDefinition } from '../../../shared/index.js';
 import type {
@@ -10,7 +12,7 @@ import type {
   RunCdfGenerationServiceOptions,
   RunCdfGenerationServiceResult,
 } from '../types/contract.js';
-import { isAbortError, throwIfAborted } from '../../../../helpers/abort.js';
+import { throwIfAborted } from '../../../../helpers/abort.js';
 import { buildCompilerEvidenceInline } from '../../../../agents/prompts/helpers/build-compiler-evidence-inline.js';
 import {
   projectAcceptedSlots,
@@ -29,7 +31,7 @@ function toolCallsToEntry(component: RawComponentDefinition, calls: ToolCall[]):
   const slots: Record<string, CDFSlotDefinition> = Object.create(null);
   let description: string | undefined;
 
-  const knownProps = new Set(component.props.map((p) => p.name));
+  const knownProps = new Set(componentDecisionInventory(component).properties);
   const knownSlots = new Set(component.slots.map((s) => s.name));
 
   for (const call of calls) {
@@ -38,7 +40,11 @@ function toolCallsToEntry(component: RawComponentDefinition, calls: ToolCall[]):
     } else if (call.tool === 'classify_prop') {
       if (!knownProps.has(call.prop)) continue;
       const materialized = materializeProperty(component, call);
-      if (materialized.projection?.outcome === 'unsupported') throw new PropertyAdmissionError(materialized);
+      if (
+        !materialized.definition ||
+        (materialized.projection && !['supported', 'lossy'].includes(materialized.projection.outcome))
+      )
+        throw new PropertyAdmissionError(materialized);
       const prop = materialized.definition;
       properties[call.prop] = prop;
     } else if (call.tool === 'classify_slot') {
@@ -65,8 +71,7 @@ async function generateOne(
   total: number,
 ): Promise<{ entry?: CDFComponentEntry; failure?: CdfGenerationFailure; warnings: string[] }> {
   throwIfAborted(options.signal);
-  const { agent, model, skillPathOverride, skillContentOverride, onCacheLookup, onCacheStore, onProgress, onWarning } =
-    options;
+  const { agent, model, skillPathOverride, skillContentOverride, onCacheStore, onProgress, onWarning } = options;
 
   onProgress?.(component.name, index, total);
 
@@ -94,37 +99,27 @@ async function generateOne(
 
   const promptHash = hashString(prompt);
 
-  const cached = options.acceptedSlots === undefined ? onCacheLookup?.(inputHash, promptHash) : undefined;
-  throwIfAborted(options.signal);
-  if (cached) return { entry: cached, warnings: [] };
-
   options.onDebugEvent?.('prop-buckets.generate', { ...componentBuckets });
   const invoker = createLocalCliAgentInvoker();
-  let agentResult;
-  try {
-    agentResult = await invoker.invoke({ agent, model, prompt, timeoutMs: AGENT_TIMEOUT_MS, signal: options.signal });
-  } catch (error) {
-    if (isAbortError(error) || options.signal?.aborted) throwIfAborted(options.signal);
-    return {
-      failure: { componentName: component.name, error: error instanceof Error ? error.message : String(error) },
-      warnings: [],
-    };
-  }
+  const completed = await generateCompleteDecisions({
+    originalPrompt: prompt,
+    inventory: componentDecisionInventory(component, options.acceptedSlots),
+    timeoutMs: AGENT_TIMEOUT_MS,
+    signal: options.signal,
+    validate: (call) => {
+      if (call.tool === 'classify_prop') materializeProperty(component, call);
+    },
+    invoke: ({ prompt: attemptPrompt, timeoutMs, signal }) =>
+      invoker.invoke({ agent, model, prompt: attemptPrompt, timeoutMs, signal }),
+  });
   throwIfAborted(options.signal);
-
-  if (agentResult.timedOut || agentResult.exitCode !== 0) {
-    const error = agentResult.timedOut
-      ? 'agent timed out'
-      : `agent exited with code ${agentResult.exitCode}: ${agentResult.stderr.slice(0, 500)}`;
-    return { failure: { componentName: component.name, error }, warnings: [] };
-  }
-
-  const { calls, warnings } = parseToolCalls(agentResult.stdout);
-  throwIfAborted(options.signal);
-  for (const w of warnings) {
+  const calls = completed.calls;
+  const warnings = completed.diagnostics;
+  for (const warning of warnings) {
     throwIfAborted(options.signal);
-    onWarning?.(`${component.name}: ${w}`);
+    onWarning?.(`${component.name}: ${warning}`);
   }
+  if (!completed.complete) return { failure: { componentName: component.name, error: warnings.join('; ') }, warnings };
 
   throwIfAborted(options.signal);
   let materialized: CDFComponentEntry;
@@ -157,6 +152,8 @@ export async function runCdfGenerationService(
 ): Promise<RunCdfGenerationServiceResult> {
   const { components, concurrency = DEFAULT_CONCURRENCY } = options;
   throwIfAborted(options.signal);
+  const identities = components.map((component) => JSON.stringify([component.name, component.source]));
+  if (new Set(identities).size !== identities.length) throw new Error('Duplicate component source identity');
 
   const resultComponents: CDFComponentEntry[] = [];
   const allWarnings: string[] = [];

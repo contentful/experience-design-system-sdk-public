@@ -1,4 +1,4 @@
-import type { ParameterDeclaration, Type } from 'ts-morph';
+import type { Node, ParameterDeclaration, Type } from 'ts-morph';
 import type { RawPropDefinition } from '../../../types/component.js';
 import type { SourceCandidateObservation } from '../../../candidates/types.js';
 import { observeRawProps, observeTypeProps } from '../../../candidates/source-candidates.js';
@@ -19,6 +19,7 @@ export function collectReactSourceObservations(
     syntheticDomProps: readonly RawPropDefinition[];
     runtimeProps: readonly RawPropDefinition[];
     sourceDefaults: ReadonlyMap<string, string>;
+    sourceDefaultNodes?: ReadonlyMap<string, Node>;
   },
 ): SourceCandidateObservation[] {
   const declared = new Map(props.map((prop) => [prop.name, prop]));
@@ -33,7 +34,10 @@ export function collectReactSourceObservations(
     });
   }
   return [
-    ...observeTypeProps(type, [...declared.values()], sourcePath, { sourceDefaults: options.sourceDefaults }),
+    ...observeTypeProps(type, [...declared.values()], sourcePath, {
+      sourceDefaults: options.sourceDefaults,
+      sourceDefaultNodes: options.sourceDefaultNodes,
+    }),
     ...observeRawProps(options.syntheticDomProps, 'declaration', { origin: 'inherited-dom' }),
     ...observeRawProps(
       options.suppressProps ? [] : inferPrimitiveDomPropsFromImplementation(funcNode, parameter),
@@ -44,8 +48,11 @@ export function collectReactSourceObservations(
         ? []
         : extractDestructuredBindingFallbackProps(funcNode, parameter, options.renderPropSlotNames),
       'binding',
-      { sourceDefaults: options.sourceDefaults },
+      { sourceDefaults: options.sourceDefaults, sourceDefaultNodes: options.sourceDefaultNodes },
     ),
-    ...observeRawProps(options.runtimeProps, 'runtime-object', { sourceDefaults: options.sourceDefaults }),
+    ...observeRawProps(options.runtimeProps, 'runtime-object', {
+      sourceDefaults: options.sourceDefaults,
+      sourceDefaultNodes: options.sourceDefaultNodes,
+    }),
   ];
 }

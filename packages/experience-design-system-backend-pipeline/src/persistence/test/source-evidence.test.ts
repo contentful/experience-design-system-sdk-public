@@ -188,12 +188,17 @@ describe('saved extraction source evidence', () => {
         invoke: async ({ prompt }) => {
           prompts.push(prompt);
           return {
-            stdout: JSON.stringify({
-              tool: 'classify_prop',
-              prop: 'label',
-              cdf_type: 'string',
-              cdf_category: 'content',
-            }),
+            stdout:
+              JSON.stringify({ tool: 'classify_component' }) +
+              '\n' +
+              JSON.stringify({ tool: 'exclude_prop', prop: '__proto__', reason: 'Retained source-only evidence' }) +
+              '\n' +
+              JSON.stringify({
+                tool: 'classify_prop',
+                prop: 'label',
+                cdf_type: 'string',
+                cdf_category: 'content',
+              }),
             stderr: '',
             exitCode: 0,
             timedOut: false,
@@ -231,7 +236,8 @@ describe('saved extraction source evidence', () => {
           0,
           1,
         );
-        expect(generated.failed).toBe(false);
+        expect(generated.failed).toBe(true);
+        expect(generated.error).toContain('Source inadequate');
         expect(prompts.at(-1)).toContain('FROZEN_SOURCE_A');
         expect(prompts.at(-1)).not.toContain('CHANGED_SOURCE_B');
         expect(prompts.at(-1)).toContain(capture.captureId);

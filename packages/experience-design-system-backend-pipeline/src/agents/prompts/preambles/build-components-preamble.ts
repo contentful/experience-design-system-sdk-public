@@ -32,11 +32,15 @@ Rules:
 - Defaults are typed JSON values; omit them when unknown, use \`default_intent: {"action":"clear"}\` to clear a decision, and never execute source expressions or narrow a declared domain from observed/default values.
 - Source graphs and defaults remain independent of advisory shape/category/representation; unsupported deeper or cyclic positions retain source evidence and require an explicit plan with unknown mapper/cardinality context.
 - Proposal stdout is staged typed drafts only; caller readiness and activation are separate.
-- Every prop in the input must have exactly one call: either classify_prop or exclude_prop.
+- Account for every independent inventory input exactly once, including inputs absent from advisory props: classify_prop, reasoned exclude_prop, or its accepted source-owned slot.
+- Unresolved representation uses a reasoned classify_prop without cdf_type or representation companions; retain semantics and held readiness without inventing String.
+- Emit exactly one classify_component, including components with no properties.
+- Corrections supply only reported missing decisions and retain accepted decisions from this invocation.
+- Absent default intent preserves the original source default; generated set/clear may not change a known source default.
 - Every slot in the input must have exactly one classify_slot call.
 - Valid cdf_type values: string, number, boolean, array, record, richtext, media, link, token
 - Valid cdf_category values: content, design, state
-- For enum type, always include \`values\` (non-empty string array of the variant names the prop accepts).
+- Finite string and number domains use typed \`values\`; enum is not a supported type.
 - For token type, always include \`token_kind\` (DTCG \$type, e.g. "color"). **Never emit \`values\` for \`cdf_type: "token"\` props** — an enum prop's list holds variant names; a token prop's list holds design token paths, produced separately and never by you. Emitting \`values\` on a token prop makes the definition invalid.
 - Never emit both "values" and "token_kind" on one prop.
 - Preserve source-declared alternatives, requiredness, defaults and open domains. A name, shape, framework, caller or lookup does not prove a complete domain.

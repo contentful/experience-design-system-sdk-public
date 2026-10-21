@@ -4,11 +4,18 @@ vi.mock('../../src/agents/invoker/create-local-cli-agent-invoker.js', () => ({
   createLocalCliAgentInvoker: () => ({
     invoke: async ({ prompt }: { prompt: string }) => {
       invocation.prompts.push(prompt);
+      const decoded = JSON.parse(prompt.match(/Raw component data \(JSON\):\n```json\n([\s\S]*?)\n```/)![1]!);
+      const raw = Array.isArray(decoded) ? decoded[0] : decoded;
       return {
         stdout: [
+          { tool: 'classify_component' },
           { tool: 'classify_prop', prop: 'title', cdf_type: 'string', cdf_category: 'content' },
-          { tool: 'classify_slot', slot: 'body', allowed_components: ['Text'], required: true },
-          { tool: 'classify_slot', slot: 'renderBody', allowed_components: ['Text'], required: true },
+          ...raw.slots.map((slot: { name: string }) => ({
+            tool: 'classify_slot',
+            slot: slot.name,
+            allowed_components: ['Text'],
+            required: true,
+          })),
         ]
           .map((call) => JSON.stringify(call))
           .join('\n'),

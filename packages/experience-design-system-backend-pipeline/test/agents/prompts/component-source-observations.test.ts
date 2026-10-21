@@ -9,7 +9,14 @@ vi.mock('../../../src/agents/index.js', async (importOriginal) => ({
   createLocalCliAgentInvoker: () => ({
     invoke: async ({ prompt }: { prompt: string }) => {
       agent.prompts.push(prompt);
-      return { stdout: '', stderr: '', exitCode: 0, timedOut: false };
+      return {
+        stdout: prompt.includes('Generate from source.')
+          ? '{"tool":"classify_component"}\n{"tool":"classify_prop","prop":"mode","cdf_type":"string","cdf_category":"content","values":["short","long"]}'
+          : '',
+        stderr: '',
+        exitCode: 0,
+        timedOut: false,
+      };
     },
   }),
 }));

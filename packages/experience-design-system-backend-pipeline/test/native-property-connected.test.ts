@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import { extractReactComponents, captureSourceEvidence } from '@contentful/experience-design-system-extraction';
-import { validateCDF, buildCDF } from '@contentful/experience-design-system-types';
+import { validateCDF, buildCDF, type ClassificationToolCall } from '@contentful/experience-design-system-types';
 import {
   openPipelineDb,
   getOrCreateSession,
@@ -15,6 +15,8 @@ import {
   storeCDFComponents,
   loadPropertyDecisions,
   applyToolCalls,
+  evaluateComponentReadiness,
+  loadSelectedCDFComponents,
 } from '../src/persistence/src/session/repositories/db.js';
 import { runOneGenerateComponent } from '../src/orchestrators/run-generate-components-session/helpers/run-one-generate-component.js';
 import { materializeProperty } from '../src/steps/generation/src/services/property/materialize-property.js';
@@ -67,17 +69,20 @@ it('connects actual producer to saved source, fresh session/direct generation, u
   const fresh = loadRawComponents(db, sessionId)[0]!;
   expect(fresh.sourceEvidenceReadStatus).toBe('available');
   const snapshot = JSON.stringify(fresh.sourceCandidates);
-  const calls = fresh.props.map((prop) => {
-    const shape = fresh.sourceCandidates!.find((c) => c.name === prop.name)!.facts!.advisoryShape!;
-    return {
-      tool: 'classify_prop',
-      prop: prop.name,
-      cdf_type: shape.$type,
-      cdf_category: 'content',
-      ...(shape.$items ? { items: shape.$items } : {}),
-      ...(shape.$fields ? { fields: shape.$fields } : {}),
-    };
-  });
+  const calls: ClassificationToolCall[] = [
+    { tool: 'classify_component' },
+    ...fresh.props.map((prop): ClassificationToolCall => {
+      const shape = fresh.sourceCandidates!.find((c) => c.name === prop.name)!.facts!.advisoryShape!;
+      return {
+        tool: 'classify_prop',
+        prop: prop.name,
+        cdf_type: shape.$type,
+        cdf_category: 'content',
+        ...(shape.$items ? { items: shape.$items } : {}),
+        ...(shape.$fields ? { fields: shape.$fields } : {}),
+      };
+    }),
+  ];
   fake.stdout = calls.map((call) => JSON.stringify(call)).join('\n');
   const prompts: string[] = [];
   const generated = await runOneGenerateComponent(
@@ -131,7 +136,7 @@ it('connects actual producer to saved source, fresh session/direct generation, u
   const reopened = loadCDFComponents(db, sessionId)[0]!;
   expect(reopened.entry.$properties).toEqual(first.entry.$properties);
   expect(JSON.stringify(loadRawComponents(db, sessionId)[0]!.sourceCandidates)).toBe(snapshot);
-  expect(loadPropertyDecisions(db, sessionId).every((decision) => decision.revision === 2)).toBe(true);
+  expect(loadPropertyDecisions(db, sessionId).every((decision) => decision.revision === 1)).toBe(true);
   const before = JSON.stringify(loadCDFComponents(db, sessionId));
   expect(() =>
     applyToolCalls(
@@ -140,6 +145,7 @@ it('connects actual producer to saved source, fresh session/direct generation, u
       fresh.component_id,
       'Example',
       [
+        { tool: 'classify_component' },
         {
           tool: 'classify_prop',
           prop: 'rows',
@@ -148,11 +154,14 @@ it('connects actual producer to saved source, fresh session/direct generation, u
           items: first.entry.$properties.rows!.$items,
           default: [{ 'a.b/λ': 2 }],
         },
+        ...calls.filter((call) => 'prop' in call && call.prop !== 'rows'),
       ],
       [],
     ),
   ).toThrow();
   expect(JSON.stringify(loadCDFComponents(db, sessionId))).toBe(before);
+  expect(evaluateComponentReadiness(db, sessionId, fresh.component_id).import.ready).toBe(true);
+  expect(loadSelectedCDFComponents(db, sessionId, new Set([fresh.component_id]))).toHaveLength(1);
   const cdf = buildCDF([reopened], []);
   expect(validateCDF(cdf).valid).toBe(true);
   expect(JSON.parse(JSON.stringify(cdf))).toEqual(cdf);
@@ -179,10 +188,13 @@ it('saves explicit unsupported deeper outcomes and alternatives without activati
       sessionId,
       saved.component_id,
       'Deep',
-      [{ tool: 'classify_prop', prop: 'config', cdf_type: 'record', cdf_category: 'content', fields: shape.$fields }],
+      [
+        { tool: 'classify_component' },
+        { tool: 'classify_prop', prop: 'config', cdf_type: 'record', cdf_category: 'content', fields: shape.$fields },
+      ],
       [],
     );
-    expect(result).toMatchObject({ projectionBlocked: true, classified: 0 });
+    expect(result).toMatchObject({ projectionBlocked: true, classified: 1 });
     expect(loadPropertyDecisions(db, sessionId)[0]!.decision).toMatchObject({
       admission: 'unsupported',
       projection: { outcome: 'unsupported' },
@@ -235,10 +247,13 @@ it('retains unsafe numeric-domain outcomes without activating rounded native val
         sessionId,
         saved.component_id,
         saved.name,
-        [{ tool: 'classify_prop', prop: 'count', cdf_type: 'number', cdf_category: 'content' }],
+        [
+          { tool: 'classify_component' },
+          { tool: 'classify_prop', prop: 'count', cdf_type: 'number', cdf_category: 'content' },
+        ],
         [],
       ),
-    ).toMatchObject({ projectionBlocked: true, classified: 0 });
+    ).toMatchObject({ projectionBlocked: true, classified: 1 });
     expect(loadPropertyDecisions(db, sessionId)[0]!.decision).toMatchObject({ admission: 'unsupported' });
     expect(loadCDFComponents(db, sessionId)[0]?.entry.$properties.count).toBeUndefined();
     expect(loadRawComponents(db, sessionId)[0]!.sourceCandidates![0]!.facts!.sourceDefault!.expression).toBe(
@@ -265,8 +280,8 @@ it('applies nested source-mapper default eligibility without erasing the saved r
     fields: { image: { $type: 'media', $default: 'example.png' }, title: { $type: 'string', $default: '' } },
   });
   expect(materialized.projection!.outcome).toBe('lossy');
-  expect(Object.hasOwn(materialized.definition.$fields!.image!, '$default')).toBe(false);
-  expect(materialized.definition.$fields!.title!.$default).toBe('');
+  expect(Object.hasOwn(materialized.definition!.$fields!.image!, '$default')).toBe(false);
+  expect(materialized.definition!.$fields!.title!.$default).toBe('');
   expect(materialized.model!.representation!.$fields!.image!.$default).toBe('example.png');
   expect(materialized.projection!.issues).toContainEqual({
     path: '/fields/image/defaultValue',
@@ -283,6 +298,7 @@ it('applies nested source-mapper default eligibility without erasing the saved r
       saved.component_id,
       saved.name,
       [
+        { tool: 'classify_component' },
         {
           tool: 'classify_prop',
           prop: 'settings',
@@ -299,6 +315,251 @@ it('applies nested source-mapper default eligibility without erasing the saved r
     entry.$properties.settings!.$fields!.image!.$default = 'example.png';
     expect(() => storeCDFComponents(db, sessionId, [{ key: saved.name, entry }])).toThrow('Default unavailable');
     expect(JSON.stringify(loadPropertyDecisions(db, sessionId))).toBe(before);
+  } finally {
+    db.close();
+  }
+});
+
+async function createReadyPair() {
+  directory = mkdtempSync(join(tmpdir(), 'decision-readiness-'));
+  const file = join(directory, 'Example.tsx');
+  writeFileSync(
+    file,
+    "type Props={count:number;label:string};export function Example({count=0,label=''}:Props){return <div/>};export function Other({count=0,label=''}:Props){return <div/>}",
+  );
+  const extracted = await extractReactComponents([file]);
+  const components = extracted.components.filter((component) => ['Example', 'Other'].includes(component.name));
+  const db = openPipelineDb(':memory:');
+  const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+  storeRawComponents(db, sessionId, components);
+  const saved = loadRawComponents(db, sessionId);
+  const capture = await captureSourceEvidence({
+    projectRoot: directory,
+    filePaths: [file],
+    components: saved.map((component) => ({
+      componentId: component.component_id,
+      name: component.name,
+      sourcePath: file,
+    })),
+  });
+  const stepId = createStep(db, sessionId, 'analyze extract', { project: directory });
+  completeExtractionWithSourceEvidence(db, {
+    sessionId,
+    stepId,
+    components,
+    cycles: [],
+    scannedFiles: [file],
+    capture,
+    observations: { accepted: [], rejected: [] },
+  });
+  const source = loadRawComponents(db, sessionId);
+  for (const component of source)
+    applyToolCalls(
+      db,
+      sessionId,
+      component.component_id,
+      component.name,
+      [
+        { tool: 'classify_component' },
+        { tool: 'classify_prop', prop: 'count', cdf_type: 'number', cdf_category: 'content' },
+        { tool: 'classify_prop', prop: 'label', cdf_type: 'string', cdf_category: 'content' },
+      ],
+      [],
+    );
+  return { db, sessionId, source, stepId };
+}
+
+it('gates exact selected subsets and detects changed source/default/ledger evidence on reopen', async () => {
+  const { db, sessionId, source, stepId } = await createReadyPair();
+  try {
+    const chosen = source.find((component) => component.name === 'Example')!;
+    const other = source.find((component) => component.name === 'Other')!;
+    expect(evaluateComponentReadiness(db, sessionId, chosen.component_id).import.ready).toBe(true);
+    db.prepare('DELETE FROM raw_component_decisions WHERE session_id=? AND component_id=?').run(
+      sessionId,
+      other.component_id,
+    );
+    expect(loadSelectedCDFComponents(db, sessionId, new Set([chosen.component_id]))).toHaveLength(1);
+    expect(() => loadSelectedCDFComponents(db, sessionId)).toThrow('not ready');
+    expect(() => loadSelectedCDFComponents(db, sessionId, new Set(['missing']))).toThrow('Unknown');
+    db.prepare("UPDATE raw_components SET status='generate-rejected' WHERE session_id=? AND component_id=?").run(
+      sessionId,
+      other.component_id,
+    );
+    expect(loadSelectedCDFComponents(db, sessionId)).toHaveLength(1);
+    const row = db
+      .prepare('SELECT candidates_json FROM raw_component_source_evidence WHERE session_id=? AND component_id=?')
+      .get(sessionId, chosen.component_id) as { candidates_json: string };
+    const candidates = JSON.parse(row.candidates_json);
+    candidates[0].facts.sourceDefault.value = 17;
+    db.prepare('UPDATE raw_component_source_evidence SET candidates_json=? WHERE session_id=? AND component_id=?').run(
+      JSON.stringify(candidates),
+      sessionId,
+      chosen.component_id,
+    );
+    expect(
+      loadRawComponents(db, sessionId).find((component) => component.component_id === chosen.component_id)
+        ?.sourceEvidenceReadStatus,
+    ).toBe('corrupt');
+    expect(() => loadSelectedCDFComponents(db, sessionId, new Set([chosen.component_id]))).toThrow('not ready');
+    db.prepare('UPDATE raw_component_source_evidence SET candidates_json=? WHERE session_id=? AND component_id=?').run(
+      row.candidates_json,
+      sessionId,
+      chosen.component_id,
+    );
+    db.prepare("UPDATE steps SET status='failed' WHERE id=?").run(stepId);
+    expect(evaluateComponentReadiness(db, sessionId, chosen.component_id).source.adequate).toBe(false);
+  } finally {
+    db.close();
+  }
+});
+
+it('rolls back late SQLite faults and retains no-op producer intent while protecting compatible human choices', async () => {
+  const { db, sessionId, source } = await createReadyPair();
+  try {
+    const chosen = source.find((component) => component.name === 'Example')!;
+    const original = loadCDFComponents(db, sessionId).find(
+      (component) => component.componentId === chosen.component_id,
+    )!;
+    const edited = structuredClone(original);
+    edited.entry.$properties.count!.$default = 2;
+    const before = JSON.stringify(loadPropertyDecisions(db, sessionId));
+    db.exec(
+      "CREATE TRIGGER fail_late BEFORE UPDATE ON raw_component_decisions BEGIN SELECT RAISE(ABORT,'late write failed'); END",
+    );
+    expect(() => storeCDFComponents(db, sessionId, [edited])).toThrow('late write failed');
+    expect(JSON.stringify(loadPropertyDecisions(db, sessionId))).toBe(before);
+    expect(
+      loadCDFComponents(db, sessionId).find((component) => component.componentId === chosen.component_id)!.entry,
+    ).toEqual(original.entry);
+    db.exec('DROP TRIGGER fail_late');
+    storeCDFComponents(db, sessionId, [edited]);
+    const human = loadPropertyDecisions(db, sessionId).find(
+      (decision) => decision.componentId === chosen.component_id && decision.propertyName === 'count',
+    )!;
+    expect(human.decision).toMatchObject({ kind: 'review', defaultIntent: { action: 'set', value: 2 } });
+    applyToolCalls(
+      db,
+      sessionId,
+      chosen.component_id,
+      chosen.name,
+      [
+        { tool: 'classify_component' },
+        { tool: 'classify_prop', prop: 'count', cdf_type: 'number', cdf_category: 'design' },
+        { tool: 'classify_prop', prop: 'label', cdf_type: 'string', cdf_category: 'content' },
+      ],
+      [],
+    );
+    expect(
+      loadCDFComponents(db, sessionId).find((component) => component.componentId === chosen.component_id)!.entry
+        .$properties.count,
+    ).toEqual(edited.entry.$properties.count);
+    expect(
+      loadPropertyDecisions(db, sessionId).find(
+        (decision) => decision.componentId === chosen.component_id && decision.propertyName === 'count',
+      )!.revision,
+    ).toBe(human.revision);
+    storeRawComponents(
+      db,
+      sessionId,
+      [...source].reverse().map((component) => ({ ...component, props: [...component.props].reverse() })),
+      { preserveCDF: true },
+    );
+    expect(
+      loadCDFComponents(db, sessionId).find((component) => component.componentId === chosen.component_id)!.entry
+        .$properties.count!.$default,
+    ).toBe(2);
+    expect(evaluateComponentReadiness(db, sessionId, chosen.component_id).import.ready).toBe(true);
+  } finally {
+    db.close();
+  }
+});
+
+it('persists reasoned absent/excluded source decisions as accounted held output without reviving a prior representation', async () => {
+  const { db, sessionId, source } = await createReadyPair();
+  try {
+    const chosen = source.find((component) => component.name === 'Example')!;
+    applyToolCalls(
+      db,
+      sessionId,
+      chosen.component_id,
+      chosen.name,
+      [
+        { tool: 'classify_component' },
+        { tool: 'classify_prop', prop: 'count', cdf_category: 'content', reason: 'Representation requires review' },
+        { tool: 'exclude_prop', prop: 'label', reason: 'Runtime-only text' },
+      ],
+      [],
+    );
+    const readiness = evaluateComponentReadiness(db, sessionId, chosen.component_id);
+    expect(readiness.accounting.complete).toBe(true);
+    expect(readiness.source.adequate).toBe(true);
+    expect(readiness.import.ready).toBe(false);
+    expect(
+      loadCDFComponents(db, sessionId).find((component) => component.componentId === chosen.component_id)!.entry
+        .$properties,
+    ).toEqual({});
+    const decisions = loadPropertyDecisions(db, sessionId).filter(
+      (decision) => decision.componentId === chosen.component_id,
+    );
+    expect(decisions.find((decision) => decision.propertyName === 'count')!.definition).toBeNull();
+    expect(decisions.find((decision) => decision.propertyName === 'label')!.decision).toMatchObject({
+      disposition: 'exclude',
+      reason: 'Runtime-only text',
+      identity: { componentId: chosen.component_id, key: 'label' },
+      producer: { kind: 'generation' },
+    });
+    expect(() => loadSelectedCDFComponents(db, sessionId, new Set([chosen.component_id]))).toThrow('not ready');
+  } finally {
+    db.close();
+  }
+});
+
+it('holds changed source decisions and never transfers a renamed property by position', async () => {
+  const { db, sessionId, source } = await createReadyPair();
+  try {
+    const chosen = source.find((component) => component.name === 'Example')!;
+    const edited = loadCDFComponents(db, sessionId).find((component) => component.componentId === chosen.component_id)!;
+    edited.entry.$properties.count!.$default = 2;
+    storeCDFComponents(db, sessionId, [edited]);
+    const file = join(directory, 'Example.tsx');
+    writeFileSync(
+      file,
+      "type Props={total:string;label:string};export function Example({total='0',label=''}:Props){return <div/>};export function Other({total='0',label=''}:Props){return <div/>}",
+    );
+    const components = (await extractReactComponents([file])).components.filter((component) =>
+      ['Example', 'Other'].includes(component.name),
+    );
+    const capture = await captureSourceEvidence({
+      projectRoot: directory,
+      filePaths: [file],
+      components: source.map((component) => ({
+        componentId: component.component_id,
+        name: component.name,
+        sourcePath: file,
+      })),
+    });
+    completeExtractionWithSourceEvidence(db, {
+      sessionId,
+      stepId: createStep(db, sessionId, 'analyze extract', { project: directory }),
+      components,
+      cycles: [],
+      scannedFiles: [file],
+      capture,
+      observations: { accepted: [], rejected: [] },
+    });
+    const fresh = loadRawComponents(db, sessionId).find((component) => component.name === 'Example')!;
+    expect(fresh.sourceEvidenceReadStatus).toBe('available');
+    expect(fresh.props.find((prop) => prop.name === 'total')).toBeTruthy();
+    expect(
+      loadPropertyDecisions(db, sessionId).some(
+        (decision) => decision.componentId === chosen.component_id && decision.propertyName === 'total',
+      ),
+    ).toBe(false);
+    expect(evaluateComponentReadiness(db, sessionId, chosen.component_id).accounting.missing).toContain(
+      'property:total',
+    );
+    expect(() => loadSelectedCDFComponents(db, sessionId, new Set([chosen.component_id]))).toThrow('not ready');
   } finally {
     db.close();
   }

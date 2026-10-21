@@ -1,4 +1,6 @@
 import ts from 'typescript';
+import { SourceValueBindings } from '../component-facts/source-value-bindings.js';
+import { sourceLocation } from './source-location.js';
 import { createHash } from 'node:crypto';
 import type { Node, Type } from 'ts-morph';
 import type {
@@ -11,9 +13,57 @@ import type {
 } from './types.js';
 
 /** Decode closed syntax only; identifiers, calls, spreads and computed keys remain evidence. */
-export function decodeSourceDefault(expression: string, location: SourceFactLocation | null): SourceDefaultFact {
+export function decodeSourceDefault(
+  expression: string,
+  location: SourceFactLocation | null,
+  initializerNode?: Node,
+): SourceDefaultFact {
+  const dependencies: SourceFactLocation[] = [];
+  const project = initializerNode?.getSourceFile().getProject();
+  const checker = project?.getTypeChecker().compilerObject as ts.TypeChecker | undefined;
+  const bindings = checker ? new SourceValueBindings(checker) : undefined;
+  let scanComplete = true;
+  if (bindings && project) {
+    let remaining = 100_000;
+    for (const file of project.getSourceFiles()) {
+      if (file.isDeclarationFile()) continue;
+      if (remaining <= 0 || !bindings.scan(file.compilerNode as unknown as ts.SourceFile, remaining, true)) {
+        scanComplete = false;
+        break;
+      }
+      remaining = 100_000 - bindings.scanNodes;
+    }
+  }
+  const ancestors = new Set<ts.Node>();
+  let decodedNodes = 0;
   const source = ts.createSourceFile('__default__.ts', `const value = (${expression});`, ts.ScriptTarget.Latest, true);
   const decode = (node: ts.Expression): SourceJsonValue => {
+    if (++decodedNodes > 2048 || ancestors.size >= 64) throw new Error('Default resolution budget');
+    if (ancestors.has(node)) throw new Error('Cyclic default binding');
+    if (ts.isIdentifier(node)) {
+      const declaration = bindings?.declaration(node);
+      if (
+        !scanComplete ||
+        !declaration ||
+        !ts.isVariableDeclaration(declaration) ||
+        !declaration.initializer ||
+        !(declaration.parent.flags & ts.NodeFlags.Const) ||
+        bindings!.mutated(declaration)
+      )
+        throw new Error('Unresolved or write-invalidated default binding');
+      const declarationNode = project
+        ?.getSourceFile(declaration.getSourceFile().fileName)
+        ?.getDescendantAtPos(declaration.getStart());
+      if (declarationNode) dependencies.push(sourceLocation(declarationNode));
+      ancestors.add(node);
+      ancestors.add(declaration);
+      try {
+        return decode(declaration.initializer);
+      } finally {
+        ancestors.delete(node);
+        ancestors.delete(declaration);
+      }
+    }
     if (
       ts.isParenthesizedExpression(node) ||
       ts.isAsExpression(node) ||
@@ -44,9 +94,15 @@ export function decodeSourceDefault(expression: string, location: SourceFactLoca
         if (!ts.isPropertyAssignment(property)) throw new Error('Nonliteral object member');
         const computed = ts.isComputedPropertyName(property.name);
         const name = computed ? property.name.expression : property.name;
-        if (!(ts.isStringLiteral(name) || ts.isNumericLiteral(name) || (!computed && ts.isIdentifier(name))))
-          throw new Error('Nonliteral object member');
-        const key = ts.isNumericLiteral(name) ? String(Number(name.text)) : name.text;
+        const decodedKey = computed
+          ? decode(name as ts.Expression)
+          : ts.isIdentifier(name) || ts.isStringLiteral(name)
+            ? name.text
+            : ts.isNumericLiteral(name)
+              ? Number(name.text)
+              : undefined;
+        if (typeof decodedKey !== 'string' && typeof decodedKey !== 'number') throw new Error('Unresolved object key');
+        const key = String(decodedKey);
         if (!computed && key === '__proto__') throw new Error('Prototype setter is not an own data member');
         if (Object.hasOwn(result, key)) throw new Error('Duplicate literal key');
         result[key] = decode(property.initializer);
@@ -62,11 +118,19 @@ export function decodeSourceDefault(expression: string, location: SourceFactLoca
       throw new Error('Expected one expression');
     const initializer = source.statements[0]!.declarationList.declarations[0]!.initializer;
     if (!initializer) throw new Error('Missing expression');
-    return { expression, location, state: 'value', value: decode(initializer), reason: null };
+    return {
+      expression,
+      location,
+      ...(initializerNode ? { dependencies } : {}),
+      state: 'value',
+      value: decode(initializerNode ? (initializerNode.compilerNode as unknown as ts.Expression) : initializer),
+      reason: null,
+    };
   } catch (error) {
     return {
       expression,
       location,
+      ...(initializerNode ? { dependencies } : {}),
       state: 'unsupported',
       reason: error instanceof Error ? error.message : String(error),
     };
@@ -141,11 +205,20 @@ export function captureNativeSource(
     req: boolean,
     keys: string[],
     depth: number,
+    path: NonNullable<SourceTypeNode['path']> = keys.map((key) => ({ kind: 'field', key })),
   ): { id: string; shape: NativeSourceShape | null } => {
-    const id = `n${graph.nodes.length}`;
+    const id = `s${createHash('sha256')
+      .update(JSON.stringify([path, t.getText(at), location(at)]))
+      .digest('hex')
+      .slice(0, 24)}`;
     const node: SourceTypeNode = {
       id,
       keyPath: keys,
+      path,
+      ...(t.getAliasSymbol() ? { alias: t.getAliasSymbol()!.getName() } : {}),
+      nullable: t.isNull() || t.getUnionTypes().some((part) => part.isNull()),
+      undefinable: t.isUndefined() || t.getUnionTypes().some((part) => part.isUndefined()),
+      nullabilityProvenance: 'compiler',
       kind: 'unknown',
       typeText: t.getText(at),
       required: req,
@@ -164,7 +237,7 @@ export function captureNativeSource(
     if (ancestors.has(t.compilerType)) {
       node.kind = 'reference';
       node.alternatives = [ancestors.get(t.compilerType)!];
-      incomplete('cycle');
+      node.reason = 'cycle-reference';
       return { id, shape: null };
     }
     if (depth > graph.limits.maxDepth || graph.nodes.length >= graph.limits.maxNodes) {
@@ -191,13 +264,16 @@ export function captureNativeSource(
         const alternatives = t.isUnion() ? t.getUnionTypes() : (t as Type).getIntersectionTypes();
         node.alternatives = [];
         const results = [];
-        for (const alternative of alternatives) {
+        for (const [index, alternative] of alternatives.entries()) {
           if (graph.nodes.length >= graph.limits.maxNodes) {
             graph.omittedCount++;
             incomplete('union-budget');
             break;
           }
-          const result = walk(alternative, at, req, keys, depth + 1);
+          const result = walk(alternative, at, req, keys, depth + 1, [
+            ...path,
+            { kind: t.isUnion() ? 'union' : 'intersection', key: index },
+          ]);
           node.alternatives.push(result.id);
           results.push(result);
         }
@@ -215,33 +291,92 @@ export function captureNativeSource(
             )
           )
             shape = { ...nonAbsent[0]!.shape!, $required: req };
-          else incomplete('union-native-shape-unavailable');
+          else node.reason = 'union-native-shape-unavailable';
+          const members = results.map((result) => graph.nodes.find((n) => n.id === result.id)!);
+          node.discriminatorKeys = (members[0]?.fields ?? [])
+            .filter((field) => {
+              const values: SourceJsonValue[] = [];
+              return (
+                members.length === alternatives.length &&
+                members.every((member) => {
+                  const edge = member.fields?.find((other) => other.key === field.key);
+                  const tag = edge && graph.nodes.find((item) => item.id === edge.nodeId);
+                  if (
+                    !edge?.required ||
+                    !tag ||
+                    tag.coverage !== 'complete-within-declared-bound' ||
+                    tag.domain.provenance !== 'compiler' ||
+                    tag.domain.openness !== 'closed' ||
+                    tag.domain.declaredValues.length !== 1 ||
+                    values.some((value) => value === tag.domain.declaredValues[0])
+                  )
+                    return false;
+                  values.push(tag.domain.declaredValues[0]!);
+                  return true;
+                })
+              );
+            })
+            .map((field) => field.key);
+          node.discriminator = {
+            provenance: 'compiler',
+            complete: members.length === alternatives.length,
+            keys: node.discriminatorKeys,
+          };
         }
       } else if (t.isTuple()) {
         node.kind = 'tuple';
         node.items = [];
+        node.tupleElements = [];
+        const target = (t.compilerType as unknown as ts.TupleTypeReference).target;
+        node.readonly = target.readonly;
         for (const [i, item] of t.getTupleElements().entries()) {
           if (graph.nodes.length >= graph.limits.maxNodes) {
             graph.omittedCount++;
             incomplete('tuple-budget');
             break;
           }
-          node.items.push(walk(item, at, true, [...keys, String(i)], depth + 1).id);
+          const flags = target.elementFlags[i] ?? ts.ElementFlags.Required;
+          const label = target.labeledElementDeclarations?.[i];
+          const element = walk(item, at, !(flags & ts.ElementFlags.Optional), [...keys, String(i)], depth + 1, [
+            ...path,
+            { kind: 'tuple', key: i },
+          ]);
+          node.items.push(element.id);
+          node.tupleElements.push({
+            nodeId: element.id,
+            label: label && ts.isNamedTupleMember(label) ? label.name.text : null,
+            optional: Boolean(flags & ts.ElementFlags.Optional),
+            rest: Boolean(flags & (ts.ElementFlags.Rest | ts.ElementFlags.Variadic)),
+          });
         }
-        incomplete('tuple-native-shape-unavailable');
+        node.reason = 'tuple-native-shape-unavailable';
       } else if (t.isArray() || t.isReadonlyArray()) {
         node.kind = 'array';
+        node.readonly = t.isReadonlyArray();
         const item = t.getArrayElementType();
-        if (item) {
-          const result = walk(item, at, true, [...keys, '[]'], depth + 1);
+        if (item && graph.nodes.length < graph.limits.maxNodes) {
+          const result = walk(item, at, true, [...keys, '[]'], depth + 1, [...path, { kind: 'item', key: 0 }]);
           node.items = [result.id];
           if (result.shape) shape = { $type: 'array', $required: req, $items: result.shape };
-        } else incomplete('array-item-unavailable');
+        } else {
+          graph.omittedCount++;
+          incomplete('array-item-unavailable');
+        }
+      } else if (t.compilerType.flags & ts.TypeFlags.BigIntLike) {
+        node.kind = 'bigint';
+        node.reason = 'non-json-source-kind';
+      } else if (t.compilerType.flags & ts.TypeFlags.ESSymbolLike) {
+        node.kind = 'symbol';
+        node.reason = 'non-json-source-kind';
+      } else if (t.getCallSignatures().length) {
+        node.kind = 'function';
+        node.reason = 'non-json-source-kind';
+        node.callSignatures = t.getCallSignatures().map((signature) => signature.getDeclaration().getText());
       } else if (t.isObject() || t.isIntersection()) node.kind = 'record';
       else {
         incomplete('native-kind-unavailable');
       }
-      if (node.kind === 'record' || node.kind === 'intersection') {
+      if (node.kind === 'record' || node.kind === 'intersection' || node.kind === 'function') {
         node.fields = [];
         const fields: Record<string, NativeSourceShape> = Object.create(null);
         let all = true;
@@ -270,6 +405,7 @@ export function captureNativeSource(
             !symbol.isOptional(),
             [...keys, symbol.getName()],
             depth + 1,
+            [...path, { kind: 'field', key: symbol.getName() }],
           );
           node.fields.push({ key: symbol.getName(), nodeId: field.id, required: !symbol.isOptional() });
           if (field.shape) {
@@ -302,14 +438,22 @@ export function captureNativeSource(
             if (graph.nodes.length < graph.limits.maxNodes)
               node.indexSignatures.push({
                 keyType: key,
-                valueNodeId: walk(index, at, false, [...keys, `[${key}]`], depth + 1).id,
+                valueNodeId: walk(index, at, false, [...keys, `[${key}]`], depth + 1, [...path, { kind: 'index', key }])
+                  .id,
               });
-            incomplete('open-index-signature');
+            else {
+              graph.omittedCount++;
+              incomplete('index-budget');
+            }
+            node.reason ??= 'open-index-signature';
             all = false;
           }
-        if (all && node.fields.length) shape = { $type: 'record', $required: req, $fields: fields };
-        else if (!node.fields.length)
-          incomplete(t.getCallSignatures().length ? 'callable-or-empty-record' : 'empty-record');
+        if (all && node.fields.length && node.kind !== 'function')
+          shape = { $type: 'record', $required: req, $fields: fields };
+        else if (!node.fields.length) {
+          node.callSignatures = t.getCallSignatures().map((signature) => signature.getDeclaration().getText());
+          node.reason = node.callSignatures.length ? 'callable-or-empty-record' : 'empty-record';
+        }
       }
       if (shape && node.domain.openness === 'closed' && node.domain.declaredValues.length)
         shape.$values = node.domain.declaredValues;

@@ -19,6 +19,9 @@ vi.mock('../../src/persistence/src/session/repositories/db.js', () => ({
   computeComponentInputHash: deps.computeComponentInputHash,
   storeCache: deps.storeCache,
 }));
+vi.mock('../../src/persistence/src/session/repositories/exploration/records.js', () => ({
+  loadAcceptedSlotDecisions: () => undefined,
+}));
 vi.mock('../../src/steps/generation/src/helpers/components/resolve-component-cache.js', () => ({
   resolveComponentCache: deps.resolveComponentCache,
 }));
@@ -88,12 +91,12 @@ describe('component generation preparation cancellation', () => {
     vi.useFakeTimers();
     try {
       const controller = new AbortController();
-      const removeListener = vi.spyOn(controller.signal, 'removeEventListener');
+      const removeListener = vi.spyOn(AbortSignal.prototype, 'removeEventListener');
       deps.invokeAgentWithOutput.mockResolvedValueOnce({
         result: { stdout: '', stderr: 'failed', exitCode: 1, timedOut: false },
       });
       const running = runOneGenerateComponent(options(controller.signal), component, 0, 1);
-      for (let turn = 0; turn < 8; turn++) await Promise.resolve();
+      for (let turn = 0; turn < 30; turn++) await Promise.resolve();
       expect(deps.invokeAgentWithOutput).toHaveBeenCalledOnce();
       expect(vi.getTimerCount()).toBe(1);
 
@@ -108,7 +111,7 @@ describe('component generation preparation cancellation', () => {
   });
 
   it.each(['precomputed', 'restored', 'human-edited'])(
-    'does not publish %s cache success after progress cancellation',
+    'does not invoke or replay %s prior output after progress cancellation',
     async (branch) => {
       const controller = new AbortController();
       if (branch !== 'precomputed') {

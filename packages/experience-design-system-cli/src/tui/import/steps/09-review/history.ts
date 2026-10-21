@@ -9,6 +9,7 @@ export interface HistorySnapshot {
 
 interface CdfReviewEntrySnapshot {
   key: string;
+  componentId?: string;
   entry: CDFComponentEntry;
   status: ReviewComponentStatus;
 }
@@ -29,6 +30,7 @@ function cloneSnapshot(snap: HistorySnapshot): HistorySnapshot {
   return {
     components: snap.components.map((c) => ({
       key: c.key,
+      componentId: c.componentId,
       entry: JSON.parse(JSON.stringify(c.entry)) as CDFComponentEntry,
       status: c.status,
     })),

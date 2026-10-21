@@ -271,7 +271,10 @@ export function failExplorationRun(db: DatabaseSync, runId: string, error: strin
   );
 }
 export function loadAcceptedSlotDecisions(db: DatabaseSync, sessionId: string): SlotDecision[] | undefined {
-  if (!loadExplorationRun(db, sessionId, 'components')) return undefined;
+  const current = loadExplorationRun(db, sessionId, 'components');
+  if (!current) return undefined;
+  if (current.status !== 'complete' || !sourceMatches(db, current))
+    throw new Error('Accepted slot source authority is stale or incomplete');
   const decisions = loadExplorationRecord<SlotDecision[]>(db, sessionId, 'components', 'slots') ?? [];
   const components = loadRawComponents(db, sessionId);
   for (const component of components)
@@ -320,8 +323,7 @@ export function saveReviewedSlots(
       before.required === slot.$required &&
       before.description === slot.$description &&
       JSON.stringify(before.sourceInput) === JSON.stringify(slot.$sourceInput) &&
-      JSON.stringify([...before.allowedComponents].sort()) ===
-        JSON.stringify([...(slot.$allowedComponents ?? [])].sort())
+      JSON.stringify(before.allowedComponents) === JSON.stringify(slot.$allowedComponents ?? [])
     ) {
       next.push({ ...before, ...component });
       continue;

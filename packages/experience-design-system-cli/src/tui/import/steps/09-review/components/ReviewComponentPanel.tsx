@@ -44,6 +44,7 @@ export function buildReviewFieldEditor(
     showHiddenProps: reviewEditor.showHiddenProps,
     onChange: reviewEditor.setDraftValue,
     onSave: reviewEditor.handleEditSave,
+    onDraftValidityChange: reviewEditor.setDraftValid,
     onDiscard: reviewEditor.handleEditDiscard,
     onExit,
     onTogglePropRationale: () => {

@@ -24,7 +24,7 @@ afterEach(() => {
   directories.splice(0).forEach((path) => rmSync(path, { recursive: true, force: true }));
   invoke.mockReset();
 });
-async function fixture(finite = false, observationLimits?: { maxObservations: number }) {
+async function fixture(finite = false, observationLimits?: { maxObservations: number }, opaqueKnown = false) {
   const root = mkdtempSync(join(tmpdir(), 'saved-input-output-'));
   directories.push(root);
   const path = join(root, 'Surface.tsx');
@@ -35,7 +35,7 @@ async function fixture(finite = false, observationLimits?: { maxObservations: nu
   );
   writeFileSync(
     path,
-    `export function Surface(props: { supplied: ${finite ? "'Child'" : 'string'}; label?: string; opaque?: unknown }) { return <section>{props.supplied}</section>; } ${finite ? 'export function Child() { return <b/>; }' : ''}`,
+    `export function Surface(props: { supplied: ${finite ? "'Child'" : 'string'}; label?: string; opaque?: ${opaqueKnown ? 'string' : 'unknown'} }) { return <section>{props.supplied}</section>; } ${finite ? 'export function Child() { return <b/>; }' : ''}`,
   );
   const backend = await extractReactComponents([path], undefined, {
     projectRoot: root,
@@ -98,7 +98,7 @@ async function fixture(finite = false, observationLimits?: { maxObservations: nu
   return { root, dbPath, sessionId, handle, saved, flow, association, decision };
 }
 it('publishes exact associations from mounted default extraction and exploration, then preserves complete edits on reopen/export', async () => {
-  const f = await fixture();
+  const f = await fixture(false, undefined, true);
   const prompts: string[] = [];
   const invoker = {
     invoke: async ({ prompt }: { prompt: string }) => {
@@ -164,7 +164,8 @@ it('publishes exact associations from mounted default extraction and exploration
   invoke.mockResolvedValue({
     stdout: [
       { tool: 'classify_component', description: 'Source surface' },
-      { tool: 'classify_prop', prop: 'supplied', cdf_type: 'string', cdf_category: 'content' },
+      { tool: 'classify_slot', slot: 'region' },
+      { tool: 'exclude_prop', prop: 'opaque', reason: 'Opaque input remains unrepresented' },
       { tool: 'classify_prop', prop: 'label', cdf_type: 'string', cdf_category: 'content' },
     ]
       .map((call) => JSON.stringify(call))
@@ -182,7 +183,7 @@ it('publishes exact associations from mounted default extraction and exploration
       promptOverrides: ['generate=text:Classify the supplied source.'],
       noCache: true,
     });
-    expect(generated.allOk).toBe(true);
+    expect(generated.allOk, JSON.stringify(generated)).toBe(true);
     expect(invoke.mock.calls.at(-1)![0].prompt).toContain('"inputOutput":');
     expect(invoke.mock.calls.at(-1)![0].prompt).toContain('"sourceInput":');
     expect(invoke.mock.calls.at(-1)![0].prompt).toContain('"referenceIndex":');
@@ -206,7 +207,12 @@ it('publishes exact associations from mounted default extraction and exploration
     f.sessionId,
     f.saved.component_id,
     'Surface',
-    [{ tool: 'classify_prop', prop: 'label', cdf_type: 'string', cdf_category: 'content' }],
+    [
+      { tool: 'classify_component' },
+      { tool: 'exclude_prop', prop: 'opaque', reason: 'Opaque input remains unrepresented' },
+      { tool: 'classify_slot', slot: 'region' },
+      { tool: 'classify_prop', prop: 'label', cdf_type: 'string', cdf_category: 'content' },
+    ],
     [],
   );
   const entry = api.loadCDFComponents(db, f.sessionId)[0]!.entry;
@@ -253,13 +259,14 @@ it('publishes exact associations from mounted default extraction and exploration
       if (previousPath === undefined) delete process.env.EDS_PIPELINE_DB_PATH;
       else process.env.EDS_PIPELINE_DB_PATH = previousPath;
     }
-    api.storeCDFComponents(db, f.sessionId, [{ key: 'Surface', entry: { ...reopened, $slots: {} } }]);
-    expect(api.loadCDFComponents(db, f.sessionId)[0]!.entry.$slots).toBeUndefined();
-    expect(
-      api
-        .loadAcceptedSlotDecisions(db, f.sessionId)
-        ?.filter((decision) => decision.state === 'open' || decision.state === 'finite'),
-    ).toEqual([]);
+    const acceptedBeforeRemoval = api.loadAcceptedSlotDecisions(db, f.sessionId);
+    const decisionsBeforeRemoval = api.loadPropertyDecisions(db, f.sessionId);
+    expect(() =>
+      api.storeCDFComponents(db, f.sessionId, [{ key: 'Surface', entry: { ...reopened, $slots: {} } }]),
+    ).toThrow('property:supplied');
+    expect(api.loadCDFComponents(db, f.sessionId)[0]!.entry).toEqual(reopened);
+    expect(api.loadAcceptedSlotDecisions(db, f.sessionId)).toEqual(acceptedBeforeRemoval);
+    expect(api.loadPropertyDecisions(db, f.sessionId)).toEqual(decisionsBeforeRemoval);
   } finally {
     db.close();
   }

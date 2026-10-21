@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { useSyncExternalStore } from 'react';
 import * as backend from '@contentful/experience-design-system-backend-pipeline';
+import { seedCompleteDefinitions } from '../source-session-fixture.js';
 import { runPreview, realPreviewDeps } from '../../../src/tui/import/steps/10-flow/flow/preview.js';
 import { FlowScreen } from '../../../src/tui/import/steps/10-flow/flow/screen.js';
 import { render } from 'ink-testing-library';
@@ -167,7 +168,7 @@ it('real accepted load closes its database when the underlying read fails', () =
   const db = actualOpen();
   const close = vi.spyOn(db, 'close');
   vi.spyOn(backend, 'openPipelineDb').mockReturnValue(db);
-  vi.spyOn(backend, 'loadCDFComponents').mockImplementation(() => {
+  vi.spyOn(backend, 'loadSelectedCDFComponents').mockImplementation(() => {
     throw new Error('Stored CDF unavailable');
   });
   expect(() => realFlowDeps().loadAcceptedComponents('example')).toThrow('Stored CDF unavailable');
@@ -185,7 +186,7 @@ it('the mounted FlowScreen routes an accepted-load failure from confirmation to 
       slots: [],
     },
   ]);
-  storeCDFComponents(db, sessionId, [
+  await seedCompleteDefinitions(db, sessionId, root, [
     { key: 'Panel', entry: { $type: 'component', $properties: { label: { $type: 'string', $category: 'content' } } } },
   ]);
   db.close();
@@ -267,7 +268,7 @@ it('mounted preview recovery routes corrupt review state to an error while prese
       slots: [],
     },
   ]);
-  storeCDFComponents(db, sessionId, [
+  await seedCompleteDefinitions(db, sessionId, root, [
     { key: 'Panel', entry: { $type: 'component', $properties: { label: { $type: 'string', $category: 'content' } } } },
   ]);
   db.close();

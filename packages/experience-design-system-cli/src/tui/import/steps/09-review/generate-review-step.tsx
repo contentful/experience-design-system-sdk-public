@@ -1,3 +1,4 @@
+import { persistReviewEntry } from './persist-review-entry.js';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import figures from 'figures';
 import { PALETTE } from './theme.js';
@@ -27,7 +28,6 @@ import { removedComponentsHeader, removedComponentLine } from './components/remo
 import { useImmediateInput } from '../07-scope-gate/sidebar/hooks/useImmediateInput.js';
 import {
   openPipelineDb,
-  storeCDFComponents,
   storeSlotCycles,
   loadSlotCycles,
   type StoredSlotCycle,
@@ -876,6 +876,7 @@ function GenerateReviewStepView({
 
   const jumpCursorToRow = (rowIdx: number): void => {
     if (rowIdx < 0 || rowIdx >= visibleRowsMemo.length) return;
+    if (!reviewEditor.handleEditSave()) return;
     setNav(({ sidebarScrollOffset: prev }) => {
       let nextOff = prev;
       if (rowIdx < prev) nextOff = rowIdx;
@@ -883,8 +884,6 @@ function GenerateReviewStepView({
       return { cursorRowIdx: rowIdx, sidebarScrollOffset: nextOff };
     });
     reviewEditor.setJsonScrollOffset(0);
-    reviewEditor.handleEditSave();
-    reviewEditor.setSaveError(null);
     setPendingEditorFocus(null);
   };
   const jumpCursorToName = (name: string): void => {
@@ -921,17 +920,18 @@ function GenerateReviewStepView({
       component.key === target.key ? { ...component, entry: nextEntry } : component,
     );
     try {
-      const db = openPipelineDb();
-      try {
-        storeCDFComponents(db, extractSessionId, [{ key: target.key, entry: nextEntry }]);
-      } finally {
-        db.close();
-      }
+      const persisted = persistReviewEntry(extractSessionId, target, nextEntry);
+      if (!persisted.ok) throw new Error(persisted.error);
       setComponents(next);
-      reviewEditor.setSaveError(null);
-      recomputeCycles(next);
-      livePreviewHook.trigger();
-      pushHistorySnapshot(next, 'break-cycle-edge');
+      const warnings = [...persisted.warnings];
+      try {
+        recomputeCycles(next);
+        livePreviewHook.trigger();
+        pushHistorySnapshot(next, 'break-cycle-edge');
+      } catch (error) {
+        warnings.push(error instanceof Error ? error.message : 'Saved callback failed');
+      }
+      reviewEditor.setSaveError(warnings.length ? `Saved; warning: ${warnings.join('; ')}` : null);
     } catch (error) {
       reviewEditor.setSaveError(`Cannot save cycle edit: ${String(error)}`);
     }
@@ -1159,7 +1159,7 @@ function GenerateReviewStepView({
 
     if (key.tab) {
       if (!sidebarFocused) {
-        reviewEditor.handleEditSave();
+        if (!reviewEditor.handleEditSave()) return;
         setSidebarFocused(true);
         return;
       }
@@ -1192,6 +1192,7 @@ function GenerateReviewStepView({
       return;
 
     if (sidebarFocused && (input === 'j' || input === 'k')) {
+      if (!reviewEditor.handleEditSave()) return;
       setNav(({ cursorRowIdx: previousRow, sidebarScrollOffset: previousScroll }) =>
         moveSelectableCursor({
           direction: input === 'j' ? 'down' : 'up',
@@ -1202,8 +1203,6 @@ function GenerateReviewStepView({
         }),
       );
       reviewEditor.setJsonScrollOffset(0);
-      reviewEditor.handleEditSave();
-      reviewEditor.setSaveError(null);
       setPendingEditorFocus(null);
       return;
     }
@@ -1232,6 +1231,7 @@ function GenerateReviewStepView({
       return;
     }
     if (input === 'F' || input === 'f') {
+      if (!reviewEditor.handleEditSave()) return;
       const acceptedNames = new Set(components.filter((c) => c.status === 'accepted').map((c) => c.key));
       const acceptedSubgraph: ComponentGraphNode[] = componentGraph.filter((n) => acceptedNames.has(n.name));
       if (cycleView.error) {
@@ -1330,6 +1330,7 @@ function GenerateReviewStepView({
     }
 
     if (key.upArrow) {
+      if (!reviewEditor.handleEditSave()) return;
       setNav(({ cursorRowIdx: previousRow, sidebarScrollOffset: previousScroll }) =>
         moveSelectableCursor({
           direction: 'up',
@@ -1340,10 +1341,9 @@ function GenerateReviewStepView({
         }),
       );
       reviewEditor.setJsonScrollOffset(0);
-      reviewEditor.handleEditSave();
-      reviewEditor.setSaveError(null);
       setPendingEditorFocus(null);
     } else if (key.downArrow) {
+      if (!reviewEditor.handleEditSave()) return;
       setNav(({ cursorRowIdx: previousRow, sidebarScrollOffset: previousScroll }) =>
         moveSelectableCursor({
           direction: 'down',
@@ -1354,8 +1354,6 @@ function GenerateReviewStepView({
         }),
       );
       reviewEditor.setJsonScrollOffset(0);
-      reviewEditor.handleEditSave();
-      reviewEditor.setSaveError(null);
       setPendingEditorFocus(null);
     }
   });
@@ -1609,8 +1607,7 @@ function GenerateReviewStepView({
                 reviewEditor,
                 selectedJson,
                 () => {
-                  reviewEditor.handleEditSave();
-                  setSidebarFocused(true);
+                  if (reviewEditor.handleEditSave()) setSidebarFocused(true);
                 },
                 {
                   key:

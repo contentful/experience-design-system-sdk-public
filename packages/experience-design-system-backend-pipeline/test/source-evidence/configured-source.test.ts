@@ -15,6 +15,7 @@ import {
   openPipelineDb,
   storeRawComponents,
 } from '../../src/persistence/src/session/repositories/db.js';
+import { hydrateSourceFixture } from '../source-fixture.js';
 import { buildExplorationSourceInput } from '../../src/orchestrators/run-exploration-session/helpers/build-source-input.js';
 import { runOneGenerateComponent } from '../../src/orchestrators/run-generate-components-session/helpers/run-one-generate-component.js';
 import {
@@ -54,12 +55,13 @@ it('keeps nested configured source, callers and context hashes through first/fin
     ],
     slots: [],
   };
+  const hydrated = await hydrateSourceFixture(component, root);
   const dbPath = join(root, 'pipeline.db'),
     db = openPipelineDb(dbPath);
   const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
   const stepId = createStep(db, sessionId, 'analyze extract', { project: root });
   expect(loadCompletedSourceEvidence(db, sessionId).readiness).toBe('unavailable');
-  storeRawComponents(db, sessionId, [component]);
+  storeRawComponents(db, sessionId, [hydrated]);
   const first = loadRawComponents(db, sessionId)[0]!;
   const capture = await captureSourceEvidence({
     projectRoot: root,
@@ -69,7 +71,7 @@ it('keeps nested configured source, callers and context hashes through first/fin
   const handle = completeExtractionWithSourceEvidence(db, {
     sessionId,
     stepId,
-    components: [component],
+    components: [hydrated],
     cycles: [],
     scannedFiles: [source, app],
     capture,
@@ -125,12 +127,23 @@ it('keeps nested configured source, callers and context hashes through first/fin
           invoke: async ({ prompt }) => {
             prompts.push(prompt);
             return {
-              stdout: JSON.stringify({
-                tool: 'classify_prop',
-                prop: 'label',
-                cdf_type: 'string',
-                cdf_category: 'content',
-              }),
+              stdout:
+                JSON.stringify({ tool: 'classify_component' }) +
+                '\n' +
+                JSON.stringify({
+                  tool: 'classify_prop',
+                  prop: 'size',
+                  cdf_type: 'string',
+                  cdf_category: 'content',
+                  values: ['small', 'large'],
+                }) +
+                '\n' +
+                JSON.stringify({
+                  tool: 'classify_prop',
+                  prop: 'label',
+                  cdf_type: 'string',
+                  cdf_category: 'content',
+                }),
               stderr: '',
               exitCode: 0,
               timedOut: false,
@@ -156,13 +169,15 @@ it('keeps nested configured source, callers and context hashes through first/fin
       0,
       1,
     );
-    expect(generated.failed).toBe(false);
+    expect(generated.failed, JSON.stringify(generated)).toBe(false);
     expect(prompts[0]).toContain(savedContext.contextId);
     expect(prompts[0]).toContain(configHash);
     expect(prompts[0]).toContain('"caller"');
     expect(prompts[0]).toContain('large');
     expect(prompts[0]).not.toContain('LIVE_REPLACEMENT');
-    expect(prompts[0]?.match(/export function Widget/g)).toHaveLength(1);
+    expect(prompts[0]?.match(/### Shared source evidence/g)).toHaveLength(1);
+    const sharedSection = prompts[0]!.split('### Shared source evidence')[1]!;
+    expect(sharedSection.match(/export function Widget/g)).toHaveLength(1);
     const review = loadComponentReviewMetadata(reopened, sessionId, 'Widget');
     expect(review?.sourceCompilerContext).toEqual(savedContext);
     expect(review?.sourceTextHash).toBe(capture.files.find((file) => file.canonicalPath === source)!.textHash);

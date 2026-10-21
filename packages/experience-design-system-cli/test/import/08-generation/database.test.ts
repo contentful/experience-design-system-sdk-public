@@ -9,11 +9,11 @@ import {
   loadComponentReviewMetadata,
   loadDTCGTokens,
   openPipelineDb,
-  storeCDFComponents,
   storeDTCGTokens,
   storeRawComponents,
   writeScopeDecisionsSnapshot,
 } from '@contentful/experience-design-system-backend-pipeline';
+import { seedCompleteDefinitions } from '../source-session-fixture.js';
 import { prepareMapTokens } from '../../../src/tui/import/steps/08-generation/map-tokens.js';
 import { saveDecisions } from '../../../src/tui/import/steps/08-generation/save-decisions.js';
 import { runGeneration, type GenerationDeps } from '../../../src/tui/import/steps/08-generation/run.js';
@@ -224,10 +224,10 @@ describe('the generation stage and the pipeline database', () => {
   });
 
   describe('prepareMapTokens', () => {
-    const seedGenerated = (sessionId: string, withDesignProp: boolean): void => {
+    const seedGenerated = async (sessionId: string, withDesignProp: boolean): Promise<void> => {
       const db = openPipelineDb();
       try {
-        storeCDFComponents(db, sessionId, [
+        await seedCompleteDefinitions(db, sessionId, dir, [
           {
             key: 'Card',
             entry: {
@@ -249,7 +249,7 @@ describe('the generation stage and the pipeline database', () => {
       const db = openPipelineDb();
       storeDTCGTokens(db, tokenSession, [], [token('colors.primary'), token('colors.secondary')]);
       db.close();
-      seedGenerated(generated, true);
+      await seedGenerated(generated, true);
 
       const plan = await prepareMapTokens({ tokenSessionId: tokenSession, tokensPath: '' }, generated);
 
@@ -265,7 +265,7 @@ describe('the generation stage and the pipeline database', () => {
       const db = openPipelineDb();
       storeDTCGTokens(db, tokenSession, [], [token('colors.primary')]);
       db.close();
-      seedGenerated(generated, true);
+      await seedGenerated(generated, true);
 
       await prepareMapTokens({ tokenSessionId: tokenSession, tokensPath: '' }, generated);
 
@@ -276,7 +276,7 @@ describe('the generation stage and the pipeline database', () => {
 
     it('restores a reused tokens.json into the generated session when there is no token session', async () => {
       const generated = newSession();
-      seedGenerated(generated, true);
+      await seedGenerated(generated, true);
       const tokensPath = join(dir, 'tokens.json');
       await writeFile(tokensPath, JSON.stringify({ colors: { primary: { $type: 'color', $value: '#06f' } } }));
 
@@ -291,7 +291,7 @@ describe('the generation stage and the pipeline database', () => {
       const db = openPipelineDb();
       storeDTCGTokens(db, tokenSession, [], [token('colors.primary')]);
       db.close();
-      seedGenerated(generated, false);
+      await seedGenerated(generated, false);
 
       const plan = await prepareMapTokens({ tokenSessionId: tokenSession, tokensPath: '' }, generated);
 
@@ -300,7 +300,7 @@ describe('the generation stage and the pipeline database', () => {
 
     it('is not worth running when there are no tokens', async () => {
       const generated = newSession();
-      seedGenerated(generated, true);
+      await seedGenerated(generated, true);
 
       const plan = await prepareMapTokens({ tokenSessionId: null, tokensPath: '' }, generated);
 
@@ -309,7 +309,7 @@ describe('the generation stage and the pipeline database', () => {
 
     it('fails with a readable message when a reused tokens.json is missing, instead of exiting the process', async () => {
       const generated = newSession();
-      seedGenerated(generated, true);
+      await seedGenerated(generated, true);
 
       await expect(
         prepareMapTokens({ tokenSessionId: null, tokensPath: join(dir, 'nope.json') }, generated),

@@ -54,7 +54,11 @@ export function extractDefaultValues(func: FunctionLike): Map<string, string> {
 
 /** Preserve the original binding initializer text for source evidence; authoring display keeps its existing normalization. */
 export function extractSourceDefaultExpressions(func: FunctionLike): Map<string, string> {
-  const defaults = new Map<string, string>();
+  return new Map([...extractSourceDefaultNodes(func)].map(([key, node]) => [key, node.getText()]));
+}
+
+export function extractSourceDefaultNodes(func: FunctionLike): Map<string, Node> {
+  const defaults = new Map<string, Node>();
   const params = func.getParameters();
   if (params.length === 0) return defaults;
   const nameNode = params[0]!.getNameNode();
@@ -100,7 +104,7 @@ export function extractSourceDefaultExpressions(func: FunctionLike): Map<string,
                   .getText()
                   .replace(/^['"]|['"]$/g, '')
               : undefined;
-      if (initializer && key !== undefined) defaults.set(key, initializer.getText());
+      if (initializer && key !== undefined) defaults.set(key, initializer);
     }
   }
   return defaults;

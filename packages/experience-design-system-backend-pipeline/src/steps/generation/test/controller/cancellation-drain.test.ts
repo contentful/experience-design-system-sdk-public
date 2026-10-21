@@ -23,7 +23,7 @@ describe('CDF generation cancellation drain', () => {
     const controller = new AbortController();
     const onCacheStore = vi.fn();
     const onWarning = vi.fn(() => controller.abort());
-    agent.invoke.mockResolvedValueOnce({
+    agent.invoke.mockResolvedValue({
       stdout: JSON.stringify({ tool: 'classify_prop', prop: 'label', cdf_type: 'invalid', cdf_category: 'content' }),
       stderr: '',
       exitCode: 0,

@@ -5,6 +5,7 @@ import {
   appendRun,
   buildSourceFingerprint,
   loadCDFComponents,
+  loadSelectedCDFComponents,
   loadDTCGTokens,
   openPipelineDb,
   readTokensFromPath,
@@ -66,6 +67,8 @@ export interface WriteFilesInput {
   tokensPath?: string;
   skipGate?: boolean;
   allowEmpty?: boolean;
+  selectedComponentIds?: ReadonlySet<string>;
+  acceptedKeys?: ReadonlySet<string>;
 }
 
 /**
@@ -85,7 +88,13 @@ export async function runPrintFiles(
     let components: ReturnType<typeof loadCDFComponents> = [];
     let tokens: DTCGTokenEntry[] = [];
     try {
-      if (input.extractSessionId) components = loadCDFComponents(db, input.extractSessionId);
+      if (input.extractSessionId)
+        components = loadSelectedCDFComponents(
+          db,
+          input.extractSessionId,
+          input.selectedComponentIds,
+          input.acceptedKeys,
+        );
       if (input.tokenSessionId) tokens = loadDTCGTokens(db, input.tokenSessionId).tokens;
     } finally {
       db.close();

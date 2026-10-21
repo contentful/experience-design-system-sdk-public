@@ -126,12 +126,12 @@ export function useReviewMetadata({ components, selectedIdx, extractSessionId }:
     const db = openPipelineDb();
     try {
       try {
-        metadata = loadComponentReviewMetadata(db, extractSessionId, current.key);
+        metadata = loadComponentReviewMetadata(db, extractSessionId, current.key, current.componentId);
       } catch {
         metadata = null;
       }
       try {
-        rationale = loadComponentRationale(db, extractSessionId, current.key);
+        rationale = loadComponentRationale(db, extractSessionId, current.key, current.componentId);
       } catch {
         rationale = null;
       }

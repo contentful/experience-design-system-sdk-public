@@ -6,7 +6,7 @@ import type { DefaultIntent } from './property-model.js';
 export interface ClassifiedPropertyCall {
   tool: 'classify_prop';
   prop: string;
-  cdf_type: string;
+  cdf_type?: string;
   cdf_category: 'content' | 'design' | 'state';
   values?: JsonValue[];
   token_kind?: string;
@@ -21,6 +21,7 @@ export interface ClassifiedPropertyCall {
   reason?: string;
 }
 export function classificationDefinition(call: ClassifiedPropertyCall): CDFPropertyDefinition {
+  if (!call.cdf_type) throw new Error('Absent representation has no field definition');
   const definition: CDFPropertyDefinition = {
     $type: (call.cdf_type === 'enum' ? 'string' : call.cdf_type) as CDFPropertyDefinition['$type'],
     $category: call.cdf_category,

@@ -7,7 +7,7 @@ import {
   detectSaveConflict,
   formatSlotCycleReport,
   hasBreakingChangesWithImpact,
-  loadCDFComponents,
+  loadSelectedCDFComponents,
   openPipelineDb,
   rejectComponentsByName,
   type PreviewValidationError,
@@ -75,7 +75,7 @@ export function realFlowDeps(): FlowDeps {
     loadAcceptedComponents: (sessionId) => {
       const db = openPipelineDb();
       try {
-        return loadCDFComponents(db, sessionId);
+        return loadSelectedCDFComponents(db, sessionId);
       } finally {
         db.close();
       }

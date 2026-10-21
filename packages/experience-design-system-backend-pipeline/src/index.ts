@@ -316,6 +316,8 @@ export type { RawComponentWithId } from './persistence/src/index.js';
 export {
   storeCDFComponents,
   loadCDFComponents,
+  loadSelectedCDFComponents,
+  evaluateComponentReadiness,
   loadScopeComponents,
   loadScopeDecisions,
 } from './persistence/src/index.js';

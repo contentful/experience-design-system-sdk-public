@@ -6,16 +6,23 @@ import {
   type UseReviewEditorResult,
 } from '../../../src/tui/import/steps/09-review/use-review-editor.js';
 const store = vi.hoisted(() =>
-  vi.fn(() => {
+  vi.fn<() => void>(() => {
     throw new Error('Write failed');
   }),
 );
+const close = vi.hoisted(() => vi.fn());
 vi.mock('@contentful/experience-design-system-backend-pipeline', async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  openPipelineDb: () => ({ close: vi.fn() }),
+  openPipelineDb: () => ({ close }),
   storeCDFComponents: store,
 }));
-afterEach(() => store.mockClear());
+afterEach(() => {
+  store.mockReset();
+  store.mockImplementation(() => {
+    throw new Error('Write failed');
+  });
+  close.mockReset();
+});
 it('keeps draft and local saved state unchanged when persistence fails', async () => {
   let hook: UseReviewEditorResult;
   const setComponents = vi.fn();
@@ -52,6 +59,53 @@ it('keeps draft and local saved state unchanged when persistence fails', async (
     ui.unmount();
   }
 });
+
+it.each(['success', 'close-warning', 'callback-warning'])(
+  'acknowledges actual committed editor saves before reporting cleanup warnings: %s',
+  async (mode) => {
+    store.mockImplementation(() => undefined);
+    if (mode === 'close-warning')
+      close.mockImplementation(() => {
+        throw new Error('Close warning');
+      });
+    let hook: UseReviewEditorResult;
+    const publish = vi.fn();
+    const callback = vi.fn(() => {
+      if (mode === 'callback-warning') throw new Error('Callback warning');
+    });
+    const entry = {
+      $type: 'component' as const,
+      $properties: { count: { $type: 'number' as const, $category: 'content' as const, $default: 0 } },
+    };
+    function Probe() {
+      hook = useReviewEditor({
+        components: [{ key: 'Example', componentId: 'component', entry, status: 'needs-review' }],
+        selectedIdx: 0,
+        extractSessionId: 'example',
+        availableTokens: [],
+        setComponents: publish,
+        pushHistorySnapshot: vi.fn(),
+        onEditSaved: callback,
+        onTokenSaved: vi.fn(),
+      });
+      return <Text>{hook.saveError ?? 'ready'}</Text>;
+    }
+    const ui = render(<Probe />);
+    try {
+      hook!.setDraftValue(JSON.stringify({ ...entry, $description: 'Edited' }));
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(hook!.handleEditSave()).toBe(true);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(publish).toHaveBeenCalledOnce();
+      expect(callback).toHaveBeenCalledOnce();
+      expect(hook!.draftValue).toBe('');
+      if (mode !== 'success') expect(hook!.saveError).toContain('Saved; warning:');
+      else expect(hook!.saveError).toBeNull();
+    } finally {
+      ui.unmount();
+    }
+  },
+);
 
 it.each(['blank', 'duplicate-owner', 'property-conflict'])(
   'rejects invalid complete CDF in the mounted editor before persistence: %s',

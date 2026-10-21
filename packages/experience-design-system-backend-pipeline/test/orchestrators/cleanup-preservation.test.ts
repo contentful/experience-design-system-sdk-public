@@ -1,28 +1,38 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { completeSourceFixture } from '../source-fixture.js';
 import { expect, it, vi } from 'vitest';
 import {
   openPipelineDb,
   getOrCreateSession,
-  storeRawComponents,
   loadRawComponents,
 } from '../../src/persistence/src/session/repositories/db.js';
 
 vi.mock('../../src/agents/invoker/create-local-cli-agent-invoker.js', () => ({
   createLocalCliAgentInvoker: () => ({
-    invoke: async () => ({
-      stdout: JSON.stringify({
-        tool: 'classify_prop',
-        prop: 'label',
-        cdf_type: 'string',
-        cdf_category: 'content',
-        required: false,
-      }),
-      stderr: '',
-      exitCode: 0,
-      timedOut: false,
-    }),
+    invoke: async ({ prompt }: { prompt: string }) => {
+      const raw = JSON.parse(prompt.match(/Raw component data \(JSON\):\n```json\n([\s\S]*?)\n```/)![1]!)[0];
+      return {
+        stdout:
+          JSON.stringify({ tool: 'classify_component' }) +
+          '\n' +
+          raw.slots
+            .map((slot: { name: string }) => JSON.stringify({ tool: 'classify_slot', slot: slot.name }))
+            .join('\n') +
+          '\n' +
+          JSON.stringify({
+            tool: 'classify_prop',
+            prop: 'label',
+            cdf_type: 'string',
+            cdf_category: 'content',
+            required: false,
+          }),
+        stderr: '',
+        exitCode: 0,
+        timedOut: false,
+      };
+    },
   }),
 }));
 vi.mock('../../src/analytics/index.js', () => ({ bindAnalyticsSessionId: async () => {} }));
@@ -44,10 +54,13 @@ it.each([
   try {
     const db = openPipelineDb();
     const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-    storeRawComponents(db, sessionId, [
+    const source = join(root, 'Panel.tsx');
+    writeFileSync(source, 'export function Panel(props: {label?: string}) {return <div/>}');
+    await completeSourceFixture(db, sessionId, root, [
       {
         name: 'Panel',
-        source: '/example/Panel.tsx',
+        source,
+        sourcePath: source,
         framework: 'react',
         props: [{ name: 'label', type: 'string', required: false }],
         slots: [{ name: slotName, isDefault: true }],
@@ -62,7 +75,7 @@ it.each([
       promptOverrides: ['generate=text:Classify supplied source.'],
       onProgress: (event) => events.push(event),
     });
-    expect(generated.allOk).toBe(true);
+    expect(generated.allOk, JSON.stringify(generated)).toBe(true);
     expect(generated.renamedSlotsCount).toBe(count);
     expect(generated.results[0]!.renamedSlotsCount).toBe(count);
     const renamed = events.filter((event) => event.kind === 'component:slot-renamed');

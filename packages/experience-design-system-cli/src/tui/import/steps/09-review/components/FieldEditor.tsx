@@ -9,11 +9,14 @@ import {
   validateCDFProperty,
   cloneJson,
   own,
+  jsonValueIssue,
+  parseStrictJson,
 } from '@contentful/experience-design-system-types';
 import type {
   CDFComponentEntry,
   CDFPropertyDefinition,
   CDFSlotDefinition,
+  JsonValue,
 } from '@contentful/experience-design-system-types';
 import { useImmediateInput } from '../../07-scope-gate/sidebar/hooks/useImmediateInput.js';
 import { computeNextScrollOffset } from '../scroll-offset.js';
@@ -48,7 +51,8 @@ export type FieldEditorProps = {
   fixedHeight?: boolean;
   active?: boolean;
   onChange: (value: string) => void;
-  onSave: () => void;
+  onSave: (value?: string) => boolean | void;
+  onDraftValidityChange?: (valid: boolean) => void;
   onDiscard: () => void;
   onExit?: () => void;
   metadata?: FieldEditorMetadata;
@@ -81,7 +85,9 @@ type PropState = {
   values: string[];
   tokenKind: string;
   allowed: string[];
-  default: string | boolean | null;
+  default: JsonValue | undefined;
+  defaultDraft?: string;
+  defaultError?: string;
   original?: CDFPropertyDefinition;
   defaultTouched?: boolean;
 };
@@ -135,13 +141,26 @@ function swapValues<T>(values: T[], firstIndex: number, secondIndex: number): T[
   return next;
 }
 
+export function parseTypedDefault(text: string, type: string): { value: JsonValue } | { error: string } {
+  try {
+    if (type === 'number' && !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(text))
+      throw new Error('Enter a complete finite number');
+    const value: unknown = type === 'number' ? Number(text) : parseStrictJson(text);
+    const issue = jsonValueIssue(value);
+    if (issue) throw new Error(issue.message);
+    return { value: value as JsonValue };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Invalid typed default' };
+  }
+}
+
 export function parseToState(json: string): {
   state: EditorState;
   error: string | null;
 } {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(json);
+    parsed = parseStrictJson(json);
   } catch (e) {
     return {
       state: { componentDescription: '', props: [], slots: [] },
@@ -177,14 +196,7 @@ export function parseToState(json: string): {
   const props: PropState[] = Object.entries(rawProps).map(([name, raw]) => {
     const p = (raw ?? {}) as Record<string, unknown>;
     const type = CDF_PROPERTY_TYPES.includes(p.$type as never) ? (p.$type as PropState['type']) : 'string';
-    let defaultValue: string | boolean | null = null;
-    if (p.$default !== undefined && p.$default !== null) {
-      if (type === 'boolean') {
-        defaultValue = typeof p.$default === 'boolean' ? p.$default : null;
-      } else {
-        defaultValue = typeof p.$default === 'string' ? p.$default : String(p.$default);
-      }
-    }
+    const defaultValue = own(p, '$default') ? cloneJson(p.$default as JsonValue) : undefined;
     return {
       name,
       type,
@@ -264,7 +276,7 @@ export function serializeState(state: EditorState, originalJson: string): string
       else delete def['$token.allowed'];
     }
     if (p.defaultTouched) {
-      if (p.default === null) delete def.$default;
+      if (p.default === undefined) delete def.$default;
       else def.$default = p.default;
     }
     $properties[p.name] = def;
@@ -519,8 +531,7 @@ function DefaultSubRow({
   }
 
   if (['array', 'record', 'number'].includes(prop.type)) {
-    const display =
-      prop.original && own(prop.original, '$default') ? JSON.stringify(prop.original.$default) : '(unset)';
+    const display = prop.defaultDraft ?? (prop.default === undefined ? '(unset)' : JSON.stringify(prop.default));
     return (
       <DefaultValueRow
         display={display.length > 72 ? `${display.slice(0, 69)}...` : display}
@@ -545,7 +556,7 @@ function DefaultSubRow({
         </Box>
       );
     }
-    const display = typeof prop.default === 'string' && prop.default !== '' ? prop.default : '(unset)';
+    const display = typeof prop.default === 'string' ? JSON.stringify(prop.default) : '(unset)';
     return <DefaultValueRow display={display} active={active} focused={focused} />;
   }
 
@@ -1064,6 +1075,7 @@ export function FieldEditor({
   active = true,
   onChange,
   onSave,
+  onDraftValidityChange,
   onDiscard,
   onExit,
   metadata,
@@ -1173,6 +1185,9 @@ export function FieldEditor({
   const [pickerCursor, setPickerCursor] = useState(0);
 
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [jsonDraft, setJsonDraft] = useState<string | null>(null);
+  const [jsonCursor, setJsonCursor] = useState(0);
+  const [jsonSelectAll, setJsonSelectAll] = useState(false);
   const [cursorVisible] = useState(true);
 
   const [sourceOpen, setSourceOpen] = useState(false);
@@ -1256,11 +1271,12 @@ export function FieldEditor({
   };
 
   const textEntryActive =
+    jsonDraft !== null ||
     (focusLevel === 'field' && editingField && activeField === 'description') ||
     (focusLevel === 'field' &&
       editingField &&
       activeField === 'default' &&
-      (editorState.props[propIdx]?.type === 'string' || editorState.props[propIdx]?.type === 'token')) ||
+      ['string', 'token', 'number', 'array', 'record'].includes(editorState.props[propIdx]?.type ?? '')) ||
     editingValue != null;
   React.useEffect(() => {
     onTextEntryActiveChange?.(textEntryActive);
@@ -1291,8 +1307,10 @@ export function FieldEditor({
     const parsed = parseToState(serialized);
     if (parsed.error) {
       setValidationError(parsed.error);
+      setEditorState(next);
       return;
     }
+    setValidationError(null);
     setEditorState(next);
     onChange(serialized);
   };
@@ -1307,7 +1325,21 @@ export function FieldEditor({
   const initialStateRef = React.useRef<EditorState>(initialState);
   const baselineCanonical = canonicalize(serializeState(initialStateRef.current, value));
   const currentCanonical = canonicalize(serializeState(editorState, value));
-  const isDirty = currentCanonical !== baselineCanonical;
+  const invalidDefault = editorState.props.some((prop) => Boolean(prop.defaultError));
+  const isDirty =
+    jsonDraft !== null
+      ? canonicalize(jsonDraft) !== baselineCanonical
+      : currentCanonical !== baselineCanonical || invalidDefault;
+  React.useEffect(() => {
+    onDraftValidityChange?.(jsonDraft !== null || (!invalidDefault && !validationError));
+  }, [invalidDefault, validationError, jsonDraft, onDraftValidityChange]);
+  const saveAcknowledged = (): boolean => {
+    if (invalidDefault || validationError) return false;
+    if (onSave(serializeState(editorState, value)) !== true) return false;
+    initialStateRef.current = editorState;
+    onDirtyChange?.(false);
+    return true;
+  };
   React.useEffect(() => {
     onDirtyChange?.(isDirty);
   }, [isDirty, onDirtyChange]);
@@ -1322,7 +1354,78 @@ export function FieldEditor({
   }, [discardTrigger, onChange, value]);
 
   useImmediateInput((input, key) => {
-    if (!active || parseErr) return;
+    if (!active) return;
+    if (key.ctrl && input === 'j' && jsonDraft === null) {
+      const next = serializeState(editorState, value);
+      setJsonDraft(next);
+      setJsonCursor(next.length);
+      setValidationError(null);
+      onTextEntryActiveChange?.(true);
+      return;
+    }
+    if (jsonDraft !== null) {
+      if ((key.ctrl && input === 's') || key.escape) {
+        try {
+          parseStrictJson(jsonDraft);
+          const parsed = parseToState(jsonDraft);
+          if (parsed.error) throw new Error(parsed.error);
+          if (onSave(jsonDraft) !== true) {
+            setValidationError('Save failed; JSON draft retained');
+            return;
+          }
+          setEditorState(parsed.state);
+          initialStateRef.current = parsed.state;
+          setJsonDraft(null);
+          setValidationError(null);
+          onDirtyChange?.(false);
+          onTextEntryActiveChange?.(false);
+        } catch (error) {
+          setValidationError(error instanceof Error ? error.message : 'Invalid JSON');
+        }
+        return;
+      }
+      if (key.ctrl && input === 'x') {
+        setJsonDraft(null);
+        setValidationError(null);
+        setEditorState(initialStateRef.current);
+        onChange(serializeState(initialStateRef.current, value));
+        onTextEntryActiveChange?.(false);
+        return;
+      }
+      if (key.ctrl && input === 'a') {
+        setJsonSelectAll(true);
+        return;
+      }
+      if (key.leftArrow) {
+        setJsonCursor(Math.max(0, jsonCursor - 1));
+        return;
+      }
+      if (key.rightArrow) {
+        setJsonCursor(Math.min(jsonDraft.length, jsonCursor + 1));
+        return;
+      }
+      let next = jsonSelectAll ? '' : jsonDraft,
+        position = jsonSelectAll ? 0 : jsonCursor;
+      setJsonSelectAll(false);
+      if (key.backspace || key.delete) {
+        if (position > 0) {
+          next = next.slice(0, position - 1) + next.slice(position);
+          position--;
+        }
+      } else if (key.return) {
+        next = next.slice(0, position) + '\n' + next.slice(position);
+        position++;
+      } else if (!key.ctrl && !key.meta && input) {
+        next = next.slice(0, position) + input + next.slice(position);
+        position += input.length;
+      } else return;
+      setJsonDraft(next);
+      setJsonCursor(position);
+      setValidationError(null);
+      onChange(next);
+      return;
+    }
+    if (parseErr) return;
 
     if (showHelp) {
       if (input === 'h' || key.escape) {
@@ -1331,9 +1434,7 @@ export function FieldEditor({
       return;
     }
     if (key.ctrl && input === 's') {
-      initialStateRef.current = editorState;
-      onDirtyChange?.(false);
-      onSave();
+      saveAcknowledged();
       return;
     }
     const inDescriptionTextEntryForHelp = focusLevel === 'field' && editingField && activeField === 'description';
@@ -1342,7 +1443,7 @@ export function FieldEditor({
       editingField &&
       activeField === 'default' &&
       currentProp != null &&
-      (currentProp.type === 'string' || currentProp.type === 'token');
+      ['string', 'token', 'number', 'array', 'record'].includes(currentProp.type);
     const inValueListTextEntry = editingValue != null;
     if (
       input === 'h' &&
@@ -1493,7 +1594,7 @@ export function FieldEditor({
       editingField &&
       activeField === 'default' &&
       currentProp != null &&
-      (currentProp.type === 'string' || currentProp.type === 'token');
+      ['string', 'token', 'number', 'array', 'record'].includes(currentProp.type);
     const rationaleKeyAllowed =
       !key.ctrl &&
       !key.meta &&
@@ -1526,10 +1627,7 @@ export function FieldEditor({
         if (editingField) {
           // Leaving a text field is an edit exit, not a cancellation. Persist
           // the current draft before returning to field navigation.
-          initialStateRef.current = editorState;
-          onDirtyChange?.(false);
-          onSave();
-          setEditingField(false);
+          if (saveAcknowledged()) setEditingField(false);
         } else {
           if (inComponentDesc) setFocusLevel('componentDescription');
           else setFocusLevel(inSlots ? 'slot' : 'prop');
@@ -1537,6 +1635,7 @@ export function FieldEditor({
         }
         return;
       }
+      if (invalidDefault || validationError) return;
       if (onExit) {
         onExit();
       } else {
@@ -1632,7 +1731,13 @@ export function FieldEditor({
             const desc = inSlots ? (currentSlot?.description ?? '') : (currentProp?.description ?? '');
             setTextCursor(desc.length);
           } else if (next === 'default' && currentProp) {
-            const cur = typeof currentProp.default === 'string' ? currentProp.default : '';
+            const cur =
+              currentProp.defaultDraft ??
+              (typeof currentProp.default === 'string'
+                ? currentProp.default
+                : currentProp.default === undefined
+                  ? ''
+                  : JSON.stringify(currentProp.default));
             setTextCursor(cur.length);
           } else if (next === 'values' || next === 'allowedComponents') {
             const nextVals =
@@ -1648,6 +1753,7 @@ export function FieldEditor({
       }
 
       if (key.return) {
+        if (invalidDefault || validationError) return;
         setEditingField(false);
         return;
       }
@@ -1684,10 +1790,16 @@ export function FieldEditor({
           ? options[(idx - 1 + options.length) % options.length]
           : options[(idx + 1) % options.length];
         if ((next === 'array' || next === 'record') && next !== currentProp.type) {
-          setValidationError('Create recursive definitions in the JSON editor before selecting this type');
+          setValidationError('Press Ctrl+J to edit the recursive definition in component JSON');
           return;
         }
-        const updated = { ...currentProp, type: next as PropState['type'] };
+        const updated = {
+          ...currentProp,
+          type: next as PropState['type'],
+          defaultDraft: undefined,
+          defaultError: undefined,
+          defaultTouched: true,
+        };
         if (next === 'token') {
           updated.category = 'design';
           updated.tokenKind ||= DESIGN_TOKEN_TYPES[0] ?? '';
@@ -1696,7 +1808,10 @@ export function FieldEditor({
         }
         if (next !== 'string') updated.values = [];
         const nextProps = props.map((p, i) => (i === propIdx ? updated : p));
-        commit({ ...editorState, props: nextProps });
+        const nextState = { ...editorState, props: nextProps };
+        const nextDefinition = parseToState(serializeState(nextState, value)).state.props[propIdx]?.original;
+        if (nextDefinition && !validateCDFProperty(nextDefinition).valid) updated.default = undefined;
+        commit(nextState);
         return;
       }
 
@@ -1724,18 +1839,58 @@ export function FieldEditor({
       }
 
       if (activeField === 'default' && currentProp) {
-        if (['array', 'record', 'number'].includes(currentProp.type)) {
-          setValidationError('Typed defaults are preserved; edit them in the JSON editor');
-          return;
-        }
         const setProp = (next: PropState) => {
           next = { ...next, defaultTouched: true };
           const nextProps = props.map((p, i) => (i === propIdx ? next : p));
           commit({ ...editorState, props: nextProps });
         };
 
+        if (key.ctrl && input === 'x') {
+          setProp({ ...currentProp, default: undefined, defaultDraft: undefined, defaultError: undefined });
+          return;
+        }
+        if (['number', 'array', 'record'].includes(currentProp.type)) {
+          const cur =
+            currentProp.defaultDraft ?? (currentProp.default === undefined ? '' : JSON.stringify(currentProp.default));
+          if (key.leftArrow) {
+            setTextCursor((cursor) => Math.max(0, cursor - 1));
+            return;
+          }
+          if (key.rightArrow) {
+            setTextCursor((cursor) => Math.min(cur.length, cursor + 1));
+            return;
+          }
+          let draft = cur;
+          let cursor = textCursor;
+          if (key.backspace && cursor > 0) {
+            draft = cur.slice(0, cursor - 1) + cur.slice(cursor);
+            cursor--;
+          } else if (key.delete) draft = cur.slice(0, cursor) + cur.slice(cursor + 1);
+          else if (input && !key.ctrl && !key.meta && !key.return) {
+            draft = cur.slice(0, cursor) + input + cur.slice(cursor);
+            cursor += input.length;
+          } else return;
+          const parsed = parseTypedDefault(draft, currentProp.type);
+          const updated = {
+            ...currentProp,
+            defaultDraft: draft,
+            defaultTouched: true,
+            ...('error' in parsed
+              ? { defaultError: parsed.error }
+              : { default: parsed.value, defaultError: undefined }),
+          };
+          const next = { ...editorState, props: props.map((prop, index) => (index === propIdx ? updated : prop)) };
+          setTextCursor(cursor);
+          if ('error' in parsed) {
+            setEditorState(next);
+            setValidationError(parsed.error);
+          } else {
+            commit(next);
+          }
+          return;
+        }
         if (currentProp.type === 'boolean' && (key.leftArrow || key.rightArrow)) {
-          const cycle: (boolean | null)[] = [null, true, false];
+          const cycle: (boolean | undefined)[] = [undefined, true, false];
           const curIdx = cycle.findIndex((v) => v === currentProp.default);
           const idx = curIdx < 0 ? 0 : curIdx;
           const nextIdx = key.rightArrow ? (idx + 1) % cycle.length : (idx - 1 + cycle.length) % cycle.length;
@@ -1744,8 +1899,8 @@ export function FieldEditor({
         }
 
         if (currentProp.type === 'string' && currentProp.values.length > 0 && (key.leftArrow || key.rightArrow)) {
-          const opts: (string | null)[] = [null, ...currentProp.values];
-          const cur = typeof currentProp.default === 'string' ? currentProp.default : null;
+          const opts: (string | undefined)[] = [undefined, ...currentProp.values];
+          const cur = typeof currentProp.default === 'string' ? currentProp.default : undefined;
           const curIdx = opts.findIndex((v) => v === cur);
           const idx = curIdx < 0 ? 0 : curIdx;
           const nextIdx = key.rightArrow ? (idx + 1) % opts.length : (idx - 1 + opts.length) % opts.length;
@@ -1754,7 +1909,13 @@ export function FieldEditor({
         }
 
         if (currentProp.type === 'string' || currentProp.type === 'token') {
-          const cur = typeof currentProp.default === 'string' ? currentProp.default : '';
+          const cur =
+            currentProp.defaultDraft ??
+            (typeof currentProp.default === 'string'
+              ? currentProp.default
+              : currentProp.default === undefined
+                ? ''
+                : JSON.stringify(currentProp.default));
           const setVal = (next: string) => setProp({ ...currentProp, default: next });
           if (key.leftArrow) {
             setTextCursor((c) => Math.max(0, c - 1));
@@ -1945,33 +2106,6 @@ export function FieldEditor({
 
   const innerWidth = Math.max(1, width - 2);
 
-  if (parseErr) {
-    return (
-      <Box flexDirection="column" width={width} borderStyle="single" borderColor={PALETTE.error}>
-        <Text bold color={PALETTE.error}>
-          FIELD EDITOR — parse error
-        </Text>
-        <Text color={PALETTE.error}>{parseErr}</Text>
-        <Text color={PALETTE.muted}>Cannot display structured editor. Fix the JSON first.</Text>
-      </Box>
-    );
-  }
-
-  if (props.length === 0 && slots.length === 0) {
-    return (
-      <Box flexDirection="column" width={width} borderStyle="single" borderColor={PALETTE.warning}>
-        <Text bold color={PALETTE.warning}>
-          FIELD EDITOR — no fields
-        </Text>
-        <Text color={PALETTE.warning}>
-          {"⚠ No properties classified for this component. The LLM didn't find anything to classify."}
-        </Text>
-        <Text color={PALETTE.muted}>You can add fields manually below or reject this component.</Text>
-        <Text color={PALETTE.muted}>Enter to save · Esc to discard</Text>
-      </Box>
-    );
-  }
-
   const hasEmptyProperties = props.length === 0 && slots.length === 0;
 
   const modeLabel = (() => {
@@ -1996,7 +2130,7 @@ export function FieldEditor({
     if (rationaleOpen) {
       return '[↑↓] scroll  [i/Esc] close rationale panel';
     }
-    return `[↑↓] navigate rows  [Enter] edit fields  [s] source  [${propRationaleKey}] prop rationale  [${componentRationaleKey}] component rationale  [h] help  [Esc] exit panel`;
+    return `[↑↓] navigate rows  [Enter] edit fields  [s] source  [${propRationaleKey}] prop rationale  [${componentRationaleKey}] component rationale  [Ctrl+j] edit component JSON  [h] help  [Esc] exit panel`;
   })();
 
   type Row =
@@ -2113,6 +2247,48 @@ export function FieldEditor({
       return changed ? next : previous;
     });
   });
+
+  if (jsonDraft !== null) {
+    const before = jsonDraft.slice(0, jsonCursor),
+      after = jsonDraft.slice(jsonCursor);
+    const lines = (before + '▌' + after).split('\n');
+    const currentLine = before.split('\n').length - 1;
+    const visibleHeight = Math.max(1, height - 5);
+    const start = Math.max(0, currentLine - visibleHeight + 1);
+    return (
+      <Box flexDirection="column" width={width} height={height} borderStyle="single" borderColor={PALETTE.info}>
+        <Text bold>Component JSON · Ctrl+S/Esc save · Ctrl+A select all · Ctrl+X discard</Text>
+        <Text>{lines.slice(start, start + visibleHeight).join('\n')}</Text>
+        {validationError && <Text color={PALETTE.error}>{validationError}</Text>}
+      </Box>
+    );
+  }
+  if (parseErr) {
+    return (
+      <Box flexDirection="column" width={width} borderStyle="single" borderColor={PALETTE.error}>
+        <Text bold color={PALETTE.error}>
+          FIELD EDITOR — parse error
+        </Text>
+        <Text color={PALETTE.error}>{parseErr}</Text>
+        <Text color={PALETTE.muted}>Cannot display structured editor. Fix the JSON first.</Text>
+      </Box>
+    );
+  }
+
+  if (props.length === 0 && slots.length === 0) {
+    return (
+      <Box flexDirection="column" width={width} borderStyle="single" borderColor={PALETTE.warning}>
+        <Text bold color={PALETTE.warning}>
+          FIELD EDITOR — no fields
+        </Text>
+        <Text color={PALETTE.warning}>
+          {"⚠ No properties classified for this component. The LLM didn't find anything to classify."}
+        </Text>
+        <Text color={PALETTE.muted}>You can add fields manually below or reject this component.</Text>
+        <Text color={PALETTE.muted}>Enter to save · Esc to discard</Text>
+      </Box>
+    );
+  }
 
   const focusedSlotPickerCandidates =
     focusLevel === 'field' &&

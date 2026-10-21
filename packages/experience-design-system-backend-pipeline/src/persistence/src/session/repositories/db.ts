@@ -1,11 +1,18 @@
+import { definitionCall } from '../../../../steps/generation/src/services/property/definition-call.js';
 import { validateSavedSourceClosure } from './source-closure-binding.js';
 import {
   validateCDFProperty,
+  validateSourceGraph,
+  normalizeClassificationCalls,
+  accountClassificationCalls,
+  jsonEqual,
   jsonValueIssue,
   cloneJson,
   own,
   type CDFPropertyDefinition,
+  type ClassifiedPropertyCall,
 } from '@contentful/experience-design-system-types';
+import { componentDecisionInventory } from '../../../../steps/generation/src/services/property/decision-inventory.js';
 import { materializeProperty } from '../../../../steps/generation/src/services/property/materialize-property.js';
 import {
   buildSharedSource,
@@ -185,6 +192,14 @@ CREATE TABLE IF NOT EXISTS raw_props (
   source_end_line   INTEGER,
   dom_attribute     INTEGER CHECK (dom_attribute IN (0, 1)),
   PRIMARY KEY (session_id, component_id, name),
+  FOREIGN KEY (session_id, component_id) REFERENCES raw_components(session_id, component_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS raw_component_decisions (
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  component_id TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  PRIMARY KEY (session_id, component_id),
   FOREIGN KEY (session_id, component_id) REFERENCES raw_components(session_id, component_id) ON DELETE CASCADE
 );
 
@@ -686,10 +701,14 @@ export function loadComponentReviewMetadata(
   db: DatabaseSync,
   sessionId: string,
   componentName: string,
+  componentId?: string,
 ): ComponentReviewMetadata | null {
-  const compRow = db
-    .prepare(`SELECT component_id, source, source_path FROM raw_components WHERE session_id = ? AND name = ?`)
-    .get(sessionId, componentName) as { component_id: string; source: string; source_path: string | null } | undefined;
+  const rows = db
+    .prepare('SELECT component_id,source,source_path FROM raw_components WHERE session_id=? AND name=?')
+    .all(sessionId, componentName) as Array<{ component_id: string; source: string; source_path: string | null }>;
+  const matches = componentId ? rows.filter((row) => row.component_id === componentId) : rows;
+  if (matches.length > 1) throw new Error('Ambiguous review metadata component');
+  const compRow = matches[0];
   if (!compRow) return null;
 
   const propRows = db
@@ -817,22 +836,23 @@ export function loadComponentRationale(
   db: DatabaseSync,
   sessionId: string,
   componentName: string,
+  componentId?: string,
 ): ComponentRationale | null {
-  const compRow = db
+  const matches = db
     .prepare(
       `SELECT component_id, name, description, component_description_rationale, props_rationale, slots_rationale
-       FROM raw_components WHERE session_id = ? AND name = ?`,
+       FROM raw_components WHERE session_id = ? AND name = ? AND (? IS NULL OR component_id = ?)`,
     )
-    .get(sessionId, componentName) as
-    | {
-        component_id: string;
-        name: string;
-        description: string | null;
-        component_description_rationale: string | null;
-        props_rationale: string | null;
-        slots_rationale: string | null;
-      }
-    | undefined;
+    .all(sessionId, componentName, componentId ?? null, componentId ?? null) as Array<{
+    component_id: string;
+    name: string;
+    description: string | null;
+    component_description_rationale: string | null;
+    props_rationale: string | null;
+    slots_rationale: string | null;
+  }>;
+  if (matches.length > 1) throw new Error('Ambiguous component rationale');
+  const compRow = matches[0];
   if (!compRow) return null;
 
   const propRows = db
@@ -884,26 +904,38 @@ function savePropertyDecision(
   sessionId: string,
   componentId: string,
   propName: string,
-  definition: CDFPropertyDefinition,
+  definition: CDFPropertyDefinition | null,
   decision: unknown,
 ): void {
-  const validation = validateCDFProperty(definition);
+  const validation = definition === null ? { valid: true, issues: [] } : validateCDFProperty(definition);
   if (!validation.valid)
     throw new Error(validation.issues.map((issue) => `${issue.path}: ${issue.message}`).join('; '));
   const unsafe = jsonValueIssue(decision);
   if (unsafe) throw new Error(`${unsafe.path}: ${unsafe.message}`);
   const previous = db
-    .prepare('SELECT decision_json FROM raw_property_decisions WHERE session_id=? AND component_id=? AND prop_name=?')
-    .get(sessionId, componentId, propName) as { decision_json: string } | undefined;
+    .prepare(
+      'SELECT definition_json,decision_json FROM raw_property_decisions WHERE session_id=? AND component_id=? AND prop_name=?',
+    )
+    .get(sessionId, componentId, propName) as { definition_json: string; decision_json: string } | undefined;
   let retained = decision;
   if (previous && decision && typeof decision === 'object' && 'kind' in decision && decision.kind === 'review') {
     const prior = JSON.parse(previous.decision_json) as Record<string, unknown>;
+    const priorDefinition = JSON.parse(previous.definition_json) as CDFPropertyDefinition | null;
+    if (jsonEqual(priorDefinition, definition)) return;
+    if (
+      definition &&
+      priorDefinition &&
+      own(prior, 'defaultIntent') &&
+      own(definition, '$default') === own(priorDefinition, '$default') &&
+      jsonEqual(definition.$default, priorDefinition.$default)
+    )
+      decision = { ...decision, defaultIntent: prior.defaultIntent };
     const analysis =
       prior.analysis ??
       Object.fromEntries(
         ['model', 'projection', 'alternatives'].filter((key) => own(prior, key)).map((key) => [key, prior[key]]),
       );
-    retained = { ...decision, analysis };
+    retained = { ...(decision as Record<string, unknown>), analysis };
   }
   db.prepare(
     `INSERT INTO raw_property_decisions (session_id,component_id,prop_name,revision,definition_json,decision_json)
@@ -917,7 +949,7 @@ export function loadPropertyDecisions(
   componentId: string;
   propertyName: string;
   revision: number;
-  definition: CDFPropertyDefinition;
+  definition: CDFPropertyDefinition | null;
   decision: unknown;
 }> {
   const rows = db
@@ -933,15 +965,212 @@ export function loadPropertyDecisions(
   }>;
   return rows.map((row) => {
     const definition: unknown = JSON.parse(row.definition_json);
-    if (!validateCDFProperty(definition).valid) throw new Error('Corrupt saved property definition');
+    if (definition !== null && !validateCDFProperty(definition).valid)
+      throw new Error('Corrupt saved property definition');
     return {
       componentId: row.component_id,
       propertyName: row.prop_name,
       revision: row.revision,
-      definition: definition as CDFPropertyDefinition,
+      definition: definition as CDFPropertyDefinition | null,
       decision: JSON.parse(row.decision_json) as unknown,
     };
   });
+}
+
+export interface ComponentDecisionReadiness {
+  componentId: string;
+  accounting: { complete: boolean; missing: string[]; issues: string[] };
+  source: { adequate: boolean; issues: string[] };
+  import: { ready: boolean; issues: string[] };
+}
+
+export function evaluateComponentReadiness(
+  db: DatabaseSync,
+  sessionId: string,
+  componentId: string,
+): ComponentDecisionReadiness {
+  const components = loadRawComponents(db, sessionId).filter((component) => component.component_id === componentId);
+  if (components.length !== 1) throw new Error('Unknown or ambiguous selected component ID');
+  const component = components[0]!;
+  let slotIssue: string | undefined;
+  let acceptedSlots: SlotDecision[] | undefined;
+  try {
+    acceptedSlots = loadAcceptedSlotDecisions(db, sessionId);
+  } catch (error) {
+    slotIssue = error instanceof Error ? error.message : 'Slot source unavailable';
+  }
+  const inventory = componentDecisionInventory(component, acceptedSlots);
+  const row = db
+    .prepare('SELECT payload_json FROM raw_component_decisions WHERE session_id=? AND component_id=?')
+    .get(sessionId, componentId) as { payload_json: string } | undefined;
+  let calls: ToolCall[] = [];
+  const protocolIssues: string[] = [];
+  let savedSource: unknown;
+  let savedInventory: unknown;
+  if (row) {
+    const payload = JSON.parse(row.payload_json) as { calls?: unknown[]; source?: unknown; inventory?: unknown };
+    savedSource = payload.source;
+    savedInventory = payload.inventory;
+    const normalized = normalizeClassificationCalls(payload.calls ?? []);
+    calls = normalized.calls;
+    protocolIssues.push(...normalized.warnings);
+  }
+  const decisions = loadPropertyDecisions(db, sessionId).filter((decision) => decision.componentId === componentId);
+  const effective = calls.map((call) => {
+    if (call.tool !== 'classify_prop') return call;
+    const saved = decisions.find((decision) => decision.propertyName === call.prop);
+    if (!saved?.definition) return call;
+    const definition = saved.definition;
+    const record = saved.decision as { defaultIntent?: ClassifiedPropertyCall['default_intent'] };
+    return definitionCall(call.prop, definition, record.defaultIntent);
+  });
+  const accounting = accountClassificationCalls(inventory, effective);
+  const sourceIssues: string[] = slotIssue ? [slotIssue] : [];
+  const importIssues: string[] = [];
+  if (!jsonEqual(savedSource, component.sourceCandidates ?? null))
+    sourceIssues.push('Stale component source decision snapshot');
+  if (!jsonEqual(savedInventory, inventory)) sourceIssues.push('Stale component subject inventory');
+  const completed = loadCompletedSourceEvidence(db, sessionId);
+  if (completed.readiness !== 'ready') sourceIssues.push('Completed bound source unavailable');
+  else if (!completed.envelope.candidateDigests?.[componentId])
+    sourceIssues.push('Completed candidate source binding unavailable');
+  if (component.sourceEvidenceReadStatus !== 'available') sourceIssues.push('Candidate source evidence unavailable');
+  for (const name of inventory.properties) {
+    const candidate = component.sourceCandidates?.find((item) => item.name === name);
+    const fact = candidate?.facts;
+    const locations = fact
+      ? [
+          ...fact.declarations,
+          ...(fact.sourceGraph?.nodes.flatMap((node) => node.declarations) ?? []),
+          ...(fact.sourceDefault?.location ? [fact.sourceDefault.location] : []),
+          ...(fact.sourceDefault?.dependencies ?? []),
+        ]
+      : [];
+    if (
+      !fact?.sourceGraph ||
+      validateSourceGraph(fact.sourceGraph).length ||
+      fact.sourceGraph.coverage !== 'complete-within-declared-bound' ||
+      !locations.length ||
+      locations.some((location) => location.binding !== 'verified')
+    )
+      sourceIssues.push(`Source inadequate for ${name}`);
+    if (completed.readiness === 'ready')
+      for (const location of locations) {
+        const file = completed.envelope.capture.files.find(
+          (item) => item.canonicalPath === location.canonicalPath && item.textHash === location.textHash,
+        );
+        if (
+          !file ||
+          !location.startLine ||
+          !location.endLine ||
+          location.endLine < location.startLine ||
+          (file.captured.kind === 'full' &&
+            (location.endLine > file.captured.text.split('\n').length ||
+              (location.startOffset !== undefined &&
+                location.startOffset !== null &&
+                (location.startOffset < 0 ||
+                  location.endOffset === null ||
+                  location.endOffset === undefined ||
+                  location.endOffset < location.startOffset ||
+                  location.endOffset > file.captured.text.length))))
+        )
+          sourceIssues.push(`Source range unavailable for ${name}`);
+      }
+  }
+  for (const call of effective) {
+    if (call.tool !== 'classify_prop') continue;
+    const saved = decisions.find((decision) => decision.propertyName === call.prop);
+    if (!saved) {
+      importIssues.push(`Missing durable property decision ${call.prop}`);
+      continue;
+    }
+    if (saved.definition?.$type === 'token') {
+      const paths = db
+        .prepare(
+          'SELECT path FROM raw_prop_token_paths WHERE session_id=? AND component_id=? AND prop_name=? ORDER BY position',
+        )
+        .all(sessionId, componentId, call.prop) as Array<{ path: string }>;
+      if (new Set(paths.map((item) => item.path)).size !== paths.length)
+        importIssues.push(`Duplicate token mapping ${call.prop}`);
+      for (const item of paths) {
+        const token = db
+          .prepare('SELECT type FROM raw_tokens WHERE session_id=? AND path=?')
+          .get(sessionId, item.path) as { type: string } | undefined;
+        if (token && token.type !== saved.definition['$token.kind'])
+          importIssues.push(`Changed token mapping ${call.prop}`);
+      }
+    }
+    try {
+      const record = saved.decision as {
+        reviewAuthority?: unknown;
+        model?: { identity?: unknown; source?: { originalFacts?: unknown } };
+      };
+      const authority = record.reviewAuthority;
+      const current = materializeProperty(component, call, componentId, {
+        defaultAuthority: authority ? 'review' : 'generation',
+      });
+      if (
+        record.model &&
+        (!jsonEqual(record.model.identity, current.model?.identity) ||
+          !jsonEqual(record.model.source?.originalFacts, current.model?.source.originalFacts))
+      )
+        throw new Error('Stale saved property source model');
+      if (authority && !jsonEqual(authority, current.model?.identity))
+        throw new Error('Stale review default authority');
+      if (!current.definition || !current.projection || !['supported', 'lossy'].includes(current.projection.outcome))
+        importIssues.push(`Property held ${call.prop}`);
+    } catch (error) {
+      importIssues.push(error instanceof Error ? error.message : 'Invalid current property decision');
+    }
+  }
+  const accountingIssues = [...protocolIssues, ...accounting.issues];
+  const complete = accounting.complete && !protocolIssues.length;
+  return {
+    componentId,
+    accounting: { complete, missing: accounting.missing, issues: accountingIssues },
+    source: { adequate: !sourceIssues.length, issues: sourceIssues },
+    import: { ready: complete && !sourceIssues.length && !importIssues.length, issues: importIssues },
+  };
+}
+
+export function loadSelectedCDFComponents(
+  db: DatabaseSync,
+  sessionId: string,
+  selectedIds?: ReadonlySet<string>,
+  selectedKeys?: ReadonlySet<string>,
+): Array<{ key: string; componentId: string; entry: CDFComponentEntry }> {
+  const rows = db
+    .prepare('SELECT component_id,name,status FROM raw_components WHERE session_id=? ORDER BY rowid')
+    .all(sessionId) as Array<{ component_id: string; name: string; status: string }>;
+  if (selectedKeys) {
+    const resolved = new Set<string>();
+    for (const key of selectedKeys) {
+      const matches = rows.filter((row) => row.name === key);
+      if (matches.length !== 1) throw new Error('Unknown or ambiguous selected component key');
+      resolved.add(matches[0]!.component_id);
+    }
+    if (selectedIds && !jsonEqual([...selectedIds].sort(), [...resolved].sort()))
+      throw new Error('Selected component keys and IDs disagree');
+    selectedIds = resolved;
+  }
+  const scope = loadScopeDecisions(db, sessionId);
+  const ids =
+    selectedIds ??
+    new Set(
+      rows
+        .filter((row) => row.status !== 'generate-rejected' && (!scope || scope.accepted.includes(row.name)))
+        .map((row) => row.component_id),
+    );
+  for (const id of ids) {
+    const readiness = evaluateComponentReadiness(db, sessionId, id);
+    if (!readiness.import.ready)
+      throw new Error(
+        `Selected component ${id} is not ready: ${[...readiness.accounting.issues, ...readiness.accounting.missing, ...readiness.source.issues, ...readiness.import.issues].join('; ')}`,
+      );
+  }
+  const components = loadCDFComponents(db, sessionId).filter((component) => ids.has(component.componentId));
+  if (components.length !== ids.size) throw new Error('Selected component output missing');
+  return components;
 }
 
 export function applyToolCalls(
@@ -959,9 +1188,38 @@ export function applyToolCalls(
   let excluded = 0;
   let slots = 0;
   let projectionBlocked = false;
-  const rawComponent = loadRawComponents(db, sessionId, new Set([componentName])).find(
-    (component) => component.component_id === componentId,
+  const matches = loadRawComponents(db, sessionId).filter((component) => component.component_id === componentId);
+  if (matches.length !== 1 || matches[0]!.name !== componentName)
+    throw new Error('Unknown or ambiguous component identity');
+  const rawComponent = matches[0]!;
+  const normalized = normalizeClassificationCalls(calls);
+  if (incomingWarnings.length || normalized.warnings.length)
+    throw new Error([...incomingWarnings, ...normalized.warnings].join('; '));
+  const inventory = componentDecisionInventory(rawComponent, loadAcceptedSlotDecisions(db, sessionId));
+  const accounting = accountClassificationCalls(inventory, normalized.calls);
+  if (!accounting.complete)
+    throw new Error([...accounting.issues, ...accounting.missing.map((key) => `Missing decision ${key}`)].join('; '));
+  calls = normalized.calls;
+  const retainedHuman = loadPropertyDecisions(db, sessionId).filter(
+    (decision) => decision.componentId === componentId && (decision.decision as { kind?: string }).kind === 'review',
   );
+  calls = calls.map((call) => {
+    if (call.tool !== 'classify_prop' && call.tool !== 'exclude_prop') return call;
+    const human = retainedHuman.find((decision) => decision.propertyName === call.prop);
+    if (!human) return call;
+    if ((human.decision as { transfer?: { state?: string } }).transfer?.state === 'stale')
+      throw new Error('Source-changed human decision requires review');
+    if (!human.definition) return (human.decision as { call?: ToolCall }).call ?? call;
+    const retained = definitionCall(
+      call.prop,
+      human.definition,
+      (human.decision as { defaultIntent?: ClassifiedPropertyCall['default_intent'] }).defaultIntent,
+    );
+    materializeProperty(rawComponent, retained, componentId, { defaultAuthority: 'review' });
+    return retained;
+  });
+  const sourceSnapshot = cloneJson(rawComponent.sourceCandidates ?? null);
+  const producer = { kind: 'generation', id: randomUUID(), sessionId, componentId };
 
   const updateProp = db.prepare(
     `UPDATE raw_props SET cdf_type = ?, cdf_category = ?, cdf_token_kind = ?, required = ?, description = ?, rationale = ?
@@ -969,10 +1227,9 @@ export function applyToolCalls(
   );
   const clearProp = db.prepare(
     `UPDATE raw_props
-     SET cdf_type = CASE WHEN type = 'boolean' THEN 'boolean' ELSE 'string' END,
-         cdf_category = 'unattached',
+     SET cdf_type = NULL,
+         cdf_category = NULL,
          cdf_token_kind = NULL,
-         required = 0,
          rationale = ?
      WHERE session_id = ? AND component_id = ? AND name = ?`,
   );
@@ -1030,30 +1287,40 @@ export function applyToolCalls(
           }
         }
       } else if (call.tool === 'classify_prop') {
-        if (!rawComponent || !rawComponent.props.some((prop) => prop.name === call.prop)) {
+        if (!inventory.properties.includes(call.prop)) {
           warnings.push(`${componentName}: classify_prop '${call.prop}' — prop not found, skipped`);
           continue;
         }
-        const materialized = materializeProperty(rawComponent, call, componentId);
+        const human = retainedHuman.find((decision) => decision.propertyName === call.prop);
+        const materialized = materializeProperty(rawComponent, call, componentId, {
+          defaultAuthority: human ? 'review' : 'generation',
+        });
         const definition = materialized.definition;
-        if (materialized.projection?.outcome === 'unsupported') {
+        if (
+          !definition ||
+          (materialized.projection && !['supported', 'lossy'].includes(materialized.projection.outcome))
+        ) {
           projectionBlocked = true;
-          const prior = loadPropertyDecisions(db, sessionId).find(
-            (decision) => decision.componentId === componentId && decision.propertyName === call.prop,
-          );
-          savePropertyDecision(db, sessionId, componentId, call.prop, prior?.definition ?? definition, {
+          clearProp.run(call.reason ?? 'Representation held', sessionId, componentId, call.prop);
+          savePropertyDecision(db, sessionId, componentId, call.prop, definition, {
             kind: 'generation',
+            producer,
             admission: 'unsupported',
+            defaultIntent:
+              call.default_intent ??
+              (own(call, 'default') ? { action: 'set', value: call.default } : { action: 'absent' }),
+            source: sourceSnapshot,
             ...materialized,
           });
           warnings.push(
-            ...materialized.projection.issues.map((issue) => `${call.prop}${issue.path}: ${issue.message}`),
+            ...(materialized.projection?.issues ?? []).map((issue) => `${call.prop}${issue.path}: ${issue.message}`),
           );
+          classified++;
           continue;
         }
         if (materialized.projection)
           warnings.push(
-            ...materialized.projection.issues.map((issue) => `${call.prop}${issue.path}: ${issue.message}`),
+            ...(materialized.projection?.issues ?? []).map((issue) => `${call.prop}${issue.path}: ${issue.message}`),
           );
         const changes = updateProp.run(
           definition.$type,
@@ -1092,21 +1359,34 @@ export function applyToolCalls(
             });
           }
         }
-        savePropertyDecision(db, sessionId, componentId, call.prop, definition, {
-          kind: 'generation',
-          defaultIntent:
-            call.default_intent ??
-            (own(call, 'default') ? { action: 'set', value: call.default } : { action: 'absent' }),
-          ...materialized,
-        });
+        if (!human)
+          savePropertyDecision(db, sessionId, componentId, call.prop, definition, {
+            kind: 'generation',
+            producer,
+            defaultIntent:
+              call.default_intent ??
+              (own(call, 'default') ? { action: 'set', value: call.default } : { action: 'absent' }),
+            ...materialized,
+          });
         classified++;
       } else if (call.tool === 'exclude_prop') {
         clearProp.run(call.reason || null, sessionId, componentId, call.prop);
-        db.prepare('DELETE FROM raw_property_decisions WHERE session_id=? AND component_id=? AND prop_name=?').run(
-          sessionId,
+        const excludedSource = materializeProperty(
+          rawComponent,
+          { tool: 'classify_prop', prop: call.prop, cdf_category: 'content', reason: call.reason },
           componentId,
-          call.prop,
         );
+        savePropertyDecision(db, sessionId, componentId, call.prop, null, {
+          kind: 'generation',
+          producer,
+          disposition: 'exclude',
+          reason: call.reason,
+          call,
+          source: sourceSnapshot,
+          identity: excludedSource.model?.identity ?? null,
+          model: excludedSource.model ?? null,
+          defaultIntent: { action: 'absent' },
+        });
         excluded++;
       } else if (call.tool === 'classify_slot') {
         if (loadAcceptedSlotDecisions(db, sessionId) !== undefined) {
@@ -1154,8 +1434,20 @@ export function applyToolCalls(
       }
     }
 
+    db.prepare(
+      'INSERT INTO raw_component_decisions(session_id,component_id,payload_json) VALUES (?,?,?) ON CONFLICT(session_id,component_id) DO UPDATE SET payload_json=excluded.payload_json',
+    ).run(
+      sessionId,
+      componentId,
+      JSON.stringify({ schemaVersion: 1, calls, inventory, source: sourceSnapshot, accountingComplete: true }),
+    );
+    const currentReadiness = evaluateComponentReadiness(db, sessionId, componentId);
+    if (!currentReadiness.source.adequate) {
+      projectionBlocked = true;
+      warnings.push(...currentReadiness.source.issues);
+    }
     db.prepare(`UPDATE raw_components SET status = ?, extracted_at = ? WHERE session_id = ? AND component_id = ?`).run(
-      projectionBlocked ? 'failed' : 'generated',
+      projectionBlocked ? 'held' : 'generated',
       now,
       sessionId,
       componentId,
@@ -1284,57 +1576,30 @@ export function storeRawComponents(
           decision_json: string;
         }>)
       : [];
-    type CDFSnapshot = {
-      component_id: string;
-      name: string;
-      position: number;
-      cdf_type: string;
-      cdf_category: string;
-      cdf_token_kind: string | null;
-    };
-    type DescSnapshot = { component_id: string; description: string };
-    type AVSnapshot = {
-      component_id: string;
-      prop_name: string;
-      position: number;
-      value: string;
-    };
-    type StatusSnapshot = {
-      component_id: string;
-      status: string;
-      reject_reason: string | null;
-    };
-
-    let cdfSnapshot: CDFSnapshot[] = [];
-    let descSnapshot: DescSnapshot[] = [];
-    let avSnapshot: AVSnapshot[] = [];
+    const ledgerSnapshot = options?.preserveCDF
+      ? (db
+          .prepare('SELECT component_id,payload_json FROM raw_component_decisions WHERE session_id=?')
+          .all(sessionId) as Array<{ component_id: string; payload_json: string }>)
+      : [];
+    const tokenSnapshot = options?.preserveCDF
+      ? (db
+          .prepare('SELECT component_id,prop_name,source,position,path FROM raw_prop_token_paths WHERE session_id=?')
+          .all(sessionId) as Array<{
+          component_id: string;
+          prop_name: string;
+          source: string;
+          position: number;
+          path: string;
+        }>)
+      : [];
+    const descriptionSnapshot = options?.preserveCDF
+      ? (db.prepare('SELECT component_id,description FROM raw_components WHERE session_id=?').all(sessionId) as Array<{
+          component_id: string;
+          description: string | null;
+        }>)
+      : [];
+    type StatusSnapshot = { component_id: string; status: string; reject_reason: string | null };
     let statusSnapshot: StatusSnapshot[] = [];
-
-    if (options?.preserveCDF) {
-      cdfSnapshot = db
-        .prepare(
-          `SELECT component_id, name, position, cdf_type, cdf_category, cdf_token_kind
-           FROM raw_props WHERE session_id = ? AND cdf_type IS NOT NULL`,
-        )
-        .all(sessionId) as CDFSnapshot[];
-
-      descSnapshot = db
-        .prepare(
-          `SELECT component_id, description
-           FROM raw_components WHERE session_id = ? AND description IS NOT NULL`,
-        )
-        .all(sessionId) as DescSnapshot[];
-
-      if (cdfSnapshot.length > 0) {
-        avSnapshot = db
-          .prepare(
-            `SELECT component_id, prop_name, position, value
-             FROM raw_prop_allowed_values WHERE session_id = ?`,
-          )
-          .all(sessionId) as AVSnapshot[];
-      }
-    }
-
     if (options?.preserveStatus) {
       statusSnapshot = db
         .prepare(
@@ -1413,94 +1678,147 @@ export function storeRawComponents(
       }
     }
 
+    const transferred = new Map<string, ToolCall[]>();
     for (const snapshot of nativeSnapshot) {
-      const exists = db
-        .prepare('SELECT 1 FROM raw_props WHERE session_id=? AND component_id=? AND name=?')
-        .get(sessionId, snapshot.component_id, snapshot.prop_name);
-      if (exists)
+      const component = components.find((item) => deriveComponentId(item.name, item.source) === snapshot.component_id);
+      if (!component || !componentDecisionInventory(component).properties.includes(snapshot.prop_name)) continue;
+      const previous = JSON.parse(snapshot.decision_json) as Record<string, unknown>;
+      const definition = JSON.parse(snapshot.definition_json) as CDFPropertyDefinition | null;
+      const intent = previous.defaultIntent as ClassifiedPropertyCall['default_intent'];
+      let retained = previous;
+      let active: CDFPropertyDefinition | null = null;
+      let call: ToolCall | undefined;
+      try {
+        if (definition) {
+          call = definitionCall(snapshot.prop_name, definition, intent);
+          const current = materializeProperty(component, call, snapshot.component_id, {
+            defaultAuthority: previous.kind === 'review' ? 'review' : 'generation',
+          });
+          if (
+            !current.definition ||
+            (current.projection && !['supported', 'lossy'].includes(current.projection.outcome))
+          )
+            throw new Error('Transferred representation requires review');
+          active = current.definition;
+          retained = {
+            ...previous,
+            ...current,
+            transfer: { state: 'compatible' },
+            ...(previous.kind === 'review' ? { reviewAuthority: current.model?.identity ?? null } : {}),
+          };
+        } else {
+          const ledger = ledgerSnapshot.find((item) => item.component_id === snapshot.component_id);
+          const priorCalls = ledger ? (JSON.parse(ledger.payload_json) as { calls: ToolCall[] }).calls : [];
+          call = priorCalls.find(
+            (item) =>
+              (item.tool === 'exclude_prop' || item.tool === 'classify_prop') && item.prop === snapshot.prop_name,
+          );
+          if (call?.tool === 'classify_prop')
+            retained = {
+              ...previous,
+              ...materializeProperty(component, call, snapshot.component_id),
+              transfer: { state: 'compatible' },
+            };
+          else if (call?.tool === 'exclude_prop')
+            retained = { ...previous, source: component.sourceCandidates ?? null, transfer: { state: 'compatible' } };
+          else throw new Error('Transferred disposition unavailable');
+        }
+      } catch (error) {
+        retained = {
+          ...previous,
+          transfer: { state: 'stale', reason: error instanceof Error ? error.message : 'Source changed' },
+        };
+        call = undefined;
+      }
+      db.prepare(
+        'INSERT INTO raw_property_decisions(session_id,component_id,prop_name,revision,definition_json,decision_json) VALUES (?,?,?,?,?,?)',
+      ).run(
+        sessionId,
+        snapshot.component_id,
+        snapshot.prop_name,
+        snapshot.revision,
+        JSON.stringify(active ?? definition),
+        JSON.stringify(retained),
+      );
+      if (active)
         db.prepare(
-          'INSERT INTO raw_property_decisions (session_id,component_id,prop_name,revision,definition_json,decision_json) VALUES (?,?,?,?,?,?)',
+          'UPDATE raw_props SET cdf_type=?,cdf_category=?,cdf_token_kind=?,required=?,description=? WHERE session_id=? AND component_id=? AND name=?',
         ).run(
+          active.$type,
+          active.$category,
+          active['$token.kind'] ?? null,
+          active.$required ? 1 : 0,
+          active.$description ?? null,
           sessionId,
           snapshot.component_id,
           snapshot.prop_name,
-          snapshot.revision,
-          snapshot.definition_json,
-          snapshot.decision_json,
         );
+      if (call) transferred.set(snapshot.component_id, [...(transferred.get(snapshot.component_id) ?? []), call]);
+      if (active?.$type === 'token')
+        for (const token of tokenSnapshot.filter(
+          (item) => item.component_id === snapshot.component_id && item.prop_name === snapshot.prop_name,
+        ))
+          db.prepare(
+            'INSERT INTO raw_prop_token_paths(session_id,component_id,prop_name,source,position,path) VALUES (?,?,?,?,?,?)',
+          ).run(sessionId, token.component_id, token.prop_name, token.source, token.position, token.path);
     }
-    if (options?.preserveCDF && cdfSnapshot.length > 0) {
-      const updateCDFByName = db.prepare(
-        `UPDATE raw_props SET cdf_type = ?, cdf_category = ?, cdf_token_kind = ?
-         WHERE session_id = ? AND component_id = ? AND name = ?`,
+    for (const snapshot of ledgerSnapshot) {
+      const component = components.find((item) => deriveComponentId(item.name, item.source) === snapshot.component_id);
+      if (!component) continue;
+      const previous = JSON.parse(snapshot.payload_json) as { calls: ToolCall[] };
+      let slots: SlotDecision[] | undefined;
+      let slotSourceCurrent = true;
+      try {
+        slots = loadAcceptedSlotDecisions(db, sessionId);
+      } catch {
+        slotSourceCurrent = false;
+      }
+      const inventory = componentDecisionInventory(component, slots);
+      const calls = [
+        ...previous.calls.filter(
+          (call) =>
+            call.tool === 'classify_component' ||
+            (call.tool === 'classify_slot' && inventory.slots.some((slot) => slot.name === call.slot)),
+        ),
+        ...(transferred.get(snapshot.component_id) ?? []),
+      ];
+      const normalized = normalizeClassificationCalls(calls);
+      const accounting = accountClassificationCalls(inventory, normalized.calls);
+      if (!slotSourceCurrent) accounting.complete = false;
+      db.prepare('INSERT INTO raw_component_decisions(session_id,component_id,payload_json) VALUES (?,?,?)').run(
+        sessionId,
+        snapshot.component_id,
+        JSON.stringify({
+          schemaVersion: 1,
+          calls: normalized.calls,
+          inventory,
+          source: component.sourceCandidates ?? null,
+          accountingComplete: accounting.complete,
+          transfer: { state: accounting.complete ? 'compatible' : 'needs-review' },
+        }),
       );
-      const updateCDFByPosition = db.prepare(
-        `UPDATE raw_props SET cdf_type = ?, cdf_category = ?, cdf_token_kind = ?
-         WHERE session_id = ? AND component_id = ? AND position = ? AND cdf_type IS NULL`,
+      const importComplete =
+        accounting.complete &&
+        normalized.calls
+          .filter((call) => call.tool === 'classify_prop')
+          .every(
+            (call) =>
+              !!db
+                .prepare('SELECT cdf_type FROM raw_props WHERE session_id=? AND component_id=? AND name=?')
+                .get(sessionId, snapshot.component_id, call.prop)?.['cdf_type'],
+          );
+      db.prepare('UPDATE raw_components SET status=? WHERE session_id=? AND component_id=?').run(
+        importComplete ? 'generated' : 'held',
+        sessionId,
+        snapshot.component_id,
       );
-      const restoredPropKeys = new Set<string>();
-      const unmatchedSnaps: CDFSnapshot[] = [];
-      for (const snap of cdfSnapshot) {
-        const result = updateCDFByName.run(
-          snap.cdf_type,
-          snap.cdf_category,
-          snap.cdf_token_kind,
-          sessionId,
-          snap.component_id,
-          snap.name,
-        );
-        if (Number(result.changes) > 0) {
-          restoredPropKeys.add(`${snap.component_id}::${snap.name}`);
-        } else {
-          unmatchedSnaps.push(snap);
-        }
-      }
-      for (const snap of unmatchedSnaps) {
-        const result = updateCDFByPosition.run(
-          snap.cdf_type,
-          snap.cdf_category,
-          snap.cdf_token_kind,
-          sessionId,
-          snap.component_id,
-          snap.position,
-        );
-        if (Number(result.changes) > 0) {
-          const matched = db
-            .prepare(`SELECT name FROM raw_props WHERE session_id = ? AND component_id = ? AND position = ?`)
-            .get(sessionId, snap.component_id, snap.position) as { name: string } | undefined;
-          if (matched) {
-            restoredPropKeys.add(`${snap.component_id}::${matched.name}`);
-          }
-        }
-      }
-
-      const updateDesc = db.prepare(
-        `UPDATE raw_components SET description = ? WHERE session_id = ? AND component_id = ?`,
-      );
-      for (const snap of descSnapshot) {
-        updateDesc.run(snap.description, sessionId, snap.component_id);
-      }
-
-      const relevantAV = avSnapshot.filter((av) => restoredPropKeys.has(`${av.component_id}::${av.prop_name}`));
-      if (relevantAV.length > 0) {
-        const deleteAV = db.prepare(
-          `DELETE FROM raw_prop_allowed_values WHERE session_id = ? AND component_id = ? AND prop_name = ?`,
-        );
-        const insertAV = db.prepare(
-          `INSERT OR IGNORE INTO raw_prop_allowed_values (session_id, component_id, prop_name, position, value)
-           VALUES (?, ?, ?, ?, ?)`,
-        );
-        const deletedKeys = new Set<string>();
-        for (const av of relevantAV) {
-          const key = `${av.component_id}::${av.prop_name}`;
-          if (!deletedKeys.has(key)) {
-            deleteAV.run(sessionId, av.component_id, av.prop_name);
-            deletedKeys.add(key);
-          }
-          insertAV.run(sessionId, av.component_id, av.prop_name, av.position, av.value);
-        }
-      }
     }
+    for (const snapshot of descriptionSnapshot)
+      db.prepare('UPDATE raw_components SET description=? WHERE session_id=? AND component_id=?').run(
+        snapshot.description,
+        sessionId,
+        snapshot.component_id,
+      );
 
     if (options?.preserveStatus && statusSnapshot.length > 0) {
       const restoreStatus = db.prepare(
@@ -1508,7 +1826,14 @@ export function storeRawComponents(
          WHERE session_id = ? AND component_id = ?`,
       );
       for (const snapshot of statusSnapshot) {
-        restoreStatus.run(snapshot.status, snapshot.reject_reason, sessionId, snapshot.component_id);
+        const current = db
+          .prepare('SELECT status FROM raw_components WHERE session_id=? AND component_id=?')
+          .get(sessionId, snapshot.component_id) as { status: string } | undefined;
+        const status =
+          options?.preserveCDF && snapshot.status === 'generated' && current?.status === 'held'
+            ? 'held'
+            : snapshot.status;
+        restoreStatus.run(status, snapshot.reject_reason, sessionId, snapshot.component_id);
       }
     }
 
@@ -1670,6 +1995,7 @@ export function loadRawComponents(
       }
     }
   }
+  const completedCandidates = loadCompletedSourceEvidence(db, sessionId);
   const sourceEvidenceByComponent = new Map<
     string,
     {
@@ -1697,11 +2023,31 @@ export function loadRawComponents(
       const alternates = row.alternate_sources_json === null ? [] : (JSON.parse(row.alternate_sources_json) as unknown);
       if (!isSourceCandidatePayload(candidates) || !isAlternateSourcePayload(alternates))
         throw new Error('candidate-payload-invalid');
+      const candidateComponent: RawComponentDefinition = {
+        name: '',
+        source: '',
+        framework: 'react',
+        props: [],
+        slots: [],
+        factSchemaVersion: row.fact_schema_version,
+        sourceCandidates: candidates,
+        sourceCandidateSources: alternates,
+      };
+      const expectedDigest =
+        completedCandidates.readiness === 'ready'
+          ? completedCandidates.envelope.candidateDigests?.[row.component_id]
+          : undefined;
+      if (expectedDigest && expectedDigest !== candidateEvidenceDigest(candidateComponent))
+        throw new Error('candidate-source-digest-mismatch');
+      const rebound = bindSourceCandidatesToCapture(
+        [candidateComponent],
+        completedCandidates.readiness === 'ready' ? completedCandidates.envelope.capture.files : [],
+      )[0]!;
       sourceEvidenceByComponent.set(row.component_id, {
         status: 'available',
         factSchemaVersion: row.fact_schema_version,
-        candidates,
-        alternates,
+        candidates: rebound.sourceCandidates,
+        alternates: rebound.sourceCandidateSources,
       });
     } catch {
       sourceEvidenceByComponent.set(row.component_id, { status: 'corrupt' });
@@ -2205,10 +2551,30 @@ function parseReviewReasons(raw: string | null | undefined): string[] {
 export function storeCDFComponents(
   db: DatabaseSync,
   sessionId: string,
-  components: Array<{ key: string; entry: CDFComponentEntry }>,
+  components: Array<{ key: string; componentId?: string; entry: CDFComponentEntry }>,
 ): void {
-  for (const { key, entry } of components) {
-    const source = loadRawComponents(db, sessionId, new Set([key])).find((component) => component.name === key);
+  const keys = components.map((component) => component.componentId ?? component.key);
+  if (new Set(keys).size !== keys.length) throw new Error('Duplicate review component identity');
+  const sources = loadRawComponents(db, sessionId);
+  const priorDecisions = loadPropertyDecisions(db, sessionId);
+  const effectiveBaselines = loadCDFComponents(db, sessionId);
+  const prepared = new Map<string, ReturnType<typeof materializeProperty>>();
+  for (const { key, componentId, entry } of components) {
+    const matches = sources.filter((component) =>
+      componentId ? component.component_id === componentId && component.name === key : component.name === key,
+    );
+    if (matches.length !== 1) throw new Error('Unknown or ambiguous review component identity');
+    const source = matches[0]!;
+    const inventory = componentDecisionInventory(source, loadAcceptedSlotDecisions(db, sessionId));
+    for (const name of Object.keys(entry.$properties))
+      if (!inventory.properties.includes(name)) throw new Error('Review property has no exact retained source owner');
+    for (const name of inventory.properties) {
+      const previous = priorDecisions.find(
+        (decision) => decision.componentId === source.component_id && decision.propertyName === name,
+      );
+      if (!own(entry.$properties, name) && previous?.definition)
+        throw new Error('Imported source property removed without an accounting decision');
+    }
     const completeValidation = CDFComponentSchema.safeParse(entry);
     if (!completeValidation.success)
       throw new Error(
@@ -2223,29 +2589,48 @@ export function storeCDFComponents(
     const unsafe = jsonValueIssue(entry);
     if (unsafe) throw new Error(`${unsafe.path}: ${unsafe.message}`);
     for (const [name, property] of Object.entries(entry.$properties)) {
+      if (property.$type === 'token' && property['$token.allowed']) {
+        const paths = property['$token.allowed'];
+        if (new Set(paths).size !== paths.length) throw new Error('Duplicate reviewed token mapping');
+        for (const path of paths) {
+          const token = db.prepare('SELECT type FROM raw_tokens WHERE session_id=? AND path=?').get(sessionId, path) as
+            | { type: string }
+            | undefined;
+          if (token && token.type !== property['$token.kind']) throw new Error('Reviewed token mapping kind changed');
+        }
+      }
       const validation = validateCDFProperty(property);
       if (!validation.valid) throw new Error(validation.issues.map((i) => `${i.path}: ${i.message}`).join('; '));
-      if (source?.sourceCandidates?.find((candidate) => candidate.name === name)?.facts?.sourceGraph) {
+      if (source.sourceCandidates?.find((candidate) => candidate.name === name)?.facts?.sourceGraph) {
+        const previous = priorDecisions.find(
+          (decision) => decision.componentId === source.component_id && decision.propertyName === name,
+        );
+        const priorIntent = (
+          previous?.decision as { defaultIntent?: ClassifiedPropertyCall['default_intent'] } | undefined
+        )?.defaultIntent;
+        const baseline =
+          effectiveBaselines.find((entry) => entry.componentId === source.component_id)?.entry.$properties[name] ??
+          previous?.definition;
+        const unchangedDefault =
+          baseline &&
+          own(baseline, '$default') === own(property, '$default') &&
+          jsonEqual(baseline.$default, property.$default);
         const materialized = materializeProperty(
           source,
-          {
-            tool: 'classify_prop',
-            prop: name,
-            cdf_type: property.$type,
-            cdf_category: property.$category === 'unattached' ? 'content' : property.$category,
-            required: property.$required,
-            description: property.$description,
-            items: property.$items,
-            fields: property.$fields,
-            values: property.$values,
-            token_kind: property['$token.kind'],
-            default_intent: own(property, '$default')
-              ? { action: 'set', value: property.$default! }
-              : { action: 'clear' },
-          },
+          definitionCall(
+            name,
+            property,
+            unchangedDefault && priorIntent
+              ? priorIntent
+              : own(property, '$default')
+                ? { action: 'set', value: property.$default! }
+                : { action: 'clear' },
+          ),
           source.component_id,
+          { defaultAuthority: 'review' },
         );
-        if (materialized.projection?.outcome === 'unsupported')
+        prepared.set(JSON.stringify([source.component_id, name]), materialized);
+        if (materialized.projection && !['supported', 'lossy'].includes(materialized.projection.outcome))
           throw new Error('Native position unavailable; source and saved decisions retained');
         if (
           materialized.projection?.issues.some(
@@ -2259,7 +2644,7 @@ export function storeCDFComponents(
   const now = new Date().toISOString();
 
   const updateComp = db.prepare(
-    `UPDATE raw_components SET status = 'generated', description = ? WHERE session_id = ? AND name = ?`,
+    `UPDATE raw_components SET status = 'generated', description = ? WHERE session_id = ? AND component_id = ?`,
   );
   const updateProp = db.prepare(
     `UPDATE raw_props SET cdf_type = ?, cdf_category = ?, cdf_token_kind = ?, required = ? WHERE session_id = ? AND component_id = ? AND name = ?`,
@@ -2285,6 +2670,18 @@ export function storeCDFComponents(
   // storeCDFComponents is only reached from the review editor, so a list written
   // here is a person's decision and is recorded as such.
   const writeTokenPaths = (componentId: string, propName: string, paths: string[]) => {
+    const previous = db
+      .prepare(
+        'SELECT path FROM raw_prop_token_paths WHERE session_id=? AND component_id=? AND prop_name=? ORDER BY position',
+      )
+      .all(sessionId, componentId, propName) as Array<{ path: string }>;
+    if (
+      jsonEqual(
+        previous.map((entry) => entry.path),
+        paths,
+      )
+    )
+      return;
     deleteTokenPaths.run(sessionId, componentId, propName);
     paths.forEach((path, position) => insertTokenPath.run(sessionId, componentId, propName, 'review', position, path));
   };
@@ -2302,14 +2699,15 @@ export function storeCDFComponents(
 
   db.exec('BEGIN');
   try {
-    for (const { key, entry } of components) {
-      const row = db
-        .prepare('SELECT component_id FROM raw_components WHERE session_id = ? AND name = ?')
-        .get(sessionId, key) as { component_id: string } | undefined;
+    for (const { key, componentId: requestedId, entry } of components) {
+      const matched = sources.find((component) =>
+        requestedId ? component.component_id === requestedId : component.name === key,
+      )!;
+      const row = { component_id: matched.component_id };
 
       if (row) {
         const { component_id: componentId } = row;
-        updateComp.run(entry.$description ?? null, sessionId, key);
+        updateComp.run(entry.$description ?? null, sessionId, componentId);
         const names = new Set(Object.keys(entry.$properties));
         const existingProps = db
           .prepare('SELECT name FROM raw_props WHERE session_id=? AND component_id=?')
@@ -2345,10 +2743,22 @@ export function storeCDFComponents(
               prop.$category,
               prop['$token.kind'] ?? null,
             );
-          savePropertyDecision(db, sessionId, componentId, propName, prop, {
-            kind: 'review',
-            defaultIntent: own(prop, '$default') ? { action: 'set', value: prop.$default } : { action: 'clear' },
-          });
+          const baseline = effectiveBaselines.find((entry) => entry.componentId === componentId)?.entry.$properties[
+            propName
+          ];
+          const prior = priorDecisions.find(
+            (decision) => decision.componentId === componentId && decision.propertyName === propName,
+          );
+          if (!prior || !jsonEqual(baseline, prop))
+            savePropertyDecision(db, sessionId, componentId, propName, prop, {
+              kind: 'review',
+              producer: { kind: 'review', id: randomUUID(), sessionId, componentId },
+              ...(prepared.get(JSON.stringify([componentId, propName])) ?? {}),
+              reviewAuthority: prepared.get(JSON.stringify([componentId, propName]))?.model?.identity ?? null,
+              defaultIntent:
+                prepared.get(JSON.stringify([componentId, propName]))?.model?.defaultIntent ??
+                (own(prop, '$default') ? { action: 'set', value: prop.$default } : { action: 'clear' }),
+            });
           db.prepare('UPDATE raw_props SET description=? WHERE session_id=? AND component_id=? AND name=?').run(
             prop.$description ?? null,
             sessionId,
@@ -2400,6 +2810,72 @@ export function storeCDFComponents(
             }
           }
         }
+        const currentSource = sources.find((source) => source.component_id === componentId)!;
+        const currentInventory = componentDecisionInventory(currentSource, loadAcceptedSlotDecisions(db, sessionId));
+        const ledgerRow = db
+          .prepare('SELECT payload_json FROM raw_component_decisions WHERE session_id=? AND component_id=?')
+          .get(sessionId, componentId) as { payload_json: string } | undefined;
+        const priorCalls = ledgerRow ? (JSON.parse(ledgerRow.payload_json) as { calls: ToolCall[] }).calls : [];
+        const decisions = loadPropertyDecisions(db, sessionId).filter(
+          (decision) => decision.componentId === componentId,
+        );
+        const currentCalls: ToolCall[] = [
+          {
+            tool: 'classify_component',
+            ...(entry.$description === undefined ? {} : { description: entry.$description }),
+          },
+        ];
+        for (const name of currentInventory.properties) {
+          const saved = decisions.find((decision) => decision.propertyName === name);
+          const definition = entry.$properties[name];
+          if (definition)
+            currentCalls.push(
+              definitionCall(
+                name,
+                definition,
+                (saved?.decision as { defaultIntent?: ClassifiedPropertyCall['default_intent'] } | undefined)
+                  ?.defaultIntent,
+              ),
+            );
+          else {
+            const retained = priorCalls.find(
+              (call) => (call.tool === 'classify_prop' || call.tool === 'exclude_prop') && call.prop === name,
+            );
+            if (
+              retained &&
+              (retained.tool === 'exclude_prop' || (retained.tool === 'classify_prop' && !retained.cdf_type))
+            )
+              currentCalls.push(retained);
+          }
+        }
+        for (const slot of currentInventory.slots) {
+          const definition = entry.$slots?.[slot.name];
+          if (definition)
+            currentCalls.push({
+              tool: 'classify_slot',
+              slot: slot.name,
+              ...(definition.$required === undefined ? {} : { required: definition.$required }),
+              ...(definition.$description === undefined ? {} : { description: definition.$description }),
+              ...(definition.$allowedComponents ? { allowed_components: definition.$allowedComponents } : {}),
+            });
+        }
+        const normalized = normalizeClassificationCalls(currentCalls);
+        const accounting = accountClassificationCalls(currentInventory, normalized.calls);
+        if (normalized.warnings.length || !accounting.complete)
+          throw new Error([...normalized.warnings, ...accounting.issues, ...accounting.missing].join('; '));
+        db.prepare(
+          'INSERT INTO raw_component_decisions(session_id,component_id,payload_json) VALUES (?,?,?) ON CONFLICT(session_id,component_id) DO UPDATE SET payload_json=excluded.payload_json',
+        ).run(
+          sessionId,
+          componentId,
+          JSON.stringify({
+            schemaVersion: 1,
+            calls: normalized.calls,
+            inventory: currentInventory,
+            source: currentSource.sourceCandidates ?? null,
+            accountingComplete: true,
+          }),
+        );
       } else {
         const componentId = deriveComponentId(key, 'generated');
         db.prepare(
@@ -2425,7 +2901,12 @@ export function storeCDFComponents(
           );
           savePropertyDecision(db, sessionId, componentId, propName, prop, {
             kind: 'review',
-            defaultIntent: own(prop, '$default') ? { action: 'set', value: prop.$default } : { action: 'clear' },
+            producer: { kind: 'review', id: randomUUID(), sessionId, componentId },
+            ...(prepared.get(JSON.stringify([componentId, propName])) ?? {}),
+            reviewAuthority: prepared.get(JSON.stringify([componentId, propName]))?.model?.identity ?? null,
+            defaultIntent:
+              prepared.get(JSON.stringify([componentId, propName]))?.model?.defaultIntent ??
+              (own(prop, '$default') ? { action: 'set', value: prop.$default } : { action: 'clear' }),
           });
           if (prop.$values && prop.$values.length > 0) {
             prop.$values.forEach(
@@ -2464,11 +2945,11 @@ export function storeCDFComponents(
 export function loadCDFComponents(
   db: DatabaseSync,
   sessionId: string,
-): Array<{ key: string; entry: CDFComponentEntry }> {
+): Array<{ key: string; componentId: string; entry: CDFComponentEntry }> {
   const components = db
     .prepare(
       `SELECT component_id, name, description FROM raw_components
-       WHERE session_id = ? AND status = 'generated' ORDER BY rowid`,
+       WHERE session_id = ? AND status IN ('generated','held') ORDER BY rowid`,
     )
     .all(sessionId) as Array<{
     component_id: string;
@@ -2609,7 +3090,7 @@ export function loadCDFComponents(
         if (allowed !== undefined && allowed.length > 0) propDef['$token.allowed'] = allowed;
       }
       const saved = propertyDefinitions.get(`${component_id}::${p.name}`);
-      if (saved) {
+      if (saved && saved.definition) {
         const exact = cloneJson(saved.definition);
         if (isTokenProp) {
           const inheritedDefault =
@@ -2642,6 +3123,7 @@ export function loadCDFComponents(
     const decisions = loadAcceptedSlotDecisions(db, sessionId);
     return {
       key: name,
+      componentId: component_id,
       entry: projectAcceptedSlots(
         entry,
         decisions?.filter((slot) => slot.componentId === component_id),
@@ -3072,7 +3554,7 @@ export function backfillUnclassifiedProps(db: DatabaseSync, sessionId: string): 
     .prepare(
       `UPDATE raw_props SET cdf_type = 'string', cdf_category = category
      WHERE session_id = ? AND cdf_type IS NULL
-       AND NOT EXISTS (SELECT 1 FROM raw_property_decisions decision WHERE decision.session_id=raw_props.session_id AND decision.component_id=raw_props.component_id AND decision.prop_name=raw_props.name AND json_extract(decision.decision_json,'$.admission')='unsupported')
+       AND NOT EXISTS (SELECT 1 FROM raw_property_decisions decision WHERE decision.session_id=raw_props.session_id AND decision.component_id=raw_props.component_id AND decision.prop_name=raw_props.name AND 1=1)
        AND category IS NOT NULL
        AND component_id IN (
          SELECT component_id FROM raw_components WHERE session_id = ? AND status = 'generated'
@@ -3084,7 +3566,7 @@ export function backfillUnclassifiedProps(db: DatabaseSync, sessionId: string): 
     .prepare(
       `UPDATE raw_props SET cdf_type = 'string', cdf_category = 'content'
      WHERE session_id = ? AND cdf_type IS NULL
-       AND NOT EXISTS (SELECT 1 FROM raw_property_decisions decision WHERE decision.session_id=raw_props.session_id AND decision.component_id=raw_props.component_id AND decision.prop_name=raw_props.name AND json_extract(decision.decision_json,'$.admission')='unsupported')
+       AND NOT EXISTS (SELECT 1 FROM raw_property_decisions decision WHERE decision.session_id=raw_props.session_id AND decision.component_id=raw_props.component_id AND decision.prop_name=raw_props.name AND 1=1)
        AND category IS NULL
        AND component_id IN (
          SELECT component_id FROM raw_components WHERE session_id = ? AND status = 'generated'
@@ -3361,6 +3843,7 @@ export interface SessionSourceEnvelope {
   sessionId: string;
   extractionStepId: number;
   revision: 'source-evidence-v1';
+  candidateDigests?: Record<string, string>;
   readiness: 'ready';
   extractionByteBinding: SourceCapture['extractionByteBinding'];
   capture: SourceCapture;
@@ -3378,6 +3861,20 @@ export interface SourceEvidenceHandle {
 export type CompletedSourceEvidence =
   | { readiness: 'ready'; handle: SourceEvidenceHandle; envelope: SessionSourceEnvelope }
   | { readiness: 'unavailable'; reason: string };
+
+function candidateEvidenceDigest(
+  component: Pick<RawComponentDefinition, 'factSchemaVersion' | 'sourceCandidates' | 'sourceCandidateSources'>,
+): string {
+  return createHash('sha256')
+    .update(
+      JSON.stringify([
+        component.factSchemaVersion ?? null,
+        component.sourceCandidates ?? null,
+        component.sourceCandidateSources ?? [],
+      ]),
+    )
+    .digest('hex');
+}
 
 function sourceEnvelopeDigest(payload: Omit<SessionSourceEnvelope, 'digest'>): string {
   return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
@@ -3402,6 +3899,15 @@ export function completeExtractionWithSourceEvidence(
   if (!step || step.session_id !== input.sessionId || step.status !== 'pending' || step.command !== 'analyze extract') {
     throw new Error('Extraction step is missing, belongs to another session, or is not pending');
   }
+  const unavailableComponentFacts = new Map<number, RawComponentDefinition['componentFacts']>();
+  const bindingComponents = input.components.map((component, index) => {
+    const read = readComponentFacts(component.componentFacts);
+    if (read.status === 'available') return { ...component, componentFacts: read.facts! };
+    if (component.componentFacts === undefined) return component;
+    unavailableComponentFacts.set(index, component.componentFacts);
+    const { componentFacts: _facts, ...raw } = component;
+    return raw;
+  });
   const envelopeId = `source-${randomUUID()}`;
   if (input.capture.inventory && readSourceInventory(input.capture.inventory).status !== 'available')
     throw new Error('Invalid completed source inventory');
@@ -3422,6 +3928,12 @@ export function completeExtractionWithSourceEvidence(
     sessionId: input.sessionId,
     extractionStepId: input.stepId,
     revision: 'source-evidence-v1',
+    candidateDigests: Object.fromEntries(
+      bindSourceCandidatesToCapture(bindingComponents, input.capture.files).map((component) => [
+        deriveComponentId(component.name, component.source),
+        candidateEvidenceDigest(component),
+      ]),
+    ),
     readiness: 'ready',
     extractionByteBinding: input.capture.extractionByteBinding,
     capture: input.capture,
@@ -3440,15 +3952,6 @@ export function completeExtractionWithSourceEvidence(
     sourceEnvelopeDigest: envelope.digest,
     sourceExtractionStepId: String(input.stepId),
   };
-  const unavailableComponentFacts = new Map<number, RawComponentDefinition['componentFacts']>();
-  const bindingComponents = input.components.map((component, index) => {
-    const read = readComponentFacts(component.componentFacts);
-    if (read.status === 'available') return { ...component, componentFacts: read.facts! };
-    if (component.componentFacts === undefined) return component;
-    unavailableComponentFacts.set(index, component.componentFacts);
-    const { componentFacts: _facts, ...raw } = component;
-    return raw;
-  });
   // Unavailable sidecars retain their read status without preventing valid candidate binding and final save.
   const boundComponents = bindSourceCandidatesToCapture(bindingComponents, input.capture.files, {
     captureId: envelope.capture.captureId,
@@ -3467,6 +3970,7 @@ export function completeExtractionWithSourceEvidence(
   try {
     storeRawComponents(db, input.sessionId, boundComponents, {
       preserveStatus: true,
+      preserveCDF: true,
       withinTransaction: true,
       extractionDiagnostics: bindCompilerReadsToCapture(input.extractionDiagnostics, input.capture.files),
     });

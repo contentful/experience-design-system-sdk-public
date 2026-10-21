@@ -186,7 +186,12 @@ it('delivers reopened evidence to actual selection and generation prompts and pr
   expect(invoke.mock.calls.at(-1)![0].prompt).toContain('"sourceClosure":');
   expect(invoke.mock.calls.at(-1)![0].prompt).toContain(capture.captureId);
   invoke.mockResolvedValue({
-    stdout: JSON.stringify({ tool: 'classify_prop', prop: 'mode', cdf_type: 'string', cdf_category: 'content' }),
+    stdout: [
+      { tool: 'classify_component' },
+      { tool: 'classify_prop', prop: 'mode', cdf_type: 'string', cdf_category: 'content', values: ['a', 'b'] },
+    ]
+      .map((call) => JSON.stringify(call))
+      .join('\n'),
     stderr: '',
     exitCode: 0,
     timedOut: false,
@@ -200,7 +205,7 @@ it('delivers reopened evidence to actual selection and generation prompts and pr
       promptOverrides: ['generate=Generate from the supplied source.'],
       noCache: true,
     });
-    expect(generated.allOk).toBe(true);
+    expect(generated.allOk, JSON.stringify(generated)).toBe(true);
     const prompt = invoke.mock.calls.at(-1)![0].prompt;
     expect(prompt).toContain('"sourceClosure":');
     expect(prompt).toContain(capture.captureId);

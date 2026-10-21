@@ -1,6 +1,6 @@
 import {
   findLatestSessionForCommand,
-  loadCDFComponents,
+  loadSelectedCDFComponents,
   openPipelineDb,
 } from '../../../../../persistence/src/session/repositories/db.js';
 import { CDF_SCHEMA_URL } from '../../../../shared/cdf/constants/schema.js';
@@ -34,13 +34,15 @@ export async function exportCdfDocument(request: ExportCdfDocumentRequest): Prom
       throw new ExportCdfDocumentFailure({ type: 'no-session', command: 'generate components' });
     }
 
-    const components = loadCDFComponents(db, sessionId);
+    const components = loadSelectedCDFComponents(db, sessionId, request.componentIds);
     const stepRow = db
       .prepare(
         `SELECT status FROM steps WHERE session_id = ? AND command = 'generate components' ORDER BY id DESC LIMIT 1`,
       )
       .get(sessionId) as { status: string } | undefined;
     const generateStepFailed = stepRow?.status === 'failed';
+    if (generateStepFailed && request.componentIds === undefined)
+      throw new Error('Generation step failed; select an explicitly ready subset before export');
     const rejectedRow = db
       .prepare(`SELECT COUNT(*) AS n FROM raw_components WHERE session_id = ? AND status = 'generate-rejected'`)
       .get(sessionId) as { n: number } | undefined;
@@ -58,7 +60,8 @@ export async function exportCdfDocument(request: ExportCdfDocumentRequest): Prom
     const cdf: Record<string, unknown> = { $schema: CDF_SCHEMA_URL };
     const missingDescription: string[] = [];
     for (const { key, entry } of components) {
-      cdf[key] = entry;
+      if (Object.hasOwn(cdf, key)) throw new Error('Duplicate or reserved component output key');
+      Object.defineProperty(cdf, key, { value: entry, enumerable: true, writable: true, configurable: true });
       if (!entry.$description) missingDescription.push(key);
     }
 

@@ -19,7 +19,8 @@ import {
 import type { RawComponentDefinition } from '../../../../extraction/src/types/component.js';
 
 export interface MaterializedProperty {
-  definition: CDFPropertyDefinition;
+  definition: CDFPropertyDefinition | null;
+  call?: ClassifiedPropertyCall;
   model?: PropertyModel;
   projection?: PropertyProjection;
   alternatives?: RepresentationAlternative[];
@@ -28,21 +29,23 @@ export function materializeProperty(
   component: RawComponentDefinition,
   call: ClassifiedPropertyCall,
   componentId = component.name,
+  options: { defaultAuthority?: PropertyModel['defaultAuthority'] } = {},
 ): MaterializedProperty {
   const raw = component.props.find((prop) => prop.name === call.prop);
-  if (!raw) throw new Error(`Unknown property '${call.prop}'`);
   const candidate = component.sourceCandidates?.find((candidate) => candidate.name === call.prop);
   const fact = candidate?.facts;
-  const definition = classificationDefinition(call);
-  if (!own(call, 'required')) definition.$required = fact?.declaredRequired ?? raw.required;
-  if (!own(call, 'description') && raw.description !== undefined) definition.$description = raw.description;
+  if (!raw && !candidate) throw new Error(`Unknown property '${call.prop}'`);
+  const definition = call.cdf_type ? classificationDefinition(call) : null;
+  if (definition && !own(call, 'required')) definition.$required = fact?.declaredRequired ?? raw?.required ?? false;
+  if (definition && !own(call, 'description') && raw?.description !== undefined)
+    definition.$description = raw.description;
   const intent =
     call.default_intent ??
     (own(call, 'default') ? { action: 'set' as const, value: call.default! } : { action: 'absent' as const });
-  if (!own(definition, '$default') && intent.action === 'absent') {
+  if (definition && !own(definition, '$default') && intent.action === 'absent') {
     if (fact?.sourceDefault?.state === 'value' && own(fact.sourceDefault, 'value'))
       definition.$default = cloneJson(fact.sourceDefault.value!);
-    else if (!fact && raw.defaultValue !== undefined) {
+    else if (!fact && raw?.defaultValue !== undefined) {
       if (definition.$type === 'boolean' && ['true', 'false'].includes(raw.defaultValue))
         definition.$default = raw.defaultValue === 'true';
       else if (definition.$type === 'number' && raw.defaultValue.trim() && Number.isFinite(Number(raw.defaultValue)))
@@ -61,10 +64,10 @@ export function materializeProperty(
       for (const [key, field] of Object.entries(target.$fields))
         if (own(source.$fields, key)) inheritRequired(field, source.$fields[key]!);
   };
-  if (fact?.advisoryShape) inheritRequired(definition, fact.advisoryShape);
-  const validation = validateCDFProperty(definition);
+  if (definition && fact?.advisoryShape) inheritRequired(definition, fact.advisoryShape);
+  const validation = definition ? validateCDFProperty(definition) : { valid: true, issues: [] };
   if (!validation.valid) throw new Error(validation.issues.map((i) => `${i.path}: ${i.message}`).join('; '));
-  if (!fact?.sourceGraph) return { definition };
+  if (!fact?.sourceGraph) return { definition, call: cloneJson(call) };
   const sourceRevision = [
     ...new Set(
       [...fact.declarations, ...fact.sourceGraph.nodes.flatMap((node) => node.declarations)].map(
@@ -95,8 +98,9 @@ export function materializeProperty(
       originalFacts: cloneJson(candidate) as unknown as JsonValue,
     },
     category: call.cdf_category,
-    representation: cloneJson(definition),
+    ...(definition ? { representation: cloneJson(definition) } : {}),
     defaultIntent: intent,
+    defaultAuthority: options.defaultAuthority ?? 'generation',
   };
   // These capabilities describe this local CDF materializer, not remote mapper deployment.
   const capabilities: Record<string, 'enabled'> = Object.create(null);
@@ -107,22 +111,26 @@ export function materializeProperty(
     if (d.$fields)
       for (const [key, field] of Object.entries(d.$fields)) context(field, childPath(childPath(path, 'fields'), key));
   };
-  context(definition, '');
+  if (definition) context(definition, '');
   const projection = projectProperty(model, LOCAL_NATIVE_PROPERTY_PROFILE, { capabilities });
   const alternatives = deriveRepresentationAlternatives(model);
   if (projection.outcome === 'unsupported') {
     if (
       projection.issues.some(
         (issue) =>
-          !['Native position unavailable; source retained', 'Source domain contains unrepresentable values'].includes(
-            issue.message,
-          ),
+          ![
+            'Native position unavailable; source retained',
+            'Native source structure unavailable; source retained',
+            'No representation decision',
+            'Source domain contains unrepresentable values',
+            'Source default unresolved; source retained',
+          ].includes(issue.message),
       )
     )
       throw new Error(
         `Invalid property projection: ${projection.issues.map((i) => `${i.path}: ${i.message}`).join('; ')}`,
       );
-    return { definition, model, projection, alternatives };
+    return { definition, call: cloneJson(call), model, projection, alternatives };
   }
   // Apply only the eligible default outcome; full source and representation stay in the decision.
   const applyDefaults = (field: CDFFieldDefinition, target: TargetDefinition): void => {
@@ -132,8 +140,8 @@ export function materializeProperty(
     if (field.$fields && target.fields)
       for (const [key, child] of Object.entries(field.$fields)) applyDefaults(child, target.fields[key]!);
   };
-  if (projection.target) applyDefaults(definition, projection.target);
-  return { definition, model, projection, alternatives };
+  if (definition && projection.target) applyDefaults(definition, projection.target);
+  return { definition, call: cloneJson(call), model, projection, alternatives };
 }
 
 export class PropertyAdmissionError extends Error {

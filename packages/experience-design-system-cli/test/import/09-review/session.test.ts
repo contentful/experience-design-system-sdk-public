@@ -1,3 +1,4 @@
+import { seedCompleteEmptyComponents } from '../source-session-fixture.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -6,9 +7,7 @@ import type { CDFComponentEntry } from '@contentful/experience-design-system-typ
 import {
   getOrCreateSession,
   openPipelineDb,
-  storeCDFComponents,
   storeDTCGTokens,
-  storeRawComponents,
 } from '@contentful/experience-design-system-backend-pipeline';
 import {
   createReviewHistorySnapshot,
@@ -17,7 +16,6 @@ import {
 } from '../../../src/tui/import/steps/09-review/session.js';
 import type { CdfReviewEntry, ReviewComponentStatus } from '../../../src/tui/import/steps/09-review/types.js';
 
-const raw = (name: string) => ({ name, source: `src/${name}.tsx`, framework: 'react' as const, props: [], slots: [] });
 const entry: CDFComponentEntry = { $type: 'component', $properties: {} };
 const review = (key: string, status: CdfReviewEntry['status']): CdfReviewEntry => ({ key, entry, status });
 const keepOrder = (entries: CdfReviewEntry[]) => entries;
@@ -34,15 +32,10 @@ describe('the review session and the pipeline database', () => {
       db.close();
     }
   };
-  const seed = (sessionId: string, names: string[]): void => {
+  const seed = async (sessionId: string, names: string[]): Promise<void> => {
     const db = openPipelineDb();
     try {
-      storeRawComponents(db, sessionId, names.map(raw));
-      storeCDFComponents(
-        db,
-        sessionId,
-        names.map((key) => ({ key, entry })),
-      );
+      await seedCompleteEmptyComponents(db, sessionId, dir, names);
     } finally {
       db.close();
     }
@@ -73,9 +66,9 @@ describe('the review session and the pipeline database', () => {
   });
 
   describe('loadReviewSessionState', () => {
-    it('loads the generated definitions, every one waiting for review', () => {
+    it('loads the generated definitions, every one waiting for review', async () => {
       const sessionId = newSession();
-      seed(sessionId, ['Button', 'Card']);
+      await seed(sessionId, ['Button', 'Card']);
 
       const result = loadReviewSessionState({ extractSessionId: sessionId, sortEntries: keepOrder });
 
@@ -86,7 +79,7 @@ describe('the review session and the pipeline database', () => {
       ]);
     });
 
-    it('reports an error and nothing else when there are no generated definitions', () => {
+    it('reports an error and nothing else when there are no generated definitions', async () => {
       const sessionId = newSession();
 
       const result = loadReviewSessionState({ extractSessionId: sessionId, sortEntries: keepOrder });
@@ -98,9 +91,9 @@ describe('the review session and the pipeline database', () => {
       });
     });
 
-    it('reads the tokens from the extraction session when no token session is given', () => {
+    it('reads the tokens from the extraction session when no token session is given', async () => {
       const sessionId = newSession();
-      seed(sessionId, ['Button']);
+      await seed(sessionId, ['Button']);
       const db = openPipelineDb();
       storeDTCGTokens(db, sessionId, [], [{ path: 'color.brand', $type: 'color', $value: '#06f' }]);
       db.close();
@@ -110,10 +103,10 @@ describe('the review session and the pipeline database', () => {
       expect(result.tokens).toEqual([{ path: 'color.brand', kind: 'color' }]);
     });
 
-    it('reads the tokens from the token session when one is given, as when tokens were reused', () => {
+    it('reads the tokens from the token session when one is given, as when tokens were reused', async () => {
       const extractId = newSession();
       const tokenId = newSession();
-      seed(extractId, ['Button']);
+      await seed(extractId, ['Button']);
       const db = openPipelineDb();
       storeDTCGTokens(db, extractId, [], [{ path: 'color.own', $type: 'color', $value: '#000' }]);
       storeDTCGTokens(db, tokenId, [], [{ path: 'color.reused', $type: 'color', $value: '#fff' }]);
@@ -128,9 +121,9 @@ describe('the review session and the pipeline database', () => {
       expect(result.tokens).toEqual([{ path: 'color.reused', kind: 'color' }]);
     });
 
-    it('falls back to the extraction session when the token session is null', () => {
+    it('falls back to the extraction session when the token session is null', async () => {
       const sessionId = newSession();
-      seed(sessionId, ['Button']);
+      await seed(sessionId, ['Button']);
       const db = openPipelineDb();
       storeDTCGTokens(db, sessionId, [], [{ path: 'color.brand', $type: 'color', $value: '#06f' }]);
       db.close();
@@ -144,9 +137,9 @@ describe('the review session and the pipeline database', () => {
       expect(result.tokens).toEqual([{ path: 'color.brand', kind: 'color' }]);
     });
 
-    it('hands what loadExtra read to the sort and back to the caller', () => {
+    it('hands what loadExtra read to the sort and back to the caller', async () => {
       const sessionId = newSession();
-      seed(sessionId, ['Button', 'Card']);
+      await seed(sessionId, ['Button', 'Card']);
 
       const result = loadReviewSessionState({
         extractSessionId: sessionId,
@@ -158,7 +151,7 @@ describe('the review session and the pipeline database', () => {
       expect(result.extra).toEqual(['Card', 'Button']);
     });
 
-    it('still returns what loadExtra read when there are no definitions', () => {
+    it('still returns what loadExtra read when there are no definitions', async () => {
       const sessionId = newSession();
 
       const result = loadReviewSessionState({
@@ -172,9 +165,9 @@ describe('the review session and the pipeline database', () => {
   });
 
   describe('finalizeReviewSession', () => {
-    it('marks rejected and still-unresolved components rejected in the database, and leaves accepted ones alone', () => {
+    it('marks rejected and still-unresolved components rejected in the database, and leaves accepted ones alone', async () => {
       const sessionId = newSession();
-      seed(sessionId, ['Accepted', 'Rejected', 'Unresolved', 'Reviewed']);
+      await seed(sessionId, ['Accepted', 'Rejected', 'Unresolved', 'Reviewed']);
       const db = openPipelineDb();
       db.prepare(`UPDATE raw_components SET status = 'generated' WHERE session_id = ?`).run(sessionId);
       db.close();
@@ -190,16 +183,16 @@ describe('the review session and the pipeline database', () => {
         Accepted: 'generated',
         Rejected: 'generate-rejected',
         Unresolved: 'generate-rejected',
-        Reviewed: 'generated',
+        Reviewed: 'generate-rejected',
       });
       expect(counts).toEqual({ accepted: 1, rejected: 1, unresolved: 1 });
     });
 
-    it('only touches the session it was given', () => {
+    it('only touches the session it was given', async () => {
       const mine = newSession();
       const other = newSession();
-      seed(mine, ['Button']);
-      seed(other, ['Button']);
+      await seed(mine, ['Button']);
+      await seed(other, ['Button']);
       const db = openPipelineDb();
       db.prepare(`UPDATE raw_components SET status = 'generated'`).run();
       db.close();
@@ -210,23 +203,23 @@ describe('the review session and the pipeline database', () => {
       expect(statuses(other)).toEqual({ Button: 'generated' });
     });
 
-    it('counts without touching the database when everything is accepted', () => {
-      const counts = finalizeReviewSession('no-such-session', [review('A', 'accepted'), review('B', 'accepted')]);
-
-      expect(counts).toEqual({ accepted: 2, rejected: 0, unresolved: 0 });
+    it('rejects fabricated accepted identities before finalization', async () => {
+      expect(() =>
+        finalizeReviewSession('no-such-session', [review('A', 'accepted'), review('B', 'accepted')]),
+      ).toThrow('Unknown');
     });
   });
 
   describe('createReviewHistorySnapshot', () => {
-    it('copies the components, with no auto-rejected and no undo snapshot by default', () => {
+    it('copies the components, with no auto-rejected and no undo snapshot by default', async () => {
       expect(createReviewHistorySnapshot([review('A', 'accepted')])).toEqual({
-        components: [{ key: 'A', entry, status: 'accepted' }],
+        components: [{ key: 'A', componentId: undefined, entry, status: 'accepted' }],
         autoRejected: [],
         undoSnapshot: null,
       });
     });
 
-    it('copies the undo snapshot instead of sharing it', () => {
+    it('copies the undo snapshot instead of sharing it', async () => {
       const undo = new Map<string, ReviewComponentStatus>([['A', 'accepted']]);
       const snapshot = createReviewHistorySnapshot([review('A', 'rejected')], {
         autoRejected: ['B'],
@@ -238,7 +231,7 @@ describe('the review session and the pipeline database', () => {
       expect([...snapshot.undoSnapshot!]).toEqual([['A', 'accepted']]);
     });
 
-    it('treats a null undo snapshot as none', () => {
+    it('treats a null undo snapshot as none', async () => {
       expect(createReviewHistorySnapshot([], { undoSnapshot: null }).undoSnapshot).toBeNull();
     });
   });

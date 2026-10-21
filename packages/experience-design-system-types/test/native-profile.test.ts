@@ -9,6 +9,7 @@ import {
   parseRepresentationProposalDrafts,
   validateRepresentationProposal,
   validateSourceGraph,
+  validateSourceDomain,
   type PropertyModel,
   type TargetDefinition,
 } from '../src/index.js';
@@ -186,4 +187,51 @@ it('returns diagnostics for malformed saved source nodes without throwing', () =
     { ...model().source.graph.nodes[0]!, domain: null },
   ] as unknown as typeof source.source.graph.nodes;
   expect(projectProperty(source, LOCAL_NATIVE_PROPERTY_PROFILE, context).outcome).toBe('unsupported');
+  for (const malformed of [
+    { kind: 'invented' },
+    { fields: [null] },
+    { items: null },
+    { alternatives: null },
+    { indexSignatures: [null] },
+    { discriminator: null },
+    { tupleElements: [null] },
+  ]) {
+    const graph = model().source.graph;
+    Object.assign(graph.nodes[0]!, malformed);
+    expect(validateSourceGraph(graph)).not.toEqual([]);
+  }
+});
+
+const stringUnionGraph = () => {
+  const graph = model().source.graph;
+  const root = graph.nodes[0]!;
+  graph.nodes = [
+    {
+      ...root,
+      kind: 'union',
+      typeText: "'small' | 'large'",
+      alternatives: ['small', 'large'],
+      domain: { openness: 'closed', declaredValues: ['small', 'large'], provenance: 'compiler' },
+    },
+    ...(['small', 'large'] as const).map((value) => ({
+      ...root,
+      id: value,
+      kind: 'string' as const,
+      typeText: JSON.stringify(value),
+      domain: { openness: 'closed' as const, declaredValues: [value], provenance: 'compiler' as const },
+    })),
+  ];
+  return graph;
+};
+it.each(['small', 'large'])('accepts a default belonging to one proven union branch: %s', (value) => {
+  expect(validateSourceDomain(stringUnionGraph(), { type: 'String', defaultValue: value })).toEqual([]);
+});
+it('rejects a default outside every proven union branch while retaining member-domain checks', () => {
+  expect(validateSourceDomain(stringUnionGraph(), { type: 'String', defaultValue: 'other' })).toContainEqual({
+    path: '/defaultValue',
+    message: 'Default outside proven source domain',
+  });
+  expect(
+    validateSourceDomain(stringUnionGraph(), { type: 'String', values: ['small'], defaultValue: 'small' }).length,
+  ).toBeGreaterThan(0);
 });

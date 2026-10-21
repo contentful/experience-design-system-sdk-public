@@ -6,7 +6,17 @@ vi.mock('../../../src/agents/index.js', async (importOriginal) => ({
   createLocalCliAgentInvoker: () => ({
     invoke: async ({ prompt }: { prompt: string }) => {
       agent.prompts.push(prompt);
-      return { stdout: '', stderr: '', exitCode: 0, timedOut: false };
+      return {
+        stdout: [
+          { tool: 'classify_component' },
+          { tool: 'exclude_prop', prop: 'mode', reason: 'This fixture inspects advisory source evidence only' },
+        ]
+          .map((call) => JSON.stringify(call))
+          .join('\n'),
+        stderr: '',
+        exitCode: 0,
+        timedOut: false,
+      };
     },
   }),
 }));

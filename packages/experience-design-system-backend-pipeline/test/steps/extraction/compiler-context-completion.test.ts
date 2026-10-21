@@ -344,12 +344,15 @@ it.each(['stable', 'changed', 'deleted'] as const)(
             invoke: async ({ prompt }) => {
               generationPrompts.push(prompt);
               return {
-                stdout: JSON.stringify({
-                  tool: 'classify_prop',
-                  prop: 'label',
-                  cdf_type: 'string',
-                  cdf_category: 'content',
-                }),
+                stdout:
+                  JSON.stringify({ tool: 'classify_component' }) +
+                  '\n' +
+                  JSON.stringify({
+                    tool: 'classify_prop',
+                    prop: 'label',
+                    cdf_type: 'string',
+                    cdf_category: 'content',
+                  }),
                 stderr: '',
                 exitCode: 0,
                 timedOut: false,
@@ -376,7 +379,7 @@ it.each(['stable', 'changed', 'deleted'] as const)(
         0,
         1,
       );
-      expect(generated.failed).toBe(false);
+      expect(generated.failed).toBe(variant !== 'stable');
       expect(generationPrompts[0]).toContain(compilerEvidenceInline);
       expect(generationPrompts[0]).toContain('props.label');
       expect(saved.loadComponentReviewMetadata(db, sessionId, 'Example')?.extractionDiagnostics).toEqual(diagnostics);

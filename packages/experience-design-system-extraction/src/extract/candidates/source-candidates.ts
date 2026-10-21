@@ -149,6 +149,7 @@ export function observeRawProps(
   options: {
     origin?: SourceCandidateObservation['origin'];
     sourceDefaults?: ReadonlyMap<string, string>;
+    sourceDefaultNodes?: ReadonlyMap<string, Node>;
     locations?: ReadonlyMap<string, NonNullable<SourceCandidateObservation['location']>>;
   } = {},
 ): SourceCandidateObservation[] {
@@ -188,6 +189,7 @@ export function observeTypeProps(
   componentSourcePath: string,
   options: {
     sourceDefaults?: ReadonlyMap<string, string>;
+    sourceDefaultNodes?: ReadonlyMap<string, Node>;
     virtualSource?: { path: string; originalPath: string; sourceHash: string; lineOffset: number };
   } = {},
 ): SourceCandidateObservation[] {
@@ -244,7 +246,16 @@ export function observeTypeProps(
           ? describeCompilerDomain(property.getTypeAtLocation(fallback), sourceTypeText)
           : describeSourceDomain(sourceTypeText),
       declaredRequired,
-      sourceDefault: sourceDefault !== null ? decodeSourceDefault(sourceDefault, locations[0] ?? null) : null,
+      sourceDefault:
+        sourceDefault !== null
+          ? decodeSourceDefault(
+              sourceDefault,
+              options.sourceDefaultNodes?.get(prop.name)
+                ? sourceLocation(options.sourceDefaultNodes.get(prop.name)!)
+                : null,
+              options.sourceDefaultNodes?.get(prop.name),
+            )
+          : null,
       advisoryShape: resolved?.shape ?? null,
       ...(resolved ? { sourceGraph: resolved.graph } : {}),
       shapeNotes: resolved?.notes ?? ['source-type-location-unavailable'],

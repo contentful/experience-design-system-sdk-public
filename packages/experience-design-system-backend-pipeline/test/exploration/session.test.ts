@@ -119,6 +119,7 @@ describe('connected exploration persistence and output', () => {
         component.component_id,
         'Panel',
         [
+          { tool: 'classify_component' },
           { tool: 'classify_prop', prop: 'label', cdf_type: 'string', cdf_category: 'content' },
           { tool: 'classify_slot', slot: 'renderBody', allowed_components: ['Text'], required: true },
         ],
@@ -177,7 +178,7 @@ describe('connected exploration persistence and output', () => {
     try {
       expect(api.loadExplorationRun(reopened, sessionId, 'components')!.status).toBe('failed');
       expect(api.loadExplorationReports(reopened, sessionId, 'components')).toHaveLength(1);
-      expect(api.loadAcceptedSlotDecisions(reopened, sessionId)).toEqual([]);
+      expect(() => api.loadAcceptedSlotDecisions(reopened, sessionId)).toThrow('stale or incomplete');
       expect(pipeline.loadScopeComponents(reopened, sessionId)).toEqual([]);
     } finally {
       reopened.close();
@@ -498,7 +499,7 @@ it('persists assigned coverage and earlier exclusions when a whole assigned comp
         .filter((attempt) => attempt.scope === 'components-2'),
     ).toHaveLength(2);
     expect(api.loadExplorationRun(reopened, sessionId, 'components')?.status).toBe('failed');
-    expect(api.loadAcceptedSlotDecisions(reopened, sessionId)).toEqual([]);
+    expect(() => api.loadAcceptedSlotDecisions(reopened, sessionId)).toThrow('stale or incomplete');
     expect(api.loadScopeComponents(reopened, sessionId)).toEqual([]);
     const artifact = join(
       dir,

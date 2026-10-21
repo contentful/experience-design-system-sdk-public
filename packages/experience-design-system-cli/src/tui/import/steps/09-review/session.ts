@@ -2,6 +2,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 import {
   loadCDFComponents,
+  loadSelectedCDFComponents,
   loadDTCGTokens,
   openPipelineDb,
 } from '@contentful/experience-design-system-backend-pipeline';
@@ -30,7 +31,7 @@ export function loadReviewSessionState<TExtra = undefined>({
   sortEntries,
 }: ReviewSessionLoaderOptions<TExtra>): ReviewSessionLoadResult<TExtra> {
   const db = openPipelineDb();
-  let cdfComponents: Array<{ key: string; entry: CDFComponentEntry }> = [];
+  let cdfComponents: Array<{ key: string; componentId: string; entry: CDFComponentEntry }> = [];
   let tokens: TokenReviewToken[] = [];
   let extra: TExtra | undefined;
   try {
@@ -53,8 +54,9 @@ export function loadReviewSessionState<TExtra = undefined>({
     };
   }
 
-  const entries = cdfComponents.map(({ key, entry }) => ({
+  const entries = cdfComponents.map(({ key, componentId, entry }) => ({
     key,
+    componentId,
     entry,
     status: 'needs-review' as const,
   }));
@@ -77,6 +79,7 @@ export function createReviewHistorySnapshot(
   return {
     components: components.map((component) => ({
       key: component.key,
+      componentId: component.componentId,
       entry: component.entry,
       status: component.status,
     })),
@@ -100,25 +103,45 @@ export function finalizeReviewSession(extractSessionId: string, components: CdfR
   const unresolvedKeys = components
     .filter((component) => component.status === 'needs-review')
     .map((component) => component.key);
-  const toReject = [...rejectedKeys, ...unresolvedKeys];
 
-  if (toReject.length > 0) {
-    const db = openPipelineDb();
-    try {
-      const statement = db.prepare(
-        `UPDATE raw_components SET status = 'generate-rejected' WHERE session_id = ? AND name = ?`,
+  const db = openPipelineDb();
+  try {
+    const rows = db
+      .prepare('SELECT component_id,name FROM raw_components WHERE session_id=?')
+      .all(extractSessionId) as Array<{ component_id: string; name: string }>;
+    const identities = new Set<string>();
+    const resolved = components.map((component) => {
+      const matches = rows.filter((row) =>
+        component.componentId ? row.component_id === component.componentId : row.name === component.key,
       );
-      db.exec('BEGIN');
-      try {
-        for (const name of toReject) statement.run(extractSessionId, name);
-        db.exec('COMMIT');
-      } catch (error) {
-        db.exec('ROLLBACK');
-        throw error;
-      }
-    } finally {
-      db.close();
+      if (matches.length !== 1 || matches[0]!.name !== component.key || identities.has(matches[0]!.component_id))
+        throw new Error('Unknown, ambiguous or duplicate review component identity');
+      identities.add(matches[0]!.component_id);
+      return { ...component, componentId: matches[0]!.component_id };
+    });
+    loadSelectedCDFComponents(
+      db,
+      extractSessionId,
+      new Set(
+        resolved.filter((component) => component.status === 'accepted').map((component) => component.componentId),
+      ),
+    );
+    db.exec('BEGIN');
+    try {
+      const statement = db.prepare('UPDATE raw_components SET status=? WHERE session_id=? AND component_id=?');
+      for (const component of resolved)
+        statement.run(
+          component.status === 'accepted' ? 'generated' : 'generate-rejected',
+          extractSessionId,
+          component.componentId,
+        );
+      db.exec('COMMIT');
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
     }
+  } finally {
+    db.close();
   }
 
   return {

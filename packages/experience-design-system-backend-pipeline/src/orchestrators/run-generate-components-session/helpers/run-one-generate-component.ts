@@ -6,13 +6,14 @@ import type { AgentName } from '../../../agents/types/agent-name.js';
 import type { AgentInvoker } from '../../../agents/types/invoker.js';
 import { buildPrompt } from '../../../agents/prompts/build-prompt.js';
 import { buildCompilerEvidenceInline } from '../../../agents/prompts/helpers/build-compiler-evidence-inline.js';
-import { describeAgentFailure } from '../../../agents/helpers/metadata/describe-agent-failure.js';
 import { invokeAgentWithOutput } from '../../../agents/services/invoke-agent-with-output.js';
-import { parseToolCalls } from '../../../agents/parsers/parse-tool-calls.js';
+import { generateCompleteDecisions } from '../../../steps/generation/src/services/property/complete-decisions.js';
+import { componentDecisionInventory } from '../../../steps/generation/src/services/property/decision-inventory.js';
+import { materializeProperty } from '../../../steps/generation/src/services/property/materialize-property.js';
+import { loadAcceptedSlotDecisions } from '../../../persistence/src/session/repositories/exploration/records.js';
 import {
   applyToolCalls,
   computeComponentInputHash,
-  copyComponentFromCache,
   loadSavedComponentSourceRef,
   loadSavedSharedSource,
   renameEmptySlots,
@@ -20,13 +21,11 @@ import {
   type RawComponentWithId,
 } from '../../../persistence/src/session/repositories/db.js';
 import { normalizeComponentForCache } from '../../../steps/generation/src/helpers/components/normalize-component-for-cache.js';
-import { resolveComponentCache } from '../../../steps/generation/src/helpers/components/resolve-component-cache.js';
 import { summarizeForGenerateAgent } from '../../../steps/generation/src/controller/existing-entities/summarize-for-generate.js';
 import type { ExistingContentfulEntities } from '../../../steps/generation/src/types/existing-entities.js';
 import type { GeneratedComponentResult, GenerateComponentsProgress } from '../types.js';
-import { buildCachedComponentResult } from './build-cached-component-result.js';
 import { buildFailedComponentResult } from './build-failed-component-result.js';
-import { abortableDelay, throwIfAborted } from '../../../helpers/abort.js';
+import { throwIfAborted } from '../../../helpers/abort.js';
 import {
   loadExplorationRun,
   loadExplorationRecord,
@@ -80,7 +79,6 @@ export async function runOneGenerateComponent(
     promptHash,
     existingContentfulEntities,
     existingTokensInline,
-    precomputedCachedNames,
     allowedComponentNames,
     onProgress,
     signal,
@@ -123,44 +121,6 @@ export async function runOneGenerateComponent(
       : slot,
   );
   const cacheComponent = normalizeComponentForCache(component);
-
-  if (!noCache && precomputedCachedNames.has(component.name)) {
-    onProgress?.({ kind: 'component:cached', index, total, name: component.name, pinned: false });
-    throwIfAborted(signal);
-    assertProjectionCurrent();
-    return buildCachedComponentResult(component.name);
-  }
-
-  if (!noCache) {
-    const resolution = resolveComponentCache(db, component, promptHash, allowedComponentNames);
-    if (resolution && !resolution.humanEdited) {
-      copyComponentFromCache(db, resolution.entry.sourceSessionId, sessionId, component.component_id, true, {
-        allowedComponentNames,
-      });
-      storeCache(
-        db,
-        computeComponentInputHash(cacheComponent),
-        'component',
-        component.component_id,
-        resolution.entry.sourceSessionId,
-        resolution.entry.humanEdited,
-        promptHash,
-      );
-      onProgress?.({ kind: 'component:cached', index, total, name: component.name, pinned: false });
-      throwIfAborted(signal);
-      return buildCachedComponentResult(component.name);
-    }
-    if (resolution?.humanEdited) {
-      copyComponentFromCache(db, resolution.entry.sourceSessionId, sessionId, component.component_id, true, {
-        allowedComponentNames,
-      });
-      onProgress?.({ kind: 'component:cached', index, total, name: component.name, pinned: true });
-      throwIfAborted(signal);
-      return buildCachedComponentResult(component.name, [
-        `${component.name}: source changed but human edits preserved`,
-      ]);
-    }
-  }
 
   const componentBuckets = bucketComponentProps(component);
   options.onDebugEvent?.('prop-buckets.generate', { ...componentBuckets });
@@ -212,79 +172,75 @@ export async function runOneGenerateComponent(
   });
   throwIfAborted(signal);
 
-  const maxAttempts = 2;
-  let lastError = '';
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    throwIfAborted(signal);
-    if (attempt > 1) await abortableDelay(RETRY_BACKOFF_MS, signal);
-    throwIfAborted(signal);
-    onProgress?.({ kind: 'component:started', index, total, name: component.name, attempt, maxAttempts });
-    const { result } = await invokeAgentWithOutput(
-      invoker,
-      { agent, model, prompt, timeoutMs: DEFAULT_TIMEOUT_MS, signal },
-      verbose,
-    );
-    throwIfAborted(signal);
-
-    if (result.timedOut) {
-      const error = `timed out after ${DEFAULT_TIMEOUT_MS / 60000} minutes`;
-      onProgress?.({ kind: 'component:failed', index, total, name: component.name, error });
-      return buildFailedComponentResult(component.name, error, renames.length);
-    }
-
-    if (result.exitCode !== 0) {
-      lastError = describeAgentFailure(result);
-      continue;
-    }
-
-    const { calls, warnings } = parseToolCalls(result.stdout);
-    throwIfAborted(signal);
-    if (calls.length === 0) {
-      lastError = describeAgentFailure(result);
-      continue;
-    }
-
-    assertProjectionCurrent();
-    const applied = applyToolCalls(db, sessionId, component.component_id, component.name, calls, warnings, {
-      allowedComponentNames,
-    });
-    throwIfAborted(signal);
-    if (applied.projectionBlocked)
-      return buildFailedComponentResult(component.name, applied.warnings.join('; '), renames.length);
-    if (!noCache) {
-      storeCache(
-        db,
-        computeComponentInputHash(cacheComponent),
-        'component',
-        component.component_id,
-        sessionId,
-        false,
-        promptHash,
-      );
-    }
-    onProgress?.({
-      kind: 'component:completed',
-      index,
-      total,
-      name: component.name,
-      classified: applied.classified,
-      excluded: applied.excluded,
-      slots: applied.slots,
-      warnings: applied.warnings,
-    });
-    return {
-      componentName: component.name,
-      classified: applied.classified,
-      excluded: applied.excluded,
-      slots: applied.slots,
-      warnings: applied.warnings,
-      failed: false,
-      cached: false,
-      renamedSlotsCount: renames.length,
-    };
+  const inventory = componentDecisionInventory(
+    { ...component, slots: effectiveSlots },
+    loadAcceptedSlotDecisions(db, sessionId),
+  );
+  const completed = await generateCompleteDecisions({
+    originalPrompt: prompt,
+    inventory,
+    timeoutMs: DEFAULT_TIMEOUT_MS,
+    backoffMs: RETRY_BACKOFF_MS,
+    signal,
+    validate: (call) => {
+      if (call.tool === 'classify_prop') materializeProperty(component, call, component.component_id);
+    },
+    invoke: async ({ prompt: attemptPrompt, timeoutMs, signal: operationSignal, attempt }) => {
+      onProgress?.({ kind: 'component:started', index, total, name: component.name, attempt, maxAttempts: 2 });
+      throwIfAborted(signal);
+      return (
+        await invokeAgentWithOutput(
+          invoker,
+          { agent, model, prompt: attemptPrompt, timeoutMs, signal: operationSignal },
+          verbose,
+        )
+      ).result;
+    },
+  });
+  throwIfAborted(signal);
+  if (!completed.complete) {
+    const error = completed.diagnostics.join('; ');
+    onProgress?.({ kind: 'component:failed', index, total, name: component.name, error });
+    return buildFailedComponentResult(component.name, error, renames.length);
   }
-
-  onProgress?.({ kind: 'component:failed', index, total, name: component.name, error: lastError });
-  return buildFailedComponentResult(component.name, lastError, renames.length);
+  const calls = completed.calls;
+  const warnings = completed.diagnostics;
+  assertProjectionCurrent();
+  const applied = applyToolCalls(db, sessionId, component.component_id, component.name, calls, warnings, {
+    allowedComponentNames,
+  });
+  throwIfAborted(signal);
+  if (applied.projectionBlocked)
+    return buildFailedComponentResult(component.name, applied.warnings.join('; '), renames.length);
+  if (!noCache) {
+    storeCache(
+      db,
+      computeComponentInputHash(cacheComponent),
+      'component',
+      component.component_id,
+      sessionId,
+      false,
+      promptHash,
+    );
+  }
+  onProgress?.({
+    kind: 'component:completed',
+    index,
+    total,
+    name: component.name,
+    classified: applied.classified,
+    excluded: applied.excluded,
+    slots: applied.slots,
+    warnings: applied.warnings,
+  });
+  return {
+    componentName: component.name,
+    classified: applied.classified,
+    excluded: applied.excluded,
+    slots: applied.slots,
+    warnings: applied.warnings,
+    failed: false,
+    cached: false,
+    renamedSlotsCount: renames.length,
+  };
 }

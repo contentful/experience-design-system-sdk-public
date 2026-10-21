@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { completeSourceFixture } from '../../source-fixture.js';
 import { runGenerateComponentsSession } from '../../../src/orchestrators/run-generate-components-session/run-generate-components-session.js';
 import { selectComponents } from '../../../src/steps/selection/src/controller/select-components-endpoint.js';
 import { generateCdfComponents } from '../../../src/steps/generation/src/controller/generate-cdf-components-endpoint.js';
@@ -10,7 +11,6 @@ import {
   getOrCreateSession,
   loadRawComponents,
   openPipelineDb,
-  storeRawComponents,
 } from '../../../src/persistence/src/session/repositories/db.js';
 import type { RawComponentDefinition } from '../../../src/steps/extraction/src/types/component.js';
 
@@ -65,6 +65,15 @@ function assertPrompt(prompt: string): Record<string, unknown> {
   return Array.isArray(buckets) ? buckets[0] : buckets;
 }
 
+async function seed(db: Parameters<typeof completeSourceFixture>[0], sessionId: string, directory: string) {
+  mkdirSync(join(directory, 'src'), { recursive: true });
+  writeFileSync(
+    join(directory, 'src/Field.tsx'),
+    `export function Field({name='contact'}: {name?: string; icon?: string; label: string; unknown?: string}) { return <div/> }`,
+  );
+  await completeSourceFixture(db, sessionId, directory, [component]);
+}
+
 beforeEach(() => {
   agent.invoke.mockReset().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, timedOut: false });
 });
@@ -94,8 +103,18 @@ describe('production prompt provenance boundaries', () => {
     const original = structuredClone(component);
     const events = vi.fn();
     agent.invoke.mockResolvedValue({
-      stdout:
-        '{"tool":"classify_prop","component":"Field","prop":"label","cdf_type":"string","cdf_category":"content","required":true}',
+      stdout: [
+        { tool: 'classify_component' },
+        { tool: 'classify_prop', prop: 'label', cdf_type: 'string', cdf_category: 'content', required: true },
+        ...['name', 'icon', 'unknown'].map((prop) => ({
+          tool: 'exclude_prop',
+          prop,
+          reason: 'Retained nonauthoring fixture input',
+        })),
+        { tool: 'classify_slot', slot: 'children' },
+      ]
+        .map((call) => JSON.stringify(call))
+        .join('\n'),
       stderr: '',
       exitCode: 0,
       timedOut: false,
@@ -116,15 +135,27 @@ describe('production prompt provenance boundaries', () => {
     'derives session generation buckets from saved provenance with timeout=%s',
     async (timedOut) => {
       const events = vi.fn();
+      const directory = mkdtempSync(join(tmpdir(), 'saved-provenance-'));
       const db = openPipelineDb(':memory:');
       try {
         const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-        storeRawComponents(db, sessionId, [component]);
+        await seed(db, sessionId, directory);
         const stored = loadRawComponents(db, sessionId)[0]!;
         agent.invoke.mockResolvedValue({
           stdout: timedOut
             ? ''
-            : '{"tool":"classify_prop","prop":"label","cdf_type":"string","cdf_category":"content","required":true}',
+            : [
+                { tool: 'classify_component' },
+                { tool: 'classify_prop', prop: 'label', cdf_type: 'string', cdf_category: 'content', required: true },
+                ...['name', 'icon', 'unknown'].map((prop) => ({
+                  tool: 'exclude_prop',
+                  prop,
+                  reason: 'Retained nonauthoring fixture input',
+                })),
+                { tool: 'classify_slot', slot: 'children' },
+              ]
+                .map((call) => JSON.stringify(call))
+                .join('\n'),
           stderr: '',
           exitCode: 0,
           timedOut,
@@ -154,12 +185,13 @@ describe('production prompt provenance boundaries', () => {
           0,
           1,
         );
-        expect(result.failed).toBe(timedOut);
+        expect(result.failed, JSON.stringify(result)).toBe(timedOut);
         const buckets = assertPrompt(agent.invoke.mock.calls[0]![0].prompt);
         expect(events.mock.calls).toEqual([['prop-buckets.generate', buckets]]);
         expect(loadRawComponents(db, sessionId)[0]?.props).toEqual(component.props);
       } finally {
         db.close();
+        rmSync(directory, { recursive: true, force: true });
       }
     },
   );
@@ -174,13 +206,25 @@ describe('production prompt provenance boundaries', () => {
       let sessionId: string;
       try {
         ({ sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' }));
-        storeRawComponents(db, sessionId, [component], { status: 'accepted' });
+        await seed(db, sessionId, dir);
+        db.prepare("UPDATE raw_components SET status='accepted' WHERE session_id=?").run(sessionId);
       } finally {
         db.close();
       }
       const events = vi.fn();
       agent.invoke.mockResolvedValue({
-        stdout: '{"tool":"classify_prop","prop":"label","cdf_type":"string","cdf_category":"content","required":true}',
+        stdout: [
+          { tool: 'classify_component' },
+          { tool: 'classify_prop', prop: 'label', cdf_type: 'string', cdf_category: 'content', required: true },
+          ...['name', 'icon', 'unknown'].map((prop) => ({
+            tool: 'exclude_prop',
+            prop,
+            reason: 'Retained nonauthoring fixture input',
+          })),
+          { tool: 'classify_slot', slot: 'children' },
+        ]
+          .map((call) => JSON.stringify(call))
+          .join('\n'),
         stderr: '',
         exitCode: 0,
         timedOut: false,
@@ -193,7 +237,7 @@ describe('production prompt provenance boundaries', () => {
         skillPath,
         onDebugEvent: events,
       });
-      expect(result.allOk).toBe(true);
+      expect(result.allOk, JSON.stringify(result)).toBe(true);
       const buckets = assertPrompt(agent.invoke.mock.calls[0]![0].prompt);
       expect(events.mock.calls).toEqual([['prop-buckets.generate', buckets]]);
     } finally {

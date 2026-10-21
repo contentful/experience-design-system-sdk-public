@@ -50,6 +50,7 @@ import {
   type ExtractionDiagnostics,
   SOURCE_FACT_SCHEMA_VERSION,
   extractSourceDefaultExpressions,
+  extractSourceDefaultNodes,
 } from '@contentful/experience-design-system-extraction';
 
 const REACT_ELEMENT_GENERIC_TEST = /(?:React\.)?ReactElement\s*<\s*[A-Za-z_$][\w$.]*/;
@@ -2366,6 +2367,7 @@ function extractFromSourceFile(
         renderPropSlotNames,
         syntheticDomProps,
         sourceDefaults,
+        sourceDefaultNodes: extractSourceDefaultNodes(funcNode),
         runtimeProps: finalProps === resolvedProps ? [] : finalProps,
       }),
       propsAfterSlotExpansion,

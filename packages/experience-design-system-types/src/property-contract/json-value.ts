@@ -15,9 +15,11 @@ export function jsonValueIssue(value: unknown, path = '', ancestors = new Set<ob
       ? undefined
       : { path, message: 'Expected finite JSON-safe number' };
   if (typeof value !== 'object') return { path, message: 'Expected JSON value' };
+  if (nodeTypes?.isProxy(value)) return { path, message: 'Proxy is not supported JSON data' };
   if (ancestors.has(value)) return { path, message: 'Cyclic JSON value' };
   const array = Array.isArray(value);
   const proto = Object.getPrototypeOf(value);
+  if (array && proto !== Array.prototype) return { path, message: 'Custom array prototype' };
   if (!array && proto !== Object.prototype && proto !== null) return { path, message: 'Custom object prototype' };
   ancestors.add(value);
   try {
@@ -66,4 +68,69 @@ export function freezeJson<T>(value: T): Readonly<T> {
     Object.freeze(value);
   }
   return value;
+}
+const nodeTypes = (
+  globalThis as typeof globalThis & {
+    process?: { getBuiltinModule?: (name: string) => { types: { isProxy: (value: unknown) => boolean } } };
+  }
+).process?.getBuiltinModule?.('node:util')?.types;
+
+/** Parse the entire document and reject duplicate decoded own keys. */
+export function parseStrictJson(text: string): unknown {
+  const parsed: unknown = JSON.parse(text);
+  let cursor = 0;
+  const whitespace = (): void => {
+    while (/\s/.test(text[cursor] ?? '') && cursor < text.length) cursor++;
+  };
+  const string = (): string => {
+    const start = cursor++;
+    while (cursor < text.length) {
+      const char = text[cursor++]!;
+      if (char === '\\') cursor++;
+      else if (char === '"') return JSON.parse(text.slice(start, cursor)) as string;
+    }
+    throw new Error('Unterminated JSON string');
+  };
+  const value = (): void => {
+    whitespace();
+    if (text[cursor] === '{') {
+      cursor++;
+      whitespace();
+      const keys = new Set<string>();
+      if (text[cursor] === '}') {
+        cursor++;
+        return;
+      }
+      while (cursor < text.length) {
+        whitespace();
+        const key = string();
+        if (keys.has(key)) throw new Error('Duplicate JSON object key');
+        keys.add(key);
+        whitespace();
+        cursor++;
+        value();
+        whitespace();
+        if (text[cursor++] === '}') return;
+      }
+    } else if (text[cursor] === '[') {
+      cursor++;
+      whitespace();
+      if (text[cursor] === ']') {
+        cursor++;
+        return;
+      }
+      while (cursor < text.length) {
+        value();
+        whitespace();
+        if (text[cursor++] === ']') return;
+      }
+    } else if (text[cursor] === '"') string();
+    else {
+      while (cursor < text.length && !/[\s,}\]]/.test(text[cursor]!)) cursor++;
+    }
+  };
+  value();
+  const issue = jsonValueIssue(parsed);
+  if (issue) throw new Error(`${issue.path}: ${issue.message}`);
+  return parsed;
 }

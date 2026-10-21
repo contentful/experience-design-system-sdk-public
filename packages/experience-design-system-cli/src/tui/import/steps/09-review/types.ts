@@ -4,6 +4,7 @@ export type ReviewComponentStatus = 'needs-review' | 'reviewed' | 'accepted' | '
 
 export type CdfReviewEntry = {
   key: string;
+  componentId?: string;
   entry: CDFComponentEntry;
   status: ReviewComponentStatus;
 };

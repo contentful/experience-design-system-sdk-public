@@ -168,7 +168,7 @@ export async function runExtraction(
           agent: input.agent as AgentName,
           model: input.agentModel,
           ...selectionPrompt,
-          noCache: input.noCache,
+          noCache: true,
           signal,
         });
         throwIfAborted(signal);
@@ -190,7 +190,7 @@ export async function runExtraction(
         agent: input.agent,
         ...(input.agentModel ? { agentModel: input.agentModel } : {}),
         promptOverrides: input.promptOverrides,
-        noCache: input.noCache,
+        noCache: true,
         signal,
         onProgress: (event) => update(applyProgressEvent(progress, event)),
         onSessionCreated: (sessionId) => {

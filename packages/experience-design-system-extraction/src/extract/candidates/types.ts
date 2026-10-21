@@ -29,6 +29,7 @@ export interface SourceDomain {
 }
 
 export interface SourceDefaultFact {
+  dependencies?: SourceFactLocation[];
   expression: string;
   location: SourceFactLocation | null;
   state?: 'value' | 'unsupported';
@@ -187,6 +188,16 @@ export interface NativeSourceShape {
 }
 export interface SourceTypeNode {
   id: string;
+  path?: Array<{ kind: 'field' | 'item' | 'tuple' | 'union' | 'intersection' | 'index'; key: string | number }>;
+  alias?: string;
+  readonly?: boolean;
+  nullable?: boolean;
+  undefinable?: boolean;
+  tupleElements?: Array<{ nodeId: string; label: string | null; optional: boolean; rest: boolean }>;
+  discriminatorKeys?: string[];
+  discriminator?: { provenance: 'compiler' | 'unknown'; complete: boolean; keys: string[] };
+  nullabilityProvenance?: 'compiler' | 'unknown';
+  callSignatures?: string[];
   keyPath: string[];
   kind: string;
   typeText: string;

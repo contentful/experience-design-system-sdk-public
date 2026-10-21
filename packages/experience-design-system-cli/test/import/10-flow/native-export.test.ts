@@ -8,6 +8,7 @@ import {
   storeCDFComponents,
   loadCDFComponents,
 } from '@contentful/experience-design-system-backend-pipeline';
+import { seedCompleteDefinitions } from '../source-session-fixture.js';
 import { validateCDF } from '@contentful/experience-design-system-types';
 import { parseToState, serializeState } from '../../../src/tui/import/steps/09-review/components/FieldEditor.js';
 import { runPrintFiles, realSaveDeps } from '../../../src/tui/import/steps/10-flow/flow/save.js';
@@ -20,7 +21,7 @@ it('uses actual editor, close/reopen readback and runPrintFiles export without t
     );
     let db = openPipelineDb(dbPath);
     const { sessionId } = getOrCreateSession(db, 'new', 'example', { command: 'analyze extract' });
-    storeCDFComponents(db, sessionId, [
+    await seedCompleteDefinitions(db, sessionId, directory, [
       { key: 'Example', entry: { $type: 'component', $properties: { rows: property } } },
     ]);
     db.close();

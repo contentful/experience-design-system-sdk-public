@@ -2,16 +2,14 @@ import type { DatabaseSync } from 'node:sqlite';
 import {
   ApiError,
   ImportApiClient,
-  backfillUnclassifiedProps,
   formatApiError,
   isEmptyPreview,
-  loadCDFComponents,
+  loadSelectedCDFComponents,
   openPipelineDb,
   parsePreviewValidationErrors,
   patchReviewStateWithValidationErrors,
   readTokensFromPath,
   recordContentfulContext,
-  seedCDFFromPreviewResponse,
   seedDefaultsFromChangedItems,
   setCommandContext,
   toCDFTokens,
@@ -120,8 +118,7 @@ export async function runPreview(input: RunPreviewInput, deps: PreviewDeps): Pro
     if (input.extractSessionId) {
       const db = deps.openDb();
       try {
-        backfillUnclassifiedProps(db, input.extractSessionId);
-        components = loadCDFComponents(db, input.extractSessionId);
+        components = loadSelectedCDFComponents(db, input.extractSessionId);
       } finally {
         db.close();
       }
@@ -136,28 +133,13 @@ export async function runPreview(input: RunPreviewInput, deps: PreviewDeps): Pro
       let needsRepreview = false;
       const db = deps.openDb();
       try {
-        if (preview.components.removed.length > 0) {
-          const localNames = new Set(
-            (
-              db.prepare(`SELECT name FROM raw_components WHERE session_id = ?`).all(input.extractSessionId) as Array<{
-                name: string;
-              }>
-            ).map((row) => row.name),
-          );
-          const falseRemovals = preview.components.removed.filter((removed) => localNames.has(removed.name));
-          if (falseRemovals.length > 0) {
-            const seeded = seedCDFFromPreviewResponse(db, input.extractSessionId, falseRemovals);
-            if (seeded > 0) needsRepreview = true;
-          }
-        }
-
         if (preview.components.changed.length > 0) {
           const seededDefaults = seedDefaultsFromChangedItems(db, input.extractSessionId, preview.components.changed);
           if (seededDefaults > 0) needsRepreview = true;
         }
 
         if (needsRepreview) {
-          components = loadCDFComponents(db, input.extractSessionId);
+          components = loadSelectedCDFComponents(db, input.extractSessionId);
           cdf = buildCDF(components, toCDFTokens(tokens), { deleteAll: input.deleteAll })!;
           preview = await client.previewImport(cdf);
         }

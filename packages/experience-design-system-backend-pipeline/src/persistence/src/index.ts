@@ -123,6 +123,8 @@ export type { RawComponentWithId, ExtractionSourceDiagnosticsRead } from './sess
 export {
   storeCDFComponents,
   loadCDFComponents,
+  loadSelectedCDFComponents,
+  evaluateComponentReadiness,
   loadScopeComponents,
   loadScopeDecisions,
 } from './session/repositories/db.js';

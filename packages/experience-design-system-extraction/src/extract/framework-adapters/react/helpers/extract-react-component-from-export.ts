@@ -21,6 +21,7 @@ import { resolvePropsType } from './resolve-react-props-type.js';
 import {
   extractDefaultValues,
   extractSourceDefaultExpressions,
+  extractSourceDefaultNodes,
   filterImplementationOnlyAliasProps,
   extractDestructuredBindingFallbackProps,
 } from './extract-react-binding-defaults.js';
@@ -183,6 +184,7 @@ export function extractReactComponentFromExport(
       renderPropSlotNames,
       syntheticDomProps,
       sourceDefaults,
+      sourceDefaultNodes: extractSourceDefaultNodes(funcNode),
       runtimeProps: finalProps === resolvedProps ? [] : finalProps,
     }),
     propsAfterSlotExpansion,

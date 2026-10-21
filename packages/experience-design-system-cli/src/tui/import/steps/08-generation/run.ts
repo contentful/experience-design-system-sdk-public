@@ -123,7 +123,7 @@ export async function runGeneration(
       ...(input.agentModel ? { agentModel: input.agentModel } : {}),
       promptOverrides: appendGeneratePromptOverride(input),
       skillPath: COMPONENTS_SKILL_PATH,
-      noCache: input.noCache,
+      noCache: true,
       signal,
       existingEntitiesPath: input.existingEntitiesPath,
       precomputedCachedNames: new Set(handedOverNames),

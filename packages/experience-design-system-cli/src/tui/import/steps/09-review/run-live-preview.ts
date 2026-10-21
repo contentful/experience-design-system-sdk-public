@@ -2,11 +2,7 @@ import type { ServerPreviewResponse } from '@contentful/experience-design-system
 import { buildCDF } from '@contentful/experience-design-system-types';
 import { ImportApiClient } from '@contentful/experience-design-system-backend-pipeline';
 import { readTokensFromPath, toCDFTokens } from '@contentful/experience-design-system-backend-pipeline';
-import {
-  backfillUnclassifiedProps,
-  loadCDFComponents,
-  openPipelineDb,
-} from '@contentful/experience-design-system-backend-pipeline';
+import { loadSelectedCDFComponents, openPipelineDb } from '@contentful/experience-design-system-backend-pipeline';
 import { cliUserAgent } from '../../../user-agent.js';
 
 class TimeoutError extends Error {
@@ -41,6 +37,7 @@ export type RunLivePreviewOptions = {
    *  full delete. Lets the Finalize dialog show exactly what the accepted push
    *  would delete, independent of the session's on-disk generated rows. */
   acceptedKeys?: ReadonlySet<string>;
+  selectedComponentIds?: ReadonlySet<string>;
 };
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -75,8 +72,7 @@ export async function runLivePreview(opts: RunLivePreviewOptions): Promise<LiveP
   if (sessionId) {
     const db = openPipelineDb();
     try {
-      backfillUnclassifiedProps(db, sessionId);
-      components = loadCDFComponents(db, sessionId);
+      components = loadSelectedCDFComponents(db, sessionId, opts.selectedComponentIds, opts.acceptedKeys);
     } finally {
       db.close();
     }

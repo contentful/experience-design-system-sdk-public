@@ -45,7 +45,7 @@ export class SourceValueBindings {
     else if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken)
       this.target(node.left, seen);
   }
-  scan(file: ts.SourceFile, maxNodes: number): boolean {
+  scan(file: ts.SourceFile, maxNodes: number, invalidateEscapes = false): boolean {
     const cached = this.scanned.get(file);
     if (cached !== undefined) return cached;
     let visited = 0;
@@ -56,6 +56,11 @@ export class SourceValueBindings {
         return;
       }
       visited += 1;
+      if (invalidateEscapes && (ts.isCallExpression(node) || ts.isNewExpression(node)))
+        for (const argument of node.arguments ?? []) {
+          const type = this.checker.getTypeAtLocation(argument);
+          if (type.flags & (ts.TypeFlags.Object | ts.TypeFlags.Any | ts.TypeFlags.Unknown)) this.target(argument);
+        }
       if (
         ts.isBinaryExpression(node) &&
         node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&

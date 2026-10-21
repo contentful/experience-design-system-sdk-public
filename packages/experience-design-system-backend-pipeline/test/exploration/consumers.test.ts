@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { hydrateSourceFixture } from '../source-fixture.js';
 import { captureSourceEvidence } from '@contentful/experience-design-system-extraction';
 import type { ExploreComponentReport, VerifiedItem } from '../../src/index.js';
 import type { AgentRunResult } from '../../src/agents/types/agent-run.js';
@@ -11,11 +12,18 @@ vi.mock('../../src/agents/invoker/create-local-cli-agent-invoker.js', () => ({
     invoke: async ({ prompt }: { prompt: string }) => {
       generated.prompts.push(prompt);
       generated.mutate?.();
+      const decoded = JSON.parse(prompt.match(/Raw component data \(JSON\):\n```json\n([\s\S]*?)\n```/)![1]!);
+      const raw = Array.isArray(decoded) ? decoded[0] : decoded;
       return {
         stdout: [
           { tool: 'classify_component', description: 'A configurable surface.' },
           { tool: 'classify_prop', prop: 'title', cdf_type: 'string', cdf_category: 'content', required: false },
-          { tool: 'classify_slot', slot: 'renderBody', allowed_components: ['Helper'], required: true },
+          ...raw.slots.map((slot: { name: string }) => ({
+            tool: 'classify_slot',
+            slot: slot.name,
+            allowed_components: ['Helper'],
+            required: true,
+          })),
         ]
           .map((call) => JSON.stringify(call))
           .join('\n'),
@@ -60,7 +68,8 @@ async function seed(slotNames = ['renderBody']) {
   });
   const db = api.openPipelineDb();
   const { sessionId } = api.getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-  api.storeRawComponents(db, sessionId, raw);
+  const bound = await Promise.all(raw.map((component) => hydrateSourceFixture(component, directory)));
+  api.storeRawComponents(db, sessionId, bound);
   const stored = api.loadRawComponents(db, sessionId);
   const stepId = api.createStep(db, sessionId, 'analyze extract', { project: directory });
   const capture = await captureSourceEvidence({
@@ -76,7 +85,7 @@ async function seed(slotNames = ['renderBody']) {
     sessionId,
     stepId,
     capture,
-    components: raw,
+    components: bound,
     scannedFiles: raw.map((raw) => raw.source),
     cycles: [],
     observations: { accepted: [], rejected: [] },
@@ -234,7 +243,7 @@ describe('actual accepted session consumers', () => {
       promptOverrides: ['generate=text:Classify source inputs.'],
       noCache: false,
     });
-    expect(generatedResult.allOk).toBe(true);
+    expect(generatedResult.allOk, JSON.stringify(generatedResult)).toBe(true);
     expect(generated.prompts).toHaveLength(2);
     expect(generated.prompts.find((prompt) => prompt.includes('"name": "Panel"'))).toContain('"Text"');
     expect(requested).toHaveLength(10);
@@ -401,7 +410,7 @@ it('keeps independently accepted parent-child edges in two named slots through c
     promptOverrides: ['generate=Classify accepted source.'],
     noCache: true,
   });
-  expect(generatedResult.allOk).toBe(true);
+  expect(generatedResult.allOk, JSON.stringify(generatedResult)).toBe(true);
   db = api.openPipelineDb();
   try {
     const panel = api.loadCDFComponents(db, sessionId).find((entry) => entry.key === 'Panel');

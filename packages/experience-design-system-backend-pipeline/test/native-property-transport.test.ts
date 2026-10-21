@@ -8,6 +8,7 @@ import {
   loadCDFComponents,
   loadRawComponents,
   applyToolCalls,
+  loadPropertyDecisions,
 } from '../src/persistence/src/session/repositories/db.js';
 
 const definition = JSON.parse(
@@ -34,6 +35,15 @@ describe('native property consumer transport', () => {
     const db = openPipelineDb(':memory:');
     try {
       const session = getOrCreateSession(db, 'new', 'example', { command: 'analyze extract' });
+      storeRawComponents(db, session.sessionId, [
+        {
+          name: 'Example',
+          source: '/example.tsx',
+          framework: 'react',
+          props: [{ name: 'rows', type: 'Array<Row>', required: false }],
+          slots: [],
+        },
+      ]);
       const entry = { $type: 'component' as const, $properties: { rows: definition } };
       storeCDFComponents(db, session.sessionId, [{ key: 'Example', entry }]);
       expect(loadCDFComponents(db, session.sessionId)[0]?.entry.$properties.rows).toEqual(definition);
@@ -53,25 +63,36 @@ describe('native property consumer transport', () => {
   });
 });
 
-it('saves added/deleted representation fields without false success or deleting raw source', () => {
+it('rejects fabricated representation fields while retaining the raw source and prior decision', () => {
   const db = openPipelineDb(':memory:');
   try {
     const { sessionId } = getOrCreateSession(db, 'new', 'example', { command: 'analyze extract' });
+    storeRawComponents(db, sessionId, [
+      {
+        name: 'Example',
+        source: '/example.tsx',
+        framework: 'react',
+        props: [{ name: 'first', type: 'string', required: false }],
+        slots: [],
+      },
+    ]);
     storeCDFComponents(db, sessionId, [
       {
         key: 'Example',
         entry: { $type: 'component', $properties: { first: { $type: 'string', $category: 'content', $default: '' } } },
       },
     ]);
-    storeCDFComponents(db, sessionId, [
-      {
-        key: 'Example',
-        entry: { $type: 'component', $properties: { second: { $type: 'number', $category: 'state', $default: 0 } } },
-      },
-    ]);
-    expect(loadCDFComponents(db, sessionId)[0]!.entry.$properties).toEqual({
-      second: { $type: 'number', $category: 'state', $default: 0 },
-    });
+    const before = loadCDFComponents(db, sessionId);
+    expect(() =>
+      storeCDFComponents(db, sessionId, [
+        {
+          key: 'Example',
+          entry: { $type: 'component', $properties: { second: { $type: 'number', $category: 'state', $default: 0 } } },
+        },
+      ]),
+    ).toThrow('exact retained');
+    expect(loadCDFComponents(db, sessionId)).toEqual(before);
+    expect(loadRawComponents(db, sessionId)[0]!.props[0]!.name).toBe('first');
   } finally {
     db.close();
   }
@@ -133,16 +154,26 @@ it('keeps token source resolution separate from explicit generation and review d
       token_kind: 'color',
     };
     const read = () => loadCDFComponents(db, sessionId)[0]!.entry;
-    applyToolCalls(db, sessionId, component.component_id, 'Example', [call], []);
+    applyToolCalls(db, sessionId, component.component_id, 'Example', [{ tool: 'classify_component' }, call], []);
     expect(read().$properties.color!.$default).toBe('colors.blue');
-    applyToolCalls(db, sessionId, component.component_id, 'Example', [{ ...call, default: 'colors.other' }], []);
+    const originalDecision = loadPropertyDecisions(db, sessionId)[0]!;
+    storeCDFComponents(db, sessionId, [{ key: 'Example', entry: read() }]);
+    expect(loadPropertyDecisions(db, sessionId)[0]).toEqual(originalDecision);
+    applyToolCalls(
+      db,
+      sessionId,
+      component.component_id,
+      'Example',
+      [{ tool: 'classify_component' }, { ...call, default: 'colors.other' }],
+      [],
+    );
     expect(read().$properties.color!.$default).toBe('colors.other');
     applyToolCalls(
       db,
       sessionId,
       component.component_id,
       'Example',
-      [{ ...call, default_intent: { action: 'clear' } }],
+      [{ tool: 'classify_component' }, { ...call, default_intent: { action: 'clear' } }],
       [],
     );
     expect(Object.hasOwn(read().$properties.color!, '$default')).toBe(false);
