@@ -8,7 +8,7 @@ import {
   type DebugModeSetting,
 } from './debug-mode-store.js';
 import { startDebugRun, finishDebugRun } from '../../debug-store.js';
-import { ControlHints } from '../../control-hints.js';
+import { ControlHints } from '@tui/shared/components/ControlHints.js';
 import { createTrail, diffSnapshots, scrubError, type Snapshot } from '../shared/debug-trail.js';
 
 type Row = 'enabled' | 'retentionDays';

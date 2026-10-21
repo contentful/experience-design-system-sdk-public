@@ -20,7 +20,7 @@ export function describeGeneration(input: { acceptedCount: number; agent: string
   const agent = capitalize(input.agent);
   return (
     `${formatAcceptanceSummary({ accepted: input.acceptedCount, autoRejected: 0 })}\n` +
-    `${agent} is mapping your selected components to Contentful's Component Definition Format (CDF).` +
+    `${agent} is reading each selected component and writing a Contentful component definition for it` +
     `${input.hasTokens ? ' Using your design tokens for prop resolution.' : ''}`
   );
 }

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import { HighlightedLine, type HighlightPart } from './HighlightedLine.js';
-import { PALETTE } from '../../../../theme.js';
+import { PALETTE } from '@tui/theme.js';
 
 type SourcePanelProps = {
   sourceCode: string | null;

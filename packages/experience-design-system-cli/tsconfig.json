@@ -15,7 +15,8 @@
     "strict": true,
     "esModuleInterop": true,
     "jsx": "react-jsx",
-    "noEmit": true
+    "noEmit": true,
+    "paths": { "@tui/*": ["./src/tui/*"] }
   },
   "exclude": ["dist", "node_modules"]
 }

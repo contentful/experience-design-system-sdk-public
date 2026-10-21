@@ -3,7 +3,7 @@ import { Box, Text, useInput } from 'ink';
 import { PALETTE } from '../../theme.js';
 import { readAnalyticsSetting, writeAnalyticsSetting } from './analytics-store.js';
 import { startDebugRun, finishDebugRun } from '../../debug-store.js';
-import { ControlHints } from '../../control-hints.js';
+import { ControlHints } from '@tui/shared/components/ControlHints.js';
 
 export function OptInAnalyticsScreen({ onDone }: { onDone: () => void }): React.ReactElement {
   const [loading, setLoading] = useState(true);

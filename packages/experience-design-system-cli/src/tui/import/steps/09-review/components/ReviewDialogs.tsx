@@ -1,7 +1,7 @@
 import React from 'react';
 import type { ComponentTypeSummary } from '@contentful/experience-design-system-types';
 import { Box, Text } from 'ink';
-import { PALETTE } from '../../../../theme.js';
+import { PALETTE } from '@tui/theme.js';
 import { FinalizeDialog } from './FinalizeDialog.js';
 import { QuitDialog } from './QuitDialog.js';
 import type { UseFinalizePreviewReturn } from '../use-finalize-preview.js';

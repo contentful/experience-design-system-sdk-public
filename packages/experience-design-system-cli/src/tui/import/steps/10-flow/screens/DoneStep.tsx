@@ -1,8 +1,10 @@
 import React from 'react';
-import { PALETTE } from '../../../../theme.js';
+import { PALETTE } from '@tui/theme.js';
 import { Box, Text } from 'ink';
 import { useImmediateInput } from '../../07-scope-gate/sidebar/hooks/useImmediateInput.js';
 import { buildPostPushUrl } from '../support/contentful-urls.js';
+import { ControlHints } from '@tui/shared/components/ControlHints.js';
+import { StepHeader } from '@tui/shared/components/StepHeader.js';
 import type { Produced } from '../support/produced.js';
 import { SpaceEnvironment } from '../components/SpaceEnvironment.js';
 
@@ -84,67 +86,70 @@ export function DoneStep({
   const urlArgs = { host: host ?? 'api.contentful.com', spaceId, environmentId };
 
   return (
-    <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
-      {success ? (
-        <Text bold color={PALETTE.success}>
-          Done!
-        </Text>
-      ) : (
-        <Text bold color={PALETTE.warning}>
-          ⚠ Finished with errors
-        </Text>
-      )}
-
-      {totalPushed === 0 && totalFailed === 0 && !summary ? (
-        <Text color={PALETTE.muted}>
-          {credentialsSkipped
-            ? 'Nothing was pushed — you skipped the Contentful credentials, so the files were only saved locally.'
-            : 'Nothing was pushed — everything was already up to date.'}
-        </Text>
-      ) : (
-        <Box flexDirection="column">
-          <EntityRows entity={componentTypes} label="Component Type" />
-          <EntityRows entity={designTokens} label="Design Token" />
-          {summary && (
-            <Box marginTop={1}>
-              <Text color={PALETTE.muted}>
-                Push result: {summary.succeeded}/{summary.total} succeeded
-                {summary.failed > 0 && <Text color={PALETTE.error}>, {summary.failed} failed</Text>}
-              </Text>
-            </Box>
-          )}
-        </Box>
-      )}
-
-      {failures.length > 0 && (
-        <Box flexDirection="column">
-          <Text bold color={PALETTE.error}>
-            Failure details
+    <Box flexDirection="column">
+      <StepHeader step="done" />
+      <Box flexDirection="column" gap={1} paddingX={2} paddingBottom={1}>
+        {success ? (
+          <Text bold color={PALETTE.success}>
+            Done!
           </Text>
-          {failures.map((failure) => (
-            <Text key={`${failure.entityType}:${failure.entityId}`} color={PALETTE.error}>
-              {failure.entityType} {failure.entityId}: {failure.message}
+        ) : (
+          <Text bold color={PALETTE.warning}>
+            ⚠ Finished with errors
+          </Text>
+        )}
+
+        {totalPushed === 0 && totalFailed === 0 && !summary ? (
+          <Text color={PALETTE.muted}>
+            {credentialsSkipped
+              ? 'Nothing was pushed — you skipped the Contentful credentials, so the files were only saved locally.'
+              : 'Nothing was pushed — everything was already up to date.'}
+          </Text>
+        ) : (
+          <Box flexDirection="column">
+            <EntityRows entity={componentTypes} label="Component" />
+            <EntityRows entity={designTokens} label="Design Token" />
+            {summary && (
+              <Box marginTop={1}>
+                <Text color={PALETTE.muted}>
+                  Push result: {summary.succeeded}/{summary.total} succeeded
+                  {summary.failed > 0 && <Text color={PALETTE.error}>, {summary.failed} failed</Text>}
+                </Text>
+              </Box>
+            )}
+          </Box>
+        )}
+
+        {failures.length > 0 && (
+          <Box flexDirection="column">
+            <Text bold color={PALETTE.error}>
+              Failure details
             </Text>
-          ))}
-        </Box>
-      )}
+            {failures.map((failure) => (
+              <Text key={`${failure.entityType}:${failure.entityId}`} color={PALETTE.error}>
+                {failure.entityType} {failure.entityId}: {failure.message}
+              </Text>
+            ))}
+          </Box>
+        )}
 
-      <SpaceEnvironment spaceId={spaceId} environmentId={environmentId} />
+        <SpaceEnvironment spaceId={spaceId} environmentId={environmentId} />
 
-      {success && totalPushed > 0 && (
-        <Box flexDirection="column" gap={1}>
-          <Text color={PALETTE.success}>Your design system is now in Contentful Experiences.</Text>
-          {produced.components && <LinkRow title="View your components here:" url={buildPostPushUrl(urlArgs)} />}
-          {produced.tokens && (
-            <LinkRow
-              title="View your design tokens here:"
-              url={buildPostPushUrl({ ...urlArgs, view: 'design_tokens' })}
-            />
-          )}
-        </Box>
-      )}
+        {success && totalPushed > 0 && (
+          <Box flexDirection="column" gap={1}>
+            <Text color={PALETTE.success}>Your design system is now in Contentful Experiences.</Text>
+            {produced.components && <LinkRow title="View your components here:" url={buildPostPushUrl(urlArgs)} />}
+            {produced.tokens && (
+              <LinkRow
+                title="View your design tokens here:"
+                url={buildPostPushUrl({ ...urlArgs, view: 'design_tokens' })}
+              />
+            )}
+          </Box>
+        )}
 
-      <Text>[Enter / q] Exit</Text>
+        <ControlHints hints={[{ keys: 'Enter / q', label: 'Exit' }]} />
+      </Box>
     </Box>
   );
 }

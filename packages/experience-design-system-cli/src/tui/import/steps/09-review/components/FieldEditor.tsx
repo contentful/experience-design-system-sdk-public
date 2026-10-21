@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useState } from 'react';
 import figures from 'figures';
-import { PALETTE } from '../../../../theme.js';
+import { PALETTE } from '@tui/theme.js';
 import { Box, measureElement, Text, type DOMElement } from 'ink';
 import {
   CDF_PROPERTY_TYPES,
@@ -355,7 +355,7 @@ function RowLabel({
 }): React.ReactElement {
   return (
     <Text
-      color={selected ? '#FFFFFF' : PALETTE.accent}
+      color={selected ? PALETTE.onAccent : PALETTE.accent}
       bold={selected}
       backgroundColor={selected ? PALETTE.accent : undefined}
       wrap="truncate-end"

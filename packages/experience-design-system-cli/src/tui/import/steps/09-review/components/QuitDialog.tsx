@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, Text } from 'ink';
+import { ControlHints } from '@tui/shared/components/ControlHints.js';
 import { useImmediateInput } from '../../07-scope-gate/sidebar/hooks/useImmediateInput.js';
 
 type QuitDialogProps = {
@@ -31,7 +32,12 @@ export function QuitDialog({ hasUnsavedDrafts, onConfirm, onCancel }: QuitDialog
         <Text>Session is saved. Quit without finalizing?</Text>
       )}
       <Text> </Text>
-      <Text>{'  [y / Enter]  Quit    [n / Esc]  Stay'}</Text>
+      <ControlHints
+        hints={[
+          { keys: 'y / Enter', label: 'Quit' },
+          { keys: 'n / Esc', label: 'Stay' },
+        ]}
+      />
     </Box>
   );
 }

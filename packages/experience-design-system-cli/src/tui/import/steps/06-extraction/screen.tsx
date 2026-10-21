@@ -6,21 +6,12 @@ import type { ExtractionProgress } from './types.js';
 interface ExtractionScreenProps {
   progress: ExtractionProgress;
   agent: string;
-  stepNumber: number;
-  totalSteps: number;
 }
 
-export function ExtractionScreen({
-  progress,
-  agent,
-  stepNumber,
-  totalSteps,
-}: ExtractionScreenProps): React.ReactElement {
+export function ExtractionScreen({ progress, agent }: ExtractionScreenProps): React.ReactElement {
   return (
     <RunningStep
-      stepNumber={stepNumber}
-      totalSteps={totalSteps}
-      title="Extracting context"
+      step="extraction"
       description="Extracting context from your source files."
       lines={progressRows(progress, agent)}
     />

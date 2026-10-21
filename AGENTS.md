@@ -167,6 +167,8 @@ All TUI components are standard React functional components rendered by Ink. The
 - `src/import/tui/` — the wizard: `WizardApp` and step components in `steps/` (`GenerateReviewStep`, `WizardPreviewStep`, `PreviewValidationErrorStep`, `PushingStep`, `DoneStep`, `ErrorStep`, `GateStep`, `RunningStep`)
 - `packages/experience-design-system-cli/src/tui/` — the new CLI's TUI; see `DSI_TUI_ARCHITECTURE.md` in that package
 
+Colors come from the shared `PALETTE` in `packages/experience-design-system-cli/src/tui/theme.ts`, imported as `@tui/theme.js` (the `@tui/*` alias maps to `src/tui/*`; it is set in `tsconfig.json` and `vitest.config.ts`). Do not hardcode colours or define another palette. Control hints use `ControlHints` and the import's step tabs use `StepHeader`, both in `src/tui/shared/components/`.
+
 When writing TUI tests, use `ink-testing-library`. Set `NO_COLOR=1` in the environment before running tests to suppress ANSI escape codes. Strip ANSI before snapshot assertions if the test renders raw strings.
 
 The scope gate (`steps/07-scope-gate`, in the new CLI) shows two columns at 100 or more terminal columns (`columns.ts`) and one column below that.

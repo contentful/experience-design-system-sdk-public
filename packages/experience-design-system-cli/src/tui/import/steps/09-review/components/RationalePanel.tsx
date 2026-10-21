@@ -1,5 +1,5 @@
 import React from 'react';
-import { PALETTE } from '../../../../theme.js';
+import { PALETTE } from '@tui/theme.js';
 import { wrapText } from './wrap-text.js';
 import { RationaleLine, type RationaleLineData } from './RationaleLine.js';
 import { ScrollablePanel } from './ScrollablePanel.js';

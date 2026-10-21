@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { AGENT_NAMES, type AgentName } from '@contentful/experience-design-system-backend-pipeline';
-import { PALETTE } from '../../../theme.js';
-import { ControlHints } from '../../../control-hints.js';
+import { PALETTE } from '@tui/theme.js';
+import { ControlHints } from '@tui/shared/components/ControlHints.js';
 import { startDebugRun, finishDebugRun } from '../../../debug-store.js';
-import type { FormNotice } from '../../shared/FieldForm.js';
+import type { FormNotice } from '@tui/shared/components/FieldForm.js';
 import { createTrail, diffSnapshots, scrubError, type Snapshot } from '../../shared/debug-trail.js';
 import { agentSnapshot, describeAgents, type AgentEnvironment } from './agent-debug.js';
 import { AGENT_LABELS, readAgentConfig, writeAgentConfig, type AgentConfig } from './agent-store.js';
@@ -154,7 +154,7 @@ export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactEle
   if (!config) {
     return (
       <Box flexDirection="column" paddingX={2} paddingY={1}>
-        <Text bold>Agents</Text>
+        <Text bold>Settings › Configuration › Agents</Text>
         <Text> </Text>
         {loadError ? (
           <>
@@ -195,7 +195,8 @@ export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactEle
 
   return (
     <Box flexDirection="column" paddingX={2} paddingY={1}>
-      <Text bold>Agents</Text>
+      <Text bold>Settings › Configuration › Agents</Text>
+      <Text> </Text>
       <Text color={PALETTE.muted}>The coding agent the CLI runs, and what was found for each one.</Text>
       <Text> </Text>
 

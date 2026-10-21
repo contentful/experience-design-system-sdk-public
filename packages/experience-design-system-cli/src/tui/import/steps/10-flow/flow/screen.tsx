@@ -3,7 +3,6 @@ import { Box } from 'ink';
 import { parseCDFComponents } from '@contentful/experience-design-system-types';
 import { ErrorStep, GateStep, RunningStep } from '../../../shared/index.js';
 import { PreviewValidationErrorScreen } from '../../preview-validation-error/screen.js';
-import { TOKENS_ONLY_STEP_COUNT } from '../../00-preflight/logic.js';
 import { GenerateReviewStep } from '../../09-review/generate-review-step.js';
 import { CustomPromptBanner } from '../components/CustomPromptBanner.js';
 import { DoneStep } from '../screens/DoneStep.js';
@@ -24,16 +23,6 @@ interface FlowScreenProps {
   onExit: (exitCode: number) => void;
 }
 
-/** How many steps the import has, as the wizard counted them. */
-function totalStepsFor(
-  state: Pick<FlowState, 'tokensPath' | 'rawTokensPath' | 'mapTokensEligible' | 'extractSessionId'>,
-): number {
-  // Only tokens were generated, so there was no extraction: generate the tokens, then push them.
-  if (!state.extractSessionId) return TOKENS_ONLY_STEP_COUNT;
-  const hasTokenStage = !!state.tokensPath || !!state.rawTokensPath;
-  return 3 + (hasTokenStage ? 1 : 0) + 2 + (state.mapTokensEligible === true ? 1 : 0);
-}
-
 /** Whether the preview gate offers "[e] Edit definitions": only when the document has components to edit. */
 function canEditFromPreview(cdf: FlowState['cdf']): boolean {
   if (!cdf) return false;
@@ -47,7 +36,6 @@ export function FlowScreen({
   generatePromptPath,
   onExit,
 }: FlowScreenProps): React.ReactElement {
-  const totalSteps = totalStepsFor(state);
   const produced = producedOf(state);
   const quit = (): void => onExit(0);
 
@@ -71,14 +59,7 @@ export function FlowScreen({
         );
 
       case 'previewing':
-        return (
-          <RunningStep
-            stepNumber={totalSteps}
-            totalSteps={totalSteps}
-            title="Computing diff"
-            description="Computing diff against your Contentful space..."
-          />
-        );
+        return <RunningStep step="push" description="Computing diff against your Contentful space..." />;
 
       case 'preview-gate':
         if (!state.serverPreview) return null;
@@ -87,8 +68,6 @@ export function FlowScreen({
             preview={state.serverPreview}
             spaceId={state.spaceId}
             environmentId={state.environmentId}
-            stepNumber={totalSteps}
-            totalSteps={totalSteps}
             onConfirm={controller.confirmPreview}
             // Editing would dead-end on "No generated definitions found" when the document is empty (delete-all).
             {...(canEditFromPreview(state.cdf) ? { onEdit: controller.editDefinitions } : {})}
@@ -97,14 +76,7 @@ export function FlowScreen({
         );
 
       case 'pushing':
-        return (
-          <PushingStep
-            stepNumber={totalSteps}
-            totalSteps={totalSteps}
-            progress={state.pushProgress}
-            produced={produced}
-          />
-        );
+        return <PushingStep progress={state.pushProgress} produced={produced} />;
 
       case 'path-prompt':
         return (
@@ -116,19 +88,13 @@ export function FlowScreen({
         );
 
       case 'printing':
-        return (
-          <RunningStep
-            stepNumber={totalSteps}
-            totalSteps={totalSteps}
-            title="Writing files"
-            description="Writing output files to disk..."
-          />
-        );
+        return <RunningStep step="push" description="Writing output files to disk..." />;
 
       case 'print-gate': {
         const teaser = buildRunTeaserLine(state.lastRunId);
         return (
           <GateStep
+            step="push"
             message="Files saved"
             summary={state.componentsPath ? `${fileSummaryLabel(produced)} → ${state.componentsPath}` : undefined}
             context={

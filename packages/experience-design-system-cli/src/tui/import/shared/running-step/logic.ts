@@ -19,7 +19,3 @@ export function formatElapsed(totalSeconds: number): string {
   const seconds = totalSeconds % 60;
   return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
 }
-
-export function stepLabel(stepNumber: number, totalSteps: number, title: string): string {
-  return `Step ${stepNumber} of ${totalSteps} — ${title}`;
-}

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { Screen } from '../../../app.js';
-import { ControlHints } from '../control-hints.js';
+import { ControlHints } from '@tui/shared/components/ControlHints.js';
 import { PALETTE } from '../theme.js';
 
 export function SettingsScreen({

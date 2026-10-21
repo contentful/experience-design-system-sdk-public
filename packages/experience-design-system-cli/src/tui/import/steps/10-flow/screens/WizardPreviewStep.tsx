@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { PALETTE } from '../../../../theme.js';
+import { PALETTE } from '@tui/theme.js';
+import { ControlHints } from '@tui/shared/components/ControlHints.js';
 import { Box, Text } from 'ink';
 import { useImmediateInput } from '../../07-scope-gate/sidebar/hooks/useImmediateInput.js';
 import { useTerminalSize } from '../../07-scope-gate/sidebar/hooks/use-terminal-size.js';
@@ -10,7 +11,7 @@ import type {
 } from '@contentful/experience-design-system-types';
 import { hasBreakingChangesWithImpact } from '@contentful/experience-design-system-backend-pipeline';
 import { computeComponentDiffLines } from '../support/preview-diff.js';
-import { StepHeader } from '../components/StepHeader.js';
+import { StepHeader } from '@tui/shared/components/StepHeader.js';
 import { SpaceEnvironment } from '../components/SpaceEnvironment.js';
 import { usePreviewConfirmationInput } from '../support/preview-confirmation-input.js';
 import { WindowedPanel, terminalPanelHeight } from '../../07-scope-gate/sidebar/components/windowed-panel.js';
@@ -67,7 +68,7 @@ function buildPreviewSummaryLines(preview: ServerPreviewResponse): PreviewDiffLi
   if (components.unchanged.length > 0) {
     lines.push({
       key: 'summary-components-unchanged',
-      color: 'gray',
+      color: PALETTE.muted,
       text: ` · ${components.unchanged.length} unchanged`,
     });
   }
@@ -96,7 +97,7 @@ function buildPreviewSummaryLines(preview: ServerPreviewResponse): PreviewDiffLi
   if (tokens.unchanged.length > 0) {
     lines.push({
       key: 'summary-tokens-unchanged',
-      color: 'gray',
+      color: PALETTE.muted,
       text: ` · ${tokens.unchanged.length} design tokens unchanged`,
     });
   }
@@ -215,7 +216,7 @@ function buildPreviewDiffLines(preview: ServerPreviewResponse): PreviewDiffLine[
         if (!lines.some((l) => l.key === key)) {
           lines.push({
             key,
-            color: 'gray',
+            color: PALETTE.muted,
             text: `   slot ${slotName} allowedComponents: [${names.join(', ')}]`,
           });
         }
@@ -243,8 +244,6 @@ type WizardPreviewStepProps = {
   preview: ServerPreviewResponse;
   spaceId: string;
   environmentId: string;
-  stepNumber: number;
-  totalSteps: number;
   onConfirm: (acknowledge: boolean) => void;
   onEdit?: () => void;
   onQuit: () => void;
@@ -254,8 +253,6 @@ export function WizardPreviewStep({
   preview,
   spaceId,
   environmentId,
-  stepNumber,
-  totalSteps,
   onConfirm,
   onEdit,
   onQuit,
@@ -328,48 +325,58 @@ export function WizardPreviewStep({
   });
 
   return (
-    <Box flexDirection="column" gap={1} paddingX={2} paddingY={2}>
-      <StepHeader stepNumber={stepNumber} totalSteps={totalSteps} title="Push to Contentful" />
-
-      {hasAnything ? (
-        <>
-          <Text>Here&apos;s what will happen in your space:</Text>
-          <WindowedPanel
-            width={Math.max(20, terminalColumns - 4)}
-            height={panelHeight}
-            title={diffExpanded ? `Diff (${diffLines.length} lines)` : ''}
-            focused={false}
-          >
-            {activeLines.slice(boundedScrollOffset, boundedScrollOffset + viewportHeight).map((line) => (
-              <Text key={line.key} color={line.color === 'gray' ? PALETTE.muted : line.color} wrap="truncate-end">
-                {line.text}
+    <Box flexDirection="column">
+      <StepHeader step="push" />
+      <Box flexDirection="column" gap={1} paddingX={2} paddingBottom={2}>
+        {hasAnything ? (
+          <>
+            <Text>Here&apos;s what will happen in your space:</Text>
+            <WindowedPanel
+              width={Math.max(20, terminalColumns - 4)}
+              height={panelHeight}
+              title={diffExpanded ? `Diff (${diffLines.length} lines)` : ''}
+              focused={false}
+            >
+              {activeLines.slice(boundedScrollOffset, boundedScrollOffset + viewportHeight).map((line) => (
+                <Text key={line.key} color={line.color} wrap="truncate-end">
+                  {line.text}
+                </Text>
+              ))}
+              <Text color={PALETTE.muted} wrap="truncate-end">
+                {formatPreviewScrollIndicator(activeLines.length, boundedScrollOffset, viewportHeight)}
               </Text>
-            ))}
-            <Text color={PALETTE.muted} wrap="truncate-end">
-              {formatPreviewScrollIndicator(activeLines.length, boundedScrollOffset, viewportHeight)}
+            </WindowedPanel>
+          </>
+        ) : (
+          <Text color={PALETTE.muted}>Nothing to push — everything is already up to date.</Text>
+        )}
+
+        {breakingWithImpact && (
+          <Box marginTop={1}>
+            <Text color={PALETTE.error} bold>
+              ⚠ Breaking changes will affect downstream entities. Press Enter to acknowledge and apply.
             </Text>
-          </WindowedPanel>
-        </>
-      ) : (
-        <Text color={PALETTE.muted}>Nothing to push — everything is already up to date.</Text>
-      )}
+          </Box>
+        )}
 
-      {breakingWithImpact && (
+        <SpaceEnvironment spaceId={spaceId} environmentId={environmentId} />
+
         <Box marginTop={1}>
-          <Text color={PALETTE.error} bold>
-            ⚠ Breaking changes will affect downstream entities. Press Enter to acknowledge and apply.
-          </Text>
+          <ControlHints
+            hints={[
+              { keys: 'Enter', label: 'Push to Contentful' },
+              { keys: 'd', label: `${diffExpanded ? 'Hide' : 'Show'} diff` },
+              ...(diffExpanded
+                ? [
+                    { keys: '↑↓', label: 'Scroll' },
+                    { keys: 'f/b', label: 'Page' },
+                  ]
+                : []),
+              ...(onEdit ? [{ keys: 'e', label: 'Edit definitions' }] : []),
+              { keys: 'q', label: 'Cancel' },
+            ]}
+          />
         </Box>
-      )}
-
-      <SpaceEnvironment spaceId={spaceId} environmentId={environmentId} />
-
-      <Box gap={3} marginTop={1}>
-        <Text>[Enter] Push to Contentful</Text>
-        <Text>[d] {diffExpanded ? 'Hide' : 'Show'} diff</Text>
-        {diffExpanded && <Text>[↑↓] Scroll [f/b] Page</Text>}
-        {onEdit && <Text>[e] Edit definitions</Text>}
-        <Text>[q] Cancel</Text>
       </Box>
     </Box>
   );

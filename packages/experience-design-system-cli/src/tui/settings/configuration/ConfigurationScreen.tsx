@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { PALETTE } from '../../theme.js';
-import { ControlHints } from '../../control-hints.js';
+import { ControlHints } from '@tui/shared/components/ControlHints.js';
 import { AgentsScreen } from './agents/AgentsScreen.js';
 import { ProjectScreen } from './project/ProjectScreen.js';
 
@@ -44,7 +44,7 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
 
   return (
     <Box flexDirection="column" paddingX={2} paddingY={1}>
-      <Text bold>Configuration</Text>
+      <Text bold>Settings › Configuration</Text>
       <Text> </Text>
       {SECTIONS.map((section, index) => (
         <Box key={section.id} gap={1}>

@@ -5,12 +5,10 @@ import { PALETTE } from '../theme.js';
 import { FOCUS_MARKER, brandBar } from './home.theme.js';
 import { checkForUpgrade, readPackageVersion, type UpgradeCheckResult } from './version.js';
 import { useTerminalWidth } from '../use-terminal-width.js';
-import { ControlHints } from '../control-hints.js';
+import { ControlHints } from '@tui/shared/components/ControlHints.js';
 
 const VERSION = readPackageVersion();
-const HEADING = 'Contentful Experiences';
-const SUBTITLE = "Let's import your design system into Contentful";
-
+const HEADING = 'Design System Import';
 const MIN_TERMINAL_WIDTH = 164;
 
 const START_ITEMS: { label: string; screen: Screen }[] = [
@@ -86,7 +84,6 @@ export function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => voi
             </Text>
           ))}
         </Text>
-        <Text color={PALETTE.muted}>{SUBTITLE}</Text>
         <Text color={PALETTE.muted}>
           v{VERSION}
           {status && <Text color={status.color}>{status.text}</Text>}

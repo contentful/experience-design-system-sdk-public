@@ -1,7 +1,7 @@
 import React from 'react';
 import figures from 'figures';
 import { Box, Text } from 'ink';
-import { PALETTE } from '../../../../theme.js';
+import { PALETTE } from '@tui/theme.js';
 
 export type TokenPropSuggestion = {
   propName: string;

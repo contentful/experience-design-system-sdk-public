@@ -13,14 +13,12 @@ import {
   currentInputStep,
   goBack,
   runBaseDir,
-  TOKENS_ONLY_OVERVIEW,
-  TOKENS_ONLY_STEP_COUNT,
   type ImportStepId,
   type ImportTarget,
   type InputAnswers,
 } from './src/tui/import/steps/00-preflight/logic.js';
 import { ErrorStep, RunningStep } from './src/tui/import/shared/index.js';
-import { resolveAgentChoice, stepNumbers } from './src/tui/import/steps/06-extraction/logic.js';
+import { resolveAgentChoice } from './src/tui/import/steps/06-extraction/logic.js';
 import { readSettings } from '@contentful/experience-design-system-types/config';
 import { useExtraction } from './src/tui/import/steps/06-extraction/use-extraction.js';
 import type { TokensOnlyInput } from './src/tui/import/steps/06-extraction/run-tokens-only.js';
@@ -357,7 +355,6 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
           case 'token-file':
             return (
               <TokenInputScreen
-                {...(target === 'tokens' ? { overview: TOKENS_ONLY_OVERVIEW } : {})}
                 initialPath={importDefaults.tokenFile}
                 onConfirm={(tokensPath) => answer({ tokensPath })}
                 onBack={() => goBackFrom('token-file')}
@@ -383,9 +380,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
         }
         return (
           <RunningStep
-            stepNumber={1}
-            totalSteps={TOKENS_ONLY_STEP_COUNT}
-            title="Generating design tokens"
+            step="generation"
             description="Generating design tokens from your token file."
             lines={[{ text: `Generating token definitions via ${tokensOnlyRun.input.agent}...`, complete: false }]}
           />
@@ -398,13 +393,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
           );
         }
         if (extraction?.status === 'running') {
-          return (
-            <ExtractionScreen
-              progress={extraction.progress}
-              agent={extractionRun.input.agent}
-              {...stepNumbers({ hasRawTokens: extractionRun.input.rawTokensPath !== '' })}
-            />
-          );
+          return <ExtractionScreen progress={extraction.progress} agent={extractionRun.input.agent} />;
         }
         return <></>;
       }
@@ -427,20 +416,12 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
           );
         }
         if (generation?.status === 'running') {
-          // the generating step comes right after extraction; the count grows by one once token mapping is known to run
-          const hasRawTokens = scopeRun.input.rawTokensPath !== '';
-          const counted = stepNumbers({
-            hasRawTokens,
-            mapTokensEligible: generation.progress.mapTokensEligible,
-          });
           return (
             <GenerationScreen
               progress={generation.progress}
               agent={scopeRun.input.agent}
               acceptedCount={scopeFlow.decisions.accepted.length}
               hasTokens={scopeRun.extraction.tokensPath !== ''}
-              stepNumber={hasRawTokens ? 4 : 3}
-              totalSteps={counted.totalSteps}
             />
           );
         }

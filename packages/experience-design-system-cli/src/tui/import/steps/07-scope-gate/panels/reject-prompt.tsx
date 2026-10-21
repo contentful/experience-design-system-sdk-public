@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import { PALETTE } from '../sidebar/theme.js';
+import { PALETTE } from '@tui/theme.js';
 import type { PendingRejectCascade } from '../use-scope-gate.js';
 
 export function RejectPrompt({ pending }: { pending: PendingRejectCascade }): React.ReactElement {
