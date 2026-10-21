@@ -79,24 +79,11 @@ export function CredentialsScreen({
         setValues((current) => ({ ...current, [key]: value }));
         setNotice(null);
       }}
-      actions={[
-        {
-          label: 'Continue',
-          description: 'Check the credentials and go on',
-          runningText: 'Validating credentials...',
-          running: validating,
-          hint: 'continue',
-          onRun: () => void submit(),
-        },
-        {
-          label: 'Skip',
-          description: 'Save files only, nothing is pushed',
-          hint: 'skip',
-          onRun: () => onDone({ skipped: true }),
-        },
-      ]}
+      enterAdvances
       onSave={() => void submit()}
       saveLabel="continue"
+      onSkip={() => onDone({ skipped: true })}
+      skipLabel="skip, save files only"
       onQuit={onBack}
       quitLabel="back"
       notice={notice}
@@ -107,6 +94,12 @@ export function CredentialsScreen({
           <Text> </Text>
           <Text color={PALETTE.muted}>{credentialsPurpose(tokensOnly)}</Text>
           <Text color={PALETTE.muted}>Tip: save these under Settings → Configuration so they pre-fill here.</Text>
+        </>
+      )}
+      {validating && (
+        <>
+          <Text> </Text>
+          <Text color={PALETTE.accent}>Validating credentials...</Text>
         </>
       )}
       {!validating && !notice && !isUnchanged(normalize(values), initialValues) && (

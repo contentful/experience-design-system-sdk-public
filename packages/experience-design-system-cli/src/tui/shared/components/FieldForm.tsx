@@ -38,8 +38,10 @@ interface FieldFormProps<K extends string> {
   values: Record<K, string>;
   onChange: (key: K, value: string) => void;
   onSave: () => void;
-  /** What `s` does, in the control hints. */
   saveLabel?: string;
+  enterAdvances?: boolean;
+  onSkip?: () => void;
+  skipLabel?: string;
   /** Leaves without saving. */
   onQuit: () => void;
   /** What Esc does, in the control hints. */
@@ -96,6 +98,9 @@ export function FieldForm<K extends string>({
   onChange,
   onSave,
   saveLabel = 'save',
+  enterAdvances = false,
+  onSkip,
+  skipLabel = 'skip',
   onQuit,
   quitLabel = 'back without saving',
   actions = [],
@@ -133,6 +138,10 @@ export function FieldForm<K extends string>({
       onSave();
       return;
     }
+    if (input === 'k' && onSkip) {
+      onSkip();
+      return;
+    }
     if (isClearKey(input, key) && currentField) {
       onChange(currentField.key, '');
       return;
@@ -154,6 +163,24 @@ export function FieldForm<K extends string>({
       }
     }
   });
+
+  const isLastField = active === fields.length - 1;
+
+  // Enter in an open field: close it, and with `enterAdvances` carry on to the next field or save from the last.
+  const submitField = (): void => {
+    if (!enterAdvances) {
+      setEditing(false);
+      return;
+    }
+    if (isLastField) {
+      setEditing(false);
+      onSave();
+      return;
+    }
+    const next = fields[active + 1]!;
+    setValueBeforeEdit(values[next.key]);
+    setActive(active + 1);
+  };
 
   const pointer = (isActive: boolean): React.ReactElement => (
     <Text color={isActive ? PALETTE.accent : undefined}>{isActive ? '❯' : ' '}</Text>
@@ -184,7 +211,7 @@ export function FieldForm<K extends string>({
                   <ClearableTextInput
                     value={value}
                     onChange={(next) => onChange(field.key, next)}
-                    onSubmit={() => setEditing(false)}
+                    onSubmit={submitField}
                     mask={field.masked ? '•' : undefined}
                   />
                 ) : display ? (
@@ -231,7 +258,7 @@ export function FieldForm<K extends string>({
               ? [
                   { keys: 'type', label: 'edit' },
                   { keys: '←/→', label: 'move cursor' },
-                  { keys: '⏎', label: 'done' },
+                  { keys: '⏎', label: enterAdvances ? (isLastField ? saveLabel : 'next') : 'done' },
                   { keys: 'Ctrl+D', label: 'clear' },
                   { keys: 'Esc', label: 'cancel edit' },
                 ]
@@ -240,6 +267,7 @@ export function FieldForm<K extends string>({
                   { keys: '⏎', label: currentAction ? currentAction.hint : 'edit' },
                   ...(currentField ? [{ keys: 'Ctrl+D', label: 'clear' }] : []),
                   { keys: 's', label: saveLabel },
+                  ...(onSkip ? [{ keys: 'k', label: skipLabel }] : []),
                   { keys: 'Esc/q', label: quitLabel },
                 ]
           }

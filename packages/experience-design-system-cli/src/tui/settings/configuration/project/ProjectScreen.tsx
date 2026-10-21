@@ -180,6 +180,7 @@ export function ProjectScreen({ onDone }: { onDone: () => void }): React.ReactEl
         setNotice(null);
         visit.trail.record(`edited ${key}`);
       }}
+      enterAdvances
       onSave={save}
       onQuit={quit}
       notice={notice}
