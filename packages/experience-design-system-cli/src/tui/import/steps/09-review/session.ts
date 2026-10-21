@@ -125,6 +125,8 @@ export function finalizeReviewSession(extractSessionId: string, components: CdfR
       new Set(
         resolved.filter((component) => component.status === 'accepted').map((component) => component.componentId),
       ),
+      undefined,
+      'definition',
     );
     db.exec('BEGIN');
     try {

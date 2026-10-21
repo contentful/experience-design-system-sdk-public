@@ -1,3 +1,10 @@
+import {
+  openPipelineDb,
+  loadRawComponents,
+  analyzePropertyRepresentations,
+  selectRepresentationPlan,
+} from '@contentful/experience-design-system-backend-pipeline';
+import type { RepresentationPlan } from '@contentful/experience-design-system-types';
 import { parseStrictJson } from '@contentful/experience-design-system-types';
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { CDFComponentSchema, type CDFComponentEntry } from '@contentful/experience-design-system-types';
@@ -52,6 +59,9 @@ export type UseReviewEditorResult = {
   setDraftValid: Dispatch<SetStateAction<boolean>>;
   handleEditDiscard: () => void;
   handleTokenEditSave: (suggestion: TokenPropSuggestion) => boolean;
+  closeRepresentations?: () => void;
+  representationChoices?: () => RepresentationPlan[];
+  chooseRepresentation?: (propertyName: string, kind: RepresentationPlan['kind']) => boolean;
 };
 
 function parseReviewEntry(draftValue: string): CDFComponentEntry {
@@ -134,6 +144,7 @@ export function useReviewEditor({
       );
       const persisted = persistReviewEntry(extractSessionId, current, entry);
       if (!persisted.ok) throw new Error(persisted.error);
+      if (persisted.entry) next[selectedIdx] = { ...next[selectedIdx]!, entry: persisted.entry };
       setComponents(next);
       setDraftValue('');
       setSaveError(null);
@@ -199,6 +210,63 @@ export function useReviewEditor({
     }
   };
 
+  const representationChoices = (): RepresentationPlan[] => {
+    const current = components[selectedIdx];
+    if (!current) return [];
+    const db = openPipelineDb();
+    try {
+      const source = loadRawComponents(db, extractSessionId).find((row) =>
+        current.componentId ? row.component_id === current.componentId : row.name === current.key,
+      );
+      if (!source) throw new Error('Representation source unavailable');
+      return (source.sourceCandidates ?? []).flatMap((candidate) => {
+        try {
+          return analyzePropertyRepresentations(db, extractSessionId, source.component_id, candidate.name);
+        } catch {
+          return [];
+        }
+      });
+    } finally {
+      db.close();
+    }
+  };
+  const chooseRepresentation = (propertyName: string, kind: RepresentationPlan['kind']): boolean => {
+    if (!handleEditSave()) return false;
+    const current = components[selectedIdx];
+    if (!current) return false;
+    let db: ReturnType<typeof openPipelineDb> | undefined;
+    let committed = false;
+    const warnings: string[] = [];
+    try {
+      db = openPipelineDb();
+      const source = loadRawComponents(db, extractSessionId).find((row) =>
+        current.componentId ? row.component_id === current.componentId : row.name === current.key,
+      );
+      if (!source) throw new Error('Representation source unavailable');
+      const entry = selectRepresentationPlan(db, extractSessionId, source.component_id, propertyName, kind);
+      const next = components.map((row, index) => (index === selectedIdx ? { ...row, entry } : row));
+      committed = true;
+      setComponents(next);
+      setSaveError(null);
+      try {
+        onEditSaved(next);
+      } catch (error) {
+        warnings.push(error instanceof Error ? error.message : 'Saved callback failed');
+      }
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Representation save failed');
+    } finally {
+      try {
+        db?.close();
+      } catch (error) {
+        if (committed) warnings.push(error instanceof Error ? error.message : 'Database cleanup failed');
+        else setSaveError(error instanceof Error ? error.message : 'Database cleanup failed');
+      }
+    }
+    if (committed && warnings.length) setSaveError(`Saved; warning: ${warnings.join('; ')}`);
+    return committed;
+  };
+
   return {
     panelOpen,
     setPanelOpen,
@@ -230,5 +298,8 @@ export function useReviewEditor({
     setDraftValid,
     handleEditDiscard,
     handleTokenEditSave,
+    closeRepresentations: () => setPanelOpen('none'),
+    representationChoices,
+    chooseRepresentation,
   };
 }

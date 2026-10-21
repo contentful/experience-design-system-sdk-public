@@ -1,16 +1,10 @@
+import { cloneJson, own } from '../property-contract/json-value.js';
 import { CDF_SCHEMA_URL } from './schema.js';
 import type { CDFComponentEntry, CDFTokenEntry, CDFValidationError } from './types.js';
 
-/** Drops `$required` from slot definitions — the server never reads it and
- * older CDF consumers reject unknown slot fields. */
+/** Preserve the complete local slot contract, including explicit false requiredness. */
 export function stripUnsupportedSlotFields(entry: CDFComponentEntry): CDFComponentEntry {
-  if (!entry.$slots) return entry;
-  const cleaned: NonNullable<CDFComponentEntry['$slots']> = Object.create(null);
-  for (const [name, slot] of Object.entries(entry.$slots)) {
-    const { $required: _required, ...rest } = slot as Record<string, unknown>;
-    cleaned![name] = rest as NonNullable<CDFComponentEntry['$slots']>[string];
-  }
-  return { ...entry, $slots: cleaned };
+  return cloneJson(entry);
 }
 
 const COLLISION_LEAF_KEY = 'default';
@@ -51,14 +45,62 @@ export function buildCDF(
 ): CDFDocument | undefined {
   if (components.length === 0 && tokens.length === 0 && !opts.deleteAll) return undefined;
 
+  components = expandCDFModelDependencies(components);
+  const componentKeys = components.map((component) => component.key);
+  const tokenPaths = tokens.map((token) => token.path);
+  if (new Set(componentKeys).size !== componentKeys.length || new Set(tokenPaths).size !== tokenPaths.length)
+    throw new Error('CDF path collision');
+  if (componentKeys.some((key) => tokenPaths.includes(key))) throw new Error('CDF component/token path collision');
   const doc: CDFDocument = { $schema: CDF_SCHEMA_URL };
   for (const { key, entry } of components) {
     setAtPath(doc, key, stripUnsupportedSlotFields(entry));
   }
   for (const { path, entry } of resolveTokenPathCollisions(tokens)) {
-    setAtPath(doc, path, entry);
+    setAtPath(doc, path, cloneJson(entry));
   }
   return doc;
+}
+
+/** Resolve only the generated definitions owned and reached by selected roots. */
+export function expandCDFModelDependencies<T extends { key: string; entry: CDFComponentEntry }>(
+  components: T[],
+): Array<T | { key: string; entry: CDFComponentEntry }> {
+  const keys = new Map<string, T | { key: string; entry: CDFComponentEntry }>();
+  for (const component of components) {
+    if (keys.has(component.key)) throw new Error('Selected component key collision');
+    keys.set(component.key, component);
+  }
+  const inserted = new Set<string>();
+  for (const component of components)
+    for (const plan of Object.values(component.entry.$representationPlans ?? {})) {
+      const models = new Map(plan.models.map((model) => [model.key, model]));
+      if (models.size !== plan.models.length) throw new Error('Duplicate representation dependency');
+      const pending = [...(plan.attachment?.definition.$allowedComponents ?? [])];
+      const visited = new Set<string>();
+      while (pending.length) {
+        const key = pending.pop()!;
+        if (visited.has(key)) continue;
+        visited.add(key);
+        const model = models.get(key);
+        if (
+          !model ||
+          model.entry.$model?.planId !== plan.id ||
+          model.entry.$model.componentId !== plan.identity.componentId ||
+          model.entry.$model.propertyId !== plan.identity.propertyId
+        )
+          throw new Error('Unreachable or cross-owner representation model');
+        const existing = keys.get(key);
+        if (inserted.has(key) || (existing && JSON.stringify(existing.entry) !== JSON.stringify(model.entry)))
+          throw new Error('Representation dependency key collision');
+        if (!existing) {
+          keys.set(key, { key, entry: cloneJson(model.entry) });
+          inserted.add(key);
+        }
+        for (const slot of Object.values(model.entry.$slots ?? {})) pending.push(...(slot.$allowedComponents ?? []));
+      }
+      if (visited.size !== plan.models.length) throw new Error('Orphan representation model dependency');
+    }
+  return [...keys.values()];
 }
 
 /**
@@ -76,9 +118,35 @@ export function buildFilteredCDF(
   const filtered: CDFDocument = { $schema: CDF_SCHEMA_URL };
   for (const dottedPath of selected) {
     const value = getAtPath(fullDocument, dottedPath);
-    if (value !== undefined) setAtPath(filtered, dottedPath, value);
+    if (value !== undefined) setAtPath(filtered, dottedPath, cloneJson(value));
   }
-  return filtered;
+  const roots: Array<{ key: string; entry: CDFComponentEntry }> = [];
+  for (const key of selectedComponentKeys) {
+    const entry = getAtPath(fullDocument, key);
+    if (entry && typeof entry === 'object' && (entry as CDFComponentEntry).$type === 'component')
+      roots.push({ key, entry: entry as CDFComponentEntry });
+  }
+  for (const dependency of expandCDFModelDependencies(roots))
+    if (!selected.has(dependency.key)) setAtPath(filtered, dependency.key, cloneJson(dependency.entry));
+  for (const key of [
+    ...selected,
+    ...roots.flatMap((root) => expandCDFModelDependencies([root]).map((entry) => entry.key)),
+  ]) {
+    const segments = key.split('.');
+    for (let length = 1; length < segments.length; length++) {
+      const parent = segments.slice(0, length).join('.');
+      const source = getAtPath(fullDocument, parent);
+      const target = getAtPath(filtered, parent);
+      if (source && target && typeof source === 'object' && typeof target === 'object' && own(source, '$description'))
+        Object.defineProperty(target, '$description', {
+          value: cloneJson((source as Record<string, unknown>).$description),
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
+    }
+  }
+  return Object.keys(filtered).length > 1 ? filtered : undefined;
 }
 
 /**
@@ -121,11 +189,14 @@ export function validateSlotReferences(
 
 function setAtPath(root: Record<string, unknown>, dottedPath: string, value: unknown): void {
   const segments = dottedPath.split('.');
+  if (segments.some((segment) => !segment)) throw new Error('Invalid CDF path');
   let cursor = root;
   for (let i = 0; i < segments.length - 1; i += 1) {
     const segment = segments[i];
     const next = Object.hasOwn(cursor, segment) ? cursor[segment] : undefined;
-    if (typeof next !== 'object' || next === null) {
+    if (next !== undefined && (typeof next !== 'object' || next === null || own(next, '$type')))
+      throw new Error('CDF group/leaf path collision');
+    if (next === undefined) {
       Object.defineProperty(cursor, segment, {
         value: Object.create(null),
         enumerable: true,
@@ -135,6 +206,7 @@ function setAtPath(root: Record<string, unknown>, dottedPath: string, value: unk
     }
     cursor = cursor[segment] as Record<string, unknown>;
   }
+  if (own(cursor, segments[segments.length - 1])) throw new Error('CDF path collision');
   Object.defineProperty(cursor, segments[segments.length - 1], {
     value,
     enumerable: true,

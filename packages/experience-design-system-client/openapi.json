@@ -9117,16 +9117,7 @@
                         "new": {
                           "type": "array",
                           "items": {
-                            "type": "object",
-                            "properties": {
-                              "key": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "key"
-                            ],
-                            "additionalProperties": {}
+                            "$ref": "#/components/schemas/ProposedComponentSummary"
                           }
                         },
                         "changed": {
@@ -9135,92 +9126,10 @@
                             "type": "object",
                             "properties": {
                               "current": {
-                                "type": "object",
-                                "properties": {
-                                  "id": {
-                                    "type": "string"
-                                  },
-                                  "name": {
-                                    "type": "string"
-                                  },
-                                  "contentProperties": {
-                                    "type": "array",
-                                    "items": {
-                                      "type": "string"
-                                    }
-                                  },
-                                  "designProperties": {
-                                    "type": "array",
-                                    "items": {
-                                      "type": "string"
-                                    }
-                                  },
-                                  "slots": {
-                                    "type": "array",
-                                    "items": {
-                                      "type": "string"
-                                    }
-                                  },
-                                  "fullProperties": {
-                                    "type": "object",
-                                    "additionalProperties": {
-                                      "type": "object",
-                                      "properties": {
-                                        "type": {
-                                          "type": "string"
-                                        },
-                                        "category": {
-                                          "type": "string"
-                                        },
-                                        "required": {
-                                          "type": "boolean"
-                                        },
-                                        "default": {}
-                                      },
-                                      "required": [
-                                        "type",
-                                        "category",
-                                        "required"
-                                      ],
-                                      "additionalProperties": false
-                                    }
-                                  },
-                                  "deleteBlocked": {
-                                    "type": "object",
-                                    "properties": {
-                                      "reason": {
-                                        "type": "string",
-                                        "enum": [
-                                          "fragment-referenced"
-                                        ]
-                                      }
-                                    },
-                                    "required": [
-                                      "reason"
-                                    ],
-                                    "additionalProperties": false
-                                  }
-                                },
-                                "required": [
-                                  "id",
-                                  "name",
-                                  "contentProperties",
-                                  "designProperties",
-                                  "slots"
-                                ],
-                                "additionalProperties": false
+                                "$ref": "#/components/schemas/ComponentTypeSummary"
                               },
                               "proposed": {
-                                "type": "object",
-                                "properties": {
-                                  "key": {
-                                    "type": "string"
-                                  }
-                                },
-                                "required": [
-                                  "key"
-                                ],
-                                "additionalProperties": {}
+                                "$ref": "#/components/schemas/ProposedComponentSummary"
                               },
                               "hasPendingDraftChanges": {
                                 "type": "boolean"
@@ -9238,50 +9147,7 @@
                                   "breakingChanges": {
                                     "type": "array",
                                     "items": {
-                                      "anyOf": [
-                                        {
-                                          "type": "object",
-                                          "properties": {
-                                            "propertyId": {
-                                              "type": "string"
-                                            },
-                                            "reason": {
-                                              "type": "string",
-                                              "enum": [
-                                                "removed",
-                                                "added_required_no_default",
-                                                "type_changed",
-                                                "validation_narrowed"
-                                              ]
-                                            }
-                                          },
-                                          "required": [
-                                            "propertyId",
-                                            "reason"
-                                          ],
-                                          "additionalProperties": false
-                                        },
-                                        {
-                                          "type": "object",
-                                          "properties": {
-                                            "slotId": {
-                                              "type": "string"
-                                            },
-                                            "reason": {
-                                              "type": "string",
-                                              "enum": [
-                                                "slot_removed",
-                                                "slot_allowed_components_narrowed"
-                                              ]
-                                            }
-                                          },
-                                          "required": [
-                                            "slotId",
-                                            "reason"
-                                          ],
-                                          "additionalProperties": false
-                                        }
-                                      ]
+                                      "$ref": "#/components/schemas/BreakingChange"
                                     }
                                   }
                                 },
@@ -9309,6 +9175,12 @@
                                   "affectedExperiences"
                                 ],
                                 "additionalProperties": false
+                              },
+                              "projectionDiagnostics": {
+                                "type": "array",
+                                "items": {
+                                  "$ref": "#/components/schemas/ProjectionDiagnostic"
+                                }
                               }
                             },
                             "required": [
@@ -9328,80 +9200,7 @@
                         "removed": {
                           "type": "array",
                           "items": {
-                            "type": "object",
-                            "properties": {
-                              "id": {
-                                "type": "string"
-                              },
-                              "name": {
-                                "type": "string"
-                              },
-                              "contentProperties": {
-                                "type": "array",
-                                "items": {
-                                  "type": "string"
-                                }
-                              },
-                              "designProperties": {
-                                "type": "array",
-                                "items": {
-                                  "type": "string"
-                                }
-                              },
-                              "slots": {
-                                "type": "array",
-                                "items": {
-                                  "type": "string"
-                                }
-                              },
-                              "fullProperties": {
-                                "type": "object",
-                                "additionalProperties": {
-                                  "type": "object",
-                                  "properties": {
-                                    "type": {
-                                      "type": "string"
-                                    },
-                                    "category": {
-                                      "type": "string"
-                                    },
-                                    "required": {
-                                      "type": "boolean"
-                                    },
-                                    "default": {}
-                                  },
-                                  "required": [
-                                    "type",
-                                    "category",
-                                    "required"
-                                  ],
-                                  "additionalProperties": false
-                                }
-                              },
-                              "deleteBlocked": {
-                                "type": "object",
-                                "properties": {
-                                  "reason": {
-                                    "type": "string",
-                                    "enum": [
-                                      "fragment-referenced"
-                                    ]
-                                  }
-                                },
-                                "required": [
-                                  "reason"
-                                ],
-                                "additionalProperties": false
-                              }
-                            },
-                            "required": [
-                              "id",
-                              "name",
-                              "contentProperties",
-                              "designProperties",
-                              "slots"
-                            ],
-                            "additionalProperties": false
+                            "$ref": "#/components/schemas/ComponentTypeSummary"
                           }
                         }
                       },
@@ -9526,50 +9325,7 @@
                                   "breakingChanges": {
                                     "type": "array",
                                     "items": {
-                                      "anyOf": [
-                                        {
-                                          "type": "object",
-                                          "properties": {
-                                            "propertyId": {
-                                              "type": "string"
-                                            },
-                                            "reason": {
-                                              "type": "string",
-                                              "enum": [
-                                                "removed",
-                                                "added_required_no_default",
-                                                "type_changed",
-                                                "validation_narrowed"
-                                              ]
-                                            }
-                                          },
-                                          "required": [
-                                            "propertyId",
-                                            "reason"
-                                          ],
-                                          "additionalProperties": false
-                                        },
-                                        {
-                                          "type": "object",
-                                          "properties": {
-                                            "slotId": {
-                                              "type": "string"
-                                            },
-                                            "reason": {
-                                              "type": "string",
-                                              "enum": [
-                                                "slot_removed",
-                                                "slot_allowed_components_narrowed"
-                                              ]
-                                            }
-                                          },
-                                          "required": [
-                                            "slotId",
-                                            "reason"
-                                          ],
-                                          "additionalProperties": false
-                                        }
-                                      ]
+                                      "$ref": "#/components/schemas/BreakingChange"
                                     }
                                   }
                                 },
@@ -9597,6 +9353,12 @@
                                   "affectedExperiences"
                                 ],
                                 "additionalProperties": false
+                              },
+                              "projectionDiagnostics": {
+                                "type": "array",
+                                "items": {
+                                  "$ref": "#/components/schemas/ProjectionDiagnostic"
+                                }
                               }
                             },
                             "required": [
@@ -9753,50 +9515,7 @@
                                   "breakingChanges": {
                                     "type": "array",
                                     "items": {
-                                      "anyOf": [
-                                        {
-                                          "type": "object",
-                                          "properties": {
-                                            "propertyId": {
-                                              "type": "string"
-                                            },
-                                            "reason": {
-                                              "type": "string",
-                                              "enum": [
-                                                "removed",
-                                                "added_required_no_default",
-                                                "type_changed",
-                                                "validation_narrowed"
-                                              ]
-                                            }
-                                          },
-                                          "required": [
-                                            "propertyId",
-                                            "reason"
-                                          ],
-                                          "additionalProperties": false
-                                        },
-                                        {
-                                          "type": "object",
-                                          "properties": {
-                                            "slotId": {
-                                              "type": "string"
-                                            },
-                                            "reason": {
-                                              "type": "string",
-                                              "enum": [
-                                                "slot_removed",
-                                                "slot_allowed_components_narrowed"
-                                              ]
-                                            }
-                                          },
-                                          "required": [
-                                            "slotId",
-                                            "reason"
-                                          ],
-                                          "additionalProperties": false
-                                        }
-                                      ]
+                                      "$ref": "#/components/schemas/BreakingChange"
                                     }
                                   }
                                 },
@@ -9824,6 +9543,12 @@
                                   "affectedExperiences"
                                 ],
                                 "additionalProperties": false
+                              },
+                              "projectionDiagnostics": {
+                                "type": "array",
+                                "items": {
+                                  "$ref": "#/components/schemas/ProjectionDiagnostic"
+                                }
                               }
                             },
                             "required": [
@@ -11775,7 +11500,7 @@
                       "$schema"
                     ],
                     "additionalProperties": {
-                      "$ref": "#/$defs/__schema0"
+                      "$ref": "#/components/schemas/__schema0"
                     }
                   },
                   {
@@ -11783,7 +11508,9 @@
                     "properties": {
                       "componentsManifest": {
                         "type": "object",
-                        "additionalProperties": {}
+                        "additionalProperties": {
+                          "$ref": "#/components/schemas/CDFGroupOrEntry"
+                        }
                       },
                       "tokensManifest": {
                         "type": "object",
@@ -11817,16 +11544,7 @@
                         "new": {
                           "type": "array",
                           "items": {
-                            "type": "object",
-                            "properties": {
-                              "key": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "key"
-                            ],
-                            "additionalProperties": {}
+                            "$ref": "#/components/schemas/ProposedComponentSummary"
                           }
                         },
                         "changed": {
@@ -11835,92 +11553,10 @@
                             "type": "object",
                             "properties": {
                               "current": {
-                                "type": "object",
-                                "properties": {
-                                  "id": {
-                                    "type": "string"
-                                  },
-                                  "name": {
-                                    "type": "string"
-                                  },
-                                  "contentProperties": {
-                                    "type": "array",
-                                    "items": {
-                                      "type": "string"
-                                    }
-                                  },
-                                  "designProperties": {
-                                    "type": "array",
-                                    "items": {
-                                      "type": "string"
-                                    }
-                                  },
-                                  "slots": {
-                                    "type": "array",
-                                    "items": {
-                                      "type": "string"
-                                    }
-                                  },
-                                  "fullProperties": {
-                                    "type": "object",
-                                    "additionalProperties": {
-                                      "type": "object",
-                                      "properties": {
-                                        "type": {
-                                          "type": "string"
-                                        },
-                                        "category": {
-                                          "type": "string"
-                                        },
-                                        "required": {
-                                          "type": "boolean"
-                                        },
-                                        "default": {}
-                                      },
-                                      "required": [
-                                        "type",
-                                        "category",
-                                        "required"
-                                      ],
-                                      "additionalProperties": false
-                                    }
-                                  },
-                                  "deleteBlocked": {
-                                    "type": "object",
-                                    "properties": {
-                                      "reason": {
-                                        "type": "string",
-                                        "enum": [
-                                          "fragment-referenced"
-                                        ]
-                                      }
-                                    },
-                                    "required": [
-                                      "reason"
-                                    ],
-                                    "additionalProperties": false
-                                  }
-                                },
-                                "required": [
-                                  "id",
-                                  "name",
-                                  "contentProperties",
-                                  "designProperties",
-                                  "slots"
-                                ],
-                                "additionalProperties": false
+                                "$ref": "#/components/schemas/ComponentTypeSummary"
                               },
                               "proposed": {
-                                "type": "object",
-                                "properties": {
-                                  "key": {
-                                    "type": "string"
-                                  }
-                                },
-                                "required": [
-                                  "key"
-                                ],
-                                "additionalProperties": {}
+                                "$ref": "#/components/schemas/ProposedComponentSummary"
                               },
                               "hasPendingDraftChanges": {
                                 "type": "boolean"
@@ -11938,50 +11574,7 @@
                                   "breakingChanges": {
                                     "type": "array",
                                     "items": {
-                                      "anyOf": [
-                                        {
-                                          "type": "object",
-                                          "properties": {
-                                            "propertyId": {
-                                              "type": "string"
-                                            },
-                                            "reason": {
-                                              "type": "string",
-                                              "enum": [
-                                                "removed",
-                                                "added_required_no_default",
-                                                "type_changed",
-                                                "validation_narrowed"
-                                              ]
-                                            }
-                                          },
-                                          "required": [
-                                            "propertyId",
-                                            "reason"
-                                          ],
-                                          "additionalProperties": false
-                                        },
-                                        {
-                                          "type": "object",
-                                          "properties": {
-                                            "slotId": {
-                                              "type": "string"
-                                            },
-                                            "reason": {
-                                              "type": "string",
-                                              "enum": [
-                                                "slot_removed",
-                                                "slot_allowed_components_narrowed"
-                                              ]
-                                            }
-                                          },
-                                          "required": [
-                                            "slotId",
-                                            "reason"
-                                          ],
-                                          "additionalProperties": false
-                                        }
-                                      ]
+                                      "$ref": "#/components/schemas/BreakingChange"
                                     }
                                   }
                                 },
@@ -12009,6 +11602,12 @@
                                   "affectedExperiences"
                                 ],
                                 "additionalProperties": false
+                              },
+                              "projectionDiagnostics": {
+                                "type": "array",
+                                "items": {
+                                  "$ref": "#/components/schemas/ProjectionDiagnostic"
+                                }
                               }
                             },
                             "required": [
@@ -12028,80 +11627,7 @@
                         "removed": {
                           "type": "array",
                           "items": {
-                            "type": "object",
-                            "properties": {
-                              "id": {
-                                "type": "string"
-                              },
-                              "name": {
-                                "type": "string"
-                              },
-                              "contentProperties": {
-                                "type": "array",
-                                "items": {
-                                  "type": "string"
-                                }
-                              },
-                              "designProperties": {
-                                "type": "array",
-                                "items": {
-                                  "type": "string"
-                                }
-                              },
-                              "slots": {
-                                "type": "array",
-                                "items": {
-                                  "type": "string"
-                                }
-                              },
-                              "fullProperties": {
-                                "type": "object",
-                                "additionalProperties": {
-                                  "type": "object",
-                                  "properties": {
-                                    "type": {
-                                      "type": "string"
-                                    },
-                                    "category": {
-                                      "type": "string"
-                                    },
-                                    "required": {
-                                      "type": "boolean"
-                                    },
-                                    "default": {}
-                                  },
-                                  "required": [
-                                    "type",
-                                    "category",
-                                    "required"
-                                  ],
-                                  "additionalProperties": false
-                                }
-                              },
-                              "deleteBlocked": {
-                                "type": "object",
-                                "properties": {
-                                  "reason": {
-                                    "type": "string",
-                                    "enum": [
-                                      "fragment-referenced"
-                                    ]
-                                  }
-                                },
-                                "required": [
-                                  "reason"
-                                ],
-                                "additionalProperties": false
-                              }
-                            },
-                            "required": [
-                              "id",
-                              "name",
-                              "contentProperties",
-                              "designProperties",
-                              "slots"
-                            ],
-                            "additionalProperties": false
+                            "$ref": "#/components/schemas/ComponentTypeSummary"
                           }
                         }
                       },
@@ -12226,50 +11752,7 @@
                                   "breakingChanges": {
                                     "type": "array",
                                     "items": {
-                                      "anyOf": [
-                                        {
-                                          "type": "object",
-                                          "properties": {
-                                            "propertyId": {
-                                              "type": "string"
-                                            },
-                                            "reason": {
-                                              "type": "string",
-                                              "enum": [
-                                                "removed",
-                                                "added_required_no_default",
-                                                "type_changed",
-                                                "validation_narrowed"
-                                              ]
-                                            }
-                                          },
-                                          "required": [
-                                            "propertyId",
-                                            "reason"
-                                          ],
-                                          "additionalProperties": false
-                                        },
-                                        {
-                                          "type": "object",
-                                          "properties": {
-                                            "slotId": {
-                                              "type": "string"
-                                            },
-                                            "reason": {
-                                              "type": "string",
-                                              "enum": [
-                                                "slot_removed",
-                                                "slot_allowed_components_narrowed"
-                                              ]
-                                            }
-                                          },
-                                          "required": [
-                                            "slotId",
-                                            "reason"
-                                          ],
-                                          "additionalProperties": false
-                                        }
-                                      ]
+                                      "$ref": "#/components/schemas/BreakingChange"
                                     }
                                   }
                                 },
@@ -12297,6 +11780,12 @@
                                   "affectedExperiences"
                                 ],
                                 "additionalProperties": false
+                              },
+                              "projectionDiagnostics": {
+                                "type": "array",
+                                "items": {
+                                  "$ref": "#/components/schemas/ProjectionDiagnostic"
+                                }
                               }
                             },
                             "required": [
@@ -12453,50 +11942,7 @@
                                   "breakingChanges": {
                                     "type": "array",
                                     "items": {
-                                      "anyOf": [
-                                        {
-                                          "type": "object",
-                                          "properties": {
-                                            "propertyId": {
-                                              "type": "string"
-                                            },
-                                            "reason": {
-                                              "type": "string",
-                                              "enum": [
-                                                "removed",
-                                                "added_required_no_default",
-                                                "type_changed",
-                                                "validation_narrowed"
-                                              ]
-                                            }
-                                          },
-                                          "required": [
-                                            "propertyId",
-                                            "reason"
-                                          ],
-                                          "additionalProperties": false
-                                        },
-                                        {
-                                          "type": "object",
-                                          "properties": {
-                                            "slotId": {
-                                              "type": "string"
-                                            },
-                                            "reason": {
-                                              "type": "string",
-                                              "enum": [
-                                                "slot_removed",
-                                                "slot_allowed_components_narrowed"
-                                              ]
-                                            }
-                                          },
-                                          "required": [
-                                            "slotId",
-                                            "reason"
-                                          ],
-                                          "additionalProperties": false
-                                        }
-                                      ]
+                                      "$ref": "#/components/schemas/BreakingChange"
                                     }
                                   }
                                 },
@@ -12524,6 +11970,12 @@
                                   "affectedExperiences"
                                 ],
                                 "additionalProperties": false
+                              },
+                              "projectionDiagnostics": {
+                                "type": "array",
+                                "items": {
+                                  "$ref": "#/components/schemas/ProjectionDiagnostic"
+                                }
                               }
                             },
                             "required": [
@@ -13875,7 +13327,7 @@
                       "$schema"
                     ],
                     "additionalProperties": {
-                      "$ref": "#/$defs/__schema0_2"
+                      "$ref": "#/components/schemas/__schema0_2"
                     }
                   },
                   {
@@ -13883,7 +13335,9 @@
                     "properties": {
                       "componentsManifest": {
                         "type": "object",
-                        "additionalProperties": {}
+                        "additionalProperties": {
+                          "$ref": "#/components/schemas/CDFGroupOrEntry"
+                        }
                       },
                       "tokensManifest": {
                         "type": "object",
@@ -13918,105 +13372,7 @@
                                   ]
                                 },
                                 "definition": {
-                                  "type": "object",
-                                  "properties": {
-                                    "$type": {
-                                      "type": "string",
-                                      "enum": [
-                                        "component"
-                                      ]
-                                    },
-                                    "$description": {
-                                      "type": "string"
-                                    },
-                                    "$properties": {
-                                      "type": "object",
-                                      "additionalProperties": {
-                                        "type": "object",
-                                        "properties": {
-                                          "$type": {
-                                            "type": "string",
-                                            "enum": [
-                                              "string",
-                                              "richtext",
-                                              "number",
-                                              "media",
-                                              "link",
-                                              "enum",
-                                              "token",
-                                              "boolean"
-                                            ]
-                                          },
-                                          "$category": {
-                                            "type": "string",
-                                            "enum": [
-                                              "content",
-                                              "design",
-                                              "state",
-                                              "unattached"
-                                            ]
-                                          },
-                                          "$description": {
-                                            "type": "string"
-                                          },
-                                          "$required": {
-                                            "type": "boolean"
-                                          },
-                                          "$default": {},
-                                          "$values": {
-                                            "type": "array",
-                                            "items": {
-                                              "type": "string"
-                                            }
-                                          },
-                                          "$token.kind": {
-                                            "type": "string"
-                                          },
-                                          "$token.allowed": {
-                                            "type": "array",
-                                            "items": {
-                                              "type": "string"
-                                            }
-                                          }
-                                        },
-                                        "required": [
-                                          "$type",
-                                          "$category"
-                                        ],
-                                        "additionalProperties": false
-                                      }
-                                    },
-                                    "$slots": {
-                                      "type": "object",
-                                      "additionalProperties": {
-                                        "type": "object",
-                                        "properties": {
-                                          "$description": {
-                                            "type": "string"
-                                          },
-                                          "$allowedComponents": {
-                                            "type": "array",
-                                            "items": {
-                                              "type": "string"
-                                            }
-                                          },
-                                          "$required": {
-                                            "type": "boolean"
-                                          }
-                                        },
-                                        "additionalProperties": false
-                                      }
-                                    },
-                                    "key": {
-                                      "type": "string"
-                                    }
-                                  },
-                                  "required": [
-                                    "$type",
-                                    "$properties",
-                                    "key"
-                                  ],
-                                  "additionalProperties": false
+                                  "$ref": "#/components/schemas/CDFComponent"
                                 }
                               },
                               "required": [
@@ -14094,105 +13450,7 @@
                                   ]
                                 },
                                 "definition": {
-                                  "type": "object",
-                                  "properties": {
-                                    "$type": {
-                                      "type": "string",
-                                      "enum": [
-                                        "component"
-                                      ]
-                                    },
-                                    "$description": {
-                                      "type": "string"
-                                    },
-                                    "$properties": {
-                                      "type": "object",
-                                      "additionalProperties": {
-                                        "type": "object",
-                                        "properties": {
-                                          "$type": {
-                                            "type": "string",
-                                            "enum": [
-                                              "string",
-                                              "richtext",
-                                              "number",
-                                              "media",
-                                              "link",
-                                              "enum",
-                                              "token",
-                                              "boolean"
-                                            ]
-                                          },
-                                          "$category": {
-                                            "type": "string",
-                                            "enum": [
-                                              "content",
-                                              "design",
-                                              "state",
-                                              "unattached"
-                                            ]
-                                          },
-                                          "$description": {
-                                            "type": "string"
-                                          },
-                                          "$required": {
-                                            "type": "boolean"
-                                          },
-                                          "$default": {},
-                                          "$values": {
-                                            "type": "array",
-                                            "items": {
-                                              "type": "string"
-                                            }
-                                          },
-                                          "$token.kind": {
-                                            "type": "string"
-                                          },
-                                          "$token.allowed": {
-                                            "type": "array",
-                                            "items": {
-                                              "type": "string"
-                                            }
-                                          }
-                                        },
-                                        "required": [
-                                          "$type",
-                                          "$category"
-                                        ],
-                                        "additionalProperties": false
-                                      }
-                                    },
-                                    "$slots": {
-                                      "type": "object",
-                                      "additionalProperties": {
-                                        "type": "object",
-                                        "properties": {
-                                          "$description": {
-                                            "type": "string"
-                                          },
-                                          "$allowedComponents": {
-                                            "type": "array",
-                                            "items": {
-                                              "type": "string"
-                                            }
-                                          },
-                                          "$required": {
-                                            "type": "boolean"
-                                          }
-                                        },
-                                        "additionalProperties": false
-                                      }
-                                    },
-                                    "key": {
-                                      "type": "string"
-                                    }
-                                  },
-                                  "required": [
-                                    "$type",
-                                    "$properties",
-                                    "key"
-                                  ],
-                                  "additionalProperties": false
+                                  "$ref": "#/components/schemas/CDFComponent"
                                 },
                                 "id": {
                                   "type": "string"
@@ -31255,294 +30513,1169 @@
     "title": "Contentful Experience Design System Integrations API",
     "version": "1.0.0"
   },
-  "$defs": {
-    "__schema0": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "$type": {
-              "type": "string",
-              "enum": [
-                "component"
-              ]
-            },
-            "$description": {
-              "type": "string"
-            },
-            "$properties": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "object",
-                "properties": {
-                  "$type": {
-                    "type": "string",
-                    "enum": [
-                      "string",
-                      "richtext",
-                      "number",
-                      "media",
-                      "link",
-                      "enum",
-                      "token",
-                      "boolean"
-                    ]
-                  },
-                  "$category": {
-                    "type": "string",
-                    "enum": [
-                      "content",
-                      "design",
-                      "state",
-                      "unattached"
-                    ]
-                  },
-                  "$description": {
-                    "type": "string"
-                  },
-                  "$required": {
-                    "type": "boolean"
-                  },
-                  "$default": {},
-                  "$values": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "$token.kind": {
-                    "type": "string"
-                  },
-                  "$token.allowed": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  }
-                },
-                "required": [
-                  "$type",
-                  "$category"
-                ],
-                "additionalProperties": false
+  "components": {
+    "schemas": {
+      "__schema0": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/CDFComponent"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "$type": {
+                "type": "string",
+                "enum": [
+                  "color",
+                  "dimension",
+                  "fontFamily",
+                  "fontWeight",
+                  "duration",
+                  "cubicBezier",
+                  "number",
+                  "strokeStyle",
+                  "border",
+                  "transition",
+                  "shadow",
+                  "gradient",
+                  "typography"
+                ]
+              },
+              "$value": {},
+              "$description": {
+                "type": "string"
               }
             },
-            "$slots": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "object",
-                "properties": {
-                  "$description": {
-                    "type": "string"
-                  },
-                  "$allowedComponents": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "$required": {
-                    "type": "boolean"
-                  }
-                },
-                "additionalProperties": false
+            "required": [
+              "$type",
+              "$value"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "$description": {
+                "type": "string"
               }
-            }
-          },
-          "required": [
-            "$type",
-            "$properties"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "$type": {
-              "type": "string",
-              "enum": [
-                "color",
-                "dimension",
-                "fontFamily",
-                "fontWeight",
-                "duration",
-                "cubicBezier",
-                "number",
-                "strokeStyle",
-                "border",
-                "transition",
-                "shadow",
-                "gradient",
-                "typography"
-              ]
             },
-            "$value": {},
-            "$description": {
-              "type": "string"
+            "additionalProperties": {
+              "$ref": "#/components/schemas/__schema0"
             }
-          },
-          "required": [
-            "$type",
-            "$value"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "$description": {
-              "type": "string"
-            }
-          },
-          "additionalProperties": {
-            "$ref": "#/$defs/__schema0"
           }
-        }
-      ]
-    },
-    "__schema0_2": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "$type": {
-              "type": "string",
-              "enum": [
-                "component"
-              ]
-            },
-            "$description": {
-              "type": "string"
-            },
-            "$properties": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "object",
-                "properties": {
-                  "$type": {
-                    "type": "string",
-                    "enum": [
-                      "string",
-                      "richtext",
-                      "number",
-                      "media",
-                      "link",
-                      "enum",
-                      "token",
-                      "boolean"
-                    ]
-                  },
-                  "$category": {
-                    "type": "string",
-                    "enum": [
-                      "content",
-                      "design",
-                      "state",
-                      "unattached"
-                    ]
-                  },
-                  "$description": {
-                    "type": "string"
-                  },
-                  "$required": {
-                    "type": "boolean"
-                  },
-                  "$default": {},
-                  "$values": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "$token.kind": {
-                    "type": "string"
-                  },
-                  "$token.allowed": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  }
-                },
-                "required": [
-                  "$type",
-                  "$category"
-                ],
-                "additionalProperties": false
+        ]
+      },
+      "__schema0_2": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/CDFComponent"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "$type": {
+                "type": "string",
+                "enum": [
+                  "color",
+                  "dimension",
+                  "fontFamily",
+                  "fontWeight",
+                  "duration",
+                  "cubicBezier",
+                  "number",
+                  "strokeStyle",
+                  "border",
+                  "transition",
+                  "shadow",
+                  "gradient",
+                  "typography"
+                ]
+              },
+              "$value": {},
+              "$description": {
+                "type": "string"
               }
             },
-            "$slots": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "object",
-                "properties": {
-                  "$description": {
-                    "type": "string"
-                  },
-                  "$allowedComponents": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "$required": {
-                    "type": "boolean"
-                  }
-                },
-                "additionalProperties": false
+            "required": [
+              "$type",
+              "$value"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "$description": {
+                "type": "string"
               }
-            }
-          },
-          "required": [
-            "$type",
-            "$properties"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "$type": {
-              "type": "string",
-              "enum": [
-                "color",
-                "dimension",
-                "fontFamily",
-                "fontWeight",
-                "duration",
-                "cubicBezier",
-                "number",
-                "strokeStyle",
-                "border",
-                "transition",
-                "shadow",
-                "gradient",
-                "typography"
-              ]
             },
-            "$value": {},
-            "$description": {
-              "type": "string"
+            "additionalProperties": {
+              "$ref": "#/components/schemas/__schema0_2"
             }
-          },
-          "required": [
-            "$type",
-            "$value"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "$description": {
-              "type": "string"
-            }
-          },
-          "additionalProperties": {
-            "$ref": "#/$defs/__schema0_2"
           }
+        ]
+      },
+      "CDFGroupOrEntry": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/CDFComponent"
+          },
+          {
+            "$ref": "#/components/schemas/CDFToken"
+          },
+          {
+            "$ref": "#/components/schemas/CDFGroup"
+          }
+        ]
+      },
+      "CDFComponent": {
+        "type": "object",
+        "required": [
+          "$type",
+          "$properties"
+        ],
+        "properties": {
+          "$type": {
+            "type": "string",
+            "enum": [
+              "component"
+            ]
+          },
+          "$description": {
+            "type": "string"
+          },
+          "$properties": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CDFProperty"
+            }
+          },
+          "$model": {
+            "$ref": "#/components/schemas/CDFModelBinding"
+          },
+          "$representationPlans": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CDFRepresentationPlan"
+            }
+          },
+          "$slots": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CDFSlot"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "CDFProperty": {
+        "type": "object",
+        "required": [
+          "$type",
+          "$category"
+        ],
+        "properties": {
+          "$type": {
+            "type": "string",
+            "enum": [
+              "string",
+              "richtext",
+              "number",
+              "media",
+              "link",
+              "token",
+              "boolean",
+              "array",
+              "record"
+            ]
+          },
+          "$category": {
+            "type": "string",
+            "enum": [
+              "content",
+              "design",
+              "state",
+              "unattached"
+            ]
+          },
+          "$description": {
+            "type": "string"
+          },
+          "$required": {
+            "type": "boolean"
+          },
+          "$default": {},
+          "$values": {
+            "type": "array",
+            "minItems": 1
+          },
+          "$items": {
+            "$ref": "#/components/schemas/CDFField"
+          },
+          "$fields": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CDFField"
+            }
+          },
+          "$sourceInput": {
+            "$ref": "#/components/schemas/CDFSourceInput"
+          },
+          "$token.kind": {
+            "type": "string"
+          },
+          "$token.allowed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "CDFField": {
+        "type": "object",
+        "required": [
+          "$type"
+        ],
+        "properties": {
+          "$type": {
+            "enum": [
+              "string",
+              "richtext",
+              "number",
+              "media",
+              "link",
+              "token",
+              "boolean",
+              "array",
+              "record"
+            ]
+          },
+          "$category": {
+            "enum": [
+              "content",
+              "design",
+              "state",
+              "unattached"
+            ]
+          },
+          "$description": {
+            "type": "string"
+          },
+          "$required": {
+            "type": "boolean"
+          },
+          "$default": {},
+          "$values": {
+            "type": "array",
+            "minItems": 1
+          },
+          "$items": {
+            "$ref": "#/components/schemas/CDFField"
+          },
+          "$fields": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CDFField"
+            }
+          },
+          "$token.kind": {
+            "type": "string"
+          },
+          "$token.allowed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "CDFSourceInput": {
+        "type": "object",
+        "required": [
+          "schemaVersion",
+          "componentId",
+          "componentDeclarationId",
+          "rootSymbolId",
+          "inputName",
+          "inputPath"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "enum": [
+              1
+            ]
+          },
+          "componentId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "componentDeclarationId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "rootSymbolId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "inputName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "inputPath": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "CDFModelBinding": {
+        "type": "object",
+        "required": [
+          "planId",
+          "componentId",
+          "propertyId",
+          "nodeId"
+        ],
+        "properties": {
+          "planId": {
+            "type": "string"
+          },
+          "componentId": {
+            "type": "string"
+          },
+          "propertyId": {
+            "type": "string"
+          },
+          "nodeId": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CDFModelCardinality": {
+        "type": "object",
+        "required": [
+          "min",
+          "max",
+          "ordered"
+        ],
+        "properties": {
+          "min": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max": {
+            "type": "integer",
+            "minimum": 0,
+            "nullable": true
+          },
+          "ordered": {
+            "type": "boolean"
+          },
+          "tuplePosition": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "rest": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CDFRepresentationPlan": {
+        "type": "object",
+        "required": [
+          "schemaVersion",
+          "id",
+          "kind",
+          "identity",
+          "sourceDigest",
+          "contextDigest",
+          "category",
+          "defaultIntent",
+          "models",
+          "mappings",
+          "issues",
+          "sdkValid",
+          "requirements"
+        ],
+        "properties": {
+          "proposal": {
+            "$ref": "#/components/schemas/CDFRepresentationProposal"
+          },
+          "schemaVersion": {
+            "enum": [
+              1
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "native",
+              "component-model"
+            ]
+          },
+          "identity": {
+            "type": "object",
+            "required": [
+              "componentId",
+              "propertyId",
+              "key",
+              "sourceRevision",
+              "nodeId"
+            ],
+            "properties": {
+              "componentId": {
+                "type": "string"
+              },
+              "propertyId": {
+                "type": "string"
+              },
+              "key": {
+                "type": "string"
+              },
+              "sourceRevision": {
+                "type": "string"
+              },
+              "nodeId": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "sourceDigest": {
+            "type": "string"
+          },
+          "contextDigest": {
+            "type": "string"
+          },
+          "category": {
+            "enum": [
+              "content",
+              "design",
+              "state",
+              "unattached"
+            ]
+          },
+          "defaultIntent": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": [
+                  "action"
+                ],
+                "properties": {
+                  "action": {
+                    "enum": [
+                      "absent",
+                      "clear"
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "required": [
+                  "action",
+                  "value"
+                ],
+                "properties": {
+                  "action": {
+                    "enum": [
+                      "set"
+                    ]
+                  },
+                  "value": {}
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "sourceDefault": {
+            "type": "object"
+          },
+          "nativeDefinition": {
+            "$ref": "#/components/schemas/CDFProperty"
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "key",
+                "nodeId",
+                "entry"
+              ],
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "nodeId": {
+                  "type": "string"
+                },
+                "entry": {
+                  "$ref": "#/components/schemas/CDFComponent"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "attachment": {
+            "type": "object",
+            "required": [
+              "slot",
+              "definition"
+            ],
+            "properties": {
+              "slot": {
+                "type": "string"
+              },
+              "definition": {
+                "$ref": "#/components/schemas/CDFSlot"
+              }
+            },
+            "additionalProperties": false
+          },
+          "mappings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "nodeId",
+                "path",
+                "required",
+                "nullable",
+                "undefinable",
+                "disposition"
+              ],
+              "properties": {
+                "nodeId": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                },
+                "required": {
+                  "type": "boolean"
+                },
+                "nullable": {
+                  "type": "boolean",
+                  "nullable": true
+                },
+                "undefinable": {
+                  "type": "boolean",
+                  "nullable": true
+                },
+                "disposition": {
+                  "enum": [
+                    "native-field",
+                    "model",
+                    "slot",
+                    "reference",
+                    "held"
+                  ]
+                },
+                "componentKey": {
+                  "type": "string"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "slot": {
+                  "type": "string"
+                },
+                "targetNodeId": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "path",
+                "message"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "sdkValid": {
+            "type": "boolean"
+          },
+          "requirements": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "path",
+                "capability"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "capability": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "CDFSlot": {
+        "type": "object",
+        "properties": {
+          "$sourceInput": {
+            "$ref": "#/components/schemas/CDFSourceInput"
+          },
+          "$modelBinding": {
+            "$ref": "#/components/schemas/CDFModelBinding"
+          },
+          "$cardinality": {
+            "$ref": "#/components/schemas/CDFModelCardinality"
+          },
+          "$description": {
+            "type": "string"
+          },
+          "$required": {
+            "type": "boolean"
+          },
+          "$allowedComponents": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "CDFToken": {
+        "type": "object",
+        "required": [
+          "$type",
+          "$value"
+        ],
+        "properties": {
+          "$type": {
+            "type": "string",
+            "enum": [
+              "color",
+              "dimension",
+              "fontFamily",
+              "fontWeight",
+              "duration",
+              "cubicBezier",
+              "number",
+              "strokeStyle",
+              "border",
+              "transition",
+              "shadow",
+              "gradient",
+              "typography"
+            ]
+          },
+          "$value": {},
+          "$description": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CDFGroup": {
+        "type": "object",
+        "properties": {
+          "$description": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": {
+          "$ref": "#/components/schemas/CDFGroupOrEntry"
         }
-      ]
+      },
+      "BreakingChange": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "propertyId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reason": {
+                "enum": [
+                  "removed",
+                  "added_required_no_default",
+                  "type_changed",
+                  "validation_narrowed"
+                ]
+              }
+            },
+            "required": [
+              "propertyId",
+              "reason"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "slotId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reason": {
+                "enum": [
+                  "slot_removed",
+                  "slot_allowed_components_narrowed",
+                  "slot_became_required",
+                  "slot_added_required"
+                ]
+              }
+            },
+            "required": [
+              "slotId",
+              "reason"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "PropertySummary": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "default": {},
+          "definition": {
+            "$ref": "#/components/schemas/CDFField"
+          },
+          "targetDefinition": {},
+          "sourceDefinition": {},
+          "diagnostics": {
+            "type": "array",
+            "items": {}
+          }
+        },
+        "required": [
+          "type",
+          "category",
+          "required"
+        ],
+        "additionalProperties": false
+      },
+      "SlotSummary": {
+        "type": "object",
+        "properties": {
+          "definition": {
+            "$ref": "#/components/schemas/CDFSlot"
+          },
+          "targetDefinition": {},
+          "sourceDefinition": {},
+          "required": {
+            "type": "boolean"
+          },
+          "allowedComponents": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "metadata": {}
+        },
+        "additionalProperties": false
+      },
+      "ProjectionDiagnostic": {
+        "type": "object",
+        "properties": {
+          "componentId": {
+            "type": "string"
+          },
+          "propertyId": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "supported",
+              "conditional",
+              "lossy",
+              "unsupported"
+            ]
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "componentId",
+          "propertyId",
+          "path",
+          "outcome",
+          "code",
+          "message"
+        ],
+        "additionalProperties": false
+      },
+      "ComponentTypeSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "contentProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "designProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "slots": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "definition": {},
+          "sourceDefinition": {},
+          "fullProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PropertySummary"
+            }
+          },
+          "fullSlots": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/SlotSummary"
+            }
+          },
+          "currentSlotAllowed": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "projectionDiagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectionDiagnostic"
+            }
+          },
+          "deleteBlocked": {
+            "type": "object",
+            "properties": {
+              "reason": {
+                "enum": [
+                  "fragment-referenced"
+                ]
+              }
+            },
+            "required": [
+              "reason"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "contentProperties",
+          "designProperties",
+          "slots"
+        ],
+        "additionalProperties": false
+      },
+      "CDFTargetDefinition": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "enum": [
+              "String",
+              "Number",
+              "Boolean",
+              "Array",
+              "Record",
+              "Integer",
+              "DateTime",
+              "RichText",
+              "JSON",
+              "ResourceLink",
+              "Literal"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "values": {
+            "type": "array",
+            "items": {}
+          },
+          "defaultValue": {},
+          "items": {
+            "$ref": "#/components/schemas/CDFTargetDefinition"
+          },
+          "fields": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CDFTargetDefinition"
+            }
+          },
+          "allowedResources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "type",
+                "source"
+              ],
+              "properties": {
+                "type": {
+                  "enum": [
+                    "Entry",
+                    "Asset"
+                  ]
+                },
+                "source": {
+                  "enum": [
+                    "same-space"
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "value": {},
+          "valueType": {
+            "$ref": "#/components/schemas/CDFTargetDefinition"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CDFRepresentationProposal": {
+        "type": "object",
+        "required": [
+          "componentId",
+          "propertyId",
+          "key",
+          "name",
+          "sourceRevision",
+          "sourceNodeIds",
+          "declaredConstraints",
+          "provenConstraints",
+          "observations",
+          "judgment",
+          "desiredType",
+          "desiredDefinition"
+        ],
+        "properties": {
+          "componentId": {
+            "type": "string"
+          },
+          "propertyId": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sourceRevision": {
+            "type": "string"
+          },
+          "sourceNodeIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "declaredConstraints": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "nodeId",
+                "statement"
+              ],
+              "properties": {
+                "nodeId": {
+                  "type": "string"
+                },
+                "statement": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "provenConstraints": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "nodeId",
+                "statement"
+              ],
+              "properties": {
+                "nodeId": {
+                  "type": "string"
+                },
+                "statement": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "observations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "nodeId",
+                "value"
+              ],
+              "properties": {
+                "nodeId": {
+                  "type": "string"
+                },
+                "value": {}
+              },
+              "additionalProperties": false
+            }
+          },
+          "judgment": {
+            "type": "string"
+          },
+          "desiredType": {
+            "enum": [
+              "String",
+              "Number",
+              "Boolean",
+              "Array",
+              "Record",
+              "Integer",
+              "DateTime",
+              "RichText",
+              "JSON",
+              "ResourceLink",
+              "Literal"
+            ]
+          },
+          "desiredDefinition": {
+            "$ref": "#/components/schemas/CDFTargetDefinition"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProposedComponentSummary": {
+        "type": "object",
+        "properties": {
+          "$type": {
+            "type": "string",
+            "enum": [
+              "component"
+            ]
+          },
+          "$description": {
+            "type": "string"
+          },
+          "$properties": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CDFProperty"
+            }
+          },
+          "$model": {
+            "$ref": "#/components/schemas/CDFModelBinding"
+          },
+          "$representationPlans": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CDFRepresentationPlan"
+            }
+          },
+          "$slots": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CDFSlot"
+            }
+          },
+          "key": {
+            "type": "string"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/CDFComponent"
+          }
+        },
+        "additionalProperties": false
+      }
     }
   }
 }

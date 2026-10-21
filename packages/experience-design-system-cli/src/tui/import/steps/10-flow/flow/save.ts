@@ -94,6 +94,7 @@ export async function runPrintFiles(
           input.extractSessionId,
           input.selectedComponentIds,
           input.acceptedKeys,
+          'definition',
         );
       if (input.tokenSessionId) tokens = loadDTCGTokens(db, input.tokenSessionId).tokens;
     } finally {

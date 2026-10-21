@@ -7,6 +7,8 @@ import {
   projectProperty,
   LOCAL_NATIVE_PROPERTY_PROFILE,
   deriveRepresentationAlternatives,
+  deriveEditableRepresentationPlans,
+  type RepresentationPlan,
   type ClassifiedPropertyCall,
   type CDFPropertyDefinition,
   type PropertyModel,
@@ -24,6 +26,7 @@ export interface MaterializedProperty {
   model?: PropertyModel;
   projection?: PropertyProjection;
   alternatives?: RepresentationAlternative[];
+  representationPlans?: RepresentationPlan[];
 }
 export function materializeProperty(
   component: RawComponentDefinition,
@@ -114,6 +117,7 @@ export function materializeProperty(
   if (definition) context(definition, '');
   const projection = projectProperty(model, LOCAL_NATIVE_PROPERTY_PROFILE, { capabilities });
   const alternatives = deriveRepresentationAlternatives(model);
+  const representationPlans = deriveEditableRepresentationPlans(model);
   if (projection.outcome === 'unsupported') {
     if (
       projection.issues.some(
@@ -130,7 +134,7 @@ export function materializeProperty(
       throw new Error(
         `Invalid property projection: ${projection.issues.map((i) => `${i.path}: ${i.message}`).join('; ')}`,
       );
-    return { definition, call: cloneJson(call), model, projection, alternatives };
+    return { definition, call: cloneJson(call), model, projection, alternatives, representationPlans };
   }
   // Apply only the eligible default outcome; full source and representation stay in the decision.
   const applyDefaults = (field: CDFFieldDefinition, target: TargetDefinition): void => {
@@ -141,7 +145,7 @@ export function materializeProperty(
       for (const [key, child] of Object.entries(field.$fields)) applyDefaults(child, target.fields[key]!);
   };
   if (definition && projection.target) applyDefaults(definition, projection.target);
-  return { definition, call: cloneJson(call), model, projection, alternatives };
+  return { definition, call: cloneJson(call), model, projection, alternatives, representationPlans };
 }
 
 export class PropertyAdmissionError extends Error {

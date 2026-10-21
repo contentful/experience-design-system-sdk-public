@@ -31,6 +31,7 @@ export {
   validateSlotReferences,
   type CDFComponentEntry,
   type CDFPropertyDefinition,
+  type CDFFieldDefinition,
   type CDFSlotDefinition,
   type CDFTokenEntry,
   type CDFValidationError,
@@ -89,5 +90,22 @@ export type {
 
 export * from './property-contract/index.js';
 export { validateCDFProperty, cdfToTarget } from './cdf/property-validation.js';
-export type { CDFFieldDefinition } from './cdf/types.js';
+
 export * from './source-input-association.js';
+
+export {
+  PROPERTY_BREAKING_REASONS,
+  SLOT_BREAKING_REASONS,
+  sanitizeBreakingChanges,
+} from './sources-api/preview/index.js';
+export type { SlotSummary, ProjectionDiagnostic } from './sources-api/preview/index.js';
+
+export * from './schema-export.js';
+
+export { previewContractSchemas } from './sources-api/preview/schema.js';
+
+export { expandCDFModelDependencies } from './cdf/build.js';
+
+export { toOpenAPISchema } from './schema-export.js';
+
+export type { ProposedComponentSummary } from './sources-api/preview/index.js';

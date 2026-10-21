@@ -376,7 +376,7 @@ interface BreakingRow {
   focusTarget?: { kind: 'prop' | 'slot'; name: string };
 }
 
-function buildBreakingRows(breakingChanges: BreakingComponent[]): BreakingRow[] {
+export function buildBreakingRows(breakingChanges: BreakingComponent[]): BreakingRow[] {
   const out: BreakingRow[] = [];
   for (const b of breakingChanges) {
     if (b.changes.length === 0) {
@@ -403,7 +403,7 @@ function buildBreakingRows(breakingChanges: BreakingComponent[]): BreakingRow[] 
   return out;
 }
 
-function deriveBreakingChanges(response: ServerPreviewResponse): BreakingComponent[] {
+export function deriveBreakingChanges(response: ServerPreviewResponse): BreakingComponent[] {
   const out: BreakingComponent[] = [];
   for (const item of response.components.changed ?? []) {
     if (item.changeClassification?.classification !== 'breaking') continue;
@@ -968,6 +968,8 @@ function GenerateReviewStepView({
       return;
     }
 
+    if (reviewEditor.panelOpen === 'representations') return;
+
     if (
       handleReviewOverlayInput(input, key, {
         loading,
@@ -1128,6 +1130,13 @@ function GenerateReviewStepView({
       }
       return;
     }
+    if (input === 'm' && !reviewEditor.textEntryActive && !key.ctrl && !key.meta) {
+      if (!reviewEditor.handleEditSave()) return;
+      reviewEditor.setPanelOpen('representations');
+      setSidebarFocused(false);
+      return;
+    }
+
     if (input === 'c' && !reviewEditor.textEntryActive && !key.ctrl && !key.meta && cycleRows.length > 0) {
       cyclePanel.open();
       setCyclePanelScroll(0);

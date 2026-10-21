@@ -218,3 +218,9 @@ export { buildDtcgGroups } from './session/helpers/tokens/build-dtcg-groups.js';
 export { buildDtcgTokens } from './session/helpers/tokens/build-dtcg-tokens.js';
 
 export type { CompletedSharedSourceEvidence } from './session/repositories/db.js';
+
+export {
+  analyzePropertyRepresentations,
+  loadRepresentationPlans,
+  selectRepresentationPlan,
+} from './session/repositories/representation-plans.js';

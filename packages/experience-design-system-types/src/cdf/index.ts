@@ -8,6 +8,7 @@ export {
   CDFTokenSchema,
   type CDFComponentEntry,
   type CDFPropertyDefinition,
+  type CDFFieldDefinition,
   type CDFSlotDefinition,
   type CDFTokenEntry,
   type CDFValidationError,
@@ -20,3 +21,5 @@ export {
   validateSlotReferences,
   type CDFDocument,
 } from './build.js';
+
+export { expandCDFModelDependencies } from './build.js';

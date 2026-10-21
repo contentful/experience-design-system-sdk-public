@@ -15,6 +15,7 @@ vi.mock('@contentful/experience-design-system-backend-pipeline', async (importOr
   ...(await importOriginal<object>()),
   openPipelineDb: () => ({ close }),
   storeCDFComponents: store,
+  loadCDFComponents: () => [],
 }));
 afterEach(() => {
   store.mockReset();

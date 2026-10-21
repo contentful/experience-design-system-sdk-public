@@ -1,3 +1,12 @@
+import {
+  initializeRepresentationSchema,
+  prepareEntryRepresentationPlans,
+  saveEntryRepresentationPlans,
+  overlayRepresentationPlans,
+  selectedRepresentationValidity,
+  expandRepresentationClosure,
+  loadRepresentationPlans,
+} from './representation-plans.js';
 import { definitionCall } from '../../../../steps/generation/src/services/property/definition-call.js';
 import { validateSavedSourceClosure } from './source-closure-binding.js';
 import {
@@ -369,6 +378,7 @@ export function openPipelineDb(dbPath?: string): DatabaseSync {
     db.exec('PRAGMA synchronous = NORMAL');
     db.exec(SCHEMA);
     initializeExplorationSchema(db);
+    initializeRepresentationSchema(db);
     applyDbMigrations(db);
     pruneObsoleteIncompleteStepsIfNeeded(db);
     return db;
@@ -981,6 +991,7 @@ export interface ComponentDecisionReadiness {
   componentId: string;
   accounting: { complete: boolean; missing: string[]; issues: string[] };
   source: { adequate: boolean; issues: string[] };
+  definition: { ready: boolean; issues: string[] };
   import: { ready: boolean; issues: string[] };
 }
 
@@ -1027,6 +1038,9 @@ export function evaluateComponentReadiness(
   const accounting = accountClassificationCalls(inventory, effective);
   const sourceIssues: string[] = slotIssue ? [slotIssue] : [];
   const importIssues: string[] = [];
+  const representations = selectedRepresentationValidity(db, sessionId, componentId);
+  const selectedPlans = loadRepresentationPlans(db, sessionId, componentId);
+  const definitionIssues: string[] = [...representations.issues];
   if (!jsonEqual(savedSource, component.sourceCandidates ?? null))
     sourceIssues.push('Stale component source decision snapshot');
   if (!jsonEqual(savedInventory, inventory)) sourceIssues.push('Stale component subject inventory');
@@ -1082,6 +1096,12 @@ export function evaluateComponentReadiness(
     const saved = decisions.find((decision) => decision.propertyName === call.prop);
     if (!saved) {
       importIssues.push(`Missing durable property decision ${call.prop}`);
+      definitionIssues.push(`Missing durable property decision ${call.prop}`);
+      continue;
+    }
+    if (selectedPlans.some((row) => row.propertyName === call.prop)) {
+      if (representations.heldProperties.has(call.prop))
+        importIssues.push(`Representation prerequisites unavailable ${call.prop}`);
       continue;
     }
     if (saved.definition?.$type === 'token') {
@@ -1117,10 +1137,14 @@ export function evaluateComponentReadiness(
         throw new Error('Stale saved property source model');
       if (authority && !jsonEqual(authority, current.model?.identity))
         throw new Error('Stale review default authority');
-      if (!current.definition || !current.projection || !['supported', 'lossy'].includes(current.projection.outcome))
+      if (!current.definition || !current.projection || !['supported', 'lossy'].includes(current.projection.outcome)) {
         importIssues.push(`Property held ${call.prop}`);
+        definitionIssues.push(`Property held ${call.prop}`);
+      }
     } catch (error) {
-      importIssues.push(error instanceof Error ? error.message : 'Invalid current property decision');
+      const issue = error instanceof Error ? error.message : 'Invalid current property decision';
+      importIssues.push(issue);
+      definitionIssues.push(issue);
     }
   }
   const accountingIssues = [...protocolIssues, ...accounting.issues];
@@ -1129,7 +1153,11 @@ export function evaluateComponentReadiness(
     componentId,
     accounting: { complete, missing: accounting.missing, issues: accountingIssues },
     source: { adequate: !sourceIssues.length, issues: sourceIssues },
-    import: { ready: complete && !sourceIssues.length && !importIssues.length, issues: importIssues },
+    definition: { ready: complete && !sourceIssues.length && !definitionIssues.length, issues: definitionIssues },
+    import: {
+      ready: complete && !sourceIssues.length && !definitionIssues.length && !importIssues.length,
+      issues: [...definitionIssues, ...importIssues],
+    },
   };
 }
 
@@ -1138,6 +1166,7 @@ export function loadSelectedCDFComponents(
   sessionId: string,
   selectedIds?: ReadonlySet<string>,
   selectedKeys?: ReadonlySet<string>,
+  purpose: 'import' | 'definition' = 'import',
 ): Array<{ key: string; componentId: string; entry: CDFComponentEntry }> {
   const rows = db
     .prepare('SELECT component_id,name,status FROM raw_components WHERE session_id=? ORDER BY rowid')
@@ -1163,14 +1192,14 @@ export function loadSelectedCDFComponents(
     );
   for (const id of ids) {
     const readiness = evaluateComponentReadiness(db, sessionId, id);
-    if (!readiness.import.ready)
+    if (!readiness[purpose].ready)
       throw new Error(
         `Selected component ${id} is not ready: ${[...readiness.accounting.issues, ...readiness.accounting.missing, ...readiness.source.issues, ...readiness.import.issues].join('; ')}`,
       );
   }
   const components = loadCDFComponents(db, sessionId).filter((component) => ids.has(component.componentId));
   if (components.length !== ids.size) throw new Error('Selected component output missing');
-  return components;
+  return expandRepresentationClosure(components);
 }
 
 export function applyToolCalls(
@@ -2559,6 +2588,18 @@ export function storeCDFComponents(
   const priorDecisions = loadPropertyDecisions(db, sessionId);
   const effectiveBaselines = loadCDFComponents(db, sessionId);
   const prepared = new Map<string, ReturnType<typeof materializeProperty>>();
+  components = components.map((component) => {
+    const matches = sources.filter((source) =>
+      component.componentId
+        ? source.component_id === component.componentId && source.name === component.key
+        : source.name === component.key,
+    );
+    if (matches.length !== 1) throw new Error('Unknown or ambiguous review component identity');
+    return {
+      ...component,
+      entry: prepareEntryRepresentationPlans(db, sessionId, matches[0]!.component_id, component.entry),
+    };
+  });
   for (const { key, componentId, entry } of components) {
     const matches = sources.filter((component) =>
       componentId ? component.component_id === componentId && component.name === key : component.name === key,
@@ -2572,7 +2613,7 @@ export function storeCDFComponents(
       const previous = priorDecisions.find(
         (decision) => decision.componentId === source.component_id && decision.propertyName === name,
       );
-      if (!own(entry.$properties, name) && previous?.definition)
+      if (!own(entry.$properties, name) && !own(entry.$representationPlans ?? {}, name) && previous?.definition)
         throw new Error('Imported source property removed without an accounting decision');
     }
     const completeValidation = CDFComponentSchema.safeParse(entry);
@@ -2630,7 +2671,11 @@ export function storeCDFComponents(
           { defaultAuthority: 'review' },
         );
         prepared.set(JSON.stringify([source.component_id, name]), materialized);
-        if (materialized.projection && !['supported', 'lossy'].includes(materialized.projection.outcome))
+        if (
+          !entry.$representationPlans?.[name] &&
+          materialized.projection &&
+          !['supported', 'lossy'].includes(materialized.projection.outcome)
+        )
           throw new Error('Native position unavailable; source and saved decisions retained');
         if (
           materialized.projection?.issues.some(
@@ -2778,8 +2823,11 @@ export function storeCDFComponents(
           }
         }
 
+        const sourceEntry = cloneJson(entry);
+        for (const plan of Object.values(entry.$representationPlans ?? {}))
+          if (plan.attachment) delete sourceEntry.$slots?.[plan.attachment.slot];
         if (loadAcceptedSlotDecisions(db, sessionId) !== undefined) {
-          saveReviewedSlots(db, sessionId, componentId, entry);
+          saveReviewedSlots(db, sessionId, componentId, sourceEntry);
         } else {
           const existingDefaults = new Map<string, number>(
             (
@@ -2792,7 +2840,7 @@ export function storeCDFComponents(
           deleteSlotAllowedComponents.run(sessionId, componentId);
           deleteSlots.run(sessionId, componentId);
           let slotPos = 0;
-          for (const [slotName, slot] of Object.entries(entry.$slots ?? {})) {
+          for (const [slotName, slot] of Object.entries(sourceEntry.$slots ?? {})) {
             const isDefault = existingDefaults.get(slotName) ?? 0;
             insertSlotOnUpdate.run(
               sessionId,
@@ -2810,6 +2858,7 @@ export function storeCDFComponents(
             }
           }
         }
+        saveEntryRepresentationPlans(db, sessionId, componentId, entry);
         const currentSource = sources.find((source) => source.component_id === componentId)!;
         const currentInventory = componentDecisionInventory(currentSource, loadAcceptedSlotDecisions(db, sessionId));
         const ledgerRow = db
@@ -2843,7 +2892,9 @@ export function storeCDFComponents(
             );
             if (
               retained &&
-              (retained.tool === 'exclude_prop' || (retained.tool === 'classify_prop' && !retained.cdf_type))
+              (own(entry.$representationPlans ?? {}, name) ||
+                retained.tool === 'exclude_prop' ||
+                (retained.tool === 'classify_prop' && !retained.cdf_type))
             )
               currentCalls.push(retained);
           }
@@ -3052,84 +3103,88 @@ export function loadCDFComponents(
   const toTokenPaths = (rows: typeof tokenPaths | undefined): string[] | undefined =>
     rows === undefined ? undefined : rows.map((r) => r.path);
 
-  return components.map(({ component_id, name, description }) => {
-    const compProps = propsByComponent.get(component_id) ?? [];
+  return overlayRepresentationPlans(
+    db,
+    sessionId,
+    components.map(({ component_id, name, description }) => {
+      const compProps = propsByComponent.get(component_id) ?? [];
 
-    const $properties: CDFComponentEntry['$properties'] = Object.create(null);
-    for (const p of compProps) {
-      const av = allowedValuesByProp.get(`${component_id}::${p.name}`);
-      const propDef: CDFComponentEntry['$properties'][string] = {
-        $type: (p.cdf_type === 'enum' ? 'string' : p.cdf_type) as CDFComponentEntry['$properties'][string]['$type'],
-        $category: p.cdf_category as CDFComponentEntry['$properties'][string]['$category'],
-      };
-      if (p.required) propDef.$required = true;
-      const isTokenProp = p.cdf_type === 'token' && p.cdf_category === 'design';
-      const defaultReference = p.default_value;
-      const resolvedDefault =
-        isTokenProp && p.cdf_token_kind !== null && defaultReference !== null
-          ? resolvedDefaultPaths[defaultReference]
-          : undefined;
-      const compatibleResolvedDefault =
-        resolvedDefault !== undefined && tokenTypeByPath.get(resolvedDefault) === p.cdf_token_kind
-          ? resolvedDefault
-          : undefined;
-      if (p.default_value !== null) {
-        if (p.cdf_type === 'boolean') {
-          propDef.$default = p.default_value === 'true';
-        } else {
-          propDef.$default = compatibleResolvedDefault ?? p.default_value;
+      const $properties: CDFComponentEntry['$properties'] = Object.create(null);
+      for (const p of compProps) {
+        const av = allowedValuesByProp.get(`${component_id}::${p.name}`);
+        const propDef: CDFComponentEntry['$properties'][string] = {
+          $type: (p.cdf_type === 'enum' ? 'string' : p.cdf_type) as CDFComponentEntry['$properties'][string]['$type'],
+          $category: p.cdf_category as CDFComponentEntry['$properties'][string]['$category'],
+        };
+        if (p.required) propDef.$required = true;
+        const isTokenProp = p.cdf_type === 'token' && p.cdf_category === 'design';
+        const defaultReference = p.default_value;
+        const resolvedDefault =
+          isTokenProp && p.cdf_token_kind !== null && defaultReference !== null
+            ? resolvedDefaultPaths[defaultReference]
+            : undefined;
+        const compatibleResolvedDefault =
+          resolvedDefault !== undefined && tokenTypeByPath.get(resolvedDefault) === p.cdf_token_kind
+            ? resolvedDefault
+            : undefined;
+        if (p.default_value !== null) {
+          if (p.cdf_type === 'boolean') {
+            propDef.$default = p.default_value === 'true';
+          } else {
+            propDef.$default = compatibleResolvedDefault ?? p.default_value;
+          }
         }
-      }
-      if (p.description !== null) propDef.$description = p.description;
-      // A token prop's options list is design token paths, written below. Its
-      // extracted variant names stay in the session as scoping input only.
-      if (!isTokenProp && av && av.length > 0) propDef.$values = av.map((v) => v.value);
-      if (p.cdf_token_kind !== null) propDef['$token.kind'] = p.cdf_token_kind;
-      if (isTokenProp) {
-        const allowed = toTokenPaths(tokenPathsByProp.get(`${component_id}::${p.name}`));
-        if (allowed !== undefined && allowed.length > 0) propDef['$token.allowed'] = allowed;
-      }
-      const saved = propertyDefinitions.get(`${component_id}::${p.name}`);
-      if (saved && saved.definition) {
-        const exact = cloneJson(saved.definition);
+        if (p.description !== null) propDef.$description = p.description;
+        // A token prop's options list is design token paths, written below. Its
+        // extracted variant names stay in the session as scoping input only.
+        if (!isTokenProp && av && av.length > 0) propDef.$values = av.map((v) => v.value);
+        if (p.cdf_token_kind !== null) propDef['$token.kind'] = p.cdf_token_kind;
         if (isTokenProp) {
-          const inheritedDefault =
-            (saved.decision as { defaultIntent?: { action?: string } } | null)?.defaultIntent?.action === 'absent';
-          if (inheritedDefault && exact.$default === defaultReference && compatibleResolvedDefault !== undefined)
-            exact.$default = compatibleResolvedDefault;
           const allowed = toTokenPaths(tokenPathsByProp.get(`${component_id}::${p.name}`));
-          delete exact['$token.allowed'];
-          if (allowed?.length) exact['$token.allowed'] = allowed;
+          if (allowed !== undefined && allowed.length > 0) propDef['$token.allowed'] = allowed;
         }
-        $properties[p.name] = exact;
-      } else $properties[p.name] = propDef;
-    }
+        const saved = propertyDefinitions.get(`${component_id}::${p.name}`);
+        if (saved && saved.definition) {
+          const exact = cloneJson(saved.definition);
+          if (isTokenProp) {
+            const inheritedDefault =
+              (saved.decision as { defaultIntent?: { action?: string } } | null)?.defaultIntent?.action === 'absent';
+            if (inheritedDefault && exact.$default === defaultReference && compatibleResolvedDefault !== undefined)
+              exact.$default = compatibleResolvedDefault;
+            const allowed = toTokenPaths(tokenPathsByProp.get(`${component_id}::${p.name}`));
+            delete exact['$token.allowed'];
+            if (allowed?.length) exact['$token.allowed'] = allowed;
+          }
+          $properties[p.name] = exact;
+        } else $properties[p.name] = propDef;
+      }
 
-    const compSlots = slotsByComponent.get(component_id) ?? [];
-    const $slots: NonNullable<CDFComponentEntry['$slots']> = Object.create(null);
-    for (const s of compSlots) {
-      if (!s.name.trim()) continue;
-      const ac = allowedComponentsBySlot.get(`${component_id}::${s.name}`);
-      const slotDef: NonNullable<CDFComponentEntry['$slots']>[string] = {};
-      if (s.description !== null) slotDef.$description = s.description;
-      if (s.required) slotDef.$required = true;
-      if (ac && ac.length > 0) slotDef.$allowedComponents = ac.map((v) => v.allowed_component);
-      $slots[s.name] = slotDef;
-    }
+      const compSlots = slotsByComponent.get(component_id) ?? [];
+      const $slots: NonNullable<CDFComponentEntry['$slots']> = Object.create(null);
+      for (const s of compSlots) {
+        if (!s.name.trim()) continue;
+        const ac = allowedComponentsBySlot.get(`${component_id}::${s.name}`);
+        const slotDef: NonNullable<CDFComponentEntry['$slots']>[string] = {};
+        if (s.description !== null) slotDef.$description = s.description;
+        if (s.required) slotDef.$required = true;
+        if (ac && ac.length > 0) slotDef.$allowedComponents = ac.map((v) => v.allowed_component);
+        $slots[s.name] = slotDef;
+      }
 
-    const entry: CDFComponentEntry = { $type: 'component', $properties };
-    if (description !== null) entry.$description = description;
-    if (Object.keys($slots).length > 0) entry.$slots = $slots;
-    const decisions = loadAcceptedSlotDecisions(db, sessionId);
-    return {
-      key: name,
-      componentId: component_id,
-      entry: projectAcceptedSlots(
-        entry,
-        decisions?.filter((slot) => slot.componentId === component_id),
-      ),
-    };
-  });
+      const entry: CDFComponentEntry = { $type: 'component', $properties };
+      if (description !== null) entry.$description = description;
+      if (Object.keys($slots).length > 0) entry.$slots = $slots;
+      const decisions = loadAcceptedSlotDecisions(db, sessionId);
+      return {
+        key: name,
+        componentId: component_id,
+        entry: projectAcceptedSlots(
+          entry,
+          decisions?.filter((slot) => slot.componentId === component_id),
+        ),
+      };
+    }),
+  );
 }
 
 export type ScopeComponentRow = {

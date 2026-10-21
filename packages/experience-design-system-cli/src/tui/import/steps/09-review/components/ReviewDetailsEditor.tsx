@@ -15,6 +15,8 @@ type ReviewEditorPanelState = Pick<
   | 'showJson'
   | 'jsonScrollOffset'
   | 'currentTokenSuggestions'
+  | 'representationChoices'
+  | 'chooseRepresentation'
 >;
 
 export type ReviewDetailsEditorProps = Omit<

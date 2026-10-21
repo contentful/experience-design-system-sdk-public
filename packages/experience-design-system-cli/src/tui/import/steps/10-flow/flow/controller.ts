@@ -75,7 +75,7 @@ export function realFlowDeps(): FlowDeps {
     loadAcceptedComponents: (sessionId) => {
       const db = openPipelineDb();
       try {
-        return loadSelectedCDFComponents(db, sessionId);
+        return loadSelectedCDFComponents(db, sessionId, undefined, undefined, 'definition');
       } finally {
         db.close();
       }

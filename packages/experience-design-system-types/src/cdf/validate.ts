@@ -3,6 +3,7 @@ import { cdfJsonSchema, CDF_SCHEMA_URL } from './schema.js';
 import { DESIGN_TOKEN_TYPES } from '../dtcg/token-types.js';
 import type { CDFFile, CDFComponentEntry, CDFTokenEntry, CDFValidationError, CDFValidationResult } from './types.js';
 
+import { CDFComponentSchema } from './types.js';
 import { validateCDFProperty } from './property-validation.js';
 import { jsonValueIssue } from '../property-contract/json-value.js';
 
@@ -88,10 +89,13 @@ export function validateCDF(input: unknown): CDFValidationResult {
 
   const { components, tokens } = parseCDFComponents(file as Record<string, unknown>);
   const errors: CDFValidationError[] = [];
-  for (const component of components)
+  for (const component of components) {
+    if (!CDFComponentSchema.safeParse(component.entry).success)
+      errors.push({ path: '/' + component.key, message: 'Invalid complete component metadata or source ownership' });
     for (const [key, property] of Object.entries(component.entry.$properties)) {
       for (const issue of validateCDFProperty(property).issues)
         errors.push({ path: `/${component.key}/$properties/${key}${issue.path}`, message: issue.message });
     }
+  }
   return { valid: !errors.length, errors, components, tokens };
 }

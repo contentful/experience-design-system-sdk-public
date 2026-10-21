@@ -524,3 +524,9 @@ export {
 } from './orchestrators/run-exploration-session/helpers/load-existing-context.js';
 export { discoverSourceEvidence } from '@contentful/experience-design-system-extraction';
 export type { SourceEvidenceInventory } from '@contentful/experience-design-system-extraction';
+
+export {
+  analyzePropertyRepresentations,
+  loadRepresentationPlans,
+  selectRepresentationPlan,
+} from './persistence/src/session/repositories/representation-plans.js';

@@ -13,7 +13,7 @@ import { sourceObservationRows } from './components/source-observation-rows.js';
 import { wrapText } from './components/wrap-text.js';
 import { PALETTE } from './theme.js';
 
-type ReviewPanel = 'none' | 'prop-rationale' | 'component-rationale' | 'source' | 'token-review';
+import type { ReviewPanel } from './types.js';
 
 export type ReviewDetailsPanelProps = {
   selectedKey: string;

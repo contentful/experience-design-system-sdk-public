@@ -1,3 +1,4 @@
+import { parseCDFComponents, type CDFComponentEntry } from '@contentful/experience-design-system-types';
 import {
   designSystemImportApply,
   designSystemImportGetOperation,
@@ -123,7 +124,20 @@ export class ApiClient {
     throw new ApiError(`preflight failed: ${res.status}`, res.status, body);
   }
 
+  private admitRepresentations(cdf: CDFDocument): void {
+    for (const { entry } of parseCDFComponents(cdf).components) {
+      const component = entry as CDFComponentEntry;
+      if (
+        component.$model ||
+        Object.values(component.$slots ?? {}).some((slot) => slot.$modelBinding || slot.$cardinality) ||
+        Object.values(component.$representationPlans ?? {}).some((plan) => plan.kind !== 'native' || !plan.sdkValid)
+      )
+        throw new Error('Component model mapper, cardinality and reconstruction prerequisites are unavailable');
+    }
+  }
+
   async previewImport(cdf: CDFDocument): Promise<ServerPreviewResponse> {
+    this.admitRepresentations(cdf);
     const result = await this.requestWithRetry('preview', PREVIEW_ERROR_PREFIX, () =>
       designSystemImportSourcelessPreview({
         baseUrl: this.host,
@@ -144,6 +158,7 @@ export class ApiClient {
   }
 
   async applyImport(cdf: CDFDocument, opts: { acknowledgeBreakingChanges: boolean }): Promise<ApplyOperationResponse> {
+    this.admitRepresentations(cdf);
     let result: Awaited<ReturnType<typeof designSystemImportApply<false>>>;
     try {
       result = await designSystemImportApply<false>({

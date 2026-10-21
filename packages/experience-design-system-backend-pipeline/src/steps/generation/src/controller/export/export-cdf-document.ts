@@ -1,3 +1,4 @@
+import { buildCDF } from '@contentful/experience-design-system-types';
 import {
   findLatestSessionForCommand,
   loadSelectedCDFComponents,
@@ -34,7 +35,7 @@ export async function exportCdfDocument(request: ExportCdfDocumentRequest): Prom
       throw new ExportCdfDocumentFailure({ type: 'no-session', command: 'generate components' });
     }
 
-    const components = loadSelectedCDFComponents(db, sessionId, request.componentIds);
+    const components = loadSelectedCDFComponents(db, sessionId, request.componentIds, undefined, 'definition');
     const stepRow = db
       .prepare(
         `SELECT status FROM steps WHERE session_id = ? AND command = 'generate components' ORDER BY id DESC LIMIT 1`,
@@ -57,11 +58,9 @@ export async function exportCdfDocument(request: ExportCdfDocumentRequest): Prom
       }
     }
 
-    const cdf: Record<string, unknown> = { $schema: CDF_SCHEMA_URL };
+    const cdf: Record<string, unknown> = buildCDF(components, []) ?? { $schema: CDF_SCHEMA_URL };
     const missingDescription: string[] = [];
     for (const { key, entry } of components) {
-      if (Object.hasOwn(cdf, key)) throw new Error('Duplicate or reserved component output key');
-      Object.defineProperty(cdf, key, { value: entry, enumerable: true, writable: true, configurable: true });
       if (!entry.$description) missingDescription.push(key);
     }
 

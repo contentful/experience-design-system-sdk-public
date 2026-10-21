@@ -1,4 +1,4 @@
-import { jsonEqual, type CDFFieldDefinition } from '@contentful/experience-design-system-types';
+import { CDFComponentSchema, jsonEqual, type CDFFieldDefinition } from '@contentful/experience-design-system-types';
 import type {
   ChangeClassification,
   ComponentTypeSummary,
@@ -17,11 +17,15 @@ export function computeComponentDiffLines(
   changeClassification?: ChangeClassification,
 ): PropertyDiffLine[] {
   const lines: PropertyDiffLine[] = [];
+  const definition = record(proposed.definition) ?? proposed;
   // Use fullProperties keys as authoritative server state (includes state props, not just content+design)
   const currentProps = current.fullProperties
     ? new Set(Object.keys(current.fullProperties))
     : new Set([...current.contentProperties, ...current.designProperties]);
-  const proposedProperties = (proposed['$properties'] ?? {}) as Record<string, Record<string, unknown>>;
+  const knownProperties = record(definition['$properties']);
+  const proposedProperties = (knownProperties ?? {}) as Record<string, Record<string, unknown>>;
+  if (!knownProperties && currentProps.size > 0)
+    lines.push({ key: 'properties-unknown', color: 'yellow', text: '? proposed properties unknown' });
   const proposedProps = new Set(Object.keys(proposedProperties));
   const oldProps = current.fullProperties;
 
@@ -33,7 +37,7 @@ export function computeComponentDiffLines(
   }
 
   for (const name of [...currentProps].sort()) {
-    if (!proposedProps.has(name)) {
+    if (knownProperties && !proposedProps.has(name)) {
       if (oldProps?.[name]) {
         lines.push({ key: `${name}-rm`, color: 'red', text: `- ${name}: ${formatOldProp(oldProps[name])}` });
       } else {
@@ -71,23 +75,61 @@ export function computeComponentDiffLines(
   }
 
   const currentSlots = new Set(current.slots);
-  const proposedSlots = (proposed['$slots'] ?? {}) as Record<string, Record<string, unknown>>;
+  const knownSlots =
+    record(definition['$slots']) ?? (CDFComponentSchema.safeParse(definition).success ? {} : undefined);
+  const proposedSlots = (knownSlots ?? {}) as Record<string, Record<string, unknown>>;
+  if (!knownSlots && currentSlots.size > 0)
+    lines.push({ key: 'slots-unknown', color: 'yellow', text: '? proposed slots unknown' });
   const proposedSlotNames = new Set(Object.keys(proposedSlots));
   const currentSlotAllowed = current.currentSlotAllowed ?? {};
   for (const name of [...proposedSlotNames].sort()) {
     if (!currentSlots.has(name)) {
-      lines.push({ key: `slot-${name}-add`, color: 'green', text: `+ slot: ${name}` });
+      const required = proposedSlots[name]?.['$required'] === true ? ' (required)' : '';
+      lines.push({ key: `slot-${name}-add`, color: 'green', text: `+ slot: ${name}${required}` });
     }
   }
   for (const name of [...currentSlots].sort()) {
-    if (!proposedSlotNames.has(name)) {
+    if (knownSlots && !proposedSlotNames.has(name)) {
       lines.push({ key: `slot-${name}-rm`, color: 'red', text: `- slot: ${name}` });
     }
   }
 
   for (const name of [...proposedSlotNames].sort()) {
+    if (currentSlots.has(name)) {
+      const summary = current.fullSlots && Object.hasOwn(current.fullSlots, name) ? current.fullSlots[name] : undefined;
+      const previousRequired = summary?.required ?? summary?.definition?.$required;
+      const nextRequired = proposedSlots[name]?.['$required'] === true;
+      if (previousRequired === undefined) {
+        if (nextRequired)
+          lines.push({
+            key: `slot-${name}-required-unknown`,
+            color: 'yellow',
+            text: `? slot ${name}: existing requiredness unknown; proposed required`,
+          });
+      } else if (previousRequired !== nextRequired) {
+        lines.push({
+          key: `slot-${name}-required-old`,
+          color: 'red',
+          text: `- slot ${name}: ${previousRequired ? 'required' : 'optional'}`,
+        });
+        lines.push({
+          key: `slot-${name}-required-new`,
+          color: 'green',
+          text: `+ slot ${name}: ${nextRequired ? 'required' : 'optional'}`,
+        });
+      }
+    }
     const nextAllowed = normalizeAllowedComponents(proposedSlots[name]?.['$allowedComponents']);
-    const prevAllowed = normalizeAllowedComponents(currentSlotAllowed[name]);
+    const summary = current.fullSlots && Object.hasOwn(current.fullSlots, name) ? current.fullSlots[name] : undefined;
+    const knownAllowed =
+      Object.hasOwn(currentSlotAllowed, name) ||
+      summary?.definition !== undefined ||
+      (summary !== undefined && Object.hasOwn(summary, 'allowedComponents'));
+    const prevAllowed = normalizeAllowedComponents(
+      Object.hasOwn(currentSlotAllowed, name)
+        ? currentSlotAllowed[name]
+        : (summary?.allowedComponents ?? summary?.definition?.$allowedComponents),
+    );
     const prevExists = currentSlots.has(name);
 
     if (!prevExists) {
@@ -101,6 +143,15 @@ export function computeComponentDiffLines(
       continue;
     }
 
+    if (!knownAllowed) {
+      if (nextAllowed.length > 0)
+        lines.push({
+          key: `slot-${name}-allow-unknown`,
+          color: 'yellow',
+          text: `? slot ${name}: existing allowedComponents unknown`,
+        });
+      continue;
+    }
     if (arraysEqual(prevAllowed, nextAllowed)) continue;
 
     lines.push({
@@ -116,6 +167,12 @@ export function computeComponentDiffLines(
   }
 
   return lines;
+}
+
+function record(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
 }
 
 function normalizeAllowedComponents(value: unknown): string[] {

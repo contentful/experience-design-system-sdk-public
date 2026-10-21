@@ -9,7 +9,13 @@ export type CdfReviewEntry = {
   status: ReviewComponentStatus;
 };
 
-export type ReviewPanel = 'none' | 'prop-rationale' | 'component-rationale' | 'source' | 'token-review';
+export type ReviewPanel =
+  | 'none'
+  | 'prop-rationale'
+  | 'component-rationale'
+  | 'source'
+  | 'token-review'
+  | 'representations';
 
 export type TokenReviewToken = { path: string; kind: string };
 

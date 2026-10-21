@@ -1,83 +1,14 @@
-import type { CDFComponentEntry } from '../../cdf/index.js';
-import type { DTCGTokenEntry } from '../../dtcg/index.js';
-
-interface PropertyBreakingChange {
-  propertyId: string;
-  reason: 'removed' | 'added_required_no_default' | 'type_changed' | 'validation_narrowed';
-}
-
-interface SlotBreakingChange {
-  slotId: string;
-  reason: 'slot_removed' | 'slot_allowed_components_narrowed';
-}
-
-export type BreakingChange = PropertyBreakingChange | SlotBreakingChange;
-
-export interface ChangeClassification {
-  classification: 'breaking' | 'compatible';
-  breakingChanges: BreakingChange[];
-}
-
-export interface DownstreamImpact {
-  affectedFragments: number;
-  affectedExperiences: number;
-  referencedByFragment?: boolean;
-}
-
-export interface PropertySummary {
-  /** Exact definition when supplied locally; omission means unknown recursive shape. */
-  definition?: import('@contentful/experience-design-system-types').CDFFieldDefinition;
-  type: string;
-  category: string;
-  required: boolean;
-  default?: unknown;
-}
-
-export interface ComponentTypeSummary {
-  id: string;
-  name: string;
-  contentProperties: string[];
-  designProperties: string[];
-  slots: string[];
-  fullProperties?: Record<string, PropertySummary>;
-  /**
-   * Per-slot `$allowedComponents` on the currently-published version, keyed by
-   * slot name. Optional so consumers that don't populate it get the previous
-   * no-slot-allow-diff behavior. Empty arrays mean "no restrictions" (any).
-   */
-  currentSlotAllowed?: Record<string, string[]>;
-  deleteBlocked?: { reason: 'fragment-referenced' };
-}
-
-export interface DesignTokenSummary {
-  id: string;
-  name: string;
-  type: string;
-}
-
-export interface TaxonomySummary {
-  id: string;
-  name: string;
-  tokenIds: string[];
-}
-
-export interface ChangedEntity<TCurrent, TProposed> {
-  current: TCurrent;
-  proposed: TProposed;
-  hasPendingDraftChanges: boolean;
-  changeClassification?: ChangeClassification;
-  impact?: DownstreamImpact;
-}
-
-export interface EntityDiffGroup<TCurrent, TProposed> {
-  new: TProposed[];
-  changed: ChangedEntity<TCurrent, TProposed>[];
-  unchanged: string[];
-  removed: TCurrent[];
-}
-
-export interface ServerPreviewResponse {
-  components: EntityDiffGroup<ComponentTypeSummary, CDFComponentEntry>;
-  tokens: EntityDiffGroup<DesignTokenSummary, DTCGTokenEntry>;
-  taxonomies: EntityDiffGroup<TaxonomySummary, TaxonomySummary>;
-}
+export type {
+  BreakingChange,
+  ChangeClassification,
+  DownstreamImpact,
+  PropertySummary,
+  ComponentTypeSummary,
+  DesignTokenSummary,
+  TaxonomySummary,
+  ChangedEntity,
+  EntityDiffGroup,
+  ServerPreviewResponse,
+  SlotSummary,
+  ProjectionDiagnostic,
+} from '@contentful/experience-design-system-types';

@@ -238,13 +238,16 @@ export function parseToState(json: string): {
 
 export function serializeState(state: EditorState, originalJson: string): string {
   let wrapperKey: string | null = null;
+  let originalEntry: CDFComponentEntry | undefined;
   try {
     const orig = JSON.parse(originalJson) as Record<string, unknown>;
     const keys = Object.keys(orig);
+    if (orig.$type === 'component') originalEntry = orig as unknown as CDFComponentEntry;
     if (keys.length === 1 && orig[keys[0]] !== null && typeof orig[keys[0]] === 'object') {
       const inner = orig[keys[0]] as Record<string, unknown>;
       if (inner.$type === 'component' || inner.$properties !== undefined) {
         wrapperKey = keys[0];
+        originalEntry = inner as unknown as CDFComponentEntry;
       }
     }
   } catch {}
@@ -283,9 +286,12 @@ export function serializeState(state: EditorState, originalJson: string): string
   }
 
   const entry: CDFComponentEntry = {
+    ...(originalEntry ? cloneJson(originalEntry) : {}),
     $type: 'component',
     $properties,
   };
+  delete entry.$slots;
+  delete entry.$description;
   if (state.componentDescription) entry.$description = state.componentDescription;
   if (state.slots.length > 0) {
     const slots: Record<string, CDFSlotDefinition> = Object.create(null);

@@ -23,3 +23,24 @@ export type {
   ResponseStyle,
   TDataShape,
 } from './generated/client/index.js';
+
+export {
+  PROPERTY_BREAKING_REASONS,
+  SLOT_BREAKING_REASONS,
+  sanitizeBreakingChanges,
+} from '@contentful/experience-design-system-types';
+export type {
+  CDFComponentEntry,
+  CDFPropertyDefinition,
+  CDFFieldDefinition,
+  CDFSlotDefinition,
+  RepresentationPlan,
+  BreakingChange,
+  ComponentTypeSummary,
+  PropertySummary,
+  SlotSummary,
+  ProjectionDiagnostic,
+  ServerPreviewResponse,
+} from '@contentful/experience-design-system-types';
+
+export type { ProposedComponentSummary } from '@contentful/experience-design-system-types';
