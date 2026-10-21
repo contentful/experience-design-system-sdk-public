@@ -69,7 +69,7 @@ export async function extractAngularComponents(
         components.push(partial);
       }
 
-      sourceFile.deleteImmediatelySync();
+      sourceFile.forget();
     } catch (err) {
       warnings.push(`${filePath}: Angular extractor failed — ${err instanceof Error ? err.message : String(err)}`);
     } finally {
