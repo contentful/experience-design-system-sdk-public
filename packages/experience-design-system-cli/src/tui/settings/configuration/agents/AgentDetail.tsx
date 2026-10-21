@@ -9,7 +9,7 @@ import {
   type FormAction,
   type FormField,
   type FormNotice,
-} from '../../shared/FieldForm.js';
+} from '@tui/shared/components/FieldForm.js';
 import { AGENT_LABELS, writeAgentConfig, type AgentConfig } from './agent-store.js';
 import {
   defaultModelLabel,

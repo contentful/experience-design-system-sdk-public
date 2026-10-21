@@ -1,21 +1,10 @@
 import React, { useRef, useState } from 'react';
-import { Box, Text } from 'ink';
-import TextInput from 'ink-text-input';
+import { Text } from 'ink';
 import { PALETTE } from '@tui/theme.js';
-import { CREDENTIALS_CONTROLS, useCredentialsControls } from './controls.js';
-import { DEFAULT_CONFIGURED_HOST } from '@contentful/experience-design-system-backend-pipeline';
-import {
-  FIELDS,
-  isUnchanged,
-  missingField,
-  nextField,
-  normalize,
-  type CredentialField,
-  type CredentialValues,
-} from './logic.js';
-import { validateCredentials, type ValidationResult } from './validate.js';
-import { ControlHints } from '@tui/shared/components/ControlHints.js';
+import { FieldForm, type FormField, type FormNotice } from '@tui/shared/components/FieldForm.js';
 import { StepHeader } from '@tui/shared/components/StepHeader.js';
+import { isUnchanged, missingField, normalize, type CredentialField, type CredentialValues } from './logic.js';
+import { validateCredentials, type ValidationResult } from './validate.js';
 
 export type CredentialsResult = { skipped: false; credentials: CredentialValues } | { skipped: true };
 
@@ -26,12 +15,12 @@ interface CredentialsScreenProps {
   validate?: (values: CredentialValues) => Promise<ValidationResult>;
 }
 
-const LABELS: Record<CredentialField, string> = {
-  spaceId: 'Space ID',
-  environmentId: 'Environment',
-  cmaToken: 'CMA Token',
-  host: 'API Host',
-};
+const FIELDS: readonly FormField<CredentialField>[] = [
+  { key: 'spaceId', label: 'Space ID' },
+  { key: 'environmentId', label: 'Environment ID' },
+  { key: 'cmaToken', label: 'CMA Token', masked: true },
+  { key: 'host', label: 'API Host', hint: '(default: api.contentful.com · EU spaces: api.eu.contentful.com)' },
+];
 
 export function CredentialsScreen({
   onDone,
@@ -48,92 +37,77 @@ export function CredentialsScreen({
     }),
   ).current;
   const [values, setValues] = useState<CredentialValues>(initialValues);
-  const [active, setActive] = useState<CredentialField>('spaceId');
-  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<FormNotice | null>(null);
   const [validating, setValidating] = useState(false);
   const prefilled = initialValues.spaceId !== '' && initialValues.cmaToken !== '';
 
-  useCredentialsControls({
-    disabled: validating,
-    onBack,
-    onNextField: () => setActive(nextField),
-    onSkip: () => onDone({ skipped: true }),
-  });
-
-  const change = (field: CredentialField) => (value: string) => {
-    setValues((current) => ({ ...current, [field]: value }));
-    setError(null);
-  };
-
-  const submit = async (field: CredentialField) => {
-    if (field !== 'host') {
-      setActive(nextField(field));
-      return;
-    }
+  const submit = async (): Promise<void> => {
     const credentials = normalize(values);
     if (missingField(credentials)) {
-      setError('Space ID, environment and CMA token are all required.');
+      setNotice({ kind: 'error', text: 'Space ID, environment and CMA token are all required.' });
       return;
     }
     setValidating(true);
     const result = await validate(credentials);
     setValidating(false);
     if (result.ok) onDone({ skipped: false, credentials });
-    else setError(result.error);
+    else setNotice({ kind: 'error', text: result.error });
   };
 
   return (
-    <Box flexDirection="column">
-      <StepHeader step="setup" />
-      <Box flexDirection="column" gap={1} paddingX={2} paddingBottom={1}>
-        <Box flexDirection="column" gap={1}>
-          <Text bold>Contentful Credentials</Text>
-          <Text>
-            {prefilled
-              ? 'Credentials pre-filled from the configuration settings.'
-              : 'Enter the Contentful space you want to import into.'}
+    <FieldForm
+      header={<StepHeader step="setup" />}
+      title="Contentful Credentials"
+      subtitle={
+        prefilled
+          ? 'Credentials pre-filled from the configuration settings.'
+          : 'Enter the Contentful space you want to import into.'
+      }
+      fields={FIELDS}
+      values={values}
+      onChange={(key, value) => {
+        setValues((current) => ({ ...current, [key]: value }));
+        setNotice(null);
+      }}
+      actions={[
+        {
+          label: 'Continue',
+          description: 'Check the credentials and go on',
+          runningText: 'Validating credentials...',
+          running: validating,
+          hint: 'continue',
+          onRun: () => void submit(),
+        },
+        {
+          label: 'Skip',
+          description: 'Save files only, nothing is pushed',
+          hint: 'skip',
+          onRun: () => onDone({ skipped: true }),
+        },
+      ]}
+      onSave={() => void submit()}
+      saveLabel="continue"
+      onQuit={onBack}
+      quitLabel="back"
+      notice={notice}
+      busy={validating}
+    >
+      {!prefilled && (
+        <>
+          <Text> </Text>
+          <Text color={PALETTE.muted}>
+            We use it to check what components already exist and to push your import. If you skip, files are saved
+            locally and nothing is pushed.
           </Text>
-          {!prefilled && (
-            <>
-              <Text color={PALETTE.muted}>
-                We use it to check what components already exist and to push your import. If you skip, files are saved
-                locally and nothing is pushed.
-              </Text>
-              <Text color={PALETTE.muted}>Tip: save these under Settings → Configuration so they pre-fill here.</Text>
-            </>
-          )}
-        </Box>
-
-        <Box flexDirection="column">
-          {FIELDS.map((field) => (
-            <Box key={field} gap={1}>
-              <Text color={active === field ? PALETTE.accent : undefined}>?</Text>
-              <Text bold={active === field}>{LABELS[field]}:</Text>
-              <TextInput
-                value={values[field]}
-                focus={active === field && !validating}
-                mask={field === 'cmaToken' ? '•' : undefined}
-                placeholder={field === 'host' ? DEFAULT_CONFIGURED_HOST : undefined}
-                onChange={change(field)}
-                onSubmit={() => void submit(field)}
-              />
-            </Box>
-          ))}
-        </Box>
-        {active === 'host' && (
-          <Text color={PALETTE.muted}>Default: api.contentful.com · EU spaces: api.eu.contentful.com</Text>
-        )}
-
-        {error && <Text color={PALETTE.error}>✗ {error}</Text>}
-        {validating && <Text color={PALETTE.accent}>Validating credentials...</Text>}
-        {!validating && !error && !isUnchanged(normalize(values), initialValues) && (
+          <Text color={PALETTE.muted}>Tip: save these under Settings → Configuration so they pre-fill here.</Text>
+        </>
+      )}
+      {!validating && !notice && !isUnchanged(normalize(values), initialValues) && (
+        <>
+          <Text> </Text>
           <Text color={PALETTE.muted}>Changed values are saved after they validate.</Text>
-        )}
-
-        <Box marginTop={1}>
-          <ControlHints hints={CREDENTIALS_CONTROLS} />
-        </Box>
-      </Box>
-    </Box>
+        </>
+      )}
+    </FieldForm>
   );
 }

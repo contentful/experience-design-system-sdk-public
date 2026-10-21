@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { PALETTE } from '../../theme.js';
-import { ControlHints } from '@tui/shared/components/ControlHints.js';
-import { ClearableTextInput, isClearKey } from '../../shared/components/ClearableTextInput.js';
+import { PALETTE } from '@tui/theme.js';
+import { ControlHints } from './ControlHints.js';
+import { ClearableTextInput, isClearKey } from './ClearableTextInput.js';
 
 export interface FormField<K extends string> {
   key: K;
@@ -29,6 +29,8 @@ export interface FormAction {
 export type FormNotice = { kind: 'success' | 'error'; text: string };
 
 interface FieldFormProps<K extends string> {
+  /** Shown above the form, outside its padding, such as the import's step header. */
+  header?: React.ReactNode;
   title: string;
   /** What this form is for, shown dimmed under the title. */
   subtitle?: string;
@@ -36,8 +38,12 @@ interface FieldFormProps<K extends string> {
   values: Record<K, string>;
   onChange: (key: K, value: string) => void;
   onSave: () => void;
+  /** What `s` does, in the control hints. */
+  saveLabel?: string;
   /** Leaves without saving. */
   onQuit: () => void;
+  /** What Esc does, in the control hints. */
+  quitLabel?: string;
   /** Rows after the fields that are run, not edited. They share the cursor with the fields. */
   actions?: readonly FormAction[];
   notice?: FormNotice | null;
@@ -82,13 +88,16 @@ export function FormReadOnlyRow({
  * Actions sit after the fields and take the same cursor: Enter runs one, and `c` does nothing on it.
  */
 export function FieldForm<K extends string>({
+  header,
   title,
   subtitle,
   fields,
   values,
   onChange,
   onSave,
+  saveLabel = 'save',
   onQuit,
+  quitLabel = 'back without saving',
   actions = [],
   notice,
   busy = false,
@@ -151,88 +160,91 @@ export function FieldForm<K extends string>({
   );
 
   return (
-    <Box flexDirection="column" paddingX={2} paddingY={1}>
-      <Text bold>{title}</Text>
-      <Text> </Text>
-      {subtitle && <Text color={PALETTE.muted}>{subtitle}</Text>}
-      <Text> </Text>
-      <Box flexDirection="column">
-        {fields.map((field, index) => {
-          const isActive = index === active;
-          const value = values[field.key];
-          const display = field.masked ? '•'.repeat(value.length) : value;
-          return (
-            <Box key={field.key} gap={1}>
-              {pointer(isActive)}
-              <Box width={labelWidth} flexShrink={0}>
-                <Text bold={isActive} color={isActive ? PALETTE.accent : PALETTE.muted}>
-                  {field.label}
+    <Box flexDirection="column">
+      {header}
+      <Box flexDirection="column" paddingX={2} paddingTop={header ? 0 : 1} paddingBottom={1}>
+        <Text bold>{title}</Text>
+        <Text> </Text>
+        {subtitle && <Text color={PALETTE.muted}>{subtitle}</Text>}
+        <Text> </Text>
+        <Box flexDirection="column">
+          {fields.map((field, index) => {
+            const isActive = index === active;
+            const value = values[field.key];
+            const display = field.masked ? '•'.repeat(value.length) : value;
+            return (
+              <Box key={field.key} gap={1}>
+                {pointer(isActive)}
+                <Box width={labelWidth} flexShrink={0}>
+                  <Text bold={isActive} color={isActive ? PALETTE.accent : PALETTE.muted}>
+                    {field.label}
+                  </Text>
+                </Box>
+                {isActive && editing ? (
+                  <ClearableTextInput
+                    value={value}
+                    onChange={(next) => onChange(field.key, next)}
+                    onSubmit={() => setEditing(false)}
+                    mask={field.masked ? '•' : undefined}
+                  />
+                ) : display ? (
+                  <Text bold>{display}</Text>
+                ) : (
+                  // An empty value shows its hint (or "(empty)") in the value's place, not after an empty element, so the
+                  // text starts in the same column as every other row's.
+                  <Text color={PALETTE.muted}>{field.hint ?? '(empty)'}</Text>
+                )}
+                {display && field.hint && <Text color={PALETTE.muted}>{field.hint}</Text>}
+              </Box>
+            );
+          })}
+          {actions.map((action, index) => {
+            const isActive = fields.length + index === active;
+            return (
+              <Box key={action.label} gap={1}>
+                {pointer(isActive)}
+                <Box width={labelWidth} flexShrink={0}>
+                  <Text bold={isActive} color={isActive ? PALETTE.accent : PALETTE.muted}>
+                    {action.label}
+                  </Text>
+                </Box>
+                <Text color={action.running ? PALETTE.accent : PALETTE.muted}>
+                  {action.running ? (action.runningText ?? 'running...') : action.description}
                 </Text>
               </Box>
-              {isActive && editing ? (
-                <ClearableTextInput
-                  value={value}
-                  onChange={(next) => onChange(field.key, next)}
-                  onSubmit={() => setEditing(false)}
-                  mask={field.masked ? '•' : undefined}
-                />
-              ) : display ? (
-                <Text bold>{display}</Text>
-              ) : (
-                // An empty value shows its hint (or "(empty)") in the value's place, not after an empty element, so the
-                // text starts in the same column as every other row's.
-                <Text color={PALETTE.muted}>{field.hint ?? '(empty)'}</Text>
-              )}
-              {display && field.hint && <Text color={PALETTE.muted}>{field.hint}</Text>}
-            </Box>
-          );
-        })}
-        {actions.map((action, index) => {
-          const isActive = fields.length + index === active;
-          return (
-            <Box key={action.label} gap={1}>
-              {pointer(isActive)}
-              <Box width={labelWidth} flexShrink={0}>
-                <Text bold={isActive} color={isActive ? PALETTE.accent : PALETTE.muted}>
-                  {action.label}
-                </Text>
-              </Box>
-              <Text color={action.running ? PALETTE.accent : PALETTE.muted}>
-                {action.running ? (action.runningText ?? 'running...') : action.description}
-              </Text>
-            </Box>
-          );
-        })}
+            );
+          })}
+        </Box>
+        {notice && (
+          <>
+            <Text> </Text>
+            <Text color={notice.kind === 'success' ? PALETTE.success : PALETTE.error}>
+              {notice.kind === 'success' ? '✓' : '✗'} {notice.text}
+            </Text>
+          </>
+        )}
+        {children}
+        <Text> </Text>
+        <ControlHints
+          hints={
+            editing
+              ? [
+                  { keys: 'type', label: 'edit' },
+                  { keys: '←/→', label: 'move cursor' },
+                  { keys: '⏎', label: 'done' },
+                  { keys: 'Ctrl+D', label: 'clear' },
+                  { keys: 'Esc', label: 'cancel edit' },
+                ]
+              : [
+                  { keys: '↑/↓', label: 'move' },
+                  { keys: '⏎', label: currentAction ? currentAction.hint : 'edit' },
+                  ...(currentField ? [{ keys: 'Ctrl+D', label: 'clear' }] : []),
+                  { keys: 's', label: saveLabel },
+                  { keys: 'Esc/q', label: quitLabel },
+                ]
+          }
+        />
       </Box>
-      {notice && (
-        <>
-          <Text> </Text>
-          <Text color={notice.kind === 'success' ? PALETTE.success : PALETTE.error}>
-            {notice.kind === 'success' ? '✓' : '✗'} {notice.text}
-          </Text>
-        </>
-      )}
-      {children}
-      <Text> </Text>
-      <ControlHints
-        hints={
-          editing
-            ? [
-                { keys: 'type', label: 'edit' },
-                { keys: '←/→', label: 'move cursor' },
-                { keys: '⏎', label: 'done' },
-                { keys: 'Ctrl+D', label: 'clear' },
-                { keys: 'Esc', label: 'cancel edit' },
-              ]
-            : [
-                { keys: '↑/↓', label: 'move' },
-                { keys: '⏎', label: currentAction ? currentAction.hint : 'edit' },
-                ...(currentField ? [{ keys: 'Ctrl+D', label: 'clear' }] : []),
-                { keys: 's', label: 'save' },
-                { keys: 'Esc/q', label: 'back without saving' },
-              ]
-        }
-      />
     </Box>
   );
 }

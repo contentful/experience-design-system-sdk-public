@@ -10,7 +10,7 @@ import {
   scrubError,
   type Snapshot,
 } from '../../shared/debug-trail.js';
-import { FieldForm, type FormField, type FormNotice } from '../../shared/FieldForm.js';
+import { FieldForm, type FormField, type FormNotice } from '@tui/shared/components/FieldForm.js';
 import { readCredentials, writeCredentials, type V1Credentials } from './project-store.js';
 
 type Field =

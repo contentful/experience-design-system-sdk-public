@@ -4,7 +4,7 @@ import { AGENT_NAMES, type AgentName } from '@contentful/experience-design-syste
 import { PALETTE } from '@tui/theme.js';
 import { ControlHints } from '@tui/shared/components/ControlHints.js';
 import { startDebugRun, finishDebugRun } from '../../../debug-store.js';
-import type { FormNotice } from '../../shared/FieldForm.js';
+import type { FormNotice } from '@tui/shared/components/FieldForm.js';
 import { createTrail, diffSnapshots, scrubError, type Snapshot } from '../../shared/debug-trail.js';
 import { agentSnapshot, describeAgents, type AgentEnvironment } from './agent-debug.js';
 import { AGENT_LABELS, readAgentConfig, writeAgentConfig, type AgentConfig } from './agent-store.js';
