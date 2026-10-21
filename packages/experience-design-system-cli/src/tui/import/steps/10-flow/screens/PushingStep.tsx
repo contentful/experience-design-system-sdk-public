@@ -3,15 +3,17 @@ import { Box, Text } from 'ink';
 import { ProgressBar, ThemeProvider } from '@inkjs/ui';
 import type { PushProgress } from '../support/push-progress.js';
 import { StepHeader } from '@tui/shared/components/StepHeader.js';
+import { writtenThings, type Produced } from '../support/produced.js';
 import { useTimedSpinner } from '../support/use-timed-spinner.js';
 import { PROGRESS_THEME } from '../../../shared/running-step/theme.js';
 import { PALETTE } from '@tui/theme.js';
 
 type PushingStepProps = {
   progress: PushProgress;
+  produced: Produced;
 };
 
-export function PushingStep({ progress }: PushingStepProps): React.ReactElement {
+export function PushingStep({ progress, produced }: PushingStepProps): React.ReactElement {
   const { elapsed } = useTimedSpinner();
 
   const operationId = progress && progress.kind === 'queued' ? progress.operationId : null;
@@ -23,7 +25,7 @@ export function PushingStep({ progress }: PushingStepProps): React.ReactElement 
     <Box flexDirection="column">
       <StepHeader step="push" />
       <Box flexDirection="column" gap={1} paddingX={2} paddingBottom={1}>
-        <Text>Writing component types and design tokens to your Contentful space...</Text>
+        <Text>Writing {writtenThings(produced)} to your Contentful space...</Text>
 
         {operationId && (
           <Box gap={1}>

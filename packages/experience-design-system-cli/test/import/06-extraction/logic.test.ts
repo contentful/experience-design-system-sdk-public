@@ -21,7 +21,7 @@ const base = (overrides: Partial<ExtractionProgress> = {}): ExtractionProgress =
 
 describe('initialProgress', () => {
   it('starts every job that applies, so no row appears later', () => {
-    expect(initialProgress({ hasCredentials: true, hasRawTokens: true, reuseTokens: false })).toEqual({
+    expect(initialProgress({ hasCredentials: true, hasRawTokens: true })).toEqual({
       scan: null,
       composition: 'resolving',
       selection: 'running',
@@ -31,17 +31,11 @@ describe('initialProgress', () => {
   });
 
   it('leaves out the entities fetch when credentials were skipped', () => {
-    expect(initialProgress({ hasCredentials: false, hasRawTokens: true, reuseTokens: false }).existingEntities).toBe(
-      'idle',
-    );
-  });
-
-  it('counts reused tokens as already done', () => {
-    expect(initialProgress({ hasCredentials: true, hasRawTokens: true, reuseTokens: true }).tokens).toBe('complete');
+    expect(initialProgress({ hasCredentials: false, hasRawTokens: true }).existingEntities).toBe('idle');
   });
 
   it('has no token job without a raw tokens file', () => {
-    expect(initialProgress({ hasCredentials: true, hasRawTokens: false, reuseTokens: false }).tokens).toBe('idle');
+    expect(initialProgress({ hasCredentials: true, hasRawTokens: false }).tokens).toBe('idle');
   });
 });
 
@@ -72,10 +66,7 @@ describe('applyProgressEvent', () => {
 
 describe('progressRows', () => {
   it('shows the first frame of a fresh run', () => {
-    const rows = progressRows(
-      initialProgress({ hasCredentials: true, hasRawTokens: true, reuseTokens: false }),
-      'claude',
-    );
+    const rows = progressRows(initialProgress({ hasCredentials: true, hasRawTokens: true }), 'claude');
     expect(rows).toEqual([
       { text: 'Scanning files...', complete: false },
       { text: 'Mapping composition via claude...', complete: false },

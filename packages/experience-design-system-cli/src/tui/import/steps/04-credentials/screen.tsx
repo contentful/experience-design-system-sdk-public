@@ -3,7 +3,14 @@ import { Text } from 'ink';
 import { PALETTE } from '@tui/theme.js';
 import { FieldForm, type FormField, type FormNotice } from '@tui/shared/components/FieldForm.js';
 import { StepHeader } from '@tui/shared/components/StepHeader.js';
-import { isUnchanged, missingField, normalize, type CredentialField, type CredentialValues } from './logic.js';
+import {
+  credentialsPurpose,
+  isUnchanged,
+  missingField,
+  normalize,
+  type CredentialField,
+  type CredentialValues,
+} from './logic.js';
 import { validateCredentials, type ValidationResult } from './validate.js';
 
 export type CredentialsResult = { skipped: false; credentials: CredentialValues } | { skipped: true };
@@ -13,6 +20,8 @@ interface CredentialsScreenProps {
   onBack: () => void;
   initial?: Partial<CredentialValues>;
   validate?: (values: CredentialValues) => Promise<ValidationResult>;
+  /** The import only generates tokens, so there are no components to look up in the space. */
+  tokensOnly?: boolean;
 }
 
 const FIELDS: readonly FormField<CredentialField>[] = [
@@ -27,6 +36,7 @@ export function CredentialsScreen({
   onBack,
   initial = {},
   validate = validateCredentials,
+  tokensOnly = false,
 }: CredentialsScreenProps): React.ReactElement {
   const initialValues = useRef(
     normalize({
@@ -95,10 +105,7 @@ export function CredentialsScreen({
       {!prefilled && (
         <>
           <Text> </Text>
-          <Text color={PALETTE.muted}>
-            We use it to check what components already exist and to push your import. If you skip, files are saved
-            locally and nothing is pushed.
-          </Text>
+          <Text color={PALETTE.muted}>{credentialsPurpose(tokensOnly)}</Text>
           <Text color={PALETTE.muted}>Tip: save these under Settings → Configuration so they pre-fill here.</Text>
         </>
       )}

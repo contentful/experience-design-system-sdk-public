@@ -6,6 +6,17 @@ export type CredentialField = (typeof FIELDS)[number];
 
 export type CredentialValues = Record<CredentialField, string>;
 
+/**
+ * Why the space is asked for. Components are looked up in it before they are generated, so that is part of the reason
+ * unless the import only generates tokens, which has nothing to look up.
+ */
+export function credentialsPurpose(tokensOnly: boolean): string {
+  const use = tokensOnly
+    ? 'We use it to push your design tokens'
+    : 'We use it to check what components already exist and to push your import';
+  return `${use}. If you skip, files are saved locally and nothing is pushed.`;
+}
+
 export function normalize(values: CredentialValues): CredentialValues {
   return {
     spaceId: values.spaceId.trim(),

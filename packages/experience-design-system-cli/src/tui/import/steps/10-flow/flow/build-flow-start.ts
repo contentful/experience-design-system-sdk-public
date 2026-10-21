@@ -21,8 +21,9 @@ export function buildFlowStart(input: {
   handoff: ImportHandoff;
   saved?: SavedCredentials;
   generatePromptPath?: string;
+  tokensOnly?: FlowStart['tokensOnly'];
 }): FlowStart {
-  const { extraction, handoff, saved, generatePromptPath } = input;
+  const { extraction, handoff, saved, generatePromptPath, tokensOnly } = input;
   const credentials = extraction.credentials ?? {
     spaceId: saved?.spaceId ?? '',
     environmentId: saved?.environmentId ?? '',
@@ -41,6 +42,7 @@ export function buildFlowStart(input: {
       cmaToken: credentials.cmaToken,
       host: toConfiguredHost(credentials.host) ?? DEFAULT_CONFIGURED_HOST,
     },
+    ...(tokensOnly ? { tokensOnly } : {}),
     ...(generatePromptPath ? { generatePromptPath } : {}),
   };
 }

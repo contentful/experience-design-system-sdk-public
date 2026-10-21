@@ -7,20 +7,15 @@ export type ProgressEvent = ExtractAndComposeProgress;
 
 /**
  * Every job the stage will run starts on the first frame, so no row appears later as a surprise. A job that does not
- * apply stays 'idle' and has no row: existing entities need credentials, token definitions need a raw tokens file, and
- * reused tokens are already complete.
+ * apply stays 'idle' and has no row: existing entities need credentials, and token definitions need a raw tokens file.
  */
-export function initialProgress(input: {
-  hasCredentials: boolean;
-  hasRawTokens: boolean;
-  reuseTokens: boolean;
-}): ExtractionProgress {
+export function initialProgress(input: { hasCredentials: boolean; hasRawTokens: boolean }): ExtractionProgress {
   return {
     scan: null,
     composition: 'resolving',
     selection: 'running',
     existingEntities: input.hasCredentials ? 'running' : 'idle',
-    tokens: input.hasRawTokens ? (input.reuseTokens ? 'complete' : 'running') : 'idle',
+    tokens: input.hasRawTokens ? 'running' : 'idle',
   };
 }
 

@@ -1,4 +1,3 @@
-import { join } from 'node:path';
 import React, { useEffect, useState } from 'react';
 import { HomeScreen } from './src/tui/home/home.js';
 import { ImportScreen } from './src/tui/import/PageContainer.js';
@@ -6,14 +5,25 @@ import {
   CredentialsScreen,
   ExtractionScreen,
   PathValidationScreen,
+  PreflightScreen,
   TokenInputScreen,
-  TokenReuseScreen,
   WelcomeScreen,
 } from './src/tui/import/steps/index.js';
-import { ErrorStep } from './src/tui/import/shared/index.js';
+import {
+  currentInputStep,
+  goBack,
+  runBaseDir,
+  TOKENS_ONLY_OVERVIEW,
+  type ImportStepId,
+  type ImportTarget,
+  type InputAnswers,
+} from './src/tui/import/steps/00-preflight/logic.js';
+import { ErrorStep, RunningStep } from './src/tui/import/shared/index.js';
 import { resolveAgentChoice } from './src/tui/import/steps/06-extraction/logic.js';
 import { readSettings } from '@contentful/experience-design-system-types/config';
 import { useExtraction } from './src/tui/import/steps/06-extraction/use-extraction.js';
+import type { TokensOnlyInput } from './src/tui/import/steps/06-extraction/run-tokens-only.js';
+import { useTokensOnly } from './src/tui/import/steps/06-extraction/use-tokens-only.js';
 import { ScopeGateScreen } from './src/tui/import/steps/07-scope-gate/screen.js';
 import { useScopeGateFlow } from './src/tui/import/steps/07-scope-gate/use-scope-gate-flow.js';
 import { GenerationScreen } from './src/tui/import/steps/08-generation/screen.js';
@@ -21,7 +31,6 @@ import { useGeneration } from './src/tui/import/steps/08-generation/use-generati
 import type { GenerationInput } from './src/tui/import/steps/08-generation/types.js';
 import type { ExtractionHandoff } from '@contentful/experience-design-system-types/handoff';
 import type { ExtractionInput } from './src/tui/import/steps/06-extraction/types.js';
-import { inspectTokens, type TokenStrategy } from './src/tui/import/steps/05-token-reuse/logic.js';
 import { resolveUserPath } from './src/tui/import/resolve-user-path.js';
 import type { CredentialsResult } from './src/tui/import/steps/04-credentials/screen.js';
 import type { ImportOptions } from './src/commands/import-options.js';
@@ -56,26 +65,27 @@ interface ImportLaunch extends Partial<ImportOptions> {
   filePaths?: string[];
 }
 
-interface PendingLaunch {
-  launch: ImportLaunch;
-  credentials: CredentialsResult;
-  cached?: { tokensPath: string; sourceChanged: boolean };
-}
-
 interface ExtractionRun {
   launch: ImportLaunch;
   credentialsSkipped: boolean;
-  tokenStrategy: TokenStrategy;
   input: ExtractionInput;
   /** A custom prompt for `generate components`, saved in the config. Read now, used when generation starts. */
   generatePromptPath?: string;
+}
+
+// Set when the import only generates tokens. There is no extraction, scope gate or generation: once the tokens exist the
+// flow starts at saving.
+interface TokensOnlyRun {
+  credentialsSkipped: boolean;
+  /** What the flow builds its start from (agent, credentials, project). It names no files: nothing is scanned. */
+  input: ExtractionInput;
+  tokens: TokensOnlyInput;
 }
 
 // Set once extraction has produced a session; the scope gate runs for it before the review starts.
 interface ScopeRun {
   launch: ImportLaunch;
   credentialsSkipped: boolean;
-  tokenStrategy: TokenStrategy;
   input: ExtractionInput;
   generatePromptPath?: string;
   extraction: ExtractionHandoff;
@@ -91,14 +101,16 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
   // Set when the import has ended, with the exit code the result screen shows.
   const [importExitCode, setImportExitCode] = useState<number>();
   const showImportResult = importExitCode !== undefined;
-  const [projectPath, setProjectPath] = useState<string>();
-  const [tokensPath, setTokensPath] = useState<string>();
-  const [scannedFiles, setScannedFiles] = useState<string[]>();
-  // Set once credentials are done while the token catalog is checked; shown as the token reuse screen when it needs a choice.
-  const [pendingLaunch, setPendingLaunch] = useState<PendingLaunch>();
-  // Set once the token step has an answer; the extraction stage runs for it before the legacy wizard starts.
+  // What the user chose to generate, asked first. The screens after it are the ones that mode lists (00-preflight/logic).
+  const [target, setTarget] = useState<ImportTarget>();
+  // What the input screens have collected so far. The screen to show is the first one of the mode still unanswered.
+  const [answers, setAnswers] = useState<InputAnswers>({});
+  const answer = (patch: InputAnswers): void => setAnswers((current) => ({ ...current, ...patch }));
+  // Set once credentials are done; the extraction stage runs for it before the legacy wizard starts.
   const [extractionRun, setExtractionRun] = useState<ExtractionRun>();
   const extraction = useExtraction(extractionRun?.input);
+  const [tokensOnlyRun, setTokensOnlyRun] = useState<TokensOnlyRun>();
+  const tokensOnly = useTokensOnly(tokensOnlyRun?.tokens);
   const [scopeRun, setScopeRun] = useState<ScopeRun>();
   const scopeFlow = useScopeGateFlow(
     scopeRun && {
@@ -142,41 +154,25 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
     );
   }, [screen]);
 
-  const finishCredentials = async (
-    result: CredentialsResult,
-    projectPath: string,
-    tokens: string,
-    filePaths: string[],
-  ): Promise<void> => {
+  const finishCredentials = async (result: CredentialsResult, collected: InputAnswers): Promise<void> => {
     if (!result.skipped) await writeCredentials({ ...result.credentials });
-    const launch: ImportLaunch = { projectPath, tokens, filePaths, ...importOptions };
-    // earlier catalogs sit in the .contentful folder, in each session's dsi-import folder
-    const state = await inspectTokens({
-      rawTokensPath: tokens,
-      contentfulDir: join(resolveUserPath(projectPath), '.contentful'),
-      cache: importOptions.cache,
-    });
-    if (state.kind === 'cached') {
-      setPendingLaunch({
-        launch,
-        credentials: result,
-        cached: { tokensPath: state.tokensPath, sourceChanged: state.sourceChanged },
-      });
-      return;
-    }
-    await startExtraction(launch, 'generate', result);
+    const launch: ImportLaunch = {
+      // a tokens-only import has no project, so its files go where runBaseDir says
+      projectPath: runBaseDir({ ...collected, configuredBaseDir: importDefaults?.credentials.contentfulBaseDir }),
+      tokens: collected.tokensPath ?? '',
+      filePaths: collected.scannedFiles ?? [],
+      ...importOptions,
+    };
+    // Every run generates new files; reusing an earlier tokens.json is not offered.
+    if (target === 'tokens') await startTokensOnly(launch, result);
+    else await startExtraction(launch, result);
   };
 
-  const chooseTokenStrategy = (pending: PendingLaunch, tokenStrategy: TokenStrategy): void => {
-    setPendingLaunch(undefined);
-    void startExtraction(pending.launch, tokenStrategy, pending.credentials);
-  };
-
-  const startExtraction = async (
+  // What both kinds of run start from: the agent, this run's folder and the input every stage reads.
+  const prepareRun = async (
     launch: ImportLaunch,
-    tokenStrategy: TokenStrategy,
     credentials: CredentialsResult,
-  ): Promise<void> => {
+  ): Promise<{ input: ExtractionInput; outDir: string; launch: ImportLaunch; generatePromptPath?: string }> => {
     const settings = await readSettings();
     const { agent, agentModel } = resolveAgentChoice(launch.agent, settings);
     const generatePromptPath =
@@ -185,26 +181,67 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
     const outDir = await (
       await import('./src/tui/debug-store.js')
     ).startImportRun(resolveUserPath(launch.projectPath ?? ''));
-    setExtractionRun({
+    return {
       ...(generatePromptPath ? { generatePromptPath } : {}),
+      outDir,
       // the later steps get the same agent, so they use what the stage used
       launch: { ...launch, agent: agentModel ? `${agent}:${agentModel}` : agent },
-      credentialsSkipped: credentials.skipped,
-      tokenStrategy,
       input: {
         projectPath: resolveUserPath(launch.projectPath ?? ''),
         outDir,
         filePaths: launch.filePaths ?? [],
         rawTokensPath: launch.tokens ?? '',
-        tokenStrategy,
         credentials: credentials.skipped ? null : credentials.credentials,
         agent,
         ...(agentModel ? { agentModel } : {}),
         promptOverrides: launch.prompt ?? [],
         noCache: launch.cache === false,
       },
+    };
+  };
+
+  const startExtraction = async (launch: ImportLaunch, credentials: CredentialsResult): Promise<void> => {
+    const run = await prepareRun(launch, credentials);
+    setExtractionRun({
+      ...(run.generatePromptPath ? { generatePromptPath: run.generatePromptPath } : {}),
+      launch: run.launch,
+      credentialsSkipped: credentials.skipped,
+      input: run.input,
     });
   };
+
+  const startTokensOnly = async (launch: ImportLaunch, credentials: CredentialsResult): Promise<void> => {
+    const { input, outDir } = await prepareRun(launch, credentials);
+    setTokensOnlyRun({
+      credentialsSkipped: credentials.skipped,
+      input,
+      tokens: {
+        rawTokensPath: input.rawTokensPath,
+        outDir,
+        agent: input.agent,
+        ...(input.agentModel ? { agentModel: input.agentModel } : {}),
+        promptOverrides: input.promptOverrides,
+        noCache: input.noCache,
+      },
+    });
+  };
+
+  // Finished tokens start the flow at saving, once. There is no review: no components were generated.
+  useEffect(() => {
+    if (!tokensOnlyRun || tokensOnly?.status !== 'done' || !tokensOnly.result.ok) return;
+    const { credentialsSkipped, input, tokens } = tokensOnlyRun;
+    const { tokensPath, tokenSessionId, tokenCount } = tokensOnly.result;
+    inkClear();
+    setTokensOnlyRun(undefined);
+    setFlowStart(
+      buildFlowStart({
+        extraction: input,
+        saved: importDefaults?.credentials,
+        handoff: { credentialsSkipped, tokens: { strategy: 'generate' } },
+        tokensOnly: { tokensPath, tokenSessionId, tokenCount, outDir: tokens.outDir },
+      }),
+    );
+  }, [tokensOnly, tokensOnlyRun]);
 
   // A finished extraction opens the scope gate, once, with what the stage produced.
   useEffect(() => {
@@ -237,7 +274,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
   // Finished generation starts the review and everything after it, exactly once, with everything the stages did.
   useEffect(() => {
     if (!scopeRun || generation?.status !== 'done' || !generation.result.ok) return;
-    const { credentialsSkipped, tokenStrategy, extraction: produced, input, generatePromptPath } = scopeRun;
+    const { credentialsSkipped, extraction: produced, input, generatePromptPath } = scopeRun;
     inkClear();
     setScopeRun(undefined);
     setGenerationInput(undefined);
@@ -247,7 +284,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
         saved: importDefaults?.credentials,
         handoff: {
           credentialsSkipped,
-          tokens: { strategy: tokenStrategy },
+          tokens: { strategy: 'generate' },
           extraction: produced,
           generation: generation.result.generation,
         },
@@ -259,12 +296,11 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
   const goToStart = (): void => setScreen('start');
   const goToSettings = (): void => setScreen('settings');
 
-  const resetImport = (): void => {
-    setProjectPath(undefined);
-    setTokensPath(undefined);
-    setScannedFiles(undefined);
-    setPendingLaunch(undefined);
+  const resetImport = (keepTarget = false): void => {
+    if (!keepTarget) setTarget(undefined);
+    setAnswers({});
     setExtractionRun(undefined);
+    setTokensOnlyRun(undefined);
     setScopeRun(undefined);
     setGenerationInput(undefined);
     setFlowStart(undefined);
@@ -281,6 +317,14 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
     goToStart();
   };
 
+  // Back from a screen goes to the one before it in the chosen mode, which skips the screens the mode does not have.
+  const goBackFrom = (current: ImportStepId): void => {
+    if (!target) return;
+    const back = goBack(target, current, answers);
+    if (back.to === 'preflight') setTarget(undefined);
+    else setAnswers(back.answers);
+  };
+
   switch (screen) {
     case 'import':
       if (showImportResult) return <ImportScreen exitCode={importExitCode} onDone={finishImportResult} />;
@@ -295,27 +339,52 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
         );
       }
       if (importDefaults === undefined) return <></>;
-      if (projectPath === undefined) {
-        return (
-          <WelcomeScreen onContinue={setProjectPath} onQuit={leaveImport} initialPath={importDefaults.componentDir} />
-        );
+      if (target === undefined) {
+        return <PreflightScreen onChoose={setTarget} onQuit={leaveImport} />;
       }
-      if (tokensPath === undefined) {
-        return (
-          <TokenInputScreen
-            initialPath={importDefaults.tokenFile}
-            onConfirm={setTokensPath}
-            onBack={() => setProjectPath(undefined)}
-          />
-        );
+      const inputStep = currentInputStep(target, answers);
+      if (!extractionRun && !tokensOnlyRun && inputStep !== 'credentials') {
+        switch (inputStep) {
+          case 'project':
+            return (
+              <WelcomeScreen
+                onContinue={(projectPath) => answer({ projectPath })}
+                onQuit={() => goBackFrom('project')}
+                initialPath={importDefaults.componentDir}
+              />
+            );
+          case 'token-file':
+            return (
+              <TokenInputScreen
+                {...(target === 'tokens' ? { overview: TOKENS_ONLY_OVERVIEW } : {})}
+                initialPath={importDefaults.tokenFile}
+                onConfirm={(tokensPath) => answer({ tokensPath })}
+                onBack={() => goBackFrom('token-file')}
+              />
+            );
+          case 'path-validation':
+            return (
+              <PathValidationScreen
+                projectPath={answers.projectPath ?? ''}
+                hasTokens={target !== 'components'}
+                onConfirm={({ filePaths }) => answer({ scannedFiles: filePaths })}
+                onChangePath={() => resetImport(true)}
+                onBack={() => goBackFrom('path-validation')}
+              />
+            );
+        }
       }
-      if (scannedFiles === undefined) {
+      if (tokensOnlyRun) {
+        if (tokensOnly?.status === 'done' && !tokensOnly.result.ok) {
+          return (
+            <ErrorStep stepName={tokensOnly.result.step} message={tokensOnly.result.message} onExit={leaveImport} />
+          );
+        }
         return (
-          <PathValidationScreen
-            projectPath={projectPath}
-            onConfirm={({ filePaths }) => setScannedFiles(filePaths)}
-            onChangePath={resetImport}
-            onBack={() => setTokensPath(undefined)}
+          <RunningStep
+            step="generation"
+            description="Generating design tokens from your token file."
+            lines={[{ text: `Generating token definitions via ${tokensOnlyRun.input.agent}...`, complete: false }]}
           />
         );
       }
@@ -360,22 +429,12 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
         }
         return <></>;
       }
-      if (pendingLaunch?.cached) {
-        return (
-          <TokenReuseScreen
-            tokensPath={pendingLaunch.cached.tokensPath}
-            sourceChanged={pendingLaunch.cached.sourceChanged}
-            onReuse={() => chooseTokenStrategy(pendingLaunch, 'reuse')}
-            onRegenerate={() => chooseTokenStrategy(pendingLaunch, 'regenerate')}
-            onQuit={leaveImport}
-          />
-        );
-      }
       return (
         <CredentialsScreen
           initial={importDefaults.credentials}
-          onBack={() => setScannedFiles(undefined)}
-          onDone={(result) => void finishCredentials(result, projectPath, tokensPath, scannedFiles)}
+          tokensOnly={target === 'tokens'}
+          onBack={() => goBackFrom('credentials')}
+          onDone={(result) => void finishCredentials(result, answers)}
         />
       );
     case 'help':

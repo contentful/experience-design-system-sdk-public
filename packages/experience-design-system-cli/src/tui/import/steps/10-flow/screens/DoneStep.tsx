@@ -5,6 +5,7 @@ import { useImmediateInput } from '../../07-scope-gate/sidebar/hooks/useImmediat
 import { buildPostPushUrl } from '../support/contentful-urls.js';
 import { ControlHints } from '@tui/shared/components/ControlHints.js';
 import { StepHeader } from '@tui/shared/components/StepHeader.js';
+import type { Produced } from '../support/produced.js';
 import { SpaceEnvironment } from '../components/SpaceEnvironment.js';
 
 type EntityResult = {
@@ -21,6 +22,10 @@ type DoneStepProps = {
   spaceId: string;
   environmentId: string;
   host?: string;
+  /** What the import produced, so only the links to those things are offered. */
+  produced: Produced;
+  /** The user skipped the credentials, so nothing could be pushed: the files were only saved. */
+  credentialsSkipped?: boolean;
   runTeaser?: string;
   failures?: Array<{ entityType: string; entityId: string; message: string }>;
   onExit: () => void;
@@ -58,6 +63,8 @@ export function DoneStep({
   spaceId,
   environmentId,
   host,
+  produced,
+  credentialsSkipped = false,
   failures = [],
   onExit,
 }: DoneStepProps): React.ReactElement {
@@ -93,7 +100,11 @@ export function DoneStep({
         )}
 
         {totalPushed === 0 && totalFailed === 0 && !summary ? (
-          <Text color={PALETTE.muted}>Nothing was pushed — everything was already up to date.</Text>
+          <Text color={PALETTE.muted}>
+            {credentialsSkipped
+              ? 'Nothing was pushed — you skipped the Contentful credentials, so the files were only saved locally.'
+              : 'Nothing was pushed — everything was already up to date.'}
+          </Text>
         ) : (
           <Box flexDirection="column">
             <EntityRows entity={componentTypes} label="Component Type" />
@@ -127,11 +138,13 @@ export function DoneStep({
         {success && totalPushed > 0 && (
           <Box flexDirection="column" gap={1}>
             <Text color={PALETTE.success}>Your design system is now in Contentful Experiences.</Text>
-            <LinkRow title="View your components here:" url={buildPostPushUrl(urlArgs)} />
-            <LinkRow
-              title="View your design tokens here:"
-              url={buildPostPushUrl({ ...urlArgs, view: 'design_tokens' })}
-            />
+            {produced.components && <LinkRow title="View your components here:" url={buildPostPushUrl(urlArgs)} />}
+            {produced.tokens && (
+              <LinkRow
+                title="View your design tokens here:"
+                url={buildPostPushUrl({ ...urlArgs, view: 'design_tokens' })}
+              />
+            )}
           </Box>
         )}
 

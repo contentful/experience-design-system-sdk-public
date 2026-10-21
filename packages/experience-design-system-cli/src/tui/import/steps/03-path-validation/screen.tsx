@@ -13,6 +13,8 @@ interface PathValidationScreenProps {
   onConfirm: (result: { projectPath: string; filePaths: string[] }) => void;
   onChangePath: () => void;
   onBack: () => void;
+  /** False when the import does not generate tokens, so `.json` files are not described as design tokens. */
+  hasTokens?: boolean;
 }
 
 function Row({ row }: { row: SummaryRow }): React.ReactElement {
@@ -38,8 +40,16 @@ function Failure({ scan, path }: { scan: Extract<ScanResult, { ok: false }>; pat
   );
 }
 
-function Summary({ scan, path }: { scan: Extract<ScanResult, { ok: true }>; path: string }): React.ReactElement {
-  const { total, rows, warning } = summarize(scan.counts);
+function Summary({
+  scan,
+  path,
+  hasTokens,
+}: {
+  scan: Extract<ScanResult, { ok: true }>;
+  path: string;
+  hasTokens: boolean;
+}): React.ReactElement {
+  const { total, rows, warning } = summarize(scan.counts, { hasTokens });
   return (
     <Box flexDirection="column" gap={1}>
       <Text>
@@ -62,6 +72,7 @@ export function PathValidationScreen({
   onConfirm,
   onChangePath,
   onBack,
+  hasTokens = true,
 }: PathValidationScreenProps): React.ReactElement {
   const resolvedPath = useMemo(() => resolveUserPath(projectPath), [projectPath]);
   const [scan, setScan] = useState<ScanResult>();
@@ -90,7 +101,7 @@ export function PathValidationScreen({
           </Text>
         )}
         {scan?.ok === false && <Failure scan={scan} path={resolvedPath} />}
-        {scan?.ok === true && <Summary scan={scan} path={resolvedPath} />}
+        {scan?.ok === true && <Summary scan={scan} path={resolvedPath} hasTokens={hasTokens} />}
 
         <Box marginTop={1}>
           <ControlHints hints={controlsFor(phase)} />
