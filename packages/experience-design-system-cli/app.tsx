@@ -13,7 +13,6 @@ import {
   currentInputStep,
   goBack,
   runBaseDir,
-  TOKENS_ONLY_OVERVIEW,
   type ImportStepId,
   type ImportTarget,
   type InputAnswers,
@@ -356,7 +355,6 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
           case 'token-file':
             return (
               <TokenInputScreen
-                {...(target === 'tokens' ? { overview: TOKENS_ONLY_OVERVIEW } : {})}
                 initialPath={importDefaults.tokenFile}
                 onConfirm={(tokensPath) => answer({ tokensPath })}
                 onBack={() => goBackFrom('token-file')}
