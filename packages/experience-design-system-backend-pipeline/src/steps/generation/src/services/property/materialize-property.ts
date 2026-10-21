@@ -14,12 +14,12 @@ import {
   type PropertyModel,
   type PropertyProjection,
   type RepresentationAlternative,
-  type JsonValue,
   type CDFFieldDefinition,
   type TargetDefinition,
   isSourceBoundRepresentation,
   cdfToTarget,
 } from '@contentful/experience-design-system-types';
+import { sourcePropertyModel } from './source-property-model.js';
 import type { RawComponentDefinition } from '../../../../extraction/src/types/component.js';
 
 export interface MaterializedProperty {
@@ -87,44 +87,13 @@ export function materializeProperty(
       throw new Error('Richer representation requires current complete source evidence');
     return { definition, call: cloneJson(call) };
   }
-  const sourceRevision = [
-    ...new Set(
-      [...fact.declarations, ...fact.sourceGraph.nodes.flatMap((node) => node.declarations)].map(
-        (location) => `${location.canonicalPath ?? ''}:${location.textHash ?? ''}`,
-      ),
-    ),
-  ]
-    .sort()
-    .join('|');
-  if (call.source_revision !== undefined && call.source_revision !== sourceRevision)
+  const sourceModel = sourcePropertyModel(component, call.prop, componentId)!;
+  if (call.source_revision !== undefined && call.source_revision !== sourceModel.identity.sourceRevision)
     throw new Error('Stale property source revision');
-  if (call.source_node_id !== undefined && call.source_node_id !== fact.sourceGraph.rootId)
+  if (call.source_node_id !== undefined && call.source_node_id !== sourceModel.identity.nodeId)
     throw new Error('Stale property source node');
   const model: PropertyModel = {
-    identity: {
-      componentId,
-      propertyId: JSON.stringify([componentId, call.prop]),
-      key: call.prop,
-      sourceRevision,
-      nodeId: fact.sourceGraph.rootId,
-    },
-    source: {
-      typeText: fact.sourceTypeText,
-      graph: cloneJson(fact.sourceGraph),
-      shape: cloneJson(fact.advisoryShape),
-      ...(fact.sourceDefault ? { default: cloneJson(fact.sourceDefault) } : {}),
-      observations: [],
-      useEvidence: (component.componentFacts?.sourceObservations?.inputOutput?.witnesses ?? [])
-        .filter((witness) => witness.inputName === call.prop)
-        .map((witness) => ({
-          reference: witness.id,
-          status:
-            witness.context === 'returned' && witness.strength === 'exact'
-              ? ('output-flow-found' as const)
-              : ('unresolved' as const),
-        })),
-      originalFacts: cloneJson(candidate) as unknown as JsonValue,
-    },
+    ...sourceModel,
     category: call.cdf_category,
     ...(definition ? { representation: cloneJson(definition) } : {}),
     ...(call.representation_proposal ? { representationProposal: cloneJson(call.representation_proposal) } : {}),

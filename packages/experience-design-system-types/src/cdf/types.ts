@@ -38,6 +38,7 @@ const ModelBindingSchema = z.strictObject({
   componentId: z.string(),
   propertyId: z.string(),
   nodeId: z.string(),
+  sourceNodeId: z.optional(z.string()),
 });
 const ModelCardinalitySchema = z
   .strictObject({

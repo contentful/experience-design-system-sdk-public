@@ -4,6 +4,7 @@ import {
   countComponentObservations,
 } from '../../../../agents/prompts/helpers/build-component-evidence.js';
 import {
+  prepareAnalysisRepresentationCandidates,
   CANDIDATE_FREE_SCOPES,
   EXPLORE_SCOPES,
   type ExploreStageResult,
@@ -17,6 +18,7 @@ import { runStageWithRetries } from '../../../../agents/helpers/run-stage-with-r
 import { parseExploreOutput } from '../parsers/parse-explore-output.js';
 import { assertUnique } from '../helpers/identity.js';
 import type { ExploreStageRequest } from '../types.js';
+import { sourcePropertyModel } from '../../../generation/src/services/property/source-property-model.js';
 import { loadStageContext } from '../helpers/load-stage-context.js';
 import { projectExplorationSourceInput } from '../../../../source-evidence/shared-source.js';
 export async function runExploreStage(request: ExploreStageRequest): Promise<ExploreStageResult> {
@@ -73,6 +75,20 @@ export async function runExploreStage(request: ExploreStageRequest): Promise<Exp
               ? { ...request.sharedSource, observations: { accepted: [], rejected: [] } }
               : request.sharedSource
             : undefined;
+        const analysisRepresentationCandidates = raw.flatMap((item) => {
+          const component = item as unknown as RawComponentDefinition;
+          if (!Array.isArray(component.sourceCandidates)) return [];
+          return component.sourceCandidates.flatMap((candidate) => {
+            const model = sourcePropertyModel(
+              component,
+              candidate.name,
+              typeof item.component_id === 'string' ? item.component_id : component.name,
+            );
+            if (!model) return [];
+            const { logicalGraph: _graph, ...summary } = prepareAnalysisRepresentationCandidates(model);
+            return [{ component: component.name, source: component.source, ...summary }];
+          });
+        });
         return buildPrompt({
           sharedSource,
           sourceProjectionMaxBytes: request.maxPromptBytes,
@@ -87,6 +103,7 @@ export async function runExploreStage(request: ExploreStageRequest): Promise<Exp
             ...(candidateFree ? {} : { slotCandidates: request.slotCandidates }),
           }),
           stageInputInline: JSON.stringify({
+            analysisRepresentationCandidates,
             components: candidateFree
               ? raw.map(({ name, source, component_id, sourcePath, framework }) => ({
                   name,

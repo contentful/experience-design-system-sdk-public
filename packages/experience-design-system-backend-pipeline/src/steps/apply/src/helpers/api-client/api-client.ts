@@ -1,5 +1,6 @@
 import {
   parseCDFComponents,
+  validateCDF,
   mapperApplyBlockers,
   validateImportPrerequisites,
   type CDFComponentEntry,
@@ -141,6 +142,14 @@ export class ApiClient {
   private admitRepresentations(cdf: CDFDocument): void {
     const parsed = parseCDFComponents(cdf);
     const components = parsed.components;
+    if (components.some(({ entry }) => entry.$model || entry.$representationPlans)) {
+      const validation = validateCDF(cdf);
+      if (!validation.valid)
+        throw new Error(
+          'Invalid complete representation document: ' +
+            validation.errors.map((issue) => issue.path + ': ' + issue.message).join('; '),
+        );
+    }
     const prerequisites = validateImportPrerequisites(parsed);
     if (!prerequisites.valid)
       throw new Error(`Invalid import prerequisites: ${prerequisites.errors.map((issue) => issue.message).join('; ')}`);

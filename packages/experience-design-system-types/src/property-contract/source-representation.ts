@@ -1,4 +1,4 @@
-import type { PropertySourceGraph, SourceGraphNode } from './property-model.js';
+import { validateSourceGraph, type PropertySourceGraph, type SourceGraphNode } from './property-model.js';
 import { jsonEqual, type JsonValue } from './json-value.js';
 
 export const SOURCE_BOUND_REPRESENTATIONS = ['RichText', 'JSON', 'ResourceLink'] as const;
@@ -8,7 +8,8 @@ export function isSourceBoundRepresentation(type: string): boolean {
 
 /** Defaults and observed callers do not establish a closed input domain. */
 export function finiteSourceValueDomain(graph: PropertySourceGraph, nodeId = graph.rootId): JsonValue[] | undefined {
-  if (graph.coverage !== 'complete-within-declared-bound' || graph.omittedCount) return;
+  if (validateSourceGraph(graph).length || graph.coverage !== 'complete-within-declared-bound' || graph.omittedCount)
+    return;
   const nodes = new Map(graph.nodes.map((node) => [node.id, node]));
   const visit = (id: string, active: Set<string>): JsonValue[] | undefined => {
     const node = nodes.get(id);

@@ -1,6 +1,7 @@
 import ts from 'typescript';
 import { SourceValueBindings } from '../component-facts/source-value-bindings.js';
 import { sourceLocation } from './source-location.js';
+import { projectNativeSourceShape } from './native-source-shape.js';
 import { createHash } from 'node:crypto';
 import { Node, type Type } from 'ts-morph';
 import type {
@@ -257,31 +258,68 @@ export function captureNativeSource(
     rootId: '',
     nodes: [],
     coverage: 'complete-within-declared-bound',
-    limits: { maxDepth: 16, maxNodes: 512, maxFields: 2048 },
+    limits: { maxDepth: 16, maxNodes: 512, maxFields: 4096, maxEdges: 4096 },
     omittedCount: 0,
   };
-  const ancestors = new Map<object, string>();
+  const nodes = new Map<string, SourceTypeNode>();
+  const expanded = new Map<object, Map<string, string>>();
+  const active = new Set<string>();
+  const typeIds = new Map<object, string>();
+  const declarationIds = new Map<object, string>();
+  let edgeCount = 0;
   let fieldCount = 0;
-  let knownRequiredFieldDropped = false;
-  const walk = (
-    t: Type,
-    at: Node,
-    req: boolean,
-    keys: string[],
-    depth: number,
-    path: NonNullable<SourceTypeNode['path']> = keys.map((key) => ({ kind: 'field', key })),
-    syntax: Node | null = declarationType(at),
-  ): { id: string; shape: NativeSourceShape | null } => {
+  let exhausted: 'source-node-budget' | 'source-edge-budget' | undefined;
+  type Request = {
+    type: Type;
+    at: Node;
+    required: boolean;
+    keys: string[];
+    path: NonNullable<SourceTypeNode['path']>;
+    syntax: Node | null;
+  };
+  const incomplete = (node: SourceTypeNode, reason: string, omitted = 0): void => {
+    node.reason = reason;
+    node.coverage = 'partial';
+    graph.coverage = 'partial';
+    graph.omittedCount += omitted;
+  };
+  const identity = (t: Type): NonNullable<SourceTypeNode['compilerIdentity']> => {
+    let typeId = typeIds.get(t.compilerType);
+    if (!typeId) {
+      typeId = `compiler-type-${typeIds.size}`;
+      typeIds.set(t.compilerType, typeId);
+    }
+    const symbol = (t.getAliasSymbol() ?? t.getSymbol())?.compilerSymbol;
+    let declarationId = symbol && declarationIds.get(symbol);
+    if (symbol && !declarationId) {
+      declarationId = `declaration-${declarationIds.size}`;
+      declarationIds.set(symbol, declarationId);
+    }
+    return { typeId, ...(declarationId ? { declarationId } : {}) };
+  };
+  const visit = function* (request: Request): Generator<Request, string | undefined, string | undefined> {
+    const { type: t, at, required: req, keys, path, syntax } = request;
+    const { facts: nullability, syntaxDeclarations } = sourceNullability(t, at, syntax);
+    const structural =
+      t.isObject() || t.isIntersection() || (t.isUnion() && t.getUnionTypes().some((part) => part.isObject()));
+    const context = JSON.stringify(nullability);
+    const knownId = structural ? expanded.get(t.compilerType)?.get(context) : undefined;
+    if (knownId && !active.has(knownId)) return knownId;
+    if (graph.nodes.length >= graph.limits.maxNodes) {
+      exhausted = 'source-node-budget';
+      return;
+    }
+    const compilerIdentity = identity(t);
     const id = `s${createHash('sha256')
-      .update(JSON.stringify([path, t.getText(at), location(at)]))
+      .update(JSON.stringify([path, compilerIdentity, location(at)]))
       .digest('hex')
       .slice(0, 24)}`;
-    const { facts: nullability, syntaxDeclarations } = sourceNullability(t, at, syntax);
     const syntaxUsed = nullability.null.source === 'syntax' || nullability.undefined.source === 'syntax';
     const node: SourceTypeNode = {
       id,
       keyPath: keys,
       path,
+      compilerIdentity,
       ...(t.getAliasSymbol() ? { alias: t.getAliasSymbol()!.getName() } : {}),
       ...(nullability.null.state === 'unknown' ? {} : { nullable: nullability.null.state === 'present' }),
       ...(nullability.undefined.state === 'unknown' ? {} : { undefinable: nullability.undefined.state === 'present' }),
@@ -297,88 +335,80 @@ export function captureNativeSource(
       reason: null,
     };
     graph.nodes.push(node);
-    const incomplete = (reason: string) => {
-      node.reason = reason;
-      node.coverage = 'partial';
-      graph.coverage = 'partial';
-    };
-    if (node.domain.unrepresentedValues?.length) incomplete('unsafe-domain-literal');
-    if (ancestors.has(t.compilerType)) {
+    nodes.set(id, node);
+    if (knownId) {
       node.kind = 'reference';
-      node.alternatives = [ancestors.get(t.compilerType)!];
       node.reason = 'cycle-reference';
-      return { id, shape: null };
+      if (edgeCount < graph.limits.maxEdges!) {
+        node.alternatives = [knownId];
+        edgeCount++;
+      } else {
+        exhausted = 'source-edge-budget';
+        incomplete(node, exhausted, 1);
+      }
+      return id;
     }
-    if (depth > graph.limits.maxDepth || graph.nodes.length >= graph.limits.maxNodes) {
-      incomplete('source-type-budget');
-      graph.omittedCount++;
-      return { id, shape: null };
+    if (structural) {
+      const contexts = expanded.get(t.compilerType) ?? new Map<string, string>();
+      contexts.set(context, id);
+      expanded.set(t.compilerType, contexts);
+      active.add(id);
     }
-    ancestors.set(t.compilerType, id);
-    try {
-      let shape: NativeSourceShape | null = null;
-      if (t.isString() || t.isStringLiteral()) {
-        node.kind = 'string';
-        shape = { $type: 'string', $required: req };
-      } else if (t.isNumber() || t.isNumberLiteral()) {
-        node.kind = 'number';
-        shape = { $type: 'number', $required: req };
-      } else if (t.isBoolean() || t.isBooleanLiteral()) {
-        node.kind = 'boolean';
-        shape = { $type: 'boolean', $required: req };
-      } else if (t.isNull() || t.isUndefined() || t.isNever())
-        node.kind = t.isNull() ? 'null' : t.isUndefined() ? 'undefined' : 'never';
-      else if (t.isUnion() || t.isIntersection()) {
-        node.kind = t.isUnion() ? 'union' : 'intersection';
-        const alternatives = t.isUnion() ? t.getUnionTypes() : (t as Type).getIntersectionTypes();
-        node.alternatives = [];
-        const results = [];
-        for (const [index, alternative] of alternatives.entries()) {
-          if (graph.nodes.length >= graph.limits.maxNodes) {
-            graph.omittedCount++;
-            incomplete('union-budget');
-            break;
-          }
-          const result = walk(
-            alternative,
-            at,
-            req,
-            keys,
-            depth + 1,
-            [...path, { kind: t.isUnion() ? 'union' : 'intersection', key: index }],
-            null,
-          );
-          node.alternatives.push(result.id);
-          results.push(result);
+    if (node.domain.unrepresentedValues?.length) incomplete(node, 'unsafe-domain-literal');
+    const childRequest = (
+      child: Type,
+      kind: NonNullable<SourceTypeNode['path']>[number]['kind'],
+      key: string | number,
+      childRequired = req,
+      declaration = at,
+      childSyntax: Node | null = null,
+    ): Request => ({
+      type: child,
+      at: declaration,
+      required: childRequired,
+      keys:
+        kind === 'field' || kind === 'tuple'
+          ? [...keys, String(key)]
+          : kind === 'item'
+            ? [...keys, '[]']
+            : kind === 'index'
+              ? [...keys, `[${key}]`]
+              : keys,
+      path: [...path, { kind, key }],
+      syntax: childSyntax,
+    });
+    if (t.isString() || t.isStringLiteral()) node.kind = 'string';
+    else if (t.isNumber() || t.isNumberLiteral()) node.kind = 'number';
+    else if (t.isBoolean() || t.isBooleanLiteral()) node.kind = 'boolean';
+    else if (t.isNull() || t.isUndefined() || t.isNever())
+      node.kind = t.isNull() ? 'null' : t.isUndefined() ? 'undefined' : 'never';
+    else if (t.isUnion() || t.isIntersection()) {
+      node.kind = t.isUnion() ? 'union' : 'intersection';
+      node.alternatives = [];
+      const alternatives = t.isUnion() ? t.getUnionTypes() : (t as Type).getIntersectionTypes();
+      for (const [index, alternative] of alternatives.entries()) {
+        const child = yield childRequest(alternative, t.isUnion() ? 'union' : 'intersection', index);
+        if (child) node.alternatives.push(child);
+        else {
+          incomplete(node, exhausted ?? 'alternative-unavailable', alternatives.length - index);
+          break;
         }
-        if (t.isUnion()) {
-          const nonAbsent = results.filter(
-            (r) => !['undefined', 'never'].includes(graph.nodes.find((n) => n.id === r.id)!.kind),
-          );
-          if (
-            nonAbsent.length &&
-            nonAbsent.every(
-              (r) =>
-                r.shape &&
-                ['string', 'number', 'boolean'].includes(r.shape.$type) &&
-                r.shape.$type === nonAbsent[0]!.shape!.$type,
-            )
-          )
-            shape = { ...nonAbsent[0]!.shape!, $required: req };
-          else node.reason = 'union-native-shape-unavailable';
-          const members = results.map((result) => graph.nodes.find((n) => n.id === result.id)!);
-          node.discriminatorKeys = (members[0]?.fields ?? [])
-            .filter((field) => {
-              const values: SourceJsonValue[] = [];
-              return (
-                members.length === alternatives.length &&
-                members.every((member) => {
+      }
+      if (node.kind === 'union') {
+        const members = node.alternatives.map((ref) => nodes.get(ref)!);
+        const complete =
+          members.length === alternatives.length &&
+          members.every((member) => member.coverage === 'complete-within-declared-bound');
+        node.discriminatorKeys = complete
+          ? (members[0]?.fields ?? [])
+              .filter((field) => {
+                const values: SourceJsonValue[] = [];
+                return members.every((member) => {
                   const edge = member.fields?.find((other) => other.key === field.key);
-                  const tag = edge && graph.nodes.find((item) => item.id === edge.nodeId);
+                  const tag = edge && nodes.get(edge.nodeId);
                   if (
                     !edge?.required ||
                     !tag ||
-                    tag.coverage !== 'complete-within-declared-bound' ||
                     tag.domain.provenance !== 'compiler' ||
                     tag.domain.openness !== 'closed' ||
                     tag.domain.declaredValues.length !== 1 ||
@@ -387,187 +417,181 @@ export function captureNativeSource(
                     return false;
                   values.push(tag.domain.declaredValues[0]!);
                   return true;
-                })
-              );
-            })
-            .map((field) => field.key);
-          node.discriminator = {
-            provenance: 'compiler',
-            complete: members.length === alternatives.length,
-            keys: node.discriminatorKeys,
-          };
-        }
-      } else if (t.isTuple()) {
-        node.kind = 'tuple';
-        node.items = [];
-        node.tupleElements = [];
-        const target = (t.compilerType as unknown as ts.TupleTypeReference).target;
-        node.readonly = target.readonly;
-        for (const [i, item] of t.getTupleElements().entries()) {
-          if (graph.nodes.length >= graph.limits.maxNodes) {
-            graph.omittedCount++;
-            incomplete('tuple-budget');
-            break;
-          }
-          const flags = target.elementFlags[i] ?? ts.ElementFlags.Required;
-          const label = target.labeledElementDeclarations?.[i];
-          const element = walk(
-            item,
-            at,
-            !(flags & ts.ElementFlags.Optional),
-            [...keys, String(i)],
-            depth + 1,
-            [...path, { kind: 'tuple', key: i }],
-            null,
-          );
-          node.items.push(element.id);
-          node.tupleElements.push({
-            nodeId: element.id,
-            label: label && ts.isNamedTupleMember(label) ? label.name.text : null,
-            optional: Boolean(flags & ts.ElementFlags.Optional),
-            rest: Boolean(flags & (ts.ElementFlags.Rest | ts.ElementFlags.Variadic)),
-          });
-        }
-        node.reason = 'tuple-native-shape-unavailable';
-      } else if (t.isArray() || t.isReadonlyArray()) {
-        node.kind = 'array';
-        node.readonly = t.isReadonlyArray();
-        const item = t.getArrayElementType();
-        if (item && graph.nodes.length < graph.limits.maxNodes) {
-          const result = walk(item, at, true, [...keys, '[]'], depth + 1, [...path, { kind: 'item', key: 0 }], null);
-          node.items = [result.id];
-          if (result.shape) shape = { $type: 'array', $required: req, $items: result.shape };
-        } else {
-          graph.omittedCount++;
-          incomplete('array-item-unavailable');
-        }
-      } else if (t.compilerType.flags & ts.TypeFlags.BigIntLike) {
-        node.kind = 'bigint';
-        node.reason = 'non-json-source-kind';
-      } else if (t.compilerType.flags & ts.TypeFlags.ESSymbolLike) {
-        node.kind = 'symbol';
-        node.reason = 'non-json-source-kind';
-      } else if (t.getCallSignatures().length) {
-        node.kind = 'function';
-        node.reason = 'non-json-source-kind';
-        node.callSignatures = t.getCallSignatures().map((signature) => signature.getDeclaration().getText());
-      } else if (t.isObject() || t.isIntersection()) node.kind = 'record';
-      else {
-        incomplete('native-kind-unavailable');
+                });
+              })
+              .map((field) => field.key)
+          : [];
+        node.discriminator = { provenance: 'compiler', complete, keys: node.discriminatorKeys };
       }
-      if (node.kind === 'record' || node.kind === 'intersection' || node.kind === 'function') {
-        node.fields = [];
-        const fields: Record<string, NativeSourceShape> = Object.create(null);
-        let all = true;
-        const rawProperties = t.compilerType.getProperties();
-        graph.used!.propertyEnumerations++;
-        graph.used!.enumeratedProperties += rawProperties.length;
-        const remaining = Math.min(graph.limits.maxFields - fieldCount, graph.limits.maxNodes - graph.nodes.length);
-        if (rawProperties.length > remaining) {
-          graph.omittedCount += rawProperties.length;
-          incomplete('field-enumeration-budget');
-          return { id, shape: null };
+    } else if (t.isTuple()) {
+      node.kind = 'tuple';
+      node.items = [];
+      node.tupleElements = [];
+      const target = (t.compilerType as unknown as ts.TupleTypeReference).target;
+      node.readonly = target.readonly;
+      const elements = t.getTupleElements();
+      for (const [index, item] of elements.entries()) {
+        const flags = target.elementFlags[index] ?? ts.ElementFlags.Required;
+        const child = yield childRequest(item, 'tuple', index, !(flags & ts.ElementFlags.Optional));
+        if (!child) {
+          incomplete(node, exhausted ?? 'tuple-item-unavailable', elements.length - index);
+          break;
         }
-        const properties = t.getProperties();
-        graph.used!.wrappedProperties += properties.length;
-        for (const [index, symbol] of properties.entries()) {
-          if (++fieldCount > graph.limits.maxFields || graph.nodes.length >= graph.limits.maxNodes) {
-            graph.omittedCount += properties.length - index;
-            incomplete('field-budget');
-            all = false;
-            break;
-          }
-          const declaration = symbol.getDeclarations()[0] ?? at;
-          const field = walk(
-            symbol.getTypeAtLocation(at),
-            declaration,
-            !symbol.isOptional(),
-            [...keys, symbol.getName()],
-            depth + 1,
-            [...path, { kind: 'field', key: symbol.getName() }],
-          );
-          node.fields.push({ key: symbol.getName(), nodeId: field.id, required: !symbol.isOptional() });
-          if (field.shape) {
-            const documentation = ts.displayPartsToString(
-              symbol.compilerSymbol.getDocumentationComment(
-                at.getSourceFile().getProject().getTypeChecker().compilerObject,
-              ),
-            );
-            const description =
-              documentation ||
-              symbol
-                .getJsDocTags()
-                .find((tag) => tag.getName() === 'description')
-                ?.getText()
-                .map((text) => text.text)
-                .join('');
-            if (description) field.shape.$description = description;
-            fields[symbol.getName()] = field.shape;
-          } else {
-            all = false;
-            if (!symbol.isOptional()) knownRequiredFieldDropped = true;
-          }
-        }
-        node.indexSignatures = [];
-        for (const [key, index] of [
-          ['string', t.getStringIndexType()],
-          ['number', t.getNumberIndexType()],
-        ] as const)
-          if (index) {
-            if (graph.nodes.length < graph.limits.maxNodes)
-              node.indexSignatures.push({
-                keyType: key,
-                valueNodeId: walk(
-                  index,
-                  at,
-                  false,
-                  [...keys, `[${key}]`],
-                  depth + 1,
-                  [...path, { kind: 'index', key }],
-                  null,
-                ).id,
-              });
-            else {
-              graph.omittedCount++;
-              incomplete('index-budget');
-            }
-            node.reason ??= 'open-index-signature';
-            all = false;
-          }
-        if (all && node.fields.length && node.kind !== 'function')
-          shape = { $type: 'record', $required: req, $fields: fields };
-        else if (!node.fields.length) {
-          node.callSignatures = t.getCallSignatures().map((signature) => signature.getDeclaration().getText());
-          node.reason = node.callSignatures.length ? 'callable-or-empty-record' : 'empty-record';
-        }
+        const label = target.labeledElementDeclarations?.[index];
+        node.items.push(child);
+        node.tupleElements.push({
+          nodeId: child,
+          label: label && ts.isNamedTupleMember(label) ? label.name.text : null,
+          optional: Boolean(flags & ts.ElementFlags.Optional),
+          rest: Boolean(flags & (ts.ElementFlags.Rest | ts.ElementFlags.Variadic)),
+        });
       }
-      if (
-        shape &&
-        node.domain.openness === 'closed' &&
-        node.domain.declaredValues.length &&
-        !(
-          shape.$type === 'boolean' &&
-          node.domain.declaredValues.length === 2 &&
-          node.domain.declaredValues.includes(true) &&
-          node.domain.declaredValues.includes(false)
-        )
-      )
-        shape.$values = node.domain.declaredValues;
-      return { id, shape };
-    } finally {
-      ancestors.delete(t.compilerType);
+      node.reason ??= 'tuple-native-shape-unavailable';
+    } else if (t.isArray() || t.isReadonlyArray()) {
+      node.kind = 'array';
+      node.readonly = t.isReadonlyArray();
+      const item = t.getArrayElementType();
+      const child = item ? yield childRequest(item, 'item', 0, true) : undefined;
+      node.items = child ? [child] : [];
+      if (!child) incomplete(node, exhausted ?? 'array-item-unavailable', 1);
+    } else if (t.compilerType.flags & ts.TypeFlags.BigIntLike) {
+      node.kind = 'bigint';
+      node.reason = 'non-json-source-kind';
+    } else if (t.compilerType.flags & ts.TypeFlags.ESSymbolLike) {
+      node.kind = 'symbol';
+      node.reason = 'non-json-source-kind';
+    } else if (t.getCallSignatures().length || t.getConstructSignatures().length) {
+      node.kind = 'function';
+      node.callSignatures = [
+        ...new Set(
+          [...t.getCallSignatures(), ...t.getConstructSignatures()].map((signature) =>
+            signature.getDeclaration().getText(),
+          ),
+        ),
+      ];
+      incomplete(node, 'callable-source-kind');
+    } else if (t.isObject()) node.kind = 'record';
+    else incomplete(node, 'native-kind-unavailable');
+    if (['record', 'intersection', 'function'].includes(node.kind) && !exhausted) {
+      node.fields = [];
+      const rawProperties = t.compilerType.getProperties();
+      graph.used!.propertyEnumerations++;
+      graph.used!.enumeratedProperties += rawProperties.length;
+      const remaining = graph.limits.maxFields - fieldCount;
+      const properties =
+        rawProperties.length > remaining
+          ? rawProperties.slice(0, remaining).map((symbol) => t.getProperty(symbol.name)!)
+          : t.getProperties();
+      graph.used!.wrappedProperties += properties.length;
+      for (const [index, symbol] of properties.entries()) {
+        if (fieldCount >= graph.limits.maxFields) {
+          incomplete(node, 'source-field-budget', rawProperties.length - index);
+          break;
+        }
+        fieldCount++;
+        const declarations = symbol.getDeclarations();
+        const declaration = declarations[0] ?? at;
+        const child = yield childRequest(
+          symbol.getTypeAtLocation(at),
+          'field',
+          symbol.getName(),
+          !symbol.isOptional(),
+          declaration,
+          declarationType(declaration),
+        );
+        if (!child) {
+          incomplete(node, exhausted ?? 'field-unavailable', rawProperties.length - index);
+          break;
+        }
+        const documentation = ts.displayPartsToString(
+          symbol.compilerSymbol.getDocumentationComment(
+            at.getSourceFile().getProject().getTypeChecker().compilerObject,
+          ),
+        );
+        const description =
+          documentation ||
+          symbol
+            .getJsDocTags()
+            .find((tag) => tag.getName() === 'description')
+            ?.getText()
+            .map((text) => text.text)
+            .join('');
+        const readonly = declarations.some(
+          (member) =>
+            Node.isGetAccessorDeclaration(member) ||
+            ((Node.isPropertySignature(member) || Node.isPropertyDeclaration(member)) &&
+              member.hasModifier(ts.SyntaxKind.ReadonlyKeyword)),
+        );
+        node.fields.push({
+          key: symbol.getName(),
+          path: [...path, { kind: 'field', key: symbol.getName() }],
+          nodeId: child,
+          required: !symbol.isOptional(),
+          readonly,
+          declarations: declarations.map(location),
+          ...(description ? { description } : {}),
+        });
+      }
+      if (!exhausted && rawProperties.length > properties.length)
+        incomplete(node, 'source-field-budget', rawProperties.length - properties.length);
+      node.indexSignatures = [];
+      for (const [key, index] of [
+        ['string', t.getStringIndexType()],
+        ['number', t.getNumberIndexType()],
+      ] as const) {
+        if (!index) continue;
+        const child = yield childRequest(index, 'index', key, false);
+        if (child) node.indexSignatures.push({ keyType: key, valueNodeId: child });
+        else incomplete(node, exhausted ?? 'index-unavailable', 1);
+        node.reason ??= 'open-index-signature';
+        if (exhausted) break;
+      }
+      if (!node.fields.length) node.reason ??= 'empty-record';
     }
+    active.delete(id);
+    return id;
   };
-  const result = walk(type, fallback, required, keyPath, 0);
-  graph.rootId = result.id;
+  const frames = [
+    visit({
+      type,
+      at: fallback,
+      required,
+      keys: keyPath,
+      path: keyPath.map((key) => ({ kind: 'field', key })),
+      syntax: declarationType(fallback),
+    }),
+  ];
+  let returnedId: string | undefined;
+  while (frames.length) {
+    const result = frames[frames.length - 1]!.next(returnedId);
+    returnedId = undefined;
+    if (result.done) {
+      frames.pop();
+      returnedId = result.value;
+      if (!frames.length) graph.rootId = result.value!;
+    } else if (exhausted || edgeCount >= graph.limits.maxEdges!) {
+      exhausted ??= 'source-edge-budget';
+    } else {
+      edgeCount++;
+      frames.push(visit(result.value));
+    }
+  }
+  graph.resources = {
+    nodes: graph.nodes.length,
+    edges: graph.nodes.reduce(
+      (count, node) =>
+        count +
+        (node.fields?.length ?? 0) +
+        (node.items?.length ?? 0) +
+        (node.alternatives?.length ?? 0) +
+        (node.indexSignatures?.length ?? 0),
+      0,
+    ),
+  };
+  const projected = projectNativeSourceShape(graph);
   return {
     graph,
-    shape: result.shape,
-    requiredFieldDropped: knownRequiredFieldDropped
-      ? true
-      : graph.coverage === 'complete-within-declared-bound' && result.shape
-        ? false
-        : null,
-    notes: graph.nodes.flatMap((node) => (node.reason ? [`${node.id}: ${node.reason}`] : [])),
+    ...projected,
+    notes: [...graph.nodes.flatMap((node) => (node.reason ? [`${node.id}: ${node.reason}`] : [])), ...projected.notes],
   };
 }

@@ -10,6 +10,56 @@ import { useImmediateInput } from '../../07-scope-gate/sidebar/hooks/useImmediat
 import { FieldEditor } from './FieldEditor.js';
 import { PALETTE } from '../theme.js';
 
+type RepresentationView = 'models' | 'mappings' | 'relationships' | 'requirements';
+type RepresentationRow = { id: string; label: string };
+
+function representationRows(
+  entry: CDFComponentEntry,
+  plans: RepresentationPlan[],
+  selected: RepresentationPlan | undefined,
+  view: RepresentationView,
+): RepresentationRow[] {
+  if (!selected)
+    return plans.map((plan) => ({
+      id: plan.id,
+      label: `${plan.identity.key}: ${plan.kind}${plan.sdkValid ? '' : ' · held'}${entry.$representationPlans?.[plan.identity.key]?.id === plan.id ? ' · selected' : ''}`,
+    }));
+  switch (view) {
+    case 'models':
+      return selected.models.map((row) => ({ id: row.originalKey, label: row.key }));
+    case 'mappings':
+      return selected.mappings.map((mapping) => {
+        const path = mapping.path.map((segment) => String(segment.key)).join(' / ');
+        const destination =
+          (mapping.componentKey ?? mapping.disposition) +
+          (mapping.field ? '.' + mapping.field : '') +
+          (mapping.targetNodeId ? ' → ' + mapping.targetNodeId : '');
+        const intent = [
+          mapping.required ? 'required' : 'optional',
+          ...(mapping.readonly ? ['readonly'] : []),
+          ...(mapping.nullable === null ? ['null unknown'] : mapping.nullable ? ['nullable'] : []),
+          ...(mapping.undefinable === null ? ['undefined unknown'] : mapping.undefinable ? ['undefined allowed'] : []),
+          ...(mapping.defaultIntent?.action === 'set'
+            ? ['source default ' + JSON.stringify(mapping.defaultIntent.value)]
+            : []),
+        ];
+        return { id: mapping.nodeId, label: `${path} → ${destination} · ${intent.join(' · ')}` };
+      });
+    case 'relationships':
+      return selected.models.flatMap((row) =>
+        Object.entries(row.entry.$slots ?? {}).map(([name, slot]) => ({
+          id: row.originalKey + ':' + name,
+          label: `${row.key}.${name} → ${(slot.$allowedComponents ?? []).join(', ')} · ${slot.$cardinality?.min ?? 0}..${slot.$cardinality?.max ?? 'many'}${slot.$cardinality?.ordered ? ' · ordered' : ''}`,
+        })),
+      );
+    case 'requirements':
+      return selected.requirements.map((requirement, index) => ({
+        id: String(index),
+        label: `${requirement.path}: ${requirement.capability} · pending`,
+      }));
+  }
+}
+
 export function RepresentationEditor({
   entry,
   width,
@@ -23,7 +73,7 @@ export function RepresentationEditor({
   width: number;
   height: number;
   choices?: () => RepresentationPlan[];
-  choose?: (property: string, kind: RepresentationPlan['kind']) => boolean;
+  choose?: (property: string, kind: RepresentationPlan['kind'], candidateId?: string) => boolean;
   save: (value?: string) => boolean | void;
   close: () => void;
 }): React.ReactElement {
@@ -31,6 +81,9 @@ export function RepresentationEditor({
   const [property, setProperty] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
+  const [view, setView] = useState<RepresentationView>('models');
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [nameDraft, setNameDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
   let observedError = error;
   let plans: RepresentationPlan[] = [];
@@ -42,9 +95,28 @@ export function RepresentationEditor({
   const selected = property ? entry.$representationPlans?.[property] : undefined;
   const models = selected?.models ?? [];
   const model = models.find((row) => row.key === editing);
-  useImmediateInput((_input, key) => {
+  const rows = representationRows(entry, plans, selected, view);
+  useImmediateInput((input, key) => {
+    if (renaming && selected) {
+      if (key.escape) setRenaming(null);
+      else if (key.return) {
+        try {
+          const next = cloneJson(entry);
+          next.$representationPlans![property!]!.models.find((row) => row.originalKey === renaming)!.key = nameDraft;
+          if (save(JSON.stringify(next, null, 2)) === true) {
+            setRenaming(null);
+            setError(null);
+          } else setError('Model name was not saved');
+        } catch (issue) {
+          setError(issue instanceof Error ? issue.message : 'Invalid model name');
+        }
+      } else if (key.backspace || key.delete) setNameDraft((value) => value.slice(0, -1));
+      else if (!key.ctrl && [...input].every((character) => character.charCodeAt(0) >= 32))
+        setNameDraft((value) => value + input);
+      return;
+    }
     if (editing) return;
-    const length = selected ? models.length : plans.length;
+    const length = rows.length;
     if (key.upArrow) setCursor((row) => Math.max(0, row - 1));
     else if (key.downArrow) setCursor((row) => Math.min(Math.max(0, length - 1), row + 1));
     else if (key.escape) {
@@ -52,16 +124,26 @@ export function RepresentationEditor({
         setProperty(null);
         setCursor(0);
       } else close();
+    } else if (selected && key.tab) {
+      const views = ['models', 'mappings', 'relationships', 'requirements'] as const;
+      setView(views[(views.indexOf(view) + 1) % views.length]!);
+      setCursor(0);
+    } else if (selected && view === 'models' && input === 'r') {
+      const target = models[cursor];
+      if (target) {
+        setRenaming(target.originalKey);
+        setNameDraft(target.key);
+      }
     } else if (key.return) {
-      if (selected) {
+      if (selected && view === 'models') {
         const target = models[cursor];
         if (target) {
           setEditing(target.key);
           setDraft('');
         }
-      } else {
+      } else if (!selected) {
         const target = plans[cursor];
-        if (target && target.sdkValid && choose?.(target.identity.key, target.kind) === true) {
+        if (target && target.sdkValid && choose?.(target.identity.key, target.kind, target.id) === true) {
           setProperty(target.identity.key);
           setCursor(0);
         }
@@ -107,7 +189,19 @@ export function RepresentationEditor({
   return (
     <Box width={width} height={height} flexDirection="column">
       <Text bold>{selected ? `${property} · ${selected.kind}` : 'Source representations'}</Text>
-      <Text color={PALETTE.muted}>↑/↓ move · Enter {selected ? 'edit model' : 'choose and save'} · Esc back</Text>
+      <Text color={PALETTE.muted}>
+        {renaming
+          ? 'Enter save name · Esc cancel'
+          : selected
+            ? '↑/↓ move · Enter edit · r rename · Tab change view · Esc back'
+            : '↑/↓ move · Enter choose and save · Esc back'}
+      </Text>
+      {renaming && <Text color={PALETTE.warning}>Model name: {nameDraft}▏</Text>}
+      {selected && (
+        <Text>
+          {view} · {selected.mappings.length} mapped source nodes · {models.length} models
+        </Text>
+      )}
       {observedError && <Text color={PALETTE.error}>{observedError}</Text>}
       {selected && (
         <Text color={PALETTE.warning}>
@@ -116,18 +210,13 @@ export function RepresentationEditor({
             : 'Native representation saved'}
         </Text>
       )}
-      {(selected ? models : plans)
-        .slice(Math.max(0, cursor - Math.max(1, height - 5)), cursor + Math.max(1, height - 5))
-        .map((row) => {
-          const index = (selected ? models : plans).indexOf(row as never);
-          const label = 'kind' in row ? `${row.identity.key}: ${row.kind}${row.sdkValid ? '' : ' · held'}` : row.key;
-          return (
-            <Text key={'id' in row ? row.id : row.key} color={index === cursor ? PALETTE.warning : undefined}>
-              {index === cursor ? '› ' : '  '}
-              {label}
-            </Text>
-          );
-        })}
+      {rows.slice(Math.max(0, cursor - Math.max(1, height - 8)), cursor + Math.max(1, height - 8)).map((row) => (
+        <Text key={row.id} color={rows.indexOf(row) === cursor ? PALETTE.warning : undefined}>
+          {rows.indexOf(row) === cursor ? '› ' : '  '}
+          {row.label}
+        </Text>
+      ))}
+      {selected && !rows.length && <Text>No {view} in this representation</Text>}
       {!plans.length && !selected && <Text>No source-bound editable alternatives available</Text>}
     </Box>
   );

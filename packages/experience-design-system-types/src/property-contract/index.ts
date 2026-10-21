@@ -11,3 +11,6 @@ export * from './decision-protocol.js';
 export * from './representation-plan.js';
 export { contentDigest } from './content-digest.js';
 export * from './import-prerequisites.js';
+
+export * from './logical-source-graph.js';
+export * from './analysis-representation-candidates.js';

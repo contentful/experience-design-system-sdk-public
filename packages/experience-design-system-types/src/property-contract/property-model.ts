@@ -21,9 +21,21 @@ import { finiteSourceValueDomain, isSourceBoundRepresentation } from './source-r
 import { validateRepresentationProposal, type RepresentationProposalDraft } from './representation-proposal.js';
 
 export type MapperAvailability = 'enabled' | 'unavailable' | 'unknown';
+export interface SourceGraphDeclaration {
+  fileId: string | null;
+  canonicalPath: string | null;
+  textHash: string | null;
+  startLine: number | null;
+  endLine: number | null;
+  startOffset?: number | null;
+  endOffset?: number | null;
+  binding: 'verified' | 'changed' | 'unverified' | 'unavailable';
+}
 export interface SourceGraphNode {
   id: string;
   path?: Array<{ kind: 'field' | 'item' | 'tuple' | 'union' | 'intersection' | 'index'; key: string | number }>;
+  compilerIdentity?: { typeId: string; declarationId?: string };
+  declarations?: SourceGraphDeclaration[];
   alias?: string;
   readonly?: boolean;
   nullable?: boolean;
@@ -51,7 +63,15 @@ export interface SourceGraphNode {
     provenance: 'compiler' | 'unknown';
     unrepresentedValues?: Array<{ typeText: string; reason: string }>;
   };
-  fields?: Array<{ key: string; nodeId: string; required: boolean }>;
+  fields?: Array<{
+    key: string;
+    nodeId: string;
+    required: boolean;
+    readonly?: boolean;
+    declarations?: SourceGraphDeclaration[];
+    description?: string;
+    path?: NonNullable<SourceGraphNode['path']>;
+  }>;
   items?: string[];
   alternatives?: string[];
   indexSignatures?: Array<{ keyType: string; valueNodeId: string }>;
@@ -63,7 +83,8 @@ export interface PropertySourceGraph {
   rootId: string;
   nodes: SourceGraphNode[];
   coverage: 'complete-within-declared-bound' | 'partial' | 'unavailable';
-  limits: { maxDepth: number; maxNodes: number; maxFields: number };
+  limits: { maxDepth: number; maxNodes: number; maxFields: number; maxEdges?: number };
+  resources?: { nodes: number; edges: number };
   omittedCount: number;
 }
 export type DefaultIntent = { action: 'absent' } | { action: 'clear' } | { action: 'set'; value: JsonValue };
@@ -179,6 +200,24 @@ export const LOCAL_NATIVE_PROPERTY_PROFILE = createPropertyProfile({
   requirements: [],
 });
 
+function validSourceDeclaration(declaration: SourceGraphDeclaration): boolean {
+  return Boolean(
+    declaration &&
+    (declaration.fileId === null || typeof declaration.fileId === 'string') &&
+    (declaration.canonicalPath === null || typeof declaration.canonicalPath === 'string') &&
+    (declaration.textHash === null || typeof declaration.textHash === 'string') &&
+    ['verified', 'changed', 'unverified', 'unavailable'].includes(declaration.binding) &&
+    ['startLine', 'endLine', 'startOffset', 'endOffset'].every((key) => {
+      const value = declaration[key as keyof SourceGraphDeclaration];
+      return (
+        value === null ||
+        (key.endsWith('Offset') && value === undefined) ||
+        (typeof value === 'number' && Number.isSafeInteger(value) && value >= (key.endsWith('Offset') ? 0 : 1))
+      );
+    }),
+  );
+}
+
 export function validateSourceGraph(graph: PropertySourceGraph): PropertyIssue[] {
   const unsafe = jsonValueIssue(graph);
   if (unsafe) return [{ path: `/source/graph${unsafe.path}`, message: unsafe.message }];
@@ -199,7 +238,9 @@ export function validateSourceGraph(graph: PropertySourceGraph): PropertyIssue[]
     graph.limits.maxDepth > 16 ||
     !Number.isInteger(graph.limits.maxFields) ||
     graph.limits.maxFields < 1 ||
-    graph.limits.maxFields > 2048 ||
+    graph.limits.maxFields > 4096 ||
+    (graph.limits.maxEdges !== undefined &&
+      (!Number.isInteger(graph.limits.maxEdges) || graph.limits.maxEdges < 1 || graph.limits.maxEdges > 4096)) ||
     !Number.isInteger(graph.omittedCount) ||
     graph.omittedCount < 0 ||
     !['complete-within-declared-bound', 'partial', 'unavailable'].includes(graph.coverage)
@@ -209,6 +250,7 @@ export function validateSourceGraph(graph: PropertySourceGraph): PropertyIssue[]
   if (graph.nodes.length > graph.limits.maxNodes || ids.size !== graph.nodes.length || !ids.has(graph.rootId))
     add('', 'Invalid graph identity or node bounds');
   let fieldCount = 0;
+  let edgeCount = 0;
   for (const [i, node] of graph.nodes.entries()) {
     const path = `/nodes/${i}`;
     if (
@@ -258,7 +300,7 @@ export function validateSourceGraph(graph: PropertySourceGraph): PropertyIssue[]
     if (
       node.path !== undefined &&
       (!Array.isArray(node.path) ||
-        node.path.length > graph.limits.maxDepth + 2 ||
+        node.path.length > graph.limits.maxNodes + 64 ||
         node.path.some(
           (part) =>
             !part ||
@@ -270,6 +312,15 @@ export function validateSourceGraph(graph: PropertySourceGraph): PropertyIssue[]
       add(`${path}/path`, 'Invalid typed source path');
     for (const key of ['readonly', 'nullable', 'undefinable'] as const)
       if (own(node, key) && typeof node[key] !== 'boolean') add(`${path}/${key}`, 'Invalid source metadata');
+    if (
+      node.compilerIdentity !== undefined &&
+      (!node.compilerIdentity ||
+        typeof node.compilerIdentity.typeId !== 'string' ||
+        !node.compilerIdentity.typeId ||
+        (node.compilerIdentity.declarationId !== undefined &&
+          (typeof node.compilerIdentity.declarationId !== 'string' || !node.compilerIdentity.declarationId)))
+    )
+      add(`${path}/compilerIdentity`, 'Invalid compiler identity');
     if (node.alias !== undefined && (typeof node.alias !== 'string' || !node.alias))
       add(`${path}/alias`, 'Invalid source alias');
     for (const key of ['discriminatorKeys', 'callSignatures'] as const)
@@ -315,8 +366,14 @@ export function validateSourceGraph(graph: PropertySourceGraph): PropertyIssue[]
         !jsonEqual(node.discriminator.keys, node.discriminatorKeys))
     )
       add(path, 'Invalid discriminator evidence');
-    if (node.kind === 'reference' && node.alternatives?.length !== 1) add(path, 'Source reference requires one target');
-    if (node.kind === 'array' && node.items?.length !== 1) add(path, 'Source array requires one item');
+    if (
+      node.kind === 'reference' &&
+      node.coverage === 'complete-within-declared-bound' &&
+      node.alternatives?.length !== 1
+    )
+      add(path, 'Source reference requires one target');
+    if (node.kind === 'array' && node.coverage === 'complete-within-declared-bound' && node.items?.length !== 1)
+      add(path, 'Source array requires one item');
     if (
       node.tupleElements !== undefined &&
       (node.kind !== 'tuple' ||
@@ -352,6 +409,11 @@ export function validateSourceGraph(graph: PropertySourceGraph): PropertyIssue[]
             typeof field.key !== 'string' ||
             typeof field.nodeId !== 'string' ||
             typeof field.required !== 'boolean' ||
+            (field.readonly !== undefined && typeof field.readonly !== 'boolean') ||
+            (field.description !== undefined && typeof field.description !== 'string') ||
+            (field.declarations !== undefined &&
+              (!Array.isArray(field.declarations) ||
+                field.declarations.some((declaration) => !validSourceDeclaration(declaration)))) ||
             keys.has(field.key)
           )
             add(`${path}/fields`, 'Invalid or duplicated own field');
@@ -371,6 +433,7 @@ export function validateSourceGraph(graph: PropertySourceGraph): PropertyIssue[]
           else refs.push(index.valueNodeId);
         }
     }
+    edgeCount += refs.length;
     for (const ref of refs) if (!ids.has(ref)) add(path, 'Invalid source node reference');
   }
   if (issues.length) return issues;
@@ -378,8 +441,24 @@ export function validateSourceGraph(graph: PropertySourceGraph): PropertyIssue[]
     const path = `/nodes/${i}`;
     for (const field of node.fields ?? []) {
       const child = graph.nodes.find((item) => item.id === field.nodeId);
-      if (child && field.required !== child.required) add(`${path}/fields`, 'Source edge requiredness disagrees');
-      if (child?.path && node.path && !jsonEqual(child.path, [...node.path, { kind: 'field', key: field.key }]))
+      if (
+        field.path !== undefined &&
+        !jsonEqual(field.path, [
+          ...(node.path ?? node.keyPath.map((key) => ({ kind: 'field', key }))),
+          { kind: 'field', key: field.key },
+        ])
+      )
+        add(`${path}/fields`, 'Source occurrence path disagrees');
+      if (node.compilerIdentity && (!field.path || !field.declarations))
+        add(`${path}/fields`, 'Compiler field requires exact occurrence evidence');
+      if (child && !child.compilerIdentity && field.required !== child.required)
+        add(`${path}/fields`, 'Source edge requiredness disagrees');
+      if (
+        child?.path &&
+        !child.compilerIdentity &&
+        node.path &&
+        !jsonEqual(child.path, [...node.path, { kind: 'field', key: field.key }])
+      )
         add(`${path}/fields`, 'Source field path disagrees');
     }
     if (node.discriminator?.provenance === 'compiler' && node.discriminator.keys.length) {
@@ -420,6 +499,12 @@ export function validateSourceGraph(graph: PropertySourceGraph): PropertyIssue[]
       );
   }
   if (reachable.size !== graph.nodes.length) add('', 'Unreachable source nodes');
+  if (edgeCount > (graph.limits.maxEdges ?? 4096)) add('', 'Source edge census exceeds bounds');
+  if (
+    graph.resources !== undefined &&
+    (!graph.resources || graph.resources.nodes !== graph.nodes.length || graph.resources.edges !== edgeCount)
+  )
+    add('/resources', 'Source resource counts disagree');
   if (fieldCount > graph.limits.maxFields) add('', 'Source field census exceeds bounds');
   if (
     graph.coverage === 'complete-within-declared-bound' &&
@@ -434,6 +519,7 @@ export function validateSourceValue(
   graph: PropertySourceGraph,
   value: JsonValue,
   path = '/defaultValue',
+  nodeId = graph.rootId,
 ): PropertyIssue[] {
   const invalid = validateSourceGraph(graph);
   if (invalid.length) return invalid;
@@ -517,19 +603,30 @@ export function validateSourceValue(
       return issue('Source kind is not proven JSON data');
     return [];
   };
-  return visit(graph.rootId, value, path, new Map());
+  if (!nodes.has(nodeId)) return [{ path, message: 'Source value owner is not in the complete graph' }];
+  return visit(nodeId, value, path, new Map());
 }
 
 /** Source domains remain independently proven; caller defaults and observations never close them. */
 export function validateSourceDomain(graph: PropertySourceGraph, definition: TargetDefinition): PropertyIssue[] {
+  const invalid = validateSourceGraph(graph);
+  if (invalid.length) return invalid;
   const issues: PropertyIssue[] = [];
   const nodes = new Map(graph.nodes.map((n) => [n.id, n]));
-  const walk = (id: string, target: TargetDefinition, path: string, seen: Set<string>, domainOwner = true): void => {
+  const walk = (
+    id: string,
+    target: TargetDefinition,
+    path: string,
+    seen: Set<string>,
+    domainOwner = true,
+    required?: boolean,
+  ): void => {
     if (seen.has(id)) return;
     const node = nodes.get(id);
     if (!node) return;
     const next = new Set(seen);
     next.add(id);
+    const expectedRequired = required ?? node.required;
     if (domainOwner && target.values?.length) {
       const complete =
         graph.coverage === 'complete-within-declared-bound' &&
@@ -575,7 +672,7 @@ export function validateSourceDomain(graph: PropertySourceGraph, definition: Tar
         (target.type === 'Literal' && (values.length !== 1 || !jsonEqual(values[0], target.value)))
       )
         issues.push({ path, message: `${target.type} requires a proven compatible source domain` });
-      if (target.required !== undefined && node.required !== target.required)
+      if (target.required !== undefined && expectedRequired !== target.required)
         issues.push({ path, message: 'Representation does not preserve source requiredness' });
       if (
         values?.length &&
@@ -592,10 +689,11 @@ export function validateSourceDomain(graph: PropertySourceGraph, definition: Tar
       if (node.kind === 'union') delete memberTarget.defaultValue;
       for (const alternative of node.alternatives ?? []) {
         const member = nodes.get(alternative);
-        if (member && !['undefined', 'never'].includes(member.kind)) walk(alternative, memberTarget, path, next, false);
+        if (member && !['undefined', 'never'].includes(member.kind))
+          walk(alternative, memberTarget, path, next, false, expectedRequired);
       }
     }
-    if (target.required !== undefined && node.required !== target.required)
+    if (target.required !== undefined && expectedRequired !== target.required)
       issues.push({ path, message: 'Representation does not preserve source requiredness' });
     if ((node.kind === 'array' && target.type !== 'Array') || (node.kind === 'record' && target.type !== 'Record'))
       issues.push({ path, message: 'Representation does not preserve source structure' });
@@ -636,7 +734,14 @@ export function validateSourceDomain(graph: PropertySourceGraph, definition: Tar
           });
           continue;
         }
-        walk(field.nodeId, target.fields![field.key]!, childPath(childPath(path, 'fields'), field.key), next);
+        walk(
+          field.nodeId,
+          target.fields![field.key]!,
+          childPath(childPath(path, 'fields'), field.key),
+          next,
+          true,
+          field.required,
+        );
       }
     if (target.type === 'Array' && node.items?.length === 1) walk(node.items[0]!, target.items!, `${path}/items`, next);
   };

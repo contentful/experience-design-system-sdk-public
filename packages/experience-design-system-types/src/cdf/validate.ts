@@ -5,6 +5,7 @@ import type { CDFFile, CDFComponentEntry, CDFTokenEntry, CDFValidationError, CDF
 
 import { CDFComponentSchema } from './types.js';
 import { validateCDFProperty } from './property-validation.js';
+import { validateRepresentationClosure } from './representation-validation.js';
 import { jsonValueIssue } from '../property-contract/json-value.js';
 
 const ajv = new Ajv({ allErrors: true });
@@ -97,5 +98,6 @@ export function validateCDF(input: unknown): CDFValidationResult {
         errors.push({ path: `/${component.key}/$properties/${key}${issue.path}`, message: issue.message });
     }
   }
+  errors.push(...validateRepresentationClosure(components));
   return { valid: !errors.length, errors, components, tokens };
 }

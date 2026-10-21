@@ -539,6 +539,7 @@ export type { SourceEvidenceInventory } from '@contentful/experience-design-syst
 
 export {
   analyzePropertyRepresentations,
+  analyzePropertyRepresentationCandidates,
   loadRepresentationPlans,
   selectRepresentationPlan,
 } from './persistence/src/session/repositories/representation-plans.js';

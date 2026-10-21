@@ -61,7 +61,7 @@ export type UseReviewEditorResult = {
   handleTokenEditSave: (suggestion: TokenPropSuggestion) => boolean;
   closeRepresentations?: () => void;
   representationChoices?: () => RepresentationPlan[];
-  chooseRepresentation?: (propertyName: string, kind: RepresentationPlan['kind']) => boolean;
+  chooseRepresentation?: (propertyName: string, kind: RepresentationPlan['kind'], candidateId?: string) => boolean;
 };
 
 function parseReviewEntry(draftValue: string): CDFComponentEntry {
@@ -230,7 +230,11 @@ export function useReviewEditor({
       db.close();
     }
   };
-  const chooseRepresentation = (propertyName: string, kind: RepresentationPlan['kind']): boolean => {
+  const chooseRepresentation = (
+    propertyName: string,
+    kind: RepresentationPlan['kind'],
+    candidateId?: string,
+  ): boolean => {
     if (!handleEditSave()) return false;
     const current = components[selectedIdx];
     if (!current) return false;
@@ -243,7 +247,15 @@ export function useReviewEditor({
         current.componentId ? row.component_id === current.componentId : row.name === current.key,
       );
       if (!source) throw new Error('Representation source unavailable');
-      const entry = selectRepresentationPlan(db, extractSessionId, source.component_id, propertyName, kind);
+      const entry = selectRepresentationPlan(
+        db,
+        extractSessionId,
+        source.component_id,
+        propertyName,
+        kind,
+        undefined,
+        candidateId,
+      );
       const next = components.map((row, index) => (index === selectedIdx ? { ...row, entry } : row));
       committed = true;
       setComponents(next);

@@ -4,6 +4,7 @@ import {
   saveEntryRepresentationPlans,
   overlayRepresentationPlans,
   selectedRepresentationValidity,
+  assertPreservedRepresentationSelections,
   expandRepresentationClosure,
   loadRepresentationPlans,
 } from './representation-plans.js';
@@ -1065,7 +1066,10 @@ export function evaluateComponentReadiness(
     const locations = fact
       ? [
           ...fact.declarations,
-          ...(fact.sourceGraph?.nodes.flatMap((node) => node.declarations) ?? []),
+          ...(fact.sourceGraph?.nodes.flatMap((node) => [
+            ...node.declarations,
+            ...(node.fields?.flatMap((field) => field.declarations ?? []) ?? []),
+          ]) ?? []),
           ...(fact.sourceDefault?.location ? [fact.sourceDefault.location] : []),
           ...(fact.sourceDefault?.dependencies ?? []),
         ]
@@ -1463,6 +1467,7 @@ export function applyToolCalls(
       componentId,
       JSON.stringify({ schemaVersion: 1, calls, inventory, source: sourceSnapshot, accountingComplete: true }),
     );
+    assertPreservedRepresentationSelections(db, sessionId, componentId);
     const currentReadiness = evaluateComponentReadiness(db, sessionId, componentId);
     if (!currentReadiness.source.adequate) {
       projectionBlocked = true;
@@ -1631,6 +1636,8 @@ export function storeRawComponents(
         .all(sessionId) as StatusSnapshot[];
     }
 
+    if (!options?.preserveCDF)
+      db.prepare('DELETE FROM selected_representation_plans WHERE session_id = ?').run(sessionId);
     db.prepare('DELETE FROM raw_components WHERE session_id = ?').run(sessionId);
 
     for (const comp of components) {
@@ -1862,6 +1869,7 @@ export function storeRawComponents(
     if (options?.status) {
       db.prepare('UPDATE raw_components SET status = ? WHERE session_id = ?').run(options.status, sessionId);
     }
+    if (options?.preserveCDF) assertPreservedRepresentationSelections(db, sessionId);
     if (options?.extractionDiagnostics !== undefined) {
       db.prepare(
         `INSERT INTO extraction_source_diagnostics (session_id, payload_json) VALUES (?, ?)
@@ -2973,6 +2981,12 @@ export function storeCDFComponents(
       }
     }
 
+    for (const component of components) {
+      const owner = sources.find((source) =>
+        component.componentId ? source.component_id === component.componentId : source.name === component.key,
+      )!;
+      assertPreservedRepresentationSelections(db, sessionId, owner.component_id);
+    }
     db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
     db.exec('COMMIT');
   } catch (e) {

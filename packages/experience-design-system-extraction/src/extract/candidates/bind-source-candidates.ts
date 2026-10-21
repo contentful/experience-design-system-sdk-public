@@ -3,7 +3,13 @@ import { mapSourceClosureLocations } from '../../source-closure/source-evidence.
 import type { RawComponentDefinition } from '../types/component.js';
 import { mapSourceObservationLocations } from '../component-facts/map-source-observation-locations.js';
 import type { ComponentFacts } from '../types/component-facts.js';
-import type { ExtractionDiagnostics, SourceCandidate, SourceCandidateSource, SourceFactLocation } from './types.js';
+import type {
+  ExtractionDiagnostics,
+  SourceCandidate,
+  SourceCandidateSource,
+  SourceFactLocation,
+  SourceTypeGraph,
+} from './types.js';
 import { existsSync, realpathSync } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 
@@ -42,6 +48,26 @@ function canonicalPath(path: string): string {
 }
 export { canonicalPath as canonicalSourceFactPath };
 
+function bindGraph(graph: SourceTypeGraph, capturedByPath: ReadonlyMap<string, string | null>): SourceTypeGraph {
+  return {
+    ...graph,
+    nodes: graph.nodes.map((node) => ({
+      ...node,
+      declarations: node.declarations.map((declaration) => bindLocation(declaration, capturedByPath)!),
+      ...(node.fields
+        ? {
+            fields: node.fields.map((field) => ({
+              ...field,
+              ...(field.declarations
+                ? { declarations: field.declarations.map((declaration) => bindLocation(declaration, capturedByPath)!) }
+                : {}),
+            })),
+          }
+        : {}),
+    })),
+  };
+}
+
 function bindCandidate(
   candidate: SourceCandidate,
   capturedByPath: ReadonlyMap<string, string | null>,
@@ -53,13 +79,7 @@ function bindCandidate(
           ...candidate.facts,
           ...(candidate.facts.sourceGraph
             ? {
-                sourceGraph: {
-                  ...candidate.facts.sourceGraph,
-                  nodes: candidate.facts.sourceGraph.nodes.map((node) => ({
-                    ...node,
-                    declarations: node.declarations.map((location) => bindLocation(location, capturedByPath)!),
-                  })),
-                },
+                sourceGraph: bindGraph(candidate.facts.sourceGraph, capturedByPath),
               }
             : {}),
           declarations: candidate.facts.declarations.map((location) => bindLocation(location, capturedByPath)!),
@@ -103,13 +123,7 @@ function bindCandidate(
               ...observation.fact,
               ...(observation.fact.sourceGraph
                 ? {
-                    sourceGraph: {
-                      ...observation.fact.sourceGraph,
-                      nodes: observation.fact.sourceGraph.nodes.map((node) => ({
-                        ...node,
-                        declarations: node.declarations.map((location) => bindLocation(location, capturedByPath)!),
-                      })),
-                    },
+                    sourceGraph: bindGraph(observation.fact.sourceGraph, capturedByPath),
                   }
                 : {}),
               declarations: observation.fact.declarations.map((location) => bindLocation(location, capturedByPath)!),

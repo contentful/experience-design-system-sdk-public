@@ -189,6 +189,7 @@ export interface NativeSourceShape {
 export interface SourceTypeNode {
   id: string;
   path?: Array<{ kind: 'field' | 'item' | 'tuple' | 'union' | 'intersection' | 'index'; key: string | number }>;
+  compilerIdentity?: { typeId: string; declarationId?: string };
   alias?: string;
   readonly?: boolean;
   nullable?: boolean;
@@ -217,7 +218,15 @@ export interface SourceTypeNode {
     provenance: 'compiler' | 'unknown';
     unrepresentedValues?: Array<{ typeText: string; reason: string }>;
   };
-  fields?: Array<{ key: string; nodeId: string; required: boolean }>;
+  fields?: Array<{
+    key: string;
+    nodeId: string;
+    required: boolean;
+    readonly?: boolean;
+    declarations?: SourceFactLocation[];
+    description?: string;
+    path?: NonNullable<SourceTypeNode['path']>;
+  }>;
   items?: string[];
   alternatives?: string[];
   indexSignatures?: Array<{ keyType: string; valueNodeId: string }>;
@@ -232,6 +241,7 @@ export interface SourceTypeGraph {
   rootId: string;
   nodes: SourceTypeNode[];
   coverage: CompilerCoverage;
-  limits: { maxDepth: number; maxNodes: number; maxFields: number };
+  limits: { maxDepth: number; maxNodes: number; maxFields: number; maxEdges?: number };
+  resources?: { nodes: number; edges: number };
   omittedCount: number;
 }
