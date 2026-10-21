@@ -32,7 +32,6 @@ import { useGeneration } from './src/tui/import/steps/08-generation/use-generati
 import type { GenerationInput } from './src/tui/import/steps/08-generation/types.js';
 import type { ExtractionHandoff } from '@contentful/experience-design-system-types/handoff';
 import type { ExtractionInput } from './src/tui/import/steps/06-extraction/types.js';
-import type { TokenStrategy } from './src/tui/import/steps/05-token-reuse/logic.js';
 import { resolveUserPath } from './src/tui/import/resolve-user-path.js';
 import type { CredentialsResult } from './src/tui/import/steps/04-credentials/screen.js';
 import type { ImportOptions } from './src/commands/import-options.js';
@@ -70,7 +69,6 @@ interface ImportLaunch extends Partial<ImportOptions> {
 interface ExtractionRun {
   launch: ImportLaunch;
   credentialsSkipped: boolean;
-  tokenStrategy: TokenStrategy;
   input: ExtractionInput;
   /** A custom prompt for `generate components`, saved in the config. Read now, used when generation starts. */
   generatePromptPath?: string;
@@ -89,7 +87,6 @@ interface TokensOnlyRun {
 interface ScopeRun {
   launch: ImportLaunch;
   credentialsSkipped: boolean;
-  tokenStrategy: TokenStrategy;
   input: ExtractionInput;
   generatePromptPath?: string;
   extraction: ExtractionHandoff;
@@ -169,13 +166,12 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
     };
     // Every run generates new files; reusing an earlier tokens.json is not offered.
     if (target === 'tokens') await startTokensOnly(launch, result);
-    else await startExtraction(launch, 'generate', result);
+    else await startExtraction(launch, result);
   };
 
   // What both kinds of run start from: the agent, this run's folder and the input every stage reads.
   const prepareRun = async (
     launch: ImportLaunch,
-    tokenStrategy: TokenStrategy,
     credentials: CredentialsResult,
   ): Promise<{ input: ExtractionInput; outDir: string; launch: ImportLaunch; generatePromptPath?: string }> => {
     const settings = await readSettings();
@@ -196,7 +192,6 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
         outDir,
         filePaths: launch.filePaths ?? [],
         rawTokensPath: launch.tokens ?? '',
-        tokenStrategy,
         credentials: credentials.skipped ? null : credentials.credentials,
         agent,
         ...(agentModel ? { agentModel } : {}),
@@ -206,23 +201,18 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
     };
   };
 
-  const startExtraction = async (
-    launch: ImportLaunch,
-    tokenStrategy: TokenStrategy,
-    credentials: CredentialsResult,
-  ): Promise<void> => {
-    const run = await prepareRun(launch, tokenStrategy, credentials);
+  const startExtraction = async (launch: ImportLaunch, credentials: CredentialsResult): Promise<void> => {
+    const run = await prepareRun(launch, credentials);
     setExtractionRun({
       ...(run.generatePromptPath ? { generatePromptPath: run.generatePromptPath } : {}),
       launch: run.launch,
       credentialsSkipped: credentials.skipped,
-      tokenStrategy,
       input: run.input,
     });
   };
 
   const startTokensOnly = async (launch: ImportLaunch, credentials: CredentialsResult): Promise<void> => {
-    const { input, outDir } = await prepareRun(launch, 'generate', credentials);
+    const { input, outDir } = await prepareRun(launch, credentials);
     setTokensOnlyRun({
       credentialsSkipped: credentials.skipped,
       input,
@@ -285,7 +275,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
   // Finished generation starts the review and everything after it, exactly once, with everything the stages did.
   useEffect(() => {
     if (!scopeRun || generation?.status !== 'done' || !generation.result.ok) return;
-    const { credentialsSkipped, tokenStrategy, extraction: produced, input, generatePromptPath } = scopeRun;
+    const { credentialsSkipped, extraction: produced, input, generatePromptPath } = scopeRun;
     inkClear();
     setScopeRun(undefined);
     setGenerationInput(undefined);
@@ -295,7 +285,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
         saved: importDefaults?.credentials,
         handoff: {
           credentialsSkipped,
-          tokens: { strategy: tokenStrategy },
+          tokens: { strategy: 'generate' },
           extraction: produced,
           generation: generation.result.generation,
         },
