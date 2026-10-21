@@ -1,6 +1,8 @@
 import React from 'react';
 import { Box, Text } from 'ink';
+import figures from 'figures';
 import { PALETTE } from '@tui/theme.js';
+import { useTerminalWidth } from '@tui/use-terminal-width.js';
 import { readPackageVersion } from '@tui/home/version.js';
 
 const IMPORT_STEPS = [
@@ -20,7 +22,13 @@ export interface StepHeaderProps {
 
 const version = readPackageVersion();
 
+const VERSION_MIN_COLUMNS = 90;
+
+const WIDE_SPACING_MIN_COLUMNS = 100;
+
 export function StepHeader({ step }: StepHeaderProps): React.ReactElement {
+  const columns = useTerminalWidth();
+  const padding = columns >= WIDE_SPACING_MIN_COLUMNS ? '  ' : ' ';
   const current = step === 'done' ? IMPORT_STEPS.length : IMPORT_STEPS.findIndex((candidate) => candidate.id === step);
 
   return (
@@ -34,30 +42,31 @@ export function StepHeader({ step }: StepHeaderProps): React.ReactElement {
       borderLeft={false}
       borderRight={false}
     >
-      <Box columnGap={3}>
-        {IMPORT_STEPS.map((candidate, index) => {
-          if (index < current) {
-            return (
-              <Text key={candidate.id} color={PALETTE.success}>
-                ✓ {candidate.label}
+      <Box>
+        {IMPORT_STEPS.map((candidate, index) => (
+          <React.Fragment key={candidate.id}>
+            {index > 0 && <Text color={PALETTE.muted}>{`${padding}${figures.arrowRight}${padding}`}</Text>}
+            {index < current ? (
+              <Text color={PALETTE.success}>
+                {figures.tick} {candidate.label}
               </Text>
-            );
-          }
-          if (index === current) {
-            return (
-              <Text key={candidate.id} bold color={PALETTE.accent}>
-                ● {candidate.label}
+            ) : index === current ? (
+              <Text bold color={PALETTE.accent}>
+                {figures.bullet} {candidate.label}
               </Text>
-            );
-          }
-          return (
-            <Text key={candidate.id} color={PALETTE.muted}>
-              ○ {candidate.label}
-            </Text>
-          );
-        })}
+            ) : (
+              <Text color={PALETTE.muted}>
+                {figures.circle} {candidate.label}
+              </Text>
+            )}
+          </React.Fragment>
+        ))}
       </Box>
-      <Text color={PALETTE.muted}>v{version}</Text>
+      {columns >= VERSION_MIN_COLUMNS && (
+        <Box marginLeft={2}>
+          <Text color={PALETTE.muted}>v{version}</Text>
+        </Box>
+      )}
     </Box>
   );
 }
