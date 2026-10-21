@@ -29,7 +29,15 @@ export interface SourceGraphNode {
   tupleElements?: Array<{ nodeId: string; label: string | null; optional: boolean; rest: boolean }>;
   discriminatorKeys?: string[];
   discriminator?: { provenance: 'compiler' | 'unknown'; complete: boolean; keys: string[] };
-  nullabilityProvenance?: 'compiler' | 'unknown';
+  nullabilityProvenance?: 'compiler' | 'syntax' | 'compiler-erased' | 'unknown';
+  nullability?: {
+    compilerMode: 'enabled' | 'disabled';
+    null: { state: 'present' | 'absent' | 'unknown'; source: 'compiler' | 'syntax' | 'compiler-erased' | 'unknown' };
+    undefined: {
+      state: 'present' | 'absent' | 'unknown';
+      source: 'compiler' | 'syntax' | 'compiler-erased' | 'unknown';
+    };
+  };
   callSignatures?: string[];
   keyPath: string[];
   kind: string;
@@ -232,8 +240,32 @@ export function validateSourceGraph(graph: PropertySourceGraph): PropertyIssue[]
           new Set(node[key]).size !== node[key]!.length)
       )
         add(`${path}/${key}`, 'Invalid source metadata list');
-    if (node.nullabilityProvenance !== undefined && !['compiler', 'unknown'].includes(node.nullabilityProvenance))
+    if (
+      node.nullabilityProvenance !== undefined &&
+      !['compiler', 'syntax', 'compiler-erased', 'unknown'].includes(node.nullabilityProvenance)
+    )
       add(path, 'Invalid nullability provenance');
+    if (node.nullability !== undefined) {
+      const metadata = node.nullability;
+      if (!metadata || !['enabled', 'disabled'].includes(metadata.compilerMode))
+        add(`${path}/nullability`, 'Invalid null checking mode');
+      for (const [kind, key] of [
+        ['null', 'nullable'],
+        ['undefined', 'undefinable'],
+      ] as const) {
+        const fact = metadata?.[kind];
+        if (
+          !fact ||
+          !['present', 'absent', 'unknown'].includes(fact.state) ||
+          !['compiler', 'syntax', 'compiler-erased', 'unknown'].includes(fact.source) ||
+          (fact.state === 'present' && !['compiler', 'syntax'].includes(fact.source)) ||
+          (fact.state === 'absent' && (fact.source !== 'compiler' || metadata.compilerMode !== 'enabled')) ||
+          (fact.state === 'unknown' && !['compiler-erased', 'unknown'].includes(fact.source)) ||
+          (fact.state === 'unknown' ? own(node, key) : node[key] !== (fact.state === 'present'))
+        )
+          add(`${path}/nullability/${kind}`, 'Invalid nullability fact');
+      }
+    }
     if (
       node.discriminator !== undefined &&
       (!node.discriminator ||

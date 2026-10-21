@@ -12,6 +12,7 @@ export function buildInputSections(options: PromptOptions): string[] {
     skill,
     rawComponentsInline,
     compilerEvidenceInline,
+    explorationJudgmentsInline,
     propBucketsInline,
     rawTokensInline,
     rawTokensFilename,
@@ -54,6 +55,11 @@ export function buildInputSections(options: PromptOptions): string[] {
   if (propBucketsInline) {
     sections.push(
       `Deterministic prop buckets (advisory evidence only; verify against source and do not treat as inclusion or category decisions):\n\`\`\`json\n${propBucketsInline}\n\`\`\``,
+    );
+  }
+  if (explorationJudgmentsInline) {
+    sections.push(
+      `Reconciled exploration judgments for this component (JSON; advisory, not an accepted CDF):\nUse consensus and independently checked resolutions as starting judgments when current source evidence and the target contract support them. Focus on representation selection, validation and unresolved questions. Reported disagreements, single-reporter claims and interpretive hypotheses are retained for investigation; conflicting or downgraded checks are not established conclusions. Report types describe source inputs, not necessarily CDF types. Explain departures from earlier judgments in reason or rationale. Source declarations, defaults, open domains, the required decision inventory and accepted source-owned slots remain authoritative; agent agreement alone does not prove a restriction.\n\`\`\`json\n${explorationJudgmentsInline}\n\`\`\``,
     );
   }
   if (selectionEvidenceInline) {

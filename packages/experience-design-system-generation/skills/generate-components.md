@@ -30,7 +30,7 @@ All input is embedded inline in the prompt before this file:
 - **Raw component data** — `RawComponentDefinition[]` (one component for this run)
 - **DTCG token data** — full token tree, if provided
 - **Token-name sidecar** — raw CSS custom property name → DTCG dot-notation path, if provided
-- **Component source references** — the real file text for the component's own source, plus up to 5 sibling files (e.g. a co-located `.styles.ts` or `utils.ts`, or a file reached transitively through another sibling — such as a re-exported component's own styles module), if provided. **You have no filesystem access and no tools — `sourcePath` is a citation label only, never something to open.**
+- **Component source references** — the real file text for the component's own source, plus up to 5 sibling files (e.g. a co-located `.styles.ts` or `utils.ts`, or a file reached transitively through another sibling — such as a re-exported component's own styles module), if provided. **`sourcePath` is a citation label only, never something to open. Read-only access is limited to supplied invocation artifacts and the exact supplied representation validator command when present; do not read or execute the live repository/source.**
 - A **"uses not shown"** line may accompany these files. The files are bounded excerpts, and this line names the properties with at least one use outside the excerpt budget. Treat those uses as unknown: do not conclude the property is unread or that the shown alternatives are exhaustive.
 
 ```typescript
@@ -100,7 +100,8 @@ Emit one JSON object per line. The CLI parses lines starting with `{`. Lines not
 - Defaults are typed JSON values; omit them when unknown, use `default_intent: {"action":"clear"}` to clear a decision, and never execute source expressions or narrow a declared domain from observed/default values.
 - Source graphs and defaults remain independent of advisory shape/category/representation; unsupported deeper or cyclic positions retain source evidence and require an explicit plan with unknown mapper/cardinality context.
 - Proposal stdout is staged typed drafts only; caller readiness and activation are separate.
-- Every prop in the input must produce exactly one call: `classify_prop` OR `exclude_prop`.
+- Every property in the host-owned required decision inventory must produce exactly one call: `classify_prop` OR `exclude_prop`, including inputs absent from advisory props.
+- Every `classify_prop` requires `cdf_category`: `content`, `design` or `state`, including when `cdf_type` is omitted for unresolved representation.
 - Every slot must produce exactly one `classify_slot` call.
 - Emit `classify_component` once at the start (required). The `description` field is **required** — always provide a brief description of the component's purpose.
 - `values` is optional for `cdf_type: "string"` — it must be a non-empty string array for a source-supported closed set of variant names. A default, one caller, or a partial lookup map does not establish the complete set. When no closed set is shown, emit `cdf_type: "string"` without `values`; do not guess.
@@ -224,7 +225,7 @@ A declared `string` alternative alongside literal alternatives stays open; a fal
 
 Before emitting any tool calls, verify:
 
-1. Every prop in the input has exactly one `classify_prop` or `exclude_prop` call.
+1. Every prop in the input has exactly one `classify_prop` or `exclude_prop` call, using the host-owned required decision inventory rather than the advisory prop list.
 2. Every slot has exactly one `classify_slot` call.
 3. `classify_component` is emitted exactly once with non-empty `rationale.description`, `rationale.props` and `rationale.slots`.
 4. Every finite enum has the complete source-supported alternatives; Missing evidence does not close a domain.
@@ -240,12 +241,25 @@ Before finishing, review the component output against this checklist and iterate
 ## Complete source decisions
 
 Use the independent source inventory, including retained inputs absent from advisory props, to account for every subject exactly once.
-Emit exactly one component decision even when there are no properties; accepted source-owned slots account for their original inputs without a conflicting property decision.
-For an input whose semantics are retained but whose representation is unresolved, emit `classify_prop` with its exact `prop`, a non-empty `reason`, and no `cdf_type` or representation companions.
+Emit exactly one component decision even when there are no properties; accepted source-owned slots account for their original inputs without a conflicting property decision. Such owned inputs are already omitted from the required property inventory. Matching property and slot names alone do not establish ownership; any property still listed requires its own decision.
+For an input whose semantics are retained but whose representation is unresolved, emit `classify_prop` with its exact `prop`, the required `cdf_category` (`content`, `design` or `state`), a non-empty `reason`, and no `cdf_type` or representation companions.
+Without `cdf_type`, omit `required`, `values`, `token_kind`, `default`, `default_intent`, `items` and `fields`; source requiredness and defaults remain in the independent evidence.
+For example, an unresolved content input may emit `{"tool":"classify_prop","prop":"body","cdf_category":"content","reason":"Display content is retained; its representation is unresolved."}`; choose the category from source semantics rather than copying this example's category.
 This is an accounted held decision requiring review; do not invent String or another native type.
 Use reasoned `exclude_prop` only for an explicit semantic exclusion.
 Defaults remain typed JSON with independent original source evidence; absent intent preserves a known source default, while generation must never set or clear a different known default.
-When a correction is requested, emit decisions only for the reported missing subjects; preserve the original source, previous response, and accepted decisions.
+When a correction is requested, emit decisions only for reported missing/rejected subjects and pending representations; preserve successful decisions, accepted exclusions/slots and the original source.
+Pending semantic decisions retain the same property, category, description and source identity; repair only representation metadata and update the reason with concrete evidence or capability limits, without creating a duplicate or replacing the property with an exclusion.
+
+## Host validation and bounded representation repair
+
+The host validates drafts through the canonical source-bound materializer, CDF validation and projection rules; a complete inventory does not establish an admissible representation.
+Per-property feedback reports missing representations, incompatible structure/domain, contradictions with declared/compiler facts, candidate alternatives and explicit capability requirements.
+Inspect supplied source facts before choosing a representation; alternatives are drafts with unapproved mapper/cardinality requirements, and local native support does not prove deployed mapper support.
+When the prompt supplies a read-only representation validator command, you may execute that exact command with current draft JSON tool-call lines on stdin and read its immutable evidence artifact; these permissions do not authorize reading or executing source paths or modifying files.
+If tools are unavailable, use the host's correction feedback; host validation always remains authoritative.
+The host keeps one operation deadline and at most two attempts, retaining successful decisions and requesting only missing subjects or pending representation repairs.
+If repair cannot resolve a property, retain its semantic decision with no `cdf_type` or representation companions and explain the exact missing evidence or capability in `reason`; never force String, narrow an open source domain, drop a field or invent support to satisfy validation.
 
 ---
 

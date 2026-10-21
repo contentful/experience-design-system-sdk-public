@@ -118,6 +118,12 @@ The output protocol for the selection agent: the agent emits exactly one JSON ob
 
 **Do not use agent SDKs or APIs** — the import wizard invokes agents as subprocesses only. This is a firm constraint.
 
+Generation receives current, component-scoped exploration consensus, independently checked judgments, disagreements, hypotheses and modeling notes as advisory evidence. Reuse compatible judgments and explain departures; these records never overwrite source facts, narrow an open domain, change accepted source-owned slots or bypass property validation. The handoff checks the completed detail run, parent component run, source envelope and human scope before building the prompt; current-run checks still execute before decisions are applied.
+
+Both generation entrypoints enable canonical representation validation through `generateCompleteDecisions`. The agent receives structured per-property feedback and may run only the exact supplied read-only draft validator against immutable invocation evidence; live source reads and execution remain forbidden. Two attempts share one deadline, successful decisions remain fixed, and only missing decisions or pending representation metadata may be repaired. Unresolved properties retain semantic decisions and concrete reasons without invalid representation companions; `complete` accounts for the inventory, while `representationsComplete` reports local admission. Held-result review routing remains separate and may still block generation.
+
+Compiler configuration lookup searches bounded ancestors above the selected source root without widening discovery or component scope. Exact config/extends/reference bytes requested by the compiler are carried into capture, including package JSON configuration snapshots; standalone capture without those snapshots retains its inherited package-extends limitation. Nullability records present/absent/unknown separately for null and undefined: enabled strict checking can prove absence, direct syntax or alias evidence can prove presence, and compiler-erased or unresolved absence stays unknown.
+
 ## The Selection Agent
 
 `packages/experience-design-system-cli/src/tui/import/steps/06-extraction/selection.ts` runs during extraction after the backend pipeline creates a session. It makes one agent call for undecided components to decide whether each belongs in Contentful ExO as a Component Type. The decisions feed the scope gate (`steps/07-scope-gate`), where the operator confirms or changes them.

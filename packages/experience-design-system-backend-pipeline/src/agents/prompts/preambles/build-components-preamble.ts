@@ -8,7 +8,7 @@ Context: You are classifying a source component for **Contentful Experience Orch
 
 Your task: classify every prop and slot in the component below. Apply all judgment calls yourself — do not pause to ask for confirmation. Include a "description" field on each tool call to document your reasoning so the developer can review it afterward.
 
-All input data is provided inline below — do not read any additional files.${inputBlock}
+All source evidence is supplied inline or through invocation-owned artifacts. Source paths are citation labels, not filesystem permissions. You may read a supplied prompt/evidence artifact and execute only the exact supplied read-only representation validator command, passing draft JSON tool-call lines on stdin. Do not modify files or read/execute the live repository/source. If the selected agent has no shell tool, inspect host feedback and emit corrected decisions; host validation remains authoritative.${inputBlock}
 
 ## Output protocol
 
@@ -33,9 +33,11 @@ Rules:
 - Source graphs and defaults remain independent of advisory shape/category/representation; unsupported deeper or cyclic positions retain source evidence and require an explicit plan with unknown mapper/cardinality context.
 - Proposal stdout is staged typed drafts only; caller readiness and activation are separate.
 - Account for every independent inventory input exactly once, including inputs absent from advisory props: classify_prop, reasoned exclude_prop, or its accepted source-owned slot.
-- Unresolved representation uses a reasoned classify_prop without cdf_type or representation companions; retain semantics and held readiness without inventing String.
+- The host-owned required decision inventory defines the exact property and slot subjects, including properties absent from advisory props. A matching slot name does not account for a property without an explicit sourceInput association.
+- Unresolved representation uses a reasoned classify_prop with the required cdf_category (content, design or state), without cdf_type or representation companions; retain semantics and held readiness without inventing String.
+- Without cdf_type, omit required, values, token_kind, default, default_intent, items and fields; source requiredness and defaults remain in the independent evidence.
 - Emit exactly one classify_component, including components with no properties.
-- Corrections supply only reported missing decisions and retain accepted decisions from this invocation.
+- Corrections supply only reported missing/rejected decisions and pending representation repairs; preserve successful decisions, retained semantics and source identity from this invocation.
 - Absent default intent preserves the original source default; generated set/clear may not change a known source default.
 - Every slot in the input must have exactly one classify_slot call.
 - Valid cdf_type values: string, number, boolean, array, record, richtext, media, link, token
@@ -44,6 +46,8 @@ Rules:
 - For token type, always include \`token_kind\` (DTCG \$type, e.g. "color"). **Never emit \`values\` for \`cdf_type: "token"\` props** — an enum prop's list holds variant names; a token prop's list holds design token paths, produced separately and never by you. Emitting \`values\` on a token prop makes the definition invalid.
 - Never emit both "values" and "token_kind" on one prop.
 - Preserve source-declared alternatives, requiredness, defaults and open domains. A name, shape, framework, caller or lookup does not prove a complete domain.
+- When reconciled exploration judgments are supplied, carry forward compatible judgments and focus on CDF representation and validation; explain any departure using current evidence in reason or rationale.
+- Consensus is advisory; distinguish checked resolutions from conflicting checks, single-reporter claims and interpretive hypotheses, and retain unresolved representation requirements explicitly.
 - Use string with declared values only for complete source-supported finite sets; use token only when the source consumes a resolved token value. Keep unrepresented alternatives explicit for review.
 - For \`classify_slot.allowed_components\`, use only exact names from the hard allowlist provided below. Never invent a child from an import, JSX element, type name, icon name, or implementation helper; if a child is not listed, omit it.
 - On classify_component, "rationale" fields are operator-facing (read-only) but may surface in customer-facing exports. The "rationale.description" field is subject to the description content rules in the skill prompt (no internal initiative names). "rationale.props" and "rationale.slots" describe your reasoning about scope; "classify_slot.rationale" explains why each slot was kept.

@@ -106,9 +106,7 @@ async function generateOne(
     inventory: componentDecisionInventory(component, options.acceptedSlots),
     timeoutMs: AGENT_TIMEOUT_MS,
     signal: options.signal,
-    validate: (call) => {
-      if (call.tool === 'classify_prop') materializeProperty(component, call);
-    },
+    representationValidation: { component },
     invoke: ({ prompt: attemptPrompt, timeoutMs, signal }) =>
       invoker.invoke({ agent, model, prompt: attemptPrompt, timeoutMs, signal }),
   });

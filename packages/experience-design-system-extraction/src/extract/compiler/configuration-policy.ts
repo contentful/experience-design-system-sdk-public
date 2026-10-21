@@ -13,6 +13,7 @@ export interface CompilerConfigurationReader {
   consumeReferences?: (count: number) => boolean;
   explicitInputsOnly?: boolean;
   admittedRelativeExtendsOnly?: boolean;
+  shouldContinue?: () => boolean;
 }
 
 export interface ParsedConfig {
@@ -28,6 +29,18 @@ function isWithin(root: string, filePath: string): boolean {
   return (
     relativePath === '' || (!relativePath.startsWith(`..${sep}`) && relativePath !== '..' && !isAbsolute(relativePath))
   );
+}
+
+/** Configuration dependencies do not enlarge the selected source scope. */
+export function isAdmittedCompilerConfig(
+  projectRoot: string,
+  requestedPath: string,
+  canonicalPath: string,
+  allowPackageMetadata = false,
+): boolean {
+  const dependency = (path: string) => path.split(sep).some((part) => part === 'node_modules' || part === '.pnpm');
+  if (dependency(requestedPath) || dependency(canonicalPath)) return allowPackageMetadata;
+  return isWithin(projectRoot, canonicalPath) || resolve(requestedPath) === canonicalPath;
 }
 
 function formatDiagnostic(diagnostic: ts.Diagnostic): string {
@@ -46,19 +59,22 @@ function findNearestConfig(
   projectRoot: string,
   maxReads: number,
   fileExists: (path: string) => boolean,
-): { path: string | null; ambiguous: boolean } {
+  shouldContinue?: () => boolean,
+): { path: string | null; ambiguous: boolean; exhausted?: boolean } {
   let current = dirname(resolve(filePath));
+  if (!isWithin(projectRoot, current)) return { path: null, ambiguous: false };
   let reads = 0;
-  while (isWithin(projectRoot, current) && reads < maxReads) {
+  while (reads < maxReads) {
+    if (shouldContinue?.() === false) return { path: null, ambiguous: false, exhausted: true };
     const found = configNames(current, fileExists);
     if (found.length > 0)
       return { path: found.find((path) => path.endsWith('tsconfig.json')) ?? found[0]!, ambiguous: found.length > 1 };
     const parent = dirname(current);
-    if (parent === current || !isWithin(projectRoot, parent)) break;
+    if (parent === current) return { path: null, ambiguous: false };
     current = parent;
     reads += 1;
   }
-  return { path: null, ambiguous: false };
+  return { path: null, ambiguous: false, exhausted: true };
 }
 
 function referencePath(reference: ts.ProjectReference): string {
@@ -71,8 +87,9 @@ function configReferenceContains(reference: ts.ProjectReference, filePath: strin
 }
 
 function parseConfig(path: string, reader: CompilerConfigurationReader): ParsedConfig {
+  const requestedPath = path;
   path = reader.canonicalizeConfigPath?.(path) ?? path;
-  const text = reader.readFile(path);
+  const text = reader.readFile(requestedPath);
   if (text === undefined) {
     return {
       path,
@@ -192,9 +209,14 @@ export function selectCompilerConfiguration(
   referenceOutcome: CompilerReferenceDiagnostic['outcome'];
   diagnostics: string[];
 } {
-  const nearest = findNearestConfig(filePath, projectRoot, maxNearestDirectories, fileExists);
+  const nearest = findNearestConfig(filePath, projectRoot, maxNearestDirectories, fileExists, reader.shouldContinue);
   if (!nearest.path)
-    return { config: null, status: 'fallback', referenceOutcome: 'fallback', diagnostics: ['config-not-found'] };
+    return {
+      config: null,
+      status: nearest.exhausted ? 'invalid' : 'fallback',
+      referenceOutcome: nearest.exhausted ? 'budget-exhausted' : 'fallback',
+      diagnostics: [nearest.exhausted ? 'config-ancestor-search-budget-exhausted' : 'config-not-found'],
+    };
   const base = parseConfig(nearest.path, reader);
   const selected = selectReferencedConfig(base, filePath, reader);
   const status =

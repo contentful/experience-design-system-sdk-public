@@ -67,6 +67,8 @@ export interface PromptOptions {
   rawComponentsInline?: string;
   /** Scoped plain compiler/source-candidate evidence, separate from authoring props. */
   compilerEvidenceInline?: string;
+  /** Current per-component exploration judgments, retained as advisory evidence. */
+  explorationJudgmentsInline?: string;
   propBucketsInline?: string;
   rawTokensInline?: string;
   /** Original filename for raw tokens — used to set the correct code fence language. */

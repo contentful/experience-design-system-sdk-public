@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { dirname, extname, isAbsolute, relative, resolve, sep } from 'node:path';
 import ts from 'typescript';
-import { selectCompilerConfiguration } from '../extract/compiler/configuration-policy.js';
+import { isAdmittedCompilerConfig, selectCompilerConfiguration } from '../extract/compiler/configuration-policy.js';
 import type {
   CaptureSourceEvidenceRequest,
   CapturedSourceFile,
@@ -197,9 +197,9 @@ export async function captureSourceEvidence(request: CaptureSourceEvidenceReques
     return { path: candidate, excluded: !isWithin(projectRoot, candidate) };
   };
 
-  const readBounded = (path: string): ReadResult => {
+  const readBounded = (path: string, configuration = false): ReadResult => {
     const canonical = canonicalCandidate(path);
-    if (canonical.excluded) {
+    if (canonical.excluded && !configuration) {
       diagnostics.push({ kind: 'excluded', reason: `outside-project-root:${relative(projectRoot, canonical.path)}` });
       incomplete = true;
       return { canonicalPath: canonical.path, reason: 'excluded' };
@@ -283,7 +283,15 @@ export async function captureSourceEvidence(request: CaptureSourceEvidenceReques
 
   const addCapturedFile = (path: string, role: string): CapturedSourceFile | undefined => {
     const canonical = canonicalCandidate(path);
-    if (canonical.excluded) {
+    const configuration =
+      role === 'config' &&
+      isAdmittedCompilerConfig(
+        projectRoot,
+        path,
+        canonical.path,
+        compilerSources.get(canonical.path)?.kind === 'config',
+      );
+    if (canonical.excluded && !configuration) {
       diagnostics.push({ kind: 'excluded', reason: `outside-project-root:${relative(projectRoot, canonical.path)}` });
       incomplete = true;
       return undefined;
@@ -298,7 +306,7 @@ export async function captureSourceEvidence(request: CaptureSourceEvidenceReques
       return undefined;
     }
     used.files += 1;
-    const read = readBounded(canonical.path);
+    const read = readBounded(canonical.path, configuration);
     const fileId = `src-${sha256(relative(projectRoot, canonical.path)).slice(0, 20)}`;
     const entry: CapturedSourceFile = {
       fileId,
@@ -328,7 +336,9 @@ export async function captureSourceEvidence(request: CaptureSourceEvidenceReques
     used.resolverProbes++;
     const canonical = canonicalCandidate(path);
     // Report an existing escaped config when the policy attempts to read it.
-    if (isDependencyPath(projectRoot, canonical.path)) return false;
+    if (isDependencyPath(projectRoot, canonical.path) && compilerSources.get(canonical.path)?.kind !== 'config')
+      return false;
+    if (compilerSources.get(canonical.path)?.kind === 'config') return true;
     try {
       return statSync(canonical.path).isFile();
     } catch {
@@ -346,11 +356,18 @@ export async function captureSourceEvidence(request: CaptureSourceEvidenceReques
     const failures: string[] = [];
     const readConfig = (path: string): string | undefined => {
       const canonical = canonicalCandidate(path);
-      if (canonical.excluded || isDependencyPath(projectRoot, canonical.path)) {
+      if (
+        !isAdmittedCompilerConfig(
+          projectRoot,
+          path,
+          canonical.path,
+          compilerSources.get(canonical.path)?.kind === 'config',
+        )
+      ) {
         failures.push('config-outside-admitted-source');
         return undefined;
       }
-      const config = addCapturedFile(canonical.path, 'config');
+      const config = addCapturedFile(path, 'config');
       if (config) configFiles.set(config.fileId, config.textHash);
       if (!config || config.captured.kind !== 'full') {
         failures.push(
@@ -386,7 +403,8 @@ export async function captureSourceEvidence(request: CaptureSourceEvidenceReques
           return true;
         },
         explicitInputsOnly: true,
-        admittedRelativeExtendsOnly: true,
+        admittedRelativeExtendsOnly: ![...compilerSources.values()].some((source) => source.kind === 'config'),
+        shouldContinue: () => !exhausted && budgetCheck(),
       },
       configExists,
       limits.maxResolverProbes,
@@ -483,7 +501,7 @@ export async function captureSourceEvidence(request: CaptureSourceEvidenceReques
   const rootPaths = stableUnique([
     ...request.filePaths,
     ...inventory.files.map((file) => file.canonicalPath),
-    ...compilerSources.keys(),
+    ...[...compilerSources].filter(([, source]) => source.kind !== 'config').map(([path]) => path),
     ...(request.components ?? []).flatMap((component) => (component.sourcePath ? [component.sourcePath] : [])),
   ]).map((path) => canonicalCandidate(path));
   const componentPaths = new Map<string, Array<{ componentId: string; name: string }>>();

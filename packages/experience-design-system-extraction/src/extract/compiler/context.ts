@@ -10,7 +10,7 @@ import type {
   ExtractionDiagnostics,
 } from '../candidates/types.js';
 import type { ExtractorOptions } from '../types/options.js';
-import { selectCompilerConfiguration, type ParsedConfig } from './configuration-policy.js';
+import { isAdmittedCompilerConfig, selectCompilerConfiguration, type ParsedConfig } from './configuration-policy.js';
 import { createObservedCompilerFileSystem, COMPILER_READ_LIMITS } from './observed-file-system.js';
 import { canonicalSourceFactPath } from '../candidates/bind-source-candidates.js';
 import {
@@ -36,6 +36,7 @@ export interface CompilerProjectContext {
   project: Project;
   componentFiles: string[];
   assignedFiles: string[];
+  configSources?: CompilerLoadedSource[];
 }
 
 export interface CompilerContextResult {
@@ -48,6 +49,7 @@ export interface CompilerLoadedSource {
   content: string;
   textHash: string;
   configPath: string | null;
+  kind?: 'config';
 }
 export function compilerSourcesFromContexts(
   contexts: readonly CompilerProjectContext[],
@@ -56,6 +58,7 @@ export function compilerSourcesFromContexts(
   const sources = new Map<string, CompilerLoadedSource>();
   let bytes = 0;
   for (const context of contexts) {
+    for (const source of context.configSources ?? []) sources.set(source.path, source);
     let program: ts.Program;
     try {
       program = context.project.getProgram().compilerObject;
@@ -153,19 +156,22 @@ function makeCompilerHost(
   const reads = new Map<string, string | null>();
   const hashByPath = new Map<string, string>();
   const diagnostics: string[] = [];
+  const selectedConfigPaths = new Set<string>();
   const used = { configReads: 0, configBytes: 0, directoryEntries: 0, references: 0, projectFiles: 0 };
 
   const readFile = (path: string): string | undefined => {
-    const canonicalPath = resolve(path);
+    const canonicalPath = canonicalCompilerPath(path);
     if (signal?.aborted) {
       diagnostics.push('config-analysis-cancelled');
       return undefined;
     }
+    if (!isAdmittedCompilerConfig(projectRoot, path, canonicalPath, true)) {
+      diagnostics.push(`config-outside-admitted-source:${relative(projectRoot, canonicalPath)}`);
+      return undefined;
+    }
+    selectedConfigPaths.add(canonicalPath);
     const cached = reads.get(canonicalPath);
     if (cached !== undefined) return cached ?? undefined;
-    if (!isWithin(projectRoot, canonicalPath)) {
-      diagnostics.push(`config-read-outside-project-root:${relative(projectRoot, canonicalPath)}`);
-    }
     if (used.configReads >= limits.maxConfigReads) {
       diagnostics.push('config-read-budget-exhausted');
       reads.set(canonicalPath, null);
@@ -223,9 +229,6 @@ function makeCompilerHost(
     readFile,
     readDirectory: (root, extensions, excludes, includes, depth) => {
       const canonicalRoot = resolve(root);
-      if (!isWithin(projectRoot, canonicalRoot)) {
-        diagnostics.push(`config-directory-outside-project-root:${relative(projectRoot, canonicalRoot)}`);
-      }
       void excludes;
       void includes;
       diagnostics.push('config-file-discovery-limited-to-explicit-input-roots');
@@ -242,7 +245,18 @@ function makeCompilerHost(
     onUnRecoverableConfigFileDiagnostic: (diagnostic) => diagnostics.push(formatDiagnostic(diagnostic)),
   };
 
-  return { host, readFile, hashByPath, diagnostics, used };
+  return {
+    host,
+    readFile,
+    reads,
+    hashByPath,
+    diagnostics,
+    used,
+    selectedConfigPaths,
+    canonicalizeConfigPath: canonicalCompilerPath,
+    explicitInputsOnly: true,
+    shouldContinue: () => !signal?.aborted,
+  };
 }
 
 function moduleDiagnostics(context: CompilerProjectContext): CompilerModuleDiagnostic[] {
@@ -334,6 +348,7 @@ export function createCompilerContexts(
       roots: string[];
       files: string[];
       diagnostics: string[];
+      configSources: Map<string, CompilerLoadedSource>;
     }
   >();
   const referenceDiagnostics: CompilerReferenceDiagnostic[] = [];
@@ -353,13 +368,33 @@ export function createCompilerContexts(
       continue;
     }
     const readerDiagnosticStart = reader.diagnostics.length;
+    reader.selectedConfigPaths.clear();
     const selection = selectCompilerConfiguration(rootPath, projectRoot, reader, existsSync, limits.maxConfigReads);
     const selectedConfig = selection.config;
     const { status, referenceOutcome } = selection;
     const diagnostics = [...new Set([...selection.diagnostics, ...reader.diagnostics.slice(readerDiagnosticStart)])];
 
     const key = selectedConfig?.path ?? `fallback:${projectRoot}`;
-    const group = groups.get(key) ?? { config: selectedConfig, status, roots: [], files: [], diagnostics: [] };
+    const group: NonNullable<ReturnType<typeof groups.get>> = groups.get(key) ?? {
+      config: selectedConfig,
+      status,
+      roots: [],
+      files: [],
+      diagnostics: [],
+      configSources: new Map(),
+    };
+    for (const path of reader.selectedConfigPaths) {
+      const content = reader.reads.get(path);
+      const textHash = reader.hashByPath.get(path);
+      if (content !== null && content !== undefined && textHash)
+        group.configSources.set(path, {
+          path,
+          content,
+          textHash,
+          configPath: selectedConfig?.path ?? null,
+          kind: 'config',
+        });
+    }
     group.roots.push(rootPath);
     group.files.push(rootPath);
     group.diagnostics.push(...diagnostics);
@@ -447,6 +482,7 @@ export function createCompilerContexts(
       project,
       componentFiles,
       assignedFiles,
+      configSources: [...group.configSources.values()],
     });
   }
 

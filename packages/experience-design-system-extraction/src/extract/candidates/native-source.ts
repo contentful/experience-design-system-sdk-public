@@ -2,7 +2,7 @@ import ts from 'typescript';
 import { SourceValueBindings } from '../component-facts/source-value-bindings.js';
 import { sourceLocation } from './source-location.js';
 import { createHash } from 'node:crypto';
-import type { Node, Type } from 'ts-morph';
+import { Node, type Type } from 'ts-morph';
 import type {
   NativeSourceShape,
   SourceDefaultFact,
@@ -180,6 +180,70 @@ function domain(type: Type): SourceTypeNode['domain'] {
   };
 }
 
+function declarationType(node: Node): Node | null {
+  return Node.isTypeAliasDeclaration(node) ||
+    Node.isPropertySignature(node) ||
+    Node.isPropertyDeclaration(node) ||
+    Node.isParameterDeclaration(node)
+    ? (node.getTypeNode() ?? null)
+    : null;
+}
+
+function sourceNullability(
+  type: Type,
+  at: Node,
+  syntax: Node | null,
+): {
+  facts: NonNullable<SourceTypeNode['nullability']>;
+  syntaxDeclarations: Node[];
+} {
+  const options = at.getSourceFile().getProject().getCompilerOptions();
+  const compilerMode = (options.strictNullChecks ?? options.strict) === true ? 'enabled' : 'disabled';
+  const parts = type.isUnion() ? type.getUnionTypes() : [type];
+  const unknown = parts.some(
+    (part) =>
+      part.isAny() ||
+      part.isUnknown() ||
+      part.isTypeParameter() ||
+      Boolean(part.getFlags() & (ts.TypeFlags.Conditional | ts.TypeFlags.IndexedAccess | ts.TypeFlags.Substitution)),
+  );
+  const positive = { null: false, undefined: false };
+  const visited = new Set<Node>();
+  const syntaxDeclarations: Node[] = [];
+  const pending = syntax ? [syntax] : [];
+  while (pending.length && visited.size < 512) {
+    const node = pending.pop()!;
+    if (visited.has(node)) continue;
+    visited.add(node);
+    if (Node.isUnionTypeNode(node)) pending.push(...node.getTypeNodes());
+    else if (Node.isParenthesizedTypeNode(node)) pending.push(node.getTypeNode());
+    else if (node.getKind() === ts.SyntaxKind.UndefinedKeyword) positive.undefined = true;
+    else if (Node.isLiteralTypeNode(node) && node.getLiteral().getKind() === ts.SyntaxKind.NullKeyword)
+      positive.null = true;
+    else if (Node.isTypeReference(node)) {
+      const symbol = node.getTypeName().getSymbol();
+      const resolved = symbol?.getAliasedSymbol() ?? symbol;
+      for (const declaration of resolved?.getDeclarations() ?? [])
+        if (Node.isTypeAliasDeclaration(declaration)) {
+          const alias = declaration.getTypeNode();
+          if (alias) {
+            syntaxDeclarations.push(declaration);
+            pending.push(alias);
+          }
+        }
+    }
+  }
+  const fact = (kind: 'null' | 'undefined'): NonNullable<SourceTypeNode['nullability']>['null'] => {
+    if (parts.some((part) => (kind === 'null' ? part.isNull() : part.isUndefined())))
+      return { state: 'present', source: 'compiler' };
+    if (positive[kind]) return { state: 'present', source: 'syntax' };
+    if (unknown) return { state: 'unknown', source: 'unknown' };
+    if (compilerMode === 'enabled') return { state: 'absent', source: 'compiler' };
+    return { state: 'unknown', source: 'compiler-erased' };
+  };
+  return { facts: { compilerMode, null: fact('null'), undefined: fact('undefined') }, syntaxDeclarations };
+}
+
 export function captureNativeSource(
   type: Type,
   fallback: Node,
@@ -206,23 +270,28 @@ export function captureNativeSource(
     keys: string[],
     depth: number,
     path: NonNullable<SourceTypeNode['path']> = keys.map((key) => ({ kind: 'field', key })),
+    syntax: Node | null = declarationType(at),
   ): { id: string; shape: NativeSourceShape | null } => {
     const id = `s${createHash('sha256')
       .update(JSON.stringify([path, t.getText(at), location(at)]))
       .digest('hex')
       .slice(0, 24)}`;
+    const { facts: nullability, syntaxDeclarations } = sourceNullability(t, at, syntax);
+    const syntaxUsed = nullability.null.source === 'syntax' || nullability.undefined.source === 'syntax';
     const node: SourceTypeNode = {
       id,
       keyPath: keys,
       path,
       ...(t.getAliasSymbol() ? { alias: t.getAliasSymbol()!.getName() } : {}),
-      nullable: t.isNull() || t.getUnionTypes().some((part) => part.isNull()),
-      undefinable: t.isUndefined() || t.getUnionTypes().some((part) => part.isUndefined()),
-      nullabilityProvenance: 'compiler',
+      ...(nullability.null.state === 'unknown' ? {} : { nullable: nullability.null.state === 'present' }),
+      ...(nullability.undefined.state === 'unknown' ? {} : { undefinable: nullability.undefined.state === 'present' }),
+      nullability,
+      nullabilityProvenance:
+        nullability.null.source === nullability.undefined.source ? nullability.null.source : 'unknown',
       kind: 'unknown',
       typeText: t.getText(at),
       required: req,
-      declarations: [location(at)],
+      declarations: [...new Set([at, ...(syntaxUsed ? syntaxDeclarations : [])])].map(location),
       domain: domain(t),
       coverage: 'complete-within-declared-bound',
       reason: null,
@@ -270,10 +339,15 @@ export function captureNativeSource(
             incomplete('union-budget');
             break;
           }
-          const result = walk(alternative, at, req, keys, depth + 1, [
-            ...path,
-            { kind: t.isUnion() ? 'union' : 'intersection', key: index },
-          ]);
+          const result = walk(
+            alternative,
+            at,
+            req,
+            keys,
+            depth + 1,
+            [...path, { kind: t.isUnion() ? 'union' : 'intersection', key: index }],
+            null,
+          );
           node.alternatives.push(result.id);
           results.push(result);
         }
@@ -337,10 +411,15 @@ export function captureNativeSource(
           }
           const flags = target.elementFlags[i] ?? ts.ElementFlags.Required;
           const label = target.labeledElementDeclarations?.[i];
-          const element = walk(item, at, !(flags & ts.ElementFlags.Optional), [...keys, String(i)], depth + 1, [
-            ...path,
-            { kind: 'tuple', key: i },
-          ]);
+          const element = walk(
+            item,
+            at,
+            !(flags & ts.ElementFlags.Optional),
+            [...keys, String(i)],
+            depth + 1,
+            [...path, { kind: 'tuple', key: i }],
+            null,
+          );
           node.items.push(element.id);
           node.tupleElements.push({
             nodeId: element.id,
@@ -355,7 +434,7 @@ export function captureNativeSource(
         node.readonly = t.isReadonlyArray();
         const item = t.getArrayElementType();
         if (item && graph.nodes.length < graph.limits.maxNodes) {
-          const result = walk(item, at, true, [...keys, '[]'], depth + 1, [...path, { kind: 'item', key: 0 }]);
+          const result = walk(item, at, true, [...keys, '[]'], depth + 1, [...path, { kind: 'item', key: 0 }], null);
           node.items = [result.id];
           if (result.shape) shape = { $type: 'array', $required: req, $items: result.shape };
         } else {
@@ -438,8 +517,15 @@ export function captureNativeSource(
             if (graph.nodes.length < graph.limits.maxNodes)
               node.indexSignatures.push({
                 keyType: key,
-                valueNodeId: walk(index, at, false, [...keys, `[${key}]`], depth + 1, [...path, { kind: 'index', key }])
-                  .id,
+                valueNodeId: walk(
+                  index,
+                  at,
+                  false,
+                  [...keys, `[${key}]`],
+                  depth + 1,
+                  [...path, { kind: 'index', key }],
+                  null,
+                ).id,
               });
             else {
               graph.omittedCount++;

@@ -196,7 +196,15 @@ export interface SourceTypeNode {
   tupleElements?: Array<{ nodeId: string; label: string | null; optional: boolean; rest: boolean }>;
   discriminatorKeys?: string[];
   discriminator?: { provenance: 'compiler' | 'unknown'; complete: boolean; keys: string[] };
-  nullabilityProvenance?: 'compiler' | 'unknown';
+  nullabilityProvenance?: 'compiler' | 'syntax' | 'compiler-erased' | 'unknown';
+  nullability?: {
+    compilerMode: 'enabled' | 'disabled';
+    null: { state: 'present' | 'absent' | 'unknown'; source: 'compiler' | 'syntax' | 'compiler-erased' | 'unknown' };
+    undefined: {
+      state: 'present' | 'absent' | 'unknown';
+      source: 'compiler' | 'syntax' | 'compiler-erased' | 'unknown';
+    };
+  };
   callSignatures?: string[];
   keyPath: string[];
   kind: string;

@@ -9,7 +9,6 @@ import { buildCompilerEvidenceInline } from '../../../agents/prompts/helpers/bui
 import { invokeAgentWithOutput } from '../../../agents/services/invoke-agent-with-output.js';
 import { generateCompleteDecisions } from '../../../steps/generation/src/services/property/complete-decisions.js';
 import { componentDecisionInventory } from '../../../steps/generation/src/services/property/decision-inventory.js';
-import { materializeProperty } from '../../../steps/generation/src/services/property/materialize-property.js';
 import { loadAcceptedSlotDecisions } from '../../../persistence/src/session/repositories/exploration/records.js';
 import {
   applyToolCalls,
@@ -25,6 +24,7 @@ import { summarizeForGenerateAgent } from '../../../steps/generation/src/control
 import type { ExistingContentfulEntities } from '../../../steps/generation/src/types/existing-entities.js';
 import type { GeneratedComponentResult, GenerateComponentsProgress } from '../types.js';
 import { buildFailedComponentResult } from './build-failed-component-result.js';
+import { buildExplorationJudgmentsInline } from './build-exploration-judgments-inline.js';
 import { throwIfAborted } from '../../../helpers/abort.js';
 import {
   loadExplorationRun,
@@ -98,6 +98,9 @@ export async function runOneGenerateComponent(
   assertProjectionCurrent();
   const compilerEvidenceInline =
     options.compilerEvidenceInline ?? buildCompilerEvidenceInline([component], { readiness: 'caller-provided' });
+  const explorationJudgmentsInline = options.explorationRunIds
+    ? buildExplorationJudgmentsInline(db, sessionId, component, options.explorationRunIds)
+    : undefined;
   const { renames } = options.explorationRunIds
     ? { renames: [] }
     : renameEmptySlots(db, sessionId, component.component_id, component.name, component.slots.length);
@@ -157,6 +160,7 @@ export async function runOneGenerateComponent(
     mode: 'autonomous',
     rawComponentsInline,
     compilerEvidenceInline,
+    explorationJudgmentsInline,
     propBucketsInline: JSON.stringify(componentBuckets),
     tokensInline,
     tokenMapInline,
@@ -182,9 +186,7 @@ export async function runOneGenerateComponent(
     timeoutMs: DEFAULT_TIMEOUT_MS,
     backoffMs: RETRY_BACKOFF_MS,
     signal,
-    validate: (call) => {
-      if (call.tool === 'classify_prop') materializeProperty(component, call, component.component_id);
-    },
+    representationValidation: { component, componentId: component.component_id },
     invoke: async ({ prompt: attemptPrompt, timeoutMs, signal: operationSignal, attempt }) => {
       onProgress?.({ kind: 'component:started', index, total, name: component.name, attempt, maxAttempts: 2 });
       throwIfAborted(signal);
