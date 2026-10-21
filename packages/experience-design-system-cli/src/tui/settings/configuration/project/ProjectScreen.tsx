@@ -129,7 +129,7 @@ export function ProjectScreen({ onDone }: { onDone: () => void }): React.ReactEl
   if (!config) {
     return (
       <Box flexDirection="column" paddingX={2} paddingY={1}>
-        <Text bold>Project</Text>
+        <Text bold>Settings › Configuration › Project</Text>
         <Text> </Text>
         {loadError ? (
           <>
@@ -171,7 +171,7 @@ export function ProjectScreen({ onDone }: { onDone: () => void }): React.ReactEl
 
   return (
     <FieldForm
-      title="Project"
+      title="Settings › Configuration › Project"
       subtitle="The Contentful space and where the CLI keeps its files."
       fields={FIELDS}
       values={valuesOf(config)}

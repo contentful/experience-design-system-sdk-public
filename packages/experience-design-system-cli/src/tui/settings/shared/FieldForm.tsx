@@ -153,6 +153,7 @@ export function FieldForm<K extends string>({
   return (
     <Box flexDirection="column" paddingX={2} paddingY={1}>
       <Text bold>{title}</Text>
+      <Text> </Text>
       {subtitle && <Text color={PALETTE.muted}>{subtitle}</Text>}
       <Text> </Text>
       <Box flexDirection="column">

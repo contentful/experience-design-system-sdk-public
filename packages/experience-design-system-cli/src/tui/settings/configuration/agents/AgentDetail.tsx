@@ -137,7 +137,7 @@ export function AgentDetail({
 
   return (
     <FieldForm
-      title={AGENT_LABELS[name]}
+      title={`Settings › Configuration › Agents › ${AGENT_LABELS[name]}`}
       subtitle={
         config.defaultAgent === name ? 'This is the default agent.' : `Runs the \`${AGENT_BINARIES[name]}\` command.`
       }

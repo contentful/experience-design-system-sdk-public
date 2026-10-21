@@ -154,7 +154,7 @@ export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactEle
   if (!config) {
     return (
       <Box flexDirection="column" paddingX={2} paddingY={1}>
-        <Text bold>Agents</Text>
+        <Text bold>Settings › Configuration › Agents</Text>
         <Text> </Text>
         {loadError ? (
           <>
@@ -195,7 +195,8 @@ export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactEle
 
   return (
     <Box flexDirection="column" paddingX={2} paddingY={1}>
-      <Text bold>Agents</Text>
+      <Text bold>Settings › Configuration › Agents</Text>
+      <Text> </Text>
       <Text color={PALETTE.muted}>The coding agent the CLI runs, and what was found for each one.</Text>
       <Text> </Text>
 

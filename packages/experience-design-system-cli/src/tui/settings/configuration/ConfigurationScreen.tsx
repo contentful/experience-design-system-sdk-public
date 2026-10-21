@@ -44,7 +44,7 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
 
   return (
     <Box flexDirection="column" paddingX={2} paddingY={1}>
-      <Text bold>Configuration</Text>
+      <Text bold>Settings › Configuration</Text>
       <Text> </Text>
       {SECTIONS.map((section, index) => (
         <Box key={section.id} gap={1}>
