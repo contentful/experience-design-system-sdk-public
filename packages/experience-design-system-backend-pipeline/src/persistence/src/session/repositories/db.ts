@@ -36,6 +36,7 @@ import {
 } from '../../../../source-evidence/shared-source.js';
 import type { SharedSource } from '@contentful/experience-design-system-types';
 import { initializeExplorationSchema } from './exploration/schema.js';
+import { withTransaction } from './shared/with-transaction.js';
 import {
   loadAcceptedSlotDecisions,
   loadExplorationRun,
@@ -940,6 +941,7 @@ function savePropertyDecision(
     if (
       definition &&
       priorDefinition &&
+      definition.$type === priorDefinition.$type &&
       own(prior, 'defaultIntent') &&
       own(definition, '$default') === own(priorDefinition, '$default') &&
       jsonEqual(definition.$default, priorDefinition.$default)
@@ -1238,9 +1240,18 @@ export function applyToolCalls(
   if (!accounting.complete)
     throw new Error([...accounting.issues, ...accounting.missing.map((key) => `Missing decision ${key}`)].join('; '));
   calls = normalized.calls;
-  const retainedHuman = loadPropertyDecisions(db, sessionId).filter(
+  const reviewed = loadPropertyDecisions(db, sessionId).filter(
     (decision) => decision.componentId === componentId && (decision.decision as { kind?: string }).kind === 'review',
   );
+  const retainedHuman = reviewed.filter((decision) => {
+    if ((decision.decision as { transfer?: { state?: string } }).transfer?.state === 'stale')
+      throw new Error('Source-changed human decision requires review');
+    const incoming = calls.find((call) => call.tool === 'classify_prop' && call.prop === decision.propertyName);
+    if (incoming?.tool !== 'classify_prop' || !incoming.cdf_type || !decision.definition) return true;
+    if (incoming.cdf_type === decision.definition.$type) return true;
+    materializeProperty(rawComponent, incoming, componentId);
+    return false;
+  });
   calls = calls.map((call) => {
     if (call.tool !== 'classify_prop' && call.tool !== 'exclude_prop') return call;
     const human = retainedHuman.find((decision) => decision.propertyName === call.prop);
@@ -1272,15 +1283,8 @@ export function applyToolCalls(
          rationale = ?
      WHERE session_id = ? AND component_id = ? AND name = ?`,
   );
-  const deleteAllowedValues = db.prepare(
-    `DELETE FROM raw_prop_allowed_values WHERE session_id = ? AND component_id = ? AND prop_name = ?`,
-  );
   const deleteTokenPaths = db.prepare(
     `DELETE FROM raw_prop_token_paths WHERE session_id = ? AND component_id = ? AND prop_name = ?`,
-  );
-  const insertAllowedValue = db.prepare(
-    `INSERT OR IGNORE INTO raw_prop_allowed_values (session_id, component_id, prop_name, value, position)
-     VALUES (?, ?, ?, ?, ?)`,
   );
   const deleteAllowedComponents = db.prepare(
     `DELETE FROM raw_slot_allowed_components WHERE session_id = ? AND component_id = ? AND slot_name = ?`,
@@ -1376,28 +1380,7 @@ export function applyToolCalls(
           warnings.push(`${componentName}: classify_prop '${call.prop}' — prop not found, skipped`);
           continue;
         }
-        if (call.cdf_type === 'token') {
-          // A token property's options list is design token paths, written by
-          // map tokens. An enum vocabulary is not part of that definition,
-          // whether it is left over from a prior classification or supplied on
-          // this very call against the tool contract — so it is dropped either
-          // way, and the caller is told when it was asked for explicitly.
-          deleteAllowedValues.run(sessionId, componentId, call.prop);
-          if (call.values && call.values.length > 0) {
-            const count = call.values.length;
-            warnings.push(
-              `${componentName}: classify_prop '${call.prop}' — dropped ${count} value${count === 1 ? '' : 's'} on a token property; its options list is $token.allowed, not $values`,
-            );
-          }
-        } else {
-          deleteTokenPaths.run(sessionId, componentId, call.prop);
-          if (call.values && call.values.length > 0) {
-            deleteAllowedValues.run(sessionId, componentId, call.prop);
-            call.values.forEach((v, i) => {
-              if (typeof v === 'string') insertAllowedValue.run(sessionId, componentId, call.prop, v, i);
-            });
-          }
-        }
+        if (call.cdf_type !== 'token') deleteTokenPaths.run(sessionId, componentId, call.prop);
         if (!human)
           savePropertyDecision(db, sessionId, componentId, call.prop, definition, {
             kind: 'generation',
@@ -2652,6 +2635,11 @@ export function storeCDFComponents(
       }
       const validation = validateCDFProperty(property);
       if (!validation.valid) throw new Error(validation.issues.map((i) => `${i.path}: ${i.message}`).join('; '));
+      if (
+        property.$values &&
+        !source.sourceCandidates?.find((candidate) => candidate.name === name)?.facts?.sourceGraph
+      )
+        throw new Error('Finite constraints require current complete compiler source evidence');
       if (source.sourceCandidates?.find((candidate) => candidate.name === name)?.facts?.sourceGraph) {
         const previous = priorDecisions.find(
           (decision) => decision.componentId === source.component_id && decision.propertyName === name,
@@ -2664,6 +2652,7 @@ export function storeCDFComponents(
           previous?.definition;
         const unchangedDefault =
           baseline &&
+          baseline.$type === property.$type &&
           own(baseline, '$default') === own(property, '$default') &&
           jsonEqual(baseline.$default, property.$default);
         const materialized = materializeProperty(
@@ -2709,13 +2698,6 @@ export function storeCDFComponents(
   );
   const updateProp = db.prepare(
     `UPDATE raw_props SET cdf_type = ?, cdf_category = ?, cdf_token_kind = ?, required = ? WHERE session_id = ? AND component_id = ? AND name = ?`,
-  );
-  const deleteAllowedValues = db.prepare(
-    `DELETE FROM raw_prop_allowed_values WHERE session_id = ? AND component_id = ? AND prop_name = ?`,
-  );
-  const insertAllowedValue = db.prepare(
-    `INSERT INTO raw_prop_allowed_values (session_id, component_id, prop_name, value, position)
-     VALUES (?, ?, ?, ?, ?)`,
   );
   const insertAllowedComponent = db.prepare(
     `INSERT INTO raw_slot_allowed_components (session_id, component_id, slot_name, allowed_component, position)
@@ -2826,12 +2808,6 @@ export function storeCDFComponents(
             componentId,
             propName,
           );
-          if (prop.$values && prop.$values.length > 0) {
-            deleteAllowedValues.run(sessionId, componentId, propName);
-            prop.$values.forEach(
-              (v, i) => typeof v === 'string' && insertAllowedValue.run(sessionId, componentId, propName, v, i),
-            );
-          }
           if (prop.$type === 'token' && prop.$category === 'design') {
             // Reconcile the persisted mapping even when the property omits
             // the field: omission is the dismiss/unrestricted state.
@@ -2976,11 +2952,6 @@ export function storeCDFComponents(
               prepared.get(JSON.stringify([componentId, propName]))?.model?.defaultIntent ??
               (own(prop, '$default') ? { action: 'set', value: prop.$default } : { action: 'clear' }),
           });
-          if (prop.$values && prop.$values.length > 0) {
-            prop.$values.forEach(
-              (v, i) => typeof v === 'string' && insertAllowedValue.run(sessionId, componentId, propName, v, i),
-            );
-          }
           if (prop.$type === 'token' && prop.$category === 'design') {
             writeTokenPaths(componentId, propName, prop['$token.allowed'] ?? []);
           }
@@ -3130,7 +3101,7 @@ export function loadCDFComponents(
       for (const p of compProps) {
         const av = allowedValuesByProp.get(`${component_id}::${p.name}`);
         const propDef: CDFComponentEntry['$properties'][string] = {
-          $type: (p.cdf_type === 'enum' ? 'string' : p.cdf_type) as CDFComponentEntry['$properties'][string]['$type'],
+          $type: p.cdf_type as CDFComponentEntry['$properties'][string]['$type'],
           $category: p.cdf_category as CDFComponentEntry['$properties'][string]['$category'],
         };
         if (p.required) propDef.$required = true;
@@ -3541,35 +3512,37 @@ export function seedCDFFromPreviewResponse(
 ): number {
   if (removedItems.length === 0) return 0;
 
-  let totalSeeded = 0;
+  return withTransaction(db, () => {
+    let totalSeeded = 0;
 
-  const updateStmt = db.prepare(
-    `UPDATE raw_props
-     SET cdf_type = ?, cdf_category = ?
-     WHERE session_id = ? AND component_id = ? AND name = ? AND cdf_type IS NULL`,
-  );
+    const updateStmt = db.prepare(
+      `UPDATE raw_props
+       SET cdf_type = ?, cdf_category = ?
+       WHERE session_id = ? AND component_id = ? AND name = ? AND cdf_type IS NULL`,
+    );
 
-  for (const item of removedItems) {
-    if (!item.fullProperties) continue;
+    for (const item of removedItems) {
+      if (!item.fullProperties) continue;
 
-    const localComponent = db
-      .prepare(`SELECT component_id FROM raw_components WHERE session_id = ? AND name = ?`)
-      .get(sessionId, item.name) as { component_id: string } | undefined;
+      const localComponent = db
+        .prepare(`SELECT component_id FROM raw_components WHERE session_id = ? AND name = ?`)
+        .get(sessionId, item.name) as { component_id: string } | undefined;
 
-    if (!localComponent) continue;
+      if (!localComponent) continue;
 
-    const contentProps = new Set(item.contentProperties);
-    const designProps = new Set(item.designProperties);
+      const contentProps = new Set(item.contentProperties);
+      const designProps = new Set(item.designProperties);
 
-    for (const [propName, propSummary] of Object.entries(item.fullProperties)) {
-      const cdfType = mapContentfulTypeToCdfType(propSummary.type);
-      const cdfCategory = resolveCdfCategory(propSummary.category, propName, contentProps, designProps);
-      const result = updateStmt.run(cdfType, cdfCategory, sessionId, localComponent.component_id, propName);
-      totalSeeded += Number(result.changes);
+      for (const [propName, propSummary] of Object.entries(item.fullProperties)) {
+        const cdfType = mapContentfulTypeToCdfType(propSummary.type);
+        const cdfCategory = resolveCdfCategory(propSummary.category, propName, contentProps, designProps);
+        const result = updateStmt.run(cdfType, cdfCategory, sessionId, localComponent.component_id, propName);
+        totalSeeded += Number(result.changes);
+      }
     }
-  }
 
-  return totalSeeded;
+    return totalSeeded;
+  });
 }
 
 export function seedDefaultsFromChangedItems(
@@ -3579,46 +3552,48 @@ export function seedDefaultsFromChangedItems(
 ): number {
   if (changedItems.length === 0) return 0;
 
-  let totalSeeded = 0;
+  return withTransaction(db, () => {
+    let totalSeeded = 0;
 
-  const updateDefaultStmt = db.prepare(
-    `UPDATE raw_props SET default_value = ?
-     WHERE session_id = ? AND component_id = ? AND name = ? AND default_value IS NULL`,
-  );
+    const updateDefaultStmt = db.prepare(
+      `UPDATE raw_props SET default_value = ?
+       WHERE session_id = ? AND component_id = ? AND name = ? AND default_value IS NULL`,
+    );
 
-  const updateCDFStmt = db.prepare(
-    `UPDATE raw_props SET cdf_type = ?, cdf_category = ?
-     WHERE session_id = ? AND component_id = ? AND name = ? AND cdf_type IS NULL`,
-  );
+    const updateCDFStmt = db.prepare(
+      `UPDATE raw_props SET cdf_type = ?, cdf_category = ?
+       WHERE session_id = ? AND component_id = ? AND name = ? AND cdf_type IS NULL`,
+    );
 
-  for (const { current } of changedItems) {
-    if (!current.fullProperties) continue;
+    for (const { current } of changedItems) {
+      if (!current.fullProperties) continue;
 
-    const localComponent = db
-      .prepare(`SELECT component_id FROM raw_components WHERE session_id = ? AND name = ?`)
-      .get(sessionId, current.name) as { component_id: string } | undefined;
+      const localComponent = db
+        .prepare(`SELECT component_id FROM raw_components WHERE session_id = ? AND name = ?`)
+        .get(sessionId, current.name) as { component_id: string } | undefined;
 
-    if (!localComponent) continue;
+      if (!localComponent) continue;
 
-    const contentProps = new Set(current.contentProperties);
-    const designProps = new Set(current.designProperties);
+      const contentProps = new Set(current.contentProperties);
+      const designProps = new Set(current.designProperties);
 
-    for (const [propName, propSummary] of Object.entries(current.fullProperties)) {
-      if (propSummary.default !== undefined && propSummary.default !== null) {
-        const defaultStr =
-          typeof propSummary.default === 'string' ? propSummary.default : JSON.stringify(propSummary.default);
-        const result = updateDefaultStmt.run(defaultStr, sessionId, localComponent.component_id, propName);
+      for (const [propName, propSummary] of Object.entries(current.fullProperties)) {
+        if (propSummary.default !== undefined && propSummary.default !== null) {
+          const defaultStr =
+            typeof propSummary.default === 'string' ? propSummary.default : JSON.stringify(propSummary.default);
+          const result = updateDefaultStmt.run(defaultStr, sessionId, localComponent.component_id, propName);
+          totalSeeded += Number(result.changes);
+        }
+
+        const cdfType = mapContentfulTypeToCdfType(propSummary.type);
+        const cdfCategory = resolveCdfCategory(propSummary.category, propName, contentProps, designProps);
+        const result = updateCDFStmt.run(cdfType, cdfCategory, sessionId, localComponent.component_id, propName);
         totalSeeded += Number(result.changes);
       }
-
-      const cdfType = mapContentfulTypeToCdfType(propSummary.type);
-      const cdfCategory = resolveCdfCategory(propSummary.category, propName, contentProps, designProps);
-      const result = updateCDFStmt.run(cdfType, cdfCategory, sessionId, localComponent.component_id, propName);
-      totalSeeded += Number(result.changes);
     }
-  }
 
-  return totalSeeded;
+    return totalSeeded;
+  });
 }
 
 export function backfillUnclassifiedProps(db: DatabaseSync, sessionId: string): number {

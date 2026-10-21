@@ -10,3 +10,4 @@ export * from './decision-protocol.js';
 
 export * from './representation-plan.js';
 export { contentDigest } from './content-digest.js';
+export * from './import-prerequisites.js';

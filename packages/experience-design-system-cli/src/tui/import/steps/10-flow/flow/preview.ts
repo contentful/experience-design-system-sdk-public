@@ -35,7 +35,13 @@ type ComponentRow = { key: string; entry: CDFComponentEntry };
 
 /** The outside world `runPreview` talks to, so each branch can be tested without a database or a network. */
 export interface PreviewDeps {
-  createClient: (options: { cmaToken: string; spaceId: string; environmentId: string; host: string }) => PreviewClient;
+  createClient: (options: {
+    prerequisiteSessionId?: string;
+    cmaToken: string;
+    spaceId: string;
+    environmentId: string;
+    host: string;
+  }) => PreviewClient;
   openDb: () => DatabaseSync;
   readTokens: (path: string) => Promise<DTCGTokenEntry[]>;
   patchReviewState: typeof patchReviewStateWithValidationErrors;
@@ -112,6 +118,7 @@ export async function runPreview(input: RunPreviewInput, deps: PreviewDeps): Pro
       spaceId: input.spaceId,
       environmentId: input.environmentId,
       host: input.host,
+      ...(input.extractSessionId ? { prerequisiteSessionId: input.extractSessionId } : {}),
     });
 
     let components: ComponentRow[] = [];

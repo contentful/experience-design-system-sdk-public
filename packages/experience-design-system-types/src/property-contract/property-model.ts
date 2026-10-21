@@ -524,12 +524,49 @@ export function validateSourceValue(
 export function validateSourceDomain(graph: PropertySourceGraph, definition: TargetDefinition): PropertyIssue[] {
   const issues: PropertyIssue[] = [];
   const nodes = new Map(graph.nodes.map((n) => [n.id, n]));
-  const walk = (id: string, target: TargetDefinition, path: string, seen: Set<string>): void => {
+  const walk = (id: string, target: TargetDefinition, path: string, seen: Set<string>, domainOwner = true): void => {
     if (seen.has(id)) return;
     const node = nodes.get(id);
     if (!node) return;
     const next = new Set(seen);
     next.add(id);
+    if (domainOwner && target.values?.length) {
+      const complete =
+        graph.coverage === 'complete-within-declared-bound' &&
+        graph.omittedCount === 0 &&
+        node.coverage === 'complete-within-declared-bound' &&
+        node.domain.provenance === 'compiler' &&
+        node.domain.openness === 'closed' &&
+        node.domain.declaredValues.length > 0 &&
+        !node.domain.unrepresentedValues?.length;
+      if (
+        !complete ||
+        node.domain.declaredValues.some((value) => !target.values!.some((allowed) => jsonEqual(allowed, value))) ||
+        target.values.some((allowed) => !node.domain.declaredValues.some((value) => jsonEqual(allowed, value)))
+      )
+        issues.push({ path, message: 'Finite constraints require a complete matching compiler domain' });
+    }
+    if (
+      domainOwner &&
+      ['String', 'Number', 'Boolean'].includes(target.type) &&
+      graph.coverage === 'complete-within-declared-bound' &&
+      graph.omittedCount === 0 &&
+      node.coverage === 'complete-within-declared-bound' &&
+      node.domain.provenance === 'compiler' &&
+      node.domain.openness === 'closed' &&
+      node.domain.declaredValues.length &&
+      !node.domain.unrepresentedValues?.length &&
+      !(
+        target.type === 'Boolean' &&
+        node.domain.declaredValues.length === 2 &&
+        node.domain.declaredValues.includes(true) &&
+        node.domain.declaredValues.includes(false)
+      ) &&
+      (!target.values?.length ||
+        node.domain.declaredValues.some((value) => !target.values!.some((allowed) => jsonEqual(allowed, value))) ||
+        target.values.some((allowed) => !node.domain.declaredValues.some((value) => jsonEqual(allowed, value))))
+    )
+      issues.push({ path, message: 'Finite source domain is not enforced; source retained' });
     if (target.type === 'Literal' || target.type === 'Integer' || target.type === 'DateTime') {
       const values = finiteSourceValueDomain(graph, id);
       if (
@@ -555,7 +592,7 @@ export function validateSourceDomain(graph: PropertySourceGraph, definition: Tar
       if (node.kind === 'union') delete memberTarget.defaultValue;
       for (const alternative of node.alternatives ?? []) {
         const member = nodes.get(alternative);
-        if (member && !['undefined', 'never'].includes(member.kind)) walk(alternative, memberTarget, path, next);
+        if (member && !['undefined', 'never'].includes(member.kind)) walk(alternative, memberTarget, path, next, false);
       }
     }
     if (target.required !== undefined && node.required !== target.required)

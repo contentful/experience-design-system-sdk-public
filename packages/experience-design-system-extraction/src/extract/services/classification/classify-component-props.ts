@@ -44,7 +44,7 @@ export function preClassifyProp(prop: RawPropDefinition): PreClassification | un
 
   // Rule 7: String literal union
   if (isStringLiteralUnion(type)) {
-    return { category: 'design', cdfTypeHint: 'enum' };
+    return { category: 'design', cdfTypeHint: 'string' };
   }
 
   // Rule 8: Design name patterns (only for simple types)

@@ -106,7 +106,16 @@ function primitive(
     $category: category,
     $required: node.required,
   };
-  if (node.domain.openness === 'closed' && node.domain.declaredValues.length)
+  if (
+    node.domain.openness === 'closed' &&
+    node.domain.declaredValues.length &&
+    !(
+      kind === 'boolean' &&
+      node.domain.declaredValues.length === 2 &&
+      node.domain.declaredValues.includes(true) &&
+      node.domain.declaredValues.includes(false)
+    )
+  )
     definition.$values = cloneJson(node.domain.declaredValues);
   return definition;
 }

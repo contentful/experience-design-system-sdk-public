@@ -541,7 +541,17 @@ export function captureNativeSource(
           node.reason = node.callSignatures.length ? 'callable-or-empty-record' : 'empty-record';
         }
       }
-      if (shape && node.domain.openness === 'closed' && node.domain.declaredValues.length)
+      if (
+        shape &&
+        node.domain.openness === 'closed' &&
+        node.domain.declaredValues.length &&
+        !(
+          shape.$type === 'boolean' &&
+          node.domain.declaredValues.length === 2 &&
+          node.domain.declaredValues.includes(true) &&
+          node.domain.declaredValues.includes(false)
+        )
+      )
         shape.$values = node.domain.declaredValues;
       return { id, shape };
     } finally {

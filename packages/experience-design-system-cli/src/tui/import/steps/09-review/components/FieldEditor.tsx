@@ -12,6 +12,9 @@ import {
   jsonValueIssue,
   parseStrictJson,
   isDateTimeValue,
+  isFinitePrimitiveType,
+  isFinitePrimitiveValue,
+  finiteValuesIssue,
 } from '@contentful/experience-design-system-types';
 import type {
   CDFComponentEntry,
@@ -161,6 +164,14 @@ export function parseTypedDefault(text: string, type: string): { value: JsonValu
   }
 }
 
+function finiteChoiceValue(text: string, type: string): string | number | boolean {
+  if (type === 'string') return text;
+  const parsed = parseTypedDefault(text, type);
+  if ('error' in parsed) throw new Error(parsed.error);
+  if (!isFinitePrimitiveValue(parsed.value) || typeof parsed.value !== type) throw new Error(`Enter a ${type} choice`);
+  return parsed.value;
+}
+
 export function parseToState(json: string): {
   state: EditorState;
   error: string | null;
@@ -212,7 +223,7 @@ export function parseToState(json: string): {
         : 'content',
       required: p.$required === true,
       description: typeof p.$description === 'string' ? p.$description : '',
-      values: Array.isArray(p.$values) ? (p.$values as string[]).filter((v) => typeof v === 'string') : [],
+      values: Array.isArray(p.$values) ? p.$values.filter(isFinitePrimitiveValue).map(String) : [],
       tokenKind: typeof p['$token.kind'] === 'string' ? p['$token.kind'] : '',
       allowed: Array.isArray(p['$token.allowed'])
         ? (p['$token.allowed'] as unknown[]).filter((v): v is string => typeof v === 'string')
@@ -281,9 +292,10 @@ export function serializeState(state: EditorState, originalJson: string): string
     if (p.required || own(def, '$required')) def.$required = p.required;
     if (p.description) def.$description = p.description;
     else delete def.$description;
-    if (p.type === 'string' && p.values.length) def.$values = [...p.values];
-    else if (p.type === 'string' && sameType && p.original?.$values?.every((value) => typeof value === 'string'))
-      delete def.$values;
+    if (isFinitePrimitiveType(p.type)) {
+      if (p.values.length) def.$values = p.values.map((text) => finiteChoiceValue(text, p.type));
+      else delete def.$values;
+    }
     if (p.type === 'token') {
       if (p.tokenKind) def['$token.kind'] = p.tokenKind;
       else delete def['$token.kind'];
@@ -569,7 +581,7 @@ function DefaultSubRow({
     return <DefaultValueRow display={display} active={active} focused={focused} />;
   }
 
-  if (prop.type === 'string' && prop.values.length > 0) {
+  if (isFinitePrimitiveType(prop.type) && prop.values.length > 0) {
     if (prop.values.length === 0) {
       return (
         <Box gap={1} flexShrink={0}>
@@ -752,7 +764,7 @@ function PropRow({
         </InlinePropField>
       )}
 
-      {prop.type === 'string' && prop.values.length > 0 && (
+      {isFinitePrimitiveType(prop.type) && (
         <Box gap={1} flexWrap="wrap" width={width} flexShrink={0}>
           <Text color={activeField === 'values' ? PALETTE.warning : PALETTE.muted} bold={activeField === 'values'}>
             {activeField === 'values' ? '› ' : '  '}values:
@@ -801,7 +813,7 @@ function PropRow({
         </Box>
       )}
 
-      {selected && prop.type === 'string' && prop.values.length > 0 && activeField === 'values' && (
+      {selected && isFinitePrimitiveType(prop.type) && activeField === 'values' && (
         <Box paddingLeft={2} flexDirection="column">
           <Box>
             <Text color={PALETTE.muted}>values:</Text>
@@ -975,7 +987,7 @@ function propFields(prop: PropState): PropField[] {
   if (prop.type === 'token') {
     fields.push('tokenKind');
   }
-  if (prop.type === 'string' && prop.values.length > 0) fields.push('values');
+  if (isFinitePrimitiveType(prop.type)) fields.push('values');
   if (!['richtext', 'media', 'link', 'RichText', 'JSON', 'ResourceLink'].includes(prop.type)) {
     fields.push('default');
   }
@@ -1512,8 +1524,8 @@ export function FieldEditor({
             if (exact) chosen = exact;
           }
         }
-        const trimmed = chosen ?? valueText.trim();
-        if (trimmed) {
+        const trimmed = chosen ?? (isPropValuesEntry && currentProp!.type === 'string' ? valueText : valueText.trim());
+        if (trimmed || (isPropValuesEntry && currentProp!.type === 'string')) {
           if (
             isSlotAllowedEntry &&
             editingValue?.mode === 'add' &&
@@ -1550,6 +1562,14 @@ export function FieldEditor({
             cursorAfter = idx;
           }
           if (isPropValuesEntry) {
+            try {
+              const typed = nextVals.map((text) => finiteChoiceValue(text, currentProp!.type));
+              const issue = finiteValuesIssue(currentProp!.type, typed);
+              if (issue) throw new Error(issue.message);
+            } catch (error) {
+              setValidationError(error instanceof Error ? error.message : 'Invalid finite choice');
+              return;
+            }
             const nextProps = props.map((p, i) => (i === propIdx ? { ...p, values: nextVals } : p));
             commit({ ...editorState, props: nextProps });
           } else {
@@ -1813,6 +1833,10 @@ export function FieldEditor({
         const next = key.leftArrow
           ? options[(idx - 1 + options.length) % options.length]
           : options[(idx + 1) % options.length];
+        if (next !== currentProp.type && currentProp.values.length > 0) {
+          setValidationError('Clear the established finite choices before changing the property type');
+          return;
+        }
         if (
           ['array', 'record', 'Literal', 'RichText', 'JSON', 'ResourceLink'].includes(next) &&
           next !== currentProp.type
@@ -1834,7 +1858,6 @@ export function FieldEditor({
           updated.tokenKind = '';
           if (['Integer', 'DateTime'].includes(next)) updated.category = 'content';
         }
-        if (next !== 'string') updated.values = [];
         const nextProps = props.map((p, i) => (i === propIdx ? updated : p));
         const nextState = { ...editorState, props: nextProps };
         const nextDefinition = parseToState(serializeState(nextState, value)).state.props[propIdx]?.original;

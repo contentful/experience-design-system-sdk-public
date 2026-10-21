@@ -2,6 +2,9 @@ import { mkdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import {
   checkAgentAuth,
+  openPipelineDb,
+  bindCatalogueCaptureToSession,
+  type ExistingContentfulEntities,
   fetchAndPersistExistingContentfulEntities,
   parsePromptOverrides,
   resolvePromptOverride,
@@ -27,7 +30,11 @@ type TokenGenerationResult =
 /** The outside world the stage talks to, so the order of events can be tested without a network, an agent or a CLI. */
 export interface ExtractionDeps {
   checkAgentAuth: typeof checkAgentAuth;
-  fetchEntities: (credentials: NonNullable<ExtractionInput['credentials']>, outDir: string) => Promise<string | null>;
+  fetchEntities: (
+    credentials: NonNullable<ExtractionInput['credentials']>,
+    outDir: string,
+    onCapture?: (entities: ExistingContentfulEntities) => void,
+  ) => Promise<string | null>;
   runExtractAndComposeSession: typeof runExtractAndComposeSession;
   runGenerateTokensSession: typeof runGenerateTokensSession;
   runSelection: typeof runSelection;
@@ -138,9 +145,12 @@ export async function runExtraction(
         : Promise.resolve(null);
 
     let existingEntitiesPath: string | null = null;
+    let capturedEntities: ExistingContentfulEntities | undefined;
     entities = input.credentials
       ? deps
-          .fetchEntities(input.credentials, outDir)
+          .fetchEntities(input.credentials, outDir, (capture) => {
+            capturedEntities = capture;
+          })
           .then((path) => {
             existingEntitiesPath = path;
             update({ existingEntities: path ? 'complete' : 'failed' });
@@ -233,6 +243,14 @@ export async function runExtraction(
     // "no tokens" (generating with --tokens pointing at a missing file fails).
     const hasTokenSource = input.rawTokensPath !== '' || input.tokenStrategy === 'reuse';
 
+    if (capturedEntities && input.credentials) {
+      const db = openPipelineDb();
+      try {
+        bindCatalogueCaptureToSession(db, extracted.sessionId, input.credentials, capturedEntities);
+      } finally {
+        db.close();
+      }
+    }
     const extraction: ExtractionHandoff = {
       sessionId: extracted.sessionId,
       outDir,
@@ -258,6 +276,7 @@ export async function runExtraction(
 async function fetchEntities(
   credentials: NonNullable<ExtractionInput['credentials']>,
   outDir: string,
+  onCapture?: (entities: ExistingContentfulEntities) => void,
 ): Promise<string | null> {
   try {
     await mkdir(outDir, { recursive: true });
@@ -268,7 +287,9 @@ async function fetchEntities(
       ...(credentials.host ? { host: credentials.host } : {}),
       outDir,
     });
-    return result.ok ? result.path : null;
+    if (!result.ok) return null;
+    onCapture?.(result.entities);
+    return result.path;
   } catch {
     return null;
   }

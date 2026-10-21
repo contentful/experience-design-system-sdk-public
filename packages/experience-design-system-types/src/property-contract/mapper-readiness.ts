@@ -1,5 +1,5 @@
 import type { CDFComponentEntry, CDFFieldDefinition } from '../cdf/types.js';
-import { childPath } from './json-value.js';
+import { childPath, own } from './json-value.js';
 
 /** This vocabulary describes the deployed transport, independently of desired file support. */
 const DEPLOYED_CONTENT_TYPES: readonly string[] = [
@@ -23,6 +23,7 @@ export function propertyMapperBlockers(
   if (category !== 'content' && category !== 'design') return [];
   const types = category === 'design' ? DEPLOYED_DESIGN_TYPES : DEPLOYED_CONTENT_TYPES;
   const blockers = types.includes(definition.$type) ? [] : [`${path} (${definition.$type} mapper unavailable)`];
+  if (own(definition, '$values')) blockers.push(`${path}/$values (finite-choice mapper unavailable)`);
   if (definition.$items) blockers.push(...propertyMapperBlockers(definition.$items, `${path}/$items`, category));
   if (definition.valueType)
     blockers.push(...propertyMapperBlockers(definition.valueType, `${path}/valueType`, category));

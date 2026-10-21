@@ -1,6 +1,8 @@
 import { cloneJson, own } from '../property-contract/json-value.js';
 import { CDF_SCHEMA_URL } from './schema.js';
 import type { CDFComponentEntry, CDFTokenEntry, CDFValidationError } from './types.js';
+import { parseCDFComponents } from './validate.js';
+import { validateImportPrerequisites } from '../property-contract/import-prerequisites.js';
 
 /** Preserve the complete local slot contract, including explicit false requiredness. */
 export function stripUnsupportedSlotFields(entry: CDFComponentEntry): CDFComponentEntry {
@@ -46,6 +48,11 @@ export function buildCDF(
   if (components.length === 0 && tokens.length === 0 && !opts.deleteAll) return undefined;
 
   components = expandCDFModelDependencies(components);
+  const prerequisites = validateImportPrerequisites({ components, tokens });
+  if (!prerequisites.valid)
+    throw new Error(
+      `Invalid CDF prerequisites: ${prerequisites.errors.map((issue) => `${issue.path}: ${issue.message}`).join('; ')}`,
+    );
   const componentKeys = components.map((component) => component.key);
   const tokenPaths = tokens.map((token) => token.path);
   if (new Set(componentKeys).size !== componentKeys.length || new Set(tokenPaths).size !== tokenPaths.length)
@@ -114,6 +121,10 @@ export function buildFilteredCDF(
 ): CDFDocument | undefined {
   const selected = new Set<string>([...selectedComponentKeys, ...selectedTokenPaths]);
   if (selected.size === 0) return undefined;
+  const full = parseCDFComponents(fullDocument);
+  const prerequisites = validateImportPrerequisites(full);
+  if (!prerequisites.valid)
+    throw new Error(`Invalid CDF prerequisites: ${prerequisites.errors.map((issue) => issue.message).join('; ')}`);
 
   const filtered: CDFDocument = { $schema: CDF_SCHEMA_URL };
   for (const dottedPath of selected) {
@@ -128,6 +139,14 @@ export function buildFilteredCDF(
   }
   for (const dependency of expandCDFModelDependencies(roots))
     if (!selected.has(dependency.key)) setAtPath(filtered, dependency.key, cloneJson(dependency.entry));
+  const included = new Set(expandCDFModelDependencies(roots).map((component) => component.key));
+  for (const edge of prerequisites.plan.edges) {
+    if (edge.owner.kind !== 'Component' || !included.has(edge.owner.value)) continue;
+    if (edge.dependency.kind === 'DesignToken' && !selectedTokenPaths.has(edge.dependency.value))
+      throw new Error(`Filtered CDF omits required DesignToken ${edge.dependency.value}`);
+    if (edge.dependency.kind === 'Component' && !included.has(edge.dependency.value))
+      throw new Error(`Filtered CDF omits required Component ${edge.dependency.value}`);
+  }
   for (const key of [
     ...selected,
     ...roots.flatMap((root) => expandCDFModelDependencies([root]).map((entry) => entry.key)),

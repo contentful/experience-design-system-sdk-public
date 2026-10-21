@@ -21,6 +21,7 @@ const PROP_FIELDS = [
   'category',
   'type',
   'values',
+  'observedValues',
   'tokenKind',
   'tokenPaths',
   'required',
@@ -130,7 +131,7 @@ export function diffExploration(scopes: ExploreScopeResult[], known?: KnownCompo
       return;
     }
 
-    const equal = field === 'representationProposal' ? jsonEqual : sameValue;
+    const equal = field === 'representationProposal' || field === 'values' ? jsonEqual : sameValue;
     if (absent.length === 0 && stated.every((provider) => equal(provider.value, stated[0]!.value))) {
       consensus.push({
         path,

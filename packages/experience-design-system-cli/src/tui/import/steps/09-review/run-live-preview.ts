@@ -92,7 +92,14 @@ export async function runLivePreview(opts: RunLivePreviewOptions): Promise<LiveP
 
   const cdf = buildCDF(components, toCDFTokens(tokens), { deleteAll: opts.deleteAllComponents === true })!;
 
-  const client = new ImportApiClient({ host, cmaToken, spaceId, environmentId, userAgent: cliUserAgent() });
+  const client = new ImportApiClient({
+    host,
+    cmaToken,
+    spaceId,
+    environmentId,
+    userAgent: cliUserAgent(),
+    prerequisiteSessionId: sessionId,
+  });
   const startedAt = Date.now();
 
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;

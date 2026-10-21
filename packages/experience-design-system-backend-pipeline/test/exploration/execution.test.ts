@@ -299,15 +299,15 @@ it('retains the original companion report alongside parsed data in result and du
 });
 
 it('preserves nested and falsy report values through parsing and unordered comparison', () => {
-  const values = [false, 0, '', null, { options: [0, false], nested: { enabled: false } }, ['a', 'a']];
+  const observedValues = [false, 0, '', null, { options: [0, false], nested: { enabled: false } }, ['a', 'a']];
   const companion = {
     agentRole: 'full-inventory-1',
-    components: [{ ...component, props: [{ name: 'settings', values, default: false }] }],
+    components: [{ ...component, props: [{ name: 'settings', observedValues, default: false }] }],
   };
   const parsed = api.parseExploreOutput(JSON.stringify(companion), 'full-inventory-1');
   expect(parsed.ok).toBe(true);
   if (!parsed.ok) throw new Error(parsed.error);
-  expect(parsed.companion.components[0]?.props?.[0]).toMatchObject({ values, default: false });
+  expect(parsed.companion.components[0]?.props?.[0]).toMatchObject({ observedValues, default: false });
   const reports: ExploreScopeResult[] = [1, 2, 3].map((index) => ({
     scope: `full-inventory-${index}` as ExploreScope,
     report: '',
@@ -318,14 +318,22 @@ it('preserves nested and falsy report values through parsing and unordered compa
       components: [
         {
           ...component,
-          props: [{ name: 'settings', values: index === 2 ? [...values].reverse() : values, default: false }],
+          props: [
+            {
+              name: 'settings',
+              observedValues: index === 2 ? [...observedValues].reverse() : observedValues,
+              default: false,
+            },
+          ],
         },
       ],
     },
   }));
   expect(api.diffExploration(reports, [component]).disagreements).toEqual([]);
-  reports[2]!.companion.components[0]!.props![0]!.values = [...values.slice(0, -1), ['a']];
+  reports[2]!.companion.components[0]!.props![0]!.observedValues = [...observedValues.slice(0, -1), ['a']];
   expect(
-    api.diffExploration(reports, [component]).disagreements.some((disagreement) => disagreement.field === 'values'),
+    api
+      .diffExploration(reports, [component])
+      .disagreements.some((disagreement) => disagreement.field === 'observedValues'),
   ).toBe(true);
 });

@@ -8,6 +8,7 @@ import type {
   EvidenceCheck,
   ExploreScope,
   ExploreScopeResult,
+  JsonValue,
 } from '@contentful/experience-design-system-types';
 const work: VerifyComponentWork = {
   component: 'Panel',
@@ -87,7 +88,7 @@ describe('source-bound detail assurance', () => {
 
   it('retains unordered nested multiplicity and the first eligible description', () => {
     expect(api.diffExploration).toBeTypeOf('function');
-    const report = (scope: ExploreScope, values: unknown[], description: string): ExploreScopeResult => ({
+    const report = (scope: ExploreScope, observedValues: JsonValue[], description: string): ExploreScopeResult => ({
       scope,
       report: '',
       attempts: [],
@@ -100,7 +101,7 @@ describe('source-bound detail assurance', () => {
             props: [
               {
                 name: 'title',
-                values,
+                observedValues,
                 description,
               },
             ],

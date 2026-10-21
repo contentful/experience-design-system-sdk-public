@@ -126,7 +126,7 @@ interface CDFComponentEntry {
 }
 
 interface CDFPropertyDefinition {
-  $type: CDFPropertyType; // 'string' | 'richtext' | 'number' | 'media' | 'link' | 'enum' | 'token' | 'boolean'
+  $type: CDFPropertyType; // 'string' | 'richtext' | 'number' | 'media' | 'link' | 'token' | 'boolean'
   $category: CDFPropertyCategory; // 'content' | 'design' | 'state'
   $description?: string;
   $required?: boolean;
@@ -489,3 +489,9 @@ Design patterns and detailed guidelines for building v2 TUI screens are document
 - **`packages/experience-design-system-cli/DSI_TUI_ARCHITECTURE.md`** — v2 architecture and screen guidelines
 - **`packages/experience-design-system-cli/.claude/skills/ink-api/SKILL.md`** — Ink core API (Box, Text, colors, hooks)
 - **`packages/experience-design-system-cli/.claude/skills/ink-ui/SKILL.md`** — Ink UI component reference
+
+### Primitive choices and import prerequisites
+
+Finite source choices retain their primitive string, number or boolean type with typed `$values`; `enum` is rejected rather than silently converted. Complete compiler domains are checked for both narrowing and widening, and numeric design intent is retained without automatic conversion to a token. The editor preserves typed choices and their order. The deployed mapper gate independently holds finite constraints and unsupported manual numeric design definitions.
+
+The final CDF produces a deterministic prerequisite graph for planned token definitions and generated model dependencies. A filtered document cannot drop a required planned dependency. Target catalogue captures are bound to the session source evidence, property profile and normalized target; token paths and platform identifiers remain separate namespaces with explicit mappings. Catalogue observations and mapping revisions are immutable, and receipts retain their exact observation after subsequent captures. Unknown catalogue or capability evidence never proves readiness. Local document receipts bind the exact CDF, prerequisite graph, source and target observation; they do not resume an agent or establish remote publication. Preview and apply revalidate those inputs before sending a request.

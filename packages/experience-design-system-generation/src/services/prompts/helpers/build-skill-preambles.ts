@@ -38,8 +38,8 @@ Rules:
 - Every slot in the input must have exactly one classify_slot call.
 - Valid cdf_type values: string, number, boolean, array, record, richtext, media, link, token
 - Valid cdf_category values: content, design, state
-- For enum type, always include \`values\` (non-empty string array of the variant names the prop accepts).
-- For token type, always include \`token_kind\` (DTCG \$type, e.g. "color"). **Never emit \`values\` for \`cdf_type: "token"\` props** — an enum prop's list holds variant names; a token prop's list holds design token paths, produced separately and never by you. Emitting \`values\` on a token prop makes the definition invalid.
+- Finite string, number and boolean domains use typed \`values\`; enum is not a supported type.
+- For token type, always include \`token_kind\` (DTCG \$type, e.g. "color"). **Never emit \`values\` for \`cdf_type: "token"\` props** — a finite primitive's list holds source values; a token prop's list holds design token paths, produced separately and never by you. Emitting \`values\` on a token prop makes the definition invalid.
 - Never emit both "values" and "token_kind" on one prop.
 - Preserve source-declared alternatives, requiredness, defaults and open domains. A name, shape, framework, caller or lookup does not prove a complete domain.
 - Use string with declared values only for complete source-supported finite sets; use token only when the source consumes a resolved token value. Keep unrepresented alternatives explicit for review.

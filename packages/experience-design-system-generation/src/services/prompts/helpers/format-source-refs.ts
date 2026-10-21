@@ -33,7 +33,7 @@ export function formatSourceRefsSection(refs: ComponentSourceRef[], skill: Skill
   if (withoutContent.length > 0) {
     const guidance =
       skill === 'components'
-        ? 'there is no consumption evidence for these, so `token` cannot be earned for any of their props — classify from the prop signature alone, and any prop that would otherwise be enum-versus-token is `enum` (or `string`)'
+        ? 'there is no consumption evidence for these, so `token` cannot be earned for any of their props — classify from the prop signature alone, and primitive source domains retain their string, number or boolean type with typed `values` only when the complete domain is proven'
         : 'there is no source evidence to narrow from — emit nothing for their props';
     sections.push(
       `Component source unavailable for (JSON) — ${guidance}:\n\`\`\`json\n${JSON.stringify(withoutContent.map((ref) => ({ component: ref.component, sourcePath: ref.sourcePath })))}\n\`\`\``,

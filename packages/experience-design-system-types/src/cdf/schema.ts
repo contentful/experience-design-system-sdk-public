@@ -11,6 +11,18 @@ export const CDF_SCHEMA_URL = 'https://contentful.com/schemas/cdf';
  * separate manifest envelope — this document is the single file/wire
  * payload sent to preview/apply.
  */
+const finiteValuesSchema = {
+  if: { required: ['$values'] },
+  then: {
+    anyOf: ['string', 'number', 'boolean'].map((type) => ({
+      properties: {
+        $type: { const: type },
+        $values: { type: 'array', minItems: 1, uniqueItems: true, items: { type } },
+      },
+    })),
+  },
+};
+
 export const cdfJsonSchema = {
   $schema: 'http://json-schema.org/draft-07/schema#',
   $id: CDF_SCHEMA_URL,
@@ -46,6 +58,7 @@ export const cdfJsonSchema = {
     },
     property: {
       type: 'object',
+      allOf: [finiteValuesSchema],
       required: ['$type', '$category'],
       properties: {
         $type: { type: 'string', enum: [...CDF_PROPERTY_TYPES] },
@@ -67,6 +80,7 @@ export const cdfJsonSchema = {
     },
     field: {
       type: 'object',
+      allOf: [finiteValuesSchema],
       required: ['$type'],
       properties: {
         $type: { enum: [...CDF_PROPERTY_TYPES] },

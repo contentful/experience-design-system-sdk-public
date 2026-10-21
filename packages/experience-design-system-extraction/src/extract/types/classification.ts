@@ -1,6 +1,6 @@
 export interface PreClassification {
   category: 'content' | 'design' | 'state' | 'exclude';
-  cdfTypeHint?: 'string' | 'enum' | 'richtext' | 'media' | 'boolean';
+  cdfTypeHint?: 'string' | 'richtext' | 'media' | 'boolean';
 }
 
 export interface PropBucketAssignment {

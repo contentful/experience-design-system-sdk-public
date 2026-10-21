@@ -82,6 +82,7 @@ export function materializeProperty(
   const validation = definition ? validateCDFProperty(definition) : { valid: true, issues: [] };
   if (!validation.valid) throw new Error(validation.issues.map((i) => `${i.path}: ${i.message}`).join('; '));
   if (!fact?.sourceGraph) {
+    if (definition?.$values) throw new Error('Finite constraints require current complete compiler source evidence');
     if (definition && ['Integer', 'DateTime', 'Literal', 'RichText', 'JSON', 'ResourceLink'].includes(definition.$type))
       throw new Error('Richer representation requires current complete source evidence');
     return { definition, call: cloneJson(call) };

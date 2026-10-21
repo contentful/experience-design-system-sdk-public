@@ -8,6 +8,7 @@ import {
   loadSelectedCDFComponents,
   loadDTCGTokens,
   openPipelineDb,
+  createSessionPrerequisiteSaveReceipt,
   readTokensFromPath,
   toCDFTokens,
 } from '@contentful/experience-design-system-backend-pipeline';
@@ -103,6 +104,14 @@ export async function runPrintFiles(
     if (!input.tokenSessionId && input.tokensPath) tokens = await deps.readTokens(input.tokensPath);
 
     const cdf = buildSavedCDF(components, tokens, { deleteAll: input.allowEmpty });
+    if (input.extractSessionId) {
+      const db = deps.openDb();
+      try {
+        createSessionPrerequisiteSaveReceipt(db, input.extractSessionId, cdf);
+      } finally {
+        db.close();
+      }
+    }
     await deps.writeFile(componentsPath, `${JSON.stringify(cdf, null, 2)}\n`);
     deps.warn(
       `wrote ${componentsPath} (${components.length} component${components.length === 1 ? '' : 's'}, ${tokens.length} token${tokens.length === 1 ? '' : 's'})\n`,

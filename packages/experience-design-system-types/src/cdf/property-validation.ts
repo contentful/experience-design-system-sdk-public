@@ -3,6 +3,7 @@ import { CDF_PROPERTY_TYPES, CDF_PROPERTY_CATEGORIES } from './vocabularies.js';
 import { childPath, cloneJson, jsonValueIssue, own, type PropertyIssue } from '../property-contract/json-value.js';
 import { validateTargetDefinition, type TargetDefinition } from '../property-contract/target-definition.js';
 import { SourceInputAssociationSchema } from '../source-input-association.js';
+import { finiteValuesIssue } from './finite-values.js';
 
 const targetTypes = {
   string: 'String',
@@ -111,6 +112,20 @@ export function validateCDFProperty(
     }
     for (const key of Object.keys(d)) if (!allowed.has(key)) add(key, 'Unexpected property metadata');
     if (own(d, '$description') && typeof d.$description !== 'string') add('$description', 'Expected string');
+    if (own(d, '$values')) {
+      if (!Array.isArray(d.$values)) add('$values', 'Expected array');
+      else {
+        const issue = finiteValuesIssue(d.$type, d.$values);
+        if (issue)
+          issues.push({
+            path:
+              issue.index === undefined
+                ? childPath(path, '$values')
+                : childPath(childPath(path, '$values'), issue.index),
+            message: issue.message,
+          });
+      }
+    }
     if (own(d, '$required') && typeof d.$required !== 'boolean') add('$required', 'Expected boolean');
     if (own(d, '$token.kind') && typeof d['$token.kind'] !== 'string') add('$token.kind', 'Expected string');
     if (

@@ -1,4 +1,6 @@
 import type { EXPLORE_SCOPES } from './constants.js';
+import type { FinitePrimitiveValue } from '../cdf/finite-values.js';
+import type { JsonValue } from '../property-contract/json-value.js';
 export type ExploreScope = (typeof EXPLORE_SCOPES)[number];
 export type DiffScope = 'component' | 'prop' | 'slot';
 export type SourceCompleteness = 'complete-within-declared-bound' | 'partial' | 'unavailable';
@@ -38,7 +40,9 @@ export interface ExplorePropReport {
   name: string;
   category?: 'content' | 'design' | 'state' | 'unattached';
   type?: string;
-  values?: unknown[];
+  values?: FinitePrimitiveValue[];
+  /** Observed values are evidence and do not establish a finite constraint. */
+  observedValues?: JsonValue[];
   tokenKind?: string;
   tokenPaths?: string[];
   required?: boolean;

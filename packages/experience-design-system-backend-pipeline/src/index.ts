@@ -240,6 +240,18 @@ export {
 } from './steps/generation/src/controller/existing-entities/summarize-for-generate.js';
 export { summarizeForMapTokens } from './steps/generation/src/controller/existing-entities/summarize-for-map-tokens.js';
 export type { ExistingContentfulEntities } from './steps/generation/src/types/existing-entities.js';
+export {
+  bindCatalogueCaptureToSession,
+  loadBoundSessionPrerequisiteSnapshot,
+  setSessionTokenReferenceMapping,
+  createSessionPrerequisiteSaveReceipt,
+  verifyLocalSavedPrerequisiteReceipt,
+} from './persistence/src/session/repositories/import-prerequisites.js';
+export type {
+  SessionPrerequisiteSaveReceipt,
+  SessionPrerequisiteSnapshot,
+  PrerequisiteTarget,
+} from './persistence/src/session/repositories/import-prerequisites.js';
 export type {
   SelectAgentSummary,
   GenerateAgentSummary,

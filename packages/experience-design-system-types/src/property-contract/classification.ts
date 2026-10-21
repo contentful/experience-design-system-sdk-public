@@ -32,7 +32,7 @@ export function classificationDefinition(call: ClassifiedPropertyCall): CDFPrope
     ...(call.representation_proposal && isSourceBoundRepresentation(call.cdf_type)
       ? targetToCDF(call.representation_proposal.desiredDefinition)
       : {}),
-    $type: (call.cdf_type === 'enum' ? 'string' : call.cdf_type) as CDFPropertyDefinition['$type'],
+    $type: call.cdf_type as CDFPropertyDefinition['$type'],
     $category: call.cdf_category,
   };
   if (typeof call.required === 'boolean') definition.$required = call.required;
@@ -73,7 +73,6 @@ export function parseClassificationMetadata(rec: Record<string, unknown>, call: 
   }
   if (typeof rec.source_revision === 'string') call.source_revision = rec.source_revision;
   if (typeof rec.source_node_id === 'string') call.source_node_id = rec.source_node_id;
-  call.cdf_type = call.cdf_type === 'enum' ? 'string' : call.cdf_type;
   issues.push(
     ...validateCDFProperty(classificationDefinition(call)).issues.map((issue) => `${issue.path}: ${issue.message}`),
   );

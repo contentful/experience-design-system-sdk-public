@@ -14,6 +14,7 @@ export function mapContentfulTypeToCdfType(contentfulType: string): string {
     case 'link':
       return 'link';
     case 'enum':
+      throw new Error('Obsolete Enum property type; use String with explicit finite choices');
     case 'symbol':
       return 'string';
     case 'token':

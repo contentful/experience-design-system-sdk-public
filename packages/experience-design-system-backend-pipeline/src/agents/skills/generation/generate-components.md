@@ -64,7 +64,7 @@ The `category` field and deterministic prop buckets are advisory hints. Verify e
 ## Source evidence and uncertainty
 
 - The declared type and contract govern available alternatives and open domains. Copy a finite declared literal union as declared; a union that includes `string` or `number` remains open and must not be narrowed to only its literal members.
-- A closed enum requires evidence of the complete allowed set, such as a closed declared union, an explicit `allowedValues` contract, or source that establishes an exhaustive finite set. A default, one caller, one observed value, a prop name, a partial lookup table, or an existing model is an example or alignment clue; none alone proves the complete set.
+- A closed primitive domain requires evidence of the complete allowed set, such as a closed declared union, an explicit `allowedValues` contract, or source that establishes an exhaustive finite set. A default, one caller, one observed value, a prop name, a partial lookup table, or an existing model is an example or alignment clue; none alone proves the complete set.
 - Preserve the input's declared prop `required` value. Change it only when explicit source evidence establishes the contract. Typical caller presence, a default, empty-render guesses, or model overlap do not establish requiredness.
 - Preserve valid defaults exactly, including `false`, `0`, and the empty string. Do not treat a default as the only permitted value.
 - Source refs and observations are bounded. Missing imports, callers, excerpts, or source files leave those facts unknown; they do not establish that a prop is unused, a component is non-rendering, alternatives are absent, or capture is complete.
@@ -228,7 +228,7 @@ Before emitting any tool calls, verify:
 1. Every prop in the input has exactly one `classify_prop` or `exclude_prop` call, using the host-owned required decision inventory rather than the advisory prop list.
 2. Every slot has exactly one `classify_slot` call.
 3. `classify_component` is emitted exactly once with non-empty `rationale.description`, `rationale.props` and `rationale.slots`.
-4. Every finite enum has the complete source-supported alternatives; Missing evidence does not close a domain.
+4. Every finite primitive domain has the complete source-supported alternatives; Missing evidence does not close a domain.
 5. Every token-typed property has a source-supported token kind and no `values`.
 6. `required` is a source-supported JSON boolean; omitted requiredness remains unknown.
 7. Use current supported output types and typed numeric values; do not coerce numbers into strings or infer a ResourceLink contract.

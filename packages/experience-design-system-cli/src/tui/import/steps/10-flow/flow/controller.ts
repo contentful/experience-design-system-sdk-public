@@ -252,6 +252,7 @@ export function createFlowController(start: FlowStart, deps: FlowDeps): FlowCont
         {
           state,
           cdf: state.cdf,
+          extractSessionId: state.extractSessionId,
           spaceId: state.spaceId,
           environmentId: state.environmentId,
           cmaToken: state.cmaToken,

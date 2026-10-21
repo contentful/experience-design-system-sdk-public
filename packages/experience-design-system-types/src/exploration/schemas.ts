@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { EXPLORE_SCOPES } from './constants.js';
 import { SourceInputAssociationSchema } from '../source-input-association.js';
+import { finiteValuesIssue } from '../cdf/finite-values.js';
+import { jsonValueIssue, type JsonValue } from '../property-contract/json-value.js';
 import {
   validateProposalDraft,
   type RepresentationProposalDraft,
@@ -15,21 +17,39 @@ export const SlotRestrictionSchema = z.object({
   applicable: z.boolean(),
   evidence: z.array(VerifyEvidenceSchema).min(1),
 });
-export const ExplorePropReportSchema = z.object({
-  name: z.string().min(1),
-  category: z.enum(['content', 'design', 'state', 'unattached']).optional(),
-  type: z.string().optional(),
-  values: z.array(z.unknown()).optional(),
-  tokenKind: z.string().optional(),
-  tokenPaths: z.array(z.string()).optional(),
-  required: z.boolean().optional(),
-  default: z.unknown().optional(),
-  description: z.string().optional(),
-  reasoning: z.string().optional(),
-  representationProposal: z
-    .custom<RepresentationProposalDraft>((value) => validateProposalDraft(value).length === 0)
-    .optional(),
-});
+export const ExplorePropReportSchema = z
+  .object({
+    name: z.string().min(1),
+    category: z.enum(['content', 'design', 'state', 'unattached']).optional(),
+    type: z.string().optional(),
+    values: z
+      .array(z.union([z.string(), z.number(), z.boolean()]))
+      .nonempty()
+      .optional(),
+    observedValues: z.array(z.custom<JsonValue>((value) => !jsonValueIssue(value))).optional(),
+    tokenKind: z.string().optional(),
+    tokenPaths: z.array(z.string()).optional(),
+    required: z.boolean().optional(),
+    default: z.unknown().optional(),
+    description: z.string().optional(),
+    reasoning: z.string().optional(),
+    representationProposal: z
+      .custom<RepresentationProposalDraft>((value) => validateProposalDraft(value).length === 0)
+      .optional(),
+  })
+  .superRefine((report, ctx) => {
+    if (report.type === 'enum')
+      ctx.addIssue({ code: 'custom', path: ['type'], message: 'Use a primitive type with typed values' });
+    if (report.values !== undefined) {
+      const issue = finiteValuesIssue(report.type, report.values);
+      if (issue)
+        ctx.addIssue({
+          code: 'custom',
+          path: issue.index === undefined ? ['values'] : ['values', issue.index],
+          message: issue.message,
+        });
+    }
+  });
 export const ExploreSlotEvidenceSchema = z.object({
   name: z.string().refine((value) => value.trim().length > 0),
   sourceInput: z

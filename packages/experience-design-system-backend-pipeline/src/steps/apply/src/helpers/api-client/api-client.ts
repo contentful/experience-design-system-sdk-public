@@ -1,6 +1,7 @@
 import {
   parseCDFComponents,
   mapperApplyBlockers,
+  validateImportPrerequisites,
   type CDFComponentEntry,
 } from '@contentful/experience-design-system-types';
 import {
@@ -22,6 +23,13 @@ import { sanitizePreviewResponse } from '../sanitize-preview.js';
 import { toApiHost } from '../host-utils.js';
 import { ApiError } from '../../types/api-error.js';
 import type { ApiClientOptions, RetryConfig } from '../../types/contract.js';
+import { openPipelineDb } from '../../../../../persistence/src/session/repositories/db.js';
+import {
+  loadBoundSessionPrerequisiteSnapshot,
+  assertResolvedImportPrerequisites,
+  createSessionPrerequisiteSaveReceipt,
+  verifyLocalSavedPrerequisiteReceipt,
+} from '../../../../../persistence/src/session/repositories/import-prerequisites.js';
 
 export class ApiClient {
   private host: string;
@@ -31,8 +39,10 @@ export class ApiClient {
   private retry: RetryConfig;
   private userAgent: string;
   private lastRequestId?: string;
+  private prerequisiteSessionId?: string;
 
   constructor(opts: ApiClientOptions) {
+    this.prerequisiteSessionId = opts.prerequisiteSessionId;
     this.host = toApiHost(opts.host);
     this.token = opts.cmaToken;
     this.spaceId = opts.spaceId;
@@ -129,7 +139,27 @@ export class ApiClient {
   }
 
   private admitRepresentations(cdf: CDFDocument): void {
-    const components = parseCDFComponents(cdf).components;
+    const parsed = parseCDFComponents(cdf);
+    const components = parsed.components;
+    const prerequisites = validateImportPrerequisites(parsed);
+    if (!prerequisites.valid)
+      throw new Error(`Invalid import prerequisites: ${prerequisites.errors.map((issue) => issue.message).join('; ')}`);
+    if (this.prerequisiteSessionId) {
+      const db = openPipelineDb();
+      try {
+        const target = { host: this.host, spaceId: this.spaceId, environmentId: this.environmentId };
+        const snapshot = loadBoundSessionPrerequisiteSnapshot(db, this.prerequisiteSessionId, target);
+        const receipt = createSessionPrerequisiteSaveReceipt(db, this.prerequisiteSessionId, cdf, target);
+        if (
+          (snapshot?.snapshotHash ?? null) !== receipt.snapshotHash ||
+          !verifyLocalSavedPrerequisiteReceipt(db, receipt, cdf, target)
+        )
+          throw new Error('Import prerequisite receipt does not match current source, target and document');
+        assertResolvedImportPrerequisites(prerequisites.plan, snapshot);
+      } finally {
+        db.close();
+      }
+    } else assertResolvedImportPrerequisites(prerequisites.plan);
     const blockers = mapperApplyBlockers(components);
     if (blockers.length) throw new Error(`Property mapper prerequisites unavailable: ${blockers.join('; ')}`);
     for (const { entry } of components) {
