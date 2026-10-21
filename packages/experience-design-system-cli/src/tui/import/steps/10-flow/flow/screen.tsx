@@ -3,6 +3,7 @@ import { Box } from 'ink';
 import { parseCDFComponents } from '@contentful/experience-design-system-types';
 import { ErrorStep, GateStep, RunningStep } from '../../../shared/index.js';
 import { PreviewValidationErrorScreen } from '../../preview-validation-error/screen.js';
+import { TOKENS_ONLY_STEP_COUNT } from '../../00-preflight/logic.js';
 import { GenerateReviewStep } from '../../09-review/generate-review-step.js';
 import { CustomPromptBanner } from '../components/CustomPromptBanner.js';
 import { DoneStep } from '../screens/DoneStep.js';
@@ -27,7 +28,7 @@ function totalStepsFor(
   state: Pick<FlowState, 'tokensPath' | 'rawTokensPath' | 'mapTokensEligible' | 'extractSessionId'>,
 ): number {
   // Only tokens were generated, so there was no extraction: generate the tokens, then push them.
-  if (!state.extractSessionId) return 2;
+  if (!state.extractSessionId) return TOKENS_ONLY_STEP_COUNT;
   const hasTokenStage = !!state.tokensPath || !!state.rawTokensPath;
   return 3 + (hasTokenStage ? 1 : 0) + 2 + (state.mapTokensEligible === true ? 1 : 0);
 }

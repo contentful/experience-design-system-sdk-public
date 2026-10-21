@@ -8,6 +8,14 @@ export const IMPORT_TARGET_OPTIONS: ReadonlyArray<{ target: ImportTarget; label:
   { target: 'components', label: 'Components only' },
 ];
 
+// What a tokens-only import goes through, for the intro it opens on. The other modes open on the welcome screen, which
+// lists its own steps. The step numbers its screens show come from this list too, so the intro and the headers agree.
+export const TOKENS_ONLY_OVERVIEW: ReadonlyArray<{ description: string; ai: boolean }> = [
+  { description: 'Generate design tokens from your token file', ai: true },
+  { description: 'Push to Contentful', ai: false },
+];
+export const TOKENS_ONLY_STEP_COUNT = TOKENS_ONLY_OVERVIEW.length;
+
 // The screens and stages of an import, in the order they run. Everything that depends on the chosen target (the screens
 // shown, the step numbers and totals, the extraction rows, the Back target) reads from the lists below, so a mode is
 // described in one place.

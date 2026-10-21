@@ -13,6 +13,8 @@ import {
   currentInputStep,
   goBack,
   runBaseDir,
+  TOKENS_ONLY_OVERVIEW,
+  TOKENS_ONLY_STEP_COUNT,
   type ImportStepId,
   type ImportTarget,
   type InputAnswers,
@@ -365,6 +367,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
           case 'token-file':
             return (
               <TokenInputScreen
+                {...(target === 'tokens' ? { overview: TOKENS_ONLY_OVERVIEW } : {})}
                 initialPath={importDefaults.tokenFile}
                 onConfirm={(tokensPath) => answer({ tokensPath })}
                 onBack={() => goBackFrom('token-file')}
@@ -390,7 +393,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
         return (
           <RunningStep
             stepNumber={1}
-            totalSteps={2}
+            totalSteps={TOKENS_ONLY_STEP_COUNT}
             title="Generating design tokens"
             description="Generating design tokens from your token file."
             lines={[{ text: `Generating token definitions via ${tokensOnlyRun.input.agent}...`, complete: false }]}
