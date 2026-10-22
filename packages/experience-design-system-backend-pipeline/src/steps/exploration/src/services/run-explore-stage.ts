@@ -21,6 +21,7 @@ import type { ExploreStageRequest } from '../types.js';
 import { sourcePropertyModel } from '../../../generation/src/services/property/source-property-model.js';
 import { loadStageContext } from '../helpers/load-stage-context.js';
 import { projectExplorationSourceInput } from '../../../../source-evidence/shared-source.js';
+import { propertySourceEvidence } from '../helpers/property-source-evidence.js';
 export async function runExploreStage(request: ExploreStageRequest): Promise<ExploreStageResult> {
   assertUnique(request.scopes, 'requested scopes');
   if (request.scopes.some((scope) => !EXPLORE_SCOPES.includes(scope))) throw new Error('Unknown exploration scope');
@@ -115,6 +116,7 @@ export async function runExploreStage(request: ExploreStageRequest): Promise<Exp
               : raw.map(({ componentFacts: _facts, ...component }) => component),
             ...(candidateFree ? { omittedComponentFacts } : { componentEvidence }),
             sourceInput,
+            propertyEvidence: candidateFree ? undefined : propertySourceEvidence(request.representationProposalSources),
             sourceRefs: request.sourceRefs,
             rendererReference: loadedContext.rendererReference,
             existingModel: loadedContext.existingModel,

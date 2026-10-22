@@ -7,6 +7,7 @@ import {
   validateRepresentationProposalSource,
   validateDiscriminatedUnionSourceDefinition,
   validateSourceValue,
+  validatePropertyDecisionMetadata,
   cdfToTarget,
   own,
 } from '@contentful/experience-design-system-types';
@@ -64,6 +65,11 @@ function parseCompanion(
       throw new Error('Exploration report must exactly cover assigned component/source identities');
   }
   for (const component of companion.components) {
+    const owners = proposalSources?.filter(
+      (source) => source.component === component.name && source.source === component.source,
+    );
+    if (owners && (component.props?.length ?? 0) > 0 && owners.length !== 1)
+      throw new Error(`Detail decisions require one exact current component/source owner for ${component.name}`);
     assertUnique(
       (component.props ?? []).map((prop) => prop.name),
       'reported properties',
@@ -73,9 +79,12 @@ function parseCompanion(
       'reported slots',
     );
     for (const prop of component.props ?? []) {
-      const source = proposalSources
-        ?.find((source) => source.component === component.name && source.source === component.source)
-        ?.properties.find((property) => property.identity.key === prop.name);
+      const sources = owners?.flatMap((owner) =>
+        owner.properties.filter((property) => property.identity.key === prop.name),
+      );
+      if ((sources?.length ?? 0) > 1)
+        throw new Error(`Ambiguous current property source for ${component.name}.${prop.name}`);
+      const source = sources?.[0];
       if (prop.definition) {
         const root = source?.source.graph.nodes.find((node) => node.id === source.identity.nodeId);
         if (!source || !root || root.required !== (prop.definition.$required ?? false))
@@ -93,12 +102,41 @@ function parseCompanion(
             `Invalid union source for ${component.name}.${prop.name}: ${issues.map((issue) => `${issue.path}: ${issue.message}`).join('; ')}`,
           );
       }
-      if (!prop.representationProposal) continue;
-      if (!source) throw new Error(`Current source evidence missing for ${component.name}.${prop.name} proposal`);
-      const validation = validateRepresentationProposalSource(prop.representationProposal, source);
-      if (!validation.valid)
+      if (prop.representationProposal) {
+        if (!source) throw new Error(`Current source evidence missing for ${component.name}.${prop.name} proposal`);
+        const validation = validateRepresentationProposalSource(prop.representationProposal, source);
+        if (!validation.valid)
+          throw new Error(
+            `Invalid representation proposal for ${component.name}.${prop.name}: ${validation.issues.map((issue) => `${issue.path}: ${issue.message}`).join('; ')}`,
+          );
+        if (own(prop, 'default')) {
+          const defaultValidation = validateRepresentationProposalSource(
+            {
+              ...prop.representationProposal,
+              desiredDefinition: { ...prop.representationProposal.desiredDefinition, defaultValue: prop.default },
+            },
+            source,
+          );
+          if (!defaultValidation.valid)
+            throw new Error(
+              `Invalid proposal default for ${component.name}.${prop.name}: ${defaultValidation.issues.map((issue) => `${issue.path}: ${issue.message}`).join('; ')}`,
+            );
+          const issues = validateSourceValue(
+            source.source.graph,
+            prop.default as import('@contentful/experience-design-system-types').JsonValue,
+          );
+          if (issues.length)
+            throw new Error(`Proposal default contradicts current source for ${component.name}.${prop.name}`);
+        }
+      }
+      const issues = validatePropertyDecisionMetadata(prop, {
+        definition: prop.definition,
+        representationProposal: prop.representationProposal,
+        sourceRequired: source?.source.graph.nodes.find((node) => node.id === source.identity.nodeId)?.required,
+      });
+      if (issues.length)
         throw new Error(
-          `Invalid representation proposal for ${component.name}.${prop.name}: ${validation.issues.map((issue) => `${issue.path}: ${issue.message}`).join('; ')}`,
+          `Invalid property decision for ${component.name}.${prop.name}: ${issues.map((issue) => `${issue.path}: ${issue.message}`).join('; ')}`,
         );
     }
     for (const slot of component.slots ?? [])

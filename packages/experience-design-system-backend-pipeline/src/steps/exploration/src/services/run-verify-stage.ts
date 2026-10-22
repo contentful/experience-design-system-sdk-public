@@ -4,6 +4,7 @@ import { runStageWithRetries } from '../../../../agents/helpers/run-stage-with-r
 import { parseVerifyOutput } from '../parsers/parse-verify-output.js';
 import { runStageWork } from '../helpers/run-stage-work.js';
 import type { VerifyStageRequest } from '../types.js';
+import { propertySourceEvidence } from '../helpers/property-source-evidence.js';
 export async function runVerifyStage(request: VerifyStageRequest): Promise<VerifyStageResult> {
   const items: VerifiedItem[] = [],
     attempts: VerifyAttempt[] = [];
@@ -36,6 +37,7 @@ export async function runVerifyStage(request: VerifyStageRequest): Promise<Verif
             }),
             stageInputInline: JSON.stringify({
               work,
+              propertyEvidence: propertySourceEvidence(request.representationProposalSources, [work]),
               source: request.sourceInput,
               existingContext: request.existingContextStatus,
             }),

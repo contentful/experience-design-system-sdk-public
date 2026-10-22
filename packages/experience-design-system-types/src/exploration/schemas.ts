@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { EXPLORE_SCOPES } from './constants.js';
 import { SourceInputAssociationSchema } from '../source-input-association.js';
-import { finiteValuesIssue } from '../cdf/finite-values.js';
+import { validatePropertyDecisionMetadata } from '../property-contract/property-decision.js';
 import { jsonValueIssue, jsonEqual, own, type JsonValue } from '../property-contract/json-value.js';
 import { validateCDFProperty, containsCDFDefinitionType, cdfToTarget } from '../cdf/property-validation.js';
 import { validateTargetValue } from '../property-contract/target-definition.js';
@@ -22,7 +22,7 @@ export const SlotRestrictionSchema = z.object({
 });
 export const ExplorePropReportSchema = z
   .object({
-    name: z.string().min(1),
+    name: z.string().refine((value) => value.trim().length > 0),
     category: z.enum(['content', 'design', 'state', 'unattached']).optional(),
     type: z.string().optional(),
     definition: z.custom<CDFPropertyDefinition>((value) => validateCDFProperty(value).valid).optional(),
@@ -41,6 +41,7 @@ export const ExplorePropReportSchema = z
       .custom<RepresentationProposalDraft>((value) => validateProposalDraft(value).length === 0)
       .optional(),
   })
+  .strict()
   .superRefine((report, ctx) => {
     if (report.type === 'DiscriminatedUnion' || report.definition !== undefined) {
       const definition = report.definition;
@@ -64,17 +65,18 @@ export const ExplorePropReportSchema = z
           message: 'Union decisions require one complete consistent content definition',
         });
     }
-    if (report.type === 'enum')
-      ctx.addIssue({ code: 'custom', path: ['type'], message: 'Use a primitive type with typed values' });
-    if (report.values !== undefined) {
-      const issue = finiteValuesIssue(report.type, report.values);
-      if (issue)
-        ctx.addIssue({
-          code: 'custom',
-          path: issue.index === undefined ? ['values'] : ['values', issue.index],
-          message: issue.message,
-        });
-    }
+    for (const issue of validatePropertyDecisionMetadata(report, {
+      definition: report.definition,
+      representationProposal: report.representationProposal,
+    }))
+      ctx.addIssue({
+        code: 'custom',
+        path: issue.path
+          .split('/')
+          .slice(1)
+          .map((key) => key.replace(/~1/g, '/').replace(/~0/g, '~')),
+        message: issue.message,
+      });
   });
 export const ExploreSlotEvidenceSchema = z.object({
   name: z.string().refine((value) => value.trim().length > 0),
@@ -84,8 +86,8 @@ export const ExploreSlotEvidenceSchema = z.object({
     >((value) => SourceInputAssociationSchema.safeParse(value).success)
     .optional(),
   isRealSlot: z.boolean(),
-  allowedComponents: z.array(z.string().min(1)).optional(),
-  evidence: z.array(z.string()).optional(),
+  allowedComponents: z.array(z.string().refine((value) => value.trim().length > 0)).optional(),
+  evidence: z.array(z.string().refine((value) => value.trim().length > 0)).optional(),
   required: z.boolean().optional(),
   reasoning: z.string().optional(),
   restriction: SlotRestrictionSchema.optional(),
@@ -94,12 +96,12 @@ export const ExploreCompanionSchema = z.object({
   agentRole: z.enum(EXPLORE_SCOPES),
   components: z.array(
     z.object({
-      name: z.string().min(1),
-      source: z.string().min(1),
+      name: z.string().refine((value) => value.trim().length > 0),
+      source: z.string().refine((value) => value.trim().length > 0),
       componentId: z.string().optional(),
       included: z.boolean().optional(),
       inclusionReasoning: z.string().optional(),
-      modelingNotes: z.array(z.string()).optional(),
+      modelingNotes: z.array(z.string().refine((value) => value.trim().length > 0)).optional(),
       props: z.array(ExplorePropReportSchema).optional(),
       slots: z.array(ExploreSlotEvidenceSchema).optional(),
     }),

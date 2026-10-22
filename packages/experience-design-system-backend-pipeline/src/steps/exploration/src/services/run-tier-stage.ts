@@ -3,6 +3,7 @@ import { buildPrompt } from '../../../../agents/index.js';
 import { runStageWithRetries } from '../../../../agents/helpers/run-stage-with-retries.js';
 import { parseTierOutput } from '../parsers/parse-tier-output.js';
 import type { TierStageRequest } from '../types.js';
+import { propertySourceEvidence } from '../helpers/property-source-evidence.js';
 export async function runTierStage(request: TierStageRequest): Promise<TierStageResult> {
   const hypotheses: Extract<TierStageResult, { ok: true }>['hypotheses'] = [];
   const attempts: TierStageResult['attempts'] = [];
@@ -23,6 +24,7 @@ export async function runTierStage(request: TierStageRequest): Promise<TierStage
           stageAssignmentInline: JSON.stringify({ ids: batch.map((entry) => entry.id), identity: request.identity }),
           stageInputInline: JSON.stringify({
             disagreements: batch,
+            propertyEvidence: propertySourceEvidence(request.representationProposalSources, batch),
             source: request.sourceInput,
             sourceRefs: request.sourceRefs,
             existingContext: request.existingContextStatus,

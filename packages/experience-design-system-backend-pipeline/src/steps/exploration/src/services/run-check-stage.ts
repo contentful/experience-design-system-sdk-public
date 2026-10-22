@@ -10,6 +10,7 @@ import { buildCheckWork } from '../helpers/build-check-work.js';
 import { parseCheckOutput } from '../parsers/parse-check-output.js';
 import { runStageWork } from '../helpers/run-stage-work.js';
 import type { CheckStageRequest } from '../types.js';
+import { propertySourceEvidence } from '../helpers/property-source-evidence.js';
 export function applyChecks(verified: VerifiedItem[], checks: EvidenceCheck[]): VerifiedItem[] {
   return verified.map((item) => {
     if (item.outcome === 'conflicting') return item;
@@ -55,7 +56,12 @@ export async function runCheckStage(request: CheckStageRequest): Promise<CheckSt
               checkIds: work.entries.map((entry) => entry.checkId),
               identity: request.identity,
             }),
-            stageInputInline: JSON.stringify({ ...work, existingContext: request.existingContextStatus }),
+            stageInputInline: JSON.stringify({
+              ...work,
+              source: request.sourceInput,
+              propertyEvidence: propertySourceEvidence(request.representationProposalSources, [work]),
+              existingContext: request.existingContextStatus,
+            }),
             skillContentOverride: request.skillContentOverride,
             skillPathOverride: request.skillPathOverride,
           }),

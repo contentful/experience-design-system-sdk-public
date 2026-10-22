@@ -21,6 +21,7 @@ export type SlotCandidates = ReadonlyArray<{
   slots: readonly string[];
 }>;
 export interface StageOptions {
+  representationProposalSources?: readonly ExploreRepresentationProposalSource[];
   workIds?: readonly string[];
   component?: string;
   source?: string;
@@ -46,7 +47,6 @@ export interface StageOptions {
   onAttempt?: (attempt: AgentCallAttempt) => void | Promise<void>;
 }
 export interface ExploreStageRequest extends StageOptions {
-  representationProposalSources?: readonly ExploreRepresentationProposalSource[];
   scopes: readonly ExploreScope[];
   requestedComponents?: readonly KnownComponent[];
   rawComponentsInline: string;

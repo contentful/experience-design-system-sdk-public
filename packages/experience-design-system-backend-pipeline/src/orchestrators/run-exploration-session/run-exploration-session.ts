@@ -187,6 +187,7 @@ async function execute(
       signal: request.signal,
       identity: run,
       sourceInput,
+      ...(phase === 'detail' ? { representationProposalSources: buildProposalSources(selected) } : {}),
       maxPromptBytes: saved.envelope.capture.bounds.limits.maxPromptBytes,
       onAttempt: (attempt: import('@contentful/experience-design-system-types').AgentCallAttempt) =>
         storeExplorationAttempt(db, runId!, attempt),
@@ -210,7 +211,6 @@ async function execute(
       rawComponentsInline: JSON.stringify(selected),
       slotCandidates,
       requestedComponents: known,
-      ...(phase === 'detail' ? { representationProposalSources: buildProposalSources(selected) } : {}),
       rendererReferenceInline: JSON.stringify(reference),
       ...prompts.explore,
       onScopeComplete: async (report) => {
@@ -405,7 +405,7 @@ async function execute(
       const diff = diffExploration([...components, ...exploration.scopes], known);
       const tier = await runTierStage({ ...common, ...prompts.tier, disagreements: diff.disagreements });
       if (!tier.ok) throw new Error(tier.error);
-      const work = buildVerifyWork({ diff, hypotheses: tier.hypotheses });
+      const work = buildVerifyWork({ diff, hypotheses: tier.hypotheses, sourceInput });
       const verification = await runVerifyStage({ ...common, ...prompts.verify, components: work });
       if (!verification.ok) throw new Error(verification.error);
       const check = await runCheckStage({

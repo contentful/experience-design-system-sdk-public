@@ -280,6 +280,7 @@ export interface VerifyComponentWork {
   source: string;
   sourceRef?: ExploreSourceRef;
   callSites: VerifyCallSite[];
+  evidenceLimits?: string[];
   items: VerifyItem[];
 }
 export interface VerifyResolution {
