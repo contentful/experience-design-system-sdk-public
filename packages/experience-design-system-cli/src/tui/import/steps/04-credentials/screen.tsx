@@ -84,13 +84,16 @@ function CredentialsReview({
         <Text> </Text>
         <Text color={PALETTE.muted}>{subtitle}</Text>
         <Text> </Text>
+        <Text bold color={PALETTE.accent}>
+          ACTIONS
+        </Text>
         {MENU.map((item, index) => {
           const focused = index === focus;
           return (
             <Box key={item.choice} gap={1}>
               <Text color={focused ? PALETTE.accent : undefined}>{focused ? '❯' : ' '}</Text>
               <Box width={labelWidth} flexShrink={0}>
-                <Text bold={focused} color={focused ? PALETTE.accent : PALETTE.muted}>
+                <Text bold={focused} color={focused ? PALETTE.accent : PALETTE.text}>
                   {item.label}
                 </Text>
               </Box>
@@ -98,15 +101,29 @@ function CredentialsReview({
             </Box>
           );
         })}
-        <Text> </Text>
-        {FIELDS.map((field) => {
-          const value = values[field.key];
-          return (
-            <FormReadOnlyRow key={field.key} label={field.label} labelWidth={labelWidth}>
-              <Text bold={value !== ''}>{field.masked ? '•'.repeat(value.length) : value || '(empty)'}</Text>
-            </FormReadOnlyRow>
-          );
-        })}
+        <Box
+          flexDirection="column"
+          marginTop={1}
+          borderStyle="single"
+          borderColor={PALETTE.border}
+          borderBottom={false}
+          borderLeft={false}
+          borderRight={false}
+        >
+          <Text bold color={PALETTE.muted}>
+            SPACE
+          </Text>
+          {FIELDS.map((field) => {
+            const value = values[field.key];
+            return (
+              <FormReadOnlyRow key={field.key} label={field.label} labelWidth={labelWidth}>
+                <Text color={value ? PALETTE.text : PALETTE.muted}>
+                  {field.masked ? '•'.repeat(value.length) : value || '(empty)'}
+                </Text>
+              </FormReadOnlyRow>
+            );
+          })}
+        </Box>
         {notice && (
           <>
             <Text> </Text>
