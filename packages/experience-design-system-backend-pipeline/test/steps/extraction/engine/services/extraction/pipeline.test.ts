@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 import { extractComponents } from '../../../../../../src/steps/extraction/src/services/extraction/extract-components.js';
+import { extractReactComponents } from '../../../../../../src/steps/extraction/index.js';
 
 const tempDirs: string[] = [];
 
@@ -24,6 +25,31 @@ defineProps<{ label: string }>();
 `;
 
 describe('extractComponents pipeline contract', () => {
+  it.each(['Surface', 'useSurface'])('preserves rendered Vue candidates independently of the name %s', async (name) => {
+    const projectRoot = await mkdtemp(join(tmpdir(), 'extraction-pipeline-name-'));
+    tempDirs.push(projectRoot);
+    const source = await writeFixture(join(projectRoot, `${name}.vue`), VUE_BUTTON);
+    const result = await extractComponents([source], undefined, { projectRoot });
+    expect(result.components.map((component) => component.name)).toEqual([name]);
+    expect(result.components[0]?.props.map((prop) => prop.name)).toContain('label');
+    expect(result.exclusions?.some((entry) => entry.name === name)).not.toBe(true);
+    expect(result.warnings.some((warning) => warning.includes('Skipped hook'))).toBe(false);
+  });
+
+  it('preserves a rendered React alias without inferring behavior from its declaration name', async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), 'extraction-pipeline-rendered-name-'));
+    tempDirs.push(projectRoot);
+    const source = await writeFixture(
+      join(projectRoot, 'useSurface.tsx'),
+      'function useSurface(props: { label: string }) { return <section>{props.label}</section>; } export { useSurface as Surface };',
+    );
+    const adapter = await extractReactComponents([source], undefined, { projectRoot });
+    expect(adapter.components.map((component) => component.name)).toContain('Surface');
+    const result = await extractComponents([source], undefined, { projectRoot });
+    expect(result.components.map((component) => component.name)).toContain('Surface');
+    expect(result.components[0]?.sourceCandidates?.map((candidate) => candidate.name)).toContain('label');
+  });
+
   it('routes supported files, ignores unmatched files, and reports aggregate progress', async () => {
     const projectRoot = await mkdtemp(join(tmpdir(), 'extraction-pipeline-progress-'));
     tempDirs.push(projectRoot);

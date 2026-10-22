@@ -130,10 +130,13 @@ it('derives compiler-owned records, repeated and tuple models without names and 
     expect(evaluateRepresentationReadiness(plan).ready).toBe(false);
     if (property === 'settings')
       expect(plan.models.some((generated) => generated.entry.$properties.nested?.$type === 'record')).toBe(true);
-    else
+    else if (property === 'pair')
       expect(plan.models.flatMap((generated) => Object.values(generated.entry.$slots ?? {})).length).toBeGreaterThan(0);
-    if (property === 'rows')
-      expect(plan.models.some((generated) => generated.entry.$slots?.items?.$cardinality?.ordered)).toBe(true);
+    if (property === 'rows') {
+      expect(plan.attachment?.definition.$cardinality?.ordered).toBe(true);
+      expect(plan.mappings.some((mapping) => mapping.reconstruction?.kind === 'ordered-array')).toBe(true);
+      expect(plan.attachment?.definition.$allowedComponents).toEqual(plan.models.map((generated) => generated.key));
+    }
     if (property === 'pair')
       expect(plan.models.some((generated) => generated.entry.$slots?.position_1?.$cardinality?.min === 0)).toBe(true);
     const renamed = cloneJson(model);

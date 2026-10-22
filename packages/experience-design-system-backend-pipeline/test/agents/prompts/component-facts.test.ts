@@ -1,3 +1,4 @@
+import { preflightGenerationResult, readGenerationContext } from '../../generation-fixture.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RawComponentDefinition } from '../../../src/steps/extraction/src/types/component.js';
 const agent = vi.hoisted(() => ({ prompts: [] as string[] }));
@@ -5,8 +6,8 @@ vi.mock('../../../src/agents/index.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../src/agents/index.js')>()),
   createLocalCliAgentInvoker: () => ({
     invoke: async ({ prompt }: { prompt: string }) => {
-      agent.prompts.push(prompt);
-      return {
+      agent.prompts.push(readGenerationContext(prompt));
+      return preflightGenerationResult(prompt, {
         stdout: [
           { tool: 'classify_component' },
           { tool: 'exclude_prop', prop: 'mode', reason: 'This fixture inspects advisory source evidence only' },
@@ -16,7 +17,7 @@ vi.mock('../../../src/agents/index.js', async (importOriginal) => ({
         stderr: '',
         exitCode: 0,
         timedOut: false,
-      };
+      });
     },
   }),
 }));
@@ -76,7 +77,7 @@ describe('component evidence prompt channel', () => {
         invoke: async ({ prompt }) => {
           const scope = /"scope":"([^"\n]+)"/.exec(prompt)![1]!;
           captured.push(JSON.parse(prompt.split('\nInput data:\n')[1]!.split('\n')[0]!));
-          return {
+          return preflightGenerationResult(prompt, {
             stdout: JSON.stringify({
               agentRole: scope,
               components: [{ name: 'Panel', source: 'Panel.tsx', included: true }],
@@ -84,7 +85,7 @@ describe('component evidence prompt channel', () => {
             stderr: '',
             exitCode: 0,
             timedOut: false,
-          };
+          });
         },
       },
       agent: 'codex',
@@ -160,7 +161,7 @@ describe('component evidence prompt channel', () => {
     });
     expect(agent.prompts).toHaveLength(2);
     for (const prompt of agent.prompts) {
-      const raw = prompt.match(/Raw component data \(JSON\):\n```json\n([\s\S]*?)\n```/)![1]!;
+      const raw = readGenerationContext(prompt).match(/Raw component data \(JSON\):\n```json\n([\s\S]*?)\n```/)![1]!;
       expect(raw).not.toContain('componentFacts');
       expect(raw).not.toContain('referencedOrigins');
       expect(raw).toContain('short');

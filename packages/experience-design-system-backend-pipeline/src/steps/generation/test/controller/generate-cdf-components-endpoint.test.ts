@@ -1,7 +1,12 @@
+import { preflightGenerationResult } from '../../../../../test/generation-fixture.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const agent = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock('../../../../agents/invoker/create-local-cli-agent-invoker.js', () => ({
-  createLocalCliAgentInvoker: () => agent,
+  createLocalCliAgentInvoker: () => ({
+    ...agent,
+    invoke: async (options: { prompt: string }) =>
+      preflightGenerationResult(options.prompt, await agent.invoke(options)),
+  }),
 }));
 beforeEach(() => {
   agent.invoke.mockReset();

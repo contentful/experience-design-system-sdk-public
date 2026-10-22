@@ -1,3 +1,4 @@
+import { preflightGenerationResult, readGenerationContext } from '../../../test/generation-fixture.js';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -186,23 +187,27 @@ describe('saved extraction source evidence', () => {
       const invoker: AgentInvoker = {
         checkAuth: async () => 'ok',
         invoke: async ({ prompt }) => {
-          prompts.push(prompt);
-          return {
-            stdout:
-              JSON.stringify({ tool: 'classify_component' }) +
-              '\n' +
-              JSON.stringify({ tool: 'exclude_prop', prop: '__proto__', reason: 'Retained source-only evidence' }) +
-              '\n' +
-              JSON.stringify({
-                tool: 'classify_prop',
-                prop: 'label',
-                cdf_type: 'string',
-                cdf_category: 'content',
-              }),
-            stderr: '',
-            exitCode: 0,
-            timedOut: false,
-          };
+          prompts.push(readGenerationContext(prompt));
+          return preflightGenerationResult(
+            prompt,
+            {
+              stdout:
+                JSON.stringify({ tool: 'classify_component' }) +
+                '\n' +
+                JSON.stringify({ tool: 'exclude_prop', prop: '__proto__', reason: 'Retained source-only evidence' }) +
+                '\n' +
+                JSON.stringify({
+                  tool: 'classify_prop',
+                  prop: 'label',
+                  cdf_type: 'string',
+                  cdf_category: 'content',
+                }),
+              stderr: '',
+              exitCode: 0,
+              timedOut: false,
+            },
+            true,
+          );
         },
       };
       for (const diskState of ['changed', 'deleted']) {

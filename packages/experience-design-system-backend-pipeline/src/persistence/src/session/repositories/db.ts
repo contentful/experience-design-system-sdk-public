@@ -16,6 +16,7 @@ import {
   reviewRepresentationProposal,
 } from '../../../../steps/generation/src/services/property/definition-call.js';
 import { validateSavedSourceClosure } from './source-closure-binding.js';
+import { validateSavedFieldReplay } from './field-replay-binding.js';
 import {
   validateCDFProperty,
   validateSourceGraph,
@@ -2078,6 +2079,14 @@ export function loadRawComponents(
               ? {
                   sourceObservations: {
                     ...observations,
+                    ...(observations.fieldSemantics
+                      ? {
+                          fieldSemantics: validateSavedFieldReplay(
+                            observations.fieldSemantics,
+                            source.readiness === 'ready' ? source.envelope.capture.files : [],
+                          ),
+                        }
+                      : {}),
                     ...(observations.inputOutput
                       ? {
                           inputOutput: validateSavedInputOutput(

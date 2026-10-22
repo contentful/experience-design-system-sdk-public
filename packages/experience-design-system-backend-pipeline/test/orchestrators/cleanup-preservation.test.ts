@@ -1,3 +1,4 @@
+import { preflightGenerationResult, readGenerationContext } from '../generation-fixture.js';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -12,8 +13,11 @@ import {
 vi.mock('../../src/agents/invoker/create-local-cli-agent-invoker.js', () => ({
   createLocalCliAgentInvoker: () => ({
     invoke: async ({ prompt }: { prompt: string }) => {
-      const raw = JSON.parse(prompt.match(/Raw component data \(JSON\):\n```json\n([\s\S]*?)\n```/)![1]!)[0];
-      return {
+      const decoded = JSON.parse(
+        readGenerationContext(prompt).match(/Raw component data \(JSON\):\n```json\n([\s\S]*?)\n```/)![1]!,
+      );
+      const raw = Array.isArray(decoded) ? decoded[0] : decoded;
+      return preflightGenerationResult(prompt, {
         stdout:
           JSON.stringify({ tool: 'classify_component' }) +
           '\n' +
@@ -31,7 +35,7 @@ vi.mock('../../src/agents/invoker/create-local-cli-agent-invoker.js', () => ({
         stderr: '',
         exitCode: 0,
         timedOut: false,
-      };
+      });
     },
   }),
 }));

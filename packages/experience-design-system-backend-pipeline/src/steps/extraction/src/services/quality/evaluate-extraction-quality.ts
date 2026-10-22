@@ -4,7 +4,7 @@ import { hasNoAuthoringSurface } from './helpers/authorability/evaluate-authorab
 import { inspectComponentSource, describeReviewReasons } from './helpers/inspection/inspect-component-source.js';
 import { validateExtractedComponents } from './helpers/inspection/validate-extracted-components.js';
 
-/** Applies inspection, authorability, reason-based review, and validation policies to extracted models. */
+/** Applies captured source inspection, missing-surface review and validation to retained models. */
 export async function evaluateExtractionQuality(
   components: readonly RawComponentDefinition[],
   initialWarnings: readonly string[] = [],
@@ -43,8 +43,8 @@ export async function evaluateExtractionQuality(
     }
 
     const extractorReasons = component.reviewReasons ?? [];
-    const nonAuthorableReason = retainedForReview ? [`non-authorable:${verdict.reason}`] : [];
-    const reasons = [...new Set([...extractorReasons, ...inspection.reviewReasons, ...nonAuthorableReason])];
+    const surfaceReviewReason = retainedForReview ? [`surface-unobserved:${verdict.reason}`] : [];
+    const reasons = [...new Set([...extractorReasons, ...inspection.reviewReasons, ...surfaceReviewReason])];
 
     reviewedComponents.push({
       ...component,

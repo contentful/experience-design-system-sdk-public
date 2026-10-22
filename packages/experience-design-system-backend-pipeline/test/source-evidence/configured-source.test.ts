@@ -1,3 +1,4 @@
+import { preflightGenerationResult, readGenerationContext } from '../generation-fixture.js';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -124,8 +125,8 @@ it('keeps nested configured source, callers and context hashes through first/fin
         invoker: {
           checkAuth: async () => 'ok',
           invoke: async ({ prompt }) => {
-            prompts.push(prompt);
-            return {
+            prompts.push(readGenerationContext(prompt));
+            return preflightGenerationResult(prompt, {
               stdout:
                 JSON.stringify({ tool: 'classify_component' }) +
                 '\n' +
@@ -146,7 +147,7 @@ it('keeps nested configured source, callers and context hashes through first/fin
               stderr: '',
               exitCode: 0,
               timedOut: false,
-            };
+            });
           },
         },
         agent: 'claude',

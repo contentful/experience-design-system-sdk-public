@@ -1,3 +1,4 @@
+import { preflightGenerationResult, readGenerationContext } from '../generation-fixture.js';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -10,11 +11,13 @@ const generated = vi.hoisted(() => ({ prompts: [] as string[], mutate: undefined
 vi.mock('../../src/agents/invoker/create-local-cli-agent-invoker.js', () => ({
   createLocalCliAgentInvoker: () => ({
     invoke: async ({ prompt }: { prompt: string }) => {
-      generated.prompts.push(prompt);
+      generated.prompts.push(readGenerationContext(prompt));
       generated.mutate?.();
-      const decoded = JSON.parse(prompt.match(/Raw component data \(JSON\):\n```json\n([\s\S]*?)\n```/)![1]!);
+      const decoded = JSON.parse(
+        readGenerationContext(prompt).match(/Raw component data \(JSON\):\n```json\n([\s\S]*?)\n```/)![1]!,
+      );
       const raw = Array.isArray(decoded) ? decoded[0] : decoded;
-      return {
+      return preflightGenerationResult(prompt, {
         stdout: [
           { tool: 'classify_component', description: 'A configurable surface.' },
           { tool: 'classify_prop', prop: 'title', cdf_type: 'string', cdf_category: 'content', required: false },
@@ -30,7 +33,7 @@ vi.mock('../../src/agents/invoker/create-local-cli-agent-invoker.js', () => ({
         stderr: '',
         exitCode: 0,
         timedOut: false,
-      };
+      });
     },
   }),
 }));
@@ -191,7 +194,12 @@ async function seed(slotNames = ['renderBody']) {
           })),
         };
       }
-      return { stdout: JSON.stringify(output), stderr: '', exitCode: 0, timedOut: false };
+      return preflightGenerationResult(prompt, {
+        stdout: JSON.stringify(output),
+        stderr: '',
+        exitCode: 0,
+        timedOut: false,
+      });
     },
   };
   const request = {

@@ -1,3 +1,4 @@
+import { preflightGenerationResult, readGenerationContext } from '../../generation-fixture.js';
 import { mkdirSync, mkdtempSync, realpathSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -305,8 +306,8 @@ it.each(['stable', 'changed', 'deleted'] as const)(
         skillContentOverride: 'Inspect immutable source.',
         invoker: {
           invoke: async ({ prompt }) => {
-            selectionPrompts.push(prompt);
-            return {
+            selectionPrompts.push(readGenerationContext(prompt));
+            return preflightGenerationResult(prompt, {
               stdout: JSON.stringify({
                 agentRole: 'components-1',
                 components: [
@@ -323,7 +324,7 @@ it.each(['stable', 'changed', 'deleted'] as const)(
               stderr: '',
               exitCode: 0,
               timedOut: false,
-            };
+            });
           },
         },
       });
@@ -342,8 +343,8 @@ it.each(['stable', 'changed', 'deleted'] as const)(
           invoker: {
             checkAuth: async () => 'ok',
             invoke: async ({ prompt }) => {
-              generationPrompts.push(prompt);
-              return {
+              generationPrompts.push(readGenerationContext(prompt));
+              return preflightGenerationResult(prompt, {
                 stdout:
                   JSON.stringify({ tool: 'classify_component' }) +
                   '\n' +
@@ -356,7 +357,7 @@ it.each(['stable', 'changed', 'deleted'] as const)(
                 stderr: '',
                 exitCode: 0,
                 timedOut: false,
-              };
+              });
             },
           },
           agent: 'codex',

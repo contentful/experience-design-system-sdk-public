@@ -10,12 +10,21 @@ const store = vi.hoisted(() =>
     throw new Error('Write failed');
   }),
 );
+const saved = vi.hoisted(() => ({ components: [] as unknown[] }));
 const close = vi.hoisted(() => vi.fn());
 vi.mock('@contentful/experience-design-system-backend-pipeline', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   openPipelineDb: () => ({ close }),
-  storeCDFComponents: store,
-  loadCDFComponents: () => [],
+  storeReviewCDFComponent: (
+    _db: unknown,
+    _session: string,
+    component: { key: string; componentId?: string },
+    entry: unknown,
+  ) => {
+    store();
+    saved.components = [{ ...component, componentId: component.componentId ?? 'component', entry }];
+  },
+  loadReviewCDFComponents: () => saved.components,
 }));
 afterEach(() => {
   store.mockReset();
@@ -23,6 +32,7 @@ afterEach(() => {
     throw new Error('Write failed');
   });
   close.mockReset();
+  saved.components = [];
 });
 it('keeps draft and local saved state unchanged when persistence fails', async () => {
   let hook: UseReviewEditorResult;

@@ -1,3 +1,4 @@
+import { preflightGenerationResult, readGenerationContext } from '../../generation-fixture.js';
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -153,26 +154,30 @@ it('retains all source channels through cold saved slot/value/reference consumer
       skillContentOverride: 'Use slot, value and reference provenance.',
       invoker: {
         invoke: async ({ prompt }) => {
-          prompts.push(prompt);
+          prompts.push(readGenerationContext(prompt));
           const scope = /"scope":"([^"]+)"/.exec(prompt)![1];
-          return {
-            stdout: JSON.stringify({
-              agentRole: scope,
-              components: [
-                {
-                  name: raw.name,
-                  source: raw.source,
-                  componentId: raw.component_id,
-                  included: false,
-                  props: [],
-                  slots: [],
-                },
-              ],
-            }),
-            stderr: '',
-            exitCode: 0,
-            timedOut: false,
-          };
+          return preflightGenerationResult(
+            prompt,
+            {
+              stdout: JSON.stringify({
+                agentRole: scope,
+                components: [
+                  {
+                    name: raw.name,
+                    source: raw.source,
+                    componentId: raw.component_id,
+                    included: false,
+                    props: [],
+                    slots: [],
+                  },
+                ],
+              }),
+              stderr: '',
+              exitCode: 0,
+              timedOut: false,
+            },
+            true,
+          );
         },
       },
     });
@@ -197,33 +202,37 @@ it('retains all source channels through cold saved slot/value/reference consumer
         invoker: {
           checkAuth: async () => 'ok',
           invoke: async ({ prompt }) => {
-            generationPrompts.push(prompt);
-            return {
-              stdout: [
-                { tool: 'classify_component' },
-                { tool: 'classify_prop', prop: 'label', cdf_type: 'string', cdf_category: 'content' },
-                ...[
-                  ...new Set([
-                    ...raw.props.map((prop) => prop.name),
-                    ...raw
-                      .sourceCandidates!.filter((candidate) => candidate.keyPath.length === 1)
-                      .map((candidate) => candidate.name),
-                  ]),
+            generationPrompts.push(readGenerationContext(prompt));
+            return preflightGenerationResult(
+              prompt,
+              {
+                stdout: [
+                  { tool: 'classify_component' },
+                  { tool: 'classify_prop', prop: 'label', cdf_type: 'string', cdf_category: 'content' },
+                  ...[
+                    ...new Set([
+                      ...raw.props.map((prop) => prop.name),
+                      ...raw
+                        .sourceCandidates!.filter((candidate) => candidate.keyPath.length === 1)
+                        .map((candidate) => candidate.name),
+                    ]),
+                  ]
+                    .filter((name) => name !== 'label')
+                    .map((prop) => ({
+                      tool: 'exclude_prop',
+                      prop,
+                      reason: 'Unsupported source channel retained by this fixture',
+                    })),
+                  ...raw.slots.map((slot) => ({ tool: 'classify_slot', slot: slot.name })),
                 ]
-                  .filter((name) => name !== 'label')
-                  .map((prop) => ({
-                    tool: 'exclude_prop',
-                    prop,
-                    reason: 'Unsupported source channel retained by this fixture',
-                  })),
-                ...raw.slots.map((slot) => ({ tool: 'classify_slot', slot: slot.name })),
-              ]
-                .map((call) => JSON.stringify(call))
-                .join('\n'),
-              stderr: '',
-              exitCode: 0,
-              timedOut: false,
-            };
+                  .map((call) => JSON.stringify(call))
+                  .join('\n'),
+                stderr: '',
+                exitCode: 0,
+                timedOut: false,
+              },
+              true,
+            );
           },
         },
         agent: 'codex',
