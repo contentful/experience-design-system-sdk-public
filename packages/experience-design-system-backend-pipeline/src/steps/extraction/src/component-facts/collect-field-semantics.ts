@@ -20,6 +20,7 @@ interface Value {
   fresh?: boolean;
   allocationFrame?: number;
   target?: Callable;
+  captures?: Scope['env'];
   opaqueCallable?: boolean;
 }
 interface Scope {
@@ -67,12 +68,27 @@ function merge(values: Value[]): Value {
   result.opaqueCallable = values.some((value) => value.opaqueCallable);
   return result;
 }
-function copy(value: Value, memo = new Map<Value, Value>()): Value {
+function copy(
+  value: Value,
+  memo = new Map<Value, Value>(),
+  admitCapture?: (depth: number) => boolean,
+  depth = 0,
+): Value {
   if (memo.has(value)) return memo.get(value)!;
   const result: Value = { ...value, origins: new Set(value.origins), presence: new Set(value.presence) };
   memo.set(value, result);
-  if (value.fields) result.fields = new Map([...value.fields].map(([name, field]) => [name, copy(field, memo)]));
-  if (value.wildcard) result.wildcard = copy(value.wildcard, memo);
+  if (value.fields)
+    result.fields = new Map(
+      [...value.fields].map(([name, field]) => [name, copy(field, memo, admitCapture, depth + 1)]),
+    );
+  if (value.wildcard) result.wildcard = copy(value.wildcard, memo, admitCapture, depth + 1);
+  if (value.captures) {
+    result.captures = new Map();
+    for (const [key, captured] of value.captures) {
+      if (admitCapture && !admitCapture(depth + 1)) break;
+      result.captures.set(key, copy(captured, memo, admitCapture, depth + 1));
+    }
+  }
   return result;
 }
 
@@ -191,7 +207,7 @@ export function collectFieldSemantics(
     const consumed = new Set<string>();
     for (const element of declaration.name.elements) {
       if (element.dotDotDotToken) {
-        const rest = copy(value);
+        const rest = copy(value, new Map(), (depth) => admit(declaration, scope.depth + depth));
         if (rest.fields) for (const name of consumed) rest.fields.delete(name);
         bind(element, rest, scope);
       } else {
@@ -223,7 +239,7 @@ export function collectFieldSemantics(
       omit('external-binding-written', site);
       return empty();
     }
-    if (callable(declaration)) return { ...empty(), target: declaration };
+    if (callable(declaration)) return closure(declaration, site, scope);
     if (scope.active.has(declaration)) {
       omit('field-alias-cycle-open', site);
       return empty();
@@ -232,13 +248,26 @@ export function collectFieldSemantics(
     omit('field-value-unavailable', site);
     return empty();
   }
+  function closure(target: Callable, site: ts.Node, scope: Scope): Value {
+    const captures: Scope['env'] = new Map();
+    for (const [key, value] of scope.env) {
+      if (!admit(site, scope.depth + 1)) break;
+      captures.set(key, value);
+    }
+    return { ...empty(), target, captures };
+  }
   function split(scope: Scope, expression: ts.Expression, branch: 'then' | 'else' | 'truthy' | 'falsy'): Scope {
     const memo = new Map<Value, Value>();
     const condition = evaluate(expression, scope);
     step('branch', expression, scope);
     return {
       ...scope,
-      env: new Map([...scope.env].map(([key, value]) => [key, copy(value, memo)])),
+      env: new Map(
+        [...scope.env].map(([key, value]) => [
+          key,
+          copy(value, memo, (depth) => admit(expression, scope.depth + depth)),
+        ]),
+      ),
       control: union([scope.control, origins(condition)]),
       conditions: [
         ...scope.conditions,
@@ -259,7 +288,7 @@ export function collectFieldSemantics(
     )
       return evaluate(site.expression, next);
     if (ts.isIdentifier(site)) return lookup(site, next);
-    if (callable(site)) return { ...empty(), target: site };
+    if (callable(site)) return closure(site, site, scope);
     if (
       ts.isStringLiteralLike(site) ||
       ts.isNumericLiteral(site) ||
@@ -406,7 +435,8 @@ export function collectFieldSemantics(
       return merge([evaluate(site.left, next), evaluate(site.right, next)]);
     }
     if (ts.isCallExpression(site)) {
-      const target = evaluate(site.expression, next).target;
+      const called = evaluate(site.expression, next);
+      const target = called.target;
       const arguments_ = site.arguments.map((argument) => evaluate(argument, next));
       const targetPath = target
         ? (sourceRealPath(target.getSourceFile().fileName) ?? resolve(target.getSourceFile().fileName))
@@ -428,7 +458,7 @@ export function collectFieldSemantics(
       }
       const invocation = {
         ...next,
-        env: new Map(scope.env),
+        env: new Map(called.captures),
         bindingFrames: new Map(scope.bindingFrames),
         active: new Set([...scope.active, target]),
         frame: ++frame,
@@ -492,7 +522,11 @@ export function collectFieldSemantics(
       if (ts.isReturnStatement(statement)) {
         const value = statement.expression ? evaluate(statement.expression, current) : empty();
         step('return', statement, current);
-        returned.push(copy(controlled(value, { ...empty(), origins: current.control })));
+        returned.push(
+          copy(controlled(value, { ...empty(), origins: current.control }), new Map(), (depth) =>
+            admit(statement, current.depth + depth),
+          ),
+        );
         return [];
       }
       if (ts.isForOfStatement(statement)) {

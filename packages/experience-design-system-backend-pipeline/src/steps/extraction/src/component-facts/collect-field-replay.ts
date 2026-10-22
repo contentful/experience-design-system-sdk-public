@@ -13,7 +13,7 @@ type Callable = ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunctio
 type Value =
   | { kind: 'atom'; term: string }
   | { kind: 'record'; fields: Map<string, Value>; fresh: boolean; frame: number; arrayLength?: number }
-  | { kind: 'callable'; target: Callable };
+  | { kind: 'callable'; target: Callable; captures: Scope['env'] };
 type AtomicValue = Extract<Value, { kind: 'atom' }>;
 type Conditions = SourceFieldReplay['operations'][number]['conditions'];
 interface Scope {
@@ -196,10 +196,19 @@ export function collectFieldReplay(
     }
     function fork(scope: Scope): Scope {
       const memo = new Map<Value, Value>();
-      function copy(value: Value): Value {
-        if (value.kind !== 'record') return value;
+      function copy(value: Value, depth = 0): Value {
+        if (value.kind === 'atom') return value;
         const cached = memo.get(value);
         if (cached) return cached;
+        if (value.kind === 'callable') {
+          const result: Value = { kind: 'callable', target: value.target, captures: new Map() };
+          memo.set(value, result);
+          for (const [key, captured] of value.captures) {
+            if (!admit(depth + 1)) break;
+            result.captures.set(key, copy(captured, depth + 1));
+          }
+          return result;
+        }
         const result: Value = {
           kind: 'record',
           fresh: value.fresh,
@@ -208,7 +217,7 @@ export function collectFieldReplay(
           arrayLength: value.arrayLength,
         };
         memo.set(value, result);
-        for (const [key, field] of value.fields) result.fields.set(key, copy(field));
+        for (const [key, field] of value.fields) result.fields.set(key, copy(field, depth + 1));
         return result;
       }
       return { ...scope, env: new Map([...scope.env].map(([key, value]) => [key, copy(value)])) };
@@ -252,6 +261,14 @@ export function collectFieldReplay(
         term: JSON.stringify(['choice', JSON.parse(guard.term), JSON.parse(truthy.term), JSON.parse(falsy.term)]),
       };
     }
+    function closure(target: Callable, depth: number, scope: Scope): Value {
+      const captures: Scope['env'] = new Map();
+      for (const [key, value] of scope.env) {
+        if (!admit(depth + 1)) break;
+        captures.set(key, value);
+      }
+      return { kind: 'callable', target, captures };
+    }
     function lookup(site: ts.Identifier | ts.ShorthandPropertyAssignment, scope: Scope): Value {
       const name = ts.isIdentifier(site) ? site.text : site.name.text;
       const declaration = bindings?.declaration(site);
@@ -262,7 +279,7 @@ export function collectFieldReplay(
         return value;
       }
       if (declaration && ts.isFunctionDeclaration(declaration) && !bindings?.mutated(declaration))
-        return { kind: 'callable', target: declaration };
+        return closure(declaration, scope.conditions.length + scope.iterations.length, scope);
       return open('paired-external-binding-open');
     }
     function evaluate(site: ts.Expression, depth: number, scope: Scope): Value {
@@ -276,7 +293,7 @@ export function collectFieldReplay(
       )
         return evaluate(site.expression, depth + 1, scope);
       if (ts.isIdentifier(site)) return lookup(site, scope);
-      if (ts.isArrowFunction(site) || ts.isFunctionExpression(site)) return { kind: 'callable', target: site };
+      if (ts.isArrowFunction(site) || ts.isFunctionExpression(site)) return closure(site, depth, scope);
       if (ts.isStringLiteralLike(site)) return atom(['literal', 'string', site.text]);
       if (ts.isNumericLiteral(site)) return atom(['literal', 'number', Number(site.text)]);
       if ([ts.SyntaxKind.TrueKeyword, ts.SyntaxKind.FalseKeyword, ts.SyntaxKind.NullKeyword].includes(site.kind))
@@ -435,7 +452,7 @@ export function collectFieldReplay(
           });
         }
         const invocation: Scope = {
-          env: new Map(),
+          env: new Map(value.captures),
           conditions: scope.conditions,
           frame,
           iterations: scope.iterations,
