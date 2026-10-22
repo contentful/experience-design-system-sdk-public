@@ -1,5 +1,5 @@
 import { collectFiles } from '@contentful/experience-design-system-backend-pipeline';
-import type { FileCounts as LocalFileCounts, ScanResult } from '../logic.js';
+import type { FileCounts as LocalFileCounts, ScanResult } from '../scan-logic.js';
 
 type CollectedFilesOutcome = ReturnType<typeof collectFiles>;
 type PipelineFileCounts = Extract<CollectedFilesOutcome, { ok: true }>['result']['counts'];

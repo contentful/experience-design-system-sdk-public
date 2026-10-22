@@ -8,9 +8,7 @@ export type ScanResult =
   | { ok: true; counts: FileCounts; filePaths: string[]; warnings: string[] }
   | { ok: false; failure: ScanFailureCode };
 
-export type PathPhase = 'scanning' | 'ready' | 'failed';
-
-export interface SummaryRow {
+interface SummaryRow {
   label: string;
   count: number;
   tone: 'default' | 'accent' | 'muted';
@@ -92,9 +90,4 @@ export function summarize(counts: FileCounts, { hasTokens = true }: { hasTokens?
       ? 'No component or token files found. Try a different path.'
       : 'No component files found. Try a different path.',
   };
-}
-
-export function phaseOf(scan: ScanResult | undefined): PathPhase {
-  if (scan === undefined) return 'scanning';
-  return scan.ok ? 'ready' : 'failed';
 }

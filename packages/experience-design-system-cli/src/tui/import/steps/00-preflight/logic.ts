@@ -32,9 +32,7 @@ export function overviewFor(target: ImportTarget): readonly OverviewStep[] {
 // shown, the step numbers and totals, the extraction rows, the Back target) reads from the lists below, so a mode is
 // described in one place.
 export type ImportStepId =
-  | 'project'
-  | 'token-file'
-  | 'path-validation'
+  | 'inputs'
   | 'credentials'
   | 'component-extraction'
   | 'token-generation'
@@ -48,9 +46,7 @@ export type ImportStepId =
 // (generate components, then map tokens); the tokens themselves are made by `token-generation`.
 const STEPS: Record<ImportTarget, readonly ImportStepId[]> = {
   both: [
-    'project',
-    'token-file',
-    'path-validation',
+    'inputs',
     'credentials',
     'component-extraction',
     'token-generation',
@@ -59,21 +55,11 @@ const STEPS: Record<ImportTarget, readonly ImportStepId[]> = {
     'review',
     'save-push',
   ],
-  // The component stages are skipped, and with them token mapping, which needs components to map to. There is no project
-  // to ask for: the token file is the only input. The credentials screen stays until it is known whether pushing tokens
-  // needs them.
-  tokens: ['token-file', 'credentials', 'token-generation', 'save-push'],
+  // The component stages are skipped, and with them token mapping, which needs components to map to. The inputs screen
+  // asks for the token file only. The credentials screen stays until it is known whether pushing tokens needs them.
+  tokens: ['inputs', 'credentials', 'token-generation', 'save-push'],
   // No token file, so no token generation and no token mapping.
-  components: [
-    'project',
-    'path-validation',
-    'credentials',
-    'component-extraction',
-    'scope-gate',
-    'generation',
-    'review',
-    'save-push',
-  ],
+  components: ['inputs', 'credentials', 'component-extraction', 'scope-gate', 'generation', 'review', 'save-push'],
 };
 
 export function stepsFor(target: ImportTarget): readonly ImportStepId[] {
@@ -88,17 +74,17 @@ function previousStep(target: ImportTarget, current: ImportStepId): ImportStepId
 }
 
 // The steps that ask the user for something, and the answer each one leaves behind. Credentials are not here: the
-// credentials screen is the last input, and finishing it starts the run.
+// credentials screen is the last input, and finishing it starts the run. The inputs screen collects the paths the mode
+// needs and sets `confirmed` when they are right; Back clears only that, so the screen opens again with the paths filled in.
 export interface InputAnswers {
   projectPath?: string;
   tokensPath?: string;
   scannedFiles?: string[];
+  confirmed?: boolean;
 }
 
 const ANSWER_OF: Partial<Record<ImportStepId, keyof InputAnswers>> = {
-  project: 'projectPath',
-  'token-file': 'tokensPath',
-  'path-validation': 'scannedFiles',
+  inputs: 'confirmed',
 };
 
 /**
@@ -108,18 +94,18 @@ const ANSWER_OF: Partial<Record<ImportStepId, keyof InputAnswers>> = {
 export function currentInputStep(
   target: ImportTarget,
   answers: InputAnswers,
-): Extract<ImportStepId, 'project' | 'token-file' | 'path-validation' | 'credentials'> {
+): Extract<ImportStepId, 'inputs' | 'credentials'> {
   for (const step of STEPS[target]) {
     const answer = ANSWER_OF[step];
     if (answer === undefined) return 'credentials';
-    if (answers[answer] === undefined) return step as 'project' | 'token-file' | 'path-validation';
+    if (answers[answer] === undefined) return step as 'inputs';
   }
   return 'credentials';
 }
 
 /**
  * What Back from `current` does: leave for the preflight when it is the first screen of the mode, otherwise clear the
- * previous step's answer so that screen shows again.
+ * previous step's answer so that screen shows again. The paths stay, so the screen is not empty when it comes back.
  */
 export function goBack(
   target: ImportTarget,

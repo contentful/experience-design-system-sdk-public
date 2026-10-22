@@ -1,9 +1,7 @@
 import React, { useRef, useState } from 'react';
-import { Text } from 'ink';
+import { Box, Text } from 'ink';
 import { PALETTE } from '@tui/theme.js';
-import { FieldForm, type FormField, type FormNotice } from '@tui/shared/components/FieldForm.js';
-import { MenuScreen, type MenuItem } from '@tui/shared/components/MenuScreen.js';
-import { StepHeader } from '@tui/shared/components/StepHeader.js';
+import { SetupForm, type SetupField, type SetupMenuItem } from '@tui/shared/components/SetupForm.js';
 import {
   credentialsPurpose,
   isUnchanged,
@@ -25,20 +23,20 @@ interface CredentialsScreenProps {
   tokensOnly?: boolean;
 }
 
-const FIELDS: readonly FormField<CredentialField>[] = [
+const FIELDS: readonly SetupField<CredentialField>[] = [
   { key: 'spaceId', label: 'Space ID' },
   { key: 'environmentId', label: 'Environment ID' },
   { key: 'cmaToken', label: 'CMA Token', masked: true },
   { key: 'host', label: 'API Host', hint: '(default: api.contentful.com · EU spaces: api.eu.contentful.com)' },
 ];
 
-type MenuChoice = 'continue' | 'edit' | 'skip' | 'quit';
+type MenuChoice = 'continue' | 'edit' | 'skip' | 'back';
 
-const MENU: readonly MenuItem<MenuChoice>[] = [
+const MENU: readonly SetupMenuItem<MenuChoice>[] = [
   { choice: 'continue', label: 'Continue', description: 'Check the credentials and go on' },
   { choice: 'edit', label: 'Edit', description: 'Change the credentials' },
   { choice: 'skip', label: 'Skip', description: 'Save files only, nothing is pushed' },
-  { choice: 'quit', label: 'Quit', description: 'Go back' },
+  { choice: 'back', label: 'Back', description: 'Go back' },
 ];
 
 export function CredentialsScreen({
@@ -57,113 +55,77 @@ export function CredentialsScreen({
     }),
   ).current;
   const [values, setValues] = useState<CredentialValues>(initialValues);
-  const [notice, setNotice] = useState<FormNotice | null>(null);
+  const [saved, setSaved] = useState<CredentialValues>(initialValues);
+  const [error, setError] = useState<string | null>(null);
   const [validating, setValidating] = useState(false);
   const prefilled = initialValues.spaceId !== '' && initialValues.cmaToken !== '';
-  // Prefilled credentials open read-only with the menu. With nothing to review, go straight to filling them in.
-  const [editing, setEditing] = useState(!prefilled);
 
   const submit = async (): Promise<void> => {
-    const credentials = normalize(values);
+    const credentials = normalize(saved);
     if (missingField(credentials)) {
-      setNotice({ kind: 'error', text: 'Space ID, environment and CMA token are all required.' });
+      setError('Space ID, environment and CMA token are all required.');
       return;
     }
     setValidating(true);
     const result = await validate(credentials);
     setValidating(false);
     if (result.ok) onDone({ skipped: false, credentials });
-    else setNotice({ kind: 'error', text: result.error });
+    else setError(result.error);
   };
-
-  const subtitle = prefilled
-    ? 'Credentials pre-filled from the configuration settings.'
-    : 'Enter the Contentful space you want to import into.';
-
-  const choose = (choice: MenuChoice): void => {
-    if (choice === 'continue') void submit();
-    else if (choice === 'edit') {
-      setNotice(null);
-      setEditing(true);
-    } else if (choice === 'skip') onDone({ skipped: true });
-    else onBack();
-  };
-
-  if (!editing) {
-    return (
-      <MenuScreen
-        title="Contentful Credentials"
-        subtitle={subtitle}
-        menu={MENU}
-        rows={FIELDS.map((field) => ({
-          label: field.label,
-          value: field.masked ? '•'.repeat(values[field.key].length) : values[field.key],
-        }))}
-        onChoose={choose}
-        onEscape={onBack}
-        busy={validating}
-      >
-        {notice && (
-          <>
-            <Text> </Text>
-            <Text color={PALETTE.error}>✗ {notice.text}</Text>
-          </>
-        )}
-        {validating && (
-          <>
-            <Text> </Text>
-            <Text color={PALETTE.accent}>Validating credentials...</Text>
-          </>
-        )}
-        {!isUnchanged(normalize(values), initialValues) && (
-          <>
-            <Text> </Text>
-            <Text color={PALETTE.muted}>Changed values are saved after they validate.</Text>
-          </>
-        )}
-      </MenuScreen>
-    );
-  }
 
   return (
-    <FieldForm
-      header={<StepHeader step="setup" />}
+    <SetupForm
       title="Contentful Credentials"
-      subtitle={subtitle}
+      subtitle={
+        prefilled
+          ? 'Credentials pre-filled from the configuration settings.'
+          : 'Enter the Contentful space you want to import into.'
+      }
+      menu={MENU}
+      dataTitle="Space"
       fields={FIELDS}
       values={values}
+      // With nothing pre-filled there is nothing to review, so it opens ready to type.
+      initialEditing={!prefilled}
       onChange={(key, value) => {
         setValues((current) => ({ ...current, [key]: value }));
-        setNotice(null);
+        setError(null);
       }}
-      enterAdvances
-      onSave={() => void submit()}
-      saveLabel="continue"
-      // With nothing prefilled there is no review to return to, so Esc leaves the step.
-      onQuit={prefilled ? () => setEditing(false) : onBack}
-      quitLabel={prefilled ? 'stop editing' : 'back'}
-      notice={notice}
+      onEditStart={() => setError(null)}
+      onCommit={() => setSaved(values)}
+      onCancel={() => {
+        setValues(saved);
+        setError(null);
+      }}
+      onChoose={(choice) => {
+        if (choice === 'continue') void submit();
+        else if (choice === 'skip') onDone({ skipped: true });
+        else onBack();
+      }}
+      onEscape={onBack}
       busy={validating}
     >
-      {!prefilled && (
-        <>
-          <Text> </Text>
-          <Text color={PALETTE.muted}>{credentialsPurpose(tokensOnly)}</Text>
-          <Text color={PALETTE.muted}>Tip: save these under Settings → Configuration so they pre-fill here.</Text>
-        </>
+      {error && (
+        <Box marginTop={1}>
+          <Text color={PALETTE.error}>✗ {error}</Text>
+        </Box>
       )}
       {validating && (
-        <>
-          <Text> </Text>
+        <Box marginTop={1}>
           <Text color={PALETTE.accent}>Validating credentials...</Text>
-        </>
+        </Box>
       )}
-      {!validating && !notice && !isUnchanged(normalize(values), initialValues) && (
-        <>
-          <Text> </Text>
+      {!prefilled && !error && !validating && (
+        <Box marginTop={1} flexDirection="column">
+          <Text color={PALETTE.muted}>{credentialsPurpose(tokensOnly)}</Text>
+          <Text color={PALETTE.muted}>Tip: save these under Settings → Configuration so they pre-fill here.</Text>
+        </Box>
+      )}
+      {!error && !validating && !isUnchanged(normalize(saved), initialValues) && (
+        <Box marginTop={1}>
           <Text color={PALETTE.muted}>Changed values are saved after they validate.</Text>
-        </>
+        </Box>
       )}
-    </FieldForm>
+    </SetupForm>
   );
 }

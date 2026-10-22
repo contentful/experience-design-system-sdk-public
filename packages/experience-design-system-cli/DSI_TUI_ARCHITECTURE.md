@@ -81,7 +81,7 @@ Components used by more than one flow live in `src/tui/shared/components/`. Flow
 
 ### The Import flow
 
-`src/tui/import/` is the Import menu item. The Import menu item shows the Welcome step (`steps/01-welcome`) and collects the project path, then the Token input step (`steps/02-token-input`) and collects the token file, then the Path validation step (`steps/03-path-validation`), which scans the project folder and asks the user to confirm it. `app.tsx` then runs the rest of the import in the same process: credentials (`steps/04-credentials`), token reuse, extraction, the scope gate, generation, the review (`steps/09-review`) and the save, preview, push and done screens (`steps/10-flow`). The flow's state machine is `steps/10-flow/flow/controller.ts`, kept free of React so it can be tested; `flow/use-flow.ts` and `flow/screen.tsx` connect it to the terminal. When the flow ends it reports an exit code and `PageContainer.tsx` shows the result, then resumes the menu.
+`src/tui/import/` is the Import menu item. The Import menu item opens with the preflight (`steps/00-preflight`), where the user picks what to generate, then the Inputs step (`steps/01-inputs`), one screen that asks for the paths that mode needs (the component library, the token file, or both) and checks each inline: the project folder is scanned and the token file is looked for. `app.tsx` then runs the rest of the import in the same process: credentials (`steps/04-credentials`), token reuse, extraction, the scope gate, generation, the review (`steps/09-review`) and the save, preview, push and done screens (`steps/10-flow`). The flow's state machine is `steps/10-flow/flow/controller.ts`, kept free of React so it can be tested; `flow/use-flow.ts` and `flow/screen.tsx` connect it to the terminal. When the flow ends it reports an exit code and `PageContainer.tsx` shows the result, then resumes the menu.
 
 ### Multi-step flows
 
@@ -92,9 +92,8 @@ src/tui/import/
   PageContainer.tsx      # the import result screen, and what all import screens will share
   steps/
     index.ts             # public entry: one export line per screen
-    01-welcome/          # steps are numbered in the order they appear in the flow
+    01-inputs/           # steps are numbered in the order they appear in the flow
       screen.tsx         # UI only: renders props and state, including the copy it displays
-      controls.ts        # this screen's keyboard handling and key hints
       logic.ts           # decisions: validation, derived values, key meanings
 ```
 

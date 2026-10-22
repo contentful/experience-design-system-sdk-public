@@ -1,14 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { HomeScreen } from './src/tui/home/home.js';
 import { ImportScreen } from './src/tui/import/PageContainer.js';
-import {
-  CredentialsScreen,
-  ExtractionScreen,
-  PathValidationScreen,
-  PreflightScreen,
-  TokenInputScreen,
-  WelcomeScreen,
-} from './src/tui/import/steps/index.js';
+import { CredentialsScreen, ExtractionScreen, InputsScreen, PreflightScreen } from './src/tui/import/steps/index.js';
 import {
   currentInputStep,
   goBack,
@@ -342,36 +335,18 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
       if (target === undefined) {
         return <PreflightScreen onChoose={setTarget} onQuit={leaveImport} />;
       }
-      const inputStep = currentInputStep(target, answers);
-      if (!extractionRun && !tokensOnlyRun && inputStep !== 'credentials') {
-        switch (inputStep) {
-          case 'project':
-            return (
-              <WelcomeScreen
-                onContinue={(projectPath) => answer({ projectPath })}
-                onQuit={() => goBackFrom('project')}
-                initialPath={importDefaults.componentDir}
-              />
-            );
-          case 'token-file':
-            return (
-              <TokenInputScreen
-                initialPath={importDefaults.tokenFile}
-                onConfirm={(tokensPath) => answer({ tokensPath })}
-                onBack={() => goBackFrom('token-file')}
-              />
-            );
-          case 'path-validation':
-            return (
-              <PathValidationScreen
-                projectPath={answers.projectPath ?? ''}
-                hasTokens={target !== 'components'}
-                onConfirm={({ filePaths }) => answer({ scannedFiles: filePaths })}
-                onChangePath={() => resetImport(true)}
-                onBack={() => goBackFrom('path-validation')}
-              />
-            );
-        }
+      if (!extractionRun && !tokensOnlyRun && currentInputStep(target, answers) === 'inputs') {
+        return (
+          <InputsScreen
+            target={target}
+            initial={{
+              projectPath: answers.projectPath ?? importDefaults.componentDir,
+              tokensPath: answers.tokensPath ?? importDefaults.tokenFile,
+            }}
+            onConfirm={(result) => answer({ ...result, confirmed: true })}
+            onBack={() => goBackFrom('inputs')}
+          />
+        );
       }
       if (tokensOnlyRun) {
         if (tokensOnly?.status === 'done' && !tokensOnly.result.ok) {
