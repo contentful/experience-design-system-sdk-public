@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { collectSourceCallSiteEvidence } from '../../../src/index.js';
+import { collectStandaloneSourceCallSiteEvidence as collectSourceCallSiteEvidence } from '../../../src/steps/composition/src/helpers/edges/source-call-site-evidence.js';
 import type { RawComponentDefinition } from '../../../src/index.js';
 
 const child: RawComponentDefinition = {

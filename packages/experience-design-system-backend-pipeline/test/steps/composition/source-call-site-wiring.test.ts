@@ -18,7 +18,7 @@ import {
 } from '../../../src/persistence/src/session/repositories/db.js';
 import { resolveComposition } from '../../../src/orchestrators/run-extract-and-compose-session/helpers/resolve-composition.js';
 import type { RawComponentDefinition } from '../../../src/steps/extraction/src/types/component.js';
-import { captureSourceEvidence } from '../../../src/steps/extraction/index.js';
+import { captureSourceEvidence, extractReactComponents } from '../../../src/steps/extraction/index.js';
 import { deriveComponentId } from '../../../src/persistence/src/session/helpers/components/derive-component-id.js';
 
 vi.mock('../../../src/agents/services/run-agent.js', () => ({ runAgent: vi.fn() }));
@@ -51,14 +51,13 @@ describe('source call-site production wiring', () => {
     vi.stubEnv('DISABLE_ANALYTICS', '1');
     files = definitions.map(({ name, content }) => ({ path: join(projectPath, `${name}.tsx`), content }));
     await Promise.all(files.map(({ path, content }) => writeFile(path, content)));
-    components = definitions.map(({ name }) => ({
-      name,
-      source: join(projectPath, `${name}.tsx`),
-      sourcePath: join(projectPath, `${name}.tsx`),
-      framework: 'react',
-      props: [],
-      slots: [],
-    }));
+    components = (
+      await extractReactComponents(
+        files.map(({ path }) => path),
+        undefined,
+        { projectRoot: projectPath },
+      )
+    ).components;
     vi.mocked(runAgent).mockReset().mockResolvedValue({ exitCode: 0, stdout: '', stderr: '', timedOut: false });
   });
 
@@ -281,11 +280,12 @@ describe('source call-site production wiring', () => {
     },
   );
 
-  it('does not bind an aliased component to a captured declaration by name without matching identity', async () => {
+  it('does not invent an index for an aliased component from captured names without matching identity', async () => {
     const aliasPath = join(projectPath, 'linked-project');
     await symlink(projectPath, aliasPath, 'dir');
     const aliasedComponents = components.map((component) => ({
       ...component,
+      componentFacts: undefined,
       source: join(aliasPath, `${component.name}.tsx`),
       sourcePath: join(aliasPath, `${component.name}.tsx`),
     }));

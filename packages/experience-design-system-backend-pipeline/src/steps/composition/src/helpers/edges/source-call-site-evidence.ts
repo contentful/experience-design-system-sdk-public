@@ -62,8 +62,14 @@ export function collectSourceCallSiteEvidence(
   files: readonly { path: string; content: string }[],
   components: readonly RawComponentDefinition[],
 ): SourceCallSiteEvidenceResult {
-  if (components.some((component) => component.componentFacts?.sourceObservations?.referenceIndex))
-    return collectConfiguredCallSites(files, components);
+  return collectConfiguredCallSites(files, components);
+}
+
+/** Standalone diagnostics over supplied files; production consumers use the configured shared index. */
+export function collectStandaloneSourceCallSiteEvidence(
+  files: readonly { path: string; content: string }[],
+  components: readonly RawComponentDefinition[],
+): SourceCallSiteEvidenceResult {
   const project = new Project({
     useInMemoryFileSystem: true,
     skipAddingFilesFromTsConfig: true,
@@ -261,9 +267,16 @@ function collectConfiguredCallSites(
   );
   const indexes = components.flatMap((component) => {
     const read = readSourceReferences(component.componentFacts?.sourceObservations?.referenceIndex);
-    return read.status === 'available' ? [{ component, index: read.evidence }] : [];
+    if (read.status !== 'available') return [];
+    const index = read.evidence;
+    const bound =
+      canonicalSourceFactPath(component.sourcePath ?? component.source) === index.declaration.canonicalPath &&
+      hashes.get(index.declaration.canonicalPath!) === index.declaration.textHash;
+    return [{ component, index, bound }];
   });
-  const declarations = new Map(indexes.map(({ component, index }) => [index.componentDeclarationId, component]));
+  const declarations = new Map(
+    indexes.filter(({ bound }) => bound).map(({ component, index }) => [index.componentDeclarationId, component]),
+  );
   const locationId = (location: SourceReferenceIndex['declaration']) =>
     `${location.canonicalPath}:${location.textHash}:${location.startOffset}:${location.endOffset}`;
   const input = (value: SourceCallerValue): SourceCallerInput => ({
@@ -294,7 +307,7 @@ function collectConfiguredCallSites(
   const rejections = new Map<string, SourceCallSiteRejection>();
   let unowned = 0,
     unresolved = 0;
-  for (const { component, index } of indexes)
+  for (const { component, index, bound } of indexes)
     for (const reference of index.references.filter((reference) => reference.kind === 'jsx')) {
       const ownerId = reference.owner ? locationId(reference.owner) : null;
       const owner = ownerId ? declarations.get(ownerId) : undefined;
@@ -303,9 +316,7 @@ function collectConfiguredCallSites(
         .map((ancestor) => declarations.get(locationId(ancestor)))
         .find(Boolean);
       const parent = owner?.name ?? contextualOwner?.name ?? (ownerId ? `lexical:${ownerId}` : 'unowned');
-      const sourceMatches =
-        hashes.get(reference.location.canonicalPath!) === reference.location.textHash &&
-        hashes.get(index.declaration.canonicalPath!) === index.declaration.textHash;
+      const sourceMatches = bound && hashes.get(reference.location.canonicalPath!) === reference.location.textHash;
       if (
         !reference.targets.some((target) => target.declarationId === index.componentDeclarationId) ||
         !sourceMatches
@@ -373,15 +384,24 @@ function collectConfiguredCallSites(
         const referenceCount =
           match?.index.references.filter(
             (item) =>
+              match.bound &&
+              hashes.get(item.location.canonicalPath!) === item.location.textHash &&
               (item.kind === 'jsx' || item.kind === 'call') &&
               item.targets.some((target) => target.declarationId === match.index.componentDeclarationId),
           ).length ?? 0;
+        const covered =
+          match?.bound &&
+          match.index.coverage === 'complete-within-declared-bound' &&
+          match.index.omissions.length === 0 &&
+          match.index.files.every(({ location }) => hashes.get(location.canonicalPath!) === location.textHash);
         return {
           name: component.name,
           sourcePath: component.sourcePath ?? component.source,
           referenceCount,
-          outcome: referenceCount ? 'observed' : match ? 'not-observed' : 'unknown',
-          reason: 'Configured lexical observations are partial and do not prove execution or missing consumers.',
+          outcome: referenceCount ? 'observed' : covered ? 'not-observed' : 'unknown',
+          reason: !match
+            ? 'Shared compiler reference index unavailable; caller coverage remains unknown.'
+            : 'Configured lexical observations are partial; unmatched source bytes and incomplete coverage cannot prove missing consumers or execution.',
         };
       }),
     },

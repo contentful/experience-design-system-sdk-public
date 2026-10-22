@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import * as pipeline from '../../../src/index.js';
+import { collectStandaloneSourceCallSiteEvidence as collectSourceCallSiteEvidence } from '../../../src/steps/composition/src/helpers/edges/source-call-site-evidence.js';
 import type { RawComponentDefinition } from '../../../src/steps/extraction/src/types/component.js';
 import { resolveMapping } from '../../../src/steps/composition/src/helpers/edges/resolve-mapping.js';
 
@@ -11,7 +11,7 @@ const button = { path: '/project/Button.tsx', content: 'export function Button()
 
 describe('source call-site observations', () => {
   it('captures a compiler-resolved cross-file JSX reference with exact source lines', () => {
-    const result = pipeline.collectSourceCallSiteEvidence(
+    const result = collectSourceCallSiteEvidence(
       [
         {
           path: '/project/Card.tsx',
@@ -48,7 +48,7 @@ describe('source call-site observations', () => {
     "import { Button } from './Button'; const Action = Button; export function Card() { return <Action />; }",
     "import { Button } from './barrel'; export function Card() { return <Button />; }",
   ])('resolves aliases and namespace references by declaration identity: %s', (content) => {
-    const result = pipeline.collectSourceCallSiteEvidence(
+    const result = collectSourceCallSiteEvidence(
       [
         { path: '/project/Card.tsx', content },
         button,
@@ -61,7 +61,7 @@ describe('source call-site observations', () => {
   });
 
   it('attributes references only to the enclosing component, including nested functions and callbacks', () => {
-    const result = pipeline.collectSourceCallSiteEvidence(
+    const result = collectSourceCallSiteEvidence(
       [
         {
           path: '/project/Cards.tsx',
@@ -90,7 +90,7 @@ describe('source call-site observations', () => {
   });
 
   it('does not confuse a shadowed parameter or same-named foreign declaration with a known child', () => {
-    const result = pipeline.collectSourceCallSiteEvidence(
+    const result = collectSourceCallSiteEvidence(
       [
         {
           path: '/project/Card.tsx',
@@ -117,7 +117,7 @@ describe('source call-site observations', () => {
   });
 
   it.each(['let', 'var'])('does not resolve a mutable %s alias from its initializer alone', (declarationKind) => {
-    const result = pipeline.collectSourceCallSiteEvidence(
+    const result = collectSourceCallSiteEvidence(
       [
         {
           path: '/project/Card.tsx',
@@ -132,7 +132,7 @@ describe('source call-site observations', () => {
   });
 
   it('retains unknown and unbound references without treating intrinsic tags as component relationships', () => {
-    const result = pipeline.collectSourceCallSiteEvidence(
+    const result = collectSourceCallSiteEvidence(
       [
         {
           path: '/project/Card.tsx',
@@ -150,7 +150,7 @@ describe('source call-site observations', () => {
   });
 
   it('handles missing sources, recursive references and cyclic aliases without inventing edges', () => {
-    const result = pipeline.collectSourceCallSiteEvidence(
+    const result = collectSourceCallSiteEvidence(
       [
         {
           path: '/project/Card.tsx',
@@ -168,7 +168,7 @@ describe('source call-site observations', () => {
     'export default function() { return <Button />; }',
     'export default class { render() { return <Button />; } }',
   ])('finds a sole anonymous default component without a name heuristic: %s', (content) => {
-    const result = pipeline.collectSourceCallSiteEvidence(
+    const result = collectSourceCallSiteEvidence(
       [{ path: '/project/Card.tsx', content: "import { Button } from './Button'; " + content }, button],
       [component('Card', '/project/Card.tsx'), component('Button', button.path)],
     );
@@ -184,9 +184,9 @@ describe('source call-site observations', () => {
       button,
     ];
     const components = [component('Card', '/project/Card.tsx'), component('Button', button.path)];
-    const result = pipeline.collectSourceCallSiteEvidence(files, components);
+    const result = collectSourceCallSiteEvidence(files, components);
     expect(result.accepted).toHaveLength(2);
-    expect(pipeline.collectSourceCallSiteEvidence([...files].reverse(), [...components].reverse())).toEqual(result);
+    expect(collectSourceCallSiteEvidence([...files].reverse(), [...components].reverse())).toEqual(result);
   });
 });
 

@@ -2342,7 +2342,10 @@ export async function loadComponentSourceRefs(db: DatabaseSync, sessionId: strin
         name: string;
         type: string;
       }>;
-      return loadComponentSourceRef(
+      return loadSavedComponentSourceRef(
+        db,
+        sessionId,
+        r.component_id,
         r.name,
         r.source_path ?? r.source,
         props.map((p) => p.name),
