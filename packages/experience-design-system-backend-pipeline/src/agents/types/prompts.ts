@@ -57,6 +57,7 @@ export interface CapturedSourceRefMetadata {
 export type GeneratedCdf = Record<string, CDFComponentEntry>;
 
 export interface PromptOptions {
+  signal?: AbortSignal;
   stageAssignmentInline?: string;
   stageInputInline?: string;
   skill: Skill;

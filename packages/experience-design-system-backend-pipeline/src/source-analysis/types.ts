@@ -8,6 +8,7 @@ import type { RawComponentDefinition } from '../steps/extraction/src/types/compo
 import type { CompositionEdge } from '../steps/composition/src/helpers/edges/interchange-schema.js';
 import type { SourceCallSiteEvidenceResult } from '../steps/composition/src/helpers/edges/source-call-site-evidence.js';
 import type { ExplorationSourceInput } from '@contentful/experience-design-system-types';
+import type { DeduplicatedPromptInput } from '../agents/prompts/helpers/deduplicate-prompt-input.js';
 import type {
   CompletedSourceEvidence,
   SourceEvidenceHandle,
@@ -16,6 +17,10 @@ import type {
 } from '../persistence/src/session/repositories/db.js';
 
 export interface SourceAnalysisTasks {
+  deduplicatePrompt: {
+    input: { json: string };
+    output: DeduplicatedPromptInput;
+  };
   loadSession: {
     input: { dbPath: string; sessionId: string; handle?: SourceEvidenceHandle };
     output: { saved: CompletedSourceEvidence; raw: RawComponentWithId[] };

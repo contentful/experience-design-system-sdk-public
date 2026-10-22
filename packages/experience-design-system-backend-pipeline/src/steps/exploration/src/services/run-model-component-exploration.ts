@@ -87,6 +87,7 @@ export async function runModelComponentExploration(
           request.sharedSource?.diagnostics,
           (diagnostics) =>
             buildPrompt({
+              signal: request.signal,
               skill: 'explore-model',
               mode: 'autonomous',
               outDir: request.outDir,

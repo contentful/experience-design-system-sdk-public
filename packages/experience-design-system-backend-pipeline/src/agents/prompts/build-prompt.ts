@@ -11,6 +11,8 @@ import { buildDebateSelectPreamble } from './preambles/build-debate-select-pream
 import { buildMapTokensPreamble } from './preambles/build-map-tokens-preamble.js';
 import { buildSelectPreamble } from './preambles/build-select-preamble.js';
 import { buildTokensPreamble } from './preambles/build-tokens-preamble.js';
+import { runSourceAnalysis } from '../../source-analysis/run.js';
+import { deduplicatePromptInput, promptReferenceInstructions } from './helpers/deduplicate-prompt-input.js';
 
 /** One builder per skill. Add a new entry and TypeScript enforces exhaustiveness at the keyed access site. */
 const PREAMBLE_BUILDERS: Record<Skill, (options: PromptOptions, inputBlock: string) => string> = {
@@ -37,7 +39,17 @@ export async function buildPrompt(options: PromptOptions): Promise<string> {
     const rules = await readFile(rulesPath, 'utf8');
     const sections = buildInputSections(options);
     const inputBlock = sections.length > 0 ? `\n\n${sections.join('\n\n')}` : '';
-    return buildStructuredStagePrompt(options, `${rules}\n${skillContent}`, inputBlock);
+    const input = options.stageInputInline ?? '{}';
+    const compact =
+      input.length > 262144
+        ? await runSourceAnalysis('deduplicatePrompt', { json: input }, { signal: options.signal })
+        : deduplicatePromptInput(input);
+    const referenceInstructions = compact.referenceKey ? `\n${promptReferenceInstructions(compact.referenceKey)}` : '';
+    return buildStructuredStagePrompt(
+      { ...options, stageInputInline: compact.json },
+      `${rules}\n${skillContent}${referenceInstructions}`,
+      inputBlock,
+    );
   }
   const preamble = buildSkillPreamble(options);
   return `${preamble}\n\nSkill instructions follow:\n---\n${skillContent}`;

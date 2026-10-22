@@ -145,6 +145,7 @@ export async function runExploreStage(request: ExploreStageRequest): Promise<Exp
               })),
         };
         const options: PromptOptions = {
+          signal: request.signal,
           sharedSource,
           skill: scope.startsWith('components-') ? 'explore-components' : 'explore-inventory',
           mode: 'autonomous',

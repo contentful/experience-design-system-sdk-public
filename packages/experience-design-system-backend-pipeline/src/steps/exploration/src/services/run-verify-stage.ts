@@ -28,6 +28,7 @@ export async function runVerifyStage(request: VerifyStageRequest): Promise<Verif
             request.sourceInput?.diagnostics,
             (diagnostics) =>
               buildPrompt({
+                signal: request.signal,
                 skill: 'verify',
                 mode: 'autonomous',
                 existingComponentsInline: request.existingComponentsInline,

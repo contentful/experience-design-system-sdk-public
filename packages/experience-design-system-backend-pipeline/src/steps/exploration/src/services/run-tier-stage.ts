@@ -20,6 +20,7 @@ export async function runTierStage(request: TierStageRequest): Promise<TierStage
           request.sourceInput?.diagnostics,
           (diagnostics) =>
             buildPrompt({
+              signal: request.signal,
               skill: 'tier',
               mode: 'autonomous',
               existingComponentsInline: request.existingComponentsInline,

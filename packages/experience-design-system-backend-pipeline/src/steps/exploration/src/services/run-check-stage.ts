@@ -45,6 +45,7 @@ export async function runCheckStage(request: CheckStageRequest): Promise<CheckSt
         'check',
         () =>
           buildPrompt({
+            signal: request.signal,
             skill: 'check',
             mode: 'autonomous',
             existingComponentsInline: request.existingComponentsInline,

@@ -11,6 +11,10 @@ if (!port) throw new Error('Source analysis must run in a worker thread.');
 
 async function analyze(task: SourceAnalysisTask, port: MessagePort): Promise<unknown> {
   switch (task.kind) {
+    case 'deduplicatePrompt': {
+      const { deduplicatePromptInput } = await import('../agents/prompts/helpers/deduplicate-prompt-input.js');
+      return deduplicatePromptInput(task.input.json);
+    }
     case 'loadSession': {
       const { readExplorationSession } = await import('./read-exploration-session.js');
       return readExplorationSession(task.input);
