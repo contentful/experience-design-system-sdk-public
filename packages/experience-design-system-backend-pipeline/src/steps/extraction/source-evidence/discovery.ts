@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { canonicalSourceFactPath } from '../src/candidates/bind-source-candidates.js';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, extname, isAbsolute, relative, resolve, sep } from 'node:path';
+import { sourceLimit } from './plain-validation.js';
 
 export interface SourceDiscoveryLimits {
   maxFiles: number;
@@ -116,8 +117,7 @@ export function discoverSourceEvidence(request: {
 }): SourceEvidenceInventory {
   const limits = { ...DEFAULT_SOURCE_DISCOVERY_LIMITS };
   for (const key of Object.keys(limits) as Array<keyof SourceDiscoveryLimits>) {
-    const value = request.limits?.[key];
-    if (value !== undefined && Number.isFinite(value) && value >= 0) limits[key] = Math.floor(value);
+    limits[key] = sourceLimit(request.limits?.[key], limits[key]);
   }
   const projectRoot = canonical(request.projectRoot);
   const selectedSourcePaths = canonicalSelectedSourcePaths(projectRoot, request.filePaths);

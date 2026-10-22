@@ -13,6 +13,10 @@ export const sourceArray = (value: unknown, validate: (item: unknown) => boolean
   Array.isArray(value) && value.every(validate);
 export const sourceCount = (value: unknown): value is number =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+export function sourceLimit(value: unknown, fallback: number): number {
+  const count = typeof value === 'number' ? Math.floor(value) : NaN;
+  return sourceCount(count) ? count : fallback;
+}
 export const sourceScalar = (value: unknown): value is string | number | boolean | null =>
   value === null ||
   typeof value === 'string' ||

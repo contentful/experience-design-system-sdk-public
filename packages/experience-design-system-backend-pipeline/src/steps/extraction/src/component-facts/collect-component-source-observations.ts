@@ -12,6 +12,7 @@ import { SourceInputPaths } from './source-input-path.js';
 import { resolve } from 'node:path';
 import { collectInputOutput } from './collect-input-output.js';
 import { collectSourceReferences } from './collect-source-references.js';
+import { sourceLimit } from '../../source-evidence/plain-validation.js';
 
 export const DEFAULT_COMPONENT_OBSERVATION_LIMITS: Readonly<ComponentObservationLimits> = Object.freeze({
   maxNodes: 4096,
@@ -82,8 +83,7 @@ export function collectComponentSourceObservations(
   const node = component.compilerNode;
   const limits = { ...DEFAULT_COMPONENT_OBSERVATION_LIMITS };
   for (const key of Object.keys(limits) as Array<keyof ComponentObservationLimits>) {
-    const value = options.limits?.[key];
-    if (value !== undefined && Number.isFinite(value) && value >= 0) limits[key] = Math.floor(value);
+    limits[key] = sourceLimit(options.limits?.[key], limits[key]);
   }
   const collection: ComponentSourceObservationCollection = {
     schemaVersion: 1,

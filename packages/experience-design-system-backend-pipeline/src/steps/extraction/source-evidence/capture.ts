@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { dirname, extname, isAbsolute, relative, resolve, sep } from 'node:path';
 import ts from 'typescript';
+import { sourceLimit } from './plain-validation.js';
 import { isAdmittedCompilerConfig, selectCompilerConfiguration } from '../src/compiler/configuration-policy.js';
 import type {
   CaptureSourceEvidenceRequest,
@@ -99,6 +100,10 @@ function hasMatchingPathAlias(specifier: string, paths: Record<string, readonly 
 
 export async function captureSourceEvidence(request: CaptureSourceEvidenceRequest): Promise<SourceCapture> {
   const limits: SourceCaptureLimits = { ...DEFAULT_SOURCE_CAPTURE_LIMITS, ...request.limits };
+  for (const key of Object.keys(DEFAULT_SOURCE_CAPTURE_LIMITS) as Array<keyof SourceCaptureLimits>) {
+    const fallback = DEFAULT_SOURCE_CAPTURE_LIMITS[key];
+    if (fallback !== undefined) limits[key] = sourceLimit(request.limits?.[key], fallback);
+  }
   const inventory = structuredClone(
     request.inventory ??
       discoverSourceEvidence({
