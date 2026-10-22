@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { flattenTokens, windowStart } from '../../../../../src/tui/import/steps/05-token-review/logic.js';
+import { computeColumnWindow, flattenTokens } from '../../../../../src/tui/import/steps/05-token-review/logic.js';
 
 describe('flattenTokens', () => {
   it('walks groups, inherits $type and formats composite values', () => {
@@ -22,11 +22,14 @@ describe('flattenTokens', () => {
   });
 });
 
-describe('windowStart', () => {
-  it('keeps the selection inside the window', () => {
-    expect(windowStart(0, 0, 5, 20)).toBe(0);
-    expect(windowStart(7, 0, 5, 20)).toBe(3);
-    expect(windowStart(2, 5, 5, 20)).toBe(2);
-    expect(windowStart(19, 0, 5, 20)).toBe(15);
+describe('computeColumnWindow', () => {
+  it('shows everything when it fits', () => {
+    expect(computeColumnWindow(3, 2, 5)).toEqual({ start: 0, end: 3, above: 0, below: 0 });
+  });
+
+  it('keeps the cursor inside the window and counts the rows cut off', () => {
+    expect(computeColumnWindow(20, 0, 5)).toEqual({ start: 0, end: 5, above: 0, below: 15 });
+    expect(computeColumnWindow(20, 10, 5)).toEqual({ start: 8, end: 13, above: 8, below: 7 });
+    expect(computeColumnWindow(20, 19, 5)).toEqual({ start: 15, end: 20, above: 15, below: 0 });
   });
 });

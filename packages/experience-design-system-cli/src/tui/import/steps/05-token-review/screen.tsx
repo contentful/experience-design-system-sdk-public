@@ -5,7 +5,7 @@ import { ControlHints } from '@tui/shared/components/ControlHints.js';
 import { StepHeader } from '@tui/shared/components/StepHeader.js';
 import { useTerminalWidth } from '@tui/use-terminal-width.js';
 import { loadTokenRows } from './load.js';
-import { TOKEN_REVIEW_CONTROLS, windowStart } from './logic.js';
+import { TOKEN_REVIEW_CONTROLS, computeColumnWindow } from './logic.js';
 
 interface TokenReviewScreenProps {
   tokensPath: string;
@@ -24,13 +24,9 @@ export function TokenReviewScreen({ tokensPath, onContinue, onQuit }: TokenRevie
   const rows = loaded.ok ? loaded.rows : [];
   const columns = useTerminalWidth();
   const [selected, setSelected] = useState(0);
-  const [start, setStart] = useState(0);
 
-  const move = (to: number): void => {
-    const next = Math.max(0, Math.min(to, rows.length - 1));
-    setSelected(next);
-    setStart((current) => windowStart(next, current, VISIBLE_ROWS, rows.length));
-  };
+  const move = (to: number): void => setSelected(Math.max(0, Math.min(to, rows.length - 1)));
+  const { start, end } = computeColumnWindow(rows.length, selected, VISIBLE_ROWS);
 
   useInput((_input, key) => {
     if (key.return) onContinue();
@@ -72,7 +68,7 @@ export function TokenReviewScreen({ tokensPath, onContinue, onQuit }: TokenRevie
             {'  '}
             {clip('Token name', pathWidth)} {clip('Type', typeWidth)} {clip('Value', valueWidth)}
           </Text>
-          {rows.slice(start, start + VISIBLE_ROWS).map((row, offset) => {
+          {rows.slice(start, end).map((row, offset) => {
             const active = start + offset === selected;
             return (
               <Text key={row.path} color={active ? PALETTE.accent : undefined} bold={active} wrap="truncate-end">
@@ -85,7 +81,7 @@ export function TokenReviewScreen({ tokensPath, onContinue, onQuit }: TokenRevie
         {rows.length > VISIBLE_ROWS && (
           <Box marginTop={1}>
             <Text color={PALETTE.muted}>
-              {start + 1}-{Math.min(start + VISIBLE_ROWS, rows.length)} of {rows.length}
+              {start + 1}-{end} of {rows.length}
             </Text>
           </Box>
         )}

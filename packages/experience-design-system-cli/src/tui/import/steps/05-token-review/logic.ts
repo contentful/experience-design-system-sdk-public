@@ -33,10 +33,25 @@ export function flattenTokens(tree: unknown): TokenRow[] {
   return rows;
 }
 
-/** The first row to draw so that `selected` stays inside a window of `size` rows. */
-export function windowStart(selected: number, current: number, size: number, total: number): number {
-  const start = selected < current ? selected : selected >= current + size ? selected - size + 1 : current;
-  return Math.max(0, Math.min(start, Math.max(0, total - size)));
+/** The longest token name and value, which a side-by-side listing needs room for. */
+export function longestEntries(rows: readonly TokenRow[]): { path: number; value: number } {
+  return {
+    path: Math.max(0, ...rows.map((row) => row.path.length)),
+    value: Math.max(0, ...rows.map((row) => row.value.length)),
+  };
+}
+
+/** The rows to draw: a window of `visibleCount` around the cursor, and how many rows are cut off above and below. */
+export function computeColumnWindow(
+  total: number,
+  cursor: number,
+  visibleCount: number,
+): { start: number; end: number; above: number; below: number } {
+  if (total <= visibleCount) return { start: 0, end: total, above: 0, below: 0 };
+  let start = Math.max(0, cursor - Math.floor(visibleCount / 2));
+  start = Math.min(start, total - visibleCount);
+  const end = start + visibleCount;
+  return { start, end, above: start, below: total - end };
 }
 
 export const TOKEN_REVIEW_CONTROLS = [

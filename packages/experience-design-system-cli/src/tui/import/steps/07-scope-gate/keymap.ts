@@ -18,7 +18,7 @@ export interface KeyPress {
 
 /** What legacy looked at besides the key and the open panel. */
 export interface GateContext {
-  focusedColumn: 'main' | 'added-components';
+  focusedColumn: 'main' | 'tokens';
   /** The layout has only the main column, so Tab has nowhere to go. */
   singleColumn: boolean;
   hasCycles: boolean;
@@ -107,12 +107,12 @@ function resolveMain(key: KeyPress, ctx: GateContext): GateAction {
   if (input === 'x') return ctx.hasFlagReasons ? { type: 'open-panel', panel: 'flags' } : NONE;
   if (input === '/') return { type: 'open-panel', panel: 'search' };
   if (input === 'o') return ctx.hasCycles ? { type: 'toggle-cycle-filter' } : NONE;
-  if (input === 'i' && !key.tab && !key.ctrl) return { type: 'toggle-jump-filter' };
+  if (input === 'i' && !key.tab && !key.ctrl) return inMain ? { type: 'toggle-jump-filter' } : NONE;
   if (input === ' ') return inMain ? { type: 'toggle-group' } : NONE;
   if (input === 'E') return inMain ? { type: 'expand-all' } : NONE;
   if (input === 'C') return inMain ? { type: 'collapse-all' } : NONE;
   if (input === 'a') return inMain ? { type: 'accept' } : NONE;
-  if (input === 'r') return { type: 'reject' };
+  if (input === 'r') return inMain ? { type: 'reject' } : NONE;
   if (input === 'L') return { type: 'toggle-view' };
   if (input === 'A') return { type: 'toggle-all' };
   if (input === 'Y') return { type: 'accept-unflagged' };
@@ -120,7 +120,6 @@ function resolveMain(key: KeyPress, ctx: GateContext): GateAction {
     if (ctx.singleColumn) return NONE;
     return { type: 'switch-column', delta: key.shiftTab ? -1 : 1 };
   }
-  if (key.return) return inMain ? NONE : { type: 'jump-to-selected' };
   if (key.upArrow) return ctx.focusedListEmpty ? NONE : { type: 'move', delta: -1 };
   if (key.downArrow) return ctx.focusedListEmpty ? NONE : { type: 'move', delta: 1 };
   return NONE;

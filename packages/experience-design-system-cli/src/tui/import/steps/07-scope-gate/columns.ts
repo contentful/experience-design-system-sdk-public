@@ -1,4 +1,3 @@
-import { PALETTE } from '@tui/theme.js';
 import type { Closure } from './graph/composite-closure.js';
 /** Structural subset of ScopeComponent needed by these helpers. */
 export interface ScopeComponentLike {
@@ -9,7 +8,7 @@ import type { Decision } from './types.js';
 
 const TWO_COLUMN_MIN_WIDTH = 100;
 const SCOPE_GATE_MAIN_COLUMN_WIDTH = 54;
-const ACCEPTED_COMPONENTS_COLUMN_WIDTH = 36;
+const TOKENS_COLUMN_WIDTH = 44;
 const PANEL_BORDER_ROWS = 2;
 const PANEL_INDICATOR_ROWS = 2;
 const PANEL_HEADER_ROWS = 2;
@@ -32,49 +31,24 @@ export function computePanelLayout(mainVisibleCount: number): ScopeGatePanelLayo
   return { height, mainVisibleCount: safeMainVisibleCount, sideVisibleCount };
 }
 
-export function computeColumnWidths(totalWidth: number): {
+/** The token column needs the width and something to show; without either the gate is the main column alone. */
+export function computeColumnWidths(
+  totalWidth: number,
+  hasTokens: boolean,
+  /** The width the token column would like, so no row has to be cut. It gets at most what the terminal has left. */
+  wantedTokensWidth = TOKENS_COLUMN_WIDTH,
+): {
   layout: 'single' | 'two-column';
   main: number;
-  added: number;
+  tokens: number;
 } {
-  if (totalWidth < TWO_COLUMN_MIN_WIDTH) {
-    return { layout: 'single', main: SCOPE_GATE_MAIN_COLUMN_WIDTH, added: 0 };
+  if (!hasTokens || totalWidth < TWO_COLUMN_MIN_WIDTH) {
+    return { layout: 'single', main: SCOPE_GATE_MAIN_COLUMN_WIDTH, tokens: 0 };
   }
-  const main = SCOPE_GATE_MAIN_COLUMN_WIDTH;
-  const added = ACCEPTED_COMPONENTS_COLUMN_WIDTH;
-  return { layout: 'two-column', main, added };
-}
-
-export interface AddedComponentEntry {
-  name: string;
-  isCycle: boolean;
-}
-
-function sortTieredEntries<T extends { name: string }>(cycleTier: T[], restTier: T[]): T[] {
-  cycleTier.sort((a, b) => a.name.localeCompare(b.name));
-  restTier.sort((a, b) => a.name.localeCompare(b.name));
-  return [...cycleTier, ...restTier];
-}
-
-export function buildAddedComponentsList(
-  components: ScopeComponentLike[],
-  stateByKey: Map<string, Decision>,
-  cycleParticipants: Set<string> = new Set<string>(),
-): AddedComponentEntry[] {
-  const cycleTier: AddedComponentEntry[] = [];
-  const restTier: AddedComponentEntry[] = [];
-  // Selection state is keyed by name, so components sharing a name (real
-  // collisions across files) collapse to one accepted entry — dedupe by name
-  // to avoid duplicate rows and non-unique React keys downstream.
-  const seen = new Set<string>();
-  for (const c of components) {
-    if (stateByKey.get(c.name) !== 'accepted') continue;
-    if (seen.has(c.name)) continue;
-    seen.add(c.name);
-    if (cycleParticipants.has(c.name)) cycleTier.push({ name: c.name, isCycle: true });
-    else restTier.push({ name: c.name, isCycle: false });
-  }
-  return sortTieredEntries(cycleTier, restTier);
+  // Screen padding (2 each side) and the gap between the columns come off what is left.
+  const available = totalWidth - 4 - SCOPE_GATE_MAIN_COLUMN_WIDTH - 2;
+  const tokens = Math.max(TOKENS_COLUMN_WIDTH, Math.min(wantedTokensWidth, available));
+  return { layout: 'two-column', main: SCOPE_GATE_MAIN_COLUMN_WIDTH, tokens };
 }
 
 export function computeCounters(
@@ -97,65 +71,4 @@ export function computeCounters(
     if (stateByKey.get(root) === 'accepted') groups++;
   }
   return { accepted, rejected, undecided, groups, total: components.length };
-}
-
-export function sideColumnLabelStyle(input: { isCycle: boolean; isSelected: boolean; focused: boolean }): {
-  nameColor: string | undefined;
-  nameBold: boolean;
-  nameInverse: boolean;
-  nameUnderline: boolean;
-  suffixColor: string | undefined;
-  suffixDim: boolean;
-  suffixInverse: boolean;
-  suffixUnderline: boolean;
-} {
-  const { isCycle, isSelected, focused } = input;
-  const isCursor = isSelected && focused;
-  if (isCursor) {
-    return {
-      nameColor: PALETTE.accent,
-      nameBold: true,
-      nameInverse: false,
-      nameUnderline: false,
-      suffixColor: PALETTE.accent,
-      suffixDim: false,
-      suffixInverse: false,
-      suffixUnderline: false,
-    };
-  }
-  const underline = isSelected && !focused;
-  if (isCycle) {
-    return {
-      nameColor: PALETTE.warning,
-      nameBold: false,
-      nameInverse: false,
-      nameUnderline: underline,
-      suffixColor: PALETTE.warning,
-      suffixDim: false,
-      suffixInverse: false,
-      suffixUnderline: underline,
-    };
-  }
-  return {
-    nameColor: PALETTE.success,
-    nameBold: false,
-    nameInverse: false,
-    nameUnderline: underline,
-    suffixColor: PALETTE.accent,
-    suffixDim: true,
-    suffixInverse: false,
-    suffixUnderline: underline,
-  };
-}
-
-export function computeColumnWindow(
-  total: number,
-  cursor: number,
-  visibleCount: number,
-): { start: number; end: number; above: number; below: number } {
-  if (total <= visibleCount) return { start: 0, end: total, above: 0, below: 0 };
-  let start = Math.max(0, cursor - Math.floor(visibleCount / 2));
-  start = Math.min(start, total - visibleCount);
-  const end = start + visibleCount;
-  return { start, end, above: start, below: total - end };
 }

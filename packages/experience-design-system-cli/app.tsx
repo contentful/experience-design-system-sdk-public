@@ -431,6 +431,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
             return (
               <ScopeGateScreen
                 components={scopeFlow.load.components}
+                {...(scopeRun.extraction.tokensPath ? { tokensPath: scopeRun.extraction.tokensPath } : {})}
                 onConfirm={scopeFlow.confirm}
                 onQuit={leaveImport}
               />
