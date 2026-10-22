@@ -61,7 +61,10 @@ function merge(values: Value[]): Value {
       ]),
     );
     result.fresh = values.length === 1 && values[0].fresh;
-    if (values.length === 1) result.allocationFrame = values[0].allocationFrame;
+    if (values.length === 1) {
+      result.allocationFrame = values[0].allocationFrame;
+      result.arrayLength = values[0].arrayLength;
+    }
   } else result.origins = union(values.map((value) => origins(value)));
   const wildcards = values.flatMap((value) => (value.wildcard ? [value.wildcard] : []));
   if (wildcards.length) result.wildcard = merge(wildcards);

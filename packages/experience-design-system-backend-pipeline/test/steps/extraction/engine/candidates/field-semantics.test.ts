@@ -234,12 +234,15 @@ it('rejects a conditional certificate whose root source identity was altered', a
   expect(readComponentFacts(facts).status).toBe('corrupt');
 });
 
-it('reports unsupported semantic versions instead of treating them as current facts', async () => {
-  const { component } = await extract("const next = { ...props.data, alpha: 'fixed' }; return next.alpha;");
-  const facts = JSON.parse(JSON.stringify(component.componentFacts));
-  facts.sourceObservations.fieldSemantics.schemaVersion = 999;
-  expect(readComponentFacts(facts).status).toBe('unsupported');
-});
+it.each([6, 999])(
+  'reports unsupported semantic versions instead of treating them as current facts: %s',
+  async (version) => {
+    const { component } = await extract("const next = { ...props.data, alpha: 'fixed' }; return next.alpha;");
+    const facts = JSON.parse(JSON.stringify(component.componentFacts));
+    facts.sourceObservations.fieldSemantics.schemaVersion = version;
+    expect(readComponentFacts(facts).status).toBe('unsupported');
+  },
+);
 
 it('never admits promoted or premise-free omission claims', async () => {
   const { component } = await extract("const next = { ...props.data, alpha: 'fixed' }; return next.alpha;");

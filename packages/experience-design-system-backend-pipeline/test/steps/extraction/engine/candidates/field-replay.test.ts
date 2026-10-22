@@ -45,6 +45,110 @@ async function extract(body: string, key = 'alpha', maxNodes = 1000, includeGuar
 const branched = (body: string) => extract(body, 'alpha', 1000, true);
 
 it.each([
+  'function make(value) { return { ...value, alpha: "fixed" }; } return make(props.data).alpha;',
+  'const make = value => ({ ...value, alpha: "fixed" }); return make(props.data).alpha;',
+  'function make(value) { return { ...value, alpha: "fixed" }; } const { alpha } = make(props.data); return alpha;',
+  'function make(value) { return { ...value }; } const next = { ...make(props.data), alpha: "fixed" }; return next.alpha;',
+  'function identity(value) { return value; } return identity(props.data).beta;',
+  'function make(value) { return { nested: value }; } return make(props.data).nested.beta;',
+  'function make(value) { return { nested: value, alias: value }; } const { alias } = make(props.data); return alias.beta;',
+  'function make(value) { return [value.alpha, "fixed"]; } return make(props.data)[1];',
+  'const make = value => [value.alpha, "fixed"]; return [...make(props.data)][1];',
+  'function make(value) { return [value]; } return make(props.data).map(value => value.beta)[0];',
+  'function make(value) { return [value.alpha]; } for (const value of make(props.data)) return "fixed"; return "empty";',
+  'return [props.data].map(value => ({ ...value, alpha: "fixed" }))[0].alpha;',
+  'return [props.data].map(value => ({ nested: value })).map(({ nested }) => nested.beta)[0];',
+  'function make(value) { const next = { ...value, alpha: "fixed" }; next.alpha = "after"; return next; } return make(props.data).alpha;',
+  'function make(value) { return { alpha: "fixed" }; } make(props.data); return "fixed";',
+])('transfers local helper results before observing an atomic root value: %s', async (body) => {
+  const { result, component, semantics } = await extract(body);
+  expect(semantics.omissions).toEqual([]);
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('conditional');
+  expect(readComponentFacts(component.componentFacts).status).toBe('available');
+  const execute = new Function('props', body);
+  const baseline = execute({ data: { alpha: 'original', beta: 'sibling' } });
+  expect(execute({ data: { alpha: 'changed', beta: 'sibling' } })).toEqual(baseline);
+  expect(execute({ data: { beta: 'sibling' } })).toEqual(baseline);
+});
+
+it.each([
+  'function make(value) { return { ...value }; } return make(props.data).alpha;',
+  'const make = value => ({ nested: value }); return make(props.data).nested.alpha;',
+  'function identity(value) { return value; } const { alpha } = identity(props.data); return alpha;',
+  'function make(value) { return [value.alpha]; } return make(props.data)[0];',
+  'return [props.data].map(value => ({ alpha: value.alpha }))[0].alpha;',
+])('preserves dependence through transferred helper results: %s', async (body) => {
+  const { result } = await extract(body);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.valueIndependence.reasons).toContain('paired-results-differ');
+});
+
+it.each([
+  'function make(value) { return { ...value, alpha: "fixed" }; } return make(props.data);',
+  'function make(value) { return [value.alpha, "fixed"]; } return make(props.data);',
+  'function make(value) { return () => "fixed"; } make(props.data); return "fixed";',
+  'function make(value) { return () => "fixed"; } return make(props.data)();',
+  'function make(value) { return { read: () => value.beta }; } const { read } = make(props.data); return read();',
+  'function make(value) { return { nested: [() => value.beta] }; } return make(props.data).nested[0]();',
+  'function make(value) { return { alpha: value.alpha }; } const next = make(props.data); next.alpha = "fixed"; return next.alpha;',
+  'function make(value) { return { child: { alpha: value.alpha } }; } const next = make(props.data); next.child.alpha = "fixed"; return next.child.alpha;',
+  'function make(value) { if (props.gate) return { alpha: "fixed" }; return { alpha: "fixed" }; } return make(props.data).alpha;',
+  'function make(value) { return props.gate ? { alpha: "fixed" } : { alpha: "fixed" }; } return make(props.data).alpha;',
+  'async function make(value) { return { alpha: "fixed" }; } return make(props.data).alpha;',
+  'function make(value) { return make(value); } return make(props.data).alpha;',
+  'function make(value) { unknown(value); return { alpha: "fixed" }; } return make(props.data).alpha;',
+  'function make(value) { return { get alpha() { return "fixed"; } }; } return make(props.data).alpha;',
+  'function make(value) { return [value.alpha]; } const next = make(props.data); next[0] = "fixed"; return next[0];',
+  'const next = { alpha: props.data.alpha }; function identity(value) { return value; } const alias = identity(next); next.alpha = "fixed"; return alias.alpha;',
+  'const next = { alpha: props.data.alpha }; function identity(value) { return value; } const alias = identity(next); const saved = alias.alpha; next.alpha = "fixed"; return saved;',
+])('keeps unsupported helper-result observations and effects uncertain: %s', async (body) => {
+  const { result } = await branched(body);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.reasons.length).toBeGreaterThan(0);
+});
+
+it.each(['label', 'arbitraryField'])('transfers renamed fields using local key evidence: %s', async (key) => {
+  const body = `const key = ${JSON.stringify(key)}; function transform(input) { return { ...input, [key]: "fixed" }; } return transform(props.data)[key];`;
+  const { result } = await extract(body, key);
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('conditional');
+});
+
+it('keeps helper-return provenance ordered before caller reads and callback frames', async () => {
+  const { replay, result } = await extract(
+    'function make(input) { return [input]; } return make(props.data).map(value => ({ ...value, alpha: "fixed" }))[0].alpha;',
+  );
+  expect(result.omissionSafety.status).toBe('conditional');
+  expect(replay.frames.map((frame) => frame.parentFrame)).toEqual([0, 0]);
+  const call = replay.operations.findIndex((operation) => operation.operation === 'call' && operation.frame === 1);
+  const returned = replay.operations.findIndex(
+    (operation) => operation.operation === 'return' && operation.frame === 1,
+  );
+  const callback = replay.operations.findIndex((operation) => operation.operation === 'call' && operation.frame === 2);
+  const callerRead = replay.operations.findLastIndex(
+    (operation) => operation.operation === 'read' && operation.frame === 0,
+  );
+  expect(returned).toBeGreaterThan(call);
+  expect(callback).toBeGreaterThan(returned);
+  expect(callerRead).toBeGreaterThan(callback);
+  expect(
+    replay.operations.filter((operation) => operation.frame === 2).every((operation) => operation.iterations[0] === 0),
+  ).toBe(true);
+});
+
+it('charges returned compound values to the shared replay bounds', async () => {
+  const { replay, result } = await extract(
+    'function make(input) { return { nested: { alias: input }, values: [input] }; } return make(props.data).nested.alias.beta;',
+    'alpha',
+    150,
+  );
+  expect(replay.used.nodes).toBeLessThanOrEqual(150);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.reasons.length).toBeGreaterThan(0);
+});
+
+it.each([
   ['{ data }', 'const next = { ...data, alpha: "fixed" }; return next.alpha;'],
   ['{ data: arbitrary }', 'const next = { ...arbitrary, alpha: "fixed" }; return next.alpha;'],
   ['{ data: { alpha } }', 'const next = { alpha }; next.alpha = "fixed"; return next.alpha;'],
@@ -194,7 +298,7 @@ it.each([
   'const values = [props.data.alpha]; values[0] = "fixed"; return values.map(value => value)[0];',
   'const next = { alpha: props.data.alpha }; ["fixed"].map(value => { next.alpha = value; return value; }); return next.alpha;',
   'return [props.data.alpha].map((value, index, values) => { values[0] = "fixed"; return value; })[0];',
-  'return [props.data.alpha].map(() => ({ alpha: "fixed" }))[0].alpha;',
+  'return [props.data.alpha].map(() => ({ alpha: "fixed" }))[0];',
   'return [props.data.alpha].map(...[() => "fixed"])[0];',
   'return [props.data.alpha].map(() => { unknown(); return "fixed"; })[0];',
   'const values = [props.data.alpha]; values.map = () => ["fixed"]; return values.map(() => "fixed")[0];',
@@ -592,7 +696,7 @@ it('requires local iteration applicability in the source derivation as well as p
 
 it('rejects old interpreter versions without repairing historical evidence', async () => {
   const { component, replay } = await extract('return "fixed";');
-  Object.assign(replay, { schemaVersion: 7 });
+  Object.assign(replay, { schemaVersion: 8 });
   replay.identity = fieldReplayIdentity(replay);
   expect(readComponentFacts(component.componentFacts).status).toBe('unsupported');
 });
@@ -1208,6 +1312,8 @@ it.each([
   'return [props.data.alpha, "last"].map(() => "fixed")[0];',
   'const { data: { alpha: ignored, beta: kept } } = props; return kept;',
   'const { data } = props; return [data].map(({ alpha, beta }) => beta)[0];',
+  'function make(value) { return { ...value, alpha: "fixed" }; } const { alpha } = make(props.data); return alpha;',
+  'function make(value) { return [value]; } return make(props.data).map(value => ({ ...value, alpha: "fixed" }))[0].alpha;',
 ])(
   'replays the exact saved source after the live file changes and carries it into the reasoning channel: %s',
   async (body) => {

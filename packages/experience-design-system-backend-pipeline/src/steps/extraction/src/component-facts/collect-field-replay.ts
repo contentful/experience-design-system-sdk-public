@@ -542,10 +542,11 @@ export function collectFieldReplay(
         bind(parameter, arguments_[index] ?? atom(['undefined']), invocation, depth + 1),
       );
       step('call', site, invocation);
-      if (ts.isBlock(target.body)) return returned(sequence(target.body.statements, invocation, depth + 1));
+      if (ts.isBlock(target.body))
+        return transferred(sequence(target.body.statements, invocation, depth + 1), depth + 1);
       const result = evaluate(target.body, depth + 1, invocation);
       step('return', target.body, invocation);
-      return returned({ kind: 'return', value: result });
+      return transferred({ kind: 'return', value: result }, depth + 1);
     }
     function continueWith(completion: Completion, action: (scope: Scope) => Completion): Completion {
       if (completion.kind === 'continue') return action(completion.scope);
@@ -648,6 +649,26 @@ export function collectFieldReplay(
       else if (!ts.isFunctionDeclaration(statement) && !ts.isEmptyStatement(statement))
         open('paired-statement-effects-open');
       return { kind: 'continue', scope };
+    }
+    function transferable(value: Value, depth: number, seen = new Set<Value>()): boolean {
+      if (value.kind === 'atom' || seen.has(value)) return true;
+      if (!admit(depth)) return false;
+      seen.add(value);
+      if (value.kind === 'callable') {
+        open('paired-escaping-callable-open');
+        return false;
+      }
+      for (const field of value.fields.values()) if (!transferable(field, depth + 1, seen)) return false;
+      return true;
+    }
+    function transferred(completion: Completion, depth: number): Value {
+      if (completion.kind === 'continue') return atom(['undefined']);
+      if (completion.kind === 'return')
+        return transferable(completion.value, depth) ? completion.value : atom(['unknown']);
+      const truthy = transferred(completion.truthy, depth + 1);
+      const falsy = transferred(completion.falsy, depth + 1);
+      if (truthy.kind !== 'atom' || falsy.kind !== 'atom') return open('paired-branch-record-value-open');
+      return choose(completion.condition, truthy, falsy);
     }
     function returned(completion: Completion): AtomicValue {
       if (completion.kind === 'continue') return { kind: 'atom', term: JSON.stringify(['undefined']) };
