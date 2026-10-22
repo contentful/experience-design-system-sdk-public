@@ -1,6 +1,7 @@
 import type { SourceFactLocation } from '../candidates/types.js';
 import { mapInputOutputLocations } from '../types/source-input-output.js';
 import { mapReferenceIndexLocations } from '../types/source-references.js';
+import { mapFieldSemanticsLocations } from '../types/field-semantics.js';
 import type {
   ComponentSourceObservationCollection,
   SourceInputAccessPath,
@@ -40,6 +41,9 @@ export function mapSourceObservationLocations(
   });
   return {
     ...collection,
+    ...(collection.fieldSemantics
+      ? { fieldSemantics: mapFieldSemanticsLocations(collection.fieldSemantics, map) }
+      : {}),
     ...(collection.inputOutput ? { inputOutput: mapInputOutputLocations(collection.inputOutput, map) } : {}),
     ...(collection.referenceIndex
       ? { referenceIndex: mapReferenceIndexLocations(collection.referenceIndex, map) }

@@ -104,6 +104,7 @@ export interface ComponentSourceObservation {
 }
 export interface ComponentSourceObservationCollection {
   schemaVersion: 1;
+  fieldSemantics?: import('./field-semantics.js').SourceFieldSemantics;
   inputOutput?: import('./source-input-output.js').SourceInputOutputEvidence;
   referenceIndex?: import('./source-references.js').SourceReferenceIndex;
   componentDeclarationId: string;

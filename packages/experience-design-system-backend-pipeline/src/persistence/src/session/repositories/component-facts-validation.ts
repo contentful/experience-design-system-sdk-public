@@ -125,8 +125,62 @@ const callableSignature = z
     returnTypeText: z.string(),
   })
   .strict();
+const condition = z
+  .object({
+    expression: z.string(),
+    branch: z.enum(['then', 'else', 'truthy', 'falsy', 'body', 'case', 'nullish']),
+    location,
+  })
+  .strict();
+const conditionalFieldClaim = z
+  .object({
+    status: z.enum(['conditional', 'unknown']),
+    premises: z.array(z.string()),
+    reasons: z.array(z.string()),
+  })
+  .strict();
+const fieldSemantics = z
+  .object({
+    schemaVersion: z.literal(1),
+    semantics: z.literal('conditional-ordered-field-flow'),
+    componentDeclarationId: z.string(),
+    source: location,
+    coverage: z.enum(['complete-within-declared-bound', 'partial', 'unavailable']),
+    proofs: z.array(
+      z
+        .object({
+          inputName: z.string(),
+          path: z.array(
+            z
+              .object({
+                kind: z.enum(['field', 'item', 'tuple', 'union', 'intersection', 'index']),
+                key: z.union([z.string(), z.number()]),
+              })
+              .strict(),
+          ),
+          valueIndependence: conditionalFieldClaim,
+          omissionSafety: conditionalFieldClaim,
+          outputDependence: z.enum(['possible', 'not-observed', 'unknown']),
+        })
+        .strict(),
+    ),
+    steps: z.array(
+      z
+        .object({
+          operation: z.enum(['binding', 'spread', 'write', 'read', 'call', 'return', 'branch']),
+          frame: z.number().int().nonnegative(),
+          location,
+          conditions: z.array(condition),
+        })
+        .strict(),
+    ),
+    omissions: z.array(z.object({ reason: z.string(), location }).strict()),
+    used: z.object({ nodes: z.number().int().nonnegative(), maxDepth: z.number().int().nonnegative() }).strict(),
+  })
+  .strict();
 const sourceObservations = z
   .object({
+    fieldSemantics: fieldSemantics.optional(),
     referenceIndex: z
       .custom<SourceReferenceIndex>((value) => readSourceReferences(value).status === 'available')
       .optional(),
@@ -164,15 +218,7 @@ const sourceObservations = z
             .object({
               lexicalDeclaration: location.nullable(),
               execution: z.enum(['component-body', 'deferred', 'referenced-body', 'source-file']),
-              conditions: z.array(
-                z
-                  .object({
-                    expression: z.string(),
-                    branch: z.enum(['then', 'else', 'truthy', 'falsy', 'body', 'case', 'nullish']),
-                    location,
-                  })
-                  .strict(),
-              ),
+              conditions: z.array(condition),
             })
             .strict(),
           subject: symbol.nullable(),
@@ -348,6 +394,14 @@ export function readComponentFacts(value: unknown): ComponentFactsRead {
   )
     return { status: 'unsupported' };
   const validated = facts.safeParse(value);
+  if (
+    validated.success &&
+    validated.data.schemaVersion === COMPONENT_FACT_SCHEMA_VERSION &&
+    validated.data.sourceObservations?.fieldSemantics &&
+    validated.data.sourceObservations.fieldSemantics.componentDeclarationId !==
+      validated.data.sourceObservations.componentDeclarationId
+  )
+    return { status: 'corrupt' };
   if (
     validated.success &&
     validated.data.schemaVersion === COMPONENT_FACT_SCHEMA_VERSION &&
