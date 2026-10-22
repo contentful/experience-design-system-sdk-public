@@ -290,7 +290,7 @@ Per-property feedback reports missing representations, incompatible structure/do
 Inspect supplied source facts before choosing a representation; alternatives are drafts with unapproved mapper/cardinality requirements, and local native support does not prove deployed mapper support.
 When the prompt supplies a read-only representation validator command, you may execute that exact command with current draft JSON tool-call lines on stdin and read its immutable evidence artifact; these permissions do not authorize reading or executing source paths or modifying files.
 If tools are unavailable, use the host's correction feedback; host validation always remains authoritative.
-The host keeps one operation deadline and at most two attempts, retaining successful decisions and requesting only missing subjects or pending representation repairs.
+The host keeps one operation deadline and at most five attempts, retaining successful decisions and requesting only missing subjects or pending representation repairs.
 If repair cannot resolve a property, retain its semantic decision and explain the exact source limitation in `reason`; generation remains incomplete. Never force String, narrow an open source domain, drop a field or invent support to satisfy validation. A complete source-derived model may finish local generation while its downstream deployment and rendering requirements remain explicit.
 
 ---

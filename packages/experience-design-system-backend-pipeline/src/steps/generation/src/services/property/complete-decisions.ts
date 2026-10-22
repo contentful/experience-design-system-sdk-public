@@ -12,6 +12,8 @@ import { createGenerationRepresentationValidator } from './representation-valida
 import type { RepresentationValidationEvidence } from './validate-representation-draft.js';
 import { buildRepresentationContext } from './representation-context.js';
 
+export const GENERATION_MAX_ATTEMPTS = 5;
+
 export interface CompleteDecisionOperation {
   originalPrompt: string;
   inventory: DecisionInventory;
@@ -139,7 +141,7 @@ Use [] for an evidence channel with no supplied evidence. Do not emit constraint
 ${validator?.instructions ?? notes.join('\n')}
 
 ${options.originalPrompt}`;
-    for (let attempt = 1; attempt <= 2; attempt++) {
+    for (let attempt = 1; attempt <= GENERATION_MAX_ATTEMPTS; attempt++) {
       throwIfAborted(options.signal);
       if (attempt > 1 && options.backoffMs) {
         if (now() + options.backoffMs >= deadline) return finish(false, ['Operation deadline exhausted']);

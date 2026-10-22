@@ -9,7 +9,10 @@ import type { AgentInvoker } from '../../../agents/types/invoker.js';
 import { buildPrompt } from '../../../agents/prompts/build-prompt.js';
 import { buildCompilerEvidenceInline } from '../../../agents/prompts/helpers/build-compiler-evidence-inline.js';
 import { invokeAgentWithOutput } from '../../../agents/services/invoke-agent-with-output.js';
-import { generateCompleteDecisions } from '../../../steps/generation/src/services/property/complete-decisions.js';
+import {
+  generateCompleteDecisions,
+  GENERATION_MAX_ATTEMPTS,
+} from '../../../steps/generation/src/services/property/complete-decisions.js';
 import { componentDecisionInventory } from '../../../steps/generation/src/services/property/decision-inventory.js';
 import { loadAcceptedSlotDecisions } from '../../../persistence/src/session/repositories/exploration/records.js';
 import {
@@ -266,7 +269,14 @@ export async function runOneGenerateComponent(
     signal,
     representationValidation: { component, componentId: component.component_id },
     invoke: async ({ prompt: attemptPrompt, timeoutMs, signal: operationSignal, attempt }) => {
-      onProgress?.({ kind: 'component:started', index, total, name: component.name, attempt, maxAttempts: 2 });
+      onProgress?.({
+        kind: 'component:started',
+        index,
+        total,
+        name: component.name,
+        attempt,
+        maxAttempts: GENERATION_MAX_ATTEMPTS,
+      });
       throwIfAborted(signal);
       const invocation = (
         await invokeAgentWithOutput(
