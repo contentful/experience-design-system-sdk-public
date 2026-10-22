@@ -27,7 +27,7 @@ const MENUS: Record<PathPhase, readonly MenuItem<Choice>[]> = {
 
 function Row({ row }: { row: SummaryRow }): React.ReactElement {
   return (
-    <Text color={row.tone === 'accent' ? PALETTE.accent : row.tone === 'muted' ? PALETTE.muted : undefined}>
+    <Text color={row.tone === 'accent' ? PALETTE.accent : row.tone === 'muted' ? PALETTE.muted : PALETTE.text}>
       {'  • '}
       {String(row.count).padStart(3)} {row.label}
     </Text>
@@ -61,7 +61,8 @@ function Summary({
   return (
     <Box flexDirection="column" gap={1}>
       <Text>
-        Scanned <Text bold>{path}</Text>
+        <Text color={PALETTE.muted}>Scanned </Text>
+        <Text color={PALETTE.text}>{path}</Text>
       </Text>
       <Box flexDirection="column">
         <Text color={PALETTE.success}>✓ Found {total} files:</Text>

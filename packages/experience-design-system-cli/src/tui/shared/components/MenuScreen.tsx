@@ -65,7 +65,9 @@ export function MenuScreen<C extends string>({
     <Box flexDirection="column">
       <StepHeader step="setup" />
       <Box flexDirection="column" paddingX={2} paddingBottom={1}>
-        <Text bold>{title}</Text>
+        <Text bold color={PALETTE.text}>
+          {title}
+        </Text>
         <Text> </Text>
         {subtitle && (
           <>
@@ -73,14 +75,18 @@ export function MenuScreen<C extends string>({
             <Text> </Text>
           </>
         )}
-        <Text color={PALETTE.muted}>ACTIONS</Text>
+        <Text bold color={PALETTE.accent}>
+          ACTIONS
+        </Text>
         {menu.map((item, index) => {
           const focused = index === focus;
           return (
             <Box key={item.choice} gap={1}>
-              <Text color={focused ? PALETTE.accent : undefined}>{focused ? '❯' : ' '}</Text>
+              <Text bold color={PALETTE.accent}>
+                {focused ? '❯' : ' '}
+              </Text>
               <Box width={labelWidth} flexShrink={0}>
-                <Text bold={focused} color={focused ? PALETTE.accent : undefined}>
+                <Text bold={focused} color={focused ? PALETTE.accent : PALETTE.text}>
                   {item.label}
                 </Text>
               </Box>
@@ -98,10 +104,12 @@ export function MenuScreen<C extends string>({
             borderLeft={false}
             borderRight={false}
           >
-            <Text color={PALETTE.muted}>{dataTitle.toUpperCase()}</Text>
+            <Text bold color={PALETTE.muted}>
+              {dataTitle.toUpperCase()}
+            </Text>
             {rows.map((row) => (
               <FormReadOnlyRow key={row.label} label={row.label} labelWidth={labelWidth}>
-                <Text bold={row.value !== ''}>{row.value || '(empty)'}</Text>
+                <Text color={row.value ? PALETTE.text : PALETTE.muted}>{row.value || '(empty)'}</Text>
               </FormReadOnlyRow>
             ))}
             {children}
