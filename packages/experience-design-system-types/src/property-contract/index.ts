@@ -17,5 +17,6 @@ export * from './import-prerequisites.js';
 
 export * from './logical-source-graph.js';
 export * from './analysis-representation-candidates.js';
+export { nativeSourceRegion } from './native-source-region.js';
 export * from './discriminated-union.js';
 export * from './discriminated-union-source.js';

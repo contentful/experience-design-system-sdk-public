@@ -5,7 +5,8 @@ import { exploreModelDecisions } from './property/explore-model-decisions.js';
 import { bucketComponentProps } from '../../../extraction/index.js';
 import { stripPropProvenance } from '../../../../agents/prompts/helpers/strip-prop-provenance.js';
 import { createHash } from 'node:crypto';
-import { buildPrompt, createLocalCliAgentInvoker, type ToolCall } from '../../../../agents/index.js';
+import { createLocalCliAgentInvoker, type ToolCall } from '../../../../agents/index.js';
+import { buildGenerationPrompt } from './property/build-generation-prompt.js';
 import type { RawComponentDefinition } from '../../../extraction/src/types/component.js';
 import type { CDFComponentEntry, CDFPropertyDefinition, CDFSlotDefinition } from '../../../shared/index.js';
 import type {
@@ -91,35 +92,42 @@ async function generateOne(
   const inputHash = hashString(JSON.stringify(component));
 
   const componentBuckets = bucketComponentProps(component);
-  const prompt = await buildPrompt({
-    skill: 'components',
-    mode: 'autonomous',
-    rawComponentsInline: JSON.stringify(
-      (({ sourceCandidates: _candidates, sourceCandidateSources: _sources, componentFacts: _facts, ...raw }) => ({
-        ...raw,
-        props: component.props.map(stripPropProvenance),
-      }))(component),
-    ),
-    compilerEvidenceInline:
-      options.compilerEvidenceInline ?? buildCompilerEvidenceInline([component], { readiness: 'caller-provided' }),
-    propBucketsInline: JSON.stringify(componentBuckets),
-    outDir: '',
-    componentName: component.name,
-    skillPathOverride,
-    skillContentOverride,
-  });
+  const generationPrompt = await buildGenerationPrompt(
+    {
+      skill: 'components',
+      mode: 'autonomous',
+      rawComponentsInline: JSON.stringify(
+        (({ sourceCandidates: _candidates, sourceCandidateSources: _sources, componentFacts: _facts, ...raw }) => ({
+          ...raw,
+          props: component.props.map(stripPropProvenance),
+        }))(component),
+      ),
+      compilerEvidenceInline:
+        options.compilerEvidenceInline ?? buildCompilerEvidenceInline([component], { readiness: 'caller-provided' }),
+      propBucketsInline: JSON.stringify(componentBuckets),
+      outDir: '',
+      componentName: component.name,
+      skillPathOverride,
+      skillContentOverride,
+      explorationJudgmentsInline: options.explorationJudgmentsInline,
+      sharedSource: options.sharedSource,
+      componentSourceRefs: options.componentSourceRefs,
+    },
+    component,
+  );
   throwIfAborted(options.signal);
 
-  const promptHash = hashString(prompt);
+  const promptHash = hashString(generationPrompt.originalPrompt);
 
   options.onDebugEvent?.('prop-buckets.generate', { ...componentBuckets });
   const invoker = createLocalCliAgentInvoker();
   const completed = await generateCompleteDecisions({
-    originalPrompt: prompt,
+    ...generationPrompt,
     inventory: componentDecisionInventory(component, options.acceptedSlots),
     timeoutMs: AGENT_TIMEOUT_MS,
     signal: options.signal,
     representationValidation: { component },
+    onAttempt: (metrics) => options.onDebugEvent?.('generation.attempt', { ...metrics }),
     invoke: ({ prompt: attemptPrompt, timeoutMs, signal }) =>
       invoker.invoke({ agent, model, prompt: attemptPrompt, timeoutMs, signal }),
   });

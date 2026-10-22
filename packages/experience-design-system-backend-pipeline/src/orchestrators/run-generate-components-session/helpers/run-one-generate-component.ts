@@ -6,7 +6,7 @@ import { stripPropProvenance } from '../../../agents/prompts/helpers/strip-prop-
 import type { DatabaseSync } from 'node:sqlite';
 import type { AgentName } from '../../../agents/types/agent-name.js';
 import type { AgentInvoker } from '../../../agents/types/invoker.js';
-import { buildPrompt } from '../../../agents/prompts/build-prompt.js';
+import { buildGenerationPrompt } from '../../../steps/generation/src/services/property/build-generation-prompt.js';
 import { buildCompilerEvidenceInline } from '../../../agents/prompts/helpers/build-compiler-evidence-inline.js';
 import { invokeAgentWithOutput } from '../../../agents/services/invoke-agent-with-output.js';
 import {
@@ -236,25 +236,28 @@ export async function runOneGenerateComponent(
   const existingComponentsInline = existingContentfulEntities
     ? JSON.stringify(summarizeForGenerateAgent(existingContentfulEntities, component.name))
     : undefined;
-  const prompt = await buildPrompt({
-    skill: 'components',
-    mode: 'autonomous',
-    rawComponentsInline,
-    compilerEvidenceInline,
-    explorationJudgmentsInline,
-    propBucketsInline: JSON.stringify(componentBuckets),
-    tokensInline,
-    tokenMapInline,
-    outDir: process.cwd(),
-    componentName: component.name,
-    sharedSource: shared.readiness === 'ready' && shared.source.components.length ? shared.source : undefined,
-    componentSourceRefs: [sourceRef],
-    skillPathOverride,
-    skillContentOverride,
-    existingComponentsInline,
-    existingTokensInline,
-    componentAllowlistInline: JSON.stringify([...allowedComponentNames].sort()),
-  });
+  const generationPrompt = await buildGenerationPrompt(
+    {
+      skill: 'components',
+      mode: 'autonomous',
+      rawComponentsInline,
+      compilerEvidenceInline,
+      explorationJudgmentsInline,
+      propBucketsInline: JSON.stringify(componentBuckets),
+      tokensInline,
+      tokenMapInline,
+      outDir: process.cwd(),
+      componentName: component.name,
+      sharedSource: shared.readiness === 'ready' && shared.source.components.length ? shared.source : undefined,
+      componentSourceRefs: [sourceRef],
+      skillPathOverride,
+      skillContentOverride,
+      existingComponentsInline,
+      existingTokensInline,
+      componentAllowlistInline: JSON.stringify([...allowedComponentNames].sort()),
+    },
+    component,
+  );
   throwIfAborted(signal);
 
   const inventory = componentDecisionInventory(
@@ -262,12 +265,13 @@ export async function runOneGenerateComponent(
     loadAcceptedSlotDecisions(db, sessionId),
   );
   const completed = await generateCompleteDecisions({
-    originalPrompt: prompt,
+    ...generationPrompt,
     inventory,
     timeoutMs: DEFAULT_TIMEOUT_MS,
     backoffMs: RETRY_BACKOFF_MS,
     signal,
     representationValidation: { component, componentId: component.component_id },
+    onAttempt: (metrics) => options.onDebugEvent?.('generation.attempt', { ...metrics }),
     invoke: async ({ prompt: attemptPrompt, timeoutMs, signal: operationSignal, attempt }) => {
       onProgress?.({
         kind: 'component:started',

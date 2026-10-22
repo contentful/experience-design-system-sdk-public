@@ -3,6 +3,7 @@ import {
   parseClassificationToolLines,
   REPRESENTATION_PROPOSAL_EVIDENCE_FIELDS,
   hasPropertyRepresentation,
+  contentDigest,
   type ClassificationToolCall,
   type DecisionInventory,
 } from '@contentful/experience-design-system-types';
@@ -11,11 +12,28 @@ import { validateGenerationPropertyDecision, type PropertyRepresentationFeedback
 import { createGenerationRepresentationValidator } from './representation-validator-artifact.js';
 import type { RepresentationValidationEvidence } from './validate-representation-draft.js';
 import { buildRepresentationContext } from './representation-context.js';
+import { generationSubject as subjectKey, mergeGenerationRepair } from './generation-decision-repair.js';
+import { summarizeGenerationComponent } from './build-generation-prompt.js';
 
 export const GENERATION_MAX_ATTEMPTS = 5;
 
+export interface GenerationAttemptMetrics {
+  attempt: number;
+  strategy: 'initial' | 'targeted-repair' | 'evidence-investigation' | 'alternative-representation';
+  repeatedFailureCount: number;
+  promptCharacters: number;
+  fullContextCharacters: number;
+  responseCharacters: number;
+  elapsedMs: number;
+  diagnostics: string[];
+  validatedOutput: boolean;
+}
+
 export interface CompleteDecisionOperation {
   originalPrompt: string;
+  fullContextPrompt?: string;
+  repairInstructions?: string;
+  onAttempt?: (metrics: GenerationAttemptMetrics) => void;
   inventory: DecisionInventory;
   timeoutMs: number;
   signal?: AbortSignal;
@@ -38,14 +56,8 @@ export interface CompleteDecisionResult {
   representationsComplete: boolean;
   representationFeedback: PropertyRepresentationFeedback[];
   representationValidatorAvailable: boolean;
+  attempts: GenerationAttemptMetrics[];
 }
-
-const subjectKey = (call: ClassificationToolCall): string =>
-  call.tool === 'classify_component'
-    ? 'component'
-    : call.tool === 'classify_slot'
-      ? `slot:${call.slot}`
-      : `property:${call.prop}`;
 
 export async function generateCompleteDecisions(options: CompleteDecisionOperation): Promise<CompleteDecisionResult> {
   const now = options.now ?? (() => performance.now());
@@ -56,7 +68,9 @@ export async function generateCompleteDecisions(options: CompleteDecisionOperati
   const pending = new Map<string, PropertyRepresentationFeedback>();
   let previousResponse = '';
   let diagnostics: string[] = [];
-  const notes: string[] = [];
+  const attempts: GenerationAttemptMetrics[] = [];
+  let lastFailureSignature: string | undefined;
+  let repeatedFailureCount = 0;
   let missing = accountClassificationCalls(options.inventory, []).missing;
   const isPending = (key: string, call: ClassificationToolCall): boolean =>
     pending.has(key) || (call.tool === 'classify_prop' && !hasPropertyRepresentation(call));
@@ -64,7 +78,6 @@ export async function generateCompleteDecisions(options: CompleteDecisionOperati
     calls: [...accepted.values()],
     diagnostics: [
       ...diagnostics,
-      ...notes,
       ...additional,
       ...[...pending.values()].map(
         (feedback) =>
@@ -81,6 +94,7 @@ export async function generateCompleteDecisions(options: CompleteDecisionOperati
       [...accepted.values()].every((call) => call.tool !== 'classify_prop' || hasPropertyRepresentation(call)),
     representationFeedback: [...pending.values()],
     representationValidatorAvailable: !!validator,
+    attempts,
   });
   let validator: Awaited<ReturnType<typeof createGenerationRepresentationValidator>> | undefined;
   const invocations: Promise<unknown>[] = [];
@@ -91,11 +105,14 @@ export async function generateCompleteDecisions(options: CompleteDecisionOperati
         validator = await createGenerationRepresentationValidator(
           { ...options.representationValidation, inventory: options.inventory },
           signal,
+          options.fullContextPrompt,
         );
-      } catch {
+      } catch (error) {
         throwIfAborted(options.signal);
         if (timeout.aborted) return finish(false, ['Operation deadline exhausted']);
-        notes.push('Read-only representation validator unavailable; host validation remains authoritative');
+        return finish(false, [
+          `Mandatory exact-output validator could not be prepared: ${error instanceof Error ? error.message : 'Artifact unavailable'}`,
+        ]);
       }
     }
     const proposalEvidenceChannels = Object.fromEntries(
@@ -138,9 +155,9 @@ The evidence channels have these exact array-item shapes:
 ${JSON.stringify(proposalEvidenceChannels)}
 Use [] for an evidence channel with no supplied evidence. Do not emit constraint objects, free-text lists or an invented schema in these channels. Each item must cite a current source node. Keep the nonempty source-grounded judgment string separate from those evidence lists. compatibility contains status (judged-compatible, unresolved or contradicted), sourceUseRefs (current reference strings) and unresolvedRequirements (nonempty requirement strings, or []). Readiness is host-owned; a correctly shaped proposal does not prove compatibility or mapper support.
 
-${validator?.instructions ?? notes.join('\n')}
+${validator?.instructions ?? ''}
 
-${options.originalPrompt}`;
+${validator || !options.fullContextPrompt ? options.originalPrompt : options.fullContextPrompt}`;
     for (let attempt = 1; attempt <= GENERATION_MAX_ATTEMPTS; attempt++) {
       throwIfAborted(options.signal);
       if (attempt > 1 && options.backoffMs) {
@@ -154,21 +171,99 @@ ${options.originalPrompt}`;
       }
       const remaining = Math.floor(deadline - now());
       if (remaining <= 0 || timeout.aborted) return finish(false, ['Operation deadline exhausted']);
+      const attemptValidator = await validator?.prepareAttempt(
+        attempt,
+        [...accepted.values()],
+        [...accepted.entries()].filter(([key, call]) => isPending(key, call)).map(([key]) => key),
+      );
+      if (attempt > 1) {
+        const signature = contentDigest({
+          missing: [...missing].sort(),
+          diagnostics: diagnostics.map((message) => message.replace(/decision \d+:/g, 'decision:')).sort(),
+          pending: [...pending.values()].map(({ subject, issues }) => ({ subject, issues })),
+        });
+        repeatedFailureCount = signature === lastFailureSignature ? repeatedFailureCount + 1 : 1;
+        lastFailureSignature = signature;
+      }
+      const strategy: GenerationAttemptMetrics['strategy'] =
+        attempt === 1
+          ? 'initial'
+          : repeatedFailureCount < 2
+            ? 'targeted-repair'
+            : repeatedFailureCount === 2
+              ? 'evidence-investigation'
+              : 'alternative-representation';
+      const repairSubjects = new Set([
+        ...missing,
+        ...[...accepted.entries()].filter(([key, call]) => isPending(key, call)).map(([key]) => key),
+      ]);
+      const repairProperties = new Set(
+        [...repairSubjects].filter((key) => key.startsWith('property:')).map((key) => key.slice('property:'.length)),
+      );
+      const previousRejectedResponse = previousResponse
+        .split('\n')
+        .filter((line) => {
+          if (!line.trim().startsWith('{')) return false;
+          try {
+            return repairSubjects.has(subjectKey(JSON.parse(line)));
+          } catch {
+            return true;
+          }
+        })
+        .join('\n');
+      const focus = options.representationValidation
+        ? { ...options.representationValidation, inventory: { properties: [...repairProperties], slots: [] } }
+        : undefined;
       const prompt =
         attempt === 1
-          ? originalPrompt
+          ? `${originalPrompt}\n\n${attemptValidator?.instructions ?? ''}`
           : `Correction request:\n${JSON.stringify({
+              strategy,
+              repeatedFailureCount,
               acceptedDecisions: [...accepted.entries()]
                 .filter(([key, call]) => !isPending(key, call))
-                .map(([, call]) => call),
+                .map(([subject, call]) => ({
+                  subject,
+                  tool: call.tool,
+                  ...(call.tool === 'classify_prop'
+                    ? {
+                        category: call.cdf_category,
+                        type: call.cdf_type,
+                        representation: call.representation_selection,
+                      }
+                    : {}),
+                })),
               pendingSemanticDecisions: [...accepted.entries()]
                 .filter(([key, call]) => isPending(key, call))
                 .map(([, call]) => call),
               pendingRepresentations: [...pending.values()],
               missingOrRejectedSubjects: missing,
               diagnostics,
-              previousResponse,
-            })}\nReturn only decisions for missing/rejected subjects and the reported pending representations. Preserve successful decisions and the original source exactly. Missing or parser-rejected subjects have no accepted semantic decision: reconsider their authorability against the supplied source, including a reasoned exclude_prop when complete implementation evidence establishes that the input is unused. This does not permit excluding unknown or unsupported inputs merely to pass validation. Repair only representation metadata on pendingSemanticDecisions: preserve the property, category, description and source identity; do not replace them with exclusions. Every retained property must select a native cdf_type or a supplied source-bound component-model candidate through representation_selection. Resolve null handling from source behavior rather than demanding an editor control for every TypeScript union member. If compatibility remains unresolved, retain the chosen type and explain the concrete limitation in reason; validation will keep the component incomplete rather than silently completing it. Without a representation choice, omit required and all other representation companions.\n\n${originalPrompt}`;
+              previousResponse: previousRejectedResponse,
+              requiredInventory: options.inventory,
+              focusedSourceEvidence: focus
+                ? summarizeGenerationComponent(focus.component, repairProperties)
+                : undefined,
+              representationIdentities: focus ? buildRepresentationContext(focus) : undefined,
+            })}\nReturn only decisions for missing/rejected subjects and the reported pending representations. Preserve successful decisions and the original source exactly. Missing or parser-rejected subjects have no accepted semantic decision: reconsider their authorability against the supplied source, including a reasoned exclude_prop when complete implementation evidence establishes that the input is unused. This does not permit excluding unknown or unsupported inputs merely to pass validation. Repair only representation metadata on pendingSemanticDecisions: preserve the property, category, description and source identity; do not replace them with exclusions. Every retained property must select a native cdf_type or a supplied source-bound component-model candidate through representation_selection. Without a representation choice, omit required and all other representation companions. Inspect relevant original source, token facts, proposal evidence shapes and dependencies through the supplied immutable artifacts; they remain available in full.\n${strategy === 'evidence-investigation' ? 'The same failure repeated. Do not repeat the previous draft. Inspect the failed property declaration, complete owner implementation, graph and source-use evidence; compare the exact validator error with the supplied structural skeleton, repair, then validate the exact final JSON in this invocation.' : strategy === 'alternative-representation' ? 'Repeated repairs have made no progress. Reassess the failed representation against supplied alternatives and source facts. Select another source-compatible supplied strategy when justified, or report the exact unsupported requirement. Preserve pending semantics; never invent types, narrow domains or exclude a retained input to force success. Validate every change before final output.' : 'Resolve each specific reported error, using supplied decision skeletons and exact-output validation.'}\n\n${validator?.instructions ?? ''}\n\n${attemptValidator?.instructions ?? ''}\n\n${options.repairInstructions ?? (validator ? 'Original task instructions remain in the supplied context artifact; read them before repairing.' : originalPrompt)}`;
+      const started = now();
+      const metrics: GenerationAttemptMetrics = {
+        attempt,
+        strategy,
+        repeatedFailureCount,
+        promptCharacters: prompt.length,
+        fullContextCharacters: (options.fullContextPrompt ?? options.originalPrompt).length,
+        responseCharacters: 0,
+        elapsedMs: 0,
+        diagnostics: [],
+        validatedOutput: false,
+      };
+      const recordAttempt = () => {
+        metrics.elapsedMs = Math.max(0, now() - started);
+        metrics.diagnostics = [...diagnostics];
+        attempts.push(metrics);
+        options.onAttempt?.(metrics);
+      };
       let result;
       try {
         let onAbort: (() => void) | undefined;
@@ -190,15 +285,20 @@ ${options.originalPrompt}`;
       } catch (error) {
         throwIfAborted(options.signal);
         diagnostics = [error instanceof Error ? error.message : 'Invocation failed'];
+        recordAttempt();
         if (timeout.aborted) return finish(false, ['Operation deadline exhausted']);
         continue;
       }
       throwIfAborted(options.signal);
       previousResponse = result.stdout;
-      if (result.timedOut || now() >= deadline || timeout.aborted)
+      metrics.responseCharacters = result.stdout.length;
+      if (result.timedOut || now() >= deadline || timeout.aborted) {
+        recordAttempt();
         return finish(false, ['Operation deadline exhausted']);
+      }
       if (result.exitCode !== 0) {
         diagnostics = [`Agent exited ${result.exitCode}: ${result.stderr.slice(0, 500)}`];
+        recordAttempt();
         continue;
       }
       const parsed = parseClassificationToolLines(result.stdout);
@@ -217,26 +317,8 @@ ${options.originalPrompt}`;
       for (const parsedCall of parsed.calls) {
         const key = subjectKey(parsedCall);
         const previous = accepted.get(key);
-        let call = parsedCall;
-        if (previous) {
-          if (!isPending(key, previous)) {
-            diagnostics.push(`Duplicate or conflicting subject ${key}; accepted decision preserved`);
-            continue;
-          }
-          if (
-            previous.tool !== 'classify_prop' ||
-            call.tool !== 'classify_prop' ||
-            previous.cdf_category !== call.cdf_category ||
-            (call.description !== undefined && call.description !== previous.description) ||
-            (previous.source_revision !== undefined && previous.source_revision !== call.source_revision) ||
-            (previous.source_node_id !== undefined && previous.source_node_id !== call.source_node_id)
-          ) {
-            diagnostics.push(`Representation repair changed retained semantics or source identity ${key}`);
-            continue;
-          }
-          call = { ...call, ...(previous.description !== undefined ? { description: previous.description } : {}) };
-        }
         try {
+          const call = mergeGenerationRepair(previous, parsedCall, previous ? isPending(key, previous) : false);
           options.validate?.(call);
           if (call.tool === 'classify_prop' && call.representation_selection && !options.representationValidation)
             throw new Error('Model selection requires current source validation evidence');
@@ -265,6 +347,14 @@ ${options.originalPrompt}`;
         else pending.delete(key);
       }
       diagnostics.push(...missing.map((subject) => `Missing decision ${subject}`));
+      if (attemptValidator) {
+        metrics.validatedOutput = await attemptValidator.hasReceipt(result.stdout);
+        if (!metrics.validatedOutput)
+          diagnostics.push(
+            'Exact final tool-call output has no successful preflight receipt; run the supplied validator on the exact output before finishing',
+          );
+      }
+      recordAttempt();
       throwIfAborted(options.signal);
       if (now() >= deadline || timeout.aborted) return finish(false, ['Operation deadline exhausted']);
       if (!diagnostics.length && accounting.complete && !pending.size) return finish(true);
