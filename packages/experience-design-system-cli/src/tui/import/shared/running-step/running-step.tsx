@@ -11,6 +11,7 @@ import { useElapsed } from './use-elapsed.js';
 interface RunningStepProps {
   step: ImportStepId;
   description: string;
+  elapsedLabel?: string;
   lines?: readonly RunningLine[];
 }
 
@@ -35,7 +36,13 @@ function Line({ line }: { line: RunningLine }): React.ReactElement {
   }
   return (
     <Box gap={1}>
-      {line.complete ? <Text color={PALETTE.success}>✓</Text> : <Spinner />}
+      {line.complete ? (
+        <Text color={PALETTE.success}>✓</Text>
+      ) : line.pending ? (
+        <Text color={PALETTE.muted}>◯</Text>
+      ) : (
+        <Spinner />
+      )}
       <Text color={PALETTE.muted}>{line.text}</Text>
     </Box>
   );
@@ -44,6 +51,7 @@ function Line({ line }: { line: RunningLine }): React.ReactElement {
 export function RunningStep({
   step,
   description,
+  elapsedLabel = 'Elapsed',
   lines = [{ text: 'Running...' }],
 }: RunningStepProps): React.ReactElement {
   const elapsed = useElapsed();
@@ -59,7 +67,9 @@ export function RunningStep({
           ))}
         </Box>
         <Box marginTop={1}>
-          <Text color={PALETTE.muted}>Elapsed: {elapsed}</Text>
+          <Text color={PALETTE.muted}>
+            {elapsedLabel}: {elapsed}
+          </Text>
         </Box>
       </Box>
     </Box>

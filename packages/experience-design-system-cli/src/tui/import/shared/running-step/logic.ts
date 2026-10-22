@@ -7,6 +7,7 @@ export interface Progress {
 export interface RunningLine {
   text: string;
   complete?: boolean;
+  pending?: boolean;
   progress?: Progress;
 }
 

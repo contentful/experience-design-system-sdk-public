@@ -68,38 +68,38 @@ describe('progressRows', () => {
   it('shows the first frame of a fresh run', () => {
     const rows = progressRows(initialProgress({ hasCredentials: true, hasRawTokens: true }), 'claude');
     expect(rows).toEqual([
-      { text: 'Scanning files...', complete: false },
-      { text: 'Collecting composition evidence from source...', complete: false },
-      { text: 'Component exploration waiting for source evidence...', complete: false },
+      { text: 'Analyzing source files...', complete: false },
+      { text: 'Component relationships waiting for source analysis...', complete: false, pending: true },
+      { text: 'Component exploration waiting for source evidence...', complete: false, pending: true },
       { text: 'Fetching existing components and tokens...', complete: false },
       { text: 'Generating token definitions via claude...', complete: false },
     ]);
   });
 
-  it('counts the files while scanning and marks the row done once the total is known', () => {
-    expect(progressRows(base({ scan: { scanned: 1, total: null } }), 'claude')[0]).toEqual({
-      text: 'Scanning 1 file',
+  it('counts analyzed files and marks the row done only once every file is processed', () => {
+    expect(progressRows(base({ scan: { scanned: 1, total: 40 } }), 'claude')[0]).toEqual({
+      text: 'Analyzing source files — 1/40',
       complete: false,
     });
     expect(progressRows(base({ scan: { scanned: 40, total: 40 } }), 'claude')[0]).toEqual({
-      text: 'Scanned 40 files',
+      text: 'Analyzed 40 source files',
       complete: true,
     });
   });
 
   it('describes source evidence collection without claiming an agent is mapping composition', () => {
     expect(progressRows(base({ composition: 'agent:codex' }), 'claude')[1]?.text).toBe(
-      'Collecting composition evidence from source...',
+      'Collecting component relationships from source...',
     );
   });
 
   it('says when composition came from the cache', () => {
     expect(progressRows(base({ composition: 'cache-hit' }), 'claude')[1]).toEqual({
-      text: 'Composition mapping (cached)',
+      text: 'Component relationships (cached)',
       complete: true,
     });
     expect(progressRows(base({ composition: 'done' }), 'claude')[1]).toEqual({
-      text: 'Composition mapping complete',
+      text: 'Component relationships collected',
       complete: true,
     });
   });
@@ -222,7 +222,7 @@ describe('exploration progress rows', () => {
       base({ exploration: { phase: 'components', stage: 'loading', done: 0, total: 7 } }),
       'codex',
     )[2];
-    expect(row?.text).toBe('Loading saved component evidence...');
+    expect(row?.text).toBe('Reading and validating extracted component evidence...');
     expect(row?.progress).toBeUndefined();
   });
   it('shows the active explorer and counts only completed scopes', () => {

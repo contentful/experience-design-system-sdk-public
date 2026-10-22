@@ -46,9 +46,10 @@ function explorationRow(progress: ExtractionProgress, agent: string): RunningLin
           ? 'Selection agent complete'
           : 'Component exploration waiting for source evidence...',
       complete: progress.selection === 'complete',
+      ...(progress.selection !== 'complete' ? { pending: true } : {}),
     };
   const labels: Record<typeof event.stage, string> = {
-    loading: 'Loading saved component evidence...',
+    loading: 'Reading and validating extracted component evidence...',
     preparing: 'Preparing component exploration...',
     cached: `Component exploration reused from cache${event.scope ? ` — ${event.scope}` : ''}`,
     exploring: `Exploring components via ${agent}${event.scope ? ` — ${event.scope}` : ''}`,
@@ -69,21 +70,33 @@ function explorationRow(progress: ExtractionProgress, agent: string): RunningLin
 export function progressRows(progress: ExtractionProgress, agent: string): RunningLine[] {
   const { scan, composition, existingEntities, tokens } = progress;
   const scanned = scan?.scanned ?? 0;
-  const scanComplete = (scan?.total ?? 0) > 0;
+  const total = scan?.total ?? 0;
+  const scanComplete = total > 0 && scanned >= total;
+  const compositionPending = composition === 'resolving' && !scanComplete;
 
   const rows: RunningLine[] = [
     {
-      text: scan === null ? 'Scanning files...' : `${scanComplete ? 'Scanned' : 'Scanning'} ${plural(scanned, 'file')}`,
+      text:
+        scan === null
+          ? 'Analyzing source files...'
+          : scanComplete
+            ? `Analyzed ${plural(scanned, 'source file')}`
+            : scan.total === null
+              ? `Analyzing ${plural(scanned, 'source file')}...`
+              : `Analyzing source files — ${scanned}/${scan.total}`,
       complete: scanComplete,
     },
     {
       text:
         composition === 'cache-hit'
-          ? 'Composition mapping (cached)'
+          ? 'Component relationships (cached)'
           : compositionDone(progress)
-            ? 'Composition mapping complete'
-            : 'Collecting composition evidence from source...',
+            ? 'Component relationships collected'
+            : compositionPending
+              ? 'Component relationships waiting for source analysis...'
+              : 'Collecting component relationships from source...',
       complete: compositionDone(progress),
+      ...(compositionPending ? { pending: true } : {}),
     },
     explorationRow(progress, agent),
   ];

@@ -496,6 +496,8 @@ The TUI uses React hooks for state (`useState`, `useReducer`), Ink's `useInput` 
 
 During extraction, component exploration reports saved-evidence loading, prompt preparation, the active explorer scope, completed reports and finalization. The progress bar counts persisted scope reports, not estimated progress within a model response; failed attempts do not add completed scopes. The elapsed timer uses wall time so delayed event-loop callbacks do not lose elapsed seconds. Completion is reported after the accepted phase is published to the session database.
 
+Source analysis displays processed and total file counts and receives a completion checkmark only after every file is processed. Relationship collection and component exploration display a waiting indicator until their prerequisites are available. Relationship labels describe deterministic source analysis, and the exploration loading label explicitly identifies reading and validating already-extracted evidence. The extraction timer is labelled `Total extraction time` because it covers the whole screen rather than only the current operation.
+
 The scope-gate step shows two columns at 100 or more terminal columns and one column below that. `NO_COLOR=1` suppresses ANSI color.
 
 ---
