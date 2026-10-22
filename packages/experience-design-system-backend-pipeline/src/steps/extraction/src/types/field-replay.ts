@@ -7,7 +7,7 @@ export const FIELD_REPLAY_PREMISES = [
   'declared-own-input-tree',
   'stable-resolved-callable-bindings',
 ] as const;
-export const FIELD_REPLAY_VERSION = 4;
+export const FIELD_REPLAY_VERSION = 5;
 const claim = z
   .object({
     status: z.enum(['conditional', 'unknown']),
@@ -53,8 +53,9 @@ export const FieldReplaySchema = z
     operations: z.array(
       z
         .object({
-          operation: z.enum(['binding', 'spread', 'write', 'read', 'return', 'branch', 'call']),
+          operation: z.enum(['binding', 'spread', 'write', 'read', 'return', 'branch', 'call', 'iterate']),
           frame: z.number().int().nonnegative(),
+          iterations: z.array(z.number().int().nonnegative()),
           startOffset: z.number().int().nonnegative(),
           endOffset: z.number().int().nonnegative(),
           conditions: z.array(
@@ -113,6 +114,7 @@ export function fieldReplayIsConsistent(value: SourceFieldReplay): boolean {
       (operation) =>
         operation.endOffset <= operation.startOffset ||
         operation.frame > value.frames.length ||
+        operation.iterations.length > value.limits.maxDepth ||
         operation.conditions.length > value.limits.maxDepth ||
         operation.conditions.some((condition) => condition.endOffset <= condition.startOffset),
     )

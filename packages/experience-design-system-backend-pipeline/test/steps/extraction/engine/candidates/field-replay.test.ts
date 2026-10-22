@@ -45,6 +45,121 @@ async function extract(body: string, key = 'alpha', maxNodes = 1000, includeGuar
 const branched = (body: string) => extract(body, 'alpha', 1000, true);
 
 it.each([
+  'const next = { alpha: props.data.alpha }; for (const value of ["first", "last"]) next.alpha = value; return next.alpha;',
+  'const next = { ...props.data, alpha: "fixed" }; for (const value of [next]) value.alpha = "last"; return next.alpha;',
+  'for (const value of [props.data]) { const next = { ...value, alpha: "fixed" }; return next.alpha; } return "empty";',
+  'const next = { alpha: "fixed" }; for (const value of []) next.alpha = props.data.alpha; return next.alpha;',
+  'const next = { alpha: props.data.alpha }; for (const values of [["first"], ["last"]]) { for (const value of values) next.alpha = value; } return next.alpha;',
+  'function read(value: string) { return "fixed"; } for (const value of [props.data.alpha, "last"]) { return read(value); } return "empty";',
+  'for (const value of ["fixed", props.data.alpha]) return value; return "empty";',
+  'const next = { alpha: "fixed" }; for (const value of ["first", "last"]) { const inner = [value]; for (const value of inner) next.alpha = value; } return next.alpha;',
+  'const next = { alpha: props.data.alpha }; const values = ["fixed"]; for (const value of [...values]) next.alpha = value; return next.alpha;',
+])('replays bounded own-array iteration: %s', async (body) => {
+  const { component, result, semantics } = await extract(body);
+  expect(semantics.coverage).toBe('complete-within-declared-bound');
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('conditional');
+  expect(result.valueIndependence.premises).toContain('standard-local-array-iteration');
+  expect(readComponentFacts(component.componentFacts).status).toBe('available');
+});
+
+it('preserves loop-owner and element aliases across every branch and iteration', async () => {
+  const { result } = await branched(
+    'const first = { alpha: props.data.alpha }; const last = { alpha: props.data.alpha }; const values = [first, last]; for (const value of values) { if (props.gate) value.alpha = "fixed"; else value.alpha = "fixed"; } return last.alpha;',
+  );
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('conditional');
+});
+
+it.each([
+  'for (const value of [props.data.alpha]) return value; return "empty";',
+  'const next = { alpha: "fixed" }; for (const value of ["fixed", props.data.alpha]) next.alpha = value; return next.alpha;',
+])('preserves observable own-array iteration dependence: %s', async (body) => {
+  const { result } = await extract(body);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.valueIndependence.reasons).toContain('paired-results-differ');
+});
+
+it.each([
+  'for (const value of props.data) {} return "fixed";',
+  'for (const value of [, "fixed"]) {} return "fixed";',
+  'for (let value of ["fixed"]) {} return "fixed";',
+  'for (const { alpha } of [props.data]) {} return "fixed";',
+  'const value = "fixed"; for (value of ["fixed"]) {} return "fixed";',
+  'for await (const value of ["fixed"]) {} return "fixed";',
+  'for (const value of ["fixed"]) break; return "fixed";',
+  'for (const value of ["fixed"]) continue; return "fixed";',
+  'for (const value of ["fixed"]) unknown(value); return "fixed";',
+])('retains unresolved iteration semantics: %s', async (body) => {
+  const { result } = await extract(body);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.omissionSafety.status).toBe('unknown');
+  expect(result.reasons.length).toBeGreaterThan(0);
+});
+
+it('records exact iteration paths and repeated helper invocations', async () => {
+  const { replay, semantics } = await extract(
+    'function read(value: string) { return "fixed"; } for (const value of [props.data.alpha, "last"]) read(value); return "fixed";',
+  );
+  expect(
+    replay.operations.filter((operation) => operation.operation === 'iterate').map((operation) => operation.iterations),
+  ).toEqual([[0], [1]]);
+  expect(replay.frames).toHaveLength(2);
+  expect(
+    semantics.steps.filter((operation) => operation.operation === 'iterate').map((operation) => operation.iterations),
+  ).toEqual([[0], [1]]);
+});
+
+it('records nested iteration positions without conflating repeated body operations', async () => {
+  const { replay } = await extract(
+    'const next = { alpha: props.data.alpha }; for (const values of [["first"], ["last"]]) { for (const value of values) next.alpha = value; } return next.alpha;',
+  );
+  expect(
+    replay.operations.filter((operation) => operation.operation === 'iterate').map((operation) => operation.iterations),
+  ).toEqual([[0], [0, 0], [1], [1, 0]]);
+});
+
+it('rejects a rehashed fabricated iteration position against captured source', async () => {
+  const { root, path, component, replay } = await extract(
+    'for (const value of ["fixed"]) return value; return "empty";',
+  );
+  const operation = replay.operations.find((entry) => entry.operation === 'iterate')!;
+  operation.iterations[0] = 1;
+  replay.identity = fieldReplayIdentity(replay);
+  const capture = await captureSourceEvidence({ projectRoot: root, filePaths: [path] });
+  const bound = bindSourceCandidatesToCapture([component], capture.files)[0]!;
+  expect(
+    validateSavedFieldReplay(bound.componentFacts!.sourceObservations!.fieldSemantics!, capture.files).relationalReplay!
+      .status,
+  ).toBe('mismatch');
+});
+
+it('shares the finite node budget across loop iterations and paired alternatives', async () => {
+  const { replay, result } = await extract(
+    'const next = { alpha: props.data.alpha }; for (const value of ["first", "last"]) next.alpha = value; return next.alpha;',
+    'alpha',
+    170,
+  );
+  expect(replay.used.nodes).toBeLessThanOrEqual(170);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(replay.results.some((entry) => entry.reasons.includes('paired-flow-bound'))).toBe(true);
+});
+
+it.each([
+  'const next = { alpha: "fixed" }; for (const value of [props.data.alpha, "last"]) next.alpha = "fixed"; return next.alpha;',
+  'const next = { alpha: props.data.alpha }; for (const value of ["first", "last"]) next.alpha = value; return next.alpha;',
+  'for (const value of ["fixed", props.data.alpha]) return value; return "empty";',
+])('checks finite iteration comparisons against ordinary execution: %s', async (body) => {
+  const run = new Function('props', body);
+  const baseline = run({ data: { alpha: 'original', beta: 'sibling' } });
+  expect(run({ data: { alpha: 'changed', beta: 'sibling' } })).toEqual(baseline);
+  expect(run({ data: { beta: 'sibling' } })).toEqual(baseline);
+  const { result } = await extract(body);
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('conditional');
+});
+
+it.each([
   'const values = [props.data.alpha, "fixed"]; return values[1];',
   'const values = [{ ...props.data, alpha: "fixed" }]; return values[0].alpha;',
   'const original = [props.data]; const values = [...original]; const next = { ...values[0], alpha: "fixed" }; return next.alpha;',
@@ -153,7 +268,7 @@ it('requires local iteration applicability in the source derivation as well as p
 
 it('rejects old interpreter versions without repairing historical evidence', async () => {
   const { component, replay } = await extract('return "fixed";');
-  Object.assign(replay, { schemaVersion: 3 });
+  Object.assign(replay, { schemaVersion: 4 });
   replay.identity = fieldReplayIdentity(replay);
   expect(readComponentFacts(component.componentFacts).status).toBe('unsupported');
 });
@@ -753,6 +868,7 @@ it.each([
   'const next = { ...props.data, alpha: "fixed" }; return next.alpha;',
   'function read(value: { alpha: string; beta: string }) { const next = { ...value, alpha: "fixed" }; return next.alpha; } return read(props.data);',
   'const original = [props.data]; const values = [...original]; const next = { ...values[0], alpha: "fixed" }; return next.alpha;',
+  'const next = { alpha: props.data.alpha }; for (const value of ["first", "last"]) next.alpha = value; return next.alpha;',
 ])(
   'replays the exact saved source after the live file changes and carries it into the reasoning channel: %s',
   async (body) => {

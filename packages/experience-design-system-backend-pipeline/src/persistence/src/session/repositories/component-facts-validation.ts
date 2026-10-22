@@ -171,8 +171,9 @@ const sourceObservations = z
         steps: z.array(
           z
             .object({
-              operation: z.enum(['binding', 'spread', 'write', 'read', 'call', 'return', 'branch']),
+              operation: z.enum(['binding', 'spread', 'write', 'read', 'call', 'return', 'branch', 'iterate']),
               frame: z.number().int().nonnegative(),
+              iterations: z.array(z.number().int().nonnegative()),
               location,
               conditions: z.array(
                 z

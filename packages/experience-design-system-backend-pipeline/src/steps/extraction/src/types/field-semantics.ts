@@ -1,7 +1,7 @@
 import type { CompilerCoverage, SourceFactLocation } from '../candidates/types.js';
 import type { SourceObservationContext } from './component-source-observations.js';
 
-export const FIELD_SEMANTICS_VERSION = 3;
+export const FIELD_SEMANTICS_VERSION = 4;
 /** Applicability must be established separately; source annotations do not prove these premises. */
 export const FIELD_VALUE_PREMISES = [
   'ordinary-own-data-inputs',
@@ -31,8 +31,9 @@ export interface SourceFieldSemantics {
   coverage: CompilerCoverage;
   proofs: SourceFieldSemanticProof[];
   steps: Array<{
-    operation: 'binding' | 'spread' | 'write' | 'read' | 'call' | 'return' | 'branch';
+    operation: 'binding' | 'spread' | 'write' | 'read' | 'call' | 'return' | 'branch' | 'iterate';
     frame: number;
+    iterations: number[];
     location: SourceFactLocation;
     conditions: SourceObservationContext['conditions'];
   }>;

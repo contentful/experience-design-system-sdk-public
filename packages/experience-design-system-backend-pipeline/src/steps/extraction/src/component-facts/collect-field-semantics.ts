@@ -23,12 +23,13 @@ interface Value {
   opaqueCallable?: boolean;
 }
 interface Scope {
-  env: Map<ts.Declaration, Value>;
+  env: Map<ts.Declaration | ts.ForOfStatement, Value>;
   bindingFrames: Map<ts.Declaration, number>;
   control: Set<string>;
   conditions: SourceFieldSemantics['steps'][number]['conditions'];
   active: Set<ts.Node>;
   frame: number;
+  iterations: number[];
   depth: number;
 }
 const empty = (): Value => ({ origins: new Set(), presence: new Set() });
@@ -130,6 +131,7 @@ export function collectFieldSemantics(
     evidence.steps.push({
       operation,
       frame: scope.frame,
+      iterations: scope.iterations,
       location: reader.location(site),
       conditions: scope.conditions,
     });
@@ -493,6 +495,53 @@ export function collectFieldSemantics(
         returned.push(copy(controlled(value, { ...empty(), origins: current.control })));
         return [];
       }
+      if (ts.isForOfStatement(statement)) {
+        const initializer = statement.initializer;
+        const declaration = ts.isVariableDeclarationList(initializer) ? initializer.declarations[0] : undefined;
+        const values = evaluate(statement.expression, current);
+        if (
+          statement.awaitModifier ||
+          !ts.isVariableDeclarationList(initializer) ||
+          !(initializer.flags & ts.NodeFlags.Const) ||
+          initializer.declarations.length !== 1 ||
+          !declaration ||
+          !ts.isIdentifier(declaration.name) ||
+          declaration.initializer ||
+          !values.fresh ||
+          !values.fields ||
+          values.arrayLength === undefined
+        ) {
+          omit('field-iteration-open', statement);
+          return [current];
+        }
+        // Keep the evaluated iterable in the alias graph when a body branch forks it.
+        current.env.set(statement, values);
+        let scopes = [current];
+        for (let index = 0; index < values.arrayLength && scopes.length; index++) {
+          scopes = scopes.flatMap((parent) => {
+            const iteration = {
+              ...parent,
+              iterations: [...current.iterations, index],
+              depth: current.depth + 1,
+            };
+            if (!admit(statement, iteration.depth)) return [];
+            const element = parent.env.get(statement)?.fields?.get(String(index));
+            if (!element) {
+              omit('field-iteration-element-open', statement);
+              return [];
+            }
+            step('iterate', statement, iteration);
+            bind(declaration, element, iteration);
+            return visit(statement.statement, iteration);
+          });
+        }
+        return scopes.map((parent) => {
+          parent.env.delete(statement);
+          parent.env.delete(declaration);
+          parent.bindingFrames.delete(declaration);
+          return { ...parent, iterations: current.iterations, depth: current.depth };
+        });
+      }
       if (ts.isIfStatement(statement))
         return [
           ...visit(statement.thenStatement, split(current, statement.expression, 'then')),
@@ -524,6 +573,7 @@ export function collectFieldSemantics(
     conditions: [],
     active: new Set([node]),
     frame: 0,
+    iterations: [],
     depth: 0,
   };
   if (!bindings.scan(node.getSourceFile(), limits.maxNodes)) omit('field-write-scan-bound', node);

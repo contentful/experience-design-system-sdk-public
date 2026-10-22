@@ -17,9 +17,10 @@ type Value =
 type AtomicValue = Extract<Value, { kind: 'atom' }>;
 type Conditions = SourceFieldReplay['operations'][number]['conditions'];
 interface Scope {
-  env: Map<ts.Declaration | string, Value>;
+  env: Map<ts.Declaration | ts.ForOfStatement | string, Value>;
   conditions: Conditions;
   frame: number;
+  iterations: number[];
   active: Set<Callable>;
   readOnly?: boolean;
 }
@@ -96,7 +97,14 @@ export function collectFieldReplay(
       scope: Scope,
     ): void => {
       const startOffset = site.getStart();
-      const key = JSON.stringify([operation, scope.frame, startOffset, site.getEnd(), scope.conditions]);
+      const key = JSON.stringify([
+        operation,
+        scope.frame,
+        startOffset,
+        site.getEnd(),
+        scope.conditions,
+        scope.iterations,
+      ]);
       if (operations.has(key)) return;
       if (operations.size >= limits.maxOperations) {
         reasons.add('paired-operation-bound');
@@ -105,6 +113,7 @@ export function collectFieldReplay(
       operations.set(key, {
         operation,
         frame: scope.frame,
+        iterations: scope.iterations,
         startOffset,
         endOffset: site.getEnd(),
         conditions: scope.conditions,
@@ -137,8 +146,8 @@ export function collectFieldReplay(
         parent = value;
       }
     }
-    const env = new Map<ts.Declaration | string, Value>();
-    const initial: Scope = { env, conditions: [], frame: 0, active: new Set([node]) };
+    const env = new Map<ts.Declaration | ts.ForOfStatement | string, Value>();
+    const initial: Scope = { env, conditions: [], frame: 0, iterations: [], active: new Set([node]) };
     if (
       !parameter ||
       !ts.isIdentifier(parameter.name) ||
@@ -409,6 +418,7 @@ export function collectFieldReplay(
           target.getStart(),
           target.getEnd(),
           scope.conditions,
+          scope.iterations,
         ]);
         let frame = frames.get(key);
         if (frame === undefined) {
@@ -428,6 +438,7 @@ export function collectFieldReplay(
           env: new Map(),
           conditions: scope.conditions,
           frame,
+          iterations: scope.iterations,
           active: new Set([...scope.active, target]),
           readOnly: scope.readOnly,
         };
@@ -463,6 +474,51 @@ export function collectFieldReplay(
         const value = statement.expression ? evaluate(statement.expression, depth + 1, scope) : atom(['undefined']);
         step('return', statement, scope);
         return { kind: 'return', value };
+      }
+      if (ts.isForOfStatement(statement)) {
+        const initializer = statement.initializer;
+        const declaration = ts.isVariableDeclarationList(initializer) ? initializer.declarations[0] : undefined;
+        const values = evaluate(statement.expression, depth + 1, scope);
+        if (
+          !bindings ||
+          statement.awaitModifier ||
+          !ts.isVariableDeclarationList(initializer) ||
+          !(initializer.flags & ts.NodeFlags.Const) ||
+          initializer.declarations.length !== 1 ||
+          !declaration ||
+          !ts.isIdentifier(declaration.name) ||
+          declaration.initializer ||
+          values.kind !== 'record' ||
+          !values.fresh ||
+          values.arrayLength === undefined
+        ) {
+          open('paired-iteration-open');
+          return { kind: 'continue', scope };
+        }
+        scope.env.set(statement, values);
+        let completion: Completion = { kind: 'continue', scope };
+        for (let index = 0; index < values.arrayLength; index++) {
+          completion = continueWith(completion, (parent) => {
+            const iteration = { ...parent, iterations: [...scope.iterations, index] };
+            if (!admit(Math.max(depth + 1, iteration.iterations.length, parent.conditions.length)))
+              return { kind: 'return', value: atom(['unknown']) };
+            const owner = parent.env.get(statement);
+            const element = owner?.kind === 'record' ? owner.fields.get(String(index)) : undefined;
+            if (!element) {
+              open('paired-iteration-element-open');
+              return { kind: 'return', value: atom(['unknown']) };
+            }
+            iteration.env.set(declaration, element);
+            step('iterate', statement, iteration);
+            step('binding', declaration, iteration);
+            return visit(statement.statement, iteration, depth + 1);
+          });
+        }
+        return continueWith(completion, (parent) => {
+          parent.env.delete(statement);
+          parent.env.delete(declaration);
+          return { kind: 'continue', scope: { ...parent, iterations: scope.iterations } };
+        });
       }
       if (ts.isIfStatement(statement)) {
         const guard = condition(evaluate(statement.expression, depth + 1, scope));
