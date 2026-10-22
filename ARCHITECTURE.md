@@ -21,6 +21,8 @@ Callable source observations include bounded, ordered field-flow evidence with s
 
 Field-flow evidence version 2 also states its runtime alias and intrinsic assumptions: `ordinary-own-data-inputs` requires inert own data properties; `isolated-input-tree` requires no shared/cyclic input records or untracked external aliases; `standard-record-intrinsics` requires ordinary, unmodified record property operations. Type annotations do not establish these premises. Omission additionally requires `entry-delivery-admits-omission`. Decoding rejects conditional claims that contradict observed dependence, open coverage/obligations or their recorded reasons; coherent unknown findings remain valid evidence. This is an evidence-contract check, not semantic replay or proof activation.
 
+The shared extraction service preserves candidates returned by its framework readers without a second exclusion based on component names. A name resembling a hook does not establish rendering behavior. Reader discovery conventions and later authoring decisions remain separate stages, and unresolved behavior remains evidence for review.
+
 ---
 
 ## System Context
