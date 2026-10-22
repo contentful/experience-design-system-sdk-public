@@ -194,7 +194,8 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
         agent,
         ...(agentModel ? { agentModel } : {}),
         promptOverrides: launch.prompt ?? [],
-        noCache: launch.cache === false,
+        // Every import generates new results: no stage restores an earlier run's output from the cache.
+        noCache: true,
       },
     };
   };

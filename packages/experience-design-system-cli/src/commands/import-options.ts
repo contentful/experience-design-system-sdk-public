@@ -2,20 +2,16 @@
 export interface ImportOptions {
   agent?: string;
   prompt: string[];
-  cache: boolean;
 }
 
 interface RawImportOptions {
   agent?: string;
   prompt?: string[];
-  // Commander turns `--no-cache` into `cache: false`; it is true when the flag is absent.
-  cache?: boolean;
 }
 
 export function toImportOptions(raw: RawImportOptions): ImportOptions {
   return {
     ...(raw.agent ? { agent: raw.agent } : {}),
     prompt: raw.prompt ?? [],
-    cache: raw.cache !== false,
   };
 }
