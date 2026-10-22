@@ -44,6 +44,120 @@ async function extract(body: string, key = 'alpha', maxNodes = 1000, includeGuar
 }
 const branched = (body: string) => extract(body, 'alpha', 1000, true);
 
+it.each([
+  'const values = [props.data.alpha, "fixed"]; return values[1];',
+  'const values = [{ ...props.data, alpha: "fixed" }]; return values[0].alpha;',
+  'const original = [props.data]; const values = [...original]; const next = { ...values[0], alpha: "fixed" }; return next.alpha;',
+  'const original = [props.data.alpha]; const values = [...original, "fixed"]; return values[1];',
+  'const values = [props.data.alpha]; const next = { ...values, 0: "fixed" }; return next[0];',
+  'const values = [props.data.alpha, "fixed"]; return values.length;',
+  'const values = []; return values.length;',
+  'const index = 1; const values = [props.data.alpha, "fixed"]; return values[index];',
+  'function read(values: { alpha: string; beta: string }[]) { return values[0].alpha; } const values = [{ ...props.data, alpha: "fixed" }]; return read(values);',
+])('compares exact local collection construction and reads: %s', async (body) => {
+  const { result, root, path, component, replay } = await extract(body);
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('conditional');
+  expect(result.valueIndependence.premises).toContain('standard-local-array-iteration');
+  expect(replay.used.nodes).toBeLessThanOrEqual(replay.limits.maxNodes);
+  const capture = await captureSourceEvidence({ projectRoot: root, filePaths: [path] });
+  const bound = bindSourceCandidatesToCapture([component], capture.files)[0]!;
+  expect(
+    validateSavedFieldReplay(bound.componentFacts!.sourceObservations!.fieldSemantics!, capture.files).relationalReplay!
+      .status,
+  ).toBe('matched');
+});
+
+it('preserves collection-to-record aliases when branching', async () => {
+  const { result } = await branched(
+    'const next = { ...props.data, alpha: "fixed" }; const values = [next]; if (props.gate) { values[0].alpha = "after"; } else { next.alpha = "after"; } return next.alpha;',
+  );
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('conditional');
+  expect(result.valueComparison.left).toBe(result.valueComparison.right);
+});
+
+it('keeps an aliased branch overwrite independent without admitting absent-property creation', async () => {
+  const { result } = await branched(
+    'const next = { ...props.data }; const values = [next]; if (props.gate) { values[0].alpha = "fixed"; } else { next.alpha = "fixed"; } return next.alpha;',
+  );
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('unknown');
+  expect(result.omissionSafety.reasons).toContain('paired-property-creation-open');
+});
+
+it.each([
+  'const values = [props.data.alpha, "fixed"]; return values[1];',
+  'const original = [props.data]; const values = [...original]; const next = { ...values[0], alpha: "fixed" }; return next.alpha;',
+  'const values = [props.data.alpha]; const next = { 0: "fixed", ...values }; return next[0];',
+])('checks collection comparisons against ordinary JavaScript execution: %s', async (body) => {
+  const { result } = await extract(body);
+  const execute = new Function('props', body) as (props: { data: { alpha?: string; beta: string } }) => unknown;
+  const baseline = execute({ data: { alpha: 'first', beta: 'second' } });
+  const variation = execute({ data: { alpha: 'changed', beta: 'second' } });
+  const omission = execute({ data: { beta: 'second' } });
+  const equal = baseline === variation;
+  expect(result.valueIndependence.status).toBe(equal ? 'conditional' : 'unknown');
+  expect(result.omissionSafety.status).toBe(baseline === omission ? 'conditional' : 'unknown');
+});
+
+it.each([
+  'const values = [props.data.alpha]; return values[0];',
+  'const values = [props.data]; return values[0].alpha;',
+  'const values = [props.data.alpha]; const next = { 0: "fixed", ...values }; return next[0];',
+])('preserves actual collection dependence: %s', async (body) => {
+  const { result } = await extract(body);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.omissionSafety.status).toBe('unknown');
+  expect(result.valueIndependence.reasons).toContain('paired-results-differ');
+});
+
+it.each([
+  'const values = [, "fixed"]; return values[1];',
+  'const values = [props.data.alpha]; return values[2];',
+  'const values = [props.data.alpha]; return values["01"];',
+  'const values = [props.data.alpha]; return values[-1];',
+  'const values = [props.data.alpha]; return values["__proto__"];',
+  'const values = [...props.data]; return "fixed";',
+  'const values = [unknown(), "fixed"]; return values[1];',
+  'const values = [props.data.alpha]; values[0] = "fixed"; return values[0];',
+  'const values = [props.data.alpha]; values.length = 0; return "fixed";',
+  'const values = [props.data.alpha]; return values.map(() => "fixed");',
+  'const values = [props.data.alpha]; return values;',
+])('retains unestablished collection behavior: %s', async (body) => {
+  const { result } = await extract(body);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.omissionSafety.status).toBe('unknown');
+  expect(result.reasons.length).toBeGreaterThan(0);
+});
+
+it('rejects collection replay that omits its iterator premise', async () => {
+  const { component, result, replay } = await extract('const values = [props.data.alpha, "fixed"]; return values[1];');
+  result.valueIndependence.premises = result.valueIndependence.premises.filter(
+    (premise) => premise !== 'standard-local-array-iteration',
+  );
+  replay.identity = fieldReplayIdentity(replay);
+  expect(readComponentFacts(component.componentFacts).status).toBe('corrupt');
+});
+
+it('requires local iteration applicability in the source derivation as well as paired replay', async () => {
+  const { component, semantics } = await extract('const values = [props.data.alpha, "fixed"]; return values[1];');
+  const proof = semantics.proofs.find((item) => item.inputName === 'data' && item.path[0]?.key === 'alpha')!;
+  expect(proof.valueIndependence.status).toBe('conditional');
+  expect(proof.valueIndependence.premises).toContain('standard-local-array-iteration');
+  proof.valueIndependence.premises = proof.valueIndependence.premises.filter(
+    (premise) => premise !== 'standard-local-array-iteration',
+  );
+  expect(readComponentFacts(component.componentFacts).status).toBe('corrupt');
+});
+
+it('rejects old interpreter versions without repairing historical evidence', async () => {
+  const { component, replay } = await extract('return "fixed";');
+  Object.assign(replay, { schemaVersion: 3 });
+  replay.identity = fieldReplayIdentity(replay);
+  expect(readComponentFacts(component.componentFacts).status).toBe('unsupported');
+});
+
 it('exposes a component-specific retention preview with separate unestablished applicability', async () => {
   const { component, semantics, replay } = await extract(
     'const next = { ...props.data, alpha: "fixed" }; return next.alpha;',
@@ -638,6 +752,7 @@ it('replays an independent field certificate even without a closure sidecar', as
 it.each([
   'const next = { ...props.data, alpha: "fixed" }; return next.alpha;',
   'function read(value: { alpha: string; beta: string }) { const next = { ...value, alpha: "fixed" }; return next.alpha; } return read(props.data);',
+  'const original = [props.data]; const values = [...original]; const next = { ...values[0], alpha: "fixed" }; return next.alpha;',
 ])(
   'replays the exact saved source after the live file changes and carries it into the reasoning channel: %s',
   async (body) => {

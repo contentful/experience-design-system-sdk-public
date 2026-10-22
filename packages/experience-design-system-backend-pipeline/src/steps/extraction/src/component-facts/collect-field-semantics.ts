@@ -15,6 +15,7 @@ interface Value {
   origins: Set<string>;
   presence: Set<string>;
   fields?: Map<string, Value>;
+  arrayLength?: number;
   wildcard?: Value;
   fresh?: boolean;
   allocationFrame?: number;
@@ -267,12 +268,42 @@ export function collectFieldSemantics(
       const owner = evaluate(site.expression, next);
       const name = ts.isPropertyAccessExpression(site) ? site.name.text : bindings.constant(site.argumentExpression);
       step('read', site, scope);
+      if (owner.arrayLength !== undefined && name === 'length') return empty();
       if (name === null) {
         omit('computed-field-open', site);
         return owner;
       }
       const field = owner.fields?.get(name) ?? owner.wildcard ?? owner;
       return { ...field, origins: union([field.origins, owner.origins]) };
+    }
+    if (ts.isArrayLiteralExpression(site)) {
+      const value: Value = {
+        ...empty(),
+        fields: new Map(),
+        fresh: true,
+        allocationFrame: scope.frame,
+        arrayLength: 0,
+      };
+      for (const element of site.elements) {
+        if (!admit(element, next.depth)) break;
+        if (ts.isOmittedExpression(element)) omit('sparse-array-open', element);
+        else if (ts.isSpreadElement(element)) {
+          const spread = evaluate(element.expression, next);
+          step('spread', element, scope);
+          if (!spread.fields || spread.arrayLength === undefined) omit('array-iterator-open', element);
+          else {
+            for (const field of spread.fields.values()) {
+              if (!admit(element, next.depth)) break;
+              value.fields!.set(String(value.arrayLength!++), field);
+            }
+          }
+        } else {
+          const field = evaluate(element, next);
+          value.fields!.set(String(value.arrayLength!++), field);
+          step('write', element, scope);
+        }
+      }
+      return value;
     }
     if (ts.isObjectLiteralExpression(site)) {
       const value: Value = { ...empty(), fields: new Map(), fresh: true, allocationFrame: scope.frame };
@@ -331,6 +362,10 @@ export function collectFieldSemantics(
         }
         if (ts.isPropertyAccessExpression(site.left) || ts.isElementAccessExpression(site.left)) {
           const owner = evaluate(site.left.expression, next);
+          if (owner.arrayLength !== undefined) {
+            omit('array-write-open', site);
+            return right;
+          }
           const name = ts.isPropertyAccessExpression(site.left)
             ? site.left.name.text
             : bindings.constant(site.left.argumentExpression);

@@ -7,7 +7,7 @@ export const FIELD_REPLAY_PREMISES = [
   'declared-own-input-tree',
   'stable-resolved-callable-bindings',
 ] as const;
-export const FIELD_REPLAY_VERSION = 3;
+export const FIELD_REPLAY_VERSION = 4;
 const claim = z
   .object({
     status: z.enum(['conditional', 'unknown']),

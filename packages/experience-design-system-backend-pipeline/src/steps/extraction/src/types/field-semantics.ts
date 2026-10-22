@@ -1,12 +1,13 @@
 import type { CompilerCoverage, SourceFactLocation } from '../candidates/types.js';
 import type { SourceObservationContext } from './component-source-observations.js';
 
-export const FIELD_SEMANTICS_VERSION = 2;
+export const FIELD_SEMANTICS_VERSION = 3;
 /** Applicability must be established separately; source annotations do not prove these premises. */
 export const FIELD_VALUE_PREMISES = [
   'ordinary-own-data-inputs',
   'isolated-input-tree',
   'standard-record-intrinsics',
+  'standard-local-array-iteration',
 ] as const;
 
 export interface ConditionalFieldClaim {

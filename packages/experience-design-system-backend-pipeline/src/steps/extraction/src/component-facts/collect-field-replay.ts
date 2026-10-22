@@ -12,7 +12,7 @@ import {
 type Callable = ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunction | ts.MethodDeclaration;
 type Value =
   | { kind: 'atom'; term: string }
-  | { kind: 'record'; fields: Map<string, Value>; fresh: boolean; frame: number }
+  | { kind: 'record'; fields: Map<string, Value>; fresh: boolean; frame: number; arrayLength?: number }
   | { kind: 'callable'; target: Callable };
 type AtomicValue = Extract<Value, { kind: 'atom' }>;
 type Conditions = SourceFieldReplay['operations'][number]['conditions'];
@@ -191,7 +191,13 @@ export function collectFieldReplay(
         if (value.kind !== 'record') return value;
         const cached = memo.get(value);
         if (cached) return cached;
-        const result: Value = { kind: 'record', fresh: value.fresh, fields: new Map(), frame: value.frame };
+        const result: Value = {
+          kind: 'record',
+          fresh: value.fresh,
+          fields: new Map(),
+          frame: value.frame,
+          arrayLength: value.arrayLength,
+        };
         memo.set(value, result);
         for (const [key, field] of value.fields) result.fields.set(key, copy(field));
         return result;
@@ -272,7 +278,38 @@ export function collectFieldReplay(
         const key = memberKey(site, depth, scope);
         step('read', site, scope);
         if (owner.kind !== 'record' || key === null) return open('paired-field-read-open');
+        if (owner.arrayLength !== undefined && key === 'length') return atom(['literal', 'number', owner.arrayLength]);
         return owner.fields.get(key) ?? (owner.fresh ? open('paired-inherited-read-open') : atom(['undefined']));
+      }
+      if (ts.isArrayLiteralExpression(site)) {
+        const value: Extract<Value, { kind: 'record' }> = {
+          kind: 'record',
+          fields: new Map(),
+          fresh: true,
+          frame: scope.frame,
+          arrayLength: 0,
+        };
+        for (const element of site.elements) {
+          if (!admit(depth + 1)) break;
+          if (ts.isOmittedExpression(element)) {
+            open('paired-sparse-array-open');
+          } else if (ts.isSpreadElement(element)) {
+            const spread = evaluate(element.expression, depth + 1, scope);
+            step('spread', element, scope);
+            if (spread.kind !== 'record' || spread.arrayLength === undefined) open('paired-array-iterator-open');
+            else {
+              for (const field of spread.fields.values()) {
+                if (!admit(depth + 1)) break;
+                value.fields.set(String(value.arrayLength!++), field);
+              }
+            }
+          } else {
+            const field = evaluate(element, depth + 1, scope);
+            value.fields.set(String(value.arrayLength!++), field);
+            step('write', element, scope);
+          }
+        }
+        return value;
       }
       if (ts.isObjectLiteralExpression(site)) {
         const value: Value = { kind: 'record', fields: new Map(), fresh: true, frame: scope.frame };
@@ -330,6 +367,7 @@ export function collectFieldReplay(
         const owner = evaluate(site.left.expression, depth + 1, scope);
         const key = memberKey(site.left, depth, scope);
         const value = evaluate(site.right, depth + 1, scope);
+        if (owner.kind === 'record' && owner.arrayLength !== undefined) return open('paired-array-write-open');
         if (owner.kind !== 'record' || !owner.fresh || key === null || key === '__proto__')
           return open('paired-write-open');
         // Creating an absent property uses [[Set]] and needs separate inherited setter semantics.
