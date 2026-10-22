@@ -38,13 +38,12 @@ const FIELDS: readonly FormField<CredentialField>[] = [
   { key: 'host', label: 'API Host', hint: '(default: api.contentful.com · EU spaces: api.eu.contentful.com)' },
 ];
 
-type MenuChoice = 'continue' | 'edit' | 'skip' | 'quit';
+// Esc is the way back, so there is no Quit row; it still reports as 'quit'.
+type MenuChoice = 'continue' | 'edit' | 'quit';
 
 const MENU: readonly { choice: MenuChoice; label: string; description: string }[] = [
   { choice: 'continue', label: 'Continue', description: 'Check the credentials and go on' },
   { choice: 'edit', label: 'Edit', description: 'Change the credentials' },
-  { choice: 'skip', label: 'Skip', description: 'Save files only, nothing is pushed' },
-  { choice: 'quit', label: 'Quit', description: 'Go back' },
 ];
 
 interface CredentialsReviewProps {
@@ -178,8 +177,7 @@ export function CredentialsScreen({
     else if (choice === 'edit') {
       setNotice(null);
       setEditing(true);
-    } else if (choice === 'skip') onDone({ skipped: true });
-    else onBack();
+    } else onBack();
   };
 
   if (!editing) {
