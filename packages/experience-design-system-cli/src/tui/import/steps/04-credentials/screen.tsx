@@ -5,6 +5,7 @@ import { formLabelWidth, type FormField, type FormNotice } from '@tui/shared/com
 import { ClearableTextInput } from '@tui/shared/components/ClearableTextInput.js';
 import { ControlHints } from '@tui/shared/components/ControlHints.js';
 import { StepHeader } from '@tui/shared/components/StepHeader.js';
+import { useTerminalWidth } from '@tui/use-terminal-width.js';
 import {
   credentialsPurpose,
   isUnchanged,
@@ -40,6 +41,19 @@ const MENU: readonly { choice: MenuChoice; label: string; description: string }[
   { choice: 'continue', label: 'Continue', description: 'Check the credentials and go on' },
   { choice: 'edit', label: 'Edit', description: 'Change the credentials' },
 ];
+
+/** A section label drawn as a faint rule with the name inline, such as "── Actions ────────", so it reads as a divider. */
+function SectionLabel({ label, active = false }: { label: string; active?: boolean }): React.ReactElement {
+  const columns = useTerminalWidth();
+  const rule = '─'.repeat(Math.max(2, columns - label.length - 8));
+  return (
+    <Text color={PALETTE.border} dimColor={!active}>
+      {'── '}
+      <Text color={active ? PALETTE.accent : PALETTE.muted}>{label}</Text>
+      {` ${rule}`}
+    </Text>
+  );
+}
 
 export function CredentialsScreen({
   onDone,
@@ -90,7 +104,7 @@ export function CredentialsScreen({
     } else onBack();
   };
 
-  // Leaves the fields and puts the cursor back on the first menu item.
+  // Saves what was typed and puts the cursor back on the first menu item.
   const stopEditing = (): void => {
     setEditing(false);
     setFocus(0);
@@ -118,7 +132,6 @@ export function CredentialsScreen({
   });
 
   const labelWidth = formLabelWidth([...FIELDS, ...MENU]);
-  const isLastField = active === FIELDS.length - 1;
   const changed = !isUnchanged(normalize(values), initialValues);
 
   return (
@@ -133,9 +146,7 @@ export function CredentialsScreen({
             : 'Enter the Contentful space you want to import into.'}
         </Text>
         <Text> </Text>
-        <Text bold color={editing ? PALETTE.muted : PALETTE.accent}>
-          ACTIONS
-        </Text>
+        <SectionLabel label="Actions" active={!editing} />
         {MENU.map((item, index) => {
           const focused = !editing && index === focus;
           return (
@@ -150,18 +161,8 @@ export function CredentialsScreen({
             </Box>
           );
         })}
-        <Box
-          flexDirection="column"
-          marginTop={1}
-          borderStyle="single"
-          borderColor={PALETTE.border}
-          borderBottom={false}
-          borderLeft={false}
-          borderRight={false}
-        >
-          <Text bold color={editing ? PALETTE.accent : PALETTE.muted}>
-            SPACE
-          </Text>
+        <Box flexDirection="column" marginTop={1}>
+          <SectionLabel label="Space" active={editing} />
           {FIELDS.map((field, index) => {
             const open = editing && index === active;
             const value = values[field.key];
@@ -181,7 +182,7 @@ export function CredentialsScreen({
                       setValues((current) => ({ ...current, [field.key]: next }));
                       setNotice(null);
                     }}
-                    onSubmit={() => (isLastField ? stopEditing() : setActive(index + 1))}
+                    onSubmit={stopEditing}
                     mask={field.masked ? '•' : undefined}
                   />
                 ) : (
@@ -222,7 +223,7 @@ export function CredentialsScreen({
             <ControlHints
               hints={[
                 { keys: '↑/↓', label: 'field' },
-                { keys: '⏎', label: isLastField ? 'done' : 'next field' },
+                { keys: '⏎', label: 'save' },
                 { keys: 'Ctrl+D', label: 'clear' },
                 { keys: 'Esc', label: prefilled ? 'cancel' : 'back' },
               ]}
