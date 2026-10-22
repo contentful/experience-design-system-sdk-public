@@ -14,6 +14,7 @@ const callable = (node: ts.Node): node is Callable =>
 interface Value {
   origins: Set<string>;
   presence: Set<string>;
+  key?: string;
   fields?: Map<string, Value>;
   arrayLength?: number;
   wildcard?: Value;
@@ -297,7 +298,9 @@ export function collectFieldSemantics(
       return empty();
     if (ts.isPropertyAccessExpression(site) || ts.isElementAccessExpression(site)) {
       const owner = evaluate(site.expression, next);
-      const name = ts.isPropertyAccessExpression(site) ? site.name.text : bindings.constant(site.argumentExpression);
+      const name = ts.isPropertyAccessExpression(site)
+        ? site.name.text
+        : (bindings.constant(site.argumentExpression) ?? evaluate(site.argumentExpression, next).key ?? null);
       step('read', site, scope);
       if (owner.arrayLength !== undefined && name === 'length') return empty();
       if (name === null) {
@@ -435,58 +438,62 @@ export function collectFieldSemantics(
       return merge([evaluate(site.left, next), evaluate(site.right, next)]);
     }
     if (ts.isCallExpression(site)) {
-      const called = evaluate(site.expression, next);
-      const target = called.target;
-      const arguments_ = site.arguments.map((argument) => evaluate(argument, next));
-      const targetPath = target
-        ? (sourceRealPath(target.getSourceFile().fileName) ?? resolve(target.getSourceFile().fileName))
-        : null;
-      const rootPath = sourceRealPath(node.getSourceFile().fileName) ?? resolve(node.getSourceFile().fileName);
+      const member = site.expression;
       if (
-        !target?.body ||
-        target.getSourceFile().isDeclarationFile ||
-        !targetPath ||
-        (targetPath !== rootPath &&
-          (!reader.collection.repositoryRoot || !isWithinSourceBoundary(reader.collection.repositoryRoot, targetPath)))
+        (ts.isPropertyAccessExpression(member) || ts.isElementAccessExpression(member)) &&
+        (ts.isPropertyAccessExpression(member) ? member.name.text : bindings.constant(member.argumentExpression)) ===
+          'map'
       ) {
-        omit('opaque-call-effects-open', site);
-        return merge(arguments_);
+        const owner = evaluate(member.expression, next);
+        step('read', member, scope);
+        const arguments_ = site.arguments.map((argument) => evaluate(argument, next));
+        if (owner.arrayLength === undefined) {
+          const called = owner.fields?.get('map') ?? owner.wildcard ?? owner;
+          return invoke({ ...called, origins: union([called.origins, owner.origins]) }, arguments_, site, next);
+        }
+        const callback = arguments_[0];
+        if (
+          site.questionDotToken ||
+          member.questionDotToken ||
+          site.arguments.length !== 1 ||
+          site.arguments.some(ts.isSpreadElement) ||
+          !owner.fresh ||
+          !owner.fields ||
+          !callback?.target ||
+          callback.target.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword) ||
+          ('asteriskToken' in callback.target && callback.target.asteriskToken)
+        ) {
+          omit('local-array-map-open', site);
+          return merge(arguments_);
+        }
+        const mapped: Value & { fields: Map<string, Value> } = {
+          ...empty(),
+          fields: new Map(),
+          fresh: true,
+          allocationFrame: scope.frame,
+          arrayLength: owner.arrayLength,
+        };
+        for (let index = 0; index < owner.arrayLength; index++) {
+          const iteration = { ...next, iterations: [...scope.iterations, index] };
+          if (!admit(site, Math.max(iteration.depth, iteration.iterations.length))) break;
+          const element = owner.fields.get(String(index));
+          if (!element) {
+            omit('local-array-map-element-open', site);
+            break;
+          }
+          step('iterate', site, iteration);
+          mapped.fields.set(
+            String(index),
+            invoke(callback, [element, { ...empty(), key: String(index) }, owner], site, iteration),
+          );
+        }
+        return mapped;
       }
-      if (scope.active.has(target)) {
-        omit('recursive-field-call-open', site);
-        return merge(arguments_);
-      }
-      const invocation = {
-        ...next,
-        env: new Map(called.captures),
-        bindingFrames: new Map(scope.bindingFrames),
-        active: new Set([...scope.active, target]),
-        frame: ++frame,
-      };
-      step('call', site, invocation);
-      target.parameters.forEach((parameter, index) => {
-        if (parameter.dotDotDotToken) omit('rest-parameter-open', parameter);
-        const argument = arguments_[index] ?? empty();
-        bind(
-          parameter,
-          parameter.initializer ? merge([argument, evaluate(parameter.initializer, invocation)]) : argument,
-          invocation,
-        );
-      });
-      const result = execute(target.body, invocation);
-      const foreignRecord = (value: Value, seen = new Set<Value>()): boolean => {
-        if (seen.has(value)) return false;
-        seen.add(value);
-        return (
-          (value.fresh === true && value.allocationFrame !== invocation.frame) ||
-          [...(value.fields?.values() ?? []), ...(value.wildcard ? [value.wildcard] : [])].some((member) =>
-            foreignRecord(member, seen),
-          )
-        );
-      };
-      if (foreignRecord(result)) omit('cross-frame-record-alias-open', site);
-      return result;
+      const called = evaluate(site.expression, next);
+      const arguments_ = site.arguments.map((argument) => evaluate(argument, next));
+      return invoke(called, arguments_, site, next);
     }
+
     if (
       ts.isPrefixUnaryExpression(site) &&
       ![ts.SyntaxKind.PlusPlusToken, ts.SyntaxKind.MinusMinusToken].includes(site.operator)
@@ -495,6 +502,57 @@ export function collectFieldSemantics(
     if (ts.isTemplateExpression(site)) return merge(site.templateSpans.map((span) => evaluate(span.expression, next)));
     omit('field-expression-effects-open', site);
     return empty();
+  }
+  function invoke(called: Value, arguments_: Value[], site: ts.CallExpression, scope: Scope): Value {
+    const target = called.target;
+    const targetPath = target
+      ? (sourceRealPath(target.getSourceFile().fileName) ?? resolve(target.getSourceFile().fileName))
+      : null;
+    const rootPath = sourceRealPath(node.getSourceFile().fileName) ?? resolve(node.getSourceFile().fileName);
+    if (
+      !target?.body ||
+      target.getSourceFile().isDeclarationFile ||
+      !targetPath ||
+      (targetPath !== rootPath &&
+        (!reader.collection.repositoryRoot || !isWithinSourceBoundary(reader.collection.repositoryRoot, targetPath)))
+    ) {
+      omit('opaque-call-effects-open', site);
+      return merge(arguments_);
+    }
+    if (scope.active.has(target)) {
+      omit('recursive-field-call-open', site);
+      return merge(arguments_);
+    }
+    const invocation = {
+      ...scope,
+      env: new Map(called.captures),
+      bindingFrames: new Map(scope.bindingFrames),
+      active: new Set([...scope.active, target]),
+      frame: ++frame,
+    };
+    step('call', site, invocation);
+    target.parameters.forEach((parameter, index) => {
+      if (parameter.dotDotDotToken) omit('rest-parameter-open', parameter);
+      const argument = arguments_[index] ?? empty();
+      bind(
+        parameter,
+        parameter.initializer ? merge([argument, evaluate(parameter.initializer, invocation)]) : argument,
+        invocation,
+      );
+    });
+    const result = execute(target.body, invocation);
+    const foreignRecord = (value: Value, seen = new Set<Value>()): boolean => {
+      if (seen.has(value)) return false;
+      seen.add(value);
+      return (
+        (value.fresh === true && value.allocationFrame !== invocation.frame) ||
+        [...(value.fields?.values() ?? []), ...(value.wildcard ? [value.wildcard] : [])].some((member) =>
+          foreignRecord(member, seen),
+        )
+      );
+    };
+    if (foreignRecord(result)) omit('cross-frame-record-alias-open', site);
+    return result;
   }
   function controlled(value: Value, condition: Value): Value {
     return {

@@ -53,6 +53,31 @@ it.each([
   expect(evidence.steps.some((step) => step.operation === 'write')).toBe(true);
 });
 
+it('tracks mapping callback replacement without interpreting component patterns', async () => {
+  const { alpha, evidence } = await extract(
+    'return [props.data].map(value => { const next = { ...value, alpha: "fixed" }; return next.alpha; })[0];',
+  );
+  expect(evidence.coverage).toBe('complete-within-declared-bound');
+  expect(alpha.valueIndependence.status).toBe('conditional');
+  expect(alpha.valueIndependence.premises).toContain('standard-local-array-map');
+});
+
+it('keeps captured record writes during mapping open', async () => {
+  const { alpha, evidence } = await extract(
+    'const next = { alpha: props.data.alpha }; ["fixed"].map(value => { next.alpha = value; return value; }); return next.alpha;',
+  );
+  expect(evidence.coverage).toBe('partial');
+  expect(alpha.valueIndependence.status).toBe('unknown');
+});
+
+it('preserves locally resolved record callables whose member happens to be named map', async () => {
+  const { alpha, evidence } = await extract(
+    'const helper = { map: (value: string) => "fixed" }; return helper.map(props.data.alpha);',
+  );
+  expect(evidence.coverage).toBe('complete-within-declared-bound');
+  expect(alpha.valueIndependence.status).toBe('conditional');
+});
+
 it('keeps imported reassigned callable targets open', async () => {
   const { alpha, evidence } = await extract(
     'return helper(props.data.alpha);',

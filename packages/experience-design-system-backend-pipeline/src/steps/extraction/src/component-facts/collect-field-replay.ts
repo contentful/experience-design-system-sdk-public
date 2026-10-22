@@ -405,6 +405,46 @@ export function collectFieldReplay(
         return value;
       }
       if (ts.isCallExpression(site)) {
+        const member = site.expression;
+        if (ts.isPropertyAccessExpression(member) || ts.isElementAccessExpression(member)) {
+          const owner = evaluate(member.expression, depth + 1, scope);
+          const key = memberKey(member, depth, scope);
+          step('read', member, scope);
+          const arguments_ = site.arguments.map((argument) => evaluate(argument, depth + 1, scope));
+          const callback = arguments_[0];
+          if (
+            !bindings ||
+            site.questionDotToken ||
+            member.questionDotToken ||
+            key !== 'map' ||
+            site.arguments.length !== 1 ||
+            site.arguments.some(ts.isSpreadElement) ||
+            owner.kind !== 'record' ||
+            !owner.fresh ||
+            owner.arrayLength === undefined ||
+            callback?.kind !== 'callable'
+          )
+            return open('paired-local-array-map-open');
+          const mapped: Extract<Value, { kind: 'record' }> = {
+            kind: 'record',
+            fields: new Map(),
+            fresh: true,
+            frame: scope.frame,
+            arrayLength: owner.arrayLength,
+          };
+          for (let index = 0; index < owner.arrayLength; index++) {
+            const iteration = { ...scope, iterations: [...scope.iterations, index] };
+            if (!admit(Math.max(depth + 1, iteration.iterations.length))) break;
+            const element = owner.fields.get(String(index));
+            if (!element) return open('paired-local-array-map-element-open');
+            step('iterate', site, iteration);
+            mapped.fields.set(
+              String(index),
+              invoke(callback, [element, atom(['literal', 'number', index]), owner], site, depth + 1, iteration),
+            );
+          }
+          return mapped;
+        }
         if (
           !bindings ||
           site.questionDotToken ||
@@ -415,60 +455,64 @@ export function collectFieldReplay(
           return open('paired-invocation-open');
         const value = evaluate(site.expression, depth + 1, scope);
         const arguments_ = site.arguments.map((argument) => evaluate(argument, depth + 1, scope));
-        if (value.kind !== 'callable') return open('paired-call-target-open');
-        const target = value.target;
-        if (
-          !target.body ||
-          target.getSourceFile() !== node.getSourceFile() ||
-          target.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword) ||
-          ('asteriskToken' in target && target.asteriskToken) ||
-          target.parameters.some(
-            (parameter) => !ts.isIdentifier(parameter.name) || parameter.initializer || parameter.dotDotDotToken,
-          )
-        )
-          return open('paired-invocation-open');
-        if (scope.active.has(target)) return open('paired-recursive-call-open');
-        const key = JSON.stringify([
-          scope.frame,
-          site.getStart(),
-          site.getEnd(),
-          target.getStart(),
-          target.getEnd(),
-          scope.conditions,
-          scope.iterations,
-        ]);
-        let frame = frames.get(key);
-        if (frame === undefined) {
-          if (frames.size >= limits.maxOperations) return open('paired-frame-bound');
-          frame = frames.size + 1;
-          frames.set(key, frame);
-          replay.frames.push({
-            frame,
-            parentFrame: scope.frame,
-            callStartOffset: site.getStart(),
-            callEndOffset: site.getEnd(),
-            targetStartOffset: target.getStart(),
-            targetEndOffset: target.getEnd(),
-          });
-        }
-        const invocation: Scope = {
-          env: new Map(value.captures),
-          conditions: scope.conditions,
-          frame,
-          iterations: scope.iterations,
-          active: new Set([...scope.active, target]),
-          readOnly: scope.readOnly,
-        };
-        target.parameters.forEach((parameter, index) =>
-          invocation.env.set(parameter, arguments_[index] ?? atom(['undefined'])),
-        );
-        step('call', site, invocation);
-        if (ts.isBlock(target.body)) return returned(sequence(target.body.statements, invocation, depth + 1));
-        const result = evaluate(target.body, depth + 1, invocation);
-        step('return', target.body, invocation);
-        return returned({ kind: 'return', value: result });
+        return invoke(value, arguments_, site, depth, scope);
       }
+
       return open('paired-expression-effects-open');
+    }
+    function invoke(value: Value, arguments_: Value[], site: ts.CallExpression, depth: number, scope: Scope): Value {
+      if (value.kind !== 'callable') return open('paired-call-target-open');
+      const target = value.target;
+      if (
+        !target.body ||
+        target.getSourceFile() !== node.getSourceFile() ||
+        target.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword) ||
+        ('asteriskToken' in target && target.asteriskToken) ||
+        target.parameters.some(
+          (parameter) => !ts.isIdentifier(parameter.name) || parameter.initializer || parameter.dotDotDotToken,
+        )
+      )
+        return open('paired-invocation-open');
+      if (scope.active.has(target)) return open('paired-recursive-call-open');
+      const key = JSON.stringify([
+        scope.frame,
+        site.getStart(),
+        site.getEnd(),
+        target.getStart(),
+        target.getEnd(),
+        scope.conditions,
+        scope.iterations,
+      ]);
+      let frame = frames.get(key);
+      if (frame === undefined) {
+        if (frames.size >= limits.maxOperations) return open('paired-frame-bound');
+        frame = frames.size + 1;
+        frames.set(key, frame);
+        replay.frames.push({
+          frame,
+          parentFrame: scope.frame,
+          callStartOffset: site.getStart(),
+          callEndOffset: site.getEnd(),
+          targetStartOffset: target.getStart(),
+          targetEndOffset: target.getEnd(),
+        });
+      }
+      const invocation: Scope = {
+        env: new Map(value.captures),
+        conditions: scope.conditions,
+        frame,
+        iterations: scope.iterations,
+        active: new Set([...scope.active, target]),
+        readOnly: scope.readOnly,
+      };
+      target.parameters.forEach((parameter, index) =>
+        invocation.env.set(parameter, arguments_[index] ?? atom(['undefined'])),
+      );
+      step('call', site, invocation);
+      if (ts.isBlock(target.body)) return returned(sequence(target.body.statements, invocation, depth + 1));
+      const result = evaluate(target.body, depth + 1, invocation);
+      step('return', target.body, invocation);
+      return returned({ kind: 'return', value: result });
     }
     function continueWith(completion: Completion, action: (scope: Scope) => Completion): Completion {
       if (completion.kind === 'continue') return action(completion.scope);
