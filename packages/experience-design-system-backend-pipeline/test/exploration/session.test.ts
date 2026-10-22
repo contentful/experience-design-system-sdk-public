@@ -71,6 +71,7 @@ describe('connected exploration persistence and output', () => {
                 source,
                 componentId: component.component_id,
                 included: true,
+                modelingNotes: ['Source requires a runtime provider; independent rendering remains unverified.'],
                 ...(candidateFree
                   ? {}
                   : {
@@ -110,9 +111,32 @@ describe('connected exploration persistence and output', () => {
     expect(manifest.stageAttempts).toHaveLength(7);
     const reopened = pipeline.openPipelineDb(dbPath);
     try {
-      expect(pipeline.loadScopeComponents(reopened, sessionId)[0]?.slots).toEqual([
-        { name: 'renderBody', allowedComponents: [] },
+      const scoped = pipeline.loadScopeComponents(reopened, sessionId)[0]!;
+      expect(scoped.modelingNotes).toEqual([
+        'Source requires a runtime provider; independent rendering remains unverified.',
       ]);
+      expect(scoped.aiDecision).toBe('accepted');
+      expect(scoped.needsReview).toBe(false);
+      expect(scoped.slots).toEqual([{ name: 'renderBody', allowedComponents: [] }]);
+      const beforeNotes = reopened
+        .prepare('SELECT status, needs_review FROM raw_components WHERE session_id=?')
+        .all(sessionId);
+      const savedReport = reopened
+        .prepare('SELECT scope,payload_json FROM exploration_reports WHERE run_id=? ORDER BY scope')
+        .get(result.runId!) as { scope: string; payload_json: string };
+      const report = JSON.parse(savedReport.payload_json);
+      report.companion.components.push(
+        { ...report.companion.components[0], componentId: 'different-owner', modelingNotes: ['Unrelated owner'] },
+        { ...report.companion.components[0], source: join(dir, 'different.tsx'), modelingNotes: ['Different source'] },
+        { ...report.companion.components[0], name: 'Other', modelingNotes: ['Different declaration'] },
+      );
+      reopened
+        .prepare('UPDATE exploration_reports SET payload_json=? WHERE run_id=? AND scope=?')
+        .run(JSON.stringify(report), result.runId!, savedReport.scope);
+      expect(pipeline.loadScopeComponents(reopened, sessionId)[0]?.modelingNotes).toEqual(scoped.modelingNotes);
+      expect(
+        reopened.prepare('SELECT status, needs_review FROM raw_components WHERE session_id=?').all(sessionId),
+      ).toEqual(beforeNotes);
       pipeline.applyToolCalls(
         reopened,
         sessionId,

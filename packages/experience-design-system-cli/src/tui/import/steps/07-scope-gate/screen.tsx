@@ -46,7 +46,7 @@ const HELP_SECTIONS: HelpSection[] = [
     entries: [
       { keys: 'c', label: 'Cycle list' },
       { keys: 'd', label: 'Show slot dependenciess' },
-      { keys: 'x', label: 'Review flags' },
+      { keys: 'x', label: 'Review flags and source notes' },
     ],
   },
   { title: 'Search', entries: [{ keys: '/', label: 'Search' }] },
@@ -95,6 +95,11 @@ function ScopeGateView({ components, savedDecisions, onConfirm, onQuit }: ScopeG
             </Text>
           )}
         </Box>
+        {gate.hasAdvisoryNotes && (
+          <Box>
+            <Text dimColor>Source guidance is advisory — press [x] to review notes before selecting components.</Text>
+          </Box>
+        )}
         {graph.cycles.length > 0 && (
           <Box marginTop={1}>
             <Text color={PALETTE.muted}>
@@ -107,7 +112,11 @@ function ScopeGateView({ components, savedDecisions, onConfirm, onQuit }: ScopeG
         <Box flexDirection="row" alignItems="stretch">
           {gate.aiRationalePanelOpen ? (
             <GotoBanner
-              title={`Review flags (${gate.aiExcludedCount})`}
+              title={
+                gate.hasAdvisoryNotes
+                  ? `Review notes (${gate.aiRows.length})`
+                  : `Review flags (${gate.aiExcludedCount})`
+              }
               rows={gate.aiRows}
               cursor={gate.aiCursor}
               maxRows={gate.panelMaxRows}

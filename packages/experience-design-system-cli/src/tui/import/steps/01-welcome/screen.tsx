@@ -28,7 +28,10 @@ export function WelcomeScreen({ onContinue, onQuit, initialPath = '' }: WelcomeS
       <StepHeader step="setup" />
       <Box flexDirection="column" gap={1} paddingX={2} paddingBottom={1}>
         <Box flexDirection="column" gap={1}>
-          <Text color={PALETTE.text}>Where is your component library?</Text>
+          <Text color={PALETTE.text}>Which source folder would you like to import?</Text>
+          <Text dimColor>
+            Choose an application root, a folder of components, or a folder containing a single component.
+          </Text>
           <Box>
             <Text color={PALETTE.accent}>? </Text>
             <Text>Project path: </Text>

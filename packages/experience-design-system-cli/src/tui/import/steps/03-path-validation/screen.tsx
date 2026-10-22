@@ -66,6 +66,20 @@ function Summary({
         ))}
       </Box>
       {warning && <Text color={PALETTE.warning}>⚠ {warning}</Text>}
+      <Box flexDirection="column">
+        <Text dimColor>File counts do not establish which components are useful on a page.</Text>
+        <Text dimColor>
+          Application chrome may depend on providers, runtime or environment; review the source notes.
+        </Text>
+        <Text dimColor>
+          Missing imports or declarations leave evidence gaps: check project configuration and dependency setup, or
+          choose a relevant source folder.
+        </Text>
+        <Text dimColor>
+          Little directly authored content can still offer useful design, placement or composition; review before
+          choosing.
+        </Text>
+      </Box>
       <Text>Does this look right?</Text>
     </Box>
   );

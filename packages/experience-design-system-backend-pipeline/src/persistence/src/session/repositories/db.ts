@@ -41,6 +41,7 @@ import { withTransaction } from './shared/with-transaction.js';
 import {
   loadAcceptedSlotDecisions,
   loadExplorationRun,
+  loadExplorationReports,
   loadExplorationRecord,
   saveReviewedSlots,
 } from './exploration/records.js';
@@ -3194,6 +3195,7 @@ export type ScopeComponentRow = {
   componentId: string;
   aiDecision: 'accepted' | 'rejected' | null;
   aiReason: string | null;
+  modelingNotes?: string[];
   needsReview: boolean;
   slots: Array<{ name: string; allowedComponents: string[] }>;
 };
@@ -3294,9 +3296,19 @@ export function loadScopeComponents(db: DatabaseSync, sessionId: string): ScopeC
   const exploration = loadExplorationRun(db, sessionId, 'components');
   if (exploration && exploration.status !== 'complete') return [];
   const acceptedSlots = loadAcceptedSlotDecisions(db, sessionId);
+  const reports = exploration ? loadExplorationReports(db, sessionId, 'components') : [];
+  const notesByComponent = new Map<string, Array<{ name: string; source: string; notes: string[] }>>();
+  for (const report of reports) {
+    for (const component of report.companion.components) {
+      if (!component.componentId || !component.modelingNotes?.length) continue;
+      const notes = notesByComponent.get(component.componentId) ?? [];
+      notes.push({ name: component.name, source: component.source, notes: component.modelingNotes });
+      notesByComponent.set(component.componentId, notes);
+    }
+  }
   const rows = db
     .prepare(
-      `SELECT name, component_id, status, reject_reason, review_reasons, needs_review FROM raw_components
+      `SELECT name, component_id, source, status, reject_reason, review_reasons, needs_review FROM raw_components
        WHERE session_id = ? AND (
          status IN ('extracted', 'accepted', 'rejected') OR
          component_id IN (SELECT component_id FROM scope_decisions WHERE session_id = ?)
@@ -3306,6 +3318,7 @@ export function loadScopeComponents(db: DatabaseSync, sessionId: string): ScopeC
     .all(sessionId, sessionId) as Array<{
     name: string;
     component_id: string;
+    source: string;
     status: string;
     reject_reason: string | null;
     review_reasons: string;
@@ -3342,12 +3355,20 @@ export function loadScopeComponents(db: DatabaseSync, sessionId: string): ScopeC
   return rows.map((r) => {
     const reviewReasons = parseReviewReasons(r.review_reasons);
     const nonAuthorableReason = reviewReasons.find((reason) => reason.startsWith('non-authorable:'));
+    const modelingNotes = [
+      ...new Set(
+        (notesByComponent.get(r.component_id) ?? [])
+          .filter((component) => component.name === r.name && component.source === r.source)
+          .flatMap((component) => component.notes),
+      ),
+    ];
 
     return {
       name: r.name,
       componentId: r.component_id,
       aiDecision: r.status === 'accepted' ? 'accepted' : r.status === 'rejected' ? 'rejected' : null,
       aiReason: r.reject_reason ?? nonAuthorableReason?.slice('non-authorable:'.length) ?? null,
+      ...(modelingNotes.length > 0 ? { modelingNotes } : {}),
       needsReview: Boolean(r.needs_review),
       slots:
         acceptedSlots !== undefined

@@ -221,10 +221,16 @@ export function useScopeGate({ components, savedDecisions, onConfirm, onQuit }: 
   const aiExcluded = components.filter(isAiFlagged);
   const aiRows = useMemo(
     () =>
-      aiExcluded
-        .filter((c) => c.aiReason !== null && c.aiReason !== undefined && c.aiReason !== '')
-        .map((c) => ({ label: `${c.name} — ${c.aiReason}`, jumpTarget: c.name })),
-    [aiExcluded],
+      components.flatMap((component) => {
+        const reasons = [
+          ...(isAiFlagged(component) && component.aiReason ? [component.aiReason] : []),
+          ...(component.modelingNotes ?? []),
+        ];
+        return reasons.length > 0
+          ? [{ label: `${component.name} — ${reasons.join(' ')}`, jumpTarget: component.name }]
+          : [];
+      }),
+    [components],
   );
 
   const addedComponents = useMemo(
@@ -552,6 +558,7 @@ export function useScopeGate({ components, savedDecisions, onConfirm, onQuit }: 
     aiCursor,
     aiRows,
     aiExcludedCount: aiExcluded.length,
+    hasAdvisoryNotes: components.some((component) => (component.modelingNotes?.length ?? 0) > 0),
     pendingRejectCascade,
     // added column
     addedComponents,

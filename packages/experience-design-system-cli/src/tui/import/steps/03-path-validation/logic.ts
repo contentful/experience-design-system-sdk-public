@@ -61,8 +61,8 @@ export function describeFailure(failure: ScanFailureCode, path: string): Failure
       return {
         headline: "That's a file, not a directory.",
         hints: [
-          "Provide the path to your component library's root folder, not a specific file.",
-          'Example: ~/projects/my-design-system',
+          'Choose an application root, a folder of components, or a folder containing a single component.',
+          'Example: ~/projects/my-app/src',
         ],
       };
     case 'not-found':
