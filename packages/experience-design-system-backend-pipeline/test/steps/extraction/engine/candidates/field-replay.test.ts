@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { extractReactComponents } from '../../../../../src/steps/extraction/index.js';
 import { captureSourceEvidence } from '../../../../../src/steps/extraction/index.js';
 import { bindSourceCandidatesToCapture } from '../../../../../src/steps/extraction/index.js';
@@ -44,6 +44,136 @@ async function extract(body: string, key = 'alpha', maxNodes = 1000, includeGuar
 }
 const branched = (body: string) => extract(body, 'alpha', 1000, true);
 
+it.each([
+  'function read(value: { alpha: string; beta: string }) { const next = { ...value, alpha: "fixed" }; return next.alpha; } return read(props.data);',
+  'const read = (value: { alpha: string; beta: string }) => { const next = { ...value, alpha: "fixed" }; return next.alpha; }; return read(props.data);',
+  'function read(value: { alpha: string; beta: string }) { return "fixed"; } const alias = read; return alias(props.data);',
+  'function read(value: { alpha: string; beta: string }, gate: boolean) { if (gate) return "first"; return "second"; } return read(props.data, props.gate);',
+])('replays compiler-resolved synchronous helper frames: %s', async (body) => {
+  const { replay, result, component, root, path } = await branched(body);
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('conditional');
+  expect(replay.operations.some((operation) => operation.operation === 'call' && operation.frame > 0)).toBe(true);
+  expect(readComponentFacts(component.componentFacts).status).toBe('available');
+  const capture = await captureSourceEvidence({ projectRoot: root, filePaths: [path] });
+  const bound = bindSourceCandidatesToCapture([component], capture.files)[0]!;
+  writeFileSync(path, 'changed');
+  const checked = validateSavedFieldReplay(bound.componentFacts!.sourceObservations!.fieldSemantics!, capture.files);
+  expect(checked.relationalReplay!.status).toBe('matched');
+});
+
+it.each([
+  'function read(value: { alpha: string; beta: string }) { return value.alpha; } return read(props.data);',
+  'function read(value: { alpha: string; beta: string }) { value.alpha = "fixed"; return "fixed"; } return read(props.data);',
+  'function read(value: { alpha: string; beta: string }) { return read(value); } return read(props.data);',
+  'function read(value: { alpha: string; beta: string }) { return { alpha: "fixed" }; } return read(props.data);',
+  'function read(value: { alpha: string; beta: string }) { return "fixed"; } const readOther = (value: { alpha: string; beta: string }) => value.alpha; return readOther(props.data);',
+  'function read(value: { alpha: string; beta: string }) { return "fixed"; } const owner = { read }; return owner.read(props.data);',
+  'function read(value: { alpha: string; beta: string } = props.data) { return "fixed"; } return read();',
+])('retains helper dependence and unsupported invocation/effect obligations: %s', async (body) => {
+  const { result } = await branched(body);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.omissionSafety.status).toBe('unknown');
+});
+
+it('binds repeated helper frames to their exact invocation and rejects a fabricated frame', async () => {
+  const { component, replay } = await branched(
+    'function read(value: { alpha: string; beta: string }) { return "fixed"; } read(props.data); return read(props.data);',
+  );
+  const calls = replay.operations.filter((operation) => operation.operation === 'call');
+  expect(new Set(calls.map((operation) => operation.frame)).size).toBe(2);
+  calls[0]!.frame += 100;
+  replay.identity = fieldReplayIdentity(replay);
+  expect(readComponentFacts(component.componentFacts).status).toBe('corrupt');
+});
+
+it.each([
+  'function read(value: { alpha: string; beta: string }) { const next = { ...value, alpha: "fixed" }; next.alpha = "after"; return next.alpha; } return read(props.data);',
+  'function read(props: { alpha: string; beta: string }) { return props.alpha; } const next = { ...props.data, alpha: "fixed" }; return read(next);',
+  'function read(value: { alpha: string; beta: string }) { return "fixed"; } function invoke(fn: typeof read, value: { alpha: string; beta: string }) { return fn(value); } return invoke(read, props.data);',
+])('preserves private allocations and declaration identity across helper frames: %s', async (body) => {
+  const { result, root, path, component } = await branched(body);
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('conditional');
+  const capture = await captureSourceEvidence({ projectRoot: root, filePaths: [path] });
+  const bound = bindSourceCandidatesToCapture([component], capture.files)[0]!;
+  const checked = validateSavedFieldReplay(bound.componentFacts!.sourceObservations!.fieldSemantics!, capture.files);
+  expect(checked.relationalReplay!.status).toBe('matched');
+});
+
+it.each([
+  'const saved = props.data.alpha; const read = () => saved; return read();',
+  'const next = { ...props.data, alpha: "fixed" }; function read(value: typeof next) { value.alpha = "after"; return "fixed"; } return read(next);',
+  'function read(value: { alpha: string; beta: string }) { return "fixed"; } read = (value) => value.alpha; return read(props.data);',
+  'function read(value: { alpha: string; beta: string }) { return "fixed"; } return read(props.data, unknown());',
+  'function read(value: { alpha: string; beta: string }) { const next = { ...value }; next.alpha = "fixed"; return next.alpha; } return read(props.data);',
+])('keeps closures, caller writes, mutable targets, extra effects and omission creation open: %s', async (body) => {
+  const { result } = await branched(body);
+  expect(result.omissionSafety.status).toBe('unknown');
+});
+
+it('rejects rehashed helper target provenance during captured-source replay', async () => {
+  const { root, path, component, replay } = await branched(
+    'function read(value: { alpha: string; beta: string }) { return "fixed"; } return read(props.data);',
+  );
+  expect(replay.frames.length).toBeGreaterThan(0);
+  replay.frames[0]!.targetStartOffset += 1;
+  replay.identity = fieldReplayIdentity(replay);
+  expect(readComponentFacts(component.componentFacts).status).toBe('available');
+  const capture = await captureSourceEvidence({ projectRoot: root, filePaths: [path] });
+  const bound = bindSourceCandidatesToCapture([component], capture.files)[0]!;
+  const checked = validateSavedFieldReplay(bound.componentFacts!.sourceObservations!.fieldSemantics!, capture.files);
+  expect(checked.relationalReplay!.status).toBe('mismatch');
+  expect(checked.relationalReplay!.results.every((result) => result.valueIndependence.status === 'unknown')).toBe(true);
+});
+
+it('does not confuse a computed identifier with its runtime property key', async () => {
+  const { result } = await extract(
+    'const alpha = "beta"; const next = { ...props.data, [alpha]: "fixed" }; return next.alpha;',
+  );
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.omissionSafety.status).toBe('unknown');
+});
+
+it('uses declaration-bound computed keys in a helper instead of their binding names', async () => {
+  const { result } = await extract(
+    'function read(value: { alpha: string; beta: string }) { const key = "alpha"; const next = { ...value, [key]: "fixed" }; return next[key]; } return read(props.data);',
+  );
+  expect(result.reasons).toEqual([]);
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('conditional');
+});
+
+it('makes helper-binding stability an explicit unestablished premise', async () => {
+  const { result } = await extract(
+    'function read(value: { alpha: string; beta: string }) { return "fixed"; } return read(props.data);',
+  );
+  expect(result.valueIndependence.premises).toContain('stable-resolved-callable-bindings');
+});
+
+it('resolves captured helper symbols without reading the host compiler filesystem', async () => {
+  const { root, path, component } = await extract(
+    'function read(value: { alpha: string; beta: string }) { return "fixed"; } return read(props.data);',
+  );
+  const capture = await captureSourceEvidence({ projectRoot: root, filePaths: [path] });
+  const bound = bindSourceCandidatesToCapture([component], capture.files)[0]!;
+  const read = vi.spyOn(ts.sys, 'readFile').mockImplementation(() => {
+    throw new Error('host read forbidden');
+  });
+  const exists = vi.spyOn(ts.sys, 'fileExists').mockImplementation(() => {
+    throw new Error('host lookup forbidden');
+  });
+  try {
+    const checked = validateSavedFieldReplay(bound.componentFacts!.sourceObservations!.fieldSemantics!, capture.files);
+    expect(checked.relationalReplay!.status).toBe('matched');
+    expect(read).not.toHaveBeenCalled();
+    expect(exists).not.toHaveBeenCalled();
+  } finally {
+    read.mockRestore();
+    exists.mockRestore();
+  }
+});
+
 it.each(['const next = { ...props.data, alpha: "fixed" }; return next.alpha;'])(
   'compares symbolic values and own-field omission separately: %s',
   async (body) => {
@@ -75,6 +205,7 @@ it.each([
   'if (props.gate) { const next = { ...props.data, alpha: "first" }; return next.alpha; } const next = { ...props.data, alpha: "second" }; return next.alpha;',
   'const next = { ...props.data, alpha: "fixed" }; const alias = next; if (props.gate) { alias.alpha = "first"; } else { next.alpha = "second"; } return next.alpha;',
   'const next = { ...props.data, alpha: "fixed" }; if (props.gate) { next.alpha = "fixed"; } return next.alpha;',
+  'const next = { ...props.data, alpha: "fixed" }; if (props.gate) { const next = { alpha: props.data.alpha }; } return next.alpha;',
   'return props.gate ? "first" : "second";',
 ])('compares every finite branch with private aliases intact: %s', async (body) => {
   const { replay, result, component } = await branched(body);
@@ -148,7 +279,6 @@ it.each([
   'const next = { ...props.data }; const saved = next.alpha; if (props.gate) { next.alpha = "fixed"; } else { next.alpha = "fixed"; } return saved;',
   'const next = { ...props.data, alpha: "fixed" }; if (props.gate) { props.data.alpha = "other"; } return next.alpha;',
   'const next = { ...props.data, alpha: "fixed" }; if (props.gate) { unknown(next); } return next.alpha;',
-  'const next = { ...props.data, alpha: "fixed" }; if (props.gate) { const next = { alpha: props.data.alpha }; } return next.alpha;',
   'const next = { ...props.data, alpha: "fixed" }; return props.gate ? (next.alpha = "first") : next.alpha;',
   'return props.gate ? { alpha: "first" } : { alpha: "second" };',
 ])('retains snapshots, effects and unsupported branch states: %s', async (body) => {
@@ -302,43 +432,49 @@ it('replays an independent field certificate even without a closure sidecar', as
   }
 });
 
-it('replays the exact saved source after the live file changes and carries it into the reasoning channel', async () => {
-  const { root, path, component } = await extract('const next = { ...props.data, alpha: "fixed" }; return next.alpha;');
-  const dbPath = join(root, 'pipeline.db');
-  const db = openPipelineDb(dbPath);
-  const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-  const capture = await captureSourceEvidence({ projectRoot: root, filePaths: [path] });
-  completeExtractionWithSourceEvidence(db, {
-    sessionId,
-    stepId: createStep(db, sessionId, 'analyze extract', {}),
-    components: [component],
-    cycles: [],
-    scannedFiles: ['Surface.tsx'],
-    capture,
-    observations: { accepted: [], rejected: [] },
-  });
-  db.close();
-  writeFileSync(path, 'changed live source');
-  const reopened = openPipelineDb(dbPath);
-  try {
-    const saved = loadRawComponents(reopened, sessionId)[0]!;
-    const replay = saved.componentFacts!.sourceObservations!.fieldSemantics!.relationalReplay!;
-    expect(replay.status).toBe('matched');
-    const result = replay.results.find((item) => item.inputName === 'data' && item.path[0]?.key === 'alpha')!;
-    expect(result.omissionSafety.status).toBe('conditional');
-    expect(saved.sourceCandidates!.find((candidate) => candidate.name === 'data')).toBeDefined();
-    const channel = JSON.parse(buildCompilerEvidenceInline([saved], { readiness: 'ready' }));
-    expect(channel.componentFacts[0].facts.sourceObservations.fieldSemantics.relationalReplay).toEqual(replay);
-    expect(channel.componentFacts[0].fieldSemanticsPolicy).toEqual({
-      claims: 'conditional-advisory',
-      replay: 'source-reproduction-only',
-      runtimeAndDeliveryApplicability: 'unestablished',
-      schemaChanges: 'not-authorized',
+it.each([
+  'const next = { ...props.data, alpha: "fixed" }; return next.alpha;',
+  'function read(value: { alpha: string; beta: string }) { const next = { ...value, alpha: "fixed" }; return next.alpha; } return read(props.data);',
+])(
+  'replays the exact saved source after the live file changes and carries it into the reasoning channel: %s',
+  async (body) => {
+    const { root, path, component } = await extract(body);
+    const dbPath = join(root, 'pipeline.db');
+    const db = openPipelineDb(dbPath);
+    const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+    const capture = await captureSourceEvidence({ projectRoot: root, filePaths: [path] });
+    completeExtractionWithSourceEvidence(db, {
+      sessionId,
+      stepId: createStep(db, sessionId, 'analyze extract', {}),
+      components: [component],
+      cycles: [],
+      scannedFiles: ['Surface.tsx'],
+      capture,
+      observations: { accepted: [], rejected: [] },
     });
-  } finally {
-    reopened.close();
-  }
-});
+    db.close();
+    writeFileSync(path, 'changed live source');
+    const reopened = openPipelineDb(dbPath);
+    try {
+      const saved = loadRawComponents(reopened, sessionId)[0]!;
+      const replay = saved.componentFacts!.sourceObservations!.fieldSemantics!.relationalReplay!;
+      expect(replay.status).toBe('matched');
+      const result = replay.results.find((item) => item.inputName === 'data' && item.path[0]?.key === 'alpha')!;
+      expect(result.omissionSafety.status).toBe('conditional');
+      expect(saved.sourceCandidates!.find((candidate) => candidate.name === 'data')).toBeDefined();
+      const channel = JSON.parse(buildCompilerEvidenceInline([saved], { readiness: 'ready' }));
+      expect(channel.componentFacts[0].facts.sourceObservations.fieldSemantics.relationalReplay).toEqual(replay);
+      expect(channel.componentFacts[0].fieldSemanticsPolicy).toEqual({
+        claims: 'conditional-advisory',
+        replay: 'source-reproduction-only',
+        runtimeAndDeliveryApplicability: 'unestablished',
+        schemaChanges: 'not-authorized',
+      });
+    } finally {
+      reopened.close();
+    }
+  },
+);
 
 it('rejects a self-consistent but fabricated comparison when replayed against captured source', async () => {
   const { root, path, component, replay } = await extract(

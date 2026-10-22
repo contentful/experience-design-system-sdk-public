@@ -2,8 +2,12 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { FIELD_VALUE_PREMISES } from './field-semantics.js';
 
-export const FIELD_REPLAY_PREMISES = [...FIELD_VALUE_PREMISES, 'declared-own-input-tree'] as const;
-export const FIELD_REPLAY_VERSION = 2;
+export const FIELD_REPLAY_PREMISES = [
+  ...FIELD_VALUE_PREMISES,
+  'declared-own-input-tree',
+  'stable-resolved-callable-bindings',
+] as const;
+export const FIELD_REPLAY_VERSION = 3;
 const claim = z
   .object({
     status: z.enum(['conditional', 'unknown']),
@@ -34,11 +38,23 @@ export const FieldReplaySchema = z
       })
       .strict(),
     used: z.object({ nodes: z.number().int().nonnegative(), maxDepth: z.number().int().nonnegative() }).strict(),
+    frames: z.array(
+      z
+        .object({
+          frame: z.number().int().positive(),
+          parentFrame: z.number().int().nonnegative(),
+          callStartOffset: z.number().int().nonnegative(),
+          callEndOffset: z.number().int().nonnegative(),
+          targetStartOffset: z.number().int().nonnegative(),
+          targetEndOffset: z.number().int().nonnegative(),
+        })
+        .strict(),
+    ),
     operations: z.array(
       z
         .object({
-          operation: z.enum(['binding', 'spread', 'write', 'read', 'return', 'branch']),
-          frame: z.literal(0),
+          operation: z.enum(['binding', 'spread', 'write', 'read', 'return', 'branch', 'call']),
+          frame: z.number().int().nonnegative(),
           startOffset: z.number().int().nonnegative(),
           endOffset: z.number().int().nonnegative(),
           conditions: z.array(
@@ -83,11 +99,20 @@ export function fieldReplayIsConsistent(value: SourceFieldReplay): boolean {
     value.used.nodes > value.limits.maxNodes ||
     value.used.maxDepth > value.limits.maxDepth ||
     value.operations.length > value.limits.maxOperations ||
+    value.frames.length > value.limits.maxOperations ||
+    value.frames.some(
+      (frame, index) =>
+        frame.frame !== index + 1 ||
+        frame.parentFrame >= frame.frame ||
+        frame.callEndOffset <= frame.callStartOffset ||
+        frame.targetEndOffset <= frame.targetStartOffset,
+    ) ||
     value.domain.length !== value.results.length ||
     new Set(value.domain.map((item) => JSON.stringify(item))).size !== value.domain.length ||
     value.operations.some(
       (operation) =>
         operation.endOffset <= operation.startOffset ||
+        operation.frame > value.frames.length ||
         operation.conditions.length > value.limits.maxDepth ||
         operation.conditions.some((condition) => condition.endOffset <= condition.startOffset),
     )

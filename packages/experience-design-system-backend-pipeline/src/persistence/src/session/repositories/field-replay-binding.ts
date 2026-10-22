@@ -82,7 +82,24 @@ export function validateSavedFieldReplay(
   find(source, 0);
   if (exhausted) return withheld('unavailable');
   if (!target) return withheld('mismatch');
-  const replay = collectFieldReplay(target, semantics, certificate.limits);
+  const host: ts.CompilerHost = {
+    getSourceFile: (path) => (path === file.canonicalPath ? source : undefined),
+    getDefaultLibFileName: () => '',
+    writeFile: () => undefined,
+    getCurrentDirectory: () => '',
+    getDirectories: () => [],
+    getCanonicalFileName: (path) => path,
+    useCaseSensitiveFileNames: () => true,
+    getNewLine: () => '\n',
+    fileExists: (path) => path === file.canonicalPath,
+    readFile: (path) => (path === file.canonicalPath ? text : undefined),
+  };
+  const program = ts.createProgram(
+    [file.canonicalPath],
+    { noLib: true, noResolve: true, target: ts.ScriptTarget.Latest, jsx: ts.JsxEmit.Preserve },
+    host,
+  );
+  const replay = collectFieldReplay(target, semantics, certificate.limits, undefined, program.getTypeChecker());
   if (replay.identity !== certificate.identity) return withheld('mismatch');
   return { ...semantics, relationalReplay: { ...replay, status: 'matched' } };
 }

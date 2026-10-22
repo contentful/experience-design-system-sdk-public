@@ -552,6 +552,7 @@ export function collectFieldSemantics(
       maxOperations: limits.maxObservations,
     },
     signal,
+    reader.checker,
   );
   return evidence;
 }
