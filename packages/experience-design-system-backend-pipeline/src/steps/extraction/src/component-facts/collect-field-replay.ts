@@ -148,15 +148,9 @@ export function collectFieldReplay(
     }
     const env = new Map<ts.Declaration | ts.ForOfStatement | string, Value>();
     const initial: Scope = { env, conditions: [], frame: 0, iterations: [], active: new Set([node]) };
-    if (
-      !parameter ||
-      !ts.isIdentifier(parameter.name) ||
-      parameter.initializer ||
-      parameter.dotDotDotToken ||
-      node.parameters.length !== 1
-    )
+    if (!parameter || parameter.initializer || parameter.dotDotDotToken || node.parameters.length !== 1)
       open('paired-parameter-open');
-    else env.set(bindings ? parameter : parameter.name.text, root);
+    else bind(parameter, root, initial, 0);
     if (
       paths.some(
         (path) =>
@@ -182,6 +176,47 @@ export function collectFieldReplay(
       if (ts.isStringLiteralLike(site)) return site.text;
       if (ts.isNumericLiteral(site)) return String(Number(site.text));
       return ts.isIdentifier(site) ? site.text : null;
+    }
+    function bind(
+      declaration: ts.ParameterDeclaration | ts.VariableDeclaration | ts.BindingElement,
+      value: Value,
+      scope: Scope,
+      depth: number,
+    ): void {
+      const name = declaration.name;
+      if (ts.isIdentifier(name)) {
+        const key = bindings ? declaration : name.text;
+        if (bindings && bindings.declaration(name) !== declaration) {
+          open('paired-binding-declaration-open');
+          return;
+        }
+        if (scope.env.has(key)) open('paired-shadowed-binding-open');
+        scope.env.set(key, value);
+        step('binding', declaration, scope);
+        return;
+      }
+      if (!bindings || !ts.isObjectBindingPattern(name) || value.kind !== 'record') {
+        open('paired-object-binding-open');
+        return;
+      }
+      if (!admit(depth)) return;
+      scope.env.set(declaration, value);
+      step('binding', declaration, scope);
+      for (const element of name.elements) {
+        if (!admit(depth + 1)) break;
+        if (element.initializer || element.dotDotDotToken) {
+          open('paired-binding-default-or-rest-open');
+          continue;
+        }
+        const key = keyOf(element.propertyName ?? element.name, depth + 1, scope);
+        if (key === null) {
+          open('paired-binding-key-open');
+          continue;
+        }
+        const field = value.fields.get(key) ?? (value.fresh ? open('paired-inherited-read-open') : atom(['undefined']));
+        step('read', element, scope);
+        bind(element, field, scope, depth + 1);
+      }
     }
     function memberKey(
       site: ts.PropertyAccessExpression | ts.ElementAccessExpression,
@@ -468,9 +503,7 @@ export function collectFieldReplay(
         target.getSourceFile() !== node.getSourceFile() ||
         target.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword) ||
         ('asteriskToken' in target && target.asteriskToken) ||
-        target.parameters.some(
-          (parameter) => !ts.isIdentifier(parameter.name) || parameter.initializer || parameter.dotDotDotToken,
-        )
+        target.parameters.some((parameter) => parameter.initializer || parameter.dotDotDotToken)
       )
         return open('paired-invocation-open');
       if (scope.active.has(target)) return open('paired-recursive-call-open');
@@ -506,7 +539,7 @@ export function collectFieldReplay(
         readOnly: scope.readOnly,
       };
       target.parameters.forEach((parameter, index) =>
-        invocation.env.set(parameter, arguments_[index] ?? atom(['undefined'])),
+        bind(parameter, arguments_[index] ?? atom(['undefined']), invocation, depth + 1),
       );
       step('call', site, invocation);
       if (ts.isBlock(target.body)) return returned(sequence(target.body.statements, invocation, depth + 1));
@@ -604,15 +637,12 @@ export function collectFieldReplay(
       if (ts.isVariableStatement(statement)) {
         if (!(statement.declarationList.flags & ts.NodeFlags.Const)) open('paired-mutable-binding-open');
         for (const declaration of statement.declarationList.declarations) {
-          if (!ts.isIdentifier(declaration.name) || !declaration.initializer) {
+          if (!declaration.initializer) {
             open('paired-binding-open');
             continue;
           }
-          const binding = bindings ? declaration : declaration.name.text;
-          if (scope.env.has(binding)) open('paired-shadowed-binding-open');
           const value = evaluate(declaration.initializer, depth + 1, scope);
-          scope.env.set(binding, value);
-          step('binding', declaration, scope);
+          bind(declaration, value, scope, depth + 1);
         }
       } else if (ts.isExpressionStatement(statement)) evaluate(statement.expression, depth + 1, scope);
       else if (!ts.isFunctionDeclaration(statement) && !ts.isEmptyStatement(statement))
