@@ -322,3 +322,116 @@ it('retains nested input dependency when the effective intrinsic child survives'
   );
   expect(evidence.summaries.find((item) => item.inputName === 'input')?.state).toBe('positive');
 });
+
+it.each(['renderField', 'paint', '_handler'])(
+  'retains opaque callable-input result dependence without interpreting its name: %s',
+  async (name) => {
+    const { component, evidence } = await extract(
+      `export function Surface(props: { ${name}: () => unknown }) { const invoke = props.${name}; return invoke(); }`,
+    );
+    expect(evidence.witnesses).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          inputName: name,
+          context: 'returned',
+          kind: 'returned-value',
+          strength: 'unknown',
+          reasons: expect.arrayContaining(['call-result-unavailable']),
+        }),
+      ]),
+    );
+    expect(component.sourceCandidates?.map((candidate) => candidate.name)).toContain(name);
+  },
+);
+
+it.each([
+  `return 'fixed'; return props.input;`,
+  `if (props.gate) return 'first'; else return 'second'; return props.input;`,
+])('does not traverse statements after all execution paths have returned: %s', async (body) => {
+  const { evidence } = await extract(`export function Surface(props: { input: string; gate: boolean }) { ${body} }`);
+  expect(evidence.witnesses.some((witness) => witness.inputName === 'input' && witness.context === 'returned')).toBe(
+    false,
+  );
+});
+
+it('carries early-return fallthrough conditions into later output and helper invocation', async () => {
+  const { evidence } = await extract(
+    `function Identity(value: string) { return value; } export function Surface(props: { input: string; gate: boolean }) { if (props.gate) return 'fixed'; return Identity(props.input); }`,
+  );
+  const witnesses = evidence.witnesses.filter(
+    (witness) => witness.inputName === 'input' && witness.kind === 'returned-value' && witness.context === 'returned',
+  );
+  expect(witnesses.length).toBeGreaterThan(0);
+  expect(
+    witnesses.every((witness) =>
+      witness.conditions.some((condition) => condition.expression === 'props.gate' && condition.branch === 'else'),
+    ),
+  ).toBe(true);
+});
+
+it('stops returned-output traversal at an explicit throw and keeps exception coverage open', async () => {
+  const { evidence } = await extract(
+    `export function Surface(props: { input: string }) { throw Error('stop'); return props.input; }`,
+  );
+  expect(evidence.witnesses.some((witness) => witness.inputName === 'input' && witness.context === 'returned')).toBe(
+    false,
+  );
+  expect(evidence.coverage).toBe('partial');
+  expect(evidence.omissions.map((omission) => omission.reason)).toContain('exception-output-open');
+});
+
+it('distinguishes an opaque invocation in a deferred callback from a returned invocation', async () => {
+  const { evidence } = await extract(
+    `export function Surface(props: { effect: () => unknown }) { const pending = () => props.effect(); return 'fixed'; }`,
+  );
+  expect(evidence.witnesses.some((witness) => witness.inputName === 'effect' && witness.context === 'returned')).toBe(
+    false,
+  );
+  expect(evidence.witnesses.some((witness) => witness.inputName === 'effect' && witness.context === 'deferred')).toBe(
+    true,
+  );
+});
+
+it.each(['renderer', 'otherChoice'])(
+  'retains opaque receiver identity as an unresolved returned-output dependency: %s',
+  async (name) => {
+    const { evidence } = await extract(
+      `export function Surface(props: { ${name}: any }) { const Receiver = props.${name}; return <Receiver supplied="fixed" />; }`,
+    );
+    expect(evidence.witnesses).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          inputName: name,
+          context: 'returned',
+          kind: 'returned-value',
+          strength: 'unknown',
+          reasons: expect.arrayContaining(['receiver-output-unavailable']),
+        }),
+      ]),
+    );
+  },
+);
+
+it('keeps both fallthrough alternatives when a branch does not terminate', async () => {
+  const { evidence } = await extract(
+    `export function Surface(props: { input: string; gate: boolean }) { if (props.gate) { const local = 'fixed'; } return props.input; }`,
+  );
+  expect(
+    evidence.witnesses
+      .filter((witness) => witness.inputName === 'input' && witness.context === 'returned')
+      .flatMap((witness) => witness.conditions.map((condition) => condition.branch)),
+  ).toEqual(expect.arrayContaining(['then', 'else']));
+});
+
+it('keeps execution-path expansion bounded without deleting declared source', async () => {
+  const { component, evidence } = await extract(
+    `export function Surface(props: { input: string; gate: boolean }) { ${'if (props.gate) {} '.repeat(12)} return props.input; }`,
+    {},
+    { componentObservationLimits: { maxNodes: 60 } },
+  );
+  expect(evidence.coverage).toBe('partial');
+  expect(evidence.used.nodes).toBeLessThanOrEqual(60);
+  expect(component.sourceCandidates?.map((candidate) => candidate.name)).toEqual(
+    expect.arrayContaining(['input', 'gate']),
+  );
+});

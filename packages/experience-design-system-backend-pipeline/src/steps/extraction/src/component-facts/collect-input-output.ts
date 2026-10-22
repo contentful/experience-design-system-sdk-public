@@ -464,7 +464,7 @@ export function collectInputOutput(
     ];
     if (!results.length || targets.reasons.length) {
       omitted('receiver-output-unavailable', site);
-      results.push(uncertain(props, 'receiver-output-unavailable'));
+      results.push(uncertain(join([targets, props]), 'receiver-output-unavailable'));
     }
     return join(results);
   }
@@ -559,7 +559,7 @@ export function collectInputOutput(
       );
       if (!results.length || target.reasons.length) {
         omitted('call-result-unavailable', site);
-        results.push(uncertain(join(arguments_), 'call-result-unavailable'));
+        results.push(uncertain(join([target, ...arguments_]), 'call-result-unavailable'));
       }
       return join(results);
     }
@@ -591,28 +591,52 @@ export function collectInputOutput(
       return value;
     }
     const returned: Value[] = [];
-    const visit = (statement: ts.Node, scope: Context): void => {
-      if (!admit(statement, scope)) return;
+    const sequence = (statements: readonly ts.Statement[], scopes: Context[]): Context[] => {
+      for (const statement of statements) {
+        if (scopes.length === 0) break;
+        scopes = scopes.flatMap((scope) => visit(statement, scope));
+      }
+      return scopes;
+    };
+    const visit = (statement: ts.Node, scope: Context): Context[] => {
+      if (!admit(statement, scope)) return [];
       if (ts.isReturnStatement(statement)) {
         const value = statement.expression ? evaluate(statement.expression, scope) : empty();
         emit(value, 'returned-value', statement, scope);
         returned.push(value);
-      } else if (ts.isIfStatement(statement)) {
-        visit(statement.thenStatement, branch(scope, statement.expression, 'then'));
-        if (statement.elseStatement) visit(statement.elseStatement, branch(scope, statement.expression, 'else'));
-      } else if (ts.isBlock(statement))
-        statement.statements.forEach((child) => visit(child, { ...scope, depth: scope.depth + 1 }));
-      else if (ts.isVariableStatement(statement)) {
+        return [];
+      }
+      if (ts.isThrowStatement(statement)) {
+        omitted('exception-output-open', statement);
+        return [];
+      }
+      if (ts.isIfStatement(statement)) {
+        const thenScope = { ...branch(scope, statement.expression, 'then'), env: new Map(scope.env) };
+        const elseScope = { ...branch(scope, statement.expression, 'else'), env: new Map(scope.env) };
+        return [
+          ...visit(statement.thenStatement, thenScope),
+          ...(statement.elseStatement ? visit(statement.elseStatement, elseScope) : [elseScope]),
+        ];
+      }
+      if (ts.isBlock(statement))
+        return sequence(statement.statements, [{ ...scope, env: new Map(scope.env), depth: scope.depth + 1 }]);
+      if (ts.isVariableStatement(statement)) {
         for (const declaration of statement.declarationList.declarations) {
           const value = declaration.initializer
             ? evaluate(declaration.initializer, { ...scope, context: 'discarded' })
             : empty();
           bind(declaration, value, scope);
           if (declaration.initializer && callable(declaration.initializer) && declaration.initializer.body)
-            body(declaration.initializer.body, { ...scope, context: 'deferred', depth: scope.depth + 1 });
+            body(declaration.initializer.body, {
+              ...scope,
+              env: new Map(scope.env),
+              context: 'deferred',
+              depth: scope.depth + 1,
+            });
         }
       } else if (callable(statement)) {
-        if (statement.body) body(statement.body, { ...scope, context: 'deferred', depth: scope.depth + 1 });
+        if (statement.body)
+          body(statement.body, { ...scope, env: new Map(scope.env), context: 'deferred', depth: scope.depth + 1 });
       } else if (ts.isExpressionStatement(statement)) {
         const value = evaluate(statement.expression, { ...scope, context: 'discarded' });
         emit(value, 'returned-value', statement, { ...scope, context: 'discarded' });
@@ -624,12 +648,13 @@ export function collectInputOutput(
         ts.isForStatement(statement)
       ) {
         omitted('loop-output-open', statement);
-        visit(statement.statement, { ...scope, depth: scope.depth + 1 });
-      } else {
+        visit(statement.statement, { ...scope, env: new Map(scope.env), depth: scope.depth + 1 });
+      } else if (!ts.isEmptyStatement(statement)) {
         omitted('statement-unsupported', statement);
       }
+      return [scope];
     };
-    site.statements.forEach((statement) => visit(statement, context));
+    sequence(site.statements, [context]);
     return join(returned);
   }
   if (node.body) body(node.body, { ...initial, active: new Set([node]) });
