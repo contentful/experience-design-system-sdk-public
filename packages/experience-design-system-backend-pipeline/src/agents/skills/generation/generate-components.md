@@ -69,6 +69,7 @@ The `category` field and deterministic prop buckets are advisory hints. Verify e
 - Preserve valid defaults exactly, including `false`, `0`, and the empty string. Do not treat a default as the only permitted value.
 - Source refs and observations are bounded. Missing imports, callers, excerpts, or source files leave those facts unknown; they do not establish that a prop is unused, a component is non-rendering, alternatives are absent, or capture is complete.
 - Keep uncertain properties in the output when evidence is incomplete. State what is unknown in `reason` instead of dropping the property or inventing a domain, requirement, token restriction, or source fact.
+- Decide authorability before choosing a representation. A verified declaration and complete implementation can establish that an input is never read or forwarded; use a reasoned `exclude_prop` for that input even if its type is unknown. Check aliases, rest/spread forwarding, computed access and delegated behavior; unresolved paths prevent that conclusion. Describe the positive implementation evidence, rather than treating an empty use list as proof. Unrelated partial coverage does not invalidate complete local evidence; unknown types or unavailable representations alone never justify exclusion.
 - Existing model summaries are optional alignment context. They may identify a possible match, but source evidence controls the current component's prop names, alternatives, defaults, and requiredness.
 
 ---
@@ -102,6 +103,7 @@ Emit one JSON object per line. The CLI parses lines starting with `{`. Lines not
 - Proposal stdout is staged typed drafts only; caller readiness and activation are separate.
 - Every property in the host-owned required decision inventory must produce exactly one call: `classify_prop` OR `exclude_prop`, including inputs absent from advisory props.
 - Every retained property requires `classify_prop` with `cdf_category`: `content`, `design` or `state`, and either a supported native `cdf_type` or a supplied source-bound `representation_selection`. Missing both representation choices is an incomplete draft and cannot finish generation.
+- An unresolved draft retains `cdf_category`, description, source identity and a nonblank reason, but omits `required`, defaults and all other representation companions until a representation is chosen; declared requiredness remains source evidence.
 - Every slot must produce exactly one `classify_slot` call.
 - Emit `classify_component` once at the start (required). The `description` field is **required** — always provide a brief description of the component's purpose.
 - `values` is optional for `cdf_type: "string"` — it must be a non-empty string array for a source-supported closed set of variant names. A default, one caller, or a partial lookup map does not establish the complete set. When no closed set is shown, emit `cdf_type: "string"` without `values`; do not guess.
@@ -275,9 +277,10 @@ Use the independent source inventory, including retained inputs absent from advi
 Emit exactly one component decision even when there are no properties; accepted source-owned slots account for their original inputs without a conflicting property decision. Such owned inputs are already omitted from the required property inventory. Matching property and slot names alone do not establish ownership; any property still listed requires its own decision.
 Every retained input must select a supported native `cdf_type` or a supplied source-bound `representation_selection`, the required `cdf_category` (`content`, `design` or `state`), and a non-empty source-grounded `reason`. An input without either representation choice remains incomplete and cannot be saved as completed generation.
 Use the underlying editable type for evidence-backed null/omission equivalence with source-bound `null_handling`. If compatibility remains unresolved, retain the selected type and explain the concrete limitation; host validation keeps the component incomplete. Do not invent an arbitrary String representation or claim unsupported mapper capabilities.
-Use reasoned `exclude_prop` only for an explicit semantic exclusion.
+Use reasoned `exclude_prop` only for a source-grounded semantic exclusion, including an input whose verified complete implementation establishes that it is unused; unknown type or missing representation support alone is not an exclusion.
 Defaults remain typed JSON with independent original source evidence; absent intent preserves a known source default, while generation must never set or clear a different known default.
 When a correction is requested, emit decisions only for reported missing/rejected subjects and pending representations; preserve successful decisions, accepted exclusions/slots and the original source.
+Missing or parser-rejected subjects have no accepted semantic decision and may receive a source-grounded exclusion after reconsidering authorability; do not confuse them with accepted pending semantic decisions.
 Pending semantic decisions retain the same property, category, description and source identity; repair only representation metadata and update the reason with concrete evidence or capability limits, without creating a duplicate or replacing the property with an exclusion.
 
 ## Host validation and bounded representation repair

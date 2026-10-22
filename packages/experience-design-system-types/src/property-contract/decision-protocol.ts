@@ -73,6 +73,7 @@ export function normalizeClassificationCalls(values: readonly unknown[]): Normal
   const calls: ClassificationToolCall[] = [];
   const warnings: string[] = [];
   for (const [index, value] of values.entries()) {
+    let subject = '';
     try {
       const unsafe = jsonValueIssue(value);
       if (unsafe) throw new Error(`${unsafe.path}: ${unsafe.message}`);
@@ -80,6 +81,9 @@ export function normalizeClassificationCalls(values: readonly unknown[]): Normal
       const rec = value as Record<string, unknown>;
       if (typeof rec.tool !== 'string' || !own(fields, rec.tool)) throw new Error('Unknown tool');
       const tool = rec.tool as keyof typeof fields;
+      if ((tool === 'classify_prop' || tool === 'exclude_prop') && typeof rec.prop === 'string')
+        subject = ` property:${rec.prop}:`;
+      else if (tool === 'classify_slot' && typeof rec.slot === 'string') subject = ` slot:${rec.slot}:`;
       const allowed: readonly string[] = fields[tool];
       if (Object.keys(rec).some((key) => key !== 'tool' && !allowed.includes(key)))
         throw new Error('Unknown decision field');
@@ -185,30 +189,31 @@ export function normalizeClassificationCalls(values: readonly unknown[]): Normal
         } else {
           if (typeof call.reason !== 'string' || !call.reason.trim())
             throw new Error('Absent representation requires nonblank reason');
-          if (
-            [
-              'values',
-              'token_kind',
-              'default',
-              'default_intent',
-              'items',
-              'fields',
-              'required',
-              'value',
-              'valueType',
-              'discriminator',
-              'members',
-              'allowedResources',
-              'representation_proposal',
-              'null_handling',
-            ].some((key) => own(rec, key))
-          )
-            throw new Error('Representation companions require a representation');
+          const companions = [
+            'values',
+            'token_kind',
+            'default',
+            'default_intent',
+            'items',
+            'fields',
+            'required',
+            'value',
+            'valueType',
+            'discriminator',
+            'members',
+            'allowedResources',
+            'representation_proposal',
+            'null_handling',
+          ].filter((key) => own(rec, key));
+          if (companions.length)
+            throw new Error(
+              `Representation companions require a representation: ${companions.join(', ')} require cdf_type or representation_selection; omit these fields while unresolved`,
+            );
         }
       }
       calls.push(call);
     } catch (error) {
-      warnings.push(`decision ${index + 1}: ${error instanceof Error ? error.message : 'Invalid decision'}`);
+      warnings.push(`decision ${index + 1}:${subject} ${error instanceof Error ? error.message : 'Invalid decision'}`);
     }
   }
   const keys = calls.map((call) =>
