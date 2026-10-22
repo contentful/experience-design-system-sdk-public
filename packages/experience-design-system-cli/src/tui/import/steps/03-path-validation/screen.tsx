@@ -21,11 +21,7 @@ const BACK: MenuItem<Choice> = { choice: 'back', label: 'Back', description: 'Go
 
 const MENUS: Record<PathPhase, readonly MenuItem<Choice>[]> = {
   scanning: [BACK],
-  ready: [
-    { choice: 'continue', label: 'Continue', description: 'Use these files and go on' },
-    { choice: 'change-path', label: 'Change path', description: 'Pick a different folder' },
-    BACK,
-  ],
+  ready: [{ choice: 'continue', label: 'Continue', description: 'Use these files and go on' }, BACK],
   failed: [{ choice: 'change-path', label: 'Try a different path', description: 'Pick a different folder' }, BACK],
 };
 
