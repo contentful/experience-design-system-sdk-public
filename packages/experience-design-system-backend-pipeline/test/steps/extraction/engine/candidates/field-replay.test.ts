@@ -44,6 +44,209 @@ async function extract(body: string, key = 'alpha', maxNodes = 1000, includeGuar
 }
 const branched = (body: string) => extract(body, 'alpha', 1000, true);
 
+it('exposes a component-specific retention preview with separate unestablished applicability', async () => {
+  const { component, semantics, replay } = await extract(
+    'const next = { ...props.data, alpha: "fixed" }; return next.alpha;',
+  );
+  const before = JSON.stringify(component);
+  const channel = JSON.parse(buildCompilerEvidenceInline([component], { readiness: 'caller-provided' }));
+  const preview = channel.componentFacts[0].fieldProjectionPreview;
+  expect(preview).toMatchObject({
+    componentDeclarationId: semantics.componentDeclarationId,
+    replayIdentity: replay.identity,
+    replayStatus: 'unverified',
+    mode: 'retention-only',
+    uncoveredFields: 'retain',
+  });
+  const field = preview.fields.find(
+    (field: { inputName: string; path: { key: string }[] }) =>
+      field.inputName === 'data' && field.path[0]?.key === 'alpha',
+  );
+  expect(field).toMatchObject({
+    valueIndependence: { status: 'conditional', applicability: 'unestablished' },
+    omissionSafety: { status: 'conditional', applicability: 'unestablished' },
+    disposition: 'retained-uncertainty',
+  });
+  expect(field.valueIndependence.unestablishedPremises).toContain('declared-own-input-tree');
+  expect(field.omissionSafety.unestablishedPremises).toContain('entry-delivery-admits-omission');
+  expect(field.valueIndependence.unestablishedPremises).not.toContain('entry-delivery-admits-omission');
+  expect(JSON.stringify(component)).toBe(before);
+});
+
+it('retains matched conditional fields in the actual saved-source reasoning preview', async () => {
+  const { root, path, component } = await extract('const next = { ...props.data, alpha: "fixed" }; return next.alpha;');
+  const capture = await captureSourceEvidence({ projectRoot: root, filePaths: [path] });
+  const bound = bindSourceCandidatesToCapture([component], capture.files)[0]!;
+  const facts = bound.componentFacts!;
+  facts.sourceObservations!.fieldSemantics = validateSavedFieldReplay(
+    facts.sourceObservations!.fieldSemantics!,
+    capture.files,
+  );
+  const originalCandidates = JSON.stringify(bound.sourceCandidates);
+  const channel = JSON.parse(buildCompilerEvidenceInline([bound], { readiness: 'caller-provided' }));
+  const preview = channel.componentFacts[0].fieldProjectionPreview;
+  expect(preview.replayStatus).toBe('matched');
+  const field = preview.fields.find(
+    (field: { inputName: string; path: { key: string }[] }) =>
+      field.inputName === 'data' && field.path[0]?.key === 'alpha',
+  );
+  expect(field.disposition).toBe('conditional-retention');
+  expect(field.omissionSafety.applicability).toBe('unestablished');
+  expect(field.reasons).toContain('runtime-and-delivery-premises-unestablished');
+  expect(JSON.stringify(bound.sourceCandidates)).toBe(originalCandidates);
+});
+
+it('does not turn value independence into omission admission in a projection preview', async () => {
+  const { root, path, component } = await extract(
+    'const next = { ...props.data }; next.alpha = "fixed"; return next.alpha;',
+  );
+  const capture = await captureSourceEvidence({ projectRoot: root, filePaths: [path] });
+  const bound = bindSourceCandidatesToCapture([component], capture.files)[0]!;
+  bound.componentFacts!.sourceObservations!.fieldSemantics = validateSavedFieldReplay(
+    bound.componentFacts!.sourceObservations!.fieldSemantics!,
+    capture.files,
+  );
+  const channel = JSON.parse(buildCompilerEvidenceInline([bound], { readiness: 'caller-provided' }));
+  const preview = channel.componentFacts[0].fieldProjectionPreview;
+  const field = preview.fields.find(
+    (field: { inputName: string; path: { key: string }[] }) =>
+      field.inputName === 'data' && field.path[0]?.key === 'alpha',
+  );
+  expect(field).toMatchObject({
+    valueIndependence: { status: 'conditional' },
+    omissionSafety: { status: 'unknown', reasons: expect.arrayContaining(['paired-property-creation-open']) },
+    disposition: 'retained-uncertainty',
+  });
+});
+
+it.each(['corrupt', 'unsupported', 'unknown-legacy'] as const)(
+  'withholds the projection preview when component evidence is %s',
+  async (status) => {
+    const { component } = await extract('return "fixed";');
+    const channel = JSON.parse(
+      buildCompilerEvidenceInline([{ ...component, componentEvidenceReadStatus: status }], { readiness: 'ready' }),
+    );
+    expect(channel.componentFacts[0].fieldProjectionPreview).toBeUndefined();
+  },
+);
+
+it.each(['ready', 'unavailable'] as const)(
+  'withholds caller-provided projection hints when readiness is %s',
+  async (readiness) => {
+    const { component } = await extract('return "fixed";');
+    Object.assign(component, { fieldProjectionPreview: { mode: 'remove', fields: [] } });
+    const before = JSON.stringify(component);
+    const channel = JSON.parse(buildCompilerEvidenceInline([component], { readiness }));
+    expect(channel.componentFacts[0].fieldProjectionPreview).toBeUndefined();
+    expect(JSON.stringify(component)).toBe(before);
+  },
+);
+
+it('does not promote serialized matched replay into established applicability', async () => {
+  const { component, replay } = await extract('return "fixed";');
+  replay.status = 'matched';
+  Object.assign(component, { fieldProjectionPreview: { mode: 'remove', fields: [] } });
+  const channel = JSON.parse(buildCompilerEvidenceInline([component], { readiness: 'caller-provided' }));
+  const preview = channel.componentFacts[0].fieldProjectionPreview;
+  expect(preview.mode).toBe('retention-only');
+  expect(preview.uncoveredFields).toBe('retain');
+  expect(preview.fields.length).toBeGreaterThan(0);
+  expect(
+    preview.fields.every(
+      (field: { valueIndependence: { applicability: string }; omissionSafety: { applicability: string } }) =>
+        field.valueIndependence.applicability === 'unestablished' &&
+        field.omissionSafety.applicability === 'unestablished',
+    ),
+  ).toBe(true);
+});
+
+it('withholds the projection preview when paired replay is absent', async () => {
+  const { component, semantics } = await extract('return "fixed";');
+  delete semantics.relationalReplay;
+  const channel = JSON.parse(buildCompilerEvidenceInline([component], { readiness: 'caller-provided' }));
+  expect(channel.componentFacts[0].status).toBe('available');
+  expect(channel.componentFacts[0].fieldProjectionPreview).toBeUndefined();
+});
+
+it.each(['__proto__', 'constructor', 'a.b', 'a/b', ''])(
+  'keeps exact field identity and source shapes in the projection preview for %s',
+  async (key) => {
+    const { component, replay } = await extract('return "fixed";', key);
+    const before = JSON.stringify(component);
+    const channel = JSON.parse(buildCompilerEvidenceInline([component], { readiness: 'caller-provided' }));
+    const preview = channel.componentFacts[0].fieldProjectionPreview;
+    const field = preview.fields.find((field: { path: { key: string }[] }) => field.path[0]?.key === key);
+    expect(field.path).toEqual([{ kind: 'field', key }]);
+    expect(
+      preview.fields.map((field: { inputName: string; path: unknown }) => ({
+        inputName: field.inputName,
+        path: field.path,
+      })),
+    ).toEqual(replay.domain);
+    expect(JSON.stringify(component)).toBe(before);
+  },
+);
+
+it('keeps a shared source shape and sibling components independent of projection previews', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'shared-projection-'));
+  directories.push(root);
+  const path = join(root, 'Surfaces.tsx');
+  writeFileSync(
+    path,
+    `
+    type Shared = { alpha: string; beta: string };
+    export function First(props: { data: Shared }) { return "fixed"; }
+    export function Second(props: { data: Shared }) { return props.data.alpha; }
+  `,
+  );
+  const { components } = await extractReactComponents([path], undefined, { projectRoot: root });
+  expect(components).toHaveLength(2);
+  const before = JSON.stringify(components);
+  const channel = JSON.parse(buildCompilerEvidenceInline(components, { readiness: 'caller-provided' }));
+  const first = channel.componentFacts.find(
+    (entry: { componentName: string }) => entry.componentName === 'First',
+  ).fieldProjectionPreview;
+  const second = channel.componentFacts.find(
+    (entry: { componentName: string }) => entry.componentName === 'Second',
+  ).fieldProjectionPreview;
+  expect(first.componentDeclarationId).not.toBe(second.componentDeclarationId);
+  expect(
+    first.fields.find((field: { path: { key: string }[] }) => field.path[0]?.key === 'alpha').valueIndependence.status,
+  ).toBe('conditional');
+  expect(
+    second.fields.find((field: { path: { key: string }[] }) => field.path[0]?.key === 'alpha').valueIndependence.status,
+  ).toBe('unknown');
+  expect(JSON.stringify(components)).toBe(before);
+});
+
+it('retains uncertainty in the projection preview after a captured-source mismatch', async () => {
+  const { component, replay, root, path } = await extract('return "fixed";');
+  replay.results[0]!.valueComparison = { left: 'f'.repeat(64), right: 'f'.repeat(64) };
+  replay.identity = fieldReplayIdentity(replay);
+  const capture = await captureSourceEvidence({ projectRoot: root, filePaths: [path] });
+  const bound = bindSourceCandidatesToCapture([component], capture.files)[0]!;
+  const semantics = bound.componentFacts!.sourceObservations!.fieldSemantics!;
+  bound.componentFacts!.sourceObservations!.fieldSemantics = validateSavedFieldReplay(semantics, capture.files);
+  const channel = JSON.parse(buildCompilerEvidenceInline([bound], { readiness: 'caller-provided' }));
+  const preview = channel.componentFacts[0].fieldProjectionPreview;
+  expect(preview.replayStatus).toBe('mismatch');
+  expect(preview.fields.every((field: { disposition: string }) => field.disposition === 'retained-uncertainty')).toBe(
+    true,
+  );
+  expect(preview.fields[0].reasons).toContain('source-replay-mismatch');
+});
+
+it('retains uncertainty in the projection preview when captured bytes are unavailable', async () => {
+  const { component, semantics } = await extract('return "fixed";');
+  component.componentFacts!.sourceObservations!.fieldSemantics = validateSavedFieldReplay(semantics, []);
+  const channel = JSON.parse(buildCompilerEvidenceInline([component], { readiness: 'caller-provided' }));
+  const preview = channel.componentFacts[0].fieldProjectionPreview;
+  expect(preview.replayStatus).toBe('unavailable');
+  expect(preview.fields.every((field: { disposition: string }) => field.disposition === 'retained-uncertainty')).toBe(
+    true,
+  );
+});
+
 it.each([
   'function read(value: { alpha: string; beta: string }) { const next = { ...value, alpha: "fixed" }; return next.alpha; } return read(props.data);',
   'const read = (value: { alpha: string; beta: string }) => { const next = { ...value, alpha: "fixed" }; return next.alpha; }; return read(props.data);',
@@ -470,6 +673,24 @@ it.each([
         runtimeAndDeliveryApplicability: 'unestablished',
         schemaChanges: 'not-authorized',
       });
+      const preview = channel.componentFacts[0].fieldProjectionPreview;
+      expect(preview).toMatchObject({
+        componentDeclarationId: replay.componentDeclarationId,
+        replayIdentity: replay.identity,
+        replayStatus: 'matched',
+        mode: 'retention-only',
+        uncoveredFields: 'retain',
+      });
+      const projected = preview.fields.find(
+        (field: { inputName: string; path: { key: string }[] }) =>
+          field.inputName === 'data' && field.path[0]?.key === 'alpha',
+      );
+      expect(projected.disposition).toBe('conditional-retention');
+      expect(projected.omissionSafety.unestablishedPremises).toContain('entry-delivery-admits-omission');
+      expect(projected.valueIndependence.unestablishedPremises).not.toContain('entry-delivery-admits-omission');
+      const originalSaved = JSON.stringify(saved);
+      projected.path[0].key = 'changed-preview-only';
+      expect(JSON.stringify(saved)).toBe(originalSaved);
     } finally {
       reopened.close();
     }

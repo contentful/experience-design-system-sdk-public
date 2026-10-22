@@ -1,12 +1,17 @@
 import type { ComponentFacts, ComponentEvidenceReadStatus } from '../../../steps/extraction/index.js';
 import type { RawComponentDefinition } from '../../../steps/extraction/src/types/component.js';
 import { readComponentFacts } from '../../../persistence/src/session/repositories/component-facts-validation.js';
+import {
+  assessFieldApplicability,
+  type FieldProjectionPreview,
+} from '../../../steps/extraction/src/component-facts/assess-field-applicability.js';
 
 export interface ComponentEvidenceEntry {
   componentName: string;
   sourcePath: string;
   status: ComponentEvidenceReadStatus | 'unknown' | 'unavailable';
   facts: ComponentFacts | null;
+  fieldProjectionPreview?: FieldProjectionPreview;
   fieldSemanticsPolicy?: {
     claims: 'conditional-advisory';
     replay: 'source-reproduction-only';
@@ -38,6 +43,9 @@ export function buildComponentEvidence(
       facts: status === 'available' ? read.facts! : null,
       ...(status === 'available' && read.facts?.sourceObservations?.fieldSemantics?.relationalReplay
         ? {
+            fieldProjectionPreview: assessFieldApplicability(
+              read.facts.sourceObservations.fieldSemantics.relationalReplay,
+            ),
             fieldSemanticsPolicy: {
               claims: 'conditional-advisory' as const,
               replay: 'source-reproduction-only' as const,
