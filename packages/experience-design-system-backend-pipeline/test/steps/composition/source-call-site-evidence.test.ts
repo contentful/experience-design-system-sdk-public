@@ -203,63 +203,41 @@ describe('mapping evidence contract', () => {
   };
   const rejection = { ...evidence, candidate: 'Ghost', reason: 'unknown-component' as const };
 
-  it.each([false, true])('retains evidence and appends it to the prompt (custom builder=%s)', async (custom) => {
-    const prompts: string[] = [];
+  it('retains independent copies of lexical evidence without creating edges', async () => {
     const sourceCallSiteEvidence = [evidence];
     const sourceCallSiteRejections = [rejection];
     const result = await resolveMapping({
       components: [component('Card', '/project/Card.tsx'), component('Button', button.path)],
-      files: [{ path: '/project/Card.tsx', content: 'candidate source' }],
       sourceCallSiteEvidence,
       sourceCallSiteRejections,
-      promptOverride: 'custom instruction',
-      ...(custom ? { buildPrompt: () => 'custom builder' } : {}),
-      runAgentFn: async ({ prompt }) => {
-        prompts.push(prompt);
-        return '';
-      },
     });
     expect(result.sourceCallSiteEvidence).toEqual([evidence]);
     expect(result.sourceCallSiteEvidence).not.toBe(sourceCallSiteEvidence);
     expect(result.sourceCallSiteRejections).toEqual([rejection]);
     expect(result.sourceCallSiteRejections).not.toBe(sourceCallSiteRejections);
-    expect(prompts[0]).toContain(JSON.stringify([evidence]));
-    expect(prompts[0]).toContain('untrusted data');
-    expect(prompts[0]).toContain('not proof of execution or an exclusive slot contract');
-    expect(prompts[0]).toContain(custom ? 'custom builder' : 'custom instruction');
     expect(result.edges).toEqual([]);
     expect(result.components.every(({ slots }) => slots.length === 0)).toBe(true);
   });
 
-  it('retains evidence even when deterministic edges suppress the agent', async () => {
+  it('retains observations separately from deterministic slot edges', async () => {
     const result = await resolveMapping({
-      components: [component('Card', '/project/Card.tsx')],
-      files: [],
+      components: [component('Card', '/project/Card.tsx'), component('Button', button.path)],
+      extraEdges: [{ parent: 'Card', child: 'Button', slot: 'children', provenance: 'typed-slot' }],
       sourceCallSiteEvidence: [evidence],
       sourceCallSiteRejections: [rejection],
-      runAgentFn: async () => {
-        throw new Error('agent must not run');
-      },
     });
     expect(result.sourceCallSiteEvidence).toEqual([evidence]);
     expect(result.sourceCallSiteRejections).toEqual([rejection]);
-    expect(result.edges).toEqual([]);
+    expect(result.edges).toEqual([{ parent: 'Card', child: 'Button', slot: 'children', provenance: 'typed-slot' }]);
   });
 
-  it('defaults evidence arrays to empty and preserves the existing prompt and mapping', async () => {
-    const prompts: string[] = [];
+  it('defaults evidence arrays to empty without inventing composition', async () => {
     const result = await resolveMapping({
       components: [component('Card', '/project/Card.tsx')],
-      files: [{ path: '/project/Card.tsx', content: 'candidate source' }],
-      runAgentFn: async ({ prompt }) => {
-        prompts.push(prompt);
-        return '';
-      },
     });
     expect(result.sourceCallSiteEvidence).toEqual([]);
     expect(result.sourceCallSiteRejections).toEqual([]);
-    expect(prompts[0]).not.toContain('Source call-site observations');
-    expect(prompts[0]).toContain('candidate source');
+    expect(result.edges).toEqual([]);
     expect(result.warnings).toEqual([]);
   });
 });

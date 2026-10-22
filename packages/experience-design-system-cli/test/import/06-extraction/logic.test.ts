@@ -69,7 +69,7 @@ describe('progressRows', () => {
     const rows = progressRows(initialProgress({ hasCredentials: true, hasRawTokens: true }), 'claude');
     expect(rows).toEqual([
       { text: 'Scanning files...', complete: false },
-      { text: 'Mapping composition via claude...', complete: false },
+      { text: 'Collecting composition evidence from source...', complete: false },
       { text: 'Component exploration waiting for source evidence...', complete: false },
       { text: 'Fetching existing components and tokens...', complete: false },
       { text: 'Generating token definitions via claude...', complete: false },
@@ -87,9 +87,9 @@ describe('progressRows', () => {
     });
   });
 
-  it('names the agent that is mapping composition', () => {
+  it('describes source evidence collection without claiming an agent is mapping composition', () => {
     expect(progressRows(base({ composition: 'agent:codex' }), 'claude')[1]?.text).toBe(
-      'Mapping composition via codex...',
+      'Collecting composition evidence from source...',
     );
   });
 

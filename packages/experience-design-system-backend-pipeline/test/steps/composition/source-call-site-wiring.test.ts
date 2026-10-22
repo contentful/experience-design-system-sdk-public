@@ -79,8 +79,7 @@ describe('source call-site production wiring', () => {
         expect.arrayContaining([expect.objectContaining({ name: 'label', state: 'text', value: 'Continue' })]),
       );
       expect(composed.sourceCallSiteCoverage).toMatchObject({ scope: 'admitted-source', coverage: 'partial' });
-      expect(vi.mocked(runAgent).mock.calls[0]![0].prompt).toContain('Caller coverage');
-      vi.mocked(runAgent).mockClear();
+      expect(runAgent).not.toHaveBeenCalled();
       const response = await runExtractAndComposeSession({
         projectPath,
         outDir: join(projectPath, 'caller-output'),
@@ -99,7 +98,7 @@ describe('source call-site production wiring', () => {
           .componentDeclarationId,
       );
       expect(response.sourceCallSiteEvidence[0]!.lexicalAncestors).toHaveLength(2);
-      expect(vi.mocked(runAgent).mock.calls[0]![0].prompt).toContain(JSON.stringify(response.sourceCallSiteCoverage));
+      expect(runAgent).not.toHaveBeenCalled();
       await Promise.all(files.map((f) => writeFile(f.path, 'DISK_CHANGED_AFTER_SAVE')));
       const db = openPipelineDb();
       try {
@@ -145,7 +144,7 @@ describe('source call-site production wiring', () => {
     },
   );
 
-  it('collects from the full supplied source set and supplies lexical observations to an override prompt', async () => {
+  it('collects from the full supplied source set without invoking an agent for an override prompt', async () => {
     const result = await composeComponents({ components, allFiles: files, forceAgent: true, promptOverride: 'custom' });
     expect(result).toMatchObject({
       sourceCallSiteEvidence: [
@@ -153,11 +152,7 @@ describe('source call-site production wiring', () => {
       ],
       sourceCallSiteRejections: [{ parent: 'Card', candidate: 'Ghost', reason: 'unknown-component' }],
     });
-    expect(runAgent).toHaveBeenCalledOnce();
-    const prompt = vi.mocked(runAgent).mock.calls[0][0].prompt;
-    expect(prompt).toContain('custom');
-    expect(prompt).toContain('not proof of execution or an exclusive slot contract');
-    expect(prompt).toContain(JSON.stringify(result.sourceCallSiteEvidence));
+    expect(runAgent).not.toHaveBeenCalled();
     expect(result.components.every(({ slots }) => slots.length === 0)).toBe(true);
   });
 
@@ -171,7 +166,7 @@ describe('source call-site production wiring', () => {
     expect(result.components).toEqual(components);
   });
 
-  it('does not use partial observations as a citation gate for agent edges', async () => {
+  it('does not promote partial lexical observations or legacy agent output into slot edges', async () => {
     vi.mocked(runAgent).mockResolvedValue({
       exitCode: 0,
       stdout: JSON.stringify({ tool: 'map_edge', parent: 'Button', child: 'Card' }),
@@ -180,23 +175,11 @@ describe('source call-site production wiring', () => {
     });
     const result = await composeComponents({ components, allFiles: files, forceAgent: true });
     expect(result.sourceCallSiteEvidence).toEqual([expect.objectContaining({ parent: 'Card', child: 'Button' })]);
-    expect(result.components.find(({ name }) => name === 'Button')?.slots).toEqual([
-      expect.objectContaining({ allowedComponents: ['Card'] }),
-    ]);
+    expect(result.components.every(({ slots }) => slots.length === 0)).toBe(true);
+    expect(runAgent).not.toHaveBeenCalled();
   });
 
   it('saves both evidence arrays on the completed extraction step and returns the same fresh results', async () => {
-    vi.mocked(runAgent).mockImplementation(async () => {
-      const db = openPipelineDb();
-      try {
-        db.prepare(
-          "UPDATE raw_components SET status = 'rejected', reject_reason = 'review decision' WHERE name = 'Card'",
-        ).run();
-      } finally {
-        db.close();
-      }
-      return { exitCode: 0, stdout: '', stderr: '', timedOut: false };
-    });
     const response = await runExtractAndComposeSession({
       projectPath,
       outDir: join(projectPath, 'output'),
@@ -204,6 +187,17 @@ describe('source call-site production wiring', () => {
       agent: 'claude',
       promptOverrides: [],
       noCache: true,
+      onProgress: (event) => {
+        if (event.kind !== 'composition' || event.phase !== 'resolving') return;
+        const db = openPipelineDb();
+        try {
+          db.prepare(
+            "UPDATE raw_components SET status = 'rejected', reject_reason = 'review decision' WHERE name = 'Card'",
+          ).run();
+        } finally {
+          db.close();
+        }
+      },
     });
     const db = openPipelineDb();
     try {
@@ -235,7 +229,7 @@ describe('source call-site production wiring', () => {
         status: 'rejected',
         reject_reason: 'review decision',
       });
-      expect(vi.mocked(runAgent).mock.calls[0][0].prompt).toContain(JSON.stringify(response.sourceCallSiteEvidence));
+      expect(runAgent).not.toHaveBeenCalled();
     } finally {
       db.close();
     }
@@ -302,17 +296,9 @@ describe('source call-site production wiring', () => {
     const db = openPipelineDb();
     try {
       const result = await resolveComposition({
-        db,
         components: aliasedComponents,
         sourceFiles: aliasedComponents.map(({ sourcePath }) => sourcePath),
         sourceCapture: capture,
-        cacheVersion: 'generic-test-version',
-        noCache: true,
-        compositionRefresh: false,
-        forceAgent: true,
-        compositionPrompt: undefined,
-        agent: 'claude',
-        bedrock: false,
       });
       expect(result.sourceCallSiteEvidence).toEqual([]);
       expect(result.sourceCallSiteRejections).toEqual([]);
@@ -409,7 +395,7 @@ describe('source call-site production wiring', () => {
     }
   });
 
-  it('propagates agent failures without completing the extraction result', async () => {
+  it('completes extraction without depending on an available composition agent', async () => {
     vi.mocked(runAgent).mockRejectedValue(new Error('agent unavailable'));
     await expect(
       runExtractAndComposeSession({
@@ -420,50 +406,33 @@ describe('source call-site production wiring', () => {
         promptOverrides: [],
         noCache: true,
       }),
-    ).rejects.toThrow('agent unavailable');
+    ).resolves.toMatchObject({ compositionPhase: 'done' });
     const db = openPipelineDb();
     try {
-      expect(db.prepare("SELECT COUNT(*) AS count FROM steps WHERE status = 'complete'").get()).toEqual({ count: 0 });
+      expect(db.prepare("SELECT COUNT(*) AS count FROM steps WHERE status = 'complete'").get()).toEqual({ count: 1 });
+      expect(runAgent).not.toHaveBeenCalled();
     } finally {
       db.close();
     }
   });
 
-  it('does not parse or cache valid composition output after the agent is canceled', async () => {
+  it('honors cancellation after composition starts without invoking or caching an agent', async () => {
     const controller = new AbortController();
-    let finishAgent!: (result: { exitCode: number; stdout: string; stderr: string; timedOut: boolean }) => void;
-    vi.mocked(runAgent).mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finishAgent = resolve;
-        }),
-    );
     const db = openPipelineDb();
-    const running = resolveComposition({
-      db,
-      components: [components[0]!],
-      sourceFiles: [files[0]!.path],
-      cacheVersion: 'test-version',
-      noCache: false,
-      compositionRefresh: true,
-      forceAgent: true,
-      compositionPrompt: undefined,
-      agent: 'claude',
-      bedrock: false,
-      signal: controller.signal,
-    });
-    await vi.waitFor(() => expect(runAgent).toHaveBeenCalledOnce());
-
-    controller.abort();
-    finishAgent({
-      exitCode: 0,
-      stdout: JSON.stringify({ tool: 'map_edge', parent: 'Card', child: 'Button' }),
-      stderr: '',
-      timedOut: false,
-    });
-
-    await expect(running).rejects.toMatchObject({ name: 'AbortError' });
-    expect(db.prepare('SELECT COUNT(*) AS count FROM composition_cache').get()).toEqual({ count: 0 });
-    db.close();
+    try {
+      const running = resolveComposition({
+        components: [components[0]!],
+        sourceFiles: [files[0]!.path],
+        signal: controller.signal,
+        onProgress: (event) => {
+          if (event.kind === 'composition' && event.phase === 'resolving') controller.abort();
+        },
+      });
+      await expect(running).rejects.toMatchObject({ name: 'AbortError' });
+      expect(runAgent).not.toHaveBeenCalled();
+      expect(db.prepare('SELECT COUNT(*) AS count FROM composition_cache').get()).toEqual({ count: 0 });
+    } finally {
+      db.close();
+    }
   });
 });

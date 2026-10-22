@@ -1,8 +1,5 @@
-import { runAgent } from '../../../../agents/index.js';
 import type { RawComponentDefinition } from '../../../extraction/src/types/component.js';
 import { resolveMapping } from '../helpers/edges/resolve-mapping.js';
-import { selectCandidateFiles } from '../helpers/candidates/candidate-files.js';
-import { buildCompositionInputHash } from '../helpers/candidates/composition-cache-key.js';
 import { collectManifestDocEdges } from '../helpers/edges/manifest-doc-evidence.js';
 import { collectSourceCallSiteEvidence } from '../helpers/edges/source-call-site-evidence.js';
 import type { ResolveCompositionServiceOptions, ResolveCompositionServiceResult } from '../types/contract.js';
@@ -10,25 +7,12 @@ import type { ResolveCompositionServiceOptions, ResolveCompositionServiceResult 
 export async function runCompositionService(
   options: ResolveCompositionServiceOptions,
 ): Promise<ResolveCompositionServiceResult> {
-  const { components, allFiles, forceAgent, agent } = options;
-
-  const promptFiles = selectCandidateFiles(allFiles);
+  const { components, allFiles } = options;
 
   const componentNameSet = new Set(components.map((c) => c.name));
   const runtimeFiles = allFiles.map((c) => ({ path: c.path, content: c.content }));
   const manifestDocEdges = collectManifestDocEdges(runtimeFiles, components, componentNameSet);
   const sourceCallSites = collectSourceCallSiteEvidence(runtimeFiles, components);
-  const agentCacheKey = buildCompositionInputHash({ files: promptFiles, agent });
-
-  let lastAgentExitCode = 0;
-  const spawnAgent = async (prompt: string): Promise<string> => {
-    const res = await runAgent({ agent, prompt, timeoutMs: 120_000, promptViaStdin: true });
-    lastAgentExitCode = res.exitCode;
-    if (res.exitCode !== 0 && res.stderr.trim()) {
-      options.onWarning?.(`composition — agent exited ${res.exitCode}: ${res.stderr.trim()}`);
-    }
-    return res.stdout;
-  };
 
   options.onProgress?.('resolving');
   const result = await resolveMapping({
@@ -37,22 +21,6 @@ export async function runCompositionService(
     sourceCallSiteEvidence: sourceCallSites.accepted,
     sourceCallSiteRejections: sourceCallSites.rejected,
     sourceCallSiteCoverage: sourceCallSites.coverage,
-    forceAgent,
-    files: promptFiles,
-    ...(options.promptOverride ? { promptOverride: options.promptOverride } : {}),
-    runAgentFn: async ({ prompt }) => {
-      if (!forceAgent && options.onCacheLookup) {
-        const cached = options.onCacheLookup(agentCacheKey);
-        if (cached !== null) {
-          options.onProgress?.('cache-hit');
-          return cached;
-        }
-      }
-      options.onProgress?.(`agent:${agent}`);
-      const stdout = await spawnAgent(prompt);
-      if (lastAgentExitCode === 0) options.onCacheStore?.(agentCacheKey, stdout);
-      return stdout;
-    },
   });
   options.onProgress?.('done');
 

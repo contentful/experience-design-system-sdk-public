@@ -4,11 +4,13 @@ Resolves parent-child relationships between extracted components and wires child
 
 ## What it does
 
-1. Filters the full file set to composition candidates (by name pattern and content markers), retaining complete selected files.
-2. Collects deterministic edges from manifests and AGENTS.md files colocated with components (ranked above agent output).
-3. If any parent still has unresolved children, invokes the AI agent with the complete selected candidate files and parses `map_edge` tool calls.
-4. Merges agent edges with deterministic edges (manifest and typed-slot evidence wins on conflict).
-5. Applies merged edges to the component list, synthesizing slots when a high-trust edge targets a missing slot name.
+1. Retains the complete supplied or captured source file set for deterministic evidence collection.
+2. Collects typed-slot and structural edges from extracted components, plus explicit manifest and documentation edges.
+3. Collects compiler-resolved source call-site observations, rejections and caller coverage independently of edges.
+4. Merges deterministic edges and applies them to the component list, synthesizing slots when a high-trust edge targets a missing slot name.
+5. Saves source observations with the completed extraction snapshot so component exploration can interpret them directly.
+
+Composition never invokes an AI agent, builds an agent prompt, or reads or writes composition-agent cache entries. Unresolved composition stays explicit for downstream exploration.
 
 ## Input
 
@@ -18,34 +20,23 @@ Resolves parent-child relationships between extracted components and wires child
 |---------------------------------------|-------------------------------------------|---------------------------------------|
 | `components`                          | `RawComponentDefinition[]`                | From Step 1                           |
 | `allFiles`                            | `Array<{ path, content }>`                | Full project file set                 |
-| `agent`                               | `AgentName?`                              | Defaults to `claude`                  |
-| `forceAgent`                          | `boolean?`                                | Skips cache lookup                    |
-| `promptOverride`                      | `string?`                                 | Replaces the default agent prompt     |
 | `onProgress` / `onWarning`            | callbacks                                 | Phase strings and human-readable text |
-| `onCacheLookup` / `onCacheStore`      | callbacks                                 | See **Cache** below                   |
+
+Legacy `agent`, `forceAgent`, `promptOverride`, `onCacheLookup` and `onCacheStore` inputs remain accepted as deprecated, ignored options; none can enable agent execution or cached agent output.
 
 ## Output
 
-`ComposeComponentsResponse` — `{ components: RawComponentDefinition[], warnings: string[] }`. Returned components carry populated `slots[].allowedComponents`.
+`ComposeComponentsResponse` includes `components`, `warnings`, `sourceCallSiteEvidence`, `sourceCallSiteRejections` and optional `sourceCallSiteCoverage`. Returned components carry deterministic `slots[].allowedComponents`.
 
 ## Source call-site observations
 
 `collectSourceCallSiteEvidence(files, components)` projects the shared compiler reference index captured during extraction. Both production composition paths use it without building another compiler project. Supplied bytes must match indexed source hashes; unavailable indexes retain unknown caller coverage. References inside nested functions and callbacks remain visible and are labeled `lexical-reference`; they do not prove execution or constrain a slot allowlist. The module's standalone collector is an explicit diagnostic utility and is not used by the pipeline.
 
-`resolveMapping` accepts optional `sourceCallSiteEvidence` and `sourceCallSiteRejections`, retains copies in its result, and appends accepted observations as untrusted data to default or custom prompts. Observations alone never create deterministic edges. Both production composition services project indexed observations against the full supplied runtime file set and return both arrays. The extraction/session orchestrator saves them as JSON strings in completed-step outputs (`compositionEvidence` and `compositionRejections`), including explicit empty arrays. This result save is separate from cache storage. Selection can start before composition completes and does not consume these arrays yet. Compiler configuration and dependencies come from the shared index; missing or unmatched evidence remains explicit rather than being rediscovered under fallback settings.
-
-## Cache
-
-| Field       | Value                                                                                               |
-|-------------|-----------------------------------------------------------------------------------------------------|
-| **Key**     | SHA-256 of (sorted `path+content` hashes of selected candidate files) + agent name                    |
-| **Value**   | Raw agent stdout (JSONL of `map_edge` tool calls)                                                   |
-| **Lookup**  | Before invoking the agent; skipped when `forceAgent` is true                                        |
-| **Store**   | After a successful agent run (`exitCode === 0`)                                                     |
+`resolveMapping` retains copies of source observations and rejections, plus caller coverage, separately from deterministic edges. Observations alone never create deterministic edges. Both production composition services project indexed observations against the full supplied runtime file set and return both arrays. The extraction/session orchestrator atomically saves final components, the source envelope and observations before marking extraction complete. Exploration loads these saved observations and coverage as untrusted source evidence. Compiler configuration and dependencies come from the shared index; missing or unmatched evidence remains explicit rather than being rediscovered under fallback settings.
 
 ## External calls
 
-AI agent via the backend's shared `runAgent`. Timeout: 120 s. Composition explicitly sends its prompt over stdin. Other shared-agent callers default to stdin for Claude and Codex and retain argv delivery for other agents without an application prompt-size cap. No HTTP calls.
+None. Import runs deterministic source analysis in a cancellable worker; the public composition service projects supplied indexed evidence in-process. Neither path starts an agent subprocess.
 
 ## DSI contribution
 

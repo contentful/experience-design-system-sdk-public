@@ -1,7 +1,6 @@
 import { mkdir } from 'node:fs/promises';
 import { relative } from 'node:path';
 import { evaluateExtractionQuality, preClassifyComponent } from '../../steps/extraction/index.js';
-import { resolveCompositionSources } from '../../steps/composition/src/helpers/edges/resolve-composition-sources.js';
 import {
   createStep,
   completeExtractionWithSourceEvidence,
@@ -15,7 +14,7 @@ import { extractComponentsWithCache } from './helpers/extract-components-with-ca
 import { persistExtractCache } from './helpers/persist-extract-cache.js';
 import { calculateSlotCycles } from './helpers/persist-slot-cycles.js';
 import { resolveComposition } from './helpers/resolve-composition.js';
-import { resolveCompositionPrompt } from './helpers/resolve-composition-prompt.js';
+import { parsePromptOverrides } from '../../agents/helpers/prompt-overrides/parse-prompt-overrides.js';
 import { retryDatabaseWrite } from './helpers/retry-database-write.js';
 import {
   bindAnalyticsSessionId,
@@ -48,7 +47,6 @@ export type {
  *     `preserveStatus: true`)
  *   - extract_cache rows (one per source file, when the extract-cache miss
  *     path was taken)
- *   - composition_cache row (one, keyed on agent + prompt files)
  *   - slot_cycles rows
  *   - scanned_files rows
  *
@@ -66,12 +64,9 @@ export async function runExtractAndComposeSession(
     projectPath,
     outDir,
     filePaths: sourceFiles,
-    agent,
     promptOverrides,
     noCache,
     resolveUnreachable = 'auto',
-    compositionRefresh = false,
-    bedrock = false,
     onProgress,
     onSessionCreated,
     onDebugEvent,
@@ -83,8 +78,9 @@ export async function runExtractAndComposeSession(
     const cacheVersion = await getCliCacheVersion();
     throwIfAborted(request.signal);
 
-    // Fail-fast on bad prompt-override syntax before any DB writes or agent calls.
-    const compositionPrompt = await resolveCompositionPrompt(promptOverrides);
+    // Validate shared override syntax without resolving the retired composition prompt.
+    const { errors } = parsePromptOverrides(promptOverrides);
+    if (errors.length > 0) throw new Error(`Prompt override error(s): ${errors.join('; ')}`);
     throwIfAborted(request.signal);
 
     const { extraction, cacheHits } = await extractComponentsWithCache({
@@ -159,22 +155,12 @@ export async function runExtractAndComposeSession(
     );
     throwIfAborted(request.signal);
 
-    const sources = resolveCompositionSources({ noCache, compositionRefresh });
     const composition = await resolveComposition({
-      db,
       components: initialValidatedComponents,
       sourceFiles,
       sourceCapture,
-      cacheVersion,
-      noCache: true,
-      compositionRefresh,
-      forceAgent: sources.forceAgent,
-      compositionPrompt,
-      agent,
-      bedrock,
       signal: request.signal,
       onProgress,
-      onDebugEvent,
     });
     throwIfAborted(request.signal);
 

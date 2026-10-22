@@ -82,7 +82,7 @@ export function progressRows(progress: ExtractionProgress, agent: string): Runni
           ? 'Composition mapping (cached)'
           : compositionDone(progress)
             ? 'Composition mapping complete'
-            : `Mapping composition via ${composition.startsWith('agent:') ? composition.slice('agent:'.length) : agent}...`,
+            : 'Collecting composition evidence from source...',
       complete: compositionDone(progress),
     },
     explorationRow(progress, agent),

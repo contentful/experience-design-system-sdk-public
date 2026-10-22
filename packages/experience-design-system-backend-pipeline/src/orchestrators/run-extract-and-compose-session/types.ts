@@ -24,19 +24,19 @@ export interface RunExtractAndComposeSessionRequest {
   outDir: string;
   /** Source files (absolute paths) to extract from. Caller walks + filters (via `collectFiles`). */
   filePaths: string[];
-  /** Coding agent used for composition mapping resolution (claude|codex|opencode|cursor). */
-  agent: string;
-  /** Optional explicit model for the agent. Not used by composition today but accepted for future use. */
+  /** @deprecated Extraction and composition do not invoke a coding agent. */
+  agent?: string;
+  /** @deprecated Extraction and composition do not invoke a coding agent. */
   agentModel?: string;
   /** `--prompt stage=value` overrides, repeatable, as passed through from CLI/TUI. */
   promptOverrides: string[];
-  /** When true: skip extract/composition caches, re-run everything. */
+  /** Controls extraction result saves; source analysis always runs fresh. */
   noCache: boolean;
   /** How aggressively to retry extraction for unresolved Svelte Props types. Defaults to 'auto'. */
   resolveUnreachable?: 'auto' | 'always' | 'never';
-  /** When true: force the composition agent to run even where deterministic sources answered. */
+  /** @deprecated Composition always collects fresh deterministic evidence. */
   compositionRefresh?: boolean;
-  /** When true: enable Bedrock env for the composition agent (gated on agentSupportsBedrock). */
+  /** @deprecated Composition does not invoke a coding agent. */
   bedrock?: boolean;
   /** Fires when a structured progress event occurs. */
   onProgress?: (event: ExtractAndComposeProgress) => void;
@@ -62,7 +62,7 @@ export interface RunExtractAndComposeSessionResponse extends Pick<
   warnings: string[];
   /** Composition edge conflicts, if any. */
   conflicts: EdgeConflict[];
-  /** Composition warnings (dropped candidates, agent exit non-zero, etc.). */
+  /** Deterministic composition warnings and edge conflicts. */
   compositionWarnings: string[];
   /** Count of source files scanned (equal to `request.filePaths.length`). */
   scannedFileCount: number;
