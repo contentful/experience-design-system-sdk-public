@@ -1,10 +1,26 @@
 import ts from 'typescript';
 import { createHash } from 'node:crypto';
 import type { SourceFieldSemantics } from '../types/field-semantics.js';
-import { FIELD_REPLAY_PREMISES, fieldReplayIdentity, type SourceFieldReplay } from '../types/field-replay.js';
+import {
+  FIELD_REPLAY_PREMISES,
+  FIELD_REPLAY_VERSION,
+  fieldReplayIdentity,
+  type SourceFieldReplay,
+} from '../types/field-replay.js';
 
 type Callable = ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunction | ts.MethodDeclaration;
 type Value = { kind: 'atom'; term: string } | { kind: 'record'; fields: Map<string, Value>; fresh: boolean };
+type AtomicValue = Extract<Value, { kind: 'atom' }>;
+type Conditions = SourceFieldReplay['operations'][number]['conditions'];
+interface Scope {
+  env: Map<string, Value>;
+  conditions: Conditions;
+  readOnly?: boolean;
+}
+type Completion =
+  | { kind: 'continue'; scope: Scope }
+  | { kind: 'return'; value: Value }
+  | { kind: 'choice'; condition: AtomicValue; truthy: Completion; falsy: Completion };
 const atom = (term: unknown): Value => ({ kind: 'atom', term: JSON.stringify(term) });
 const digest = (value: string): string => createHash('sha256').update(value).digest('hex');
 const pathOf = (subject: SourceFieldReplay['domain'][number]): string[] => [
@@ -12,7 +28,7 @@ const pathOf = (subject: SourceFieldReplay['domain'][number]): string[] => [
   ...subject.path.map((item) => item.key),
 ];
 
-/** This interpreter admits only complete straight-line bodies; it never executes customer code. */
+/** Bounded synchronous alternatives over inert input trees; customer code is never executed. */
 export function collectFieldReplay(
   node: Callable,
   semantics: SourceFieldSemantics,
@@ -20,7 +36,7 @@ export function collectFieldReplay(
   signal?: AbortSignal,
 ): SourceFieldReplay {
   const replay: Omit<SourceFieldReplay, 'identity'> = {
-    schemaVersion: 1,
+    schemaVersion: FIELD_REPLAY_VERSION,
     semantics: 'paired-own-data-field-flow',
     status: 'unverified',
     componentDeclarationId: semantics.componentDeclarationId,
@@ -61,15 +77,19 @@ export function collectFieldReplay(
       replay.used.maxDepth = Math.max(replay.used.maxDepth, depth);
       return true;
     };
-    const step = (operation: SourceFieldReplay['operations'][number]['operation'], site: ts.Node): void => {
+    const step = (
+      operation: SourceFieldReplay['operations'][number]['operation'],
+      site: ts.Node,
+      scope: Scope,
+    ): void => {
       const startOffset = site.getStart();
-      const key = JSON.stringify([operation, startOffset, site.getEnd()]);
+      const key = JSON.stringify([operation, startOffset, site.getEnd(), scope.conditions]);
       if (operations.has(key)) return;
       if (operations.size >= limits.maxOperations) {
         reasons.add('paired-operation-bound');
         return;
       }
-      operations.set(key, { operation, frame: 0, startOffset, endOffset: site.getEnd() });
+      operations.set(key, { operation, frame: 0, startOffset, endOffset: site.getEnd(), conditions: scope.conditions });
     };
     const root: Value = { kind: 'record', fields: new Map(), fresh: false };
     for (const path of paths) {
@@ -99,6 +119,7 @@ export function collectFieldReplay(
       }
     }
     const env = new Map<string, Value>();
+    const initial: Scope = { env, conditions: [] };
     if (
       !parameter ||
       !ts.isIdentifier(parameter.name) ||
@@ -135,8 +156,56 @@ export function collectFieldReplay(
           ? site.argumentExpression.text
           : null;
     }
-    function evaluate(site: ts.Expression, depth: number): Value {
-      if (!admit(depth)) return atom(['unknown']);
+    function fork(scope: Scope): Scope {
+      const memo = new Map<Value, Value>();
+      function copy(value: Value): Value {
+        if (value.kind === 'atom') return value;
+        const cached = memo.get(value);
+        if (cached) return cached;
+        const result: Value = { kind: 'record', fresh: value.fresh, fields: new Map() };
+        memo.set(value, result);
+        for (const [key, field] of value.fields) result.fields.set(key, copy(field));
+        return result;
+      }
+      return { ...scope, env: new Map([...scope.env].map(([key, value]) => [key, copy(value)])) };
+    }
+    function condition(value: Value): AtomicValue {
+      return value.kind === 'atom'
+        ? value
+        : { kind: 'atom', term: JSON.stringify(['literal', ts.SyntaxKind.TrueKeyword]) };
+    }
+    function truth(value: AtomicValue): boolean | null {
+      const term = JSON.parse(value.term) as unknown[];
+      if (term[0] === 'undefined') return false;
+      if (term[0] !== 'literal') return null;
+      if (term[1] === 'string' || term[1] === 'number') return Boolean(term[2]);
+      if (term[1] === ts.SyntaxKind.TrueKeyword) return true;
+      if (term[1] === ts.SyntaxKind.FalseKeyword || term[1] === ts.SyntaxKind.NullKeyword) return false;
+      return null;
+    }
+    function alternative(scope: Scope, guard: AtomicValue, site: ts.Expression, branch: 'truthy' | 'falsy'): Scope {
+      return {
+        ...fork(scope),
+        conditions: [
+          ...scope.conditions,
+          {
+            startOffset: site.getStart(),
+            endOffset: site.getEnd(),
+            branch,
+            term: guard.term,
+          },
+        ],
+      };
+    }
+    function choose(guard: AtomicValue, truthy: AtomicValue, falsy: AtomicValue): AtomicValue {
+      if (truthy.term === falsy.term) return truthy;
+      return {
+        kind: 'atom',
+        term: JSON.stringify(['choice', JSON.parse(guard.term), JSON.parse(truthy.term), JSON.parse(falsy.term)]),
+      };
+    }
+    function evaluate(site: ts.Expression, depth: number, scope: Scope): Value {
+      if (!admit(Math.max(depth, scope.conditions.length))) return atom(['unknown']);
       if (
         ts.isParenthesizedExpression(site) ||
         ts.isAsExpression(site) ||
@@ -144,17 +213,17 @@ export function collectFieldReplay(
         ts.isTypeAssertionExpression(site) ||
         ts.isNonNullExpression(site)
       )
-        return evaluate(site.expression, depth + 1);
-      if (ts.isIdentifier(site)) return env.get(site.text) ?? open('paired-external-binding-open');
+        return evaluate(site.expression, depth + 1, scope);
+      if (ts.isIdentifier(site)) return scope.env.get(site.text) ?? open('paired-external-binding-open');
       if (ts.isStringLiteralLike(site)) return atom(['literal', 'string', site.text]);
       if (ts.isNumericLiteral(site)) return atom(['literal', 'number', Number(site.text)]);
       if ([ts.SyntaxKind.TrueKeyword, ts.SyntaxKind.FalseKeyword, ts.SyntaxKind.NullKeyword].includes(site.kind))
         return atom(['literal', site.kind]);
       if (ts.isPropertyAccessExpression(site) || ts.isElementAccessExpression(site)) {
         if (site.questionDotToken) return open('paired-optional-read-open');
-        const owner = evaluate(site.expression, depth + 1);
+        const owner = evaluate(site.expression, depth + 1, scope);
         const key = memberKey(site);
-        step('read', site);
+        step('read', site, scope);
         if (owner.kind !== 'record' || key === null) return open('paired-field-read-open');
         return owner.fields.get(key) ?? (owner.fresh ? open('paired-inherited-read-open') : atom(['undefined']));
       }
@@ -163,8 +232,8 @@ export function collectFieldReplay(
         for (const property of site.properties) {
           if (!admit(depth + 1)) break;
           if (ts.isSpreadAssignment(property)) {
-            const spread = evaluate(property.expression, depth + 1);
-            step('spread', property);
+            const spread = evaluate(property.expression, depth + 1, scope);
+            step('spread', property, scope);
             if (spread.kind !== 'record') open('paired-spread-open');
             else for (const [name, field] of spread.fields) value.fields.set(name, field);
           } else if (ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property)) {
@@ -187,64 +256,127 @@ export function collectFieldReplay(
             value.fields.set(
               key,
               ts.isPropertyAssignment(property)
-                ? evaluate(property.initializer, depth + 1)
-                : (env.get(property.name.text) ?? open('paired-external-binding-open')),
+                ? evaluate(property.initializer, depth + 1, scope)
+                : (scope.env.get(property.name.text) ?? open('paired-external-binding-open')),
             );
-            step('write', property);
+            step('write', property, scope);
           } else open('paired-object-effects-open');
         }
         return value;
+      }
+      if (ts.isConditionalExpression(site)) {
+        const guard = condition(evaluate(site.condition, depth + 1, scope));
+        step('branch', site.condition, scope);
+        const known = truth(guard);
+        const branchValue = (branch: 'truthy' | 'falsy') =>
+          evaluate(branch === 'truthy' ? site.whenTrue : site.whenFalse, depth + 1, {
+            ...alternative(scope, guard, site.condition, branch),
+            readOnly: true,
+          });
+        if (known !== null) return branchValue(known ? 'truthy' : 'falsy');
+        const truthy = branchValue('truthy');
+        const falsy = branchValue('falsy');
+        if (truthy.kind !== 'atom' || falsy.kind !== 'atom') return open('paired-branch-record-value-open');
+        return choose(guard, truthy, falsy);
       }
       if (
         ts.isBinaryExpression(site) &&
         site.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
         (ts.isPropertyAccessExpression(site.left) || ts.isElementAccessExpression(site.left))
       ) {
-        const owner = evaluate(site.left.expression, depth + 1);
+        if (scope.readOnly) return open('paired-conditional-write-open');
+        const owner = evaluate(site.left.expression, depth + 1, scope);
         const key = memberKey(site.left);
-        const value = evaluate(site.right, depth + 1);
+        const value = evaluate(site.right, depth + 1, scope);
         if (owner.kind !== 'record' || !owner.fresh || key === null || key === '__proto__')
           return open('paired-write-open');
         // Creating an absent property uses [[Set]] and needs separate inherited setter semantics.
         if (!owner.fields.has(key)) return open('paired-property-creation-open');
         if (value.kind === 'record') return open('paired-record-write-open');
         owner.fields.set(key, value);
-        step('write', site);
+        step('write', site, scope);
         return value;
       }
       return open('paired-expression-effects-open');
     }
-    let output: Value = atom(['undefined']);
-    if (!node.body) open('paired-body-unavailable');
-    else if (!ts.isBlock(node.body)) {
-      output = evaluate(node.body, 0);
-      step('return', node.body);
-    } else {
-      for (const statement of node.body.statements) {
-        if (!admit(0)) break;
-        if (ts.isReturnStatement(statement)) {
-          output = statement.expression ? evaluate(statement.expression, 1) : atom(['undefined']);
-          step('return', statement);
-          break;
-        }
-        if (ts.isVariableStatement(statement)) {
-          if (!(statement.declarationList.flags & ts.NodeFlags.Const)) open('paired-mutable-binding-open');
-          for (const declaration of statement.declarationList.declarations) {
-            if (!ts.isIdentifier(declaration.name) || !declaration.initializer) {
-              open('paired-binding-open');
-              continue;
-            }
-            if (env.has(declaration.name.text)) open('paired-shadowed-binding-open');
-            const value = evaluate(declaration.initializer, 1);
-            env.set(declaration.name.text, value);
-            step('binding', declaration);
-          }
-        } else if (ts.isExpressionStatement(statement)) evaluate(statement.expression, 1);
-        else if (!ts.isEmptyStatement(statement)) open('paired-statement-effects-open');
-      }
+    function continueWith(completion: Completion, action: (scope: Scope) => Completion): Completion {
+      if (completion.kind === 'continue') return action(completion.scope);
+      if (completion.kind === 'return') return completion;
+      return {
+        ...completion,
+        truthy: continueWith(completion.truthy, action),
+        falsy: continueWith(completion.falsy, action),
+      };
     }
-    if (output.kind === 'record') open('paired-record-observables-open');
-    return { output: reasons.size || output.kind !== 'atom' ? null : digest(output.term), reasons: [...reasons] };
+    function sequence(statements: readonly ts.Statement[], scope: Scope, depth: number): Completion {
+      let completion: Completion = { kind: 'continue', scope };
+      for (const statement of statements)
+        completion = continueWith(completion, (current) => visit(statement, current, depth));
+      return completion;
+    }
+    function visit(statement: ts.Statement, scope: Scope, depth: number): Completion {
+      if (!admit(Math.max(depth, scope.conditions.length))) return { kind: 'return', value: atom(['unknown']) };
+      if (ts.isReturnStatement(statement)) {
+        const value = statement.expression ? evaluate(statement.expression, depth + 1, scope) : atom(['undefined']);
+        step('return', statement, scope);
+        return { kind: 'return', value };
+      }
+      if (ts.isIfStatement(statement)) {
+        const guard = condition(evaluate(statement.expression, depth + 1, scope));
+        step('branch', statement.expression, scope);
+        const known = truth(guard);
+        const next = (branch: 'truthy' | 'falsy'): Completion => {
+          const child = alternative(scope, guard, statement.expression, branch);
+          const body = branch === 'truthy' ? statement.thenStatement : statement.elseStatement;
+          return body ? visit(body, child, depth + 1) : { kind: 'continue', scope: child };
+        };
+        if (known !== null) return next(known ? 'truthy' : 'falsy');
+        return { kind: 'choice', condition: guard, truthy: next('truthy'), falsy: next('falsy') };
+      }
+      if (ts.isBlock(statement)) {
+        const original = new Set(scope.env.keys());
+        const completion = sequence(statement.statements, scope, depth + 1);
+        return continueWith(completion, (current) => {
+          for (const key of current.env.keys()) if (!original.has(key)) current.env.delete(key);
+          return { kind: 'continue', scope: current };
+        });
+      }
+      if (ts.isVariableStatement(statement)) {
+        if (!(statement.declarationList.flags & ts.NodeFlags.Const)) open('paired-mutable-binding-open');
+        for (const declaration of statement.declarationList.declarations) {
+          if (!ts.isIdentifier(declaration.name) || !declaration.initializer) {
+            open('paired-binding-open');
+            continue;
+          }
+          if (scope.env.has(declaration.name.text)) open('paired-shadowed-binding-open');
+          const value = evaluate(declaration.initializer, depth + 1, scope);
+          scope.env.set(declaration.name.text, value);
+          step('binding', declaration, scope);
+        }
+      } else if (ts.isExpressionStatement(statement)) evaluate(statement.expression, depth + 1, scope);
+      else if (!ts.isEmptyStatement(statement)) open('paired-statement-effects-open');
+      return { kind: 'continue', scope };
+    }
+    function returned(completion: Completion): AtomicValue {
+      if (completion.kind === 'continue') return { kind: 'atom', term: JSON.stringify(['undefined']) };
+      if (completion.kind === 'return') {
+        if (completion.value.kind === 'atom') return completion.value;
+        open('paired-record-observables-open');
+        return { kind: 'atom', term: JSON.stringify(['unknown']) };
+      }
+      return choose(completion.condition, returned(completion.truthy), returned(completion.falsy));
+    }
+    let output: AtomicValue;
+    if (!node.body) {
+      open('paired-body-unavailable');
+      output = { kind: 'atom', term: JSON.stringify(['unknown']) };
+    } else if (ts.isBlock(node.body)) output = returned(sequence(node.body.statements, initial, 0));
+    else {
+      const value = evaluate(node.body, 0, initial);
+      step('return', node.body, initial);
+      output = returned({ kind: 'return', value });
+    }
+    return { output: reasons.size ? null : digest(output.term), reasons: [...reasons] };
   }
   for (const subject of replay.domain) {
     const path = pathOf(subject);

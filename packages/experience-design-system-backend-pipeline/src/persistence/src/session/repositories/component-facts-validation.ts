@@ -1,7 +1,11 @@
 import { z } from 'zod';
 import { jsonValueIssue } from '@contentful/experience-design-system-types';
 import { sourceClosureIdentity } from '../../../../steps/extraction/source-closure/source-evidence.js';
-import { FieldReplaySchema, fieldReplayIsConsistent } from '../../../../steps/extraction/src/types/field-replay.js';
+import {
+  FIELD_REPLAY_VERSION,
+  FieldReplaySchema,
+  fieldReplayIsConsistent,
+} from '../../../../steps/extraction/src/types/field-replay.js';
 import {
   FIELD_SEMANTICS_VERSION,
   fieldSemanticsClaimsAreConsistent,
@@ -384,6 +388,19 @@ export function readComponentFacts(value: unknown): ComponentFactsRead {
       typeof collection.fieldSemantics === 'object' &&
       'schemaVersion' in collection.fieldSemantics &&
       collection.fieldSemantics.schemaVersion !== FIELD_SEMANTICS_VERSION
+    )
+      return { status: 'unsupported' };
+    if (
+      collection &&
+      typeof collection === 'object' &&
+      'fieldSemantics' in collection &&
+      collection.fieldSemantics &&
+      typeof collection.fieldSemantics === 'object' &&
+      'relationalReplay' in collection.fieldSemantics &&
+      collection.fieldSemantics.relationalReplay &&
+      typeof collection.fieldSemantics.relationalReplay === 'object' &&
+      'schemaVersion' in collection.fieldSemantics.relationalReplay &&
+      collection.fieldSemantics.relationalReplay.schemaVersion !== FIELD_REPLAY_VERSION
     )
       return { status: 'unsupported' };
     if (

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { FIELD_VALUE_PREMISES } from './field-semantics.js';
 
 export const FIELD_REPLAY_PREMISES = [...FIELD_VALUE_PREMISES, 'declared-own-input-tree'] as const;
+export const FIELD_REPLAY_VERSION = 2;
 const claim = z
   .object({
     status: z.enum(['conditional', 'unknown']),
@@ -19,7 +20,7 @@ const comparison = z.object({ left: z.string().nullable(), right: z.string().nul
 /** A bounded paired derivation, whose runtime and delivery premises remain unestablished. */
 export const FieldReplaySchema = z
   .object({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(FIELD_REPLAY_VERSION),
     semantics: z.literal('paired-own-data-field-flow'),
     status: z.enum(['unverified', 'matched', 'mismatch', 'unavailable']),
     componentDeclarationId: z.string().min(1),
@@ -36,10 +37,20 @@ export const FieldReplaySchema = z
     operations: z.array(
       z
         .object({
-          operation: z.enum(['binding', 'spread', 'write', 'read', 'return']),
+          operation: z.enum(['binding', 'spread', 'write', 'read', 'return', 'branch']),
           frame: z.literal(0),
           startOffset: z.number().int().nonnegative(),
           endOffset: z.number().int().nonnegative(),
+          conditions: z.array(
+            z
+              .object({
+                startOffset: z.number().int().nonnegative(),
+                endOffset: z.number().int().nonnegative(),
+                branch: z.enum(['truthy', 'falsy']),
+                term: z.string().min(1),
+              })
+              .strict(),
+          ),
         })
         .strict(),
     ),
@@ -74,7 +85,12 @@ export function fieldReplayIsConsistent(value: SourceFieldReplay): boolean {
     value.operations.length > value.limits.maxOperations ||
     value.domain.length !== value.results.length ||
     new Set(value.domain.map((item) => JSON.stringify(item))).size !== value.domain.length ||
-    value.operations.some((operation) => operation.endOffset <= operation.startOffset)
+    value.operations.some(
+      (operation) =>
+        operation.endOffset <= operation.startOffset ||
+        operation.conditions.length > value.limits.maxDepth ||
+        operation.conditions.some((condition) => condition.endOffset <= condition.startOffset),
+    )
   )
     return false;
   return value.results.every((result, index) => {

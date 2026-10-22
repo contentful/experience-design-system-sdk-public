@@ -1,9 +1,10 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { extractReactComponents } from '../../../../../src/steps/extraction/index.js';
 import { captureSourceEvidence } from '../../../../../src/steps/extraction/index.js';
+import { bindSourceCandidatesToCapture } from '../../../../../src/steps/extraction/index.js';
 import {
   openPipelineDb,
   getOrCreateSession,
@@ -15,17 +16,19 @@ import { fieldReplayIdentity } from '../../../../../src/steps/extraction/src/typ
 import { readComponentFacts } from '../../../../../src/persistence/src/session/repositories/component-facts-validation.js';
 import { buildCompilerEvidenceInline } from '../../../../../src/agents/prompts/helpers/build-compiler-evidence-inline.js';
 import { validateSavedFieldReplay } from '../../../../../src/persistence/src/session/repositories/field-replay-binding.js';
+import { collectFieldReplay } from '../../../../../src/steps/extraction/src/component-facts/collect-field-replay.js';
+import ts from 'typescript';
 
 const directories: string[] = [];
 afterEach(() => directories.splice(0).forEach((directory) => rmSync(directory, { recursive: true, force: true })));
 
-async function extract(body: string, key = 'alpha', maxNodes = 1000) {
+async function extract(body: string, key = 'alpha', maxNodes = 1000, includeGuard = false) {
   const root = mkdtempSync(join(tmpdir(), 'paired-field-'));
   directories.push(root);
   const path = join(root, 'Surface.tsx');
   writeFileSync(
     path,
-    `export function Surface(props: { data: { ${JSON.stringify(key)}: string; beta: string } }) { ${body} }`,
+    `export function Surface(props: { data: { ${JSON.stringify(key)}: string; beta: string }${includeGuard ? '; gate: boolean' : ''} }) { ${body} }`,
   );
   const component = (
     await extractReactComponents([path], undefined, { projectRoot: root, componentObservationLimits: { maxNodes } })
@@ -39,6 +42,7 @@ async function extract(body: string, key = 'alpha', maxNodes = 1000) {
   expect(result).toBeDefined();
   return { root, path, component, semantics, replay, result };
 }
+const branched = (body: string) => extract(body, 'alpha', 1000, true);
 
 it.each(['const next = { ...props.data, alpha: "fixed" }; return next.alpha;'])(
   'compares symbolic values and own-field omission separately: %s',
@@ -65,6 +69,130 @@ it('keeps value independence separate from unknown property creation after omiss
   expect(result.valueIndependence.status).toBe('conditional');
   expect(result.omissionSafety.status).toBe('unknown');
   expect(result.reasons).toContain('paired-property-creation-open');
+});
+
+it.each([
+  'if (props.gate) { const next = { ...props.data, alpha: "first" }; return next.alpha; } const next = { ...props.data, alpha: "second" }; return next.alpha;',
+  'const next = { ...props.data, alpha: "fixed" }; const alias = next; if (props.gate) { alias.alpha = "first"; } else { next.alpha = "second"; } return next.alpha;',
+  'const next = { ...props.data, alpha: "fixed" }; if (props.gate) { next.alpha = "fixed"; } return next.alpha;',
+  'return props.gate ? "first" : "second";',
+])('compares every finite branch with private aliases intact: %s', async (body) => {
+  const { replay, result, component } = await branched(body);
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('conditional');
+  expect(replay.operations.map((operation) => operation.operation)).toContain('branch');
+  expect(readComponentFacts(component.componentFacts).status).toBe('available');
+  const execute = new Function('props', body);
+  for (const gate of [false, true]) {
+    const baseline = execute({ data: { alpha: 'before', beta: 'other' }, gate });
+    expect(execute({ data: { alpha: 'varied', beta: 'other' }, gate })).toBe(baseline);
+    expect(execute({ data: { beta: 'other' }, gate })).toBe(baseline);
+  }
+});
+
+it.each(['if (props.gate) return "fixed"; return "fixed";', 'return props.gate ? "fixed" : "fixed";'])(
+  'collapses equal branch outcomes for a varying or omitted guard: %s',
+  async (body) => {
+    const { replay } = await branched(body);
+    const guard = replay.results.find((result) => result.inputName === 'gate')!;
+    expect(guard.valueIndependence.status).toBe('conditional');
+    expect(guard.omissionSafety.status).toBe('conditional');
+  },
+);
+
+it.each([
+  'const next = { ...props.data }; if (props.gate) { next.alpha = "fixed"; } return next.alpha;',
+  'const next = { ...props.data, alpha: "fixed" }; const alias = next; if (props.gate) { alias.alpha = props.data.alpha; } return next.alpha;',
+  'if (props.gate) return props.data.alpha; return "fixed";',
+  'return props.gate ? props.data.alpha : "fixed";',
+])('retains dependence from any supported branch: %s', async (body) => {
+  const { result } = await branched(body);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.omissionSafety.status).toBe('unknown');
+});
+
+it('keeps unequal guard-controlled outcomes dependent', async () => {
+  const { replay } = await branched('if (props.gate) return "first"; return "second";');
+  const guard = replay.results.find((result) => result.inputName === 'gate')!;
+  expect(guard.valueIndependence.status).toBe('unknown');
+  expect(guard.omissionSafety.status).toBe('unknown');
+});
+
+it('replays branch conditions from full captured source after a live edit', async () => {
+  const { root, path, component } = await branched('if (props.gate) return "first"; return "second";');
+  const capture = await captureSourceEvidence({ projectRoot: root, filePaths: [path] });
+  const bound = bindSourceCandidatesToCapture([component], capture.files)[0]!;
+  writeFileSync(path, 'changed');
+  const checked = validateSavedFieldReplay(bound.componentFacts!.sourceObservations!.fieldSemantics!, capture.files);
+  expect(checked.relationalReplay!.status).toBe('matched');
+  expect(checked.relationalReplay!.operations.map((operation) => operation.operation)).toContain('branch');
+});
+
+it('does not reinterpret an earlier replay semantics version', async () => {
+  const { component, replay } = await extract('return "fixed";');
+  Object.assign(replay, { schemaVersion: 1 });
+  replay.identity = fieldReplayIdentity(replay);
+  expect(readComponentFacts(component.componentFacts).status).toBe('unsupported');
+});
+
+it.each(['if (true) return "fixed"; return props.data.alpha;', 'if (false) return props.data.alpha; return "fixed";'])(
+  'uses exact inert literal guards to select feasible alternatives: %s',
+  async (body) => {
+    const { result } = await branched(body);
+    expect(result.valueIndependence.status).toBe('conditional');
+    expect(result.omissionSafety.status).toBe('conditional');
+  },
+);
+
+it.each([
+  'const next = { ...props.data }; const saved = next.alpha; if (props.gate) { next.alpha = "fixed"; } else { next.alpha = "fixed"; } return saved;',
+  'const next = { ...props.data, alpha: "fixed" }; if (props.gate) { props.data.alpha = "other"; } return next.alpha;',
+  'const next = { ...props.data, alpha: "fixed" }; if (props.gate) { unknown(next); } return next.alpha;',
+  'const next = { ...props.data, alpha: "fixed" }; if (props.gate) { const next = { alpha: props.data.alpha }; } return next.alpha;',
+  'const next = { ...props.data, alpha: "fixed" }; return props.gate ? (next.alpha = "first") : next.alpha;',
+  'return props.gate ? { alpha: "first" } : { alpha: "second" };',
+])('retains snapshots, effects and unsupported branch states: %s', async (body) => {
+  const { result } = await branched(body);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.omissionSafety.status).toBe('unknown');
+});
+
+it('binds guard occurrences and alternatives rather than trusting a rehashed fabricated trace', async () => {
+  const { root, path, component, replay } = await branched('if (props.gate) return "first"; return "second";');
+  const operation = replay.operations.find((operation) => operation.conditions.length)!;
+  expect(operation).toBeDefined();
+  operation.conditions[0]!.branch = operation.conditions[0]!.branch === 'truthy' ? 'falsy' : 'truthy';
+  replay.identity = fieldReplayIdentity(replay);
+  expect(readComponentFacts(component.componentFacts).status).toBe('available');
+  const capture = await captureSourceEvidence({ projectRoot: root, filePaths: [path] });
+  const bound = bindSourceCandidatesToCapture([component], capture.files)[0]!;
+  const checked = validateSavedFieldReplay(
+    bound.componentFacts!.sourceObservations!.fieldSemantics!,
+    capture.files,
+  ).relationalReplay!;
+  expect(checked.status).toBe('mismatch');
+  expect(
+    checked.results.every(
+      (result) => result.valueIndependence.status === 'unknown' && result.omissionSafety.status === 'unknown',
+    ),
+  ).toBe(true);
+});
+
+it('bounds branch expansion and records exhausted paths as unknown', async () => {
+  const { path, semantics, replay } = await branched(
+    'const next = { ...props.data, alpha: "fixed" }; if (props.gate) { next.alpha = "first"; } else { next.alpha = "second"; } if (props.gate) { next.alpha = "third"; } return next.alpha;',
+  );
+  const source = ts.createSourceFile(path, readFileSync(path, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const node = source.statements.find(ts.isFunctionDeclaration)!;
+  const bounded = collectFieldReplay(node, semantics, { ...replay.limits, maxNodes: 100 });
+  expect(bounded.used.nodes).toBeLessThanOrEqual(100);
+  expect(bounded.used.maxDepth).toBeLessThanOrEqual(bounded.limits.maxDepth);
+  expect(bounded.results.some((result) => result.reasons.includes('paired-flow-bound'))).toBe(true);
+  expect(
+    bounded.results
+      .filter((result) => result.reasons.includes('paired-flow-bound'))
+      .every((result) => result.valueIndependence.status === 'unknown' && result.omissionSafety.status === 'unknown'),
+  ).toBe(true);
 });
 
 it.each([
