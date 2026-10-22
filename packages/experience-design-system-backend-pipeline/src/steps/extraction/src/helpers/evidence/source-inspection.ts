@@ -66,7 +66,12 @@ function hasSiblingForwardRender(sourceText: string, siblingImports: string[]): 
 }
 
 function hasVisibleUiRender(sourceText: string): boolean {
-  return /return\s*(?:\(|<)/.test(sourceText) && VISIBLE_UI_TAG_PATTERN.test(sourceText);
+  if (/return\s*(?:\(|<)/.test(sourceText) && VISIBLE_UI_TAG_PATTERN.test(sourceText)) return true;
+  if (/template\s*:\s*[`'"][\s\S]*?[`'"]/.test(sourceText)) {
+    const inlineMatch = sourceText.match(/template\s*:\s*[`'"]([\s\S]*?)[`'"]/);
+    if (inlineMatch && VISIBLE_UI_TAG_PATTERN.test(inlineMatch[1]!)) return true;
+  }
+  return /templateUrl\s*:\s*['"]/.test(sourceText);
 }
 
 function infraPropNames(component: RawComponentDefinition): string[] {
