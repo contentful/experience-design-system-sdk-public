@@ -29,6 +29,8 @@ import {
 import { projectAcceptedRawSlots } from '../../steps/exploration/src/services/project-accepted-slots.js';
 import { loadScopeDecisions } from '../../persistence/src/session/repositories/db.js';
 import { buildCachedComponentResult } from './helpers/build-cached-component-result.js';
+import { modelExplorationComplete } from '@contentful/experience-design-system-types';
+import { loadRepresentationPlans } from '../../persistence/src/session/repositories/representation-plans.js';
 
 export type {
   GenerateComponentsProgress,
@@ -120,12 +122,20 @@ export async function runGenerateComponentsSession(
 
     const duplicateNames = collectDuplicateNames(components);
     const resumed = new Set<string>();
+    const modelExplorationPending = new Set<string>();
     if (request.debugResume) {
       for (const component of components) {
-        if (evaluateComponentReadiness(db, request.sessionId, component.component_id).definition.ready)
+        if (evaluateComponentReadiness(db, request.sessionId, component.component_id).definition.ready) {
           resumed.add(component.component_id);
+          if (
+            loadRepresentationPlans(db, request.sessionId, component.component_id).some(
+              (row) => !modelExplorationComplete(row.plan),
+            )
+          )
+            modelExplorationPending.add(component.component_id);
+        }
       }
-      if (request.debugRequireComplete && resumed.size !== components.length)
+      if (request.debugRequireComplete && (resumed.size !== components.length || modelExplorationPending.size))
         throw new Error('Some saved definitions are held or incomplete; resume from generation.');
     }
     const invoker = createLocalCliAgentInvoker({});
@@ -134,7 +144,7 @@ export async function runGenerateComponentsSession(
       components,
       concurrency,
       async (component, index, signal) => {
-        if (resumed.has(component.component_id)) {
+        if (resumed.has(component.component_id) && !modelExplorationPending.has(component.component_id)) {
           throwIfAborted(signal);
           request.onProgress?.({ kind: 'component:resumed', index, total: components.length, name: component.name });
           return { ...buildCachedComponentResult(component.name), cached: false };
@@ -142,6 +152,7 @@ export async function runGenerateComponentsSession(
         return runOneGenerateComponent(
           {
             db,
+            resumeModelExploration: modelExplorationPending.has(component.component_id),
             explorationRunIds,
             sessionId: request.sessionId,
             invoker,

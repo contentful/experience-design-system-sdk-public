@@ -1,4 +1,10 @@
 import { persistReviewEntry } from './persist-review-entry.js';
+import {
+  refreshReviewComponents,
+  reviewAcceptCascade,
+  reviewComponentLabel,
+  reviewSourceOwner,
+} from './review-models.js';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import figures from 'figures';
 import { PALETTE } from '@tui/theme.js';
@@ -23,7 +29,7 @@ import {
   type NodeStatus,
 } from '../07-scope-gate/graph/composite-closure.js';
 import { buildComponentGraph } from '../07-scope-gate/graph/slot-graph.js';
-import { computeCycleView, type CycleView } from './graph/cycle-view.js';
+import { buildVisualComponentGraph, computeCycleView, type CycleView } from './graph/cycle-view.js';
 import { computeRenderStatuses, pickDrillTarget, type RenderStatus } from './graph/issue-inheritance.js';
 import { removedComponentsHeader, removedComponentLine } from './components/removed-components-text.js';
 import { useImmediateInput } from '../07-scope-gate/sidebar/hooks/useImmediateInput.js';
@@ -613,6 +619,10 @@ function GenerateReviewStepView({
   };
 
   const componentGraph = useMemo<ComponentGraphNode[]>(() => buildComponentGraph(components), [components]);
+  const displayLabelByKey = useMemo(
+    () => new Map(components.map((row) => [row.key, reviewComponentLabel(components, row)])),
+    [components],
+  );
   const sidebarGraph = useMemo<ComponentGraphNode[]>(
     () => buildComponentGraph(components, { stripRejectedEdges: true }),
     [components],
@@ -654,7 +664,7 @@ function GenerateReviewStepView({
     });
     if (decision === 'skip') return;
     autoRejectFiredRef.current = true;
-    const targets = computeCycleAutoRejectTargets(slotCycles, componentGraph);
+    const targets = computeCycleAutoRejectTargets(cycleView.pushBlocking, componentGraph);
     if (targets.size === 0) return;
     const snapshot = new Map<string, ReviewComponentStatus>();
     const flipped: string[] = [];
@@ -673,6 +683,7 @@ function GenerateReviewStepView({
   const applyHistorySnapshot = (snap: HistorySnapshot): void => {
     const restored: CdfReviewEntry[] = snap.components.map((c) => ({
       key: c.key,
+      componentId: c.componentId,
       entry: c.entry,
       status: c.status,
     }));
@@ -917,12 +928,13 @@ function GenerateReviewStepView({
         },
       },
     };
-    const next = components.map((component) =>
+    let next = components.map((component) =>
       component.key === target.key ? { ...component, entry: nextEntry } : component,
     );
     try {
       const persisted = persistReviewEntry(extractSessionId, target, nextEntry);
       if (!persisted.ok) throw new Error(persisted.error);
+      if (persisted.components) next = refreshReviewComponents(next, persisted.components);
       setComponents(next);
       const warnings = [...persisted.warnings];
       try {
@@ -1243,7 +1255,7 @@ function GenerateReviewStepView({
     if (input === 'F' || input === 'f') {
       if (!reviewEditor.handleEditSave()) return;
       const acceptedNames = new Set(components.filter((c) => c.status === 'accepted').map((c) => c.key));
-      const acceptedSubgraph: ComponentGraphNode[] = componentGraph.filter((n) => acceptedNames.has(n.name));
+      const acceptedSubgraph = buildVisualComponentGraph(components).filter((n) => acceptedNames.has(n.name));
       if (cycleView.error) {
         setFinalizeError(cycleView.error);
         return;
@@ -1288,7 +1300,7 @@ function GenerateReviewStepView({
     if (input === 'a') {
       const current = components[selectedIdx];
       if (!current) return;
-      const cascade = computeAcceptCascade(current.key, componentGraph);
+      const cascade = reviewAcceptCascade(current, components);
       const next = components.map((c) =>
         cascade.has(c.key) ? { ...c, status: 'accepted' as ReviewComponentStatus } : c,
       );
@@ -1305,8 +1317,17 @@ function GenerateReviewStepView({
       return;
     }
     if (input === 'A') {
+      const accepted = new Set(
+        components
+          .filter(
+            (c) =>
+              (c.status === 'needs-review' || c.status === 'reviewed') &&
+              (!c.entry.$model || reviewSourceOwner(components, c)?.status !== 'rejected'),
+          )
+          .flatMap((c) => [...reviewAcceptCascade(c, components)]),
+      );
       const next = components.map((c) =>
-        c.status === 'needs-review' ? { ...c, status: 'accepted' as ReviewComponentStatus } : c,
+        accepted.has(c.key) ? { ...c, status: 'accepted' as ReviewComponentStatus } : c,
       );
       setComponents(next);
       setFinalizeError(null);
@@ -1590,6 +1611,7 @@ function GenerateReviewStepView({
               renderStatusByKey={renderStatusByKey}
               previewAnnotationByKey={previewAnnotationByKey}
               selectionStateByKey={selectionStateByKey}
+              displayLabelByKey={displayLabelByKey}
               scrollOffset={sidebarScrollOffset}
               visibleCount={visibleCount}
               dimPredicate={dimPredicate}
@@ -1605,7 +1627,7 @@ function GenerateReviewStepView({
           )}
           {selected ? (
             <ReviewComponentPanel
-              selectedKey={selected.key}
+              selectedKey={displayLabelByKey.get(selected.key) ?? selected.key}
               selectedEntry={selected.entry}
               componentRationale={componentRationale}
               reviewMetadata={reviewMetadata}

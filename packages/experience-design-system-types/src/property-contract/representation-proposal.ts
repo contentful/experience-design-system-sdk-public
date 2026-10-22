@@ -29,6 +29,12 @@ export interface RepresentationProposalDraft {
     unresolvedRequirements: string[];
   };
 }
+
+export const REPRESENTATION_PROPOSAL_EVIDENCE_FIELDS = {
+  declaredConstraints: 'statement',
+  provenConstraints: 'statement',
+  observations: 'value',
+} as const;
 export interface MapperReadiness {
   requirements: Array<{ path: string; capability: string; availability: MapperAvailability }>;
   status: MapperAvailability;
@@ -72,14 +78,16 @@ export function validateProposalDraft(input: unknown): PropertyIssue[] {
     new Set(draft.sourceNodeIds).size !== draft.sourceNodeIds.length
   )
     issues.push({ path: '/sourceNodeIds', message: 'Expected unique source node identities' });
-  for (const channel of ['declaredConstraints', 'provenConstraints', 'observations'] as const) {
+  for (const [channel, member] of Object.entries(REPRESENTATION_PROPOSAL_EVIDENCE_FIELDS) as Array<
+    [keyof typeof REPRESENTATION_PROPOSAL_EVIDENCE_FIELDS, 'statement' | 'value']
+  >) {
     const values = draft[channel];
     if (!Array.isArray(values)) {
-      issues.push({ path: `/${channel}`, message: 'Expected evidence list' });
+      issues.push({ path: `/${channel}`, message: `Expected evidence list of { nodeId, ${member} } objects` });
       continue;
     }
     values.forEach((value, i) => {
-      const allowed = channel === 'observations' ? ['nodeId', 'value'] : ['nodeId', 'statement'];
+      const allowed = ['nodeId', member];
       if (
         !value ||
         typeof value !== 'object' ||
@@ -89,7 +97,10 @@ export function validateProposalDraft(input: unknown): PropertyIssue[] {
           ? !Object.hasOwn(value, 'value')
           : typeof (value as { statement?: unknown }).statement !== 'string')
       )
-        issues.push({ path: `/${channel}/${i}`, message: 'Invalid evidence reference' });
+        issues.push({
+          path: `/${channel}/${i}`,
+          message: `Invalid evidence reference; expected { nodeId, ${member} }`,
+        });
     });
   }
   if (!TARGET_PROPERTY_TYPES.includes(draft.desiredType) || draft.desiredDefinition?.type !== draft.desiredType)

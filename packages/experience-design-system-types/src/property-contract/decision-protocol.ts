@@ -1,5 +1,9 @@
 import { CDF_PROPERTY_TYPES } from '../cdf/vocabularies.js';
-import { parseClassificationMetadata, type ClassifiedPropertyCall } from './classification.js';
+import {
+  parseClassificationMetadata,
+  parseClassificationDefaultMetadata,
+  type ClassifiedPropertyCall,
+} from './classification.js';
 import { cloneJson, jsonValueIssue, parseStrictJson, own } from './json-value.js';
 import { validateProposalDraft } from './representation-proposal.js';
 import { isSourceBoundRepresentation } from './source-representation.js';
@@ -57,6 +61,7 @@ const fields = {
     'members',
     'allowedResources',
     'representation_proposal',
+    'representation_selection',
     'null_handling',
   ],
 } as const;
@@ -117,7 +122,40 @@ export function normalizeClassificationCalls(values: readonly unknown[]): Normal
           if (!call.source_revision?.trim() || !call.source_node_id?.trim())
             throw new Error('Null handling requires the current source revision and property root node');
         }
-        if (own(rec, 'cdf_type')) {
+        if (own(rec, 'representation_selection')) {
+          const selection = call.representation_selection;
+          if (
+            !selection ||
+            typeof selection !== 'object' ||
+            Array.isArray(selection) ||
+            selection.strategy !== 'component-model' ||
+            typeof selection.candidateId !== 'string' ||
+            !selection.candidateId.trim() ||
+            Object.keys(selection).some((key) => !['strategy', 'candidateId'].includes(key))
+          )
+            throw new Error('Invalid model representation selection');
+          if (!call.source_revision?.trim() || !call.source_node_id?.trim())
+            throw new Error('Model selection requires the current source revision and property root node');
+          if (!call.reason?.trim()) throw new Error('Model selection requires a source-grounded reason');
+          if (
+            [
+              'cdf_type',
+              'values',
+              'token_kind',
+              'items',
+              'fields',
+              'value',
+              'valueType',
+              'discriminator',
+              'members',
+              'allowedResources',
+              'representation_proposal',
+            ].some((key) => own(rec, key))
+          )
+            throw new Error('Model selection cannot also select a native property definition');
+          const issues = parseClassificationDefaultMetadata(rec, call);
+          if (issues.length) throw new Error(issues.join('; '));
+        } else if (own(rec, 'cdf_type')) {
           if (typeof rec.cdf_type !== 'string' || !(CDF_PROPERTY_TYPES as readonly string[]).includes(rec.cdf_type))
             throw new Error('Invalid representation type');
           if (own(rec, 'token_kind') && rec.cdf_type !== 'token')
@@ -128,7 +166,11 @@ export function normalizeClassificationCalls(values: readonly unknown[]): Normal
           if (issues.length) throw new Error(issues.join('; '));
           if (own(rec, 'representation_proposal')) {
             const issues = validateProposalDraft(call.representation_proposal);
-            if (issues.length) throw new Error(issues.map((issue) => `${issue.path}: ${issue.message}`).join('; '));
+            if (issues.length)
+              throw new Error(
+                `property:${call.prop}: ` +
+                  issues.map((issue) => `/representation_proposal${issue.path}: ${issue.message}`).join('; '),
+              );
             if (
               !call.representation_proposal ||
               call.representation_proposal.desiredType !== call.cdf_type ||

@@ -5,6 +5,7 @@ import {
   accountClassificationCalls,
   parseClassificationToolLines,
   parseStrictJson,
+  hasPropertyRepresentation,
   type DecisionInventory,
 } from '@contentful/experience-design-system-types';
 import type { RawComponentDefinition } from '../../../../extraction/src/types/component.js';
@@ -23,8 +24,10 @@ export function validateGenerationRepresentationDraft(evidence: RepresentationVa
   const diagnostics = [...parsed.warnings, ...accounting.issues];
   diagnostics.push(
     ...accounting.accepted.flatMap((call) =>
-      call.tool === 'classify_prop' && !call.cdf_type
-        ? [`property:${call.prop}: cdf_type must be selected before generation completes`]
+      call.tool === 'classify_prop' && !hasPropertyRepresentation(call)
+        ? [
+            `property:${call.prop}: cdf_type or a source-bound model selection must be selected before generation completes`,
+          ]
         : [],
     ),
   );

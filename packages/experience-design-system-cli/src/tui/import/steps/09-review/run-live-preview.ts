@@ -78,13 +78,6 @@ export async function runLivePreview(opts: RunLivePreviewOptions): Promise<LiveP
     }
   }
 
-  // Narrow to the accepted set when provided, so the preview reflects exactly
-  // what a push of those components would create/update/remove — the session's
-  // generated rows still include not-yet-reclassified rejects at this point.
-  if (opts.acceptedKeys) {
-    components = components.filter((c) => opts.acceptedKeys!.has(c.key));
-  }
-
   let tokens: import('@contentful/experience-design-system-types').DTCGTokenEntry[] = [];
   if (tokensPath) {
     tokens = await readTokensFromPath({ flag: 'tokens', path: tokensPath });

@@ -1,6 +1,8 @@
 import {
   accountClassificationCalls,
   parseClassificationToolLines,
+  REPRESENTATION_PROPOSAL_EVIDENCE_FIELDS,
+  hasPropertyRepresentation,
   type ClassificationToolCall,
   type DecisionInventory,
 } from '@contentful/experience-design-system-types';
@@ -55,7 +57,7 @@ export async function generateCompleteDecisions(options: CompleteDecisionOperati
   const notes: string[] = [];
   let missing = accountClassificationCalls(options.inventory, []).missing;
   const isPending = (key: string, call: ClassificationToolCall): boolean =>
-    pending.has(key) || (call.tool === 'classify_prop' && !call.cdf_type);
+    pending.has(key) || (call.tool === 'classify_prop' && !hasPropertyRepresentation(call));
   const finish = (complete: boolean, additional: string[] = []): CompleteDecisionResult => ({
     calls: [...accepted.values()],
     diagnostics: [
@@ -70,11 +72,11 @@ export async function generateCompleteDecisions(options: CompleteDecisionOperati
     complete:
       complete &&
       !pending.size &&
-      [...accepted.values()].every((call) => call.tool !== 'classify_prop' || !!call.cdf_type),
+      [...accepted.values()].every((call) => call.tool !== 'classify_prop' || hasPropertyRepresentation(call)),
     representationsComplete:
       complete &&
       !pending.size &&
-      [...accepted.values()].every((call) => call.tool !== 'classify_prop' || !!call.cdf_type),
+      [...accepted.values()].every((call) => call.tool !== 'classify_prop' || hasPropertyRepresentation(call)),
     representationFeedback: [...pending.values()],
     representationValidatorAvailable: !!validator,
   });
@@ -94,6 +96,18 @@ export async function generateCompleteDecisions(options: CompleteDecisionOperati
         notes.push('Read-only representation validator unavailable; host validation remains authoritative');
       }
     }
+    const proposalEvidenceChannels = Object.fromEntries(
+      Object.entries(REPRESENTATION_PROPOSAL_EVIDENCE_FIELDS).map(([channel, member]) => [
+        channel,
+        {
+          type: 'array',
+          item: {
+            nodeId: '<current source node id>',
+            [member]: member === 'statement' ? '<source-grounded statement string>' : '<JSON observation value>',
+          },
+        },
+      ]),
+    );
     const originalPrompt = `## Required decision inventory
 
 The following host-owned inventory is the exact set of subjects validated for this component. Source evidence and advisory prop lists explain these subjects but do not change this inventory.
@@ -102,11 +116,24 @@ ${JSON.stringify(options.inventory)}
 - Emit exactly one classify_component.
 - Each name in properties requires exactly one classify_prop or reasoned exclude_prop, even when absent from the advisory props or also used as a slot name.
 - Each name in slots requires exactly one classify_slot. A slot accounts for a source property only through an explicit sourceInput association in this inventory; that owned property is already omitted from properties. Matching names alone do not establish ownership.
-- Every classify_prop requires cdf_category set to content, design or state and a supported cdf_type. Missing cdf_type is an incomplete draft and cannot finish generation. Use source evidence to select the simplest compatible editable representation; never infer a category or invent a type just to satisfy validation.
+- Every classify_prop requires cdf_category set to content, design or state and either a supported native cdf_type or a source-bound representation_selection. An input without either representation cannot finish generation. Use source evidence to select the simplest compatible editable representation; never infer a category or invent a type just to satisfy validation.
 - Preserve compiler nullability independently from the authoring representation. Null is not automatically optional. When source behavior establishes that null and omission are equivalent, choose the underlying editable type, preserve declared requiredness, and include null_handling [{sourceNodeId, handling: "omit-equivalent", reason}] plus the current source_revision and source_node_id. The judgment must identify the nullable union and explain defaults, comparisons, forwarding and output effects from supplied evidence. Use "distinct" or "unknown" when equivalence is not established; never substitute empty strings, false, zero or empty containers for null. Ordinary scalar fields cannot carry null defaults; an omission-equivalent source null default stays in source evidence rather than the editable default.
 - If source semantics justify excluding a property, use exclude_prop with a nonblank reason rather than a classify_prop missing its category.
 
 ${options.representationValidation ? `## Current property representation identities\n${JSON.stringify(buildRepresentationContext({ ...options.representationValidation, inventory: options.inventory }))}\nSource-bound proposals must copy the current identities and cite these output-use references; mapper readiness remains caller-owned.` : ''}
+
+## Source-derived model selection
+
+When native fields cannot preserve a structured input, select its supplied component-model candidate in the classify_prop call:
+{"tool":"classify_prop","prop":"<exact source property>","cdf_category":"content","representation_selection":{"strategy":"component-model","candidateId":"<id from this property's analysisRepresentationCandidates>"},"source_revision":"<current sourceRevision>","source_node_id":"<current nodeId>","description":"<what this input supplies>","reason":"<source-grounded modeling judgment>"}
+Copy the current candidate id and source identity exactly. Prefer native Record or Array<Record> when the complete source value fits the category and target position. For the model route omit cdf_type and all native definition companions, including fields, items and representation_proposal. The host derives compact models for editable data, represents model arrays as ordered slots, and records optional unions and single-field structural envelopes as reconstruction mappings where instance boundaries can be preserved. It retains recursive references, nested collection grouping, nullable/empty element positions, defaults and every logical source node. Do not create Components or prescribe a model count from nullable syntax, names or frameworks. A generated model slot accounts for this property through its plan; do not add a classify_slot call or change the source-slot inventory. Defaults and null_handling may be supplied when source-grounded; requiredness remains compiler-owned. Keep deployment and rendering requirements explicit in the plan; deferred runtime support does not prevent completion of a valid local model definition. Opaque or incomplete source graphs still cannot complete.
+
+## Exact representation_proposal wire format
+
+Include a proposal only for the representation selected in this classify_prop call, never for a different alternative. Its desiredType must equal cdf_type exactly (including case), desiredDefinition.type must equal desiredType, and key and name must both equal the exact source property. desiredDefinition is the complete target definition for that same call, including its description, requiredness and any other selected definition metadata. Copy the current componentId, propertyId, sourceRevision and sourceNodeIds from the supplied identities.
+The evidence channels have these exact array-item shapes:
+${JSON.stringify(proposalEvidenceChannels)}
+Use [] for an evidence channel with no supplied evidence. Do not emit constraint objects, free-text lists or an invented schema in these channels. Each item must cite a current source node. Keep the nonempty source-grounded judgment string separate from those evidence lists. compatibility contains status (judged-compatible, unresolved or contradicted), sourceUseRefs (current reference strings) and unresolvedRequirements (nonempty requirement strings, or []). Readiness is host-owned; a correctly shaped proposal does not prove compatibility or mapper support.
 
 ${validator?.instructions ?? notes.join('\n')}
 
@@ -138,7 +165,7 @@ ${options.originalPrompt}`;
               missingOrRejectedSubjects: missing,
               diagnostics,
               previousResponse,
-            })}\nReturn only decisions for missing/rejected subjects and the reported pending representations. Preserve successful decisions and the original source exactly. Repair only representation metadata on pending semantic decisions: preserve the property, category, description and source identity; do not replace them with exclusions. Every retained property must select cdf_type. Resolve null handling from source behavior rather than demanding an editor control for every TypeScript union member. If compatibility remains unresolved, retain the chosen type and explain the concrete limitation in reason; validation will keep the component incomplete rather than silently completing it.\n\n${originalPrompt}`;
+            })}\nReturn only decisions for missing/rejected subjects and the reported pending representations. Preserve successful decisions and the original source exactly. Repair only representation metadata on pending semantic decisions: preserve the property, category, description and source identity; do not replace them with exclusions. Every retained property must select a native cdf_type or a supplied source-bound component-model candidate through representation_selection. Resolve null handling from source behavior rather than demanding an editor control for every TypeScript union member. If compatibility remains unresolved, retain the chosen type and explain the concrete limitation in reason; validation will keep the component incomplete rather than silently completing it.\n\n${originalPrompt}`;
       let result;
       try {
         let onAbort: (() => void) | undefined;
@@ -175,8 +202,10 @@ ${options.originalPrompt}`;
       diagnostics = [...parsed.warnings];
       diagnostics.push(
         ...parsed.calls.flatMap((call) =>
-          call.tool === 'classify_prop' && !call.cdf_type
-            ? [`property:${call.prop}: cdf_type must be selected before generation completes`]
+          call.tool === 'classify_prop' && !hasPropertyRepresentation(call)
+            ? [
+                `property:${call.prop}: cdf_type or a source-bound model selection must be selected before generation completes`,
+              ]
             : [],
         ),
       );
@@ -206,6 +235,8 @@ ${options.originalPrompt}`;
         }
         try {
           options.validate?.(call);
+          if (call.tool === 'classify_prop' && call.representation_selection && !options.representationValidation)
+            throw new Error('Model selection requires current source validation evidence');
           if (call.tool === 'classify_prop' && options.representationValidation) {
             const validation = validateGenerationPropertyDecision(
               options.representationValidation.component,

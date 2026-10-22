@@ -7,6 +7,7 @@ import {
   type CDFComponentEntry,
 } from '@contentful/experience-design-system-types';
 import type { RawComponentDefinition } from '../../../extraction/src/types/component.js';
+import { hasBoundComponentDeclaration } from '../../../extraction/src/component-facts/component-declaration-binding.js';
 
 function componentSourceInputIsBound(
   component: RawComponentDefinition & { component_id?: string },
@@ -14,7 +15,6 @@ function componentSourceInputIsBound(
 ): boolean {
   const observations = component.componentFacts?.sourceObservations;
   const flow = observations?.inputOutput;
-  const closure = component.componentFacts?.sourceClosure;
   return !!(
     SourceInputAssociationSchema.safeParse(input).success &&
     input.inputPath[0] === input.inputName &&
@@ -42,8 +42,7 @@ function componentSourceInputIsBound(
         JSON.stringify(declared.inputPath) === JSON.stringify(input.inputPath) &&
         declared.declaration.binding === 'verified',
     ) &&
-    closure?.rootId === input.componentDeclarationId &&
-    closure.nodes.some((node) => node.id === closure.rootId && node.location.binding === 'verified')
+    hasBoundComponentDeclaration(observations)
   );
 }
 

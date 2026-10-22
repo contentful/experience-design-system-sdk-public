@@ -9,6 +9,9 @@ import {
   LOCAL_NATIVE_PROPERTY_PROFILE,
   deriveRepresentationAlternatives,
   deriveEditableRepresentationPlans,
+  prepareAnalysisRepresentationCandidates,
+  validateRepresentationPlan,
+  validateNullHandlingSource,
   type RepresentationPlan,
   type ClassifiedPropertyCall,
   type CDFPropertyDefinition,
@@ -17,6 +20,7 @@ import {
   type RepresentationAlternative,
   type CDFFieldDefinition,
   type TargetDefinition,
+  type JsonValue,
   isSourceBoundRepresentation,
   cdfToTarget,
 } from '@contentful/experience-design-system-types';
@@ -30,17 +34,20 @@ export interface MaterializedProperty {
   projection?: PropertyProjection;
   alternatives?: RepresentationAlternative[];
   representationPlans?: RepresentationPlan[];
+  selectedRepresentationPlan?: RepresentationPlan;
 }
 export function materializeProperty(
   component: RawComponentDefinition,
   call: ClassifiedPropertyCall,
   componentId = component.name,
-  options: { defaultAuthority?: PropertyModel['defaultAuthority'] } = {},
+  options: { defaultAuthority?: PropertyModel['defaultAuthority']; representationContext?: JsonValue } = {},
 ): MaterializedProperty {
   const raw = component.props.find((prop) => prop.name === call.prop);
   const candidate = component.sourceCandidates?.find((candidate) => candidate.name === call.prop);
   const fact = candidate?.facts;
   if (!raw && !candidate) throw new Error(`Unknown property '${call.prop}'`);
+  if (call.representation_selection && (!fact?.sourceGraph || call.cdf_type))
+    throw new Error('Model selection requires compiler evidence and cannot also select a native field');
   if (call.null_handling && (!fact?.sourceGraph || !call.source_revision || !call.source_node_id))
     throw new Error('Null handling requires current compiler source evidence and source identity');
   const omitSourceNullDefault =
@@ -111,12 +118,41 @@ export function materializeProperty(
   const model: PropertyModel = {
     ...sourceModel,
     category: call.cdf_category,
+    ...(call.representation_selection && call.description !== undefined ? { description: call.description } : {}),
     ...(definition ? { representation: cloneJson(definition) } : {}),
     ...(call.representation_proposal ? { representationProposal: cloneJson(call.representation_proposal) } : {}),
     ...(call.null_handling ? { nullHandling: cloneJson(call.null_handling) } : {}),
     defaultIntent: intent,
     defaultAuthority: options.defaultAuthority ?? 'generation',
   };
+  if (call.representation_selection) {
+    if (!call.source_revision || !call.source_node_id)
+      throw new Error('Model selection requires the current source revision and property root node');
+    const candidates = prepareAnalysisRepresentationCandidates(sourceModel);
+    if (
+      !candidates.candidates.some(
+        (choice) => choice.strategy === 'component-model' && choice.id === call.representation_selection!.candidateId,
+      )
+    )
+      throw new Error('Model selection is not a current source-derived candidate');
+    if (
+      call.required !== undefined &&
+      call.required !== fact.sourceGraph!.nodes.find((node) => node.id === fact.sourceGraph!.rootId)?.required
+    )
+      throw new Error('Model selection changes source requiredness');
+    const nullIssues = model.nullHandling ? validateNullHandlingSource(model.nullHandling, model.source.graph) : [];
+    if (nullIssues.length) throw new Error(nullIssues.map((issue) => `${issue.path}: ${issue.message}`).join('; '));
+    const representationPlans = deriveEditableRepresentationPlans(model, { context: options.representationContext });
+    const plan = representationPlans.find((choice) => choice.kind === 'component-model');
+    const issues = plan ? validateRepresentationPlan(plan, model, options.representationContext) : [];
+    return {
+      definition: null,
+      call: cloneJson(call),
+      model,
+      representationPlans,
+      ...(plan?.sdkValid && !issues.length ? { selectedRepresentationPlan: plan } : {}),
+    };
+  }
   // These capabilities describe this local CDF materializer, not remote mapper deployment.
   const capabilities: Record<string, 'enabled'> = Object.create(null);
   const context = (d: CDFPropertyDefinition | NonNullable<CDFPropertyDefinition['$items']>, path: string): void => {

@@ -30,10 +30,14 @@ function representationRows(
     case 'mappings':
       return selected.mappings.map((mapping) => {
         const path = mapping.path.map((segment) => String(segment.key)).join(' / ');
-        const destination =
-          (mapping.componentKey ?? mapping.disposition) +
-          (mapping.field ? '.' + mapping.field : '') +
-          (mapping.targetNodeId ? ' → ' + mapping.targetNodeId : '');
+        const operation = mapping.reconstruction;
+        const destination = operation
+          ? operation.kind.replace(/-/g, ' ') +
+            (operation.kind === 'object-envelope' ? ': ' + operation.field : '') +
+            (operation.kind === 'empty-value' ? ': ' + operation.state : '')
+          : (mapping.componentKey ?? mapping.disposition) +
+            (mapping.field ? '.' + mapping.field : '') +
+            (mapping.targetNodeId ? ' → ' + mapping.targetNodeId : '');
         const intent = [
           mapping.required ? 'required' : 'optional',
           ...(mapping.readonly ? ['readonly'] : []),

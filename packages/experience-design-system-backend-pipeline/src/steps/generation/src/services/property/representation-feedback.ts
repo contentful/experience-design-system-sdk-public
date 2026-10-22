@@ -54,19 +54,25 @@ export function validateGenerationPropertyDecision(
   let issues: PropertyIssue[];
   try {
     materialized = materializeProperty(component, call, componentId);
+    if (materialized.selectedRepresentationPlan) return { state: 'ready', retainedCall: cloneJson(call) };
     if (
       materialized.definition &&
       (!materialized.projection || ['supported', 'lossy'].includes(materialized.projection.outcome))
     )
       return { state: 'ready', retainedCall: cloneJson(call) };
-    issues = call.cdf_type
-      ? (materialized.projection?.issues ?? [{ path: '/representation', message: 'No representation decision' }])
-      : [
-          {
-            path: '/cdf_type',
-            message: 'Every retained property requires a selected cdf_type before generation completes',
-          },
-        ];
+    issues = call.representation_selection
+      ? (materialized.representationPlans?.find((plan) => plan.kind === 'component-model')?.issues ?? [
+          { path: '/representation_selection', message: 'No complete source-derived model plan' },
+        ])
+      : call.cdf_type
+        ? (materialized.projection?.issues ?? [{ path: '/representation', message: 'No representation decision' }])
+        : [
+            {
+              path: '/cdf_type',
+              message:
+                'Every retained property requires cdf_type or a source-bound model selection before generation completes',
+            },
+          ];
   } catch (error) {
     issues = [{ path: '/representation', message: error instanceof Error ? error.message : 'Invalid representation' }];
   }
@@ -84,7 +90,7 @@ export function validateGenerationPropertyDecision(
     issues,
     requirements,
     alternatives: cloneJson(retained.alternatives ?? []),
-    representationPlans: (retained.representationPlans ?? []).map((plan) => ({
+    representationPlans: (materialized.representationPlans ?? retained.representationPlans ?? []).map((plan) => ({
       kind: plan.kind,
       ...(plan.nativeDefinition ? { nativeDefinition: cloneJson(plan.nativeDefinition) } : {}),
       sdkValid: plan.sdkValid,
@@ -93,7 +99,7 @@ export function validateGenerationPropertyDecision(
     })),
     draftDecision: cloneJson(call),
     repairInstruction:
-      'Select a supported cdf_type and repair its representation from supplied source facts; preserve the exact property, semantic category and source identity. For nullable source inputs, select the underlying editable type and supply source-bound null_handling judgments when evidence establishes equivalence to omission. Keep distinct or unknown null behavior explicit. Candidate alternatives are unapproved and their mapper, cardinality and other requirements remain explicit. A retained property cannot finish generation without cdf_type. Never narrow an open domain, exclude the retained property to avoid representation repair or invent mapper support.',
+      'Select a supported native cdf_type or a supplied source-bound component-model candidate through representation_selection. The host derives model definitions, attachment slots and mappings; do not emit invented classify_slot subjects. Preserve the exact property, semantic category and source identity. Keep source null/presence distinctions explicit. Model definitions may complete locally while deployment and rendering requirements remain deferred and explicit. Never narrow an open domain, exclude the retained property to avoid representation repair or invent mapper support.',
   };
   return { state: 'pending', retainedCall: cloneJson(call), feedback };
 }

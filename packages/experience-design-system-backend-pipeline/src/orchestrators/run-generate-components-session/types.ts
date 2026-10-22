@@ -2,6 +2,7 @@ import type { AgentDebugEvent } from '../../agents/types/agent-run.js';
 import type { ExistingContentfulEntities } from '../../steps/generation/src/types/existing-entities.js';
 
 export type GenerateComponentsProgress =
+  | { kind: 'component:model-exploring'; index: number; total: number; name: string; modelKey: string }
   | { kind: 'component:resumed'; index: number; total: number; name: string }
   | {
       kind: 'component:started';

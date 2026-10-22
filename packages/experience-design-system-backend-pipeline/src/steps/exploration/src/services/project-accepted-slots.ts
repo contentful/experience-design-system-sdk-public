@@ -1,6 +1,8 @@
 import {
   validateSourceInputOwners,
   sourceInputOwnerKey,
+  cloneJson,
+  jsonEqual,
   type CDFComponentEntry,
   type SlotDecision,
 } from '@contentful/experience-design-system-types';
@@ -45,6 +47,14 @@ export function projectAcceptedSlots(
         ];
       }),
   );
+  for (const plan of Object.values(entry.$representationPlans ?? {})) {
+    if (plan.kind !== 'component-model' || !plan.attachment) continue;
+    const { slot, definition } = plan.attachment;
+    if (!jsonEqual(entry.$slots?.[slot], definition))
+      throw new Error('Generated model attachment disagrees with its selected plan');
+    if (Object.hasOwn(slots, slot)) throw new Error('Source slot and generated model attachment collide');
+    slots[slot] = cloneJson(definition);
+  }
   const { $slots: _slots, ...rest } = entry;
   return Object.keys(slots).length
     ? { ...rest, $properties: properties, $slots: slots }

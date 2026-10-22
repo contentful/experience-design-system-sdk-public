@@ -11,6 +11,7 @@ export * from './decision-protocol.js';
 export * from './property-decision.js';
 
 export * from './representation-plan.js';
+export * from './model-exploration.js';
 export { contentDigest } from './content-digest.js';
 export * from './import-prerequisites.js';
 

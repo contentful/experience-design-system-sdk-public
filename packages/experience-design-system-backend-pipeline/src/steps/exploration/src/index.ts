@@ -65,6 +65,8 @@ export type {
   SlotCandidates,
 } from './types.js';
 export { runExploreStage } from './services/run-explore-stage.js';
+export { runModelComponentExploration } from './services/run-model-component-exploration.js';
+export type { RunModelComponentExplorationRequest } from './services/run-model-component-exploration.js';
 export { parseExploreOutput, unansweredSlotCandidates } from './parsers/parse-explore-output.js';
 export { deriveSelectionFromExploration, selectionComponentKey } from './services/derive-selection.js';
 export { deriveSlotsFromExploration } from './services/derive-slots.js';

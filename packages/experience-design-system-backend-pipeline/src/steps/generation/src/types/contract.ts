@@ -17,6 +17,10 @@ export interface RunCdfGenerationServiceOptions {
   tokens?: DTCGTokenEntry[];
   /** Optional scoped compiler/source-candidate block for alternate fresh-generation callers. */
   compilerEvidenceInline?: string;
+  explorationJudgmentsInline?: string;
+  sharedSource?: import('@contentful/experience-design-system-types').SharedSource;
+  componentSourceRefs?: import('../../../../agents/types/prompts.js').ComponentSourceRef[];
+  onModelExploration?: (componentName: string, modelKey: string) => void;
   agent: AgentName;
   model?: string;
   concurrency?: number;

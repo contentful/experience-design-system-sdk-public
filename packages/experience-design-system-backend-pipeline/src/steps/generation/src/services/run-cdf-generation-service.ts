@@ -1,6 +1,7 @@
 import { generateCompleteDecisions } from './property/complete-decisions.js';
 import { componentDecisionInventory } from './property/decision-inventory.js';
 import { materializeProperty, PropertyAdmissionError } from './property/materialize-property.js';
+import { exploreModelDecisions } from './property/explore-model-decisions.js';
 import { bucketComponentProps } from '../../../extraction/index.js';
 import { stripPropProvenance } from '../../../../agents/prompts/helpers/strip-prop-provenance.js';
 import { createHash } from 'node:crypto';
@@ -14,6 +15,7 @@ import type {
 } from '../types/contract.js';
 import { throwIfAborted } from '../../../../helpers/abort.js';
 import { buildCompilerEvidenceInline } from '../../../../agents/prompts/helpers/build-compiler-evidence-inline.js';
+import { attachComponentModelPlan, type RepresentationPlan } from '@contentful/experience-design-system-types';
 import {
   projectAcceptedSlots,
   projectAcceptedRawSlots,
@@ -26,10 +28,15 @@ function hashString(s: string): string {
   return createHash('sha256').update(s).digest('hex');
 }
 
-function toolCallsToEntry(component: RawComponentDefinition, calls: ToolCall[]): CDFComponentEntry {
+function toolCallsToEntry(
+  component: RawComponentDefinition,
+  calls: ToolCall[],
+  exploredPlans: ReadonlyMap<string, RepresentationPlan>,
+): CDFComponentEntry {
   const properties: Record<string, CDFPropertyDefinition> = Object.create(null);
   const slots: Record<string, CDFSlotDefinition> = Object.create(null);
   let description: string | undefined;
+  const modelPlans: RepresentationPlan[] = [];
 
   const knownProps = new Set(componentDecisionInventory(component).properties);
   const knownSlots = new Set(component.slots.map((s) => s.name));
@@ -40,6 +47,12 @@ function toolCallsToEntry(component: RawComponentDefinition, calls: ToolCall[]):
     } else if (call.tool === 'classify_prop') {
       if (!knownProps.has(call.prop)) continue;
       const materialized = materializeProperty(component, call);
+      if (materialized.selectedRepresentationPlan) {
+        const plan = exploredPlans.get(call.prop);
+        if (!plan) throw new Error(`Generated model exploration missing for ${call.prop}`);
+        modelPlans.push(plan);
+        continue;
+      }
       if (
         !materialized.definition ||
         (materialized.projection && !['supported', 'lossy'].includes(materialized.projection.outcome))
@@ -61,7 +74,7 @@ function toolCallsToEntry(component: RawComponentDefinition, calls: ToolCall[]):
   const entry: CDFComponentEntry = { $type: 'component', $properties: properties };
   if (description) entry.$description = description;
   if (Object.keys(slots).length > 0) entry.$slots = slots;
-  return entry;
+  return modelPlans.reduce(attachComponentModelPlan, entry);
 }
 
 async function generateOne(
@@ -123,8 +136,23 @@ async function generateOne(
   throwIfAborted(options.signal);
   let materialized: CDFComponentEntry;
   try {
-    materialized = toolCallsToEntry(component, calls);
+    const exploredPlans = await exploreModelDecisions(component, calls, {
+      invoker,
+      agent,
+      model,
+      outDir: '',
+      timeoutMs: AGENT_TIMEOUT_MS,
+      operationTimeoutMs: AGENT_TIMEOUT_MS,
+      signal: options.signal,
+      reservedNames: new Set(options.components.map((candidate) => candidate.name)),
+      explorationJudgmentsInline: options.explorationJudgmentsInline,
+      sharedSource: options.sharedSource,
+      sourceRefs: options.componentSourceRefs,
+      onModelStart: (modelKey) => options.onModelExploration?.(component.name, modelKey),
+    });
+    materialized = toolCallsToEntry(component, calls, exploredPlans);
   } catch (error) {
+    throwIfAborted(options.signal);
     return {
       failure: {
         componentName: component.name,

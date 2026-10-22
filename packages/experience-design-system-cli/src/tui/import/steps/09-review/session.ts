@@ -1,7 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 import {
-  loadCDFComponents,
+  loadReviewCDFComponents,
   loadSelectedCDFComponents,
   loadDTCGTokens,
   openPipelineDb,
@@ -35,7 +35,7 @@ export function loadReviewSessionState<TExtra = undefined>({
   let tokens: TokenReviewToken[] = [];
   let extra: TExtra | undefined;
   try {
-    cdfComponents = loadCDFComponents(db, extractSessionId);
+    cdfComponents = loadReviewCDFComponents(db, extractSessionId);
     tokens = loadDTCGTokens(db, tokenSessionId ?? extractSessionId).tokens.map((token) => ({
       path: token.path,
       kind: token.$type,
@@ -106,20 +106,18 @@ export function finalizeReviewSession(extractSessionId: string, components: CdfR
 
   const db = openPipelineDb();
   try {
-    const rows = db
-      .prepare('SELECT component_id,name FROM raw_components WHERE session_id=?')
-      .all(extractSessionId) as Array<{ component_id: string; name: string }>;
+    const rows = loadReviewCDFComponents(db, extractSessionId);
     const identities = new Set<string>();
     const resolved = components.map((component) => {
       const matches = rows.filter((row) =>
-        component.componentId ? row.component_id === component.componentId : row.name === component.key,
+        component.componentId ? row.componentId === component.componentId : row.key === component.key,
       );
-      if (matches.length !== 1 || matches[0]!.name !== component.key || identities.has(matches[0]!.component_id))
+      if (matches.length !== 1 || matches[0]!.key !== component.key || identities.has(matches[0]!.componentId))
         throw new Error('Unknown, ambiguous or duplicate review component identity');
-      identities.add(matches[0]!.component_id);
-      return { ...component, componentId: matches[0]!.component_id };
+      identities.add(matches[0]!.componentId);
+      return { ...component, componentId: matches[0]!.componentId, entry: matches[0]!.entry };
     });
-    loadSelectedCDFComponents(
+    const selected = loadSelectedCDFComponents(
       db,
       extractSessionId,
       new Set(
@@ -128,10 +126,14 @@ export function finalizeReviewSession(extractSessionId: string, components: CdfR
       undefined,
       'definition',
     );
+    const acceptedIds = new Set(resolved.filter((row) => row.status === 'accepted').map((row) => row.componentId));
+    for (const row of selected)
+      if (!acceptedIds.has(row.componentId))
+        throw new Error(`Accepted component requires review and acceptance of ${row.key}`);
     db.exec('BEGIN');
     try {
       const statement = db.prepare('UPDATE raw_components SET status=? WHERE session_id=? AND component_id=?');
-      for (const component of resolved)
+      for (const component of resolved.filter((row) => !row.entry.$model))
         statement.run(
           component.status === 'accepted' ? 'generated' : 'generate-rejected',
           extractSessionId,

@@ -16,6 +16,7 @@ export type Skill =
   | 'debate-select'
   | 'explore-components'
   | 'explore-inventory'
+  | 'explore-model'
   | 'tier'
   | 'verify'
   | 'check';

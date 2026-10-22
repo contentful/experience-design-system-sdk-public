@@ -42,7 +42,7 @@ export interface GenerationProgress {
     | 'mapping-tokens'
     | 'complete';
   exploration?: ExplorationProgressEvent;
-  activeComponents: Array<{ name: string; attempt: number; maxAttempts: number }>;
+  activeComponents: Array<{ name: string; attempt: number; maxAttempts: number; exploringModel?: boolean }>;
   failedComponents: number;
   /** Components finished, out of the total, and the one being worked on. Null until the first progress line. */
   components: { done: number; total: number; current: string } | null;

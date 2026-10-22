@@ -1,7 +1,7 @@
 import {
   openPipelineDb,
-  storeCDFComponents,
-  loadCDFComponents,
+  storeReviewCDFComponent,
+  loadReviewCDFComponents,
 } from '@contentful/experience-design-system-backend-pipeline';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 
@@ -9,17 +9,21 @@ export function persistReviewEntry(
   sessionId: string,
   component: { key: string; componentId?: string },
   entry: CDFComponentEntry,
-): { ok: true; warnings: string[]; entry?: CDFComponentEntry } | { ok: false; error: string } {
+):
+  | { ok: true; warnings: string[]; entry?: CDFComponentEntry; components?: ReturnType<typeof loadReviewCDFComponents> }
+  | { ok: false; error: string } {
   let db: ReturnType<typeof openPipelineDb> | undefined;
   let committed = false;
   let failure = '';
   let canonicalEntry: CDFComponentEntry | undefined;
+  let canonicalComponents: ReturnType<typeof loadReviewCDFComponents> | undefined;
   const warnings: string[] = [];
   try {
     db = openPipelineDb();
-    storeCDFComponents(db, sessionId, [{ ...component, entry }]);
+    storeReviewCDFComponent(db, sessionId, component, entry);
     committed = true;
-    canonicalEntry = loadCDFComponents(db, sessionId).find((row) =>
+    canonicalComponents = loadReviewCDFComponents(db, sessionId);
+    canonicalEntry = canonicalComponents.find((row) =>
       component.componentId ? row.componentId === component.componentId : row.key === component.key,
     )?.entry;
   } catch (error) {
@@ -34,5 +38,7 @@ export function persistReviewEntry(
       else if (!failure) failure = 'Database cleanup failed';
     }
   }
-  return committed ? { ok: true, warnings, entry: canonicalEntry } : { ok: false, error: failure };
+  return committed
+    ? { ok: true, warnings, entry: canonicalEntry, components: canonicalComponents }
+    : { ok: false, error: failure };
 }

@@ -2,6 +2,10 @@
 
 This file tells AI coding agents what they need to know to be productive in this repo. Read it before making changes.
 
+## Local commits
+
+Commit completed implementation changes after the applicable repository checks pass, without waiting for a separate commit request. Stage only changes owned by the current work and use conventional commit messages. Remote publication still requires explicit approval.
+
 ## Repo at a Glance
 
 Nx monorepo with four packages:
@@ -122,6 +126,12 @@ Generation receives current, component-scoped exploration consensus, independent
 
 Both generation entrypoints enable canonical representation validation through `generateCompleteDecisions`. The agent receives structured per-property feedback and may run only the exact supplied read-only draft validator against immutable invocation evidence; live source reads and execution remain forbidden. Two attempts share one deadline, successful decisions remain fixed, and only missing decisions or pending representation metadata may be repaired. Unresolved properties retain semantic decisions and concrete reasons without invalid representation companions; `complete` accounts for the inventory, while `representationsComplete` reports local admission. Held-result review routing remains separate and may still block generation.
 
+Structured inputs may select a supplied compiler-derived `component-model` candidate through `classify_prop.representation_selection`, with its exact candidate ID, source revision and root node. This replaces a native `cdf_type`; it does not authorize invented `classify_slot` subjects. The host derives and validates model definitions, attachment slots and mappings, persists the selected plan atomically with generation decisions, and retains the plan through review/export. Recursive references link existing model definitions rather than truncating the source tree. Complete local model definitions can finish generation while deployment/rendering prerequisites remain explicit and separate; missing source coverage or held mappings still block completion.
+
+Structured-property modeling follows [the general modeling rules](docs/structured-property-modeling.md). Prefer complete native Record/Array representations; create models for independently editable data. The host compacts single-value optional unions, transparent single-field object envelopes and singleton collection wrappers into explicit reconstruction mappings and ordered slots. Every logical source node, default and presence distinction remains accounted for. Preserve nullable/empty array element boundaries, nested collection grouping, real union branches and structural-only recursion; component counts never come from source names or framework recipes.
+
+Selected model definitions appear as actual Components in generation review with source-derived display labels. Their stable review identities include the source owner, property and logical node; edits persist through the owner's selected plan and refresh the entire model family. Accepting a model includes its owner and dependency closure, and finalization requires acceptance of every generated dependency. Selected exports and import payloads include those definitions; model rows are not fabricated source candidates. Only slot edges matching validated model bindings are omitted from visual cycle detection, so recursive data models remain reviewable while ordinary composition cycles retain their checks.
+
 Compiler configuration lookup searches bounded ancestors above the selected source root without widening discovery or component scope. Exact config/extends/reference bytes requested by the compiler are carried into capture, including package JSON configuration snapshots; standalone capture without those snapshots retains its inherited package-extends limitation. Nullability records present/absent/unknown separately for null and undefined: enabled strict checking can prove absence, direct syntax or alias evidence can prove presence, and compiler-erased or unresolved absence stays unknown.
 
 Accepted source slots that retain their original input name can receive their source-input identity from verified compiler declarations, parameter bindings and positive returned-output witnesses during publication and reopen. This binds an existing accepted slot; it does not infer slot authorability or restrictions from a name or framework. Explicit associations and human decisions are preserved, and ambiguous or unbound inputs remain unassociated. Input/output evidence binds to the component declaration and its own captured locations; unavailable unrelated closure nodes do not invalidate that local identity. Unresolved property calls omit `required` as well as other representation metadata; original requiredness stays in source evidence.
@@ -129,6 +139,8 @@ Accepted source slots that retain their original input name can receive their so
 The output protocol for the selection agent: the agent emits exactly one JSON object on a single line — either `{"tool":"select_component",...}` or `{"tool":"reject_component",...}`. The backend pipeline parses it in `packages/experience-design-system-backend-pipeline/src/agents/parsers/parse-select-tool-calls.ts`.
 
 **Do not use agent SDKs or APIs** — the import wizard invokes agents as subprocesses only. This is a firm constraint.
+
+New model dependencies selected during generation run a single Component-scoped exploration pass before the owner is completed. Reuse saved source and owner exploration judgments; require readable names, descriptions and exact per-field/slot accounting. Store validated reports in the signed plan. Only proven required, nonnullable singleton fields may leave the editor through fixed-value reconstruction; uncertain fields remain visible. Debug resume upgrades saved owners missing model reports without rerunning owner generation. This uses existing exploration infrastructure and does not restart the project consensus stages.
 
 ## The Selection Agent
 

@@ -28,7 +28,13 @@ export interface ClassifiedPropertyCall {
   members?: CDFFieldDefinition[];
   allowedResources?: CDFFieldDefinition['allowedResources'];
   representation_proposal?: RepresentationProposalDraft;
+  representation_selection?: { strategy: 'component-model'; candidateId: string };
   null_handling?: NullHandlingJudgment[];
+}
+
+/** A model selection accounts for the input through a generated slot instead of a native field. */
+export function hasPropertyRepresentation(call: ClassifiedPropertyCall): boolean {
+  return !!call.cdf_type || !!call.representation_selection;
 }
 export function classificationDefinition(call: ClassifiedPropertyCall): CDFPropertyDefinition {
   if (!call.cdf_type) throw new Error('Absent representation has no field definition');
@@ -56,13 +62,26 @@ export function classificationDefinition(call: ClassifiedPropertyCall): CDFPrope
   return definition;
 }
 export function parseClassificationMetadata(rec: Record<string, unknown>, call: ClassifiedPropertyCall): string[] {
-  const issues: string[] = [];
+  const issues = parseClassificationDefaultMetadata(rec, call);
   if (own(rec, 'items')) call.items = cloneJson(rec.items as CDFFieldDefinition);
   if (own(rec, 'fields')) call.fields = cloneJson(rec.fields as Record<string, CDFFieldDefinition>);
   if (own(rec, 'values')) {
     if (!Array.isArray(rec.values)) issues.push('values must be an array');
     else call.values = cloneJson(rec.values as JsonValue[]);
   }
+  if (typeof rec.source_revision === 'string') call.source_revision = rec.source_revision;
+  if (typeof rec.source_node_id === 'string') call.source_node_id = rec.source_node_id;
+  issues.push(
+    ...validateCDFProperty(classificationDefinition(call)).issues.map((issue) => `${issue.path}: ${issue.message}`),
+  );
+  return issues;
+}
+
+export function parseClassificationDefaultMetadata(
+  rec: Record<string, unknown>,
+  call: ClassifiedPropertyCall,
+): string[] {
+  const issues: string[] = [];
   if (own(rec, 'default')) call.default = cloneJson(rec.default as JsonValue);
   if (own(rec, 'default_intent')) {
     const intent = rec.default_intent as DefaultIntent;
@@ -77,10 +96,5 @@ export function parseClassificationMetadata(rec: Record<string, unknown>, call: 
       issues.push('Invalid or conflicting default intent');
     else call.default_intent = cloneJson(intent);
   }
-  if (typeof rec.source_revision === 'string') call.source_revision = rec.source_revision;
-  if (typeof rec.source_node_id === 'string') call.source_node_id = rec.source_node_id;
-  issues.push(
-    ...validateCDFProperty(classificationDefinition(call)).issues.map((issue) => `${issue.path}: ${issue.message}`),
-  );
   return issues;
 }

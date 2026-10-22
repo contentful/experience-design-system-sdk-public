@@ -6,7 +6,10 @@ import {
   selectedRepresentationValidity,
   assertPreservedRepresentationSelections,
   expandRepresentationClosure,
+  loadReviewCDFComponents,
   loadRepresentationPlans,
+  representationContext,
+  saveGeneratedRepresentationPlan,
 } from './representation-plans.js';
 import {
   definitionCall,
@@ -23,6 +26,9 @@ import {
   cloneJson,
   own,
   propertyMapperBlockers,
+  validateRepresentationPlan,
+  modelExplorationComplete,
+  type RepresentationPlan,
   type RepresentationProposalDraft,
   type CDFPropertyDefinition,
   type ClassifiedPropertyCall,
@@ -53,6 +59,9 @@ import type {
 import { projectAcceptedSlots } from '../../../../steps/exploration/src/services/project-accepted-slots.js';
 import { validateCDFSourceOwners } from '../../../../steps/exploration/src/services/source-input-ownership.js';
 import { validateSavedInputOutput } from './input-output-binding.js';
+import { createCapturedLocationBinder } from './captured-file-lookup.js';
+import { mapSourceObservationLocations } from '../../../../steps/extraction/src/component-facts/map-source-observation-locations.js';
+import { hasBoundComponentDeclaration } from '../../../../steps/extraction/src/component-facts/component-declaration-binding.js';
 import { bindSavedSourceReferences } from './source-reference-binding.js';
 import { readSourceInventory, readSourceReferences } from '../../../../steps/extraction/index.js';
 import { CDFComponentSchema } from '@contentful/experience-design-system-types';
@@ -685,6 +694,7 @@ export interface ApplyToolCallsResult {
 export interface ApplyToolCallsOptions {
   /** Component names that may appear in generated slot allowed-components lists. */
   allowedComponentNames?: ReadonlySet<string>;
+  representationPlans?: ReadonlyMap<string, RepresentationPlan>;
 }
 
 export interface ComponentReviewMetadata {
@@ -1196,12 +1206,13 @@ export function loadSelectedCDFComponents(
   const rows = db
     .prepare('SELECT component_id,name,status FROM raw_components WHERE session_id=? ORDER BY rowid')
     .all(sessionId) as Array<{ component_id: string; name: string; status: string }>;
+  const reviewRows = loadReviewCDFComponents(db, sessionId);
   if (selectedKeys) {
     const resolved = new Set<string>();
     for (const key of selectedKeys) {
-      const matches = rows.filter((row) => row.name === key);
+      const matches = reviewRows.filter((row) => row.key === key);
       if (matches.length !== 1) throw new Error('Unknown or ambiguous selected component key');
-      resolved.add(matches[0]!.component_id);
+      resolved.add(matches[0]!.componentId);
     }
     if (selectedIds && !jsonEqual([...selectedIds].sort(), [...resolved].sort()))
       throw new Error('Selected component keys and IDs disagree');
@@ -1216,14 +1227,21 @@ export function loadSelectedCDFComponents(
         .map((row) => row.component_id),
     );
   for (const id of ids) {
+    const selected = reviewRows.find((row) => row.componentId === id);
+    if (!selected) throw new Error('Unknown selected component identity');
+    if (selected.entry.$model && !ids.has(selected.entry.$model.componentId))
+      throw new Error(`Selected model ${selected.key} requires its owning component`);
+  }
+  const rootIds = new Set([...ids].filter((id) => !reviewRows.find((row) => row.componentId === id)!.entry.$model));
+  for (const id of rootIds) {
     const readiness = evaluateComponentReadiness(db, sessionId, id);
     if (!readiness[purpose].ready)
       throw new Error(
         `Selected component ${id} is not ready: ${[...readiness.accounting.issues, ...readiness.accounting.missing, ...readiness.source.issues, ...readiness.import.issues].join('; ')}`,
       );
   }
-  const components = loadCDFComponents(db, sessionId).filter((component) => ids.has(component.componentId));
-  if (components.length !== ids.size) throw new Error('Selected component output missing');
+  const components = loadCDFComponents(db, sessionId).filter((component) => rootIds.has(component.componentId));
+  if (components.length !== rootIds.size) throw new Error('Selected component output missing');
   return expandRepresentationClosure(components);
 }
 
@@ -1261,6 +1279,11 @@ export function applyToolCalls(
     if ((decision.decision as { transfer?: { state?: string } }).transfer?.state === 'stale')
       throw new Error('Source-changed human decision requires review');
     const incoming = calls.find((call) => call.tool === 'classify_prop' && call.prop === decision.propertyName);
+    if (incoming?.tool === 'classify_prop' && incoming.representation_selection && decision.definition) {
+      if (!materializeProperty(rawComponent, incoming, componentId).selectedRepresentationPlan)
+        throw new Error('Replacement model representation is incomplete');
+      return false;
+    }
     if (incoming?.tool !== 'classify_prop' || !incoming.cdf_type || !decision.definition) return true;
     if (incoming.cdf_type === decision.definition.$type) return true;
     materializeProperty(rawComponent, incoming, componentId);
@@ -1284,7 +1307,7 @@ export function applyToolCalls(
     return retained;
   });
   const sourceSnapshot = cloneJson(rawComponent.sourceCandidates ?? null);
-  const producer = { kind: 'generation', id: randomUUID(), sessionId, componentId };
+  const producer = { kind: 'generation' as const, id: randomUUID(), sessionId, componentId };
 
   const updateProp = db.prepare(
     `UPDATE raw_props SET cdf_type = ?, cdf_category = ?, cdf_token_kind = ?, required = ?, description = ?, rationale = ?
@@ -1350,9 +1373,43 @@ export function applyToolCalls(
           continue;
         }
         const human = retainedHuman.find((decision) => decision.propertyName === call.prop);
+        if (call.representation_selection) deleteTokenPaths.run(sessionId, componentId, call.prop);
         const materialized = materializeProperty(rawComponent, call, componentId, {
           defaultAuthority: human ? 'review' : 'generation',
+          ...(call.representation_selection
+            ? { representationContext: representationContext(db, sessionId, componentId, call.prop) }
+            : {}),
         });
+        if (materialized.selectedRepresentationPlan) {
+          const plan = options.representationPlans?.get(call.prop) ?? materialized.selectedRepresentationPlan;
+          if (options.representationPlans) {
+            if (!options.representationPlans.has(call.prop) || !modelExplorationComplete(plan))
+              throw new Error('Generated model exploration is incomplete');
+            const issues = validateRepresentationPlan(
+              plan,
+              materialized.model!,
+              representationContext(db, sessionId, componentId, call.prop),
+            );
+            if (issues.length) throw new Error(issues.map((issue) => issue.message).join('; '));
+            materialized.selectedRepresentationPlan = plan;
+            materialized.representationPlans = materialized.representationPlans?.map((candidate) =>
+              candidate.kind === 'component-model' ? plan : candidate,
+            );
+          }
+          if (inventory.slots.some((slot) => slot.name === plan.attachment?.slot))
+            throw new Error('Source slot and generated model attachment collide');
+          clearProp.run(call.reason ?? null, sessionId, componentId, call.prop);
+          savePropertyDecision(db, sessionId, componentId, call.prop, null, {
+            kind: 'generation',
+            producer,
+            admission: 'component-model',
+            defaultIntent: materialized.model!.defaultIntent,
+            ...materialized,
+          });
+          saveGeneratedRepresentationPlan(db, sessionId, componentId, plan, producer);
+          classified++;
+          continue;
+        }
         const definition = materialized.definition;
         if (
           !definition ||
@@ -1997,17 +2054,26 @@ export function loadRawComponents(
   const componentFactsByComponent = new Map<string, ComponentFactsRead>(
     sourceEvidenceRows.map((row) => [row.component_id, readComponentFactsJson(row.component_facts_json)]),
   );
-  if ([...componentFactsByComponent.values()].some((read) => read.facts?.sourceClosure)) {
+  if (
+    [...componentFactsByComponent.values()].some((read) => read.facts?.sourceClosure || read.facts?.sourceObservations)
+  ) {
     const source = loadCompletedSourceEvidence(db, sessionId);
     for (const [id, read] of componentFactsByComponent) {
-      if (read.facts?.sourceClosure) {
-        const sourceClosure = validateSavedSourceClosure(read.facts.sourceClosure, source);
-        const observations = read.facts.sourceObservations;
+      if (read.facts && (read.facts.sourceClosure || read.facts.sourceObservations)) {
+        const sourceClosure = read.facts.sourceClosure
+          ? validateSavedSourceClosure(read.facts.sourceClosure, source)
+          : undefined;
+        const observations = read.facts.sourceObservations
+          ? mapSourceObservationLocations(
+              read.facts.sourceObservations,
+              createCapturedLocationBinder(source.readiness === 'ready' ? source.envelope.capture.files : []),
+            )
+          : undefined;
         componentFactsByComponent.set(id, {
           ...read,
           facts: {
             ...read.facts,
-            sourceClosure,
+            ...(sourceClosure ? { sourceClosure } : {}),
             ...(observations
               ? {
                   sourceObservations: {
@@ -2017,10 +2083,7 @@ export function loadRawComponents(
                           inputOutput: validateSavedInputOutput(
                             observations.inputOutput,
                             source,
-                            sourceClosure.rootId === observations.componentDeclarationId &&
-                              sourceClosure.nodes.some(
-                                (node) => node.id === sourceClosure.rootId && node.location.binding === 'verified',
-                              ),
+                            hasBoundComponentDeclaration(observations),
                           ),
                         }
                       : {}),

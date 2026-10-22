@@ -104,6 +104,7 @@ export interface PropertyModel {
     originalFacts?: JsonValue;
   };
   category?: 'content' | 'design' | 'state' | 'unattached';
+  description?: string;
   representation?: CDFFieldDefinition;
   representationProposal?: RepresentationProposalDraft;
   nullHandling?: NullHandlingJudgment[];

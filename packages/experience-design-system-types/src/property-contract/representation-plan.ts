@@ -21,6 +21,8 @@ import {
   type LogicalSourceNode,
 } from './logical-source-graph.js';
 import { nativeSourceRegion, sourceRecordFields } from './native-source-region.js';
+import { compactModelComponents } from './compact-model-components.js';
+import { applyModelComponentExploration, type ModelComponentExploration } from './model-exploration.js';
 import {
   LOCAL_NATIVE_PROPERTY_PROFILE,
   projectProperty,
@@ -46,6 +48,12 @@ export interface ModelCardinality {
   tuplePosition?: number;
   rest?: boolean;
 }
+export type ModelReconstruction =
+  | { kind: 'optional-value'; valueNodeId: string }
+  | { kind: 'object-envelope'; field: string; valueNodeId: string }
+  | { kind: 'ordered-array'; itemNodeId: string }
+  | { kind: 'fixed-value'; value: JsonValue }
+  | { kind: 'empty-value'; state: 'null' | 'undefined' | 'never' };
 export interface LogicalPhysicalMapping {
   nodeId: string;
   sourceNodeId: string;
@@ -57,7 +65,8 @@ export interface LogicalPhysicalMapping {
   required: boolean;
   nullable: boolean | null;
   undefinable: boolean | null;
-  disposition: 'native-field' | 'model' | 'slot' | 'reference' | 'held';
+  disposition: 'native-field' | 'model' | 'slot' | 'reference' | 'reconstruction' | 'held';
+  reconstruction?: ModelReconstruction;
   componentKey?: string;
   field?: string;
   slot?: string;
@@ -102,6 +111,37 @@ export interface RepresentationPlan {
   sdkValid: boolean;
   requirements: Array<{ path: string; capability: string }>;
   branchSelections?: ModelBranchSelection[];
+  modelExplorations?: ModelComponentExploration[];
+}
+
+/** Attach a validated model plan without claiming an ordinary source composition slot. */
+export function attachComponentModelPlan(entry: CDFComponentEntry, plan: RepresentationPlan): CDFComponentEntry {
+  if (plan.kind !== 'component-model' || !plan.attachment)
+    throw new Error('A component model requires a root attachment');
+  const issues = validateRepresentationPlan(plan, plan.sourceModel, plan.contextSnapshot);
+  if (issues.length) throw new Error(issues.map((issue) => `${issue.path}: ${issue.message}`).join('; '));
+  const result = cloneJson(entry);
+  const property = plan.identity.key;
+  const previous = result.$representationPlans?.[property];
+  if (
+    result.$slots?.[plan.attachment.slot] &&
+    (!previous?.attachment || !jsonEqual(result.$slots[plan.attachment.slot], previous.attachment.definition))
+  )
+    throw new Error('Source slot and generated model attachment collide');
+  const reserved = new Set(
+    Object.entries(result.$representationPlans ?? {})
+      .filter(([name]) => name !== property)
+      .flatMap(([, other]) => other.models.map((generated) => generated.key)),
+  );
+  if (plan.models.some((generated) => reserved.has(generated.key)))
+    throw new Error('Generated model component identity collision');
+  if (previous?.attachment && result.$slots) delete result.$slots[previous.attachment.slot];
+  delete result.$properties[property];
+  result.$representationPlans ??= Object.create(null);
+  result.$representationPlans![property] = cloneJson(plan);
+  result.$slots ??= Object.create(null);
+  result.$slots![plan.attachment.slot] = cloneJson(plan.attachment.definition);
+  return result;
 }
 
 function sourceDigest(model: PropertyModel): string {
@@ -127,6 +167,7 @@ export function deriveEditableRepresentationPlans(
   options: {
     context?: JsonValue;
     modelEdits?: Readonly<Record<string, CDFComponentEntry>>;
+    modelExplorations?: readonly ModelComponentExploration[];
     modelRenames?: Readonly<Record<string, string>>;
     defaultIntent?: DefaultIntent;
     proposal?: RepresentationProposalDraft;
@@ -328,6 +369,7 @@ export function deriveEditableRepresentationPlans(
     issues.push({ path: '/source/' + node.id, message: reason });
   };
   const activeModels = new Set<string>();
+  const resolvingReferences = new Set<string>();
   const nativeMapping = (id: string, componentKey: string, field: string, ownerId = id): void => {
     const pending = [id];
     const visited = new Set<string>();
@@ -369,20 +411,31 @@ export function deriveEditableRepresentationPlans(
     }
     if (node.kind === 'reference') {
       const target = node.alternatives?.[0];
-      if (!target || activeModels.has(target)) {
-        hold(node, 'Recursive source retained; cyclic physical model dependencies are unavailable');
-        requirements.push({ path: '/source/' + id, capability: 'cyclic-model-dependencies' });
+      if (!target || !nodes.has(target)) {
+        hold(node, 'Source reference has no current logical target');
+        return;
+      }
+      if (resolvingReferences.has(id) && !models.has(generatedKey(nodes.get(target)!))) {
+        hold(node, 'Reference cycle has no structural model target');
         return;
       }
       bound(node, 'reference', { targetNodeId: target });
-      return modelFor(target);
+      if (activeModels.has(target))
+        requirements.push({ path: '/source/' + id, capability: 'cyclic-model-dependencies' });
+      const existing = models.get(generatedKey(nodes.get(target)!));
+      if (existing) return existing.key;
+      resolvingReferences.add(id);
+      try {
+        return modelFor(target);
+      } finally {
+        resolvingReferences.delete(id);
+      }
     }
     const key = generatedKey(node);
-    if (activeModels.has(id)) {
-      hold(node, 'Recursive source retained; cyclic physical model dependencies are unavailable');
-      return;
+    if (models.has(key)) {
+      if (activeModels.has(id)) requirements.push({ path: '/source/' + id, capability: 'cyclic-model-dependencies' });
+      return key;
     }
-    if (models.has(key)) return key;
     const entry: CDFComponentEntry = {
       $type: 'component',
       $properties: Object.create(null),
@@ -584,6 +637,47 @@ export function deriveEditableRepresentationPlans(
   for (const node of graph.nodes) if (!mappings.has(node.id)) hold(node, 'Logical source node has no physical mapping');
   if (graph.coverage !== 'complete-within-declared-bound')
     issues.push({ path: '/source', message: 'Source coverage remains bounded or incomplete' });
+  const attachment: RepresentationPlan['attachment'] = {
+    slot: model.identity.key,
+    definition: {
+      $required: root.required,
+      ...(model.description !== undefined ? { $description: model.description } : {}),
+      ...(native?.$sourceInput ? { $sourceInput: cloneJson(native.$sourceInput) } : {}),
+      $allowedComponents: rootKey ? [rootKey] : [],
+      $cardinality: { min: root.required ? 1 : 0, max: 1, ordered: false },
+      $modelBinding: binding(root.id),
+    },
+  };
+  if (!issues.length) {
+    compactModelComponents({ nodes, models, mappings, attachment: attachment.definition });
+    const cardinalityCapabilities = new Set(['ordered-slot-cardinality', 'singleton-slot-cardinality']);
+    for (let index = requirements.length - 1; index >= 0; index--)
+      if (cardinalityCapabilities.has(requirements[index]!.capability)) requirements.splice(index, 1);
+    for (const generated of models.values())
+      for (const [name, slot] of Object.entries(generated.entry.$slots ?? {}))
+        requirements.push({
+          path: '/' + generated.key + '/$slots/' + name,
+          capability: slot.$cardinality?.ordered ? 'ordered-slot-cardinality' : 'singleton-slot-cardinality',
+        });
+    requirements.push({
+      path: '/$slots/' + attachment.slot,
+      capability: attachment.definition.$cardinality?.ordered
+        ? 'ordered-slot-cardinality'
+        : 'singleton-slot-cardinality',
+    });
+  }
+  const modelExplorations = options.modelExplorations ? cloneJson([...options.modelExplorations]) : undefined;
+  if (modelExplorations) {
+    const seen = new Set<string>();
+    for (const report of modelExplorations) {
+      const generated = models.get(report.modelKey);
+      if (!generated || seen.has(report.modelKey)) throw new Error('Unknown or duplicate model exploration owner');
+      seen.add(report.modelKey);
+      applyModelComponentExploration(report, generated, nodes, mappings, model.identity.sourceRevision);
+      if (report.properties.some((field) => field.authorability === 'fixed'))
+        requirements.push({ path: '/' + generated.key, capability: 'intrinsic-field-reconstruction' });
+    }
+  }
   for (const generated of models.values()) {
     const edit =
       options.modelEdits && own(options.modelEdits, generated.key) ? options.modelEdits[generated.key] : undefined;
@@ -592,7 +686,20 @@ export function deriveEditableRepresentationPlans(
       jsonValueIssue(edit) ||
       edit.$type !== 'component' ||
       !jsonEqual(Object.keys(edit.$properties).sort(), Object.keys(generated.entry.$properties).sort()) ||
-      !jsonEqual(edit.$slots ?? {}, generated.entry.$slots ?? {})
+      !jsonEqual(
+        Object.fromEntries(
+          Object.entries(edit.$slots ?? {}).map(([name, slot]) => {
+            const { $description: _description, ...structure } = slot;
+            return [name, structure];
+          }),
+        ),
+        Object.fromEntries(
+          Object.entries(generated.entry.$slots ?? {}).map(([name, slot]) => {
+            const { $description: _description, ...structure } = slot;
+            return [name, structure];
+          }),
+        ),
+      )
     )
       throw new Error('Edited model changes source-owned structure');
     for (const [field, edited] of Object.entries(edit.$properties)) {
@@ -624,6 +731,8 @@ export function deriveEditableRepresentationPlans(
       generated.entry.$properties[field] = cloneJson(edited);
     }
     if (edit.$description !== undefined) generated.entry.$description = edit.$description;
+    for (const [name, slot] of Object.entries(edit.$slots ?? {}))
+      if (slot.$description !== undefined) generated.entry.$slots![name]!.$description = slot.$description;
   }
   if (options.modelEdits && Object.keys(options.modelEdits).some((key) => !models.has(key)))
     throw new Error('Edited model has no exact source owner');
@@ -633,7 +742,7 @@ export function deriveEditableRepresentationPlans(
     const name =
       options.modelRenames && own(options.modelRenames, generated.key)
         ? options.modelRenames[generated.key]!
-        : generated.key;
+        : (modelExplorations?.find((report) => report.modelKey === generated.key)?.name ?? generated.key);
     if (
       typeof name !== 'string' ||
       !name.trim() ||
@@ -654,6 +763,9 @@ export function deriveEditableRepresentationPlans(
         slot.$allowedComponents = slot.$allowedComponents.map((key) => renamedKeys.get(key)!);
     return { ...generated, originalKey: generated.key, key: renamedKeys.get(generated.key)!, entry };
   });
+  attachment.definition.$allowedComponents = attachment.definition.$allowedComponents?.map(
+    (key) => renamedKeys.get(key)!,
+  );
   for (const mapping of mappings.values()) {
     if (mapping.componentKey) mapping.componentKey = renamedKeys.get(mapping.componentKey)!;
     if (mapping.variant) {
@@ -680,21 +792,13 @@ export function deriveEditableRepresentationPlans(
       ...base,
       kind: 'component-model',
       models: renamedModels,
-      attachment: {
-        slot: model.identity.key,
-        definition: {
-          $required: root.required,
-          ...(native?.$sourceInput ? { $sourceInput: cloneJson(native.$sourceInput) } : {}),
-          $allowedComponents: rootKey ? [renamedKeys.get(rootKey)!] : [],
-          $cardinality: { min: root.required ? 1 : 0, max: 1, ordered: false },
-          $modelBinding: binding(root.id),
-        },
-      },
+      attachment,
       mappings: graph.nodes.map((node) => mappings.get(node.id)!),
       issues,
       sdkValid: !issues.length,
       requirements: uniqueRequirements,
       ...(renamedSelections.length ? { branchSelections: renamedSelections } : {}),
+      ...(modelExplorations ? { modelExplorations } : {}),
     }),
   );
   return plans;
@@ -738,6 +842,7 @@ export function validateRepresentationPlan(input: unknown, model: PropertyModel,
       context,
       modelEdits: edits,
       modelRenames: renames,
+      ...(plan.modelExplorations ? { modelExplorations: plan.modelExplorations } : {}),
       defaultIntent: plan.defaultIntent,
       ...(plan.proposal ? { proposal: plan.proposal } : {}),
     }).find((candidate) => candidate.kind === plan.kind);

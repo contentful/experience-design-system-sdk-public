@@ -1,6 +1,7 @@
 import { TARGET_PROPERTY_TYPES, SAME_SPACE_RESOURCE_SOURCE } from '../property-contract/target-definition.js';
 import { CDF_PROPERTY_TYPES, CDF_PROPERTY_CATEGORIES } from './vocabularies.js';
 import { DESIGN_TOKEN_TYPES } from '../dtcg/token-types.js';
+import { modelComponentExplorationJsonSchema } from '../property-contract/model-exploration.js';
 
 export const CDF_SCHEMA_URL = 'https://contentful.com/schemas/cdf';
 
@@ -322,6 +323,7 @@ export const cdfJsonSchema = {
             additionalProperties: false,
           },
         },
+        modelExplorations: { type: 'array', items: modelComponentExplorationJsonSchema },
         attachment: {
           type: 'object',
           required: ['slot', 'definition'],
@@ -344,7 +346,48 @@ export const cdfJsonSchema = {
               required: { type: 'boolean' },
               nullable: { type: ['boolean', 'null'] },
               undefinable: { type: ['boolean', 'null'] },
-              disposition: { enum: ['native-field', 'model', 'slot', 'reference', 'held'] },
+              disposition: { enum: ['native-field', 'model', 'slot', 'reference', 'reconstruction', 'held'] },
+              reconstruction: {
+                oneOf: [
+                  {
+                    type: 'object',
+                    required: ['kind', 'value'],
+                    properties: { kind: { const: 'fixed-value' }, value: {} },
+                    additionalProperties: false,
+                  },
+                  {
+                    type: 'object',
+                    required: ['kind', 'valueNodeId'],
+                    properties: { kind: { const: 'optional-value' }, valueNodeId: { type: 'string' } },
+                    additionalProperties: false,
+                  },
+                  {
+                    type: 'object',
+                    required: ['kind', 'field', 'valueNodeId'],
+                    properties: {
+                      kind: { const: 'object-envelope' },
+                      field: { type: 'string' },
+                      valueNodeId: { type: 'string' },
+                    },
+                    additionalProperties: false,
+                  },
+                  {
+                    type: 'object',
+                    required: ['kind', 'itemNodeId'],
+                    properties: { kind: { const: 'ordered-array' }, itemNodeId: { type: 'string' } },
+                    additionalProperties: false,
+                  },
+                  {
+                    type: 'object',
+                    required: ['kind', 'state'],
+                    properties: {
+                      kind: { const: 'empty-value' },
+                      state: { enum: ['null', 'undefined', 'never'] },
+                    },
+                    additionalProperties: false,
+                  },
+                ],
+              },
               componentKey: { type: 'string' },
               field: { type: 'string' },
               slot: { type: 'string' },

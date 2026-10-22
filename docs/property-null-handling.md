@@ -36,6 +36,8 @@ For an optional property whose source default is null and whose omission equival
 
 ## Completion
 
-Every retained `classify_prop` must select a supported `cdf_type`. Incomplete drafts can receive repair feedback, but generation succeeds only when all subjects are accounted for and every retained representation is ready. Exhausting the repair attempt limit cannot turn a pending representation into success. Exclusions remain semantic decisions, not an escape from representation validation.
+Every retained `classify_prop` must select a supported native `cdf_type` or a supplied source-bound model candidate. Incomplete drafts can receive repair feedback, but generation succeeds only when all subjects are accounted for and every retained local representation is ready. Exhausting the repair attempt limit cannot turn a pending representation into success. Exclusions remain semantic decisions, not an escape from representation validation.
+
+[Structured-property modeling](structured-property-modeling.md) compacts nullable/optional structural wrappers into reconstruction metadata. This removes redundant authoring Components without deleting source alternatives, changing requiredness or asserting null/omission equivalence. Nullable array elements retain an instance boundary where required to preserve their positions.
 
 The same validation runs in the supplied agent draft validator and in host generation. Exploration can preserve unresolved evidence for generation to resolve. Remote mapper availability and rendering capabilities remain separate constraints.

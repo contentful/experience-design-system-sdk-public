@@ -178,6 +178,8 @@ export async function runGeneration(
             : progress.activeComponents.filter((active) => active.name !== event.name);
         if (event.kind === 'component:started')
           activeComponents.push({ name: event.name, attempt: event.attempt, maxAttempts: event.maxAttempts });
+        if (event.kind === 'component:model-exploring')
+          activeComponents.push({ name: event.name, attempt: 1, maxAttempts: 2, exploringModel: true });
         update({
           components: applyProgressEvent(event, progress.components, accepted.length),
           activeComponents,
@@ -299,7 +301,7 @@ function applyProgressEvent(
   previous: GenerationProgress['components'],
   total: number,
 ): GenerationProgress['components'] {
-  if (event.kind === 'component:started') {
+  if (event.kind === 'component:started' || event.kind === 'component:model-exploring') {
     return { done: previous?.done ?? 0, total: event.total || total, current: event.name };
   }
   if (

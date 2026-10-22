@@ -539,5 +539,7 @@ export {
   analyzePropertyRepresentations,
   analyzePropertyRepresentationCandidates,
   loadRepresentationPlans,
+  loadReviewCDFComponents,
+  storeReviewCDFComponent,
   selectRepresentationPlan,
 } from './persistence/src/session/repositories/representation-plans.js';

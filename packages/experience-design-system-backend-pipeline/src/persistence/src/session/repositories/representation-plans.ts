@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   cloneJson,
   jsonEqual,
@@ -101,7 +101,7 @@ export function currentRepresentationModel(
         record.call?.representation_proposal,
         record.call,
       )
-    : {
+    : (record.call ?? {
         tool: 'classify_prop' as const,
         prop: propertyName,
         cdf_category:
@@ -110,7 +110,7 @@ export function currentRepresentationModel(
             : (record.model?.category ?? ('content' as const)),
         reason: 'Editable representation review',
         ...(record.defaultIntent ? { default_intent: record.defaultIntent } : {}),
-      };
+      });
   const materialized = materializeProperty(sources[0]!, call, componentId, {
     defaultAuthority: record.reviewAuthority ? 'review' : 'generation',
   });
@@ -211,6 +211,7 @@ export function prepareEntryRepresentationPlans(
         context,
         modelEdits: editsFor(plan),
         modelRenames: Object.fromEntries(plan.models.map((generated) => [generated.originalKey, generated.key])),
+        ...(plan.modelExplorations ? { modelExplorations: plan.modelExplorations } : {}),
         defaultIntent: plan.defaultIntent,
         ...(plan.proposal ? { proposal: plan.proposal } : {}),
       }).find((choice) => choice.kind === plan.kind)!;
@@ -253,6 +254,7 @@ export function saveEntryRepresentationPlans(
   sessionId: string,
   componentId: string,
   entry: CDFComponentEntry,
+  producer: { kind: 'generation' | 'review'; id: string } = { kind: 'review', id: randomUUID() },
 ): void {
   const previous = loadRepresentationPlans(db, sessionId, componentId);
   const archive = (propertyName: string, plan: RepresentationPlan, parentId: string | null): void => {
@@ -268,15 +270,7 @@ export function saveEntryRepresentationPlans(
     }
     db.prepare(
       'INSERT INTO representation_plan_history(session_id,component_id,property_name,plan_id,parent_plan_id,plan_json,producer_json) VALUES (?,?,?,?,?,?,?)',
-    ).run(
-      sessionId,
-      componentId,
-      propertyName,
-      plan.id,
-      parentId,
-      JSON.stringify(plan),
-      JSON.stringify({ kind: 'review', id: randomUUID() }),
-    );
+    ).run(sessionId, componentId, propertyName, plan.id, parentId, JSON.stringify(plan), JSON.stringify(producer));
   };
   for (const row of previous) archive(row.propertyName, row.plan, null);
   for (const [propertyName, plan] of Object.entries(entry.$representationPlans ?? {}))
@@ -291,14 +285,46 @@ export function saveEntryRepresentationPlans(
     db.prepare(
       `INSERT INTO selected_representation_plans(session_id,component_id,property_name,revision,plan_json,producer_json) VALUES (?,?,?,1,?,?)
       ON CONFLICT(session_id,component_id,property_name) DO UPDATE SET revision=revision+1,plan_json=excluded.plan_json,producer_json=excluded.producer_json`,
-    ).run(
-      sessionId,
-      componentId,
-      propertyName,
-      JSON.stringify(plan),
-      JSON.stringify({ kind: 'review', id: randomUUID() }),
-    );
+    ).run(sessionId, componentId, propertyName, JSON.stringify(plan), JSON.stringify(producer));
   }
+}
+
+/** Called inside the owning generation transaction after its semantic decision is saved. */
+export function saveGeneratedRepresentationPlan(
+  db: DatabaseSync,
+  sessionId: string,
+  componentId: string,
+  plan: RepresentationPlan,
+  producer: { kind: 'generation'; id: string },
+): void {
+  const model = currentRepresentationModel(db, sessionId, componentId, plan.identity.key);
+  const issues = validateRepresentationPlan(
+    plan,
+    model,
+    representationContext(db, sessionId, componentId, plan.identity.key),
+  );
+  if (issues.length) throw new Error(issues.map((issue) => `${issue.path}: ${issue.message}`).join('; '));
+  if (plan.identity.componentId !== componentId) throw new Error('Generated representation owner mismatch');
+  const prior = loadRepresentationPlans(db, sessionId, componentId);
+  const plans = Object.fromEntries(prior.map((row) => [row.propertyName, row.plan]));
+  plans[plan.identity.key] = plan;
+  const reserved = new Set(
+    (db.prepare('SELECT name FROM raw_components WHERE session_id=?').all(sessionId) as Array<{ name: string }>).map(
+      (row) => row.name,
+    ),
+  );
+  for (const row of loadRepresentationPlans(db, sessionId))
+    if (row.componentId !== componentId || row.propertyName !== plan.identity.key)
+      for (const generated of row.plan.models) reserved.add(generated.key);
+  if (plan.models.some((generated) => reserved.has(generated.key)))
+    throw new Error('Generated model name collides with another component');
+  saveEntryRepresentationPlans(
+    db,
+    sessionId,
+    componentId,
+    { $type: 'component', $properties: {}, $representationPlans: plans },
+    producer,
+  );
 }
 export function overlayRepresentationPlans(
   db: DatabaseSync,
@@ -374,8 +400,59 @@ export function expandRepresentationClosure(
 ): Array<{ key: string; componentId: string; entry: CDFComponentEntry }> {
   return expandCDFModelDependencies(components).map((component) => ({
     ...component,
-    componentId: 'componentId' in component ? component.componentId : component.entry.$model!.nodeId,
+    componentId:
+      'componentId' in component
+        ? component.componentId
+        : 'model:' +
+          createHash('sha256')
+            .update(
+              JSON.stringify([
+                component.entry.$model!.componentId,
+                component.entry.$model!.propertyId,
+                component.entry.$model!.nodeId,
+              ]),
+            )
+            .digest('hex'),
   }));
+}
+
+/** Review the same complete definitions that accompany source roots on export. */
+export function loadReviewCDFComponents(
+  db: DatabaseSync,
+  sessionId: string,
+): Array<{ key: string; componentId: string; entry: CDFComponentEntry }> {
+  return expandRepresentationClosure(loadCDFComponents(db, sessionId));
+}
+
+/** Model edits belong to the owner's selected plan, not to fabricated source rows. */
+export function storeReviewCDFComponent(
+  db: DatabaseSync,
+  sessionId: string,
+  component: { key: string; componentId?: string },
+  input: CDFComponentEntry,
+): void {
+  const rows = loadReviewCDFComponents(db, sessionId);
+  const matches = rows.filter((row) =>
+    component.componentId ? row.componentId === component.componentId : row.key === component.key,
+  );
+  if (matches.length !== 1 || matches[0]!.key !== component.key)
+    throw new Error('Unknown or ambiguous review component identity');
+  const current = matches[0]!;
+  const binding = current.entry.$model;
+  if (!binding) {
+    storeCDFComponents(db, sessionId, [{ ...current, entry: input }]);
+    return;
+  }
+  if (!jsonEqual(binding, input.$model) || input.$representationPlans)
+    throw new Error('Edited model changes immutable source identity');
+  const owner = rows.find((row) => row.componentId === binding.componentId && !row.entry.$model);
+  if (!owner) throw new Error('Representation model owner unavailable');
+  const entry = cloneJson(owner.entry);
+  const plan = Object.values(entry.$representationPlans ?? {}).find((candidate) => candidate.id === binding.planId);
+  const model = plan?.models.find((candidate) => candidate.nodeId === binding.nodeId && candidate.key === current.key);
+  if (!model) throw new Error('Representation model is not owned by the selected plan');
+  model.entry = cloneJson(input);
+  storeCDFComponents(db, sessionId, [{ ...owner, entry }]);
 }
 export function selectRepresentationPlan(
   db: DatabaseSync,

@@ -41,6 +41,7 @@ export interface GroupedSidebarProps {
   alwaysExpanded?: boolean;
   showFlatTier?: boolean;
   selectionStateByKey?: Map<string, 'accepted' | 'rejected' | 'undecided'>;
+  displayLabelByKey?: Map<string, string>;
   aiFlaggedByKey?: Map<string, boolean>;
   dimPredicate?: (componentKey: string) => boolean;
   viewMode?: 'grouped' | 'flat';
@@ -672,7 +673,9 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
               wrap={wrapLabels ? 'wrap' : 'truncate'}
             >
               {' '}
-              {row.label}
+              {itemName && props.displayLabelByKey?.has(itemName)
+                ? row.label.replace(itemName, props.displayLabelByKey.get(itemName)!)
+                : row.label}
             </Text>
             {inheritanceStyle.glyph && (
               <Text color={inheritanceStyle.dim ? PALETTE.muted : inheritanceStyle.color} bold={inheritanceStyle.bold}>

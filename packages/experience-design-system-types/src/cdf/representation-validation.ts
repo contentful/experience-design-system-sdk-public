@@ -75,6 +75,40 @@ export function validateRepresentationClosure(
           )
             fail('Mapping changes retained source occurrence evidence');
           if (mapping?.targetNodeId && !nodes.has(mapping.targetNodeId)) fail('Dangling source mapping target');
+          if (mapping?.disposition === 'reconstruction') {
+            const operation = mapping.reconstruction;
+            if (!operation) fail('Missing source reconstruction operation');
+            else if (operation.kind === 'fixed-value') {
+              if (
+                !node.required ||
+                node.nullable !== false ||
+                node.undefinable !== false ||
+                node.domain.provenance !== 'compiler' ||
+                node.domain.openness !== 'closed' ||
+                node.domain.declaredValues.length !== 1 ||
+                !jsonEqual(node.domain.declaredValues[0], operation.value)
+              )
+                fail('Fixed reconstruction changes the intrinsic source value or presence');
+            } else if (operation.kind === 'object-envelope') {
+              if (
+                node.kind !== 'record' ||
+                node.fields?.length !== 1 ||
+                node.fields[0]!.key !== operation.field ||
+                node.fields[0]!.nodeId !== operation.valueNodeId
+              )
+                fail('Object reconstruction changes source shape');
+            } else if (operation.kind === 'ordered-array') {
+              if (node.kind !== 'array' || node.items?.length !== 1 || node.items[0] !== operation.itemNodeId)
+                fail('Array reconstruction changes source shape');
+            } else if (operation.kind === 'optional-value') {
+              const values = (node.alternatives ?? []).filter(
+                (id) => !['null', 'undefined', 'never'].includes(nodes.get(id)?.kind ?? ''),
+              );
+              if (node.kind !== 'union' || values.length !== 1 || values[0] !== operation.valueNodeId)
+                fail('Optional reconstruction changes source alternatives');
+            } else if (operation.kind === 'empty-value' && operation.state !== node.kind)
+              fail('Empty reconstruction changes source state');
+          } else if (mapping?.reconstruction) fail('Reconstruction operation has no reconstruction disposition');
           pending.push(
             ...(node.fields?.map((field) => field.nodeId) ?? []),
             ...(node.items ?? []),

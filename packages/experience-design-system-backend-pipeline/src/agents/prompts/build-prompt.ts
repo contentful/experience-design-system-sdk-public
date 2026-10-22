@@ -21,6 +21,7 @@ const PREAMBLE_BUILDERS: Record<Skill, (options: PromptOptions, inputBlock: stri
   'debate-select': buildDebateSelectPreamble,
   'explore-components': buildStructuredStagePreamble,
   'explore-inventory': buildStructuredStagePreamble,
+  'explore-model': buildStructuredStagePreamble,
   tier: buildStructuredStagePreamble,
   verify: buildStructuredStagePreamble,
   check: buildStructuredStagePreamble,
@@ -28,7 +29,7 @@ const PREAMBLE_BUILDERS: Record<Skill, (options: PromptOptions, inputBlock: stri
 
 export async function buildPrompt(options: PromptOptions): Promise<string> {
   const skillContent = options.skillContentOverride ?? (await readSkillFile(options.skill, options.skillPathOverride));
-  if (['explore-components', 'explore-inventory', 'tier', 'verify', 'check'].includes(options.skill)) {
+  if (['explore-components', 'explore-inventory', 'explore-model', 'tier', 'verify', 'check'].includes(options.skill)) {
     const { readFile } = await import('node:fs/promises');
     const { resolveSkillPath } = await import('./resolve-skill-path.js');
     const { dirname, join } = await import('node:path');

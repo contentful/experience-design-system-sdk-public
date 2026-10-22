@@ -28,6 +28,11 @@ import type { GeneratedComponentResult, GenerateComponentsProgress } from '../ty
 import { buildFailedComponentResult } from './build-failed-component-result.js';
 import { buildExplorationJudgmentsInline } from './build-exploration-judgments-inline.js';
 import { throwIfAborted } from '../../../helpers/abort.js';
+import { exploreModelDecisions } from '../../../steps/generation/src/services/property/explore-model-decisions.js';
+import { representationContext } from '../../../persistence/src/session/repositories/representation-plans.js';
+import { runModelComponentExploration } from '../../../steps/exploration/src/index.js';
+import { attachComponentModelPlan, type RepresentationPlan } from '@contentful/experience-design-system-types';
+import { loadCDFComponents, storeCDFComponents } from '../../../persistence/src/session/repositories/db.js';
 import {
   loadExplorationRun,
   loadExplorationRecord,
@@ -37,6 +42,7 @@ const DEFAULT_TIMEOUT_MS = Number(process.env['EDS_AGENT_TIMEOUT_MS'] ?? 5 * 60 
 const RETRY_BACKOFF_MS = Number(process.env['EDS_RETRY_BACKOFF_MS'] ?? 5_000);
 
 export interface RunOneGenerateComponentOptions {
+  resumeModelExploration?: boolean;
   debugArtifactDir?: string;
   explorationRunIds?: { componentRunId: string; detailRunId: string };
   db: DatabaseSync;
@@ -155,6 +161,75 @@ export async function runOneGenerateComponent(
     component.props.map((p) => p.type),
   );
   throwIfAborted(signal);
+  const modelExplorationOptions = {
+    invoker,
+    agent,
+    model,
+    outDir: options.debugArtifactDir ?? '',
+    timeoutMs: DEFAULT_TIMEOUT_MS,
+    operationTimeoutMs: DEFAULT_TIMEOUT_MS,
+    signal,
+    reservedNames: allowedComponentNames,
+    sharedSource: shared.readiness === 'ready' ? shared.source : undefined,
+    sourceRefs: [sourceRef],
+    explorationJudgmentsInline,
+    onModelStart: (modelKey: string) =>
+      onProgress?.({
+        kind: 'component:model-exploring',
+        index,
+        total,
+        name: component.name,
+        modelKey,
+      }),
+    onModelComplete: async (report: import('@contentful/experience-design-system-types').ModelComponentExploration) => {
+      if (!options.debugArtifactDir) return;
+      const directory = join(options.debugArtifactDir, encodeURIComponent(component.component_id));
+      await mkdir(directory, { recursive: true, mode: 0o700 });
+      await writeFile(
+        join(directory, `model-${encodeURIComponent(report.modelKey)}-exploration.json`),
+        JSON.stringify(report),
+        { mode: 0o600 },
+      );
+    },
+  };
+  if (options.resumeModelExploration) {
+    try {
+      const saved = loadCDFComponents(db, sessionId).find((row) => row.componentId === component.component_id);
+      if (!saved) throw new Error('Saved owner definition unavailable for model exploration');
+      let entry = saved.entry;
+      const reservedNames = new Set(allowedComponentNames);
+      for (const plan of Object.values(saved.entry.$representationPlans ?? {})) {
+        if (plan.kind !== 'component-model') continue;
+        const explored = await runModelComponentExploration({
+          ...modelExplorationOptions,
+          plan,
+          sourceOwner: { name: component.name, source: component.source },
+          reservedNames,
+        });
+        entry = attachComponentModelPlan(entry, explored);
+        for (const model of explored.models) reservedNames.add(model.key);
+      }
+      throwIfAborted(signal);
+      assertProjectionCurrent();
+      storeCDFComponents(db, sessionId, [{ ...saved, entry }]);
+      onProgress?.({ kind: 'component:resumed', index, total, name: component.name });
+      return {
+        componentName: component.name,
+        classified: Object.keys(entry.$properties).length,
+        excluded: 0,
+        slots: Object.keys(entry.$slots ?? {}).length,
+        warnings: [],
+        failed: false,
+        cached: false,
+        renamedSlotsCount: 0,
+      };
+    } catch (error) {
+      throwIfAborted(signal);
+      const message = error instanceof Error ? error.message : String(error);
+      onProgress?.({ kind: 'component:failed', index, total, name: component.name, error: message });
+      return buildFailedComponentResult(component.name, message, 0);
+    }
+  }
   const existingComponentsInline = existingContentfulEntities
     ? JSON.stringify(summarizeForGenerateAgent(existingContentfulEntities, component.name))
     : undefined;
@@ -237,9 +312,24 @@ export async function runOneGenerateComponent(
   }
   const calls = completed.calls;
   const warnings = completed.diagnostics;
+  let representationPlans: ReadonlyMap<string, RepresentationPlan>;
+  try {
+    representationPlans = await exploreModelDecisions(component, calls, {
+      componentId: component.component_id,
+      representationContext: (property) => representationContext(db, sessionId, component.component_id, property),
+      ...modelExplorationOptions,
+      onAttempt: (attempt) => options.onDebugEvent?.('model-exploration.attempt', { ...attempt }),
+    });
+  } catch (error) {
+    throwIfAborted(signal);
+    const message = error instanceof Error ? error.message : String(error);
+    onProgress?.({ kind: 'component:failed', index, total, name: component.name, error: message });
+    return buildFailedComponentResult(component.name, message, renames.length);
+  }
   assertProjectionCurrent();
   const applied = applyToolCalls(db, sessionId, component.component_id, component.name, calls, warnings, {
     allowedComponentNames,
+    representationPlans,
   });
   throwIfAborted(signal);
   if (applied.projectionBlocked)

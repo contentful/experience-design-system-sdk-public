@@ -8,6 +8,7 @@ export const SKILL_FILES: Record<Skill, string> = {
   'debate-select': 'debate-select.md',
   'explore-components': 'components.md',
   'explore-inventory': 'full-inventory.md',
+  'explore-model': 'model-component.md',
   tier: 'tier.md',
   verify: 'verify.md',
   check: 'check.md',

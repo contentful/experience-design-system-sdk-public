@@ -7,6 +7,7 @@ import {
 } from '../cdf/types.js';
 import { DESIGN_TOKEN_TYPES, type DesignTokenType } from '../dtcg/token-types.js';
 import { contentDigest } from './content-digest.js';
+import { validateRepresentationClosure } from '../cdf/representation-validation.js';
 import { childPath, freezeJson, cloneJson, jsonValueIssue } from './json-value.js';
 
 export type ResourceDependencyKey =
@@ -196,10 +197,30 @@ export function createImportPrerequisitePlan(input: ImportPrerequisiteManifest):
     remaining.get(importDependencyKey(edge.owner))!.add(importDependencyKey(edge.dependency));
   const orderedKeys: string[] = [];
   while (remaining.size) {
-    const ready = [...remaining]
+    let ready = [...remaining]
       .filter(([, dependencies]) => dependencies.size === 0)
       .map(([key]) => key)
       .sort();
+    if (!ready.length) {
+      const groups = new Map<string, Set<string>>();
+      for (const [key, component] of components) {
+        if (!component.$model) continue;
+        const identity = component.$model;
+        const groupId = JSON.stringify([identity.planId, identity.componentId, identity.propertyId]);
+        const node = importDependencyKey(componentKey(key));
+        if (!remaining.has(node)) continue;
+        const group = groups.get(groupId) ?? new Set<string>();
+        group.add(node);
+        groups.set(groupId, group);
+      }
+      // Recursive definitions form a finite model group; instances remain ordinary finite trees.
+      // Such a group requires staged downstream creation rather than dependency-first creation.
+      const group = [...groups.values()].find((members) =>
+        [...members].every((node) => [...remaining.get(node)!].every((dependency) => members.has(dependency))),
+      );
+      if (group && !validateRepresentationClosure(input.components.map((component) => ({ ...component }))).length)
+        ready = [...group].sort();
+    }
     if (!ready.length) {
       issue('prerequisite-cycle', '', 'Import prerequisite graph contains a cycle');
       break;

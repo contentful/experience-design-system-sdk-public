@@ -3,12 +3,14 @@ import {
   loadRawComponents,
   analyzePropertyRepresentations,
   selectRepresentationPlan,
+  loadReviewCDFComponents,
 } from '@contentful/experience-design-system-backend-pipeline';
 import type { RepresentationPlan } from '@contentful/experience-design-system-types';
 import { parseStrictJson } from '@contentful/experience-design-system-types';
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { CDFComponentSchema, type CDFComponentEntry } from '@contentful/experience-design-system-types';
 import { persistReviewEntry } from './persist-review-entry.js';
+import { refreshReviewComponents } from './review-models.js';
 import { collectTokenSuggestions } from './token-suggestions.js';
 import type {
   CdfReviewEntry,
@@ -133,18 +135,24 @@ export function useReviewEditor({
     if (draft.trim() === '') return true;
     try {
       const entry = parseReviewEntry(draft);
-      const next = components.map((component, index) =>
+      let next = components.map((component, index) =>
         index === selectedIdx
           ? {
               ...component,
               entry,
-              status: component.status === 'needs-review' ? ('accepted' as ReviewComponentStatus) : component.status,
+              status:
+                component.status === 'needs-review' &&
+                !component.entry.$model &&
+                !Object.values(entry.$representationPlans ?? {}).some((plan) => plan.models.length)
+                  ? ('accepted' as ReviewComponentStatus)
+                  : component.status,
             }
           : component,
       );
       const persisted = persistReviewEntry(extractSessionId, current, entry);
       if (!persisted.ok) throw new Error(persisted.error);
       if (persisted.entry) next[selectedIdx] = { ...next[selectedIdx]!, entry: persisted.entry };
+      if (persisted.components) next = refreshReviewComponents(next, persisted.components);
       setComponents(next);
       setDraftValue('');
       setSaveError(null);
@@ -180,11 +188,12 @@ export function useReviewEditor({
         [propName]: { ...prop, '$token.allowed': allowed },
       },
     };
-    const next = components.map((component, index) =>
+    let next = components.map((component, index) =>
       index === selectedIdx ? { ...component, entry: nextEntry } : component,
     );
     const persisted = persistReviewEntry(extractSessionId, current, nextEntry);
     if (!persisted.ok) throw new Error(persisted.error);
+    if (persisted.components) next = refreshReviewComponents(next, persisted.components);
     setComponents(next);
     const warnings = [...persisted.warnings];
     try {
@@ -212,7 +221,7 @@ export function useReviewEditor({
 
   const representationChoices = (): RepresentationPlan[] => {
     const current = components[selectedIdx];
-    if (!current) return [];
+    if (!current || current.entry.$model) return [];
     const db = openPipelineDb();
     try {
       const source = loadRawComponents(db, extractSessionId).find((row) =>
@@ -237,7 +246,7 @@ export function useReviewEditor({
   ): boolean => {
     if (!handleEditSave()) return false;
     const current = components[selectedIdx];
-    if (!current) return false;
+    if (!current || current.entry.$model) return false;
     let db: ReturnType<typeof openPipelineDb> | undefined;
     let committed = false;
     const warnings: string[] = [];
@@ -247,17 +256,9 @@ export function useReviewEditor({
         current.componentId ? row.component_id === current.componentId : row.name === current.key,
       );
       if (!source) throw new Error('Representation source unavailable');
-      const entry = selectRepresentationPlan(
-        db,
-        extractSessionId,
-        source.component_id,
-        propertyName,
-        kind,
-        undefined,
-        candidateId,
-      );
-      const next = components.map((row, index) => (index === selectedIdx ? { ...row, entry } : row));
+      selectRepresentationPlan(db, extractSessionId, source.component_id, propertyName, kind, undefined, candidateId);
       committed = true;
+      const next = refreshReviewComponents(components, loadReviewCDFComponents(db, extractSessionId));
       setComponents(next);
       setSaveError(null);
       try {

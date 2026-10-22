@@ -88,8 +88,9 @@ export function progressRows(progress: GenerationProgress, agent: string): Runni
     });
     for (const active of progress.activeComponents) {
       rows.push({
-        text:
-          active.attempt > 1
+        text: active.exploringModel
+          ? `Exploring a new model Component for ${active.name}`
+          : active.attempt > 1
             ? `Retrying ${active.name} — attempt ${active.attempt} of ${active.maxAttempts}`
             : `Generating ${active.name}`,
       });
