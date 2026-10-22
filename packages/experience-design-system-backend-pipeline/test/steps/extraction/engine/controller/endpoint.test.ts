@@ -17,7 +17,7 @@ describe('extractEndpoint', () => {
       source: `export function Field({ name, className, label, onChange }: { name: string; className: string; label: string; onChange: () => void }) {
         return <input name={name} className={className} aria-label={label} onChange={onChange} />;
       }`,
-      names: ['className', 'label', 'name'],
+      names: ['className', 'label', 'name', 'onChange'],
       domName: true,
     },
     {
@@ -41,7 +41,7 @@ describe('extractEndpoint', () => {
 
       expect(result.components).toHaveLength(1);
       expect(result.components[0]?.props.map((prop) => prop.name).sort()).toEqual(names);
-      expect(result.components[0]?.props.every((prop) => prop.category === 'content')).toBe(true);
+      expect(result.components[0]?.props.every((prop) => prop.category === undefined)).toBe(true);
       expect(result.components[0]?.props.find((prop) => prop.name === 'name')?.domAttribute).toBe(domName);
       expect(result.components[0]?.validationIssues).toEqual([]);
     },
@@ -100,14 +100,11 @@ describe('extractEndpoint', () => {
     });
     const card = result.components[0];
 
-    expect(card?.props.map((prop) => prop.name)).toEqual(['label', 'payload', 'variant']);
-    expect(card?.props.find((prop) => prop.name === 'label')).toEqual(
-      expect.objectContaining({ category: 'content', type: 'string' }),
-    );
-    expect(card?.props.find((prop) => prop.name === 'variant')).toEqual(
-      expect.objectContaining({ category: 'design', type: 'string' }),
-    );
-    expect(card?.props.find((prop) => prop.name === 'onClick')).toBeUndefined();
+    expect(card?.props.map((prop) => prop.name)).toEqual(['label', 'onClick', 'payload', 'variant']);
+    expect(card?.props.find((prop) => prop.name === 'label')).toEqual(expect.objectContaining({ type: 'string' }));
+    expect(card?.props.find((prop) => prop.name === 'variant')).toEqual(expect.objectContaining({ type: 'string' }));
+    expect(card?.props.find((prop) => prop.name === 'onClick')).toMatchObject({ name: 'onClick', type: '() => void' });
+    expect(card?.props.every((prop) => prop.category === undefined)).toBe(true);
     expect(card).toEqual(
       expect.objectContaining({
         needsReview: false,
@@ -122,10 +119,7 @@ describe('extractEndpoint', () => {
     const projectRoot = await mkdtemp(join(tmpdir(), 'extraction-endpoint-review-'));
     tempDirs.push(projectRoot);
     const sourcePath = join(projectRoot, 'AnalyticsBridge.tsx');
-    await writeFile(
-      sourcePath,
-      'export function AnalyticsBridge({ onTrack }: { onTrack: () => void }) { return null; }',
-    );
+    await writeFile(sourcePath, 'export function AnalyticsBridge() { return null; }');
 
     const result = await extractEndpoint({
       filePaths: [sourcePath],
