@@ -1,109 +1,74 @@
-import { readFile } from 'node:fs/promises';
+import ts from 'typescript';
 import type { RawComponentDefinition } from '../../../../types/component.js';
 import type { ComponentSourceInspection } from '../../../../types/source-inspection.js';
 import {
-  DATA_WRAPPER_REASON_PREFIX,
-  GENERATED_IMPORT_PATTERN,
-  GENERATED_QUERY_HOOK_PATTERN,
-  GQL_FILENAME_PATTERN,
-  LOADING_NULL_GUARD_PATTERN,
-  collectSiblingRendererImports,
-  hasSiblingForwardRender,
-  hasVisibleUiRender,
-  collectInfraPropNames,
-  mapScoreToWrapperConfidence,
-  dedupeStrings,
-} from './detect-data-wrapper-patterns.js';
+  HIGH_CONFIDENCE_DATA_FETCH_WRAPPER_REASON,
+  POSSIBLE_DATA_FETCH_WRAPPER_REASON,
+  ZERO_SURFACE_RENDERED_UI_REASON,
+} from '../../../../constants/review-reasons.js';
 
 export type { ComponentSourceInspection } from '../../../../types/source-inspection.js';
+export {
+  HIGH_CONFIDENCE_DATA_FETCH_WRAPPER_REASON,
+  POSSIBLE_DATA_FETCH_WRAPPER_REASON,
+  ZERO_SURFACE_RENDERED_UI_REASON,
+};
 
-export const HIGH_CONFIDENCE_DATA_FETCH_WRAPPER_REASON = 'data-fetch-wrapper';
-export const POSSIBLE_DATA_FETCH_WRAPPER_REASON = 'possible-data-fetch-wrapper';
-export const ZERO_SURFACE_RENDERED_UI_REASON = 'zero-surface:rendered-ui';
-
-export async function inspectComponentSource(component: RawComponentDefinition): Promise<ComponentSourceInspection> {
-  let sourceText = '';
-  try {
-    sourceText = await readFile(component.source, 'utf8');
-  } catch {
-    return {
-      wrapperConfidence: 0,
-      reviewReasons: [],
-      keepDespiteZeroSurface: false,
-    };
+function containsReturnedMarkup(expression: string): boolean {
+  const source = ts.createSourceFile(
+    'expression.tsx',
+    `(${expression})`,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  const statement = source.statements[0];
+  if (!statement || !ts.isExpressionStatement(statement)) return false;
+  function placed(node: ts.Expression): boolean {
+    if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isSatisfiesExpression(node))
+      return placed(node.expression);
+    if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node) || ts.isJsxFragment(node)) return true;
+    if (ts.isConditionalExpression(node)) return placed(node.whenTrue) || placed(node.whenFalse);
+    if (ts.isArrayLiteralExpression(node))
+      return node.elements.some((element) => !ts.isSpreadElement(element) && placed(element));
+    if (
+      ts.isBinaryExpression(node) &&
+      [ts.SyntaxKind.AmpersandAmpersandToken, ts.SyntaxKind.BarBarToken, ts.SyntaxKind.QuestionQuestionToken].includes(
+        node.operatorToken.kind,
+      )
+    )
+      return (
+        placed(node.right) || (node.operatorToken.kind !== ts.SyntaxKind.AmpersandAmpersandToken && placed(node.left))
+      );
+    return false;
   }
+  return placed(statement.expression);
+}
 
-  const reviewReasons: string[] = [];
-  let wrapperScore = 0;
-
-  const hasGeneratedQueryHook =
-    GENERATED_IMPORT_PATTERN.test(sourceText) && GENERATED_QUERY_HOOK_PATTERN.test(sourceText);
-  const infraProps = collectInfraPropNames(component);
-  const siblingImports = collectSiblingRendererImports(sourceText);
-
-  if (GQL_FILENAME_PATTERN.test(component.source)) {
-    reviewReasons.push('data-wrapper:gql-filename');
-    wrapperScore += 1;
-  }
-
-  if (hasGeneratedQueryHook) {
-    reviewReasons.push('data-wrapper:generated-query-hook');
-    wrapperScore += 3;
-  }
-
-  // Require corroboration from a stronger signal before counting sibling imports —
-  // otherwise any composed component that imports two sub-components scores +1 here.
-  if (siblingImports.length > 0 && (hasGeneratedQueryHook || infraProps.length > 0)) {
-    reviewReasons.push('data-wrapper:sibling-renderer-import');
-    wrapperScore += 1;
-  }
-
-  if (hasSiblingForwardRender(sourceText, siblingImports)) {
-    reviewReasons.push('data-wrapper:fetch-forward-render');
-    wrapperScore += 3;
-  }
-
-  if (sourceText.includes('useContentfulLiveUpdates(') || sourceText.includes('useContentfulContext(')) {
-    reviewReasons.push('data-wrapper:contentful-runtime');
-    wrapperScore += 1;
-  }
-
-  if (infraProps.length > 0) {
-    reviewReasons.push('data-wrapper:infra-props');
-    wrapperScore += 2;
-  }
-
-  if (LOADING_NULL_GUARD_PATTERN.test(sourceText)) {
-    reviewReasons.push('data-wrapper:loading-null-guard');
-    wrapperScore += 1;
-  }
-
-  const wrapperConfidence = mapScoreToWrapperConfidence(wrapperScore);
-  if (wrapperConfidence >= 4) {
-    reviewReasons.unshift(HIGH_CONFIDENCE_DATA_FETCH_WRAPPER_REASON);
-  } else if (wrapperConfidence === 3) {
-    reviewReasons.unshift(POSSIBLE_DATA_FETCH_WRAPPER_REASON);
-  }
-
+/** Captured component observations inform review; naming and familiar calls do not establish behavioral roles. */
+export function inspectComponentSource(component: RawComponentDefinition): Promise<ComponentSourceInspection> {
+  const observations = component.componentFacts?.sourceObservations?.observations ?? [];
   const keepDespiteZeroSurface =
-    component.props.length === 0 && component.slots.length === 0 && hasVisibleUiRender(sourceText);
-
-  if (keepDespiteZeroSurface) {
-    reviewReasons.push(ZERO_SURFACE_RENDERED_UI_REASON);
-  }
-
-  return {
-    wrapperConfidence,
-    reviewReasons: dedupeStrings(reviewReasons),
+    component.props.length === 0 &&
+    component.slots.length === 0 &&
+    observations.some(
+      (observation) =>
+        observation.kind === 'return' &&
+        observation.context.execution === 'component-body' &&
+        observation.operands?.some((operand) => operand.role === 'value' && containsReturnedMarkup(operand.expression)),
+    );
+  return Promise.resolve({
+    wrapperConfidence: 0,
+    reviewReasons: keepDespiteZeroSurface ? [ZERO_SURFACE_RENDERED_UI_REASON] : [],
     keepDespiteZeroSurface,
-  };
+  });
 }
 
 export function isDataWrapperReviewReason(reason: string): boolean {
   return (
     reason === HIGH_CONFIDENCE_DATA_FETCH_WRAPPER_REASON ||
     reason === POSSIBLE_DATA_FETCH_WRAPPER_REASON ||
-    reason.startsWith(DATA_WRAPPER_REASON_PREFIX)
+    reason.startsWith('data-wrapper:')
   );
 }
 
@@ -128,12 +93,12 @@ export function describeReviewReason(reason: string): string {
     case 'data-wrapper:loading-null-guard':
       return 'returns early while loading or when fetched data is missing';
     case ZERO_SURFACE_RENDERED_UI_REASON:
-      return 'source renders visible/compositional UI despite zero extracted props and slots';
+      return 'captured component source includes returned markup without extracted props or slots';
     default:
       return reason;
   }
 }
 
 export function describeReviewReasons(reasons: string[]): string[] {
-  return dedupeStrings(reasons.map(describeReviewReason));
+  return [...new Set(reasons.map(describeReviewReason))];
 }

@@ -31,7 +31,7 @@ export async function evaluateExtractionQuality(
 
     if (keepDespiteZeroSurface) {
       warnings.push(
-        `${component.name}: retained despite 0 props/slots because the source renders visible or compositional UI`,
+        `${component.name}: retained despite 0 props/slots because captured component source includes returned markup`,
       );
     }
 
