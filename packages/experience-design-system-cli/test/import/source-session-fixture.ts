@@ -4,7 +4,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import {
   extractReactComponents,
   captureSourceEvidence,
-} from '../../../experience-design-system-extraction/src/index.js';
+} from '../../../experience-design-system-backend-pipeline/src/steps/extraction/index.js';
 import {
   storeRawComponents,
   loadRawComponents,

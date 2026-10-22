@@ -1,7 +1,4 @@
-import {
-  bindSourceClosureToCapture,
-  type SourceClosureEvidence,
-} from '@contentful/experience-design-system-extraction';
+import { bindSourceClosureToCapture, type SourceClosureEvidence } from '../../../../steps/extraction/index.js';
 import type { CompletedSourceEvidence } from './db.js';
 /** Reopen verifies the completed envelope instead of trusting a saved verified label. */
 export function validateSavedSourceClosure(

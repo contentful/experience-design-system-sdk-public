@@ -2,7 +2,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
-import { extractReactComponents, captureSourceEvidence } from '@contentful/experience-design-system-extraction';
+import { extractReactComponents, captureSourceEvidence } from '../src/steps/extraction/index.js';
 import { validateCDF, buildCDF, type ClassificationToolCall } from '@contentful/experience-design-system-types';
 import {
   openPipelineDb,

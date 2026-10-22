@@ -7,20 +7,15 @@ export type ProgressEvent = ExtractAndComposeProgress;
 
 /**
  * Every job the stage will run starts on the first frame, so no row appears later as a surprise. A job that does not
- * apply stays 'idle' and has no row: existing entities need credentials, token definitions need a raw tokens file, and
- * reused tokens are already complete.
+ * apply stays 'idle' and has no row: existing entities need credentials, and token definitions need a raw tokens file.
  */
-export function initialProgress(input: {
-  hasCredentials: boolean;
-  hasRawTokens: boolean;
-  reuseTokens: boolean;
-}): ExtractionProgress {
+export function initialProgress(input: { hasCredentials: boolean; hasRawTokens: boolean }): ExtractionProgress {
   return {
     scan: null,
     composition: 'resolving',
     selection: 'running',
     existingEntities: input.hasCredentials ? 'running' : 'idle',
-    tokens: input.hasRawTokens ? (input.reuseTokens ? 'complete' : 'running') : 'idle',
+    tokens: input.hasRawTokens ? 'running' : 'idle',
   };
 }
 
@@ -103,26 +98,6 @@ export function isFullCacheHit(progress: ExtractionProgress): boolean {
     (progress.tokens === 'idle' || progress.tokens === 'complete') &&
     progress.existingEntities !== 'running'
   );
-}
-
-/**
- * The wizard's step counts: three fixed steps, one more when there is a token stage, two more when components are
- * imported, and one more when the tokens can be mapped (not known yet at this stage, so it adds nothing here).
- * Extraction is step 2 when there is a token stage, otherwise step 1.
- */
-export function stepNumbers(input: {
-  hasRawTokens: boolean;
-  skipComponents?: boolean;
-  mapTokensEligible?: boolean | null;
-}): {
-  stepNumber: number;
-  totalSteps: number;
-} {
-  const { hasRawTokens, skipComponents = false, mapTokensEligible = null } = input;
-  return {
-    stepNumber: hasRawTokens ? 2 : 1,
-    totalSteps: 3 + (hasRawTokens ? 1 : 0) + (skipComponents ? 0 : 2) + (mapTokensEligible === true ? 1 : 0),
-  };
 }
 
 export function noComponentsMessage(projectPath: string): string {

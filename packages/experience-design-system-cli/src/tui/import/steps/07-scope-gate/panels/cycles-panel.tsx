@@ -2,7 +2,7 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import figures from 'figures';
 import type { SlotCycle } from '../graph/cycle-detection.js';
-import { PALETTE } from '../sidebar/theme.js';
+import { PALETTE } from '@tui/theme.js';
 
 interface CyclesPanelProps {
   cycles: SlotCycle[];
@@ -29,7 +29,7 @@ export function CyclesPanel({ cycles, cursor }: CyclesPanelProps): React.ReactEl
         return (
           <Text key={i}>
             {isCursor ? (
-              <Text color={PALETTE.info} bold>
+              <Text color={PALETTE.accent} bold>
                 {figures.pointer}
               </Text>
             ) : (

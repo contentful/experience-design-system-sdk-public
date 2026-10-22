@@ -1,6 +1,4 @@
-import type { ExtractorOptions } from '@contentful/experience-design-system-extraction';
-export type { ExtractorOptions } from '@contentful/experience-design-system-extraction';
-import type { ComponentFacts, ComponentEvidenceReadStatus } from '@contentful/experience-design-system-extraction';
+import type { ComponentFacts, ComponentEvidenceReadStatus } from './component-facts.js';
 export type ExtractionValidationIssueCode =
   | 'EMPTY_COMPONENT_NAME'
   | 'EMPTY_PROP_NAME'
@@ -17,11 +15,7 @@ export type ExtractionValidationIssue = {
   field?: string;
 };
 
-import type {
-  ExtractionDiagnostics,
-  SourceCandidate,
-  SourceCandidateSource,
-} from '@contentful/experience-design-system-extraction';
+import type { SourceCandidate, SourceCandidateSource } from '../candidates/types.js';
 
 export interface RawPropDefinition {
   name: string;
@@ -34,7 +28,7 @@ export interface RawPropDefinition {
    * that select visible content (for example an icon or flag name).
    */
   domAttribute?: boolean;
-  category?: 'content' | 'design' | 'state';
+  category?: 'content' | 'design' | 'state'; //BOI type this
   defaultValue?: string;
   allowedValues?: string[];
   description?: string;
@@ -66,7 +60,7 @@ export interface RawComponentDefinition {
   componentEvidenceReadStatus?: ComponentEvidenceReadStatus;
   name: string;
   source: string;
-  framework: 'react' | 'next' | 'vue' | 'astro' | 'web-component' | 'stencil' | 'svelte';
+  framework: 'react' | 'next' | 'vue' | 'astro' | 'web-component' | 'stencil' | 'svelte'; // BOI type this
   props: RawPropDefinition[];
   slots: RawSlotDefinition[];
   /**
@@ -80,22 +74,22 @@ export interface RawComponentDefinition {
   validationIssues?: ExtractionValidationIssue[];
   /** Absolute path to the source file this component was extracted from. Null for synthesized / multi-file. */
   sourcePath?: string;
-  /** Immutable source observations kept independent of projected props and slots. */
+  /** Immutable, plain source observations kept separate from current authoring props and slots. */
   sourceCandidates?: SourceCandidate[];
   /** Candidate evidence from duplicate declarations; never merged into this winner's facts. */
   sourceCandidateSources?: SourceCandidateSource[];
   sourceEvidenceReadStatus?: 'available' | 'unknown-legacy' | 'corrupt' | 'unsupported';
-  /** Absent legacy data is unknown; this version identifies the fact payload. */
+  /** Identifies the source-fact schema; absent legacy data is unknown. */
   factSchemaVersion?: number;
 }
 
 export interface ComponentExtractionResult {
-  compilerSources?: import('@contentful/experience-design-system-extraction').CompilerLoadedSource[];
-  sourceInventory?: import('@contentful/experience-design-system-extraction').SourceEvidenceInventory;
+  compilerSources?: import('../compiler/context.js').CompilerLoadedSource[];
+  sourceInventory?: import('../../source-evidence/discovery.js').SourceEvidenceInventory;
   components: RawComponentDefinition[];
   warnings: string[];
   exclusions?: ExtractionExclusion[];
-  extractionDiagnostics?: ExtractionDiagnostics;
+  extractionDiagnostics?: import('../candidates/types.js').ExtractionDiagnostics;
 }
 
 /** A deterministic item removed before the interactive scope gate. */
@@ -112,12 +106,5 @@ export type ExtractorProgress = {
   componentsFound: number;
 };
 
-export interface ComponentExtractor {
-  name: string;
-  fileFilter: (filePath: string) => boolean;
-  extract(
-    filePaths: string[],
-    onProgress?: (p: ExtractorProgress) => void,
-    opts?: ExtractorOptions,
-  ): Promise<ComponentExtractionResult>;
-}
+export type { ExtractorOptions } from './options.js';
+export type { ComponentExtractor } from './component-extractor.js';

@@ -1,6 +1,6 @@
 import { Box, Text, type BoxProps } from 'ink';
 import type { ReactElement, ReactNode } from 'react';
-import { PALETTE } from '../theme.js';
+import { PALETTE } from '@tui/theme.js';
 
 export type WindowDirection = 'up' | 'down';
 
@@ -87,10 +87,10 @@ function WindowedPanelHeader({
 }): ReactElement {
   return (
     <Box flexDirection="column">
-      <Text bold color={PALETTE.info} inverse={focused}>
+      <Text bold color={PALETTE.accent} inverse={focused}>
         {title}
       </Text>
-      <Text dimColor>{'─'.repeat(Math.max(0, width - 2))}</Text>
+      <Text color={PALETTE.muted}>{'─'.repeat(Math.max(0, width - 2))}</Text>
     </Box>
   );
 }
@@ -98,6 +98,11 @@ function WindowedPanelHeader({
 function formatWindowIndicator(direction: WindowDirection, count: number): string {
   if (count <= 0) return ' ';
   return `${direction === 'up' ? '↑' : '↓'} ${count} more`;
+}
+
+export function WindowFooter({ above, below }: { above: number; below: number }): ReactElement {
+  const parts = [above > 0 ? `↑ ${above}` : '', below > 0 ? `↓ ${below}` : ''].filter(Boolean);
+  return <Text color={PALETTE.muted}>{parts.length === 0 ? ' ' : `${parts.join(' · ')} more`}</Text>;
 }
 
 export function WindowIndicator({ direction, count }: { direction: WindowDirection; count: number }): ReactElement {

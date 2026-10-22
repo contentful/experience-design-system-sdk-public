@@ -1,0 +1,105 @@
+import {
+  AGENT_NAMES,
+  DEFAULT_AGENT_NAME,
+  isAgentName,
+  type AgentName,
+} from '@contentful/experience-design-system-backend-pipeline';
+import { readV1Store, writeV1Store } from '../../shared/v1-store.js';
+
+// The agent settings live in the same config.json as everything else:
+//
+//   agent        the default agent, read by the import (`--agent` wins over it)
+//   agentModel   the model for the default agent, read by the import (`--agent name:model` wins over it)
+//   agents       each agent's own saved settings (its model and the path to its command), so changing the default
+//                does not lose another agent's settings
+//
+// `agent` and `agentModel` stay because the import reads them. `agentModel` is always the default agent's entry in
+// `agents`, so the two cannot disagree.
+
+export type AgentSettings = {
+  /** Passed as --model. Empty: the agent's built-in default (see defaultModelLabel). */
+  model: string;
+  /** Path to the agent's command. Empty: the command name is looked up on the PATH. */
+  binary: string;
+};
+export type AgentConfig = {
+  /** The agent the CLI uses when `--agent` is not given. Claude when nothing was chosen. */
+  defaultAgent: AgentName;
+  /**
+   * Whether the user chose the default agent. Only then is `agent` written to config.json, so someone who never chose
+   * keeps the import's built-in default, including if that default changes in a later version.
+   */
+  defaultChosen?: boolean;
+  agents: Record<AgentName, AgentSettings>;
+};
+
+// How each agent is shown.
+export const AGENT_LABELS: Record<AgentName, string> = {
+  claude: 'Claude Code',
+  codex: 'OpenAI Codex',
+  opencode: 'OpenCode',
+  cursor: 'Cursor',
+  copilot: 'GitHub Copilot',
+};
+
+const asString = (value: unknown): string => (typeof value === 'string' ? value : '');
+
+export function emptyAgents(): Record<AgentName, AgentSettings> {
+  return Object.fromEntries(AGENT_NAMES.map((name) => [name, { model: '', binary: '' }])) as Record<
+    AgentName,
+    AgentSettings
+  >;
+}
+
+export async function readAgentConfig(): Promise<AgentConfig> {
+  const store = await readV1Store();
+  const stored = asString(store['agent']);
+  const defaultChosen = isAgentName(stored);
+  const defaultAgent: AgentName = defaultChosen ? stored : DEFAULT_AGENT_NAME;
+
+  const agents = emptyAgents();
+  const saved = store['agents'];
+  if (saved && typeof saved === 'object') {
+    for (const name of AGENT_NAMES) {
+      const entry = (saved as Record<string, unknown>)[name];
+      if (entry && typeof entry === 'object') {
+        const fields = entry as Record<string, unknown>;
+        agents[name] = { model: asString(fields['model']), binary: asString(fields['binary']) };
+      }
+    }
+  }
+
+  // A model saved before the per-agent section existed belongs to the agent that was the default. It is shown there until
+  // the user saves, which writes it under `agents`.
+  const legacyModel = asString(store['agentModel']);
+  if (legacyModel && !agents[defaultAgent].model)
+    agents[defaultAgent] = { ...agents[defaultAgent], model: legacyModel };
+
+  return { defaultAgent, defaultChosen, agents };
+}
+
+export async function writeAgentConfig(config: AgentConfig): Promise<void> {
+  const existing = await readV1Store();
+  const merged: Record<string, unknown> = { ...existing };
+
+  // Only what was set is saved, so an agent with nothing to say has no entry.
+  const agents: Record<string, Partial<AgentSettings>> = {};
+  for (const name of AGENT_NAMES) {
+    const model = config.agents[name].model.trim();
+    const binary = config.agents[name].binary.trim();
+    if (model || binary) agents[name] = { ...(model ? { model } : {}), ...(binary ? { binary } : {}) };
+  }
+
+  // `agent` and `agentModel` are the import's view of the default agent. They are only written once the user has chosen
+  // one; until then the import falls back to its own default, which a later version is free to change.
+  const defaultModel = config.defaultChosen ? agents[config.defaultAgent]?.model : undefined;
+  if (config.defaultChosen) merged['agent'] = config.defaultAgent;
+  else delete merged['agent'];
+  if (defaultModel) merged['agentModel'] = defaultModel;
+  else delete merged['agentModel'];
+
+  if (Object.keys(agents).length > 0) merged['agents'] = agents;
+  else delete merged['agents'];
+
+  await writeV1Store(merged);
+}

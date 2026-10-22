@@ -1,4 +1,4 @@
-import { bucketComponentsProps } from '@contentful/experience-design-system-extraction';
+import { bucketComponentsProps } from '../../../extraction/index.js';
 import { stripPropProvenance } from '../../../../agents/prompts/helpers/strip-prop-provenance.js';
 import { buildPrompt, createLocalCliAgentInvoker, parseSelectToolCalls } from '../../../../agents/index.js';
 import type { RunSelectionServiceOptions, SelectionServiceResult, ComponentSelection } from '../types/contract.js';

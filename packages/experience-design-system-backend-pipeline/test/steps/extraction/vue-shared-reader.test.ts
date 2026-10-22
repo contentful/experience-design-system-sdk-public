@@ -7,7 +7,7 @@ import {
   bindSourceCandidatesToCapture,
   extractVueComponents as publicSfc,
   extractVueTsxComponents as publicTsx,
-} from '@contentful/experience-design-system-extraction';
+} from '../../../src/steps/extraction/index.js';
 import { extractVueComponents } from '../../../src/steps/extraction/src/framework-adapters/vue/extract-vue-components.js';
 import { extractVueTsxComponents } from '../../../src/steps/extraction/src/framework-adapters/vue-tsx/extract-vue-tsx-components.js';
 import {

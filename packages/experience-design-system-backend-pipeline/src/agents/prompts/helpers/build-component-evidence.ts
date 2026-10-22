@@ -1,4 +1,4 @@
-import type { ComponentFacts, ComponentEvidenceReadStatus } from '@contentful/experience-design-system-extraction';
+import type { ComponentFacts, ComponentEvidenceReadStatus } from '../../../steps/extraction/index.js';
 import type { RawComponentDefinition } from '../../../steps/extraction/src/types/component.js';
 import { readComponentFacts } from '../../../persistence/src/session/repositories/component-facts-validation.js';
 

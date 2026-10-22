@@ -9,6 +9,7 @@ import { DoneStep } from '../screens/DoneStep.js';
 import { PathPrompt } from '../screens/PathPrompt.js';
 import { PushingStep } from '../screens/PushingStep.js';
 import { WizardPreviewStep } from '../screens/WizardPreviewStep.js';
+import { fileSummaryLabel, producedOf } from '../support/produced.js';
 import { buildRunTeaserLine } from '../support/run-teaser.js';
 import type { FlowController } from './controller.js';
 import type { FlowState } from './types.js';
@@ -20,12 +21,6 @@ interface FlowScreenProps {
   generatePromptPath?: string;
   /** Leaves the import with the exit code the wizard would have exited with. */
   onExit: (exitCode: number) => void;
-}
-
-/** How many steps the import has, as the wizard counted them. */
-function totalStepsFor(state: Pick<FlowState, 'tokensPath' | 'rawTokensPath' | 'mapTokensEligible'>): number {
-  const hasTokenStage = !!state.tokensPath || !!state.rawTokensPath;
-  return 3 + (hasTokenStage ? 1 : 0) + 2 + (state.mapTokensEligible === true ? 1 : 0);
 }
 
 /** Whether the preview gate offers "[e] Edit definitions": only when the document has components to edit. */
@@ -41,7 +36,7 @@ export function FlowScreen({
   generatePromptPath,
   onExit,
 }: FlowScreenProps): React.ReactElement {
-  const totalSteps = totalStepsFor(state);
+  const produced = producedOf(state);
   const quit = (): void => onExit(0);
 
   const content = ((): React.ReactElement | null => {
@@ -64,14 +59,7 @@ export function FlowScreen({
         );
 
       case 'previewing':
-        return (
-          <RunningStep
-            stepNumber={totalSteps}
-            totalSteps={totalSteps}
-            title="Computing diff"
-            description="Computing diff against your Contentful space..."
-          />
-        );
+        return <RunningStep step="push" description="Computing diff against your Contentful space..." />;
 
       case 'preview-gate':
         if (!state.serverPreview) return null;
@@ -80,8 +68,6 @@ export function FlowScreen({
             preview={state.serverPreview}
             spaceId={state.spaceId}
             environmentId={state.environmentId}
-            stepNumber={totalSteps}
-            totalSteps={totalSteps}
             onConfirm={controller.confirmPreview}
             // Editing would dead-end on "No generated definitions found" when the document is empty (delete-all).
             {...(canEditFromPreview(state.cdf) ? { onEdit: controller.editDefinitions } : {})}
@@ -90,7 +76,7 @@ export function FlowScreen({
         );
 
       case 'pushing':
-        return <PushingStep stepNumber={totalSteps} totalSteps={totalSteps} progress={state.pushProgress} />;
+        return <PushingStep progress={state.pushProgress} produced={produced} />;
 
       case 'path-prompt':
         return (
@@ -102,21 +88,15 @@ export function FlowScreen({
         );
 
       case 'printing':
-        return (
-          <RunningStep
-            stepNumber={totalSteps}
-            totalSteps={totalSteps}
-            title="Writing files"
-            description="Writing output files to disk..."
-          />
-        );
+        return <RunningStep step="push" description="Writing output files to disk..." />;
 
       case 'print-gate': {
         const teaser = buildRunTeaserLine(state.lastRunId);
         return (
           <GateStep
+            step="push"
             message="Files saved"
-            summary={state.componentsPath ? `components.json → ${state.componentsPath}` : undefined}
+            summary={state.componentsPath ? `${fileSummaryLabel(produced)} → ${state.componentsPath}` : undefined}
             context={
               teaser
                 ? `Your files are saved to disk. ${teaser}`
@@ -140,6 +120,8 @@ export function FlowScreen({
             spaceId={state.spaceId}
             environmentId={state.environmentId}
             host={state.host}
+            produced={produced}
+            credentialsSkipped={state.credentialsSkipped}
             onExit={() => onExit(totalFailed > 0 ? 1 : 0)}
           />
         );

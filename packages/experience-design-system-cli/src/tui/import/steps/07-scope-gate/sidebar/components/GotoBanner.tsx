@@ -1,6 +1,6 @@
 import React from 'react';
 import figures from 'figures';
-import { PALETTE } from '../theme.js';
+import { PALETTE } from '@tui/theme.js';
 import { Box, Text } from 'ink';
 
 interface GotoRow {
@@ -49,7 +49,7 @@ function defaultRenderRow(row: GotoRow, index: number, isCursor: boolean): React
   return (
     <Text key={index}>
       {isCursor ? (
-        <Text color={PALETTE.info} bold>
+        <Text color={PALETTE.accent} bold>
           {figures.pointer}
         </Text>
       ) : (
@@ -81,7 +81,7 @@ export function GotoBanner({
     <Box
       flexDirection="column"
       borderStyle="single"
-      borderColor={PALETTE.info}
+      borderColor={PALETTE.accent}
       paddingX={1}
       marginTop={width === undefined ? 1 : 0}
       width={width}

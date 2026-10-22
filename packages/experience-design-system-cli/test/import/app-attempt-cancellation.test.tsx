@@ -59,13 +59,13 @@ vi.mock('../../src/tui/import/steps/10-flow/flow/screen.js', () => ({ FlowScreen
 vi.mock('../../src/tui/import/steps/10-flow/flow/use-flow.js', () => ({ useFlow: () => undefined }));
 vi.mock('../../src/tui/help/PageContainer.js', () => ({ HelpScreen: () => null }));
 vi.mock('../../src/tui/settings/PageContainer.js', () => ({ SettingsScreen: () => null }));
-vi.mock('../../src/tui/settings/contentful-configuration/ContentfulConfigScreen.js', () => ({
+vi.mock('../../src/tui/settings/configuration/ConfigurationScreen.js', () => ({
   ConfigurationScreen: () => null,
 }));
 vi.mock('../../src/tui/settings/opt-in-analytics/screen.js', () => ({ OptInAnalyticsScreen: () => null }));
 vi.mock('../../src/tui/upgrade/PageContainer.js', () => ({ UpgradeScreen: () => null }));
 vi.mock('../../src/tui/settings/debug-mode/screen.js', () => ({ DebugModeScreen: () => null }));
-vi.mock('../../src/tui/settings/contentful-configuration/config-store.js', () => ({
+vi.mock('../../src/tui/settings/configuration/project/project-store.js', () => ({
   readCredentials: deps.credentialsRead,
   writeCredentials: vi.fn(),
 }));

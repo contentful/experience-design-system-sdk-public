@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
-import { extractReactComponents, captureSourceEvidence } from '@contentful/experience-design-system-extraction';
+import { extractReactComponents, captureSourceEvidence } from '../../steps/extraction/index.js';
 import {
   openPipelineDb,
   getOrCreateSession,

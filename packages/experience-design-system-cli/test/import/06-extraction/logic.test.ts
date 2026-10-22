@@ -7,7 +7,6 @@ import {
   noComponentsMessage,
   progressRows,
   resolveAgentChoice,
-  stepNumbers,
 } from '../../../src/tui/import/steps/06-extraction/logic.js';
 import type { ExtractionProgress } from '../../../src/tui/import/steps/06-extraction/types.js';
 
@@ -22,7 +21,7 @@ const base = (overrides: Partial<ExtractionProgress> = {}): ExtractionProgress =
 
 describe('initialProgress', () => {
   it('starts every job that applies, so no row appears later', () => {
-    expect(initialProgress({ hasCredentials: true, hasRawTokens: true, reuseTokens: false })).toEqual({
+    expect(initialProgress({ hasCredentials: true, hasRawTokens: true })).toEqual({
       scan: null,
       composition: 'resolving',
       selection: 'running',
@@ -32,17 +31,11 @@ describe('initialProgress', () => {
   });
 
   it('leaves out the entities fetch when credentials were skipped', () => {
-    expect(initialProgress({ hasCredentials: false, hasRawTokens: true, reuseTokens: false }).existingEntities).toBe(
-      'idle',
-    );
-  });
-
-  it('counts reused tokens as already done', () => {
-    expect(initialProgress({ hasCredentials: true, hasRawTokens: true, reuseTokens: true }).tokens).toBe('complete');
+    expect(initialProgress({ hasCredentials: false, hasRawTokens: true }).existingEntities).toBe('idle');
   });
 
   it('has no token job without a raw tokens file', () => {
-    expect(initialProgress({ hasCredentials: true, hasRawTokens: false, reuseTokens: false }).tokens).toBe('idle');
+    expect(initialProgress({ hasCredentials: true, hasRawTokens: false }).tokens).toBe('idle');
   });
 });
 
@@ -73,10 +66,7 @@ describe('applyProgressEvent', () => {
 
 describe('progressRows', () => {
   it('shows the first frame of a fresh run', () => {
-    const rows = progressRows(
-      initialProgress({ hasCredentials: true, hasRawTokens: true, reuseTokens: false }),
-      'claude',
-    );
+    const rows = progressRows(initialProgress({ hasCredentials: true, hasRawTokens: true }), 'claude');
     expect(rows).toEqual([
       { text: 'Scanning files...', complete: false },
       { text: 'Mapping composition via claude...', complete: false },
@@ -168,26 +158,6 @@ describe('isFullCacheHit', () => {
     ['token generation failed', { tokens: 'failed' as const }],
   ])('is false while %s', (_name, overrides) => {
     expect(isFullCacheHit(done(overrides))).toBe(false);
-  });
-});
-
-describe('stepNumbers', () => {
-  it('is step 2 of 6 with a token stage', () => {
-    expect(stepNumbers({ hasRawTokens: true })).toEqual({ stepNumber: 2, totalSteps: 6 });
-  });
-
-  it('is step 1 of 5 without one', () => {
-    expect(stepNumbers({ hasRawTokens: false })).toEqual({ stepNumber: 1, totalSteps: 5 });
-  });
-
-  it('drops the component steps when components are skipped', () => {
-    expect(stepNumbers({ hasRawTokens: true, skipComponents: true }).totalSteps).toBe(4);
-  });
-
-  it('adds the map tokens step only once it is known to run', () => {
-    expect(stepNumbers({ hasRawTokens: true, mapTokensEligible: true }).totalSteps).toBe(7);
-    expect(stepNumbers({ hasRawTokens: true, mapTokensEligible: false }).totalSteps).toBe(6);
-    expect(stepNumbers({ hasRawTokens: true, mapTokensEligible: null }).totalSteps).toBe(6);
   });
 });
 

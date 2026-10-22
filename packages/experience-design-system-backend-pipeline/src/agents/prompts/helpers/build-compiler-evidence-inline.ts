@@ -1,6 +1,6 @@
-import { SUPPORTED_SOURCE_FACT_SCHEMA_VERSIONS } from '@contentful/experience-design-system-extraction';
+import { SUPPORTED_SOURCE_FACT_SCHEMA_VERSIONS } from '../../../steps/extraction/index.js';
 import type { RawComponentDefinition } from '../../../steps/extraction/src/types/component.js';
-import type { ExtractionDiagnostics } from '@contentful/experience-design-system-extraction';
+import type { ExtractionDiagnostics } from '../../../steps/extraction/index.js';
 
 import { buildComponentEvidence } from './build-component-evidence.js';
 

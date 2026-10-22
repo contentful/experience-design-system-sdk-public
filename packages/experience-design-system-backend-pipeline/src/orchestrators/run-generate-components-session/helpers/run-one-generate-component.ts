@@ -1,5 +1,5 @@
 import type { AgentDebugEvent } from '../../../agents/types/agent-run.js';
-import { bucketComponentProps } from '@contentful/experience-design-system-extraction';
+import { bucketComponentProps } from '../../../steps/extraction/index.js';
 import { stripPropProvenance } from '../../../agents/prompts/helpers/strip-prop-provenance.js';
 import type { DatabaseSync } from 'node:sqlite';
 import type { AgentName } from '../../../agents/types/agent-name.js';

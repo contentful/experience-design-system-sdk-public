@@ -11,7 +11,7 @@ import {
   type SourceClosureEvidence,
   type ComponentFacts,
   type ComponentEvidenceReadStatus,
-} from '@contentful/experience-design-system-extraction';
+} from '../../../../steps/extraction/index.js';
 
 const location = z
   .object({

@@ -11,7 +11,7 @@ import type {
 import { FixedPanel } from '../07-scope-gate/sidebar/components/windowed-panel.js';
 import { sourceObservationRows } from './components/source-observation-rows.js';
 import { wrapText } from './components/wrap-text.js';
-import { PALETTE } from './theme.js';
+import { PALETTE } from '@tui/theme.js';
 
 import type { ReviewPanel } from './types.js';
 

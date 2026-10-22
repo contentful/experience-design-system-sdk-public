@@ -1,7 +1,7 @@
 import { generateCompleteDecisions } from './property/complete-decisions.js';
 import { componentDecisionInventory } from './property/decision-inventory.js';
 import { materializeProperty, PropertyAdmissionError } from './property/materialize-property.js';
-import { bucketComponentProps } from '@contentful/experience-design-system-extraction';
+import { bucketComponentProps } from '../../../extraction/index.js';
 import { stripPropProvenance } from '../../../../agents/prompts/helpers/strip-prop-provenance.js';
 import { createHash } from 'node:crypto';
 import { buildPrompt, createLocalCliAgentInvoker, type ToolCall } from '../../../../agents/index.js';

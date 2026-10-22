@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { hydrateSourceFixture } from '../source-fixture.js';
-import { captureSourceEvidence } from '@contentful/experience-design-system-extraction';
+import { captureSourceEvidence } from '../../src/steps/extraction/index.js';
 import type { ExploreComponentReport, VerifiedItem } from '../../src/index.js';
 import type { AgentRunResult } from '../../src/agents/types/agent-run.js';
 const generated = vi.hoisted(() => ({ prompts: [] as string[], mutate: undefined as (() => void) | undefined }));

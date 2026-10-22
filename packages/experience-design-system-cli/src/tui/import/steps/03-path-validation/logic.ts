@@ -82,21 +82,28 @@ export function describeFailure(failure: ScanFailureCode, path: string): Failure
   }
 }
 
-export function summarize(counts: FileCounts): Summary {
+/**
+ * The scan result as rows and a warning. When the import does not generate tokens (components only), `.json` files are
+ * not design tokens here, so the row says they are ignored and the warnings do not mention tokens.
+ */
+export function summarize(counts: FileCounts, { hasTokens = true }: { hasTokens?: boolean } = {}): Summary {
   const rows = ROW_ORDER.filter((category) => counts[category] > 0).map((category): SummaryRow => {
+    if (category === 'json' && !hasTokens) return { label: '.json files (ignored)', count: counts.json, tone: 'muted' };
     const tone = category === 'json' ? 'accent' : category === 'other' ? 'muted' : 'default';
     return { label: ROW_LABELS[category], count: counts[category], tone };
   });
 
   const componentFiles = COMPONENT_CATEGORIES.reduce((sum, category) => sum + counts[category], 0);
   if (componentFiles > 0) return { total: counts.total, rows };
-  if (counts.json > 0) {
+  if (hasTokens && counts.json > 0) {
     return { total: counts.total, rows, warning: 'No component files found — only token files detected.' };
   }
   return {
     total: counts.total,
     rows,
-    warning: 'No component or token files found. Try a different path.',
+    warning: hasTokens
+      ? 'No component or token files found. Try a different path.'
+      : 'No component files found. Try a different path.',
   };
 }
 

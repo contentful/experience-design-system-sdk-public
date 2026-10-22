@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { bucketComponentProps } from '@contentful/experience-design-system-extraction';
+import { bucketComponentProps } from '../../steps/extraction/index.js';
 import type { RawComponentDefinition } from '../../steps/extraction/src/types/component.js';
 import {
   openPipelineDb,

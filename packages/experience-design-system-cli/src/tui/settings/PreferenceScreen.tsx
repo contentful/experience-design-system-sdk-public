@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { PALETTE } from '../home/home.theme.js';
+import { PALETTE } from '../theme.js';
 import { startDebugRun, finishDebugRun } from '../debug-store.js';
-import { ControlHints } from '../control-hints.js';
+import { ControlHints } from '../shared/components/ControlHints.js';
 
 type Preference = { enabled: boolean };
 type Props = {

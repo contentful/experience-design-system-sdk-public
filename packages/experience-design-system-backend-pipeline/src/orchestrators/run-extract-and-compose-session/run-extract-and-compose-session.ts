@@ -4,7 +4,7 @@ import {
   captureSourceEvidence,
   evaluateExtractionQuality,
   preClassifyComponent,
-} from '@contentful/experience-design-system-extraction';
+} from '../../steps/extraction/index.js';
 import { resolveCompositionSources } from '../../steps/composition/src/helpers/edges/resolve-composition-sources.js';
 import {
   createStep,

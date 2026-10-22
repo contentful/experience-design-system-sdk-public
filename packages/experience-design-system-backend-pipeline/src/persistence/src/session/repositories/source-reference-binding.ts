@@ -3,7 +3,7 @@ import {
   mapReferenceIndexLocations,
   type SourceCapture,
   type SourceReferenceIndex,
-} from '@contentful/experience-design-system-extraction';
+} from '../../../../steps/extraction/index.js';
 
 /** Recheck every endpoint against the immutable completed bytes, including lexical owners and sample origins. */
 export function bindSavedSourceReferences(

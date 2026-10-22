@@ -43,7 +43,6 @@ const extractionInput = (signal?: AbortSignal): ExtractionInput => ({
   projectPath: '/project',
   filePaths: [],
   rawTokensPath: '',
-  tokenStrategy: 'generate',
   credentials: null,
   agent: 'claude',
   promptOverrides: [],

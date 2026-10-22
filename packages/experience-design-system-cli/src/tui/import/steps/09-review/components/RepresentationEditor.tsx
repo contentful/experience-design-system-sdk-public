@@ -8,7 +8,7 @@ import {
 } from '@contentful/experience-design-system-types';
 import { useImmediateInput } from '../../07-scope-gate/sidebar/hooks/useImmediateInput.js';
 import { FieldEditor } from './FieldEditor.js';
-import { PALETTE } from '../theme.js';
+import { PALETTE } from '@tui/theme.js';
 
 type RepresentationView = 'models' | 'mappings' | 'relationships' | 'requirements';
 type RepresentationRow = { id: string; label: string };

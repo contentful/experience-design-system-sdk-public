@@ -1,7 +1,8 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import type { ReviewComponentStatus } from '../types.js';
-import { PALETTE } from '../theme.js';
+import { PALETTE } from '@tui/theme.js';
+import { ControlHints } from '@tui/shared/components/ControlHints.js';
 
 export type ReviewStatusCounts = {
   accepted: number;
@@ -38,7 +39,7 @@ export function ReviewLoadError({ message }: { message: string }): React.ReactEl
     <Box flexDirection="column" paddingX={2} paddingY={1}>
       <Text color={PALETTE.error}>{message}</Text>
       <Text> </Text>
-      <Text>[q / Enter / Esc] Quit</Text>
+      <ControlHints hints={[{ keys: 'q / Enter / Esc', label: 'Quit' }]} />
     </Box>
   );
 }

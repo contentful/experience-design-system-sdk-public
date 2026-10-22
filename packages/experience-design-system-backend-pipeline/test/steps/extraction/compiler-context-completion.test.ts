@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import ts from 'typescript';
 import { Project } from 'ts-morph';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { extractEndpoint, captureSourceEvidence } from '@contentful/experience-design-system-extraction';
+import { extractEndpoint, captureSourceEvidence } from '../../../src/steps/extraction/index.js';
 import { extractComponents } from '../../../src/steps/extraction/src/controller/extract-components-endpoint.js';
 import { buildCompilerEvidenceInline } from '../../../src/agents/prompts/helpers/build-compiler-evidence-inline.js';
 import { buildExplorationSourceInput } from '../../../src/orchestrators/run-exploration-session/helpers/build-source-input.js';

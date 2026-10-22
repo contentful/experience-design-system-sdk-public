@@ -8,8 +8,6 @@ interface GenerationScreenProps {
   agent: string;
   acceptedCount: number;
   hasTokens: boolean;
-  stepNumber: number;
-  totalSteps: number;
 }
 
 export function GenerationScreen({
@@ -17,14 +15,10 @@ export function GenerationScreen({
   agent,
   acceptedCount,
   hasTokens,
-  stepNumber,
-  totalSteps,
 }: GenerationScreenProps): React.ReactElement {
   return (
     <RunningStep
-      stepNumber={stepNumber}
-      totalSteps={totalSteps}
-      title="Generating definitions"
+      step="generation"
       description={describeGeneration({ acceptedCount, agent, hasTokens })}
       lines={progressRows(progress, agent)}
     />

@@ -2,16 +2,14 @@
 
 ## Overview
 
-The Experience Design System SDK is an Nx monorepo with six packages:
+The Experience Design System SDK is an Nx monorepo with four packages:
 
-| Package                                                | Purpose |
-| ------------------------------------------------------ | ------- |
-| `@contentful/experience-design-system-cli`             | Published CLI and interactive import wizard; owns user input, screens, and flow routing |
+| Package                                                 | Purpose                                                                                                       |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `@contentful/experience-design-system-cli`              | Published CLI and interactive import wizard; owns user input, screens, and flow routing                       |
 | `@contentful/experience-design-system-backend-pipeline` | In-process extraction, generation, session persistence, validation, and apply operations called by the wizard |
-| `@contentful/experience-design-system-extraction`      | Component extraction engine with TypeScript and framework parsers; used by the backend pipeline |
-| `@contentful/experience-design-system-generation`      | Source skill files copied into the CLI package as runtime assets |
-| `@contentful/experience-design-system-client`          | Generated API client used by backend apply operations |
-| `@contentful/experience-design-system-types`           | Shared TypeScript types, Zod schemas, and CDF/DTCG validation logic |
+| `@contentful/experience-design-system-client`           | Generated API client used by backend apply operations                                                         |
+| `@contentful/experience-design-system-types`            | Shared TypeScript types, Zod schemas, and CDF/DTCG validation logic                                           |
 
 The supported user flow is the interactive `experiences import` wizard. The CLI calls backend-pipeline functions directly in the same process; the backend invokes the selected coding agent as a local subprocess where needed.
 
@@ -50,19 +48,13 @@ When a token file is supplied (the token-input screen), the wizard starts token 
 
 ### `experience-design-system-cli`
 
-The published package provides the `experiences`, `exo`, and `experience-design-system-cli` binaries. The CLI owns the Ink import wizard under `src/tui/import/`, registers the `import` route, and calls backend-pipeline operations directly. Its `copy-assets` target copies the generation package's skills into the published package for runtime prompt loading.
+The published package provides the `experiences`, `exo`, and `experience-design-system-cli` binaries. The CLI owns the Ink import wizard under `src/tui/import/`, registers the `import` route, and calls backend-pipeline operations directly. Its `copy-assets` target copies the backend's generation, selection, exploration and consensus skills into the published package for runtime prompt loading.
 
 ### `experience-design-system-backend-pipeline`
 
 Owns extraction and composition orchestration, generation sessions, prompt assembly, session persistence, in-process validation, and apply operations. The CLI imports these functions instead of spawning hidden CLI commands. Matching skill files under `src/agents/skills/` provide fallback content for backend prompt loading.
 
-### `experience-design-system-extraction`
-
-Component extraction engine: per-framework parsers (React, Vue, Astro, Stencil, Web Components) built on ts-morph, plus prop pre-classification. Consumed by the backend pipeline.
-
-### `experience-design-system-generation`
-
-Owns the primary generation and selection skill markdown sources. The CLI build copies these files into its package; the backend pipeline also carries fallback skill copies for direct prompt loading.
+The extraction engine under `src/steps/extraction/` owns modular framework adapters, compiler context and graphs, source capture and reference evidence, closure analysis, prop classification and quality review. These modules are part of the backend package. The same package owns all generation, selection, exploration and consensus skill sources; CLI build assets copy them from `src/agents/skills/`.
 
 ### `experience-design-system-client`
 
@@ -84,7 +76,7 @@ Produced by extraction, stored in the pipeline session database, consumed by the
 interface RawComponentDefinition {
   name: string; // PascalCase component name
   source: string; // absolute path to source file
-  framework: "react" | "next" | "vue" | "astro" | "web-component" | "stencil";
+  framework: 'react' | 'next' | 'vue' | 'astro' | 'web-component' | 'stencil';
   props: RawPropDefinition[];
   slots: RawSlotDefinition[];
 }
@@ -93,7 +85,7 @@ interface RawPropDefinition {
   name: string;
   type: string; // TypeScript type string
   required: boolean;
-  category?: "content" | "design" | "state";
+  category?: 'content' | 'design' | 'state';
   defaultValue?: string;
   allowedValues?: string[]; // for enum / union types
   description?: string;
@@ -119,7 +111,7 @@ interface CDFFile {
 }
 
 interface CDFComponentEntry {
-  $type: "component";
+  $type: 'component';
   $description?: string;
   $properties: Record<string, CDFPropertyDefinition>;
   $slots?: Record<string, CDFSlotDefinition>;
@@ -132,8 +124,8 @@ interface CDFPropertyDefinition {
   $required?: boolean;
   $default?: unknown;
   $values?: string[];
-  "$token.kind"?: string;
-  "$token.allowed"?: string[]; // restricted DTCG paths; omitted for unrestricted token props
+  '$token.kind'?: string;
+  '$token.allowed'?: string[]; // restricted DTCG paths; omitted for unrestricted token props
 }
 ```
 
@@ -343,7 +335,7 @@ sequenceDiagram
 
 ## React Extractor Architecture
 
-The React extractor (`packages/experience-design-system-extraction/src/extract/react.ts`) is the most complex component (~2500 lines). It uses ts-morph to walk the TypeScript AST of each `.tsx`/`.jsx` file.
+The React extractor (`packages/experience-design-system-backend-pipeline/src/steps/extraction/src/react.ts`) is the most complex component (~2500 lines). It uses ts-morph to walk the TypeScript AST of each `.tsx`/`.jsx` file.
 
 ### Extraction pipeline per file
 
@@ -418,7 +410,7 @@ Each component-generation prompt also receives the completed detail exploration'
 
 Session and standalone generation validate each property through the same source-bound materializer and projection rules. Pending properties receive structured issues, candidate alternatives, representation plans and capability requirements. An invocation-scoped read-only Node command lets the agent check draft tool-call lines on stdin against a private immutable evidence file; it never loads live source or executes source expressions. When that command is unavailable, host-fed correction remains available and host validation still runs. A maximum of two attempts shares one operation deadline; successful decisions stay fixed, and repairs preserve pending properties' semantic category and source identity. Remaining unresolved decisions omit representation companions and retain concrete reasons. Inventory completeness and representation admission are separate results; the existing downstream held-result failure behavior remains until review routing is implemented. Evidence cleanup waits for invoked subprocesses to settle, including cancellation.
 
-The CLI resolves the component, token, and selection skill files from its packaged `skills/` assets and passes those paths to backend-pipeline operations. The CLI build copies the primary markdown sources from `packages/experience-design-system-generation/skills/`; matching fallback copies live under `packages/experience-design-system-backend-pipeline/src/agents/skills/`.
+The CLI resolves the component, token, and selection skill files from its packaged `skills/` assets and passes those paths to backend-pipeline operations. The CLI build copies the primary markdown sources from `packages/experience-design-system-backend-pipeline/src/agents/skills/`; matching fallback copies live under `packages/experience-design-system-backend-pipeline/src/agents/skills/`.
 
 The backend pipeline owns prompt assembly and agent invocation. It combines each skill file with a runtime preamble, embeds session data inline, invokes the selected local coding agent, parses one JSON tool-call object per output line, and applies valid calls to the session database. Raw components are not passed to the agent as file paths.
 
@@ -472,8 +464,8 @@ The selection agent's accept and reject rationale is stored in `raw_components.r
 
 The import wizard renders Ink (React) components in a TTY and has no non-interactive mode. Preview and push are steps in this wizard.
 
-| Flow | TUI components |
-| ---- | -------------- |
+| Flow     | TUI components                                                                      |
+| -------- | ----------------------------------------------------------------------------------- |
 | `import` | Step components under `packages/experience-design-system-cli/src/tui/import/steps/` |
 
 The TUI uses React hooks for state (`useState`, `useReducer`), Ink's `useInput` for keyboard, and a custom `useUndo` hook for the JSON editor.

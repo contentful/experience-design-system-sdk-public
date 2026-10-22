@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bucketComponentProps, preClassifyComponent } from '@contentful/experience-design-system-extraction';
+import { bucketComponentProps, preClassifyComponent } from '../../../src/steps/extraction/index.js';
 import { buildPrompt } from '../../../src/agents/prompts/build-prompt.js';
 import { stripPropProvenance } from '../../../src/agents/prompts/helpers/strip-prop-provenance.js';
 import { buildCompilerEvidenceInline } from '../../../src/agents/prompts/helpers/build-compiler-evidence-inline.js';

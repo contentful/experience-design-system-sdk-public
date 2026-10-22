@@ -18,7 +18,7 @@ import {
 } from '../../../src/persistence/src/session/repositories/db.js';
 import { resolveComposition } from '../../../src/orchestrators/run-extract-and-compose-session/helpers/resolve-composition.js';
 import type { RawComponentDefinition } from '../../../src/steps/extraction/src/types/component.js';
-import { captureSourceEvidence } from '@contentful/experience-design-system-extraction';
+import { captureSourceEvidence } from '../../../src/steps/extraction/index.js';
 import { deriveComponentId } from '../../../src/persistence/src/session/helpers/components/derive-component-id.js';
 
 vi.mock('../../../src/agents/services/run-agent.js', () => ({ runAgent: vi.fn() }));

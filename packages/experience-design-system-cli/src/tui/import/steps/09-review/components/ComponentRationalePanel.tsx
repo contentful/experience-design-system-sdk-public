@@ -1,5 +1,5 @@
 import React from 'react';
-import { PALETTE } from '../theme.js';
+import { PALETTE } from '@tui/theme.js';
 import { Box, Text } from 'ink';
 import type { ComponentRationale } from '@contentful/experience-design-system-backend-pipeline';
 import { wrapText } from './wrap-text.js';
@@ -96,7 +96,7 @@ export function ComponentRationalePanel({
       width={width}
       height={height + 2}
       borderStyle="single"
-      borderColor={active ? PALETTE.inverse : undefined}
+      borderColor={active ? PALETTE.text : undefined}
     >
       <Box>
         <Text bold color={active ? undefined : PALETTE.muted}>

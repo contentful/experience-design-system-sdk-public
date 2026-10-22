@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
-import { captureSourceEvidence } from '@contentful/experience-design-system-extraction';
+import { captureSourceEvidence } from '../../steps/extraction/index.js';
 import { buildCompilerEvidenceInline } from '../../agents/prompts/helpers/build-compiler-evidence-inline.js';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { RawComponentDefinition } from '../../steps/extraction/src/types/component.js';

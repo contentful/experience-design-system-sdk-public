@@ -5,7 +5,9 @@ import { dirname, basename, join } from 'node:path';
 import { useImmediateInput } from '../../07-scope-gate/sidebar/hooks/useImmediateInput.js';
 import { normalizePath } from '../support/path-utils.js';
 import { useBlinkingCursor } from '../support/use-blinking-cursor.js';
-import { PALETTE } from '../theme.js';
+import { PALETTE } from '@tui/theme.js';
+import { ControlHints } from '@tui/shared/components/ControlHints.js';
+import { StepHeader } from '@tui/shared/components/StepHeader.js';
 
 export type PathPromptProps = {
   defaultPath: string;
@@ -76,17 +78,22 @@ export function PathPrompt({
   const cursor = cursorVisible ? '█' : ' ';
 
   return (
-    <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
-      <Box gap={1}>
-        <Text color="cyan">?</Text>
-        <Text bold>{label}:</Text>
-        <Text color={isPlaceholder ? PALETTE.muted : undefined}>{shown}</Text>
-        <Text>{cursor}</Text>
-      </Box>
-      <Box gap={3}>
-        <Text>[Enter] Confirm</Text>
-        <Text>[Tab] Autocomplete</Text>
-        <Text>[Esc] Cancel</Text>
+    <Box flexDirection="column">
+      <StepHeader step="push" />
+      <Box flexDirection="column" gap={1} paddingX={2} paddingBottom={1}>
+        <Box gap={1}>
+          <Text color={PALETTE.accent}>?</Text>
+          <Text bold>{label}:</Text>
+          <Text color={isPlaceholder ? PALETTE.muted : undefined}>{shown}</Text>
+          <Text>{cursor}</Text>
+        </Box>
+        <ControlHints
+          hints={[
+            { keys: 'Enter', label: 'Confirm' },
+            { keys: 'Tab', label: 'Autocomplete' },
+            { keys: 'Esc', label: 'Cancel' },
+          ]}
+        />
       </Box>
     </Box>
   );

@@ -2,7 +2,7 @@ import {
   canonicalSourceFactPath,
   mapInputOutputLocations,
   type SourceInputOutputEvidence,
-} from '@contentful/experience-design-system-extraction';
+} from '../../../../steps/extraction/index.js';
 import type { CompletedSourceEvidence } from './db.js';
 
 /** Saved labels are checked against the completed captured bytes and source ranges on every reopen. */

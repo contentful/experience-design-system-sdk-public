@@ -95,7 +95,6 @@ describe('an import, from extraction to the hand-off to the review', () => {
     projectPath: dir,
     filePaths: [join(dir, 'src', 'Page.tsx')],
     rawTokensPath: join(dir, 'raw-tokens.json'),
-    tokenStrategy: 'generate',
     credentials: { spaceId: 'space', environmentId: 'master', cmaToken: 'token', host: 'api.contentful.com' },
     agent: 'claude',
     promptOverrides: [],

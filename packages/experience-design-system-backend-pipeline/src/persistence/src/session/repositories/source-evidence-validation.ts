@@ -5,12 +5,12 @@ import {
   validateSourceGraph,
   type PropertySourceGraph,
 } from '@contentful/experience-design-system-types';
-import type { NativeSourceShape, SourceTypeGraph } from '@contentful/experience-design-system-extraction';
+import type { NativeSourceShape, SourceTypeGraph } from '../../../../steps/extraction/index.js';
 import type {
   ExtractionDiagnostics,
   SourceCandidate,
   SourceCandidateSource,
-} from '@contentful/experience-design-system-extraction';
+} from '../../../../steps/extraction/index.js';
 
 const origin = z.enum(['own', 'imported', 'inherited-dom', 'inherited-library', 'mixed', 'unknown']);
 const evidenceKind = z.enum(['declaration', 'runtime-object', 'implementation', 'binding']);

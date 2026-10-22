@@ -29,10 +29,8 @@ pnpm typecheck
 
 ```
 packages/
-  experience-design-system-cli/         # Published CLI: Ink TUI, bundles the legacy CLI
-  experience-design-system-cli-legacy/  # Previous CLI and import wizard (private, never published)
-  experience-design-system-extraction/  # Component extraction engine (ts-morph, per-framework parsers)
-  experience-design-system-generation/  # Agent-invocation and skill-prompt engine (used internally by the import wizard)
+  experience-design-system-cli/         # Published CLI: Ink import wizard
+  experience-design-system-backend-pipeline/ # Extraction, agents, persistence and apply
   experience-design-system-client/      # Generated API client (from openapi.json), used by `apply`
   experience-design-system-types/       # Shared types and schemas
 .github/workflows/                      # CI/CD pipelines
@@ -165,10 +163,10 @@ Commit the updated snapshot files alongside the code change.
 
 ## Adding a New Framework Extractor
 
-These live in `packages/experience-design-system-extraction`:
+These live in `packages/experience-design-system-backend-pipeline/src/steps/extraction/`:
 
-1. Create `src/extract/<framework>.ts` implementing the `ComponentExtractor` interface from `src/types.ts`
-2. Register it in `src/extract/pipeline.ts` — add to the `extractors` array and provide a `fileFilter`
+1. Create a modular adapter under `src/framework-adapters/<framework>/` implementing `ComponentExtractor` from `src/types/component-extractor.ts`
+2. Register it in `src/services/extraction/helpers/register-extractors.ts` and provide a `fileFilter`
 3. Write tests under `test/` alongside the existing extractor tests
 
 ## Branching and Deployment

@@ -1,4 +1,4 @@
-import { PALETTE } from './sidebar/theme.js';
+import { PALETTE } from '@tui/theme.js';
 import type { Closure } from './graph/composite-closure.js';
 /** Structural subset of ScopeComponent needed by these helpers. */
 export interface ScopeComponentLike {
@@ -113,11 +113,11 @@ export function sideColumnLabelStyle(input: { isCycle: boolean; isSelected: bool
   const isCursor = isSelected && focused;
   if (isCursor) {
     return {
-      nameColor: PALETTE.info,
+      nameColor: PALETTE.accent,
       nameBold: true,
       nameInverse: false,
       nameUnderline: false,
-      suffixColor: PALETTE.info,
+      suffixColor: PALETTE.accent,
       suffixDim: false,
       suffixInverse: false,
       suffixUnderline: false,
@@ -141,7 +141,7 @@ export function sideColumnLabelStyle(input: { isCycle: boolean; isSelected: bool
     nameBold: false,
     nameInverse: false,
     nameUnderline: underline,
-    suffixColor: PALETTE.info,
+    suffixColor: PALETTE.accent,
     suffixDim: true,
     suffixInverse: false,
     suffixUnderline: underline,

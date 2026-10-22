@@ -1,6 +1,7 @@
 import React from 'react';
 import type { ComponentTypeSummary } from '@contentful/experience-design-system-types';
-import { PALETTE } from '../theme.js';
+import { PALETTE } from '@tui/theme.js';
+import { ControlHints } from '@tui/shared/components/ControlHints.js';
 import { Box, Text } from 'ink';
 import { useImmediateInput } from '../../07-scope-gate/sidebar/hooks/useImmediateInput.js';
 import { removedComponentsHeader, removedComponentLine } from './removed-components-text.js';
@@ -57,9 +58,9 @@ export function FinalizeDialog({
   const hasMoreAbove = offset > 0;
 
   return (
-    <Box width="100%" justifyContent="center">
-      <Box flexDirection="column" alignItems="center" borderStyle="round" padding={1} width={58}>
-        <Text bold>{'─'.repeat(22) + ' Finalize ' + '─'.repeat(22)}</Text>
+    <Box width="100%" paddingX={2}>
+      <Box flexDirection="column" alignItems="flex-start">
+        <Text bold>Finalize</Text>
         <Text> </Text>
         <Text>
           <Text color={PALETTE.success}>{accepted} accepted</Text>
@@ -121,7 +122,12 @@ export function FinalizeDialog({
               : 'Save decisions and exit?'}
         </Text>
         <Text> </Text>
-        <Text>{'[y / Enter]  Confirm    [n / Esc]  Cancel'}</Text>
+        <ControlHints
+          hints={[
+            { keys: 'y / Enter', label: 'Confirm' },
+            { keys: 'n / Esc', label: 'Cancel' },
+          ]}
+        />
       </Box>
     </Box>
   );

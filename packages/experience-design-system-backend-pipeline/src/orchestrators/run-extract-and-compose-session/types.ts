@@ -16,7 +16,7 @@ export type ExtractAndComposeProgress =
 
 export interface RunExtractAndComposeSessionRequest {
   evidenceFilePaths?: readonly string[];
-  sourceInventory?: import('@contentful/experience-design-system-extraction').SourceEvidenceInventory;
+  sourceInventory?: import('../../steps/extraction/index.js').SourceEvidenceInventory;
   signal?: AbortSignal;
   /** Absolute project root. Used as the session's inputPath and for relative file-path storage. */
   projectPath: string;

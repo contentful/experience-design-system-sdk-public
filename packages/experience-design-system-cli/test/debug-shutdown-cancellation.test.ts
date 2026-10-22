@@ -6,7 +6,7 @@ vi.mock('node:fs', () => ({ existsSync: () => false, readdirSync: () => [] }));
 vi.mock('@contentful/experience-design-system-types/config', () => ({
   readSettings: async () => ({ contentfulBaseDir: '/project' }),
 }));
-vi.mock('../src/tui/upgrade/version.js', () => ({ readPackageVersion: () => 'version' }));
+vi.mock('../src/tui/home/version.js', () => ({ readPackageVersion: () => 'version' }));
 vi.mock('../src/tui/settings/debug-mode/debug-mode-store.js', () => ({
   readDebugModeSetting: async () => ({ enabled: true }),
 }));

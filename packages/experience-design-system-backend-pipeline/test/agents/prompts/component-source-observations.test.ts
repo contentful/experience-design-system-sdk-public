@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
-import { extractReactComponents } from '@contentful/experience-design-system-extraction';
+import { extractReactComponents } from '../../../src/steps/extraction/index.js';
 const agent = vi.hoisted(() => ({ prompts: [] as string[] }));
 vi.mock('../../../src/agents/index.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../src/agents/index.js')>()),

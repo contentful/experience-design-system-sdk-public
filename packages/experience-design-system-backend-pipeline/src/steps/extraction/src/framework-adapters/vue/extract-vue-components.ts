@@ -1,1 +1,1 @@
-export { extractVueComponents } from '@contentful/experience-design-system-extraction';
+export { extractVueComponents } from './extractor.js';

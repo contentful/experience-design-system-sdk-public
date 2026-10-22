@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import { Node } from 'ts-morph';
-import { extractReactComponents as publicReact } from '@contentful/experience-design-system-extraction';
+import { extractReactComponents as publicReact } from '../../../src/steps/extraction/index.js';
 import { extractReactComponents } from '../../../src/steps/extraction/src/framework-adapters/react/extract-react-components.js';
 
 const roots: string[] = [];

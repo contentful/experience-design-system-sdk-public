@@ -1,7 +1,8 @@
 import { persistReviewEntry } from './persist-review-entry.js';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import figures from 'figures';
-import { PALETTE } from './theme.js';
+import { PALETTE } from '@tui/theme.js';
+import { StepHeader } from '@tui/shared/components/StepHeader.js';
 import { getReviewJsonPanelValue } from './review-json-panel.js';
 import { Box, Text } from 'ink';
 import type {
@@ -188,7 +189,7 @@ function CyclePathLine({
       {prefix}
       {segments.map((segment, index) =>
         segment.kind === 'slot' ? (
-          <Text key={index} color={PALETTE.info}>
+          <Text key={index} color={PALETTE.accent}>
             {segment.text}
           </Text>
         ) : segment.kind === 'arrow' ? (
@@ -1431,6 +1432,7 @@ function GenerateReviewStepView({
 
   return (
     <Box flexDirection="column">
+      <StepHeader step="review" />
       <ReviewStepDialogs
         surfaceState={reviewSurface}
         components={components}

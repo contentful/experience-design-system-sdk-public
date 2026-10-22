@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
-import { extractReactComponents as extractPublic } from '@contentful/experience-design-system-extraction';
+import { extractReactComponents as extractPublic } from '../../../src/steps/extraction/index.js';
 import { extractReactComponents as extractBackend } from '../../../src/steps/extraction/src/framework-adapters/react/extract-react-components.js';
 
 it('collects identical real default normal/parameterless source observations at both React producers', async () => {

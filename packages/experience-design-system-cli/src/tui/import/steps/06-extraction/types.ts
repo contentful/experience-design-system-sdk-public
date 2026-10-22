@@ -1,8 +1,6 @@
-import type { ExtractionHandoff, ImportHandoff } from '@contentful/experience-design-system-types/handoff';
+import type { ExtractionHandoff } from '@contentful/experience-design-system-types/handoff';
 
 // What the extraction stage needs, what it reports while it runs, and what it hands to the legacy wizard.
-
-export type TokenStrategy = ImportHandoff['tokens']['strategy'];
 
 export interface ExtractionInput {
   sourceInventory?: import('@contentful/experience-design-system-backend-pipeline').SourceEvidenceInventory;
@@ -13,10 +11,8 @@ export interface ExtractionInput {
   outDir?: string;
   /** Absolute source files from the path-validation step (collectFiles output). */
   filePaths: string[];
-  /** Raw tokens file the user pointed at (always set: v2 asks for one). */
+  /** Raw tokens file the user pointed at. Empty when the import does not generate tokens (components only). */
   rawTokensPath: string;
-  /** From the token reuse step. 'reuse' skips token generation entirely. */
-  tokenStrategy: TokenStrategy;
   /** Null when the user skipped credentials: no existing-entities fetch happens. */
   credentials: { spaceId: string; environmentId: string; cmaToken: string; host: string } | null;
   agent: string;

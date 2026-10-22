@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { extractReactComponents, captureSourceEvidence } from '@contentful/experience-design-system-extraction';
+import { extractReactComponents, captureSourceEvidence } from '../src/steps/extraction/index.js';
 import type { RawComponentDefinition } from '../src/steps/extraction/src/types/component.js';
 import {
   storeRawComponents,

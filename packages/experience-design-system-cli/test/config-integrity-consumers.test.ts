@@ -9,7 +9,7 @@ vi.mock('@contentful/experience-design-system-types/config', async (original) =>
 }));
 vi.mock('../src/tui/package-root.js', () => ({ findPackageRoot: () => paths.pkg }));
 import { readSettings, writeSettings } from '@contentful/experience-design-system-types/config';
-import { writeCredentials } from '../src/tui/settings/contentful-configuration/config-store.js';
+import { writeCredentials } from '../src/tui/settings/configuration/project/project-store.js';
 import { migrateOldConfig } from '../src/config/migrate.js';
 let root: string;
 beforeEach(() => {

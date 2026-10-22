@@ -3,7 +3,8 @@ import figures from 'figures';
 import { Box, Text } from 'ink';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 import {
-  computeAllClosures,
+  computeClosure,
+  findRoots,
   findSharedDeps,
   type ComponentGraphNode,
   type Closure,
@@ -11,8 +12,8 @@ import {
 } from '../../graph/composite-closure.js';
 import type { PreviewAnnotation, RenderStatus } from '../types.js';
 import { PreviewBadge, previewBadge } from './badge.js';
-import { PALETTE } from '../theme.js';
-import { WindowIndicator, WindowedPanel } from './windowed-panel.js';
+import { PALETTE } from '@tui/theme.js';
+import { WindowFooter, WindowedPanel } from './windowed-panel.js';
 
 export interface GroupedSidebarItem {
   key: string;
@@ -68,6 +69,10 @@ export interface VisibleRow {
   cycleChild?: boolean;
   itemIdx: number;
   rootName?: string;
+}
+
+function hasDirectChild(node: ComponentGraphNode): boolean {
+  return node.slots.some((slot) => (slot.allowedComponents ?? []).some((target) => target !== node.name));
 }
 
 function isEmpty(entry: CDFComponentEntry): boolean {
@@ -140,10 +145,12 @@ export function buildVisibleRows(props: {
     otherKeys.sort();
     const otherKeySet = new Set(otherKeys);
     const flatGraph = graph.filter((n) => otherKeySet.has(n.name));
-    const closures = computeAllClosures(flatGraph);
     const depCountByKey = new Map<string, number>();
-    for (const [name, closure] of closures) {
-      if (closure.nodes.length > 1) depCountByKey.set(name, closure.nodes.length - 1);
+    for (const node of flatGraph) {
+      const direct = new Set(
+        node.slots.flatMap((slot) => slot.allowedComponents ?? []).filter((t) => t !== node.name && otherKeySet.has(t)),
+      );
+      if (direct.size > 0) depCountByKey.set(node.name, direct.size);
     }
     for (const key of cycleKeys) {
       const rec = itemByKey.get(key);
@@ -195,28 +202,13 @@ export function buildVisibleRows(props: {
 
   const computeCycleMemberSubtree = (root: string): Array<{ name: string; depth: number; isCycleMember: boolean }> => {
     const out: Array<{ name: string; depth: number; isCycleMember: boolean }> = [];
-    const visited = new Set<string>([root]);
-    const queue: Array<{ name: string; depth: number }> = [{ name: root, depth: 0 }];
-    while (queue.length > 0) {
-      const cur = queue.shift()!;
-      const parentItem = itemByKey.get(cur.name)?.it;
-      if (!parentItem) continue;
-      const slotTargets: string[] = [];
-      const seenTarget = new Set<string>();
-      for (const target of allowedComponentNames(parentItem.entry)) {
-        if (!itemByKey.has(target)) continue;
-        if (seenTarget.has(target)) continue;
-        seenTarget.add(target);
-        slotTargets.push(target);
-      }
-      slotTargets.sort();
-      for (const target of slotTargets) {
-        if (visited.has(target)) continue;
-        visited.add(target);
-        const isCycleMember = cycleParticipants.has(target);
-        out.push({ name: target, depth: cur.depth + 1, isCycleMember });
-        queue.push({ name: target, depth: cur.depth + 1 });
-      }
+    const parentItem = itemByKey.get(root)?.it;
+    if (!parentItem) return out;
+    const slotTargets = [...new Set(allowedComponentNames(parentItem.entry))]
+      .filter((target) => target !== root && itemByKey.has(target))
+      .sort();
+    for (const target of slotTargets) {
+      out.push({ name: target, depth: 1, isCycleMember: cycleParticipants.has(target) });
     }
     return out;
   };
@@ -280,7 +272,17 @@ export function buildVisibleRows(props: {
 
   const otherKeySet = new Set(otherKeys);
   const subgraph = graph.filter((n) => otherKeySet.has(n.name));
-  const closures = computeAllClosures(subgraph);
+  // One level only: every component with children is a parent row, and each row lists just its direct children.
+  // A component that is both a child and a parent shows up under its own parent and as a parent row itself.
+  const closures = new Map<string, Closure>();
+  const parentNames = new Set([
+    ...findRoots(subgraph),
+    ...subgraph.filter((n) => hasDirectChild(n)).map((n) => n.name),
+  ]);
+  for (const name of [...parentNames].sort()) {
+    const full = computeClosure(name, subgraph);
+    closures.set(name, { ...full, nodes: full.nodes.filter((n) => n.depth <= 1) });
+  }
   const sharedDeps = findSharedDeps(closures);
 
   const hasCycleDepDirect = (name: string): boolean => {
@@ -316,7 +318,7 @@ export function buildVisibleRows(props: {
       ).length;
     };
     countInjections(root);
-    for (const n of closure.nodes) if (n.name !== root) countInjections(n.name);
+    for (const node of closure.nodes) if (node.name !== root) countInjections(node.name);
     const depCount = closure.nodes.length - 1 + injectedCycleCount;
     const expanded = alwaysExpanded ? true : props.expandedGroups.has(root);
     const glyphExpand = expanded ? GLYPH_EXPAND_EXPANDED : GLYPH_EXPAND_COLLAPSED;
@@ -497,7 +499,7 @@ function labelStyleFor(input: { row: VisibleRow; isCursor: boolean; wouldDim: bo
 } {
   const { row, isCursor, wouldDim } = input;
   if (isCursor) {
-    return { color: PALETTE.info, bold: true, dim: false };
+    return { color: PALETTE.accent, bold: true, dim: false };
   }
   return {
     color: rowColor(row, row.aggregateGlyph),
@@ -578,13 +580,13 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
 
   const windowed = scrollOffset !== undefined && visibleCount !== undefined;
   const start = windowed ? Math.max(0, scrollOffset ?? 0) : 0;
-  const end = windowed ? start + (visibleCount ?? allRows.length) : allRows.length;
+  // The up indicator shares the footer line, so the row it would have used shows one more entry instead.
+  const end = windowed ? start + (visibleCount ?? allRows.length) + 1 : allRows.length;
   const rows = windowed ? allRows.slice(start, end) : allRows;
 
   return (
     <WindowedPanel width={width} height={props.height} title={title} focused={focused}>
       {allRows.length === 0 && emptyMessage !== undefined && <Text color={PALETTE.warning}> {emptyMessage}</Text>}
-      {windowed && <WindowIndicator direction="up" count={start} />}
       {rows.map((row, i) => {
         const absoluteRowIdx = start + i;
         const isSelected =
@@ -639,7 +641,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
         return (
           <Box key={row.key}>
             {isCursor ? (
-              <Text color={PALETTE.info} bold>
+              <Text color={PALETTE.accent} bold>
                 {figures.pointer}
               </Text>
             ) : (
@@ -663,10 +665,10 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
                 <Text>{'    '}</Text>
               ))}
             <Text
-              color={isSelected ? PALETTE.info : labelStyle.dim ? PALETTE.muted : labelStyle.color}
+              color={isSelected ? PALETTE.accent : labelStyle.dim ? PALETTE.muted : labelStyle.color}
               bold={isSelected || labelStyle.bold}
               inverse={false}
-              underline={isSelected && !focused}
+              underline={isSelected && focused}
               wrap={wrapLabels ? 'wrap' : 'truncate'}
             >
               {' '}
@@ -680,7 +682,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
           </Box>
         );
       })}
-      {windowed && <WindowIndicator direction="down" count={allRows.length - end} />}
+      {windowed && <WindowFooter above={start} below={Math.max(0, allRows.length - end)} />}
     </WindowedPanel>
   );
 }

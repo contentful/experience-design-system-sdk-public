@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
-import { extractSvelteComponents as extractPublic } from '@contentful/experience-design-system-extraction';
+import { extractSvelteComponents as extractPublic } from '../../../src/steps/extraction/index.js';
 import { extractSvelteComponents as extractBackend } from '../../../src/steps/extraction/src/framework-adapters/svelte/extract-svelte-components.js';
 import { extractComponents } from '../../../src/index.js';
 const roots: string[] = [];

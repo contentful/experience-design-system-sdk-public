@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { captureSourceEvidence } from '@contentful/experience-design-system-extraction';
+import { captureSourceEvidence } from '../../src/steps/extraction/index.js';
 import { afterEach, describe, expect, it } from 'vitest';
 import * as pipeline from '../../src/index.js';
 import {

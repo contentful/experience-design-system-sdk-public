@@ -2,7 +2,7 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
-import { captureSourceEvidence, extractEndpoint } from '@contentful/experience-design-system-extraction';
+import { captureSourceEvidence, extractEndpoint } from '../../../src/steps/extraction/index.js';
 import { extractComponents } from '../../../src/steps/extraction/src/controller/extract-components-endpoint.js';
 import * as saved from '../../../src/persistence/src/session/repositories/db.js';
 import { buildCompilerEvidenceInline } from '../../../src/agents/prompts/helpers/build-compiler-evidence-inline.js';

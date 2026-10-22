@@ -1,4 +1,4 @@
-import type { SourceCapture } from '@contentful/experience-design-system-extraction';
+import type { SourceCapture } from '../steps/extraction/index.js';
 import type {
   SharedSource,
   SharedSourceFile,
@@ -74,7 +74,7 @@ export function buildSharedSource(envelope: SessionSourceEnvelope, componentIds?
       .map((file) => file.fileId),
   );
   for (const value of envelope.observations.referenceIndexes ?? []) {
-    const index = value as import('@contentful/experience-design-system-extraction').SourceReferenceIndex;
+    const index = value as import('../steps/extraction/index.js').SourceReferenceIndex;
     for (const reference of index.references)
       for (const file of capture.files)
         if (file.canonicalPath === reference.location.canonicalPath) selected.add(file.fileId);

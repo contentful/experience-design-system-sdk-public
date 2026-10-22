@@ -4,7 +4,7 @@ import {
 } from '../../../steps/composition/src/helpers/candidates/candidate-files.js';
 import { readCandidateFiles } from './read-candidate-files.js';
 import type { RawComponentDefinition } from '../../../steps/extraction/src/types/component.js';
-import type { SourceCapture } from '@contentful/experience-design-system-extraction';
+import type { SourceCapture } from '../../../steps/extraction/index.js';
 
 export interface CompositionPromptFiles {
   /** Bounded candidate SAMPLE inlined into the agent prompt. */

@@ -53,7 +53,7 @@ import { projectAcceptedSlots } from '../../../../steps/exploration/src/services
 import { validateCDFSourceOwners } from '../../../../steps/exploration/src/services/source-input-ownership.js';
 import { validateSavedInputOutput } from './input-output-binding.js';
 import { bindSavedSourceReferences } from './source-reference-binding.js';
-import { readSourceInventory, readSourceReferences } from '@contentful/experience-design-system-extraction';
+import { readSourceInventory, readSourceReferences } from '../../../../steps/extraction/index.js';
 import { CDFComponentSchema } from '@contentful/experience-design-system-types';
 import { readComponentFacts, readComponentFactsJson, type ComponentFactsRead } from './component-facts-validation.js';
 import { DatabaseSync } from 'node:sqlite';
@@ -88,17 +88,17 @@ import {
   isAlternateSourcePayload,
   isExtractionDiagnosticsPayload,
 } from './source-evidence-validation.js';
-import type { SourceCapture } from '@contentful/experience-design-system-extraction';
+import type { SourceCapture } from '../../../../steps/extraction/index.js';
 import {
   bindSourceCandidatesToCapture,
   bindCompilerReadsToCapture,
   SUPPORTED_SOURCE_FACT_SCHEMA_VERSIONS,
-} from '@contentful/experience-design-system-extraction';
+} from '../../../../steps/extraction/index.js';
 import type {
   ExtractionDiagnostics,
   SourceCandidate,
   SourceCandidateSource,
-} from '@contentful/experience-design-system-extraction';
+} from '../../../../steps/extraction/index.js';
 
 export { hashComponentShape as computeComponentInputHash } from '../helpers/components/hash-component-shape.js';
 export { hashTokenContent as computeTokenInputHash } from '../helpers/tokens/hash-token-content.js';

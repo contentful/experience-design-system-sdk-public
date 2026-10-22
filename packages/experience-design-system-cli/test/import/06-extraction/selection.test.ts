@@ -10,7 +10,7 @@ import {
   openPipelineDb,
   storeRawComponents,
 } from '@contentful/experience-design-system-backend-pipeline';
-import { captureSourceEvidence } from '../../../../experience-design-system-extraction/src/source-evidence/capture.js';
+import { captureSourceEvidence } from '../../../../experience-design-system-backend-pipeline/src/steps/extraction/source-evidence/capture.js';
 
 // The agent itself is scripted: it prints the tool calls a real agent would, and records the prompt it was given.
 const agent = vi.hoisted(() => ({

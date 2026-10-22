@@ -14,7 +14,6 @@ const input = (overrides: Partial<ExtractionInput> = {}): ExtractionInput => ({
   projectPath: '/proj',
   filePaths: ['/proj/src/a.tsx', '/proj/src/b.tsx', '/proj/src/c.tsx'],
   rawTokensPath: '/raw-tokens.json',
-  tokenStrategy: 'generate',
   credentials: { spaceId: 's', environmentId: 'e', cmaToken: 't', host: 'api.contentful.com' },
   agent: 'claude',
   promptOverrides: [],
@@ -94,18 +93,6 @@ describe('runExtraction — the tokens path it hands over', () => {
 
   it('is the generated catalog when tokens were generated', async () => {
     expect(await tokensPathOf({})).toBe('/proj/.contentful/tokens.json');
-  });
-
-  it('is the existing catalog when it was reused, since that file is already there', async () => {
-    expect(await tokensPathOf({ tokenStrategy: 'reuse' })).toBe('/proj/.contentful/tokens.json');
-  });
-
-  it('is the existing catalog when it was reused even though there is no raw tokens file to generate from', async () => {
-    // reuse is what sets the path here: nothing is generated, so it would otherwise count as having no token source
-    const deps = makeDeps({ runGenerateTokensSession: vi.fn() });
-    const result = await runExtraction(input({ rawTokensPath: '', tokenStrategy: 'reuse' }), () => {}, deps);
-    expect(result.ok && result.extraction.tokensPath).toBe('/proj/.contentful/tokens.json');
-    expect(deps.runGenerateTokensSession).not.toHaveBeenCalled();
   });
 
   it('is empty when there is no token source at all, so later steps do not look for a file that does not exist', async () => {
@@ -294,28 +281,10 @@ describe('runExtraction — what is skipped', () => {
     expect(deps.runSelection).toHaveBeenCalledTimes(1);
   });
 
-  it('does not generate tokens when they are being reused', async () => {
-    const deps = makeDeps();
-    const result = await runExtraction(input({ tokenStrategy: 'reuse' }), () => {}, deps);
-
-    expect(deps.runGenerateTokensSession).not.toHaveBeenCalled();
-    expect(result.ok && result.extraction.tokenSessionId).toBeNull();
-  });
-
   it('does not generate tokens when no raw tokens file was given', async () => {
     const deps = makeDeps();
     await runExtraction(input({ rawTokensPath: '' }), () => {}, deps);
     expect(deps.runGenerateTokensSession).not.toHaveBeenCalled();
-  });
-
-  it('forces the token cache off for a regenerate, and only for a regenerate', async () => {
-    const regenerate = makeDeps();
-    await runExtraction(input({ tokenStrategy: 'regenerate' }), () => {}, regenerate);
-    expect(regenerate.runGenerateTokensSession).toHaveBeenCalledWith(expect.objectContaining({ noCache: true }));
-
-    const normal = makeDeps();
-    await runExtraction(input({ tokenStrategy: 'generate' }), () => {}, normal);
-    expect(normal.runGenerateTokensSession).toHaveBeenCalledWith(expect.objectContaining({ noCache: false }));
   });
 
   it('passes the cache setting to extraction and selection', async () => {

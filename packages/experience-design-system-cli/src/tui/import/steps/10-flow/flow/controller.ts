@@ -32,6 +32,8 @@ export interface FlowStart {
   outDir: string;
   rawTokensPath: string;
   credentials: { spaceId: string; environmentId: string; cmaToken: string; host: string };
+  /** Set when the import only generates tokens: there is no extraction or generation, so the flow starts at saving. */
+  tokensOnly?: { tokensPath: string; tokenSessionId: string | null; tokenCount: number; outDir: string };
   /** A custom prompt for `generate components`, shown as a warning above every step. */
   generatePromptPath?: string;
 }
@@ -100,11 +102,11 @@ function initialFlowState(start: FlowStart): FlowState {
     step: 'final-review',
     agent: start.agent,
     projectPath: start.projectPath,
-    outDir: extraction?.outDir ?? start.outDir,
+    outDir: extraction?.outDir ?? start.tokensOnly?.outDir ?? start.outDir,
     rawTokensPath: start.rawTokensPath,
-    tokensPath: extraction?.tokensPath ?? '',
-    tokenSessionId: extraction?.tokenSessionId ?? null,
-    tokenCount: extraction?.tokenCount ?? 0,
+    tokensPath: extraction?.tokensPath ?? start.tokensOnly?.tokensPath ?? '',
+    tokenSessionId: extraction?.tokenSessionId ?? start.tokensOnly?.tokenSessionId ?? null,
+    tokenCount: extraction?.tokenCount ?? start.tokensOnly?.tokenCount ?? 0,
     extractSessionId: extraction?.sessionId ?? null,
     generateSessionId: generation?.route === 'review' ? generation.sessionId : null,
     generatedCount: generation?.route === 'review' ? generation.generatedCount : 0,
@@ -301,6 +303,12 @@ export function createFlowController(start: FlowStart, deps: FlowDeps): FlowCont
 
   // Begins the flow where the generation stage left off: the review, or straight on to saving and pushing.
   const begin = (): void => {
+    if (start.tokensOnly) {
+      // There are no components to review: save the tokens and push them.
+      update({ generatedAcceptedCount: 0 });
+      startSave({ skipGate: true, andPush: true });
+      return;
+    }
     if (!state.extractSessionId || !start.handoff.generation) {
       update({
         step: 'error',

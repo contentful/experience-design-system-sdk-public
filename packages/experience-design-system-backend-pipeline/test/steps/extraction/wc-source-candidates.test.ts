@@ -7,7 +7,7 @@ import {
   type SourceSyntaxObservation,
   bindSourceCandidatesToCapture,
   extractWebComponentDefinitions as extractPublic,
-} from '@contentful/experience-design-system-extraction';
+} from '../../../src/steps/extraction/index.js';
 import { extractWebComponentDefinitions } from '../../../src/steps/extraction/src/framework-adapters/web-components/extract-web-components.js';
 
 import { isSourceCandidatePayload } from '../../../src/persistence/src/session/repositories/source-evidence-validation.js';

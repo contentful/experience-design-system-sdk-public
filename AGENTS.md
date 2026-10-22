@@ -4,12 +4,10 @@ This file tells AI coding agents what they need to know to be productive in this
 
 ## Repo at a Glance
 
-Nx monorepo with six packages:
+Nx monorepo with four packages:
 
 - `packages/experience-design-system-cli` — the published CLI (`@contentful/experience-design-system-cli`, bins `experiences`, `exo`, `experience-design-system-cli`) and the interactive import wizard
 - `packages/experience-design-system-backend-pipeline` — extraction orchestration, generation, session persistence, in-process validation, and apply operations called directly by the wizard
-- `packages/experience-design-system-extraction` — component extraction engine (ts-morph, framework parsers), used by the backend pipeline
-- `packages/experience-design-system-generation` — source for the generation and selection skill files copied into the CLI package at build time
 - `packages/experience-design-system-client` — generated client for the Experience Design System Integrations API, used by backend apply operations
 - `packages/experience-design-system-types` — shared types, schemas, and validation
 
@@ -84,7 +82,7 @@ In tests, set `EDS_PIPELINE_DB_PATH` to a temp path to avoid polluting the devel
 
 ## The React Extractor
 
-`packages/experience-design-system-extraction/src/extract/react.ts` is the most complex file (~2500 lines). Before editing it:
+`packages/experience-design-system-backend-pipeline/src/steps/extraction/src/react.ts` is the most complex file (~2500 lines). Before editing it:
 
 1. Understand the DOM attribute prop surfacing strategy — see "DOM attribute prop surfacing" in `ARCHITECTURE.md`
 2. Understand how SVGProps is handled — it is one of the curated DOM attribute wrapper types (`EXPANDABLE_DOM_ATTRIBUTE_TYPE_NAMES`)
@@ -105,7 +103,7 @@ The CLI owns wizard routing and calls the backend pipeline directly. The backend
 - `packages/experience-design-system-cli/src/tui/import/steps/08-generation/` runs component generation and eligible token mapping
 - `packages/experience-design-system-backend-pipeline/src/agents/prompts/` builds prompts from a skill file and runtime preamble; its prompt loader resolves bundled fallback skills
 - `packages/experience-design-system-backend-pipeline/src/orchestrators/` owns component and token generation sessions
-- `packages/experience-design-system-generation/skills/` is the source of the skill files copied into `packages/experience-design-system-cli/skills/` by the CLI `copy-assets` target
+- `packages/experience-design-system-backend-pipeline/src/agents/skills/` is the source of the skill files copied into `packages/experience-design-system-cli/skills/` by the CLI `copy-assets` target
 - Matching fallback skill copies live under `packages/experience-design-system-backend-pipeline/src/agents/skills/`; the CLI passes its packaged skill paths to backend generation
 
 Generated data stays in the backend session database until the CLI review and save flow. Generated component and token data are validated within the import path; generation agents use the pre-emit output checklist and warning rules rather than a separate CLI validation route.
@@ -135,7 +133,7 @@ Compiler configuration lookup searches bounded ancestors above the selected sour
 
 **Selection criteria**: accept any component that renders visible UI — atoms, molecules, and organisms are all valid Component Types in ExO. Reject only: React hooks, pure context providers, A/B testing or variant-routing wrappers (whose _entire_ purpose is routing), analytics trackers, security utilities. A component is not rejected merely because it has few props, is low-level, or contains some personalization-related props.
 
-The skill file `packages/experience-design-system-generation/skills/select-components.md` provides detailed instructions and examples. The backend pipeline owns prompt assembly and agent invocation.
+The skill file `packages/experience-design-system-backend-pipeline/src/agents/skills/select-components.md` provides detailed instructions and examples. The backend pipeline owns prompt assembly and agent invocation.
 
 ## The Import Apply Flow
 
@@ -151,6 +149,8 @@ All TUI components are standard React functional components rendered by Ink. The
 
 - `packages/experience-design-system-cli/src/tui/import/steps/` — import, review, preview, and push screens
 - `packages/experience-design-system-cli/src/tui/` — CLI TUI components and shared terminal UI
+
+Colors come from the shared `PALETTE` in `packages/experience-design-system-cli/src/tui/theme.ts`, imported as `@tui/theme.js` (the `@tui/*` alias maps to `src/tui/*`; it is set in `tsconfig.json` and `vitest.config.ts`). Do not hardcode colours or define another palette. Control hints use `ControlHints` and the import's step tabs use `StepHeader`, both in `src/tui/shared/components/`.
 
 When writing TUI tests, use `ink-testing-library`. Set `NO_COLOR=1` in the environment before running tests to suppress ANSI escape codes. Strip ANSI before snapshot assertions if the test renders raw strings.
 

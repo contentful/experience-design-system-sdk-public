@@ -60,8 +60,6 @@ it('shows slot removal in the actual preview for a complete definition with no o
       preview={preview}
       spaceId="example"
       environmentId="example"
-      stepNumber={1}
-      totalSteps={1}
       onConfirm={vi.fn()}
       onQuit={vi.fn()}
     />,
@@ -121,8 +119,6 @@ it('mounts the actual preview screen with unknown shapes and both required-slot 
       preview={preview}
       spaceId="example"
       environmentId="example"
-      stepNumber={1}
-      totalSteps={1}
       onConfirm={vi.fn()}
       onQuit={vi.fn()}
     />,
@@ -142,8 +138,6 @@ it('mounts the actual preview screen with unknown shapes and both required-slot 
         preview={{ ...preview }}
         spaceId="example"
         environmentId="example"
-        stepNumber={1}
-        totalSteps={1}
         onConfirm={vi.fn()}
         onQuit={vi.fn()}
       />,

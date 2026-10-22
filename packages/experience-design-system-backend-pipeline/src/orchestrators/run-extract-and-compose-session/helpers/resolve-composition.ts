@@ -13,7 +13,7 @@ import type { EdgeConflict } from '../../../steps/composition/src/helpers/edges/
 import type { RawComponentDefinition } from '../../../steps/extraction/src/types/component.js';
 import type { ExtractAndComposeProgress } from '../types.js';
 import { throwIfAborted } from '../../../helpers/abort.js';
-import type { SourceCapture } from '@contentful/experience-design-system-extraction';
+import type { SourceCapture } from '../../../steps/extraction/index.js';
 import { deriveComponentId } from '../../../persistence/src/session/helpers/components/derive-component-id.js';
 
 export interface ResolveCompositionRequest {

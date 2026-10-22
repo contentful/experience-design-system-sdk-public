@@ -2,7 +2,7 @@ import { RepresentationEditor } from './RepresentationEditor.js';
 import React from 'react';
 import { Box, Text } from 'ink';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
-import { PALETTE } from '../theme.js';
+import { PALETTE } from '@tui/theme.js';
 import type { CdfReviewEntry } from '../types.js';
 import type { UseReviewEditorResult } from '../use-review-editor.js';
 import type { UseLivePreviewReturn } from '../use-live-preview.js';

@@ -1,7 +1,7 @@
 import React from 'react';
 import figures from 'figures';
 import { Box, Text } from 'ink';
-import { PALETTE } from '../theme.js';
+import { PALETTE } from '@tui/theme.js';
 
 export type TokenPropSuggestion = {
   propName: string;
@@ -55,7 +55,7 @@ export function TokenReviewPanel({
         width={width}
         height={height + 2}
         borderStyle="single"
-        borderColor={active ? PALETTE.inverse : undefined}
+        borderColor={active ? PALETTE.text : undefined}
       >
         <Text bold color={active ? undefined : PALETTE.muted} wrap="truncate">
           {`TOKEN REVIEW — ${componentName} · ${current.propName} (edit allowed)`}
@@ -73,7 +73,11 @@ export function TokenReviewPanel({
           const focused = pathIndex === editCursor;
           return (
             <Box key={path}>
-              <Text color={focused ? PALETTE.info : active ? undefined : PALETTE.muted} bold={focused} wrap="truncate">
+              <Text
+                color={focused ? PALETTE.accent : active ? undefined : PALETTE.muted}
+                bold={focused}
+                wrap="truncate"
+              >
                 {`  [${checked ? 'x' : ' '}] ${path}`}
               </Text>
             </Box>
@@ -96,7 +100,7 @@ export function TokenReviewPanel({
       width={width}
       height={height + 2}
       borderStyle="single"
-      borderColor={active ? PALETTE.inverse : undefined}
+      borderColor={active ? PALETTE.text : undefined}
     >
       <Text bold color={active ? undefined : PALETTE.muted}>{`TOKEN REVIEW — ${componentName}`}</Text>
       {suggestions.length === 0 && <Text color={PALETTE.muted}>{'(no token suggestions for this component)'}</Text>}
@@ -105,7 +109,7 @@ export function TokenReviewPanel({
         return (
           <Box key={s.propName} flexDirection="column">
             <Box>
-              <Text color={focused ? PALETTE.info : active ? undefined : PALETTE.muted} bold={focused}>
+              <Text color={focused ? PALETTE.accent : active ? undefined : PALETTE.muted} bold={focused}>
                 {`${focused ? figures.pointer : ' '} ${s.propName}`}
               </Text>
             </Box>

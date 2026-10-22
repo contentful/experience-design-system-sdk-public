@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { buildPrompt } from '../../../src/agents/prompts/build-prompt.js';
 
-const generationSkillsRoot = new URL('../../../../experience-design-system-generation/skills/', import.meta.url);
+const generationSkillsRoot = new URL('../../../src/agents/skills/generation/', import.meta.url);
 
 describe('generation validation guidance', () => {
   it.each([

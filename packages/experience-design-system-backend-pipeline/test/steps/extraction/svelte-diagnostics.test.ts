@@ -2,7 +2,7 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { extractEndpoint } from '@contentful/experience-design-system-extraction';
+import { extractEndpoint } from '../../../src/steps/extraction/index.js';
 import { extractComponents } from '../../../src/index.js';
 
 const roots: string[] = [];

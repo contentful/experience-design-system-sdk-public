@@ -1,6 +1,6 @@
 import React from 'react';
 import { Text } from 'ink';
-import { PALETTE } from '../../home/home.theme.js';
+import { PALETTE } from '../../theme.js';
 import { PreferenceScreen } from '../PreferenceScreen.js';
 import { readAnalyticsSetting, writeAnalyticsSetting } from './analytics-store.js';
 export function OptInAnalyticsScreen({ onDone }: { onDone: () => void }): React.ReactElement {

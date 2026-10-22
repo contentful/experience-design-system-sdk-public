@@ -17,7 +17,7 @@ import {
   readSourceReferences,
   type SourceCallerValue,
   type SourceReferenceIndex,
-} from '@contentful/experience-design-system-extraction';
+} from '../../../../extraction/index.js';
 export type { SourceCallerInput } from './read-caller-inputs.js';
 
 export type SourceCallSiteEvidence = {
@@ -38,7 +38,7 @@ export type SourceCallSiteEvidence = {
   context?: Array<{ expression: string; startLine: number; endLine: number }>;
   parentDeclarationId?: string | null;
   childDeclarationId?: string;
-  lexicalAncestors?: import('@contentful/experience-design-system-extraction').SourceFactLocation[];
+  lexicalAncestors?: import('../../../../extraction/index.js').SourceFactLocation[];
 };
 
 export type SourceCallSiteRejection = {

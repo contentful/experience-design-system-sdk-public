@@ -18,7 +18,7 @@ import {
 import {
   extractReactComponents,
   captureSourceEvidence,
-} from '../../../../experience-design-system-extraction/src/index.js';
+} from '../../../../experience-design-system-backend-pipeline/src/steps/extraction/index.js';
 import { useReviewEditor } from '../../../src/tui/import/steps/09-review/use-review-editor.js';
 import { RepresentationEditor } from '../../../src/tui/import/steps/09-review/components/RepresentationEditor.js';
 import { parseToState, serializeState } from '../../../src/tui/import/steps/09-review/components/FieldEditor.js';

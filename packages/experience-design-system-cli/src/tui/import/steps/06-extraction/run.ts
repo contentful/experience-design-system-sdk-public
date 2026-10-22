@@ -77,7 +77,6 @@ export async function runExtraction(
   let progress = initialProgress({
     hasCredentials: input.credentials !== null,
     hasRawTokens: input.rawTokensPath !== '',
-    reuseTokens: input.tokenStrategy === 'reuse',
   });
   const update = (change: Partial<ExtractionProgress>): void => {
     if (signal.aborted) return;
@@ -113,7 +112,7 @@ export async function runExtraction(
 
     // Token generation runs at the same time as extraction and selection.
     tokenGeneration =
-      input.rawTokensPath !== '' && input.tokenStrategy !== 'reuse'
+      input.rawTokensPath !== ''
         ? deps
             .runGenerateTokensSession({
               rawTokensPath: input.rawTokensPath,
@@ -122,7 +121,7 @@ export async function runExtraction(
               ...(input.agentModel ? { agentModel: input.agentModel } : {}),
               promptOverrides: input.promptOverrides,
               skillPath: TOKENS_SKILL_PATH,
-              noCache: input.noCache || input.tokenStrategy === 'regenerate',
+              noCache: input.noCache,
               signal,
             })
             .then((result): TokenGenerationResult => {
@@ -239,10 +238,6 @@ export async function runExtraction(
       return fail(tokens.step, tokens.message);
     }
 
-    // A reused catalog is already on disk. With no token source there is no file, and the later steps read an empty path as
-    // "no tokens" (generating with --tokens pointing at a missing file fails).
-    const hasTokenSource = input.rawTokensPath !== '' || input.tokenStrategy === 'reuse';
-
     if (capturedEntities && input.credentials) {
       const db = openPipelineDb();
       try {
@@ -254,7 +249,7 @@ export async function runExtraction(
     const extraction: ExtractionHandoff = {
       sessionId: extracted.sessionId,
       outDir,
-      tokensPath: tokens?.ok ? tokens.tokensPath : hasTokenSource ? join(outDir, 'tokens.json') : '',
+      tokensPath: tokens?.ok ? tokens.tokensPath : '',
       tokenSessionId: tokens?.ok ? tokens.tokenSessionId : null,
       tokenCount: tokens?.ok ? tokens.tokenCount : 0,
       existingEntitiesPath,

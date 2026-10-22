@@ -6,7 +6,7 @@ import {
   captureSourceEvidence,
   extractReactComponents as extractPublic,
   readInputOutput,
-} from '@contentful/experience-design-system-extraction';
+} from '../../steps/extraction/index.js';
 import { extractReactComponents } from '../../steps/extraction/src/framework-adapters/react/extract-react-components.js';
 import { readComponentFacts } from '../src/session/repositories/component-facts-validation.js';
 import { buildCompilerEvidenceInline } from '../../agents/prompts/helpers/build-compiler-evidence-inline.js';

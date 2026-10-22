@@ -3,7 +3,8 @@ import { shouldQuit } from './logic.js';
 
 export const WELCOME_CONTROLS = [
   { keys: 'Enter', label: 'Continue' },
-  { keys: 'Esc', label: 'Back to menu' },
+  { keys: 'Ctrl+D', label: 'Clear' },
+  { keys: 'Esc', label: 'Back' },
 ] as const;
 
 export function useWelcomeControls(onQuit: () => void): void {

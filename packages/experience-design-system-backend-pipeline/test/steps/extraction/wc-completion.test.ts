@@ -5,7 +5,7 @@ import { afterEach, expect, it } from 'vitest';
 import {
   extractEndpoint,
   extractWebComponentDefinitions as extractPublic,
-} from '@contentful/experience-design-system-extraction';
+} from '../../../src/steps/extraction/index.js';
 import { extractComponents } from '../../../src/index.js';
 import { extractWebComponentDefinitions } from '../../../src/steps/extraction/src/framework-adapters/web-components/extract-web-components.js';
 

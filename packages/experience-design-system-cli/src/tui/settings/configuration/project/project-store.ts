@@ -1,0 +1,37 @@
+import { readV1Store, writeV1Store } from '../../shared/v1-store.js';
+
+export type V1Credentials = {
+  spaceId?: string;
+  environmentId?: string;
+  cmaToken?: string;
+  host?: string;
+  defaultComponentDir?: string;
+  defaultTokenFile?: string;
+  contentfulBaseDir?: string;
+  [key: string]: string | undefined;
+};
+
+export async function readCredentials(): Promise<V1Credentials> {
+  const store = await readV1Store();
+  return {
+    spaceId: (store.spaceId as string) || '',
+    environmentId: (store.environmentId as string) || '',
+    cmaToken: (store.cmaToken as string) || '',
+    host: (store.host as string) || '',
+    defaultComponentDir: (store.defaultComponentDir as string) || '',
+    defaultTokenFile: (store.defaultTokenFile as string) || '',
+    contentfulBaseDir: (store.contentfulBaseDir as string) || '',
+  };
+}
+
+export async function writeCredentials(config: V1Credentials): Promise<void> {
+  const existing = await readV1Store();
+  const merged: Record<string, unknown> = {
+    ...existing,
+    ...config,
+  };
+  Object.keys(config).forEach((k) => {
+    if (!merged[k]) delete merged[k];
+  });
+  await writeV1Store(merged);
+}

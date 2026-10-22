@@ -3,6 +3,7 @@ import { shouldGoBack } from './logic.js';
 
 export const TOKEN_INPUT_CONTROLS = [
   { keys: 'Enter', label: 'Continue' },
+  { keys: 'Ctrl+D', label: 'Clear' },
   { keys: 'Esc', label: 'Back' },
 ] as const;
 

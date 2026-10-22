@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { afterEach, expect, it } from 'vitest';
-import { extractReactComponents, captureSourceEvidence } from '@contentful/experience-design-system-extraction';
+import { extractReactComponents, captureSourceEvidence } from '../src/steps/extraction/index.js';
 import {
   buildCDF,
   validateCDF,

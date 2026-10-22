@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
-import { captureSourceEvidence } from '@contentful/experience-design-system-extraction';
+import { captureSourceEvidence } from '../../src/steps/extraction/index.js';
 import {
   completeExtractionWithSourceEvidence,
   createStep,

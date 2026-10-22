@@ -199,7 +199,8 @@ export {
   formatToolCall,
 } from './agents/index.js';
 export { AGENT_NAMES, type AgentName } from './agents/types/agent-name.js';
-export { DEFAULT_AGENT_NAME } from './agents/constants/models.js';
+export { DEFAULT_AGENT_NAME, DEFAULT_MODELS } from './agents/constants/models.js';
+export { AGENT_BINARIES } from './agents/constants/binaries.js';
 export { isAgentName } from './agents/helpers/resolution/is-agent-name.js';
 export { agentSupportsBedrock } from './agents/helpers/bedrock/agent-supports-bedrock.js';
 export { checkAgentAuth } from './agents/services/check-agent-auth.js';
@@ -218,7 +219,7 @@ export type {
   Skill,
 } from './agents/types/prompts.js';
 export { stripPropProvenance } from './agents/prompts/helpers/strip-prop-provenance.js';
-export { bucketComponentsProps } from '@contentful/experience-design-system-extraction';
+export { bucketComponentsProps } from './steps/extraction/index.js';
 export { resolveSkillPath } from './agents/prompts/resolve-skill-path.js';
 export { createLocalCliAgentInvoker } from './agents/invoker/create-local-cli-agent-invoker.js';
 export { parseSelectToolCalls } from './agents/parsers/parse-select-tool-calls.js';
@@ -534,8 +535,8 @@ export {
   loadExistingExplorationContext,
   type ExistingExplorationContext,
 } from './orchestrators/run-exploration-session/helpers/load-existing-context.js';
-export { discoverSourceEvidence } from '@contentful/experience-design-system-extraction';
-export type { SourceEvidenceInventory } from '@contentful/experience-design-system-extraction';
+export { discoverSourceEvidence } from './steps/extraction/index.js';
+export type { SourceEvidenceInventory } from './steps/extraction/index.js';
 
 export {
   analyzePropertyRepresentations,
