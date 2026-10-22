@@ -229,6 +229,56 @@ it('never admits promoted or premise-free omission claims', async () => {
   }
 });
 
+it('states unresolved alias and intrinsic applicability as conditional premises', async () => {
+  const { alpha } = await extract('const next = { ...props.data, alpha: "fixed" }; return next.alpha;');
+  expect(alpha.valueIndependence.premises).toContain('isolated-input-tree');
+  expect(alpha.valueIndependence.premises).toContain('standard-record-intrinsics');
+  expect(alpha.omissionSafety.premises).toEqual(expect.arrayContaining(alpha.valueIndependence.premises));
+});
+
+it('does not reinterpret the older premise contract as current evidence', async () => {
+  const { component } = await extract('const next = { ...props.data, alpha: "fixed" }; return next.alpha;');
+  const facts = JSON.parse(JSON.stringify(component.componentFacts));
+  facts.sourceObservations.fieldSemantics.schemaVersion = 1;
+  expect(readComponentFacts(facts).status).toBe('unsupported');
+});
+
+it.each([
+  'const next = { ...props.data, alpha: "fixed" }; return next.alpha;',
+  'const next = { ...props.data, alpha: "fixed" }; return next;',
+  'props.opaque(props.data); return "fixed";',
+])('retains coherent conditional and unknown evidence on reload: %s', async (body) => {
+  const { component } = await extract(body);
+  expect(readComponentFacts(component.componentFacts).status).toBe('available');
+});
+
+it.each([
+  'possible-dependence',
+  'open-obligation',
+  'partial-coverage',
+  'value-reason',
+  'omission-reason',
+  'missing-alias-premise',
+])('rejects inconsistent conditional evidence: %s', async (fault) => {
+  const { component } = await extract('const next = { ...props.data, alpha: "fixed" }; return next.alpha;');
+  const facts = structuredClone(component.componentFacts!);
+  const semantics = facts.sourceObservations!.fieldSemantics!;
+  const proof = semantics.proofs.find((entry) => entry.inputName === 'data' && entry.path.length === 1)!;
+  if (fault === 'possible-dependence') proof.outputDependence = 'possible';
+  if (fault === 'open-obligation') {
+    semantics.coverage = 'partial';
+    semantics.omissions.push({ reason: 'opaque-call-effects-open', location: semantics.source });
+  }
+  if (fault === 'partial-coverage') semantics.coverage = 'partial';
+  if (fault === 'value-reason') proof.valueIndependence.reasons = ['possible-output-dependence'];
+  if (fault === 'omission-reason') proof.omissionSafety.reasons = ['presence-or-order-observable'];
+  if (fault === 'missing-alias-premise') {
+    proof.valueIndependence.premises = ['ordinary-own-data-inputs'];
+    proof.omissionSafety.premises = ['ordinary-own-data-inputs', 'entry-delivery-admits-omission'];
+  }
+  expect(readComponentFacts(facts).status).toBe('corrupt');
+});
+
 it.each(['return () => props.data.alpha;', 'return { invoke: () => props.data.alpha };'])(
   'keeps escaped callback observability open: %s',
   async (body) => {

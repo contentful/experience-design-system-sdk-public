@@ -19,6 +19,8 @@ Selecting a component subdirectory does not limit compiler configuration lookup 
 
 Callable source observations include bounded, ordered field-flow evidence with separate value-independence, output-dependence and omission-safety findings. The evaluator follows initialized bindings, record construction and private writes, finite branches, and compiler-resolved helper bodies without recognizing component or field names. Findings are conditional on explicit ordinary-data and delivery premises; unknown effects, uncertain aliasing, unavailable bindings and exhausted bounds remain open. Source candidates are preserved, and neither conditional findings nor absent output dependencies authorize field deletion. Persisted evidence retains source locations and rejects unsupported semantic versions, changed root identity and claims promoted beyond their premises.
 
+Field-flow evidence version 2 also states its runtime alias and intrinsic assumptions: `ordinary-own-data-inputs` requires inert own data properties; `isolated-input-tree` requires no shared/cyclic input records or untracked external aliases; `standard-record-intrinsics` requires ordinary, unmodified record property operations. Type annotations do not establish these premises. Omission additionally requires `entry-delivery-admits-omission`. Decoding rejects conditional claims that contradict observed dependence, open coverage/obligations or their recorded reasons; coherent unknown findings remain valid evidence. This is an evidence-contract check, not semantic replay or proof activation.
+
 ---
 
 ## System Context

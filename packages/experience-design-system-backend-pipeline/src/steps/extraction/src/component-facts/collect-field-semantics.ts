@@ -1,6 +1,6 @@
 import ts from 'typescript';
 import { resolve } from 'node:path';
-import type { SourceFieldSemantics } from '../types/field-semantics.js';
+import { FIELD_SEMANTICS_VERSION, FIELD_VALUE_PREMISES, type SourceFieldSemantics } from '../types/field-semantics.js';
 import { SourceObservationReader, isWithinSourceBoundary, sourceRealPath } from './source-observation-reader.js';
 import { SourceValueBindings } from './source-value-bindings.js';
 
@@ -80,7 +80,7 @@ export function collectFieldSemantics(
   signal?: AbortSignal,
 ): SourceFieldSemantics {
   const evidence: SourceFieldSemantics = {
-    schemaVersion: 1,
+    schemaVersion: FIELD_SEMANTICS_VERSION,
     semantics: 'conditional-ordered-field-flow',
     componentDeclarationId: reader.identity(node),
     source: reader.location(node),
@@ -521,12 +521,12 @@ export function collectFieldSemantics(
       path: path.slice(1).map((key) => ({ kind: 'field' as const, key })),
       valueIndependence: {
         status: independent ? ('conditional' as const) : ('unknown' as const),
-        premises: independent ? ['ordinary-own-data-inputs'] : [],
+        premises: independent ? [...FIELD_VALUE_PREMISES] : [],
         reasons: [...new Set([...open, ...(output.has(key) ? ['possible-output-dependence'] : [])])],
       },
       omissionSafety: {
         status: omission ? ('conditional' as const) : ('unknown' as const),
-        premises: omission ? ['ordinary-own-data-inputs', 'entry-delivery-admits-omission'] : [],
+        premises: omission ? [...FIELD_VALUE_PREMISES, 'entry-delivery-admits-omission'] : [],
         reasons: [
           ...new Set([
             ...open,

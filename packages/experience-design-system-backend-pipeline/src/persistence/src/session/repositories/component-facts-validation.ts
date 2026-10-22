@@ -2,6 +2,10 @@ import { z } from 'zod';
 import { jsonValueIssue } from '@contentful/experience-design-system-types';
 import { sourceClosureIdentity } from '../../../../steps/extraction/source-closure/source-evidence.js';
 import {
+  FIELD_SEMANTICS_VERSION,
+  fieldSemanticsClaimsAreConsistent,
+} from '../../../../steps/extraction/src/types/field-semantics.js';
+import {
   readInputOutput,
   readSourceReferences,
   type SourceReferenceIndex,
@@ -130,7 +134,7 @@ const sourceObservations = z
   .object({
     fieldSemantics: z
       .object({
-        schemaVersion: z.literal(1),
+        schemaVersion: z.literal(FIELD_SEMANTICS_VERSION),
         semantics: z.literal('conditional-ordered-field-flow'),
         componentDeclarationId: z.string().min(1),
         source: location,
@@ -377,7 +381,7 @@ export function readComponentFacts(value: unknown): ComponentFactsRead {
       collection.fieldSemantics &&
       typeof collection.fieldSemantics === 'object' &&
       'schemaVersion' in collection.fieldSemantics &&
-      collection.fieldSemantics.schemaVersion !== 1
+      collection.fieldSemantics.schemaVersion !== FIELD_SEMANTICS_VERSION
     )
       return { status: 'unsupported' };
     if (
@@ -442,15 +446,7 @@ export function readComponentFacts(value: unknown): ComponentFactsRead {
         new Set(semantics.proofs.map((proof) => JSON.stringify([proof.inputName, proof.path]))).size !==
           semantics.proofs.length ||
         (semantics.coverage === 'complete-within-declared-bound' && semantics.omissions.length > 0) ||
-        semantics.proofs.some(
-          (proof) =>
-            (proof.valueIndependence.status === 'conditional' &&
-              !proof.valueIndependence.premises.includes('ordinary-own-data-inputs')) ||
-            (proof.omissionSafety.status === 'conditional' &&
-              (proof.valueIndependence.status !== 'conditional' ||
-                !proof.omissionSafety.premises.includes('ordinary-own-data-inputs') ||
-                !proof.omissionSafety.premises.includes('entry-delivery-admits-omission'))),
-        ))
+        !fieldSemanticsClaimsAreConsistent(semantics))
     )
       return { status: 'corrupt' };
     const roots = observations?.observations.flatMap((observation) =>
