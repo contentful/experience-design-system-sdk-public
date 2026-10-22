@@ -1,7 +1,6 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import React from 'react';
 import { render } from 'ink-testing-library';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WelcomeScreen } from '../../src/tui/import/steps/01-welcome/screen.js';
