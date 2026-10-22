@@ -1,5 +1,6 @@
 import { childPath, jsonEqual, jsonValueIssue, own, type JsonValue, type PropertyIssue } from './json-value.js';
 import { isDateTimeValue } from './date-time-value.js';
+import { discriminatedUnionIssues, matchingDiscriminatedUnionMember } from './discriminated-union.js';
 
 export const TARGET_PROPERTY_TYPES = [
   'String',
@@ -13,6 +14,7 @@ export const TARGET_PROPERTY_TYPES = [
   'JSON',
   'ResourceLink',
   'Literal',
+  'DiscriminatedUnion',
 ] as const;
 export type TargetPropertyType = (typeof TARGET_PROPERTY_TYPES)[number];
 export const SAME_SPACE_RESOURCE_SOURCE = 'crn:contentful:::content:spaces/$self/environments/$self';
@@ -32,10 +34,22 @@ export interface TargetDefinition {
   allowedResources?: AllowedResourceDefinition[];
   value?: JsonValue;
   valueType?: TargetDefinition;
+  discriminator?: string;
+  members?: TargetDefinition[];
 }
 export interface DefinitionValidation {
   valid: boolean;
   issues: PropertyIssue[];
+}
+
+export function containsTargetDefinitionType(definition: TargetDefinition, type: TargetPropertyType): boolean {
+  return (
+    definition.type === type ||
+    (definition.items !== undefined && containsTargetDefinitionType(definition.items, type)) ||
+    (definition.valueType !== undefined && containsTargetDefinitionType(definition.valueType, type)) ||
+    Object.values(definition.fields ?? {}).some((field) => containsTargetDefinitionType(field, type)) ||
+    (definition.members ?? []).some((member) => containsTargetDefinitionType(member, type))
+  );
 }
 
 export function validateTargetValue(definition: TargetDefinition, value: JsonValue, path = ''): PropertyIssue[] {
@@ -65,6 +79,12 @@ export function validateTargetValue(definition: TargetDefinition, value: JsonVal
       } else issues.push(...validateTargetValue(field, value[key], childPath(path, key)));
     }
     return issues;
+  } else if (type === 'DiscriminatedUnion') {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return fail('Expected union record');
+    const member = matchingDiscriminatedUnionMember(definition as unknown as Record<string, unknown>, value, 'target');
+    return member
+      ? validateTargetValue(member as unknown as TargetDefinition, value, path)
+      : fail('Union value requires an exact matching discriminator tag');
   } else if (type === 'Literal') {
     if (!jsonEqual(value, definition.value)) return fail('Default must equal intrinsic literal');
     return validateTargetValue(definition.valueType!, value, path);
@@ -96,6 +116,10 @@ export function validateTargetDefinition(input: unknown): DefinitionValidation {
     const allowed = new Set(['type', 'id', 'name', 'description', 'required', 'values', 'defaultValue']);
     if (d.type === 'Array') allowed.add('items');
     if (d.type === 'Record') allowed.add('fields');
+    if (d.type === 'DiscriminatedUnion') {
+      allowed.add('discriminator');
+      allowed.add('members');
+    }
     if (d.type === 'ResourceLink') allowed.add('allowedResources');
     if (d.type === 'Literal') {
       allowed.add('value');
@@ -106,6 +130,11 @@ export function validateTargetDefinition(input: unknown): DefinitionValidation {
       if (own(d, key) && typeof d[key] !== 'string') add(key, 'Expected string');
     if (own(d, 'required') && typeof d.required !== 'boolean') add('required', 'Expected boolean');
     const before = issues.length;
+    if (d.type === 'DiscriminatedUnion') {
+      issues.push(...discriminatedUnionIssues(d as unknown as Record<string, unknown>, 'target', path));
+      if (Array.isArray(d.members))
+        d.members.forEach((member, index) => walk(member, childPath(childPath(path, 'members'), index), depth + 1));
+    }
     if (d.type === 'Array') walk(d.items, childPath(path, 'items'), depth + 1);
     if (d.type === 'Record') {
       if (!d.fields || typeof d.fields !== 'object' || Array.isArray(d.fields) || Object.keys(d.fields).length === 0)
@@ -198,7 +227,26 @@ export const targetDefinitionJsonSchema = {
         },
         value: {},
         valueType: { $ref: '#/definitions/target' },
+        discriminator: { type: 'string', minLength: 1 },
+        members: {
+          type: 'array',
+          minItems: 2,
+          uniqueItems: true,
+          items: {
+            allOf: [
+              { $ref: '#/definitions/target' },
+              { type: 'object', properties: { type: { const: 'Record' } }, required: ['type', 'fields'] },
+            ],
+          },
+        },
       },
+      allOf: [
+        {
+          if: { properties: { type: { const: 'DiscriminatedUnion' } } },
+          then: { required: ['discriminator', 'members'] },
+          else: { not: { anyOf: [{ required: ['discriminator'] }, { required: ['members'] }] } },
+        },
+      ],
       additionalProperties: false,
     },
   },

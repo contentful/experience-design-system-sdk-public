@@ -43,6 +43,8 @@ export function definitionCall(
     ...(definition.$fields ? { fields: cloneJson(definition.$fields) } : {}),
     ...(own(definition, 'value') ? { value: cloneJson(definition.value!) } : {}),
     ...(definition.valueType ? { valueType: cloneJson(definition.valueType) } : {}),
+    ...(definition.discriminator === undefined ? {} : { discriminator: definition.discriminator }),
+    ...(definition.members ? { members: cloneJson(definition.members) } : {}),
     ...(definition.allowedResources ? { allowedResources: cloneJson(definition.allowedResources) } : {}),
     ...(proposal ? { representation_proposal: cloneJson(proposal) } : {}),
     ...(definition.$values ? { values: cloneJson(definition.$values) } : {}),

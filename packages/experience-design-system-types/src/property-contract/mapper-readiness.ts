@@ -27,6 +27,8 @@ export function propertyMapperBlockers(
   if (definition.$items) blockers.push(...propertyMapperBlockers(definition.$items, `${path}/$items`, category));
   if (definition.valueType)
     blockers.push(...propertyMapperBlockers(definition.valueType, `${path}/valueType`, category));
+  for (const [index, member] of (definition.members ?? []).entries())
+    blockers.push(...propertyMapperBlockers(member, `${path}/members/${index}`, category));
   for (const [key, field] of Object.entries(definition.$fields ?? {}))
     blockers.push(...propertyMapperBlockers(field, childPath(`${path}/$fields`, key), category));
   return blockers;

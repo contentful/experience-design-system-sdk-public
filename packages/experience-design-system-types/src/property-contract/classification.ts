@@ -23,6 +23,8 @@ export interface ClassifiedPropertyCall {
   reason?: string;
   value?: JsonValue;
   valueType?: CDFFieldDefinition;
+  discriminator?: string;
+  members?: CDFFieldDefinition[];
   allowedResources?: CDFFieldDefinition['allowedResources'];
   representation_proposal?: RepresentationProposalDraft;
 }
@@ -41,6 +43,8 @@ export function classificationDefinition(call: ClassifiedPropertyCall): CDFPrope
   if (call.fields) definition.$fields = cloneJson(call.fields);
   if (own(call, 'value')) definition.value = cloneJson(call.value!);
   if (call.valueType) definition.valueType = cloneJson(call.valueType);
+  if (call.discriminator !== undefined) definition.discriminator = call.discriminator;
+  if (call.members) definition.members = cloneJson(call.members);
   if (call.allowedResources) definition.allowedResources = cloneJson(call.allowedResources);
   if (call.values?.length && call.cdf_type !== 'token') definition.$values = cloneJson(call.values);
   if (call.token_kind && call.cdf_type === 'token') definition['$token.kind'] = call.token_kind;

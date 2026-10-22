@@ -7,6 +7,8 @@ import {
 } from './target-definition.js';
 import { validateSourceGraph, type MapperAvailability, type PropertyModel } from './property-model.js';
 import { isSourceBoundRepresentation, sourceDomainHasKind, sourceJsonCompatibility } from './source-representation.js';
+import { containsTargetDefinitionType } from './target-definition.js';
+import { validateDiscriminatedUnionSourceDefinition } from './discriminated-union-source.js';
 
 export interface RepresentationProposalDraft {
   componentId: string;
@@ -122,6 +124,13 @@ export function validateRepresentationProposalSource(
     if (draft[key] !== model.identity[key])
       issues.push({ path: `/${key}`, message: 'Stale or mismatched source identity' });
   issues.push(...validateSourceGraph(model.source.graph));
+  if (!issues.length && containsTargetDefinitionType(draft.desiredDefinition, 'DiscriminatedUnion'))
+    issues.push(
+      ...validateDiscriminatedUnionSourceDefinition(draft.desiredDefinition, model.source.graph).map((issue) => ({
+        ...issue,
+        path: '/desiredDefinition' + issue.path,
+      })),
+    );
   const ids = new Set(model.source.graph.nodes.map((node) => node.id));
   for (const id of [
     ...draft.sourceNodeIds,

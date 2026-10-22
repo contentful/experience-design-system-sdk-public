@@ -28,6 +28,7 @@ const PROP_FIELDS = [
   'default',
   'description',
   'representationProposal',
+  'definition',
 ] as const;
 const SLOT_FIELDS = ['isRealSlot', 'allowedComponents', 'required'] as const;
 
@@ -131,7 +132,8 @@ export function diffExploration(scopes: ExploreScopeResult[], known?: KnownCompo
       return;
     }
 
-    const equal = field === 'representationProposal' || field === 'values' ? jsonEqual : sameValue;
+    const equal =
+      field === 'representationProposal' || field === 'definition' || field === 'values' ? jsonEqual : sameValue;
     if (absent.length === 0 && stated.every((provider) => equal(provider.value, stated[0]!.value))) {
       consensus.push({
         path,

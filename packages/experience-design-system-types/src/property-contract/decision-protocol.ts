@@ -52,6 +52,8 @@ const fields = {
     'reason',
     'value',
     'valueType',
+    'discriminator',
+    'members',
     'allowedResources',
     'representation_proposal',
   ],
@@ -144,6 +146,8 @@ export function normalizeClassificationCalls(values: readonly unknown[]): Normal
               'required',
               'value',
               'valueType',
+              'discriminator',
+              'members',
               'allowedResources',
               'representation_proposal',
             ].some((key) => own(rec, key))

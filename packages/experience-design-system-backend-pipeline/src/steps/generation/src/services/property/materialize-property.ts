@@ -2,6 +2,7 @@ import {
   classificationDefinition,
   childPath,
   validateCDFProperty,
+  containsCDFDefinitionType,
   own,
   cloneJson,
   projectProperty,
@@ -83,7 +84,11 @@ export function materializeProperty(
   if (!validation.valid) throw new Error(validation.issues.map((i) => `${i.path}: ${i.message}`).join('; '));
   if (!fact?.sourceGraph) {
     if (definition?.$values) throw new Error('Finite constraints require current complete compiler source evidence');
-    if (definition && ['Integer', 'DateTime', 'Literal', 'RichText', 'JSON', 'ResourceLink'].includes(definition.$type))
+    if (
+      definition &&
+      (['Integer', 'DateTime', 'Literal', 'RichText', 'JSON', 'ResourceLink'].includes(definition.$type) ||
+        containsCDFDefinitionType(definition, 'DiscriminatedUnion'))
+    )
       throw new Error('Richer representation requires current complete source evidence');
     return { definition, call: cloneJson(call) };
   }
@@ -107,6 +112,7 @@ export function materializeProperty(
     capabilities[`${path}:default`] = 'enabled';
     if (d.$items) context(d.$items, `${path}/items`);
     if (d.valueType) context(d.valueType as CDFPropertyDefinition, `${path}/valueType`);
+    for (const [index, member] of (d.members ?? []).entries()) context(member, `${path}/members/${index}`);
     if (d.$fields)
       for (const [key, field] of Object.entries(d.$fields)) context(field, childPath(childPath(path, 'fields'), key));
   };
@@ -147,6 +153,9 @@ export function materializeProperty(
     if (own(target, 'defaultValue')) field.$default = cloneJson(target.defaultValue!);
     else delete field.$default;
     if (field.$items && target.items) applyDefaults(field.$items, target.items);
+    if (field.valueType && target.valueType) applyDefaults(field.valueType, target.valueType);
+    if (field.members && target.members)
+      field.members.forEach((member, index) => applyDefaults(member, target.members![index]!));
     if (field.$fields && target.fields)
       for (const [key, child] of Object.entries(field.$fields)) applyDefaults(child, target.fields[key]!);
   };

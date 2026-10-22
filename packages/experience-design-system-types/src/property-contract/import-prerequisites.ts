@@ -142,6 +142,8 @@ export function createImportPrerequisitePlan(input: ImportPrerequisiteManifest):
     }
     if (definition.$items) visit(owner, definition.$items, `${path}/$items`, category);
     if (definition.valueType) visit(owner, definition.valueType, `${path}/valueType`, category);
+    for (const [index, member] of (definition.members ?? []).entries())
+      visit(owner, member, `${path}/members/${index}`, category);
     for (const [key, field] of Object.entries(definition.$fields ?? {}))
       visit(owner, field, childPath(`${path}/$fields`, key), category);
   };

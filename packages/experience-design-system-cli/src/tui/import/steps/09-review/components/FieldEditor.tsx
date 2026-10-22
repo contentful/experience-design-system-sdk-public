@@ -284,6 +284,10 @@ export function serializeState(state: EditorState, originalJson: string): string
         delete def.valueType;
       }
       if (p.type !== 'ResourceLink') delete def.allowedResources;
+      if (p.type !== 'DiscriminatedUnion') {
+        delete def.discriminator;
+        delete def.members;
+      }
       delete def.$values;
       delete def['$token.kind'];
       delete def['$token.allowed'];
@@ -560,7 +564,7 @@ function DefaultSubRow({
     );
   }
 
-  if (['array', 'record', 'number', 'Integer', 'Literal', 'DateTime'].includes(prop.type)) {
+  if (['array', 'record', 'number', 'Integer', 'Literal', 'DateTime', 'DiscriminatedUnion'].includes(prop.type)) {
     const display =
       prop.defaultDraft ??
       (prop.default === undefined
@@ -1838,7 +1842,7 @@ export function FieldEditor({
           return;
         }
         if (
-          ['array', 'record', 'Literal', 'RichText', 'JSON', 'ResourceLink'].includes(next) &&
+          ['array', 'record', 'Literal', 'RichText', 'JSON', 'ResourceLink', 'DiscriminatedUnion'].includes(next) &&
           next !== currentProp.type
         ) {
           setValidationError('Press Ctrl+J to edit the recursive definition in component JSON');
@@ -1900,7 +1904,11 @@ export function FieldEditor({
           setProp({ ...currentProp, default: undefined, defaultDraft: undefined, defaultError: undefined });
           return;
         }
-        if (['number', 'array', 'record', 'Integer', 'Literal', 'DateTime'].includes(currentProp.type)) {
+        if (
+          ['number', 'array', 'record', 'Integer', 'Literal', 'DateTime', 'DiscriminatedUnion'].includes(
+            currentProp.type,
+          )
+        ) {
           const cur =
             currentProp.defaultDraft ??
             (currentProp.default === undefined

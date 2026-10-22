@@ -38,6 +38,8 @@ export interface ExploreSlotEvidence {
 }
 export interface ExplorePropReport {
   name: string;
+  /** Recursive union branches form one complete desired definition. */
+  definition?: import('../cdf/types.js').CDFPropertyDefinition;
   category?: 'content' | 'design' | 'state' | 'unattached';
   type?: string;
   values?: FinitePrimitiveValue[];

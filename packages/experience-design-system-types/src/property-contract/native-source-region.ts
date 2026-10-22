@@ -1,6 +1,7 @@
 import type { CDFFieldDefinition } from '../cdf/types.js';
 import { cloneJson } from './json-value.js';
 import type { LogicalSourceNode } from './logical-source-graph.js';
+import { sourceDiscriminatedUnion } from './discriminated-union-source.js';
 
 /** Derive only structures available at the target position, retaining nullish evidence separately. */
 export function nativeSourceRegion(
@@ -9,6 +10,7 @@ export function nativeSourceRegion(
   position: 'root' | 'item' | 'field' = 'root',
   active = new Set<string>(),
   required?: boolean,
+  region: 'ordinary' | 'union-branch' = 'ordinary',
 ): CDFFieldDefinition | undefined {
   const node = nodes.get(nodeId);
   if (
@@ -20,12 +22,29 @@ export function nativeSourceRegion(
     return;
   const next = new Set(active).add(nodeId);
   const presence = required ?? node.required;
+  const currentRegion = node.branchConditions?.length ? 'union-branch' : region;
   if (node.kind === 'reference' && node.alternatives?.length === 1)
-    return nativeSourceRegion(node.alternatives[0]!, nodes, position, next, presence);
+    return nativeSourceRegion(node.alternatives[0]!, nodes, position, next, presence, currentRegion);
   if (node.kind === 'union') {
     const members = (node.alternatives ?? []).map((id) => nodes.get(id)!);
     const values = members.filter((member) => !['null', 'undefined', 'never'].includes(member.kind));
-    if (values.length === 1) return nativeSourceRegion(values[0]!.id, nodes, position, next, presence);
+    if (values.length === 1) return nativeSourceRegion(values[0]!.id, nodes, position, next, presence, currentRegion);
+    const union = sourceDiscriminatedUnion(node, nodes);
+    if (union) {
+      const members: CDFFieldDefinition[] = [];
+      for (const branch of union.branches) {
+        const member = nativeSourceRegion(branch.nodeId, nodes, 'item', next, presence, 'union-branch');
+        if (!member?.$fields || member.$type !== 'record') return;
+        member.$fields[union.discriminator] = {
+          $type: 'Literal',
+          $required: true,
+          value: branch.tag,
+          valueType: { $type: typeof branch.tag as 'string' | 'number' | 'boolean' },
+        };
+        members.push(member);
+      }
+      return { $type: 'DiscriminatedUnion', $required: presence, discriminator: union.discriminator, members };
+    }
     const scalar = values[0]?.kind;
     if (
       !values.length ||
@@ -35,16 +54,16 @@ export function nativeSourceRegion(
       return;
     const field: CDFFieldDefinition = { $type: scalar as 'string' | 'number' | 'boolean', $required: presence };
     applyChoices(field, node);
-    return field;
+    return branchSingleton(field, currentRegion);
   }
   if (['string', 'number', 'boolean'].includes(node.kind)) {
     const field: CDFFieldDefinition = { $type: node.kind as 'string' | 'number' | 'boolean', $required: presence };
     applyChoices(field, node);
-    return field;
+    return branchSingleton(field, currentRegion);
   }
   if (node.kind === 'array') {
     if (position !== 'root' || node.items?.length !== 1) return;
-    const items = nativeSourceRegion(node.items[0]!, nodes, 'item', next, true);
+    const items = nativeSourceRegion(node.items[0]!, nodes, 'item', next, true, currentRegion);
     return items ? { $type: 'array', $required: presence, $items: items } : undefined;
   }
   if (
@@ -56,7 +75,7 @@ export function nativeSourceRegion(
     const fields: Record<string, CDFFieldDefinition> = Object.create(null);
     if (!node.fields || (node.kind === 'intersection' && !disjointRecordIntersection(node, nodes))) return;
     for (const field of node.fields) {
-      const child = nativeSourceRegion(field.nodeId, nodes, 'field', next, field.required);
+      const child = nativeSourceRegion(field.nodeId, nodes, 'field', next, field.required, currentRegion);
       if (!child) return;
       if (field.description) child.$description = field.description;
       fields[field.key] = child;
@@ -64,6 +83,16 @@ export function nativeSourceRegion(
     return { $type: 'record', $required: presence, $fields: fields };
   }
   return;
+}
+
+function branchSingleton(field: CDFFieldDefinition, region: 'ordinary' | 'union-branch'): CDFFieldDefinition {
+  if (region !== 'union-branch' || field.$values?.length !== 1) return field;
+  return {
+    $type: 'Literal',
+    $required: field.$required,
+    value: field.$values[0]!,
+    valueType: { $type: field.$type },
+  };
 }
 
 function applyChoices(field: CDFFieldDefinition, node: LogicalSourceNode): void {

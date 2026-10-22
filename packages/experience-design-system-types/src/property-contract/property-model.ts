@@ -12,6 +12,7 @@ import {
 } from './json-value.js';
 import {
   TARGET_PROPERTY_TYPES,
+  containsTargetDefinitionType,
   validateTargetDefinition,
   validateTargetValue,
   type TargetDefinition,
@@ -19,6 +20,8 @@ import {
 } from './target-definition.js';
 import { finiteSourceValueDomain, isSourceBoundRepresentation } from './source-representation.js';
 import { validateRepresentationProposal, type RepresentationProposalDraft } from './representation-proposal.js';
+import { discriminatedUnionTag } from './discriminated-union.js';
+import { validateDiscriminatedUnionSourceDefinition } from './discriminated-union-source.js';
 
 export type MapperAvailability = 'enabled' | 'unavailable' | 'unknown';
 export interface SourceGraphDeclaration {
@@ -134,6 +137,7 @@ const DEFAULT_TARGETS: TargetPropertyType[] = [
   'Integer',
   'DateTime',
   'Literal',
+  'DiscriminatedUnion',
 ];
 export function createPropertyProfile(profile: PropertyProfile): Readonly<PropertyProfile> {
   if (!profile || typeof profile.id !== 'string' || !profile.id || profile.revision !== 2)
@@ -182,6 +186,7 @@ export const LOCAL_NATIVE_PROPERTY_PROFILE = createPropertyProfile({
     'RichText',
     'JSON',
     'ResourceLink',
+    'DiscriminatedUnion',
   ],
   targetTypes: [...TARGET_PROPERTY_TYPES],
   defaultSourceTypes: [
@@ -195,6 +200,7 @@ export const LOCAL_NATIVE_PROPERTY_PROFILE = createPropertyProfile({
     'Integer',
     'DateTime',
     'Literal',
+    'DiscriminatedUnion',
   ],
   defaultTargetTypes: DEFAULT_TARGETS,
   requirements: [],
@@ -611,6 +617,8 @@ export function validateSourceValue(
 export function validateSourceDomain(graph: PropertySourceGraph, definition: TargetDefinition): PropertyIssue[] {
   const invalid = validateSourceGraph(graph);
   if (invalid.length) return invalid;
+  if (containsTargetDefinitionType(definition, 'DiscriminatedUnion'))
+    return validateDiscriminatedUnionSourceDefinition(definition, graph);
   const issues: PropertyIssue[] = [];
   const nodes = new Map(graph.nodes.map((n) => [n.id, n]));
   const walk = (
@@ -858,7 +866,7 @@ export function projectProperty(
     d: CDFFieldDefinition,
     t: TargetDefinition,
     path: string,
-    position: 'root' | 'item' | 'field',
+    position: 'root' | 'item' | 'field' | 'member',
     literalUnderlying = false,
   ): void => {
     if (!profile.mapperTypes.includes(d.$type) || !profile.targetTypes.includes(t.type)) {
@@ -877,6 +885,34 @@ export function projectProperty(
     if ((d.$type === 'array' && position !== 'root') || (d.$type === 'record' && position === 'field')) {
       unsupported = true;
       issues.push({ path, message: 'Native position unavailable; source retained' });
+    }
+    if (d.$type === 'DiscriminatedUnion') {
+      if (model.category !== 'content') {
+        unsupported = true;
+        issues.push({ path, message: 'Discriminated unions require content category' });
+      }
+      if (d.discriminator?.includes('/')) {
+        unsupported = true;
+        issues.push({
+          path: `${path}/discriminator`,
+          message: 'Target cannot address a slash-containing discriminator key',
+        });
+      }
+      const tags = new Set<string>();
+      for (const [index, member] of (d.members ?? []).entries()) {
+        const tag = discriminatedUnionTag(member, d.discriminator!, 'cdf');
+        if (!tag) continue;
+        const key = String(tag.value);
+        if (tags.has(key) || own(Object.prototype, key)) {
+          unsupported = true;
+          issues.push({
+            path: `${path}/members/${index}`,
+            message: 'Target cannot safely distinguish this typed discriminator tag',
+          });
+        }
+        tags.add(key);
+        visit(member, t.members![index]!, `${path}/members/${index}`, 'member', literalUnderlying);
+      }
     }
     if (d.$items) visit(d.$items, t.items!, `${path}/items`, 'item', literalUnderlying);
     if (d.$fields)
@@ -907,6 +943,8 @@ export function projectProperty(
     }
     if (d.$items) defaults(d.$items, t.items!, `${path}/items`);
     if (d.valueType) defaults(d.valueType, t.valueType!, `${path}/valueType`);
+    if (d.members)
+      d.members.forEach((member, index) => defaults(member, t.members![index]!, `${path}/members/${index}`));
     if (d.$fields)
       for (const [key, field] of Object.entries(d.$fields))
         defaults(field, t.fields![key]!, childPath(childPath(path, 'fields'), key));

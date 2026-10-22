@@ -2,7 +2,10 @@ import { z } from 'zod';
 import { EXPLORE_SCOPES } from './constants.js';
 import { SourceInputAssociationSchema } from '../source-input-association.js';
 import { finiteValuesIssue } from '../cdf/finite-values.js';
-import { jsonValueIssue, type JsonValue } from '../property-contract/json-value.js';
+import { jsonValueIssue, jsonEqual, own, type JsonValue } from '../property-contract/json-value.js';
+import { validateCDFProperty, containsCDFDefinitionType, cdfToTarget } from '../cdf/property-validation.js';
+import { validateTargetValue } from '../property-contract/target-definition.js';
+import type { CDFPropertyDefinition } from '../cdf/types.js';
 import {
   validateProposalDraft,
   type RepresentationProposalDraft,
@@ -22,6 +25,7 @@ export const ExplorePropReportSchema = z
     name: z.string().min(1),
     category: z.enum(['content', 'design', 'state', 'unattached']).optional(),
     type: z.string().optional(),
+    definition: z.custom<CDFPropertyDefinition>((value) => validateCDFProperty(value).valid).optional(),
     values: z
       .array(z.union([z.string(), z.number(), z.boolean()]))
       .nonempty()
@@ -38,6 +42,28 @@ export const ExplorePropReportSchema = z
       .optional(),
   })
   .superRefine((report, ctx) => {
+    if (report.type === 'DiscriminatedUnion' || report.definition !== undefined) {
+      const definition = report.definition;
+      if (
+        !definition ||
+        !validateCDFProperty(definition).valid ||
+        !containsCDFDefinitionType(definition, 'DiscriminatedUnion') ||
+        definition.$type !== report.type ||
+        definition.$category !== report.category ||
+        report.category !== 'content' ||
+        ['values', 'tokenKind', 'tokenPaths', 'representationProposal'].some((key) => own(report, key)) ||
+        (own(report, 'required') && report.required !== (definition.$required ?? false)) ||
+        (own(report, 'description') && report.description !== definition.$description) ||
+        (own(report, 'default') &&
+          (validateTargetValue(cdfToTarget(definition), report.default as JsonValue).length ||
+            (own(definition, '$default') && !jsonEqual(report.default, definition.$default))))
+      )
+        ctx.addIssue({
+          code: 'custom',
+          path: ['definition'],
+          message: 'Union decisions require one complete consistent content definition',
+        });
+    }
     if (report.type === 'enum')
       ctx.addIssue({ code: 'custom', path: ['type'], message: 'Use a primitive type with typed values' });
     if (report.values !== undefined) {

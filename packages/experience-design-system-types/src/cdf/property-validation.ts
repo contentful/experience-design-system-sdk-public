@@ -21,6 +21,7 @@ const targetTypes = {
   RichText: 'RichText',
   JSON: 'JSON',
   ResourceLink: 'ResourceLink',
+  DiscriminatedUnion: 'DiscriminatedUnion',
 } as const;
 export function cdfToTarget(d: CDFFieldDefinition): TargetDefinition {
   const t: TargetDefinition = { type: targetTypes[d.$type] };
@@ -30,6 +31,8 @@ export function cdfToTarget(d: CDFFieldDefinition): TargetDefinition {
   if (d.$values) t.values = d.$values;
   if (own(d, 'value')) t.value = d.value;
   if (d.valueType) t.valueType = cdfToTarget(d.valueType);
+  if (d.discriminator !== undefined) t.discriminator = d.discriminator;
+  if (d.members) t.members = d.members.map(cdfToTarget);
   if (d.allowedResources) t.allowedResources = d.allowedResources;
   if (d.$items) t.items = cdfToTarget(d.$items);
   if (d.$fields)
@@ -51,6 +54,7 @@ export function targetToCDF(d: TargetDefinition): CDFFieldDefinition {
     RichText: 'RichText',
     JSON: 'JSON',
     ResourceLink: 'ResourceLink',
+    DiscriminatedUnion: 'DiscriminatedUnion',
   } as const;
   const field: CDFFieldDefinition = { $type: types[d.type] };
   if (own(d, 'required')) field.$required = d.required;
@@ -62,8 +66,32 @@ export function targetToCDF(d: TargetDefinition): CDFFieldDefinition {
     field.$fields = Object.fromEntries(Object.entries(d.fields).map(([key, child]) => [key, targetToCDF(child)]));
   if (own(d, 'value')) field.value = cloneJson(d.value!);
   if (d.valueType) field.valueType = targetToCDF(d.valueType);
+  if (d.discriminator !== undefined) field.discriminator = d.discriminator;
+  if (d.members) field.members = d.members.map(targetToCDF);
   if (d.allowedResources) field.allowedResources = cloneJson(d.allowedResources);
   return field;
+}
+
+/** All recursive grammar children retain their exact paths, including exclusive members. */
+export function cdfDefinitionChildren(definition: CDFFieldDefinition): Array<{
+  definition: CDFFieldDefinition;
+  path: string;
+}> {
+  return [
+    ...(definition.$items ? [{ definition: definition.$items, path: '/$items' }] : []),
+    ...(definition.valueType ? [{ definition: definition.valueType, path: '/valueType' }] : []),
+    ...Object.entries(definition.$fields ?? {}).map(([key, field]) => ({
+      definition: field,
+      path: childPath('/$fields', key),
+    })),
+    ...(definition.members ?? []).map((member, index) => ({ definition: member, path: '/members/' + index })),
+  ];
+}
+export function containsCDFDefinitionType(definition: CDFFieldDefinition, type: string): boolean {
+  return (
+    definition.$type === type ||
+    cdfDefinitionChildren(definition).some((child) => containsCDFDefinitionType(child.definition, type))
+  );
 }
 export function validateCDFProperty(
   input: unknown,
@@ -95,7 +123,7 @@ export function validateCDFProperty(
     if (d.$type === 'array') allowed.add('$items');
     if (d.$type === 'record') allowed.add('$fields');
     if (
-      ['Integer', 'DateTime', 'Literal', 'RichText', 'JSON', 'ResourceLink'].includes(d.$type) &&
+      ['Integer', 'DateTime', 'Literal', 'RichText', 'JSON', 'ResourceLink', 'DiscriminatedUnion'].includes(d.$type) &&
       d.$category !== undefined &&
       d.$category !== 'content'
     )
@@ -106,6 +134,15 @@ export function validateCDFProperty(
       walk(d.valueType, childPath(path, 'valueType'), false, depth + 1);
     }
     if (d.$type === 'ResourceLink') allowed.add('allowedResources');
+    if (d.$type === 'DiscriminatedUnion') {
+      allowed.add('discriminator');
+      allowed.add('members');
+      if (!Array.isArray(d.members)) add('members', 'Expected complete union members');
+      else
+        d.members.forEach((member, index) =>
+          walk(member, childPath(childPath(path, 'members'), index), false, depth + 1),
+        );
+    }
     if (d.$type === 'token') {
       allowed.add('$token.kind');
       allowed.add('$token.allowed');

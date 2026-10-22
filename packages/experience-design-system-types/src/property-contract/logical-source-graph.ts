@@ -1,13 +1,22 @@
 import { contentDigest } from './content-digest.js';
 import { cloneJson, own } from './json-value.js';
+import { sourceDiscriminatedUnion } from './discriminated-union-source.js';
 import {
   validateSourceGraph,
+  validateSourceValue,
   type DefaultIntent,
   type PropertyModel,
   type SourceGraphDeclaration,
   type SourceGraphNode,
 } from './property-model.js';
 
+export interface LogicalBranchCondition {
+  unionNodeId: string;
+  memberIndex: number;
+  sourceMemberNodeId: string;
+  discriminator: string;
+  tag: string | number | boolean;
+}
 export interface LogicalSourceNode extends SourceGraphNode {
   sourceNodeId: string;
   path: NonNullable<SourceGraphNode['path']>;
@@ -15,6 +24,11 @@ export interface LogicalSourceNode extends SourceGraphNode {
   occurrenceReadonly: boolean;
   intrinsicReadonly: boolean;
   defaultIntent?: DefaultIntent;
+  branchConditions?: LogicalBranchCondition[];
+  unionBranches?: {
+    discriminator: string;
+    branches: Array<{ memberIndex: number; nodeId: string; sourceNodeId: string; tag: string | number | boolean }>;
+  };
 }
 export interface LogicalSourceGraph {
   authority: 'compiler';
@@ -30,8 +44,27 @@ export function sourceDefaultAtPath(
 ): DefaultIntent | undefined {
   if (model.source.default?.state !== 'value' || !own(model.source.default, 'value')) return;
   let value = model.source.default.value!;
+  const nodes = new Map(model.source.graph.nodes.map((node) => [node.id, node]));
+  let node = nodes.get(model.source.graph.rootId);
+  const resolve = (): void => {
+    const seen = new Set<string>();
+    while (node?.kind === 'reference' && !seen.has(node.id)) {
+      seen.add(node.id);
+      node = nodes.get(node.alternatives?.[0] ?? '');
+    }
+  };
   for (const segment of path) {
-    if (segment.kind === 'union' || segment.kind === 'intersection') continue;
+    resolve();
+    if (segment.kind === 'union' || segment.kind === 'intersection') {
+      const memberId = typeof segment.key === 'number' ? node?.alternatives?.[segment.key] : undefined;
+      if (
+        !memberId ||
+        (segment.kind === 'union' && validateSourceValue(model.source.graph, value, '', memberId).length)
+      )
+        return;
+      node = nodes.get(memberId);
+      continue;
+    }
     if (
       segment.kind !== 'field' ||
       typeof segment.key !== 'string' ||
@@ -42,11 +75,12 @@ export function sourceDefaultAtPath(
     )
       return;
     value = value[segment.key]!;
+    node = nodes.get(node?.fields?.find((field) => field.key === segment.key)?.nodeId ?? '');
   }
   return { action: 'set', value: cloneJson(value) };
 }
 
-/** Expand each compiler node once and retain shared occurrences as explicit logical references. */
+/** Retain shared references while expanding finite occurrences with distinct branch ownership. */
 export function prepareLogicalSourceGraph(model: Pick<PropertyModel, 'identity' | 'source'>): LogicalSourceGraph {
   const source = model.source.graph;
   const invalid = validateSourceGraph(source);
@@ -57,6 +91,23 @@ export function prepareLogicalSourceGraph(model: Pick<PropertyModel, 'identity' 
   )
     throw new Error('Logical source root owner is incomplete or mismatched');
   const byId = new Map(source.nodes.map((node) => [node.id, node]));
+  const parents = new Map<string, string[]>();
+  for (const node of source.nodes)
+    for (const childId of [
+      ...(node.fields?.map((field) => field.nodeId) ?? []),
+      ...(node.items ?? []),
+      ...(node.alternatives ?? []),
+      ...(node.indexSignatures?.map((signature) => signature.valueNodeId) ?? []),
+    ])
+      parents.set(childId, [...(parents.get(childId) ?? []), node.id]);
+  const branchSensitive = new Set<string>();
+  const pending = source.nodes.filter((node) => sourceDiscriminatedUnion(node, byId)).map((node) => node.id);
+  while (pending.length) {
+    const id = pending.pop()!;
+    if (branchSensitive.has(id)) continue;
+    branchSensitive.add(id);
+    pending.push(...(parents.get(id) ?? []));
+  }
   const intrinsicReadonly = (id: string): boolean => {
     const seen = new Set<string>();
     let current = byId.get(id);
@@ -77,6 +128,9 @@ export function prepareLogicalSourceGraph(model: Pick<PropertyModel, 'identity' 
   };
   const nodes: LogicalSourceNode[] = [];
   const canonical = new Map<string, string>();
+  const activeSources = new Set<string>();
+  let expandedOccurrences = 0;
+  let occurrenceBoundReached = false;
   const root = byId.get(source.rootId)!;
   const rootPath = root.path ?? root.keyPath.map((key) => ({ kind: 'field' as const, key }));
   type Request = {
@@ -86,11 +140,16 @@ export function prepareLogicalSourceGraph(model: Pick<PropertyModel, 'identity' 
     readonly: boolean;
     declarations?: SourceGraphDeclaration[];
     target?: boolean;
+    branchConditions?: LogicalBranchCondition[];
   };
   const visit = function* (request: Request): Generator<Request, string, string> {
     const original = byId.get(request.sourceId)!;
     const known = canonical.get(original.id);
-    if (known && request.target) return known;
+    const sharedReference =
+      known &&
+      ((!request.branchConditions?.length && !branchSensitive.has(original.id)) || activeSources.has(original.id));
+    if (sharedReference && request.target) return known;
+    const boundedOccurrence = known && !sharedReference && expandedOccurrences >= (source.limits.maxEdges ?? 4096);
     const id = known
       ? 'occurrence_' +
         contentDigest({ owner: model.identity, sourceNodeId: original.id, path: request.path }).slice(0, 32)
@@ -105,13 +164,18 @@ export function prepareLogicalSourceGraph(model: Pick<PropertyModel, 'identity' 
       occurrenceReadonly: request.readonly,
       intrinsicReadonly: intrinsicReadonly(original.id),
       ...(request.declarations ? { declarations: cloneJson(request.declarations) } : {}),
+      ...(request.branchConditions?.length ? { branchConditions: cloneJson(request.branchConditions) } : {}),
     };
     const intent = sourceDefaultAtPath(model, request.path.slice(rootPath.length));
     if (intent) node.defaultIntent = intent;
     nodes.push(node);
-    if (known) {
+    if (sharedReference || boundedOccurrence) {
       node.kind = 'reference';
-      node.reason = 'shared-source-occurrence';
+      node.reason = boundedOccurrence ? 'branch-occurrence-expansion-bound' : 'shared-source-occurrence';
+      if (boundedOccurrence) {
+        node.coverage = 'partial';
+        occurrenceBoundReached = true;
+      }
       node.alternatives = [known];
       delete node.fields;
       delete node.items;
@@ -119,7 +183,9 @@ export function prepareLogicalSourceGraph(model: Pick<PropertyModel, 'identity' 
       delete node.tupleElements;
       return id;
     }
-    canonical.set(original.id, id);
+    if (known) expandedOccurrences += 1;
+    if (!known) canonical.set(original.id, id);
+    activeSources.add(original.id);
     const child = (
       sourceId: string,
       kind: LogicalSourceNode['path'][number]['kind'],
@@ -133,6 +199,7 @@ export function prepareLogicalSourceGraph(model: Pick<PropertyModel, 'identity' 
       required,
       readonly,
       ...(declarations ? { declarations } : {}),
+      ...(request.branchConditions?.length ? { branchConditions: request.branchConditions } : {}),
     });
     if (original.fields) {
       node.fields = [];
@@ -166,7 +233,24 @@ export function prepareLogicalSourceGraph(model: Pick<PropertyModel, 'identity' 
     }
     if (original.alternatives) {
       node.alternatives = [];
+      const union = sourceDiscriminatedUnion(original, byId);
+      if (union) node.unionBranches = { discriminator: union.discriminator, branches: [] };
       for (const [index, sourceId] of original.alternatives.entries()) {
+        const branch = union?.branches.find((candidate) => candidate.memberIndex === index);
+        const childRequest = child(sourceId, original.kind === 'intersection' ? 'intersection' : 'union', index);
+        if (branch) {
+          childRequest.required = true;
+          childRequest.branchConditions = [
+            ...(request.branchConditions ?? []),
+            {
+              unionNodeId: id,
+              memberIndex: index,
+              sourceMemberNodeId: sourceId,
+              discriminator: union!.discriminator,
+              tag: branch.tag,
+            },
+          ];
+        }
         const nodeId =
           original.kind === 'reference'
             ? yield {
@@ -175,9 +259,12 @@ export function prepareLogicalSourceGraph(model: Pick<PropertyModel, 'identity' 
                 required: request.required,
                 readonly: request.readonly,
                 target: true,
+                ...(request.branchConditions?.length ? { branchConditions: request.branchConditions } : {}),
               }
-            : yield child(sourceId, original.kind === 'intersection' ? 'intersection' : 'union', index);
+            : yield childRequest;
         node.alternatives.push(nodeId);
+        if (branch)
+          node.unionBranches!.branches.push({ memberIndex: index, nodeId, sourceNodeId: sourceId, tag: branch.tag });
       }
     }
     if (original.indexSignatures) {
@@ -187,6 +274,7 @@ export function prepareLogicalSourceGraph(model: Pick<PropertyModel, 'identity' 
         node.indexSignatures.push({ ...cloneJson(index), valueNodeId });
       }
     }
+    activeSources.delete(original.id);
     return id;
   };
   const frames = [
@@ -204,5 +292,5 @@ export function prepareLogicalSourceGraph(model: Pick<PropertyModel, 'identity' 
     } else frames.push(visit(step.value));
   }
   if (canonical.size !== source.nodes.length) throw new Error('Logical compiler accounting is incomplete');
-  return { authority: 'compiler', rootId, nodes, coverage: source.coverage };
+  return { authority: 'compiler', rootId, nodes, coverage: occurrenceBoundReached ? 'partial' : source.coverage };
 }

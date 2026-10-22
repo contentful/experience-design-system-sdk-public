@@ -14,7 +14,12 @@ import {
 } from './json-value.js';
 import { contentDigest } from './content-digest.js';
 import { propertyMapperBlockers } from './mapper-readiness.js';
-import { prepareLogicalSourceGraph, type LogicalSourceGraph, type LogicalSourceNode } from './logical-source-graph.js';
+import {
+  prepareLogicalSourceGraph,
+  type LogicalBranchCondition,
+  type LogicalSourceGraph,
+  type LogicalSourceNode,
+} from './logical-source-graph.js';
 import { nativeSourceRegion, sourceRecordFields } from './native-source-region.js';
 import {
   LOCAL_NATIVE_PROPERTY_PROFILE,
@@ -59,6 +64,21 @@ export interface LogicalPhysicalMapping {
   targetNodeId?: string;
   reason?: string;
   withinValue?: { ownerNodeId: string; path: NonNullable<SourceGraphNode['path']> };
+  branchConditions?: LogicalBranchCondition[];
+  variant?: { wrapperKey: string; slot: string; componentKey: string };
+}
+export interface ModelBranchSelection {
+  unionNodeId: string;
+  wrapperKey: string;
+  slot: string;
+  discriminator: string;
+  branches: Array<{
+    memberIndex: number;
+    nodeId: string;
+    sourceNodeId: string;
+    tag: string | number | boolean;
+    modelKey: string;
+  }>;
 }
 export interface RepresentationPlan {
   schemaVersion: 1;
@@ -81,6 +101,7 @@ export interface RepresentationPlan {
   issues: PropertyIssue[];
   sdkValid: boolean;
   requirements: Array<{ path: string; capability: string }>;
+  branchSelections?: ModelBranchSelection[];
 }
 
 function sourceDigest(model: PropertyModel): string {
@@ -93,6 +114,7 @@ function localContext(definition: CDFPropertyDefinition): Record<string, 'enable
     result[path + ':default'] = 'enabled';
     if (field.$items) visit(field.$items, path + '/items');
     if (field.valueType) visit(field.valueType as CDFPropertyDefinition, path + '/valueType');
+    for (const [index, member] of (field.members ?? []).entries()) visit(member, path + '/members/' + index);
     if (field.$fields)
       for (const [key, child] of Object.entries(field.$fields))
         visit(child, path + '/fields/' + key.replace(/~/g, '~0').replace(/\//g, '~1'));
@@ -180,6 +202,7 @@ export function deriveEditableRepresentationPlans(
     nullable: node.nullable ?? null,
     undefinable: node.undefinable ?? null,
     ...(node.defaultIntent ? { defaultIntent: cloneJson(node.defaultIntent) } : {}),
+    ...(node.branchConditions ? { branchConditions: cloneJson(node.branchConditions) } : {}),
   });
   const emptyValueRequirements = graph.nodes
     .filter((node) => node.kind === 'record' && !node.fields?.length && !node.indexSignatures?.length)
@@ -214,6 +237,9 @@ export function deriveEditableRepresentationPlans(
         if (own(target, 'defaultValue')) field.$default = cloneJson(target.defaultValue!);
         else delete field.$default;
         if (field.$items && target.items) applyDefaults(field.$items, target.items);
+        if (field.valueType && target.valueType) applyDefaults(field.valueType, target.valueType);
+        if (field.members && target.members)
+          field.members.forEach((member, index) => applyDefaults(member, target.members![index]!));
         if (field.$fields && target.fields)
           for (const [key, child] of Object.entries(field.$fields)) applyDefaults(child, target.fields[key]!);
       };
@@ -261,8 +287,10 @@ export function deriveEditableRepresentationPlans(
       );
     }
   }
+  if (category !== 'content' && graph.nodes.some((node) => node.unionBranches)) return plans;
   const mappings = new Map<string, LogicalPhysicalMapping>();
   const models = new Map<string, { key: string; nodeId: string; entry: CDFComponentEntry }>();
+  const branchSelections: ModelBranchSelection[] = [];
   const issues: PropertyIssue[] = [...defaultIssues];
   const requirements: RepresentationPlan['requirements'] = [
     { path: '/', capability: 'source-reconstruction' },
@@ -335,6 +363,10 @@ export function deriveEditableRepresentationPlans(
   };
   const modelFor = (id: string): string | undefined => {
     const node = nodes.get(id)!;
+    if (node.reason === 'branch-occurrence-expansion-bound') {
+      hold(node, 'Source retained; branch occurrence expansion reached its declared resource bound');
+      return;
+    }
     if (node.kind === 'reference') {
       const target = node.alternatives?.[0];
       if (!target || activeModels.has(target)) {
@@ -380,6 +412,14 @@ export function deriveEditableRepresentationPlans(
         const definition = nativeProperty(child.id);
         if (definition) {
           definition.$required = field.required;
+          const branch = node.branchConditions?.at(-1);
+          if (branch?.sourceMemberNodeId === node.sourceNodeId && branch.discriminator === field.key) {
+            definition.$type = 'Literal';
+            definition.value = branch.tag;
+            definition.valueType = { $type: typeof branch.tag as 'string' | 'number' | 'boolean' };
+            definition.$required = true;
+            delete definition.$values;
+          }
           if (field.description) definition.$description = field.description;
           entry.$properties[field.key] = definition;
           nativeMapping(child.id, key, field.key);
@@ -489,7 +529,37 @@ export function deriveEditableRepresentationPlans(
       const members = (node.alternatives ?? []).map((alternative) => nodes.get(alternative)!);
       const values = members.filter((member) => !['null', 'undefined', 'never'].includes(member.kind));
       const definition = nativeProperty(id);
-      if (definition) {
+      if (node.unionBranches) {
+        const selected: ModelBranchSelection['branches'] = [];
+        for (const branch of node.unionBranches.branches) {
+          const modelKey = modelFor(branch.nodeId);
+          if (modelKey) selected.push({ ...cloneJson(branch), modelKey });
+        }
+        if (selected.length !== node.unionBranches.branches.length) {
+          hold(node, 'Union branch has no complete editable model');
+        } else {
+          entry.$slots!.variant = {
+            $required: true,
+            $allowedComponents: selected.map((branch) => branch.modelKey),
+            $cardinality: { min: 1, max: 1, ordered: false },
+            $modelBinding: binding(node.id),
+          };
+          mappings.set(id, { ...mappingFacts(node), disposition: 'slot', componentKey: key, slot: 'variant' });
+          for (const branch of selected) {
+            const mapping = mappings.get(branch.nodeId);
+            if (mapping) mapping.variant = { wrapperKey: key, slot: 'variant', componentKey: branch.modelKey };
+          }
+          branchSelections.push({
+            unionNodeId: id,
+            wrapperKey: key,
+            slot: 'variant',
+            discriminator: node.unionBranches.discriminator,
+            branches: selected,
+          });
+          requirements.push({ path: '/' + key + '/$slots/variant', capability: 'exclusive-union-branch-selection' });
+          requirements.push({ path: '/' + key + '/$slots/variant', capability: 'singleton-slot-cardinality' });
+        }
+      } else if (definition) {
         entry.$properties.value = definition;
         mappings.delete(id);
         nativeMapping(id, key, 'value');
@@ -584,8 +654,13 @@ export function deriveEditableRepresentationPlans(
         slot.$allowedComponents = slot.$allowedComponents.map((key) => renamedKeys.get(key)!);
     return { ...generated, originalKey: generated.key, key: renamedKeys.get(generated.key)!, entry };
   });
-  for (const mapping of mappings.values())
+  for (const mapping of mappings.values()) {
     if (mapping.componentKey) mapping.componentKey = renamedKeys.get(mapping.componentKey)!;
+    if (mapping.variant) {
+      mapping.variant.wrapperKey = renamedKeys.get(mapping.variant.wrapperKey)!;
+      mapping.variant.componentKey = renamedKeys.get(mapping.variant.componentKey)!;
+    }
+  }
   const rebasedRequirements = requirements.map((requirement) => {
     for (const [original, renamed] of renamedKeys)
       if (requirement.path === '/' + original || requirement.path.startsWith('/' + original + '/'))
@@ -595,6 +670,11 @@ export function deriveEditableRepresentationPlans(
   const uniqueRequirements = [
     ...new Map(rebasedRequirements.map((requirement) => [JSON.stringify(requirement), requirement])).values(),
   ];
+  const renamedSelections = branchSelections.map((selection) => ({
+    ...selection,
+    wrapperKey: renamedKeys.get(selection.wrapperKey)!,
+    branches: selection.branches.map((branch) => ({ ...branch, modelKey: renamedKeys.get(branch.modelKey)! })),
+  }));
   plans.push(
     finish({
       ...base,
@@ -614,6 +694,7 @@ export function deriveEditableRepresentationPlans(
       issues,
       sdkValid: !issues.length,
       requirements: uniqueRequirements,
+      ...(renamedSelections.length ? { branchSelections: renamedSelections } : {}),
     }),
   );
   return plans;

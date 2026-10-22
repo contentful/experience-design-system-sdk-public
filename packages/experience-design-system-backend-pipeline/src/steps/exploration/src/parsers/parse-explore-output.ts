@@ -5,6 +5,10 @@ import {
   type ExploreCompanion,
   type KnownComponent,
   validateRepresentationProposalSource,
+  validateDiscriminatedUnionSourceDefinition,
+  validateSourceValue,
+  cdfToTarget,
+  own,
 } from '@contentful/experience-design-system-types';
 import type { SlotCandidates, ExploreRepresentationProposalSource } from '../types.js';
 import { assertUnique } from '../helpers/identity.js';
@@ -69,10 +73,27 @@ function parseCompanion(
       'reported slots',
     );
     for (const prop of component.props ?? []) {
-      if (!prop.representationProposal) continue;
       const source = proposalSources
         ?.find((source) => source.component === component.name && source.source === component.source)
         ?.properties.find((property) => property.identity.key === prop.name);
+      if (prop.definition) {
+        const root = source?.source.graph.nodes.find((node) => node.id === source.identity.nodeId);
+        if (!source || !root || root.required !== (prop.definition.$required ?? false))
+          throw new Error(`Union requires exact current compiler source for ${component.name}.${prop.name}`);
+        const issues = validateDiscriminatedUnionSourceDefinition(cdfToTarget(prop.definition), source.source.graph);
+        if (own(prop, 'default'))
+          issues.push(
+            ...validateSourceValue(
+              source.source.graph,
+              prop.default as import('@contentful/experience-design-system-types').JsonValue,
+            ),
+          );
+        if (issues.length)
+          throw new Error(
+            `Invalid union source for ${component.name}.${prop.name}: ${issues.map((issue) => `${issue.path}: ${issue.message}`).join('; ')}`,
+          );
+      }
+      if (!prop.representationProposal) continue;
       if (!source) throw new Error(`Current source evidence missing for ${component.name}.${prop.name} proposal`);
       const validation = validateRepresentationProposalSource(prop.representationProposal, source);
       if (!validation.valid)
