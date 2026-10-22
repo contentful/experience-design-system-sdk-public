@@ -56,9 +56,11 @@ describe('connected exploration persistence and output', () => {
     const { db, dbPath, sessionId, component, handle, source } = await fixture();
     db.close();
     const calls: string[] = [];
+    const activity: Array<{ stage: string; done: number; total: number; scope?: string }> = [];
     const invoker = {
       invoke: async (request: { prompt: string }) => {
         const scope = /"scope":"([^"]+)"/.exec(request.prompt)?.[1];
+        expect(activity.at(-1)).toMatchObject({ stage: 'exploring', scope, done: calls.length, total: 7 });
         calls.push(scope!);
         const candidateFree = scope === 'components-6' || scope === 'components-7';
         if (candidateFree) expect(request.prompt).not.toContain('"slotCandidates"');
@@ -96,9 +98,13 @@ describe('connected exploration persistence and output', () => {
       invoker,
       rendererReference: { kind: 'text', text: 'Components receive their declared inputs.', origin: 'fixture' },
       backoffMs: 0,
+      onActivity: (event) => activity.push(event),
     });
     expect(result.ok).toBe(true);
     expect(calls).toHaveLength(7);
+    expect(activity.slice(0, 2).map((event) => event.stage)).toEqual(['loading', 'preparing']);
+    expect(activity.at(-1)).toMatchObject({ stage: 'complete', done: 7, total: 7 });
+    expect(activity.some((event) => event.stage === 'finalizing')).toBe(true);
     const artifacts = join(dir, 'exploration-artifacts', encodeURIComponent(sessionId), result.runId!, 'components');
     const manifest = JSON.parse(readFileSync(join(artifacts, 'manifest.json'), 'utf8'));
     expect(manifest).toMatchObject({

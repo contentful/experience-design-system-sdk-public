@@ -306,12 +306,14 @@ export function overlayRepresentationPlans(
     const entry = cloneJson(component.entry);
     entry.$representationPlans = Object.create(null);
     for (const row of owned) {
+      const model = currentRepresentationModel(db, sessionId, component.componentId, row.propertyName);
       const invalid = validateRepresentationPlan(
         row.plan,
-        currentRepresentationModel(db, sessionId, component.componentId, row.propertyName),
+        model,
         representationContext(db, sessionId, component.componentId, row.propertyName),
       );
-      if (invalid.length)
+      // Context-stale selections remain readable for readoption; current readiness and save validation still gate use.
+      if (invalid.length && validateRepresentationPlan(row.plan, model, row.plan.contextSnapshot).length)
         throw new Error('Saved representation is stale: ' + invalid.map((issue) => issue.message).join('; '));
       entry.$representationPlans![row.propertyName] = cloneJson(row.plan);
       if (row.plan.kind === 'component-model' && row.plan.attachment) {

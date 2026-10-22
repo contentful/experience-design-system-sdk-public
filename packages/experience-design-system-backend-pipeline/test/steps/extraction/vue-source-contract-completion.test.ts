@@ -137,7 +137,7 @@ it('retains all source channels through cold saved slot/value/reference consumer
           c.observations.some((o) => o.syntax?.reader === 'vue' && o.syntax.resolution === 'unresolved'),
       ),
     ).toBe(true);
-    const input = buildExplorationSourceInput(envelope.envelope, 160 * 1024, diagnostics);
+    const input = buildExplorationSourceInput(envelope.envelope, diagnostics);
     const prompts: string[] = [];
     const explored = await runExploreStage({
       agent: 'codex',

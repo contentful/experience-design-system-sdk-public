@@ -62,7 +62,6 @@ import { readFile } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
 import { configRoot } from '../helpers/config-root.js';
 import { dirname, resolve } from 'node:path';
-import { escapeForRegExp, excerptAroundNames } from '../helpers/source-excerpt.js';
 import type {
   RawComponentDefinition,
   RawPropDefinition,
@@ -1061,23 +1060,27 @@ export function evaluateComponentReadiness(
     sourceIssues.push('Completed candidate source binding unavailable');
   if (component.sourceEvidenceReadStatus !== 'available') sourceIssues.push('Candidate source evidence unavailable');
   for (const name of inventory.properties) {
+    const excluded = effective.some((call) => call.tool === 'exclude_prop' && call.prop === name);
     const candidate = component.sourceCandidates?.find((item) => item.name === name);
     const fact = candidate?.facts;
     const locations = fact
-      ? [
-          ...fact.declarations,
-          ...(fact.sourceGraph?.nodes.flatMap((node) => [
-            ...node.declarations,
-            ...(node.fields?.flatMap((field) => field.declarations ?? []) ?? []),
-          ]) ?? []),
-          ...(fact.sourceDefault?.location ? [fact.sourceDefault.location] : []),
-          ...(fact.sourceDefault?.dependencies ?? []),
-        ]
+      ? excluded
+        ? fact.declarations
+        : [
+            ...fact.declarations,
+            ...(fact.sourceGraph?.nodes.flatMap((node) => [
+              ...node.declarations,
+              ...(node.fields?.flatMap((field) => field.declarations ?? []) ?? []),
+            ]) ?? []),
+            ...(fact.sourceDefault?.location ? [fact.sourceDefault.location] : []),
+            ...(fact.sourceDefault?.dependencies ?? []),
+          ]
       : [];
     if (
-      !fact?.sourceGraph ||
-      validateSourceGraph(fact.sourceGraph).length ||
-      fact.sourceGraph.coverage !== 'complete-within-declared-bound' ||
+      (!excluded &&
+        (!fact?.sourceGraph ||
+          validateSourceGraph(fact.sourceGraph).length ||
+          fact.sourceGraph.coverage !== 'complete-within-declared-bound')) ||
       !locations.length ||
       locations.some((location) => location.binding !== 'verified')
     )
@@ -2005,7 +2008,10 @@ export function loadRawComponents(
                           inputOutput: validateSavedInputOutput(
                             observations.inputOutput,
                             source,
-                            sourceClosure.binding === 'verified',
+                            sourceClosure.rootId === observations.componentDeclarationId &&
+                              sourceClosure.nodes.some(
+                                (node) => node.id === sourceClosure.rootId && node.location.binding === 'verified',
+                              ),
                           ),
                         }
                       : {}),
@@ -2169,30 +2175,13 @@ export function loadExtractionSourceDiagnostics(db: DatabaseSync, sessionId: str
   }
 }
 
-// Maximum source excerpt size used when building persisted agent context.
-// convention for bounding inlined source in an agent prompt.
-const MAX_COMPONENT_SOURCE_CHARS = 8_000;
-// Maximum sibling-file count used when building persisted agent context.
-// MAX_SIBLING_SNIPPET_CHARS conventions — small, purpose-built duplicate
-// rather than importing that module's SelectionContext machinery, which is
-// built for the internal generation context.
-const MAX_SIBLING_FILES = 5;
-const MAX_SIBLING_SNIPPET_CHARS = 1_200;
-// A type-declaring sibling (e.g. `*.types.ts`) needs a bigger budget than a
-// styles module — the styles-module budget can cut mid-array.
-const MAX_TYPE_DECLARING_SIBLING_CHARS = 4_000;
-// Caps how many siblings get the enlarged budget, since a type is usually
-// declared in only one or two files.
-const MAX_ENLARGED_SIBLINGS = 2;
 // A token-resolution map sometimes lives behind a component that itself
 // re-exports another component's prop (A imports B, B imports B's own
 // styles module) rather than beside the component being classified. Two hops
 // covers "the component's own imports" plus "those imports' own imports"
 // without walking the whole dependency graph.
 const MAX_SIBLING_DEPTH = 2;
-// Caps total files read while *discovering* candidates (before the
-// MAX_SIBLING_FILES inlining cap applies), independent of how many end up
-// inlined — bounds cost when a hop-1 import is a barrel file with many
+// Caps total files read during discovery when a hop-1 import is a barrel with many
 // re-exports, each of which would otherwise be walked for a second hop.
 const MAX_SIBLING_CANDIDATES_EXPLORED = 25;
 const RELATIVE_IMPORT_PATTERN = /from\s+['"](\.[^'"]+)['"]/g;
@@ -2216,24 +2205,12 @@ function rewrittenSourcePaths(basePath: string): string[] {
   return [];
 }
 
-// A prop typed as a named alias (`variant: BadgeVariantS1`) carries none of
-// its own members — the type name is a search name too, so we can window on it.
 const IDENTIFIER_PATTERN = /[A-Za-z_$][A-Za-z0-9_$]*/g;
 
 function identifiersIn(propTypes: string[]): string[] {
   const names = new Set<string>();
-  for (const propType of propTypes) {
-    for (const match of propType.matchAll(IDENTIFIER_PATTERN)) names.add(match[0]);
-  }
+  for (const propType of propTypes) for (const match of propType.matchAll(IDENTIFIER_PATTERN)) names.add(match[0]);
   return [...names];
-}
-
-// Whether this file is where one of these names is declared, as opposed to a
-// file that merely mentions it in a signature.
-function declaresAnyType(text: string, typeNames: string[]): boolean {
-  return typeNames.some((name) =>
-    new RegExp(`\\b(?:type|interface|enum|const|class)\\s+${escapeForRegExp(name)}\\b`).test(text),
-  );
 }
 
 function extractRelativeImportPaths(sourceText: string): string[] {
@@ -2280,30 +2257,11 @@ async function resolveImportSpecifiers(sourceText: string, fromDir: string): Pro
   return resolvedPaths;
 }
 
-// Loads the content of files the component's source file relatively imports
-// — either directly (e.g. a co-located `.styles.ts`), or transitively through
-// a sibling that is itself imported (bounded by MAX_SIBLING_DEPTH). Token
-// resolution logic (e.g. a variant-to-token map)
-// sometimes lives behind a component that re-exports another component's
-// prop rather than beside the component being classified, so a single hop
-// of resolution can miss it. Breadth-first with a visited-set: a component
-// that imports another which imports it back (or any other cycle) is
-// walked exactly once. Returns the count of resolved candidates dropped
-// once the inlining cap was hit, so callers can surface that truncation to
-// the classifier instead of silently dropping evidence.
+// Discover relative imports within the traversal bounds, then inline each file in full.
 async function loadSiblingFiles(
   sourceText: string,
   sourcePath: string,
-  propNames: string[],
-  candidateTypeNames: string[] = [],
-): Promise<{
-  siblings: Array<{ path: string; content: string }>;
-  truncatedCount: number;
-  /** Prop names with at least one use that fell outside a sibling's excerpt budget. */
-  usesNotShown: string[];
-  /** The candidate type names that the component's own source or a discovered sibling declares. */
-  declaredTypeNames: string[];
-}> {
+): Promise<Array<{ path: string; content: string }>> {
   const visited = new Set<string>([resolve(sourcePath)]);
   const discovered: Array<{ path: string; content: string }> = [];
 
@@ -2336,33 +2294,7 @@ async function loadSiblingFiles(
     frontier = nextFrontier;
   }
 
-  // Only the type names some file in hand declares are worth windowing on;
-  // the rest have no declaration to find (see IDENTIFIER_PATTERN above).
-  const inHand = [sourceText, ...discovered.map((d) => d.content)];
-  const declaredTypeNames = candidateTypeNames.filter((name) => inHand.some((text) => declaresAnyType(text, [name])));
-
-  // Excerpts are windowed around the prop names rather than cut from the
-  // head: a styles module's first lines are imports, and the line that decides
-  // a prop's classification is wherever that prop is interpolated.
-  const usesNotShown = new Set<string>();
-  const searchNames = [...new Set([...propNames, ...declaredTypeNames])];
-  let enlarged = 0;
-  const siblings = discovered.slice(0, MAX_SIBLING_FILES).map((d) => {
-    const enlarge = enlarged < MAX_ENLARGED_SIBLINGS && declaresAnyType(d.content, declaredTypeNames);
-    if (enlarge) enlarged++;
-    const budget = enlarge ? MAX_TYPE_DECLARING_SIBLING_CHARS : MAX_SIBLING_SNIPPET_CHARS;
-    const excerpt = excerptAroundNames(d.content, searchNames, budget);
-    for (const name of excerpt.usesNotShown) usesNotShown.add(name);
-    return { path: d.path, content: excerpt.content };
-  });
-  const truncatedCount = Math.max(0, discovered.length - MAX_SIBLING_FILES);
-
-  return {
-    siblings,
-    truncatedCount,
-    usesNotShown: propNames.filter((name) => usesNotShown.has(name)),
-    declaredTypeNames,
-  };
+  return discovered;
 }
 
 // Reads and inlines real file content here, at the last point this pipeline
@@ -2374,44 +2306,18 @@ async function loadSiblingFiles(
 export async function loadComponentSourceRef(
   name: string,
   sourcePath: string,
-  propNames: string[] = [],
-  propTypes: string[] = [],
+  _propNames: string[] = [],
+  _propTypes: string[] = [],
 ): Promise<ComponentSourceRef> {
   let content: string | null = null;
   let siblingFiles: Array<{ path: string; content: string }> = [];
-  let truncatedSiblingCount = 0;
-  const usesNotShown = new Set<string>();
   try {
-    const rawText = await readFile(sourcePath, 'utf8');
-    // Siblings first: the component's own excerpt is keyed on the same
-    // declared-type-name set.
-    let siblingUsesNotShown: string[];
-    let declaredTypeNames: string[];
-    ({
-      siblings: siblingFiles,
-      truncatedCount: truncatedSiblingCount,
-      usesNotShown: siblingUsesNotShown,
-      declaredTypeNames,
-    } = await loadSiblingFiles(rawText, sourcePath, propNames, identifiersIn(propTypes)));
-    // Prop names locate the *use* of a prop; the declared type names locate
-    // the *members* the classifier has to emit. Both are needed.
-    const mainExcerpt = excerptAroundNames(
-      rawText,
-      [...new Set([...propNames, ...declaredTypeNames])],
-      MAX_COMPONENT_SOURCE_CHARS,
-    );
-    content = mainExcerpt.content;
-    for (const name of mainExcerpt.usesNotShown) usesNotShown.add(name);
-    for (const name of siblingUsesNotShown) usesNotShown.add(name);
+    content = await readFile(sourcePath, 'utf8');
+    siblingFiles = await loadSiblingFiles(content, sourcePath);
   } catch {
     // File no longer exists or unreadable — leave content null.
   }
-  const ref: ComponentSourceRef = { component: name, sourcePath, content };
-  if (siblingFiles.length > 0) ref.siblingFiles = siblingFiles;
-  if (truncatedSiblingCount > 0) ref.truncatedSiblingCount = truncatedSiblingCount;
-  const notShown = propNames.filter((name) => usesNotShown.has(name));
-  if (notShown.length > 0) ref.usesNotShown = notShown;
-  return ref;
+  return { component: name, sourcePath, content, ...(siblingFiles.length ? { siblingFiles } : {}) };
 }
 
 export async function loadComponentSourceRefs(db: DatabaseSync, sessionId: string): Promise<ComponentSourceRef[]> {
@@ -2452,20 +2358,14 @@ export type CompletedSharedSourceEvidence =
 export function loadSavedSharedSource(
   db: DatabaseSync,
   sessionId: string,
-  options: { componentIds?: readonly string[]; maxBytes?: number; handle?: SourceEvidenceHandle } = {},
+  options: { componentIds?: readonly string[]; handle?: SourceEvidenceHandle } = {},
 ): CompletedSharedSourceEvidence {
   const saved = loadCompletedSourceEvidence(db, sessionId, options.handle);
   if (saved.readiness !== 'ready') return saved;
   return {
     readiness: 'ready',
     handle: saved.handle,
-    source: projectSharedSource(
-      buildSharedSource(saved.envelope, options.componentIds),
-      Math.min(
-        options.maxBytes ?? saved.envelope.capture.bounds.limits.maxPromptBytes,
-        saved.envelope.capture.bounds.limits.maxPromptBytes,
-      ),
-    ),
+    source: projectSharedSource(buildSharedSource(saved.envelope, options.componentIds)),
   };
 }
 
@@ -2486,9 +2386,9 @@ export function loadSavedComponentSourceRef(
   if (!root) return unavailable;
   const source = buildSharedSource(saved.envelope, [componentId]);
   if (!source.files.some((file) => file.fileId === root.fileId)) source.files.unshift(projectCapturedFile(root));
-  // Stable definition-first priority within the total serialized source-section budget.
+  // Keep the definition first while preserving all saved source files.
   source.files.sort((a, b) => Number(b.fileId === root.fileId) - Number(a.fileId === root.fileId));
-  const projected = projectSharedSource(source, saved.envelope.capture.bounds.limits.maxPromptBytes);
+  const projected = projectSharedSource(source);
   const main = projected.files.find((file) => file.fileId === root.fileId);
   if (!main || main.coverage === 'unavailable') return unavailable;
   const metadata = (file: SharedSource['files'][number]) => ({
@@ -2620,7 +2520,7 @@ export function storeCDFComponents(
     const completeValidation = CDFComponentSchema.safeParse(entry);
     if (!completeValidation.success)
       throw new Error(
-        `Invalid complete CDF entry: ${completeValidation.error.issues.map((issue) => issue.message).join('; ')}`,
+        `Invalid complete CDF entry: ${completeValidation.error.issues.map((issue) => `${issue.path.join('.') || 'component'}: ${issue.message}`).join('; ')}`,
       );
     if (source) validateCDFSourceOwners(source, entry);
     else if (
@@ -2690,7 +2590,6 @@ export function storeCDFComponents(
         )
           throw new Error('Native position unavailable; source and saved decisions retained');
         if (
-          own(property, '$default') &&
           materialized.projection?.issues.some(
             (issue) => issue.message === 'Source mapper and mapped target must both support default',
           )

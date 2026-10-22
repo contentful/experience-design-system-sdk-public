@@ -192,13 +192,17 @@ export function DebugModeScreen({ onDone }: { onDone: () => void }): React.React
       <Text> </Text>
       <ControlHints
         hints={[
-          { keys: '↑/↓', label: 'move' },
-          ...(focus === 'retentionDays'
+          ...(setting
             ? [
-                { keys: '←/→', label: 'choose' },
-                { keys: '⏎', label: 'save' },
+                { keys: '↑/↓', label: 'move' },
+                ...(focus === 'retentionDays'
+                  ? [
+                      { keys: '←/→', label: 'choose' },
+                      { keys: '⏎', label: 'save' },
+                    ]
+                  : [{ keys: '⏎/Space', label: 'toggle' }]),
               ]
-            : [{ keys: '⏎/Space', label: 'toggle' }]),
+            : []),
           { keys: 'Esc/q', label: 'back' },
         ]}
       />

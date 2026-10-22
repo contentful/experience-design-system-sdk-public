@@ -1,3 +1,4 @@
+import { PALETTE } from '../../../src/tui/theme.js';
 import { expect, it } from 'vitest';
 import { computeComponentDiffLines } from '../../../src/tui/import/steps/10-flow/support/preview-diff.js';
 const definition = JSON.parse(
@@ -25,5 +26,5 @@ it('compares supplied recursive metadata by value and exact child requiredness',
 it('shows unknown shape when old/remote summaries omit structure', () => {
   expect(
     computeComponentDiffLines(current() as never, { $properties: { data: { ...definition, $category: 'content' } } }),
-  ).toMatchObject([{ color: 'yellow' }]);
+  ).toMatchObject([{ color: PALETTE.warning }]);
 });

@@ -289,7 +289,7 @@ it.each(['stable', 'changed', 'deleted'] as const)(
       expect(raw.sourceCandidates?.find((candidate) => candidate.name === 'label')?.facts?.sourceTypeText).toBe(
         'string',
       );
-      const sourceInput = buildExplorationSourceInput(envelope.envelope, 160 * 1024, diagnostics);
+      const sourceInput = buildExplorationSourceInput(envelope.envelope, diagnostics);
       const selectionPrompts: string[] = [];
       const selection = await runExploreStage({
         agent: 'codex',

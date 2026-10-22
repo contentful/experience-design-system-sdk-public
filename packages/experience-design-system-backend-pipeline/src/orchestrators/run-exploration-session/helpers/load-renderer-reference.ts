@@ -1,11 +1,11 @@
-import { open } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import type { RendererReferenceInput, RendererReference } from '@contentful/experience-design-system-types';
 import { throwIfAborted } from '../../../helpers/abort.js';
 export const SDK_REFERENCE_URL = 'https://raw.githubusercontent.com/contentful/experiences/main/README.md';
 export async function loadRendererReference(
   input: RendererReferenceInput = { kind: 'url' },
-  options: { signal?: AbortSignal; maxBytes?: number; fetchText?: typeof fetch } = {},
+  options: { signal?: AbortSignal; fetchText?: typeof fetch } = {},
 ): Promise<RendererReference> {
   throwIfAborted(options.signal);
   let text: string, origin: string;
@@ -14,20 +14,7 @@ export async function loadRendererReference(
     origin = input.origin;
   } else if (input.kind === 'path') {
     origin = input.path;
-    const file = await open(input.path, 'r');
-    try {
-      const buffer = Buffer.alloc((options.maxBytes ?? 64 * 1024) + 1);
-      let bytes = 0;
-      while (bytes < buffer.length) {
-        throwIfAborted(options.signal);
-        const read = await file.read(buffer, bytes, buffer.length - bytes, bytes);
-        if (!read.bytesRead) break;
-        bytes += read.bytesRead;
-      }
-      text = buffer.subarray(0, bytes).toString('utf8');
-    } finally {
-      await file.close();
-    }
+    text = await readFile(input.path, { encoding: 'utf8', signal: options.signal });
   } else {
     origin = input.url ?? SDK_REFERENCE_URL;
     const response = await (options.fetchText ?? fetch)(origin, {
@@ -37,13 +24,10 @@ export async function loadRendererReference(
     const reader = response.body?.getReader();
     if (!reader) throw new Error('Renderer reference response body unavailable');
     const chunks: Uint8Array[] = [];
-    let bytes = 0;
     try {
       while (true) {
         const chunk = await reader.read();
         if (chunk.done) break;
-        bytes += chunk.value.byteLength;
-        if (bytes > (options.maxBytes ?? 64 * 1024)) throw new Error('Renderer reference exceeds byte bound');
         chunks.push(chunk.value);
       }
     } finally {
@@ -54,8 +38,7 @@ export async function loadRendererReference(
   }
   throwIfAborted(options.signal);
   const bytes = Buffer.byteLength(text, 'utf8');
-  if (!text.trim() || bytes > (options.maxBytes ?? 64 * 1024))
-    throw new Error('Renderer reference is empty or exceeds byte bound');
+  if (!text.trim()) throw new Error('Renderer reference is empty');
   return {
     origin,
     text,

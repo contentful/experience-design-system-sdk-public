@@ -486,3 +486,19 @@ describe('runExtraction — failures', () => {
     expect(deps.runSelection).not.toHaveBeenCalled();
   });
 });
+
+it('forwards explorer preparation and completed scope counts to the screen', async () => {
+  const frames: ExtractionProgress[] = [];
+  const deps = makeDeps({
+    runSelection: vi.fn(async (options) => {
+      options.onActivity?.({ phase: 'components', stage: 'loading', done: 0, total: 7 });
+      options.onActivity?.({ phase: 'components', stage: 'exploring', scope: 'components-2', done: 1, total: 7 });
+    }),
+  });
+  const result = await runExtraction(input(), (frame) => frames.push(frame), deps);
+  expect(result.ok).toBe(true);
+  expect(frames.some((frame) => frame.exploration?.stage === 'loading')).toBe(true);
+  expect(frames.some((frame) => frame.exploration?.scope === 'components-2' && frame.exploration.done === 1)).toBe(
+    true,
+  );
+});

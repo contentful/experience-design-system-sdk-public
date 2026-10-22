@@ -119,7 +119,7 @@ async function seed(slotNames = ['renderBody']) {
             ? [
                 {
                   name: 'title',
-                  type: assignment.scope === 'full-inventory-2' ? 'enum' : 'string',
+                  type: assignment.scope === 'full-inventory-2' ? 'number' : 'string',
                   description: 'Declared content.',
                 },
               ]
@@ -308,7 +308,7 @@ describe('actual accepted session consumers', () => {
   });
 });
 
-it('loads path/text detail overrides and bounded existing context into each actual selected stage', async () => {
+it('loads full path/text detail overrides and existing context into each actual selected stage', async () => {
   const { sessionId, decisions, request } = await seed();
   expect((await api.runExplorationComponentsSession(request)).ok).toBe(true);
   const db = api.openPipelineDb();
@@ -317,12 +317,20 @@ it('loads path/text detail overrides and bounded existing context into each actu
   const detailPath = join(directory, 'detail.md'),
     checkPath = join(directory, 'check.md'),
     contextPath = join(directory, 'existing.json');
-  writeFileSync(detailPath, 'DETAIL_OVERRIDE_MARKER');
-  writeFileSync(checkPath, 'CHECK_OVERRIDE_MARKER');
+  const detailOverride = 'DETAIL_OVERRIDE_MARKER' + 'é'.repeat(140_000);
+  writeFileSync(detailPath, detailOverride);
+  const checkOverride = 'CHECK_OVERRIDE_MARKER' + 'é'.repeat(140_000);
+  writeFileSync(checkPath, checkOverride);
   writeFileSync(
     contextPath,
     JSON.stringify({
-      components: [{ sys: { id: 'existing' }, name: 'EXISTING_COMPONENT_MARKER', description: 'Prior choice.' }],
+      components: [
+        {
+          sys: { id: 'existing' },
+          name: 'EXISTING_COMPONENT_MARKER',
+          description: 'Prior choice.' + 'é'.repeat(140_000),
+        },
+      ],
       tokens: [{ sys: { id: 'token' }, type: 'color', name: 'example/color' }],
     }),
   );
@@ -334,8 +342,8 @@ it('loads path/text detail overrides and bounded existing context into each actu
     existingEntitiesPath: contextPath,
     promptOverrides: [
       `detail=${detailPath}`,
-      'tier=TIER_OVERRIDE_MARKER',
-      'verify=VERIFY_OVERRIDE_MARKER',
+      'tier=TIER_OVERRIDE_MARKER' + 'é'.repeat(140_000),
+      'verify=VERIFY_OVERRIDE_MARKER' + 'é'.repeat(140_000),
       `check=${checkPath}`,
     ],
     invoker: {
@@ -347,10 +355,10 @@ it('loads path/text detail overrides and bounded existing context into each actu
   });
   expect(result.ok, JSON.stringify(result)).toBe(true);
   for (const [stage, marker] of [
-    ['explore-inventory', 'DETAIL_OVERRIDE_MARKER'],
+    ['explore-inventory', detailOverride],
     ['tier', 'TIER_OVERRIDE_MARKER'],
     ['verify', 'VERIFY_OVERRIDE_MARKER'],
-    ['check', 'CHECK_OVERRIDE_MARKER'],
+    ['check', checkOverride],
   ]) {
     const own = prompts.filter((prompt) => prompt.startsWith(`Task: ${stage}`));
     expect(own.length).toBeGreaterThan(0);

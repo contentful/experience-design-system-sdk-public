@@ -4,9 +4,9 @@ Resolves parent-child relationships between extracted components and wires child
 
 ## What it does
 
-1. Filters the full file set to composition candidates (by name pattern and content markers), caps the result to the prompt token budget.
+1. Filters the full file set to composition candidates (by name pattern and content markers), retaining complete selected files.
 2. Collects deterministic edges from manifests and AGENTS.md files colocated with components (ranked above agent output).
-3. If any parent still has unresolved children, invokes the AI agent with the capped candidate files and parses `map_edge` tool calls.
+3. If any parent still has unresolved children, invokes the AI agent with the complete selected candidate files and parses `map_edge` tool calls.
 4. Merges agent edges with deterministic edges (manifest and typed-slot evidence wins on conflict).
 5. Applies merged edges to the component list, synthesizing slots when a high-trust edge targets a missing slot name.
 
@@ -38,14 +38,14 @@ Resolves parent-child relationships between extracted components and wires child
 
 | Field       | Value                                                                                               |
 |-------------|-----------------------------------------------------------------------------------------------------|
-| **Key**     | SHA-256 of (sorted `path+content` hashes of capped candidate files) + agent name                    |
+| **Key**     | SHA-256 of (sorted `path+content` hashes of selected candidate files) + agent name                    |
 | **Value**   | Raw agent stdout (JSONL of `map_edge` tool calls)                                                   |
 | **Lookup**  | Before invoking the agent; skipped when `forceAgent` is true                                        |
 | **Store**   | After a successful agent run (`exitCode === 0`)                                                     |
 
 ## External calls
 
-AI agent via the backend's shared `runAgent`. Timeout: 120 s. Composition explicitly sends its prompt over stdin. Other shared-agent callers default to stdin for Claude and Codex and retain bounded argv delivery for other agents. No HTTP calls.
+AI agent via the backend's shared `runAgent`. Timeout: 120 s. Composition explicitly sends its prompt over stdin. Other shared-agent callers default to stdin for Claude and Codex and retain argv delivery for other agents without an application prompt-size cap. No HTTP calls.
 
 ## DSI contribution
 

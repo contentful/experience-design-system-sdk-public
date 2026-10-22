@@ -1,13 +1,16 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { extractComponents } from '../../../steps/extraction/src/controller/extract-components-endpoint.js';
+import type { extractComponents } from '../../../steps/extraction/src/controller/extract-components-endpoint.js';
 import { lookupExtractCache } from '../../../persistence/src/session/repositories/db.js';
 import { hashFile } from '../../../persistence/src/session/helpers/cache-keys.js';
 import type { AgentDebugEvent } from '../../../agents/types/agent-run.js';
 import type { ExtractAndComposeProgress } from '../types.js';
+import { runSourceAnalysis } from '../../../source-analysis/run.js';
+import { throwIfAborted } from '../../../helpers/abort.js';
 
 type Extraction = Awaited<ReturnType<typeof extractComponents>>;
 
 export interface ExtractComponentsWithCacheRequest {
+  signal?: AbortSignal;
   db: DatabaseSync;
   sourceFiles: string[];
   evidenceFilePaths?: readonly string[];
@@ -32,6 +35,7 @@ export interface ExtractComponentsWithCacheResult {
  * full set and no cache hits are reported.
  */
 export async function extractComponentsWithCache({
+  signal,
   db,
   sourceFiles,
   evidenceFilePaths,
@@ -42,6 +46,7 @@ export async function extractComponentsWithCache({
   onProgress,
   onDebugEvent,
 }: ExtractComponentsWithCacheRequest): Promise<ExtractComponentsWithCacheResult> {
+  throwIfAborted(signal);
   const cachedByPath = new Map<string, ReturnType<typeof lookupExtractCache>>();
   if (!noCache && sourceFiles.length > 0) {
     const hashes = await Promise.all(sourceFiles.map(async (p) => [p, await hashFile(p)] as const));
@@ -69,18 +74,24 @@ export async function extractComponentsWithCache({
     };
   }
 
-  const extraction = await extractComponents({
-    filePaths: sourceFiles,
-    projectRoot: projectPath,
-    opts: { resolveUnreachable, evidenceFilePaths },
-    onProgress: ({ filesProcessed, componentsFound }) => {
-      onProgress?.({
-        kind: 'extract',
-        done: filesProcessed,
-        total: sourceFiles.length,
-        componentsSoFar: componentsFound,
-      });
+  const extraction = await runSourceAnalysis(
+    'extract',
+    {
+      filePaths: sourceFiles,
+      projectRoot: projectPath,
+      opts: { resolveUnreachable, evidenceFilePaths },
     },
-  });
+    {
+      signal,
+      onProgress: ({ filesProcessed, componentsFound }) => {
+        onProgress?.({
+          kind: 'extract',
+          done: filesProcessed,
+          total: sourceFiles.length,
+          componentsSoFar: componentsFound,
+        });
+      },
+    },
+  );
   return { extraction, cacheHits: 0 };
 }

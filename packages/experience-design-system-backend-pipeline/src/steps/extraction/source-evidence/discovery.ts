@@ -103,6 +103,10 @@ const textFormats = new Set([
   '.scss',
   '.txt',
 ]);
+export function canonicalSelectedSourcePaths(projectRoot: string, paths: readonly string[]): string[] {
+  return [...new Set(paths.map((path) => canonical(isAbsolute(path) ? path : resolve(projectRoot, path))))].sort();
+}
+
 export function discoverSourceEvidence(request: {
   projectRoot: string;
   filePaths: readonly string[];
@@ -116,9 +120,7 @@ export function discoverSourceEvidence(request: {
     if (value !== undefined && Number.isFinite(value) && value >= 0) limits[key] = Math.floor(value);
   }
   const projectRoot = canonical(request.projectRoot);
-  const selectedSourcePaths = [
-    ...new Set(request.filePaths.map((path) => canonical(isAbsolute(path) ? path : resolve(projectRoot, path)))),
-  ].sort();
+  const selectedSourcePaths = canonicalSelectedSourcePaths(projectRoot, request.filePaths);
   const selected = new Set(selectedSourcePaths);
   const result: SourceEvidenceInventory = {
     schemaVersion: 1,
@@ -156,6 +158,10 @@ export function discoverSourceEvidence(request: {
     const real = canonical(path);
     if (!isWithinEvidenceRoot(projectRoot, real)) {
       omit(path, 'outside-project-root');
+      return;
+    }
+    if (relative(projectRoot, real).split(sep).includes('.contentful')) {
+      omit(path, 'import-output-excluded');
       return;
     }
     if (

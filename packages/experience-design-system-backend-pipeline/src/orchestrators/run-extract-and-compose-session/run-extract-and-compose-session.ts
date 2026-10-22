@@ -1,10 +1,6 @@
 import { mkdir } from 'node:fs/promises';
 import { relative } from 'node:path';
-import {
-  captureSourceEvidence,
-  evaluateExtractionQuality,
-  preClassifyComponent,
-} from '../../steps/extraction/index.js';
+import { evaluateExtractionQuality, preClassifyComponent } from '../../steps/extraction/index.js';
 import { resolveCompositionSources } from '../../steps/composition/src/helpers/edges/resolve-composition-sources.js';
 import {
   createStep,
@@ -30,6 +26,7 @@ import {
 import type { RunExtractAndComposeSessionRequest, RunExtractAndComposeSessionResponse } from './types.js';
 import { throwIfAborted } from '../../helpers/abort.js';
 import { deriveComponentId } from '../../persistence/src/session/helpers/components/derive-component-id.js';
+import { runSourceAnalysis } from '../../source-analysis/run.js';
 
 export type {
   ExtractAndComposeProgress,
@@ -91,6 +88,7 @@ export async function runExtractAndComposeSession(
     throwIfAborted(request.signal);
 
     const { extraction, cacheHits } = await extractComponentsWithCache({
+      signal: request.signal,
       db,
       sourceFiles,
       evidenceFilePaths: request.evidenceFilePaths ?? request.sourceInventory?.files.map((file) => file.canonicalPath),
@@ -143,19 +141,22 @@ export async function runExtractAndComposeSession(
     });
     throwIfAborted(request.signal);
 
-    const sourceCapture = await captureSourceEvidence({
-      projectRoot: projectPath,
-      filePaths: sourceFiles,
-      evidenceFilePaths: request.evidenceFilePaths,
-      inventory: extraction.sourceInventory,
-      compilerSources: extraction.compilerSources,
-      components: initialValidatedComponents.map((component) => ({
-        componentId: deriveComponentId(component.name, component.source),
-        name: component.name,
-        sourcePath: component.sourcePath ?? component.source,
-      })),
-      signal: request.signal,
-    });
+    const sourceCapture = await runSourceAnalysis(
+      'capture',
+      {
+        projectRoot: projectPath,
+        filePaths: sourceFiles,
+        evidenceFilePaths: request.evidenceFilePaths,
+        inventory: extraction.sourceInventory,
+        compilerSources: extraction.compilerSources,
+        components: initialValidatedComponents.map((component) => ({
+          componentId: deriveComponentId(component.name, component.source),
+          name: component.name,
+          sourcePath: component.sourcePath ?? component.source,
+        })),
+      },
+      { signal: request.signal },
+    );
     throwIfAborted(request.signal);
 
     const sources = resolveCompositionSources({ noCache, compositionRefresh });

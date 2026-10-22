@@ -6,6 +6,7 @@ import { runExtractorBatches } from './helpers/run-extractor-batches.js';
 import { collectSvelteKitRouteExclusions } from './helpers/collect-sveltekit-route-exclusions.js';
 import { filterHookComponents } from './helpers/filter-hook-components.js';
 import { mergeExtractionDiagnostics } from '../../compiler/diagnostics.js';
+import { aggregateExtractionSourceInventory } from '../../../source-evidence/extraction-inventory.js';
 
 export async function extractComponents(
   filePaths: string[],
@@ -31,6 +32,6 @@ export async function extractComponents(
     ...(allExclusions.length > 0 ? { exclusions: allExclusions } : {}),
     ...(extractionDiagnostics ? { extractionDiagnostics } : {}),
     compilerSources: results.flatMap((result) => result.compilerSources ?? []),
-    sourceInventory: results.find((result) => result.sourceInventory)?.sourceInventory,
+    sourceInventory: aggregateExtractionSourceInventory(filePaths, results, opts),
   };
 }

@@ -302,7 +302,12 @@ it('preserves nested and falsy report values through parsing and unordered compa
   const observedValues = [false, 0, '', null, { options: [0, false], nested: { enabled: false } }, ['a', 'a']];
   const companion = {
     agentRole: 'full-inventory-1',
-    components: [{ ...component, props: [{ name: 'settings', observedValues, default: false }] }],
+    components: [
+      {
+        ...component,
+        props: [{ name: 'settings', type: 'boolean', category: 'content', observedValues, default: false }],
+      },
+    ],
   };
   const parsed = api.parseExploreOutput(JSON.stringify(companion), 'full-inventory-1');
   expect(parsed.ok).toBe(true);
@@ -337,3 +342,70 @@ it('preserves nested and falsy report values through parsing and unordered compa
       .disagreements.some((disagreement) => disagreement.field === 'observedValues'),
   ).toBe(true);
 });
+
+describe('exploration scope progress', () => {
+  it('announces an active scope once and never completes a failed report', async () => {
+    const started: string[] = [];
+    const complete = vi.fn();
+    const result = await api.runExploreStage({
+      invoker: { invoke: async () => ({ stdout: '', stderr: '', exitCode: 1, timedOut: false }) },
+      agent: 'codex',
+      scopes: ['components-1'],
+      rawComponentsInline: '[]',
+      outDir: '',
+      timeoutMs: 1000,
+      maxAttempts: 2,
+      backoffMs: 0,
+      skillContentOverride: 'Inspect source.',
+      onScopeStart: (scope) => started.push(scope),
+      onScopeComplete: complete,
+    });
+    expect(result.ok).toBe(false);
+    expect(started).toEqual(['components-1']);
+    expect(complete).not.toHaveBeenCalled();
+  });
+  it('does not announce a scope after cancellation', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const started = vi.fn();
+    await expect(
+      api.runExploreStage({
+        invoker: { invoke: vi.fn() },
+        agent: 'codex',
+        scopes: ['components-1'],
+        rawComponentsInline: '[]',
+        outDir: '',
+        timeoutMs: 1000,
+        signal: controller.signal,
+        onScopeStart: started,
+      }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(started).not.toHaveBeenCalled();
+  });
+});
+
+it.each([
+  { stderr: 'Example startup failure.', stdout: '', expected: 'Example startup failure.' },
+  { stderr: '', stdout: 'Example failure reported on stdout.', expected: 'Example failure reported on stdout.' },
+  { stderr: '', stdout: '', expected: 'agent exited with code 2' },
+])(
+  'retains agent invocation diagnostics in the stage result and attempt receipt: $expected',
+  async ({ stderr, stdout, expected }) => {
+    const result = await api.runExploreStage({
+      scopes: ['components-1'],
+      rawComponentsInline: '[]',
+      agent: 'codex',
+      model: 'example-model',
+      outDir: '',
+      timeoutMs: 1000,
+      maxAttempts: 1,
+      skillContentOverride: 'Inspect supplied source.',
+      invoker: { invoke: async () => ({ stdout, stderr, exitCode: 2, timedOut: false }) },
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('Expected failed invocation');
+    expect(result.error).toContain('agent exited with code 2');
+    expect(result.error).toContain(expected);
+    expect(result.attempts[0]?.error).toBe(result.error);
+  },
+);

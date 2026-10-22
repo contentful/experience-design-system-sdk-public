@@ -11,6 +11,7 @@ import type {
 import { withTransaction } from '../shared/with-transaction.js';
 import { loadRawComponents } from '../db.js';
 import {
+  bindAcceptedSlotSourceInput,
   validateAcceptedSourceOwners,
   validateCDFSourceOwners,
 } from '../../../../../steps/exploration/src/services/source-input-ownership.js';
@@ -231,15 +232,26 @@ export function publishExplorationRun(
   };
   records.inclusion?.forEach(validate);
   records.slots?.forEach(validate);
-  if (records.slots)
-    for (const component of loadRawComponents(db, run.sessionId))
+  const rawComponents = records.slots ? loadRawComponents(db, run.sessionId) : [];
+  const published = records.slots
+    ? {
+        ...records,
+        slots: records.slots.map((decision) => {
+          const component = rawComponents.find((component) => component.component_id === decision.componentId);
+          if (!component) throw new Error('Accepted source owner component unavailable');
+          return bindAcceptedSlotSourceInput(component, decision);
+        }),
+      }
+    : records;
+  if (published.slots)
+    for (const component of rawComponents)
       validateAcceptedSourceOwners(
         component,
-        records.slots.filter((slot) => slot.componentId === component.component_id),
+        published.slots.filter((slot) => slot.componentId === component.component_id),
       );
   withTransaction(db, () => {
     assertCurrent(db, runId);
-    for (const [family, payload] of Object.entries(records))
+    for (const [family, payload] of Object.entries(published))
       db.prepare('INSERT OR REPLACE INTO exploration_records (run_id,family,payload_json) VALUES (?,?,?)').run(
         runId,
         family,
@@ -275,15 +287,19 @@ export function loadAcceptedSlotDecisions(db: DatabaseSync, sessionId: string): 
   if (!current) return undefined;
   if (current.status !== 'complete' || !sourceMatches(db, current))
     throw new Error('Accepted slot source authority is stale or incomplete');
-  const decisions = loadExplorationRecord<SlotDecision[]>(db, sessionId, 'components', 'slots') ?? [];
   const components = loadRawComponents(db, sessionId);
+  const decisions = (loadExplorationRecord<SlotDecision[]>(db, sessionId, 'components', 'slots') ?? []).map(
+    (decision) => {
+      const component = components.find((component) => component.component_id === decision.componentId);
+      if (!component) throw new Error('Accepted source owner component unavailable');
+      return bindAcceptedSlotSourceInput(component, decision);
+    },
+  );
   for (const component of components)
     validateAcceptedSourceOwners(
       component,
       decisions.filter((decision) => decision.componentId === component.component_id),
     );
-  if (decisions.some((decision) => !components.some((component) => component.component_id === decision.componentId)))
-    throw new Error('Accepted source owner component unavailable');
   return decisions;
 }
 export function saveReviewedSlots(

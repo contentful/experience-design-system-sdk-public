@@ -13,6 +13,10 @@ The Experience Design System SDK is an Nx monorepo with four packages:
 
 The supported user flow is the interactive `experiences import` wizard. The CLI calls backend-pipeline functions directly in the same process; the backend invokes the selected coding agent as a local subprocess where needed.
 
+Source extraction, source-evidence capture, deterministic composition evidence, exploration session loading, and source prompt projection run in worker threads so synchronous compiler, validation, and filesystem work cannot block the terminal's timers or keyboard input. The backend owns this boundary in `src/source-analysis/`; each task transfers plain inputs, progress, and results. Cancellation terminates and joins its worker before the operation settles. Session loading uses a read-only SQLite connection and a consistent read transaction. Workers perform no database writes and launch no agents; all writes and coding-agent subprocess lifecycles remain in the orchestrating thread. Both the compiled backend and bundled CLI resolve the compiled worker artifact, which ships with the backend package.
+
+Selecting a component subdirectory does not limit compiler configuration lookup to that directory: a bounded ancestor search finds the applicable parent configuration, while selected source roots remain unchanged. Compiler-requested configuration bytes and hashes travel as configuration snapshots into source capture; capture keeps them separate from source discovery and uses the compiler snapshot if the live configuration changes. Package-based config dependencies are captured only when supplied as exact compiler snapshots. Source graphs record null and undefined independently as present, absent or unknown with provenance; strict compiler evidence can establish absence, while erased or unresolved checker types do not establish absence. Direct syntax and type-alias evidence can preserve positive nullability facts.
+
 ---
 
 ## System Context
@@ -335,7 +339,7 @@ sequenceDiagram
 
 ## React Extractor Architecture
 
-The React extractor (`packages/experience-design-system-backend-pipeline/src/steps/extraction/src/react.ts`) is the most complex component (~2500 lines). It uses ts-morph to walk the TypeScript AST of each `.tsx`/`.jsx` file.
+The React extractor (`packages/experience-design-system-backend-pipeline/src/steps/extraction/src/framework-adapters/react/extractor.ts`) is the most complex component (~2500 lines). It uses ts-morph to walk the TypeScript AST of each `.tsx`/`.jsx` file.
 
 ### Extraction pipeline per file
 
@@ -400,11 +404,13 @@ After successful completion, saved bytes remain the source snapshot even if the 
 Generic fact equality supports immutable acyclic finite primitives, arrays, maps, sets and plain records; persistence accepts only plain JSON evidence.
 In-place value mutation, arbitrary class instances and cyclic values are unsupported.
 Cycle iterations are finite and configurable with `sourceClosureMaxIterations`; existing observation/compiler/capture budgets and cooperative cancellation remain separate from total graph size, compiler latency and nested equality work.
-The new summaries travel in the existing compiler evidence channel, while shared-source text projection continues to account for its existing bounded files and omissions.
+The new summaries travel in the existing compiler evidence channel, while shared-source prompt projection preserves all captured files, ranges and observations with their original coverage receipts.
 
 ## Internal Generation
 
-Selecting a component subdirectory does not limit compiler configuration lookup to that directory: a bounded ancestor search finds the applicable parent configuration, while selected source roots remain unchanged. Compiler-requested configuration bytes and hashes travel as configuration snapshots into source capture; capture keeps them separate from source discovery and uses the compiler snapshot if the live configuration changes. Package-based config dependencies are captured only when supplied as exact compiler snapshots. Source graphs record null and undefined independently as present, absent or unknown with provenance; strict compiler evidence can establish absence, while erased or unresolved checker types do not establish absence. Direct syntax and type-alias evidence can preserve positive nullability facts.
+The CLI resolves the component, token, and selection skill files from its packaged `skills/` assets and passes those paths to backend-pipeline operations. The CLI build copies the primary markdown sources from `packages/experience-design-system-backend-pipeline/src/agents/skills/`; matching fallback copies live under `packages/experience-design-system-backend-pipeline/src/agents/skills/`. Backend lookup checks the requested file in both the primary CLI layout (flat generation/selection filenames plus `explore/` and `consensus/`) and the grouped backend fallback layout, rather than accepting a directory without verifying its requested asset. Exploration loads the exploration, tier, verification and checking skill content during preparation, before any model invocation, and reuses that content throughout the phase; missing assets therefore fail before exploration instead of after completed model work.
+
+The backend pipeline owns prompt assembly and agent invocation. It combines each skill file with a runtime preamble, embeds session data in the logical prompt, invokes the selected local coding agent, parses one JSON tool-call object per output line, and applies valid calls to the session database. Component data continues to flow between stages through the session database; temporary prompt artifacts are only subprocess transport.
 
 Each component-generation prompt also receives the completed detail exploration's judgments for that exact component and source: reported consensus, independently checked resolutions and their evidence, remaining competing claims, associated hypotheses, and modeling notes. The handoff validates the current detail/parent run identities and uses the repository's source-envelope and human-scope checks. These judgments are an advisory starting point for representation selection and validation; source facts and accepted slot ownership retain their authority. Generation explains departures from earlier judgments and keeps unsupported representation requirements explicit. Exploration does not directly write CDF property decisions, and generation's existing materialization and admission checks still run.
 
@@ -414,9 +420,13 @@ The CLI resolves the component, token, and selection skill files from its packag
 
 The backend pipeline owns prompt assembly and agent invocation. It combines each skill file with a runtime preamble, embeds session data inline, invokes the selected local coding agent, parses one JSON tool-call object per output line, and applies valid calls to the session database. Raw components are not passed to the agent as file paths.
 
-The generation and backend prompt APIs also accept the additive `debate-select` skill. It supplies one role, one disagreement, source evidence, and an optional existing-model path to a prompt that returns one argument object. This prompt does not dispatch a FOR/AGAINST pair or make the final component-selection decision. The generation package carries the primary skill asset, the CLI asset-copy target includes it, and the backend build packages a narrow fallback under its selection skills.
+The generation and backend prompt APIs also accept the additive `debate-select` skill. It supplies one role, one disagreement, source evidence, and an optional existing-model path to a prompt that returns one argument object. This prompt does not dispatch a FOR/AGAINST pair or make the final component-selection decision. The backend owns the primary skill asset, the CLI asset-copy target includes it, and the backend build packages a narrow fallback under its selection skills.
 
 Do not use agent SDKs or APIs — the import wizard invokes agents as local subprocesses only.
+
+Exploration captures the renderer reference in full with its origin, digest and retrieval time. Renderer documentation has no default read-size limit and is not truncated. Composition candidates, prompt overrides, optional context inputs, shared-source evidence and complete stage prompts have no application size limit or byte-based truncation. All captured evidence is retained, including compiler contexts, reference indexes, inventories and observations. The filesystem compatibility reader also includes the full component text and every discovered sibling rather than fixed-length excerpts or an inlining count cap. Historical capture `maxPromptBytes` and projection-bound metadata are ignored; new captures do not set a prompt budget. Source discovery and capture limits still describe what evidence was collected, and missing evidence remains unknown. Empty references, retrieval failures, malformed context and cancellation retain their existing handling. Claude and Codex default to stdin; explicit transport choices and other agents retain their existing delivery mode without application byte rejection. Operating-system argument limits and provider context windows still apply. Failed stage invocations preserve the exit code and the agent diagnostic in their attempt receipts and operator error message. The wizard connects exploration subprocess events to the session debug log and drains pending log writes before the selection step settles.
+
+Codex also enforces an initial-turn input limit of 1,048,576 characters independently of the model context window. Both local runners switch oversized Codex prompts to a private, read-only temporary artifact containing the complete original task and evidence. The initial request supplies the artifact path and instructions to read the task and query evidence in manageable pieces. This permits access only to the supplied artifact; it does not grant access to live repository evidence. No prompt content is discarded, and model context limits still apply. Artifacts remain available until the child settles, then are removed on success, failure, cancellation or timeout. Debug events distinguish original and delivered prompt lengths and record the delivery mode. This transport is unrelated to pipeline caching.
 
 ---
 
@@ -446,6 +456,16 @@ A single human scope gate precedes generation. Final review edits generated defi
 
 `--no-cache` bypasses the extract, selection and generation caches and is forwarded to the internal stages.
 
+### Automatic component exploration caching
+
+The normal wizard flow runs fresh source extraction/composition, then automatically checks a persistent cache for each of the seven component-exploration scopes. It does not require a resume flag, restore an old source snapshot or change wizard routing. A successful scope is saved independently, so a later explorer or downstream failure does not discard completed agent work. Unfinished or invalid calls run again.
+
+The key hashes the complete logical explorer input and current rules/skill, declared agent/model and Bedrock mode. It retains source text/hashes, declared component/slot identities, coverage/omissions, complete compiler diagnostics, renderer content and existing-entity context. Fresh session/capture/envelope identities and source-closure capture-binding identities are normalized only in key material; actual prompts and current-source validation retain them. Discovery timing and renderer retrieval timestamps also do not change task identity. The cache therefore survives a new import session while source, model, prompt or evidence changes cause fresh calls. Unknown/default-auto models cannot reuse saved calls.
+
+Import-owned `.contentful` output is excluded from source discovery. The importer must not collect its own growing debug logs, entity snapshots and generated import files as evidence for the next import; other generated code remains eligible for discovery. Cache responses are checksum-checked and reparsed, their source-input associations are validated against current components, and accepted-phase derivation/publication still executes in the current run. `component_exploration_cache_hits` records the producing run separately from actual invocation attempts.
+
+`--no-cache` bypasses component-explorer cache reads while still saving successful responses. Unfingerprinted historical reports need one fresh pass. Detail inventories, reconciliation, verification, token work and CDF generation keep their existing execution behavior. Extraction caching remains disabled in the wizard.
+
 ### Run records
 
 After every successful wizard session, the CLI appends a record to `~/.contentful/experience-design-system-cli/state/runs.json`.
@@ -470,9 +490,19 @@ The import wizard renders Ink (React) components in a TTY and has no non-interac
 
 The TUI uses React hooks for state (`useState`, `useReducer`), Ink's `useInput` for keyboard, and a custom `useUndo` hook for the JSON editor.
 
+During extraction, component exploration reports saved-evidence loading, prompt preparation, the active explorer scope, completed reports and finalization. The progress bar counts persisted scope reports, not estimated progress within a model response; failed attempts do not add completed scopes. The elapsed timer uses wall time so delayed event-loop callbacks do not lose elapsed seconds. Completion is reported after the accepted phase is published to the session database.
+
 The scope-gate step shows two columns at 100 or more terminal columns and one column below that. `NO_COLOR=1` suppresses ANSI color.
 
 ---
+
+### Exploration response validation
+
+Exploration prompts explicitly describe notes and slot-object fields for both component selection and selected-component inventory. The parser preserves a single string modeling note as a one-item string array before applying the canonical report schema; slot rulings, property fields and identities retain strict validation. Schema errors identify the affected field paths. A failed response parse supplies its validation error as data on the next existing stage attempt, without copying the rejected response or changing retry/deadline budgets. Missing slot booleans are never synthesized, and validated complete responses remain required before reports are saved.
+
+### Diagnostic prompt projection
+
+Exploration, reconciliation and verification prompts summarize compiler filesystem reads and group source exclusions by reason. Compiler coverage, project/configuration receipts, module and reference outcomes, resource counters, notable failed or changed reads, and unknown diagnostic records remain inline. Full diagnostics remain saved in the session database. Each summarized invocation also receives a private, read-only JSON audit containing its exact original diagnostic array, identified by its SHA-256 digest and byte length; read-only tools may inspect that supplied audit without accessing the live repository. The audit is removed only after the invocation settles, including failure, retries, cancellation and timeout. Prompt construction failures also clean the audit. Summary projection does not change capture identity, extraction binding, coverage or omission counts, and does not truncate evidence or introduce a prompt size limit.
 
 ## V2 TUI Resources
 

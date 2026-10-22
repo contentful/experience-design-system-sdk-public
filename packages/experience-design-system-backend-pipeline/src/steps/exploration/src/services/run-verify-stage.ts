@@ -4,6 +4,7 @@ import { runStageWithRetries } from '../../../../agents/helpers/run-stage-with-r
 import { parseVerifyOutput } from '../parsers/parse-verify-output.js';
 import { runStageWork } from '../helpers/run-stage-work.js';
 import type { VerifyStageRequest } from '../types.js';
+import { prepareDiagnosticPrompt } from '../../../../source-evidence/prompt-diagnostics.js';
 import { propertySourceEvidence } from '../helpers/property-source-evidence.js';
 export async function runVerifyStage(request: VerifyStageRequest): Promise<VerifyStageResult> {
   const items: VerifiedItem[] = [],
@@ -23,27 +24,34 @@ export async function runVerifyStage(request: VerifyStageRequest): Promise<Verif
         },
         'verify',
         () =>
-          buildPrompt({
-            skill: 'verify',
-            mode: 'autonomous',
-            existingComponentsInline: request.existingComponentsInline,
-            existingTokensInline: request.existingTokensInline,
-            outDir: request.outDir,
-            stageAssignmentInline: JSON.stringify({
-              component: work.component,
-              source: work.source,
-              itemIds: work.items.map((item) => item.itemId),
-              identity: request.identity,
-            }),
-            stageInputInline: JSON.stringify({
-              work,
-              propertyEvidence: propertySourceEvidence(request.representationProposalSources, [work]),
-              source: request.sourceInput,
-              existingContext: request.existingContextStatus,
-            }),
-            skillContentOverride: request.skillContentOverride,
-            skillPathOverride: request.skillPathOverride,
-          }),
+          prepareDiagnosticPrompt(
+            request.sourceInput?.diagnostics,
+            (diagnostics) =>
+              buildPrompt({
+                skill: 'verify',
+                mode: 'autonomous',
+                existingComponentsInline: request.existingComponentsInline,
+                existingTokensInline: request.existingTokensInline,
+                outDir: request.outDir,
+                stageAssignmentInline: JSON.stringify({
+                  component: work.component,
+                  source: work.source,
+                  itemIds: work.items.map((item) => item.itemId),
+                  identity: request.identity,
+                }),
+                stageInputInline: JSON.stringify({
+                  work,
+                  propertyEvidence: propertySourceEvidence(request.representationProposalSources, [work]),
+                  source: request.sourceInput
+                    ? { ...request.sourceInput, diagnostics: diagnostics ?? request.sourceInput.diagnostics }
+                    : undefined,
+                  existingContext: request.existingContextStatus,
+                }),
+                skillContentOverride: request.skillContentOverride,
+                skillPathOverride: request.skillPathOverride,
+              }),
+            request.signal,
+          ),
         (output) => {
           const parsed = parseVerifyOutput(output, work, request.sourceInput);
           if (!parsed.ok) throw new Error(parsed.error);

@@ -209,3 +209,68 @@ it('preserves explicit cancellation rejection for direct discovery and capture',
   expect(() => api.discoverSourceEvidence(request)).toThrow(expect.objectContaining({ name: 'AbortError' }));
   await expect(api.captureSourceEvidence(request)).rejects.toMatchObject({ name: 'AbortError' });
 });
+
+it('accepts the same selected path set with mixed-case filenames and different ordering', async () => {
+  const root = fixture();
+  const paths = ['Surface.tsx', 'helper.ts', 'index.ts'].map((name) => join(root, name));
+  writeFileSync(paths[1]!, 'export const helper = true;');
+  writeFileSync(paths[2]!, 'export { Surface } from "./Surface";');
+  const inventory = api.discoverSourceEvidence({ projectRoot: root, filePaths: paths });
+  inventory.selectedSourcePaths.reverse();
+  const supplied = await api.captureSourceEvidence({ projectRoot: root, filePaths: paths, inventory });
+  const discovered = await api.captureSourceEvidence({ projectRoot: root, filePaths: [...paths].reverse() });
+  expect(supplied.inventory?.selectedSourcePaths).toEqual(inventory.selectedSourcePaths);
+  expect(discovered.files.map((file) => file.canonicalPath)).toEqual(supplied.files.map((file) => file.canonicalPath));
+});
+
+it('accepts canonical project and selected-file aliases without changing inventory identity', async () => {
+  const root = fixture();
+  const selected = join(root, 'Surface.tsx');
+  symlinkSync(selected, join(root, 'linked.tsx'));
+  symlinkSync(root, join(root, 'project-alias'));
+  const inventory = api.discoverSourceEvidence({ projectRoot: root, filePaths: [selected] });
+  const capture = await api.captureSourceEvidence({
+    projectRoot: join(root, 'project-alias'),
+    filePaths: ['linked.tsx', './Surface.tsx'],
+    inventory,
+  });
+  expect(capture.inventory?.selectedSourcePaths).toEqual([realpathSync(selected)]);
+});
+
+it('rejects a structurally valid inventory from a different project root', async () => {
+  const root = fixture();
+  const selected = join(root, 'Surface.tsx');
+  const inventory = api.discoverSourceEvidence({ projectRoot: root, filePaths: [selected] });
+  inventory.projectRoot = realpathSync(tmpdir());
+  expect(api.readSourceInventory(inventory).status).toBe('available');
+  await expect(api.captureSourceEvidence({ projectRoot: root, filePaths: [selected], inventory })).rejects.toThrow(
+    'selected-root identity',
+  );
+});
+
+it('rejects a different selected file even when selected-set sizes are equal', async () => {
+  const root = fixture();
+  const selected = join(root, 'Surface.tsx');
+  const other = join(root, 'Other.tsx');
+  writeFileSync(other, 'export const Other = () => <aside/>;');
+  const inventory = api.discoverSourceEvidence({ projectRoot: root, filePaths: [selected] });
+  await expect(api.captureSourceEvidence({ projectRoot: root, filePaths: [other], inventory })).rejects.toThrow(
+    'selected-root identity',
+  );
+});
+
+it('retains selected entrypoint roles when a valid inventory uses canonical path aliases', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'source-inventory-alias-'));
+  roots.push(root);
+  const selected = join(root, 'Surface.tsx');
+  writeFileSync(selected, 'export const Surface = () => <section/>;');
+  const alias = join(root, 'project-alias');
+  symlinkSync(root, alias);
+  const inventory = api.discoverSourceEvidence({ projectRoot: root, filePaths: [selected], evidenceFilePaths: [] });
+  inventory.projectRoot = alias;
+  inventory.selectedSourcePaths = [join(alias, 'Surface.tsx')];
+  inventory.files[0]!.canonicalPath = join(alias, 'Surface.tsx');
+  expect(api.readSourceInventory(inventory).status).toBe('available');
+  const capture = await api.captureSourceEvidence({ projectRoot: root, filePaths: [selected], inventory });
+  expect(capture.files.find((file) => file.canonicalPath === realpathSync(selected))?.roles).toContain('entrypoint');
+});

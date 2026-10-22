@@ -1,9 +1,4 @@
-import {
-  CANDIDATE_NAME_PATTERNS,
-  CANDIDATE_CONTENT_MARKERS,
-  CANDIDATE_TOKEN_BUDGET,
-  PROMPT_CANDIDATE_TOKEN_BUDGET,
-} from '../../constants/index.js';
+import { CANDIDATE_NAME_PATTERNS, CANDIDATE_CONTENT_MARKERS, CANDIDATE_TOKEN_BUDGET } from '../../constants/index.js';
 import type { CandidateFile, SelectedCandidate } from '../../types/contract.js';
 
 export type { CandidateFile, SelectedCandidate };
@@ -33,26 +28,6 @@ export function selectCandidateFiles(files: CandidateFile[]): SelectedCandidate[
     selected.push({ path: file.path, content: file.content, matchReason });
   }
   return selected;
-}
-
-export function capCandidatesToPromptBudget<T extends CandidateFile>(
-  files: T[],
-  budget: number = PROMPT_CANDIDATE_TOKEN_BUDGET,
-): { kept: T[]; dropped: T[] } {
-  const ordered = [...files].sort((a, b) => a.content.length - b.content.length || a.path.localeCompare(b.path));
-  const kept: T[] = [];
-  const dropped: T[] = [];
-  let spent = 0;
-  for (const file of ordered) {
-    const cost = Math.ceil(file.content.length / CHARS_PER_TOKEN);
-    if (spent + cost > budget) {
-      dropped.push(file);
-      continue;
-    }
-    kept.push(file);
-    spent += cost;
-  }
-  return { kept, dropped };
 }
 
 export function sliceDeclarationRegions(

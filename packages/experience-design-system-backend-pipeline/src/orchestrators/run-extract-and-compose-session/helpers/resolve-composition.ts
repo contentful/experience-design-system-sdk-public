@@ -1,8 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { buildCompositionInputHash } from '../../../steps/composition/src/helpers/candidates/composition-cache-key.js';
-import { collectManifestDocEdges } from '../../../steps/composition/src/helpers/edges/manifest-doc-evidence.js';
 import { resolveMapping } from '../../../steps/composition/src/helpers/edges/resolve-mapping.js';
-import { collectSourceCallSiteEvidence } from '../../../steps/composition/src/helpers/edges/source-call-site-evidence.js';
 import type { ResolveCompositionServiceResult } from '../../../steps/composition/src/types/contract.js';
 import { lookupCompositionCache, storeCompositionCache } from '../../../persistence/src/session/repositories/db.js';
 import { runAgent } from '../../../agents/services/run-agent.js';
@@ -15,6 +13,7 @@ import type { ExtractAndComposeProgress } from '../types.js';
 import { throwIfAborted } from '../../../helpers/abort.js';
 import type { SourceCapture } from '../../../steps/extraction/index.js';
 import { deriveComponentId } from '../../../persistence/src/session/helpers/components/derive-component-id.js';
+import { runSourceAnalysis } from '../../../source-analysis/run.js';
 
 export interface ResolveCompositionRequest {
   db: DatabaseSync;
@@ -83,16 +82,10 @@ export async function resolveComposition(request: ResolveCompositionRequest): Pr
 
   onProgress?.({ kind: 'composition', phase: 'resolving' });
 
-  const { promptFiles, runtimeFiles, droppedWarning } = await selectCompositionPromptFiles(
-    components,
-    sourceFiles,
-    sourceCapture,
-  );
+  const { promptFiles, runtimeFiles } = await selectCompositionPromptFiles(components, sourceFiles, sourceCapture);
   throwIfAborted(request.signal);
-  if (droppedWarning) warnings.push(droppedWarning);
 
   const resolverAgent = resolveCompositionAgentName(agent);
-  const componentNameSet = new Set(components.map((c) => c.name));
 
   let lastAgentExitCode = 0;
   const spawnAgent = async (prompt: string): Promise<string> => {
@@ -129,8 +122,15 @@ export async function resolveComposition(request: ResolveCompositionRequest): Pr
     const paths = capturedPathsByComponent.get(identity);
     return paths?.size === 1 ? { ...component, sourcePath: [...paths][0] } : component;
   });
-  const extraEdges = collectManifestDocEdges(runtimeFiles, evidenceComponents, componentNameSet);
-  const sourceCallSites = collectSourceCallSiteEvidence(runtimeFiles, evidenceComponents);
+  const { extraEdges, sourceCallSites } = await runSourceAnalysis(
+    'composition',
+    {
+      files: runtimeFiles,
+      components: evidenceComponents,
+    },
+    { signal: request.signal },
+  );
+  throwIfAborted(request.signal);
   const agentCacheKey = buildCompositionInputHash({ files: promptFiles, agent: resolverAgent });
 
   let didHitCompositionCache = false;

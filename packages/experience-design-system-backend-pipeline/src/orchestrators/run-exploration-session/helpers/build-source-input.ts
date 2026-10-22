@@ -4,8 +4,7 @@ import { projectExplorationSource } from '../../../source-evidence/shared-source
 
 export function buildExplorationSourceInput(
   envelope: SessionSourceEnvelope,
-  maxBytes = 160 * 1024,
   compilerDiagnostics?: unknown,
 ): ExplorationSourceInput {
-  return projectExplorationSource(envelope, maxBytes, compilerDiagnostics);
+  return projectExplorationSource(envelope, compilerDiagnostics);
 }

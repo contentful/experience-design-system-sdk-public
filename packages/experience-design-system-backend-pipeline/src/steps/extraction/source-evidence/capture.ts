@@ -15,7 +15,7 @@ import type {
 } from './types.js';
 import { DEFAULT_SOURCE_CAPTURE_LIMITS } from './types.js';
 import { associateCapturedReferences } from './associate-references.js';
-import { discoverSourceEvidence } from './discovery.js';
+import { canonicalSelectedSourcePaths, discoverSourceEvidence } from './discovery.js';
 import { readSourceInventory } from './discovery-validation.js';
 import { canonicalSourceFactPath } from '../src/candidates/bind-source-candidates.js';
 
@@ -109,17 +109,15 @@ export async function captureSourceEvidence(request: CaptureSourceEvidenceReques
         signal: request.signal,
       }),
   );
+  const selectedSourcePaths =
+    readSourceInventory(inventory).status === 'available'
+      ? canonicalSelectedSourcePaths(inventory.projectRoot, inventory.selectedSourcePaths)
+      : undefined;
   if (
-    readSourceInventory(inventory).status !== 'available' ||
-    inventory.projectRoot !== canonicalSourceFactPath(request.projectRoot) ||
-    JSON.stringify(inventory.selectedSourcePaths) !==
-      JSON.stringify(
-        stableUnique(
-          request.filePaths.map((path) =>
-            canonicalSourceFactPath(isAbsolute(path) ? path : resolve(request.projectRoot, path)),
-          ),
-        ),
-      )
+    !selectedSourcePaths ||
+    canonicalSourceFactPath(inventory.projectRoot) !== canonicalSourceFactPath(request.projectRoot) ||
+    JSON.stringify(selectedSourcePaths) !==
+      JSON.stringify(canonicalSelectedSourcePaths(request.projectRoot, request.filePaths))
   )
     throw new Error('Invalid source inventory or selected-root identity');
   const compilerSources = new Map(
@@ -676,7 +674,7 @@ export async function captureSourceEvidence(request: CaptureSourceEvidenceReques
     const roles =
       componentMatches.length > 0
         ? ['definition']
-        : inventory.selectedSourcePaths.includes(root.path)
+        : selectedSourcePaths.includes(root.path)
           ? ['entrypoint']
           : ['evidence'];
     for (const role of roles) resolveFile(root.path, 0, role);

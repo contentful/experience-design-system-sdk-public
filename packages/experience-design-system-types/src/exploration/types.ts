@@ -133,6 +133,7 @@ export interface BoundSourceFile {
 export interface ExplorationSourceInput {
   inventory?: unknown;
   omittedInventory?: number;
+  /** Legacy snapshot metadata; ignored and removed from new prompt projections. */
   projectionBounds?: { maxBytes: number; usedBytes: number };
   components?: import('../shared-source.js').SharedSource['components'];
   compilerContexts?: import('../shared-source.js').SharedSourceCompilerContext[];

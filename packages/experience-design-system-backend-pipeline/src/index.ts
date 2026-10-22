@@ -41,10 +41,7 @@ export type { ComposeComponentsRequest, ComposeComponentsResponse } from './step
 export type { CompositionEdge, EdgeProvenance } from './steps/composition/src/helpers/edges/interchange-schema.js';
 export type { MergeResult, EdgeConflict } from './steps/composition/src/helpers/edges/merge-edges.js';
 export type { SelectedCandidate } from './steps/composition/src/types/contract.js';
-export {
-  selectCandidateFiles,
-  capCandidatesToPromptBudget,
-} from './steps/composition/src/helpers/candidates/candidate-files.js';
+export { selectCandidateFiles } from './steps/composition/src/helpers/candidates/candidate-files.js';
 export { collectManifestDocEdges } from './steps/composition/src/helpers/edges/manifest-doc-evidence.js';
 export { mergeEdges } from './steps/composition/src/helpers/edges/merge-edges.js';
 export { parseMapEdges } from './steps/composition/src/helpers/edges/parse-map-edges.js';

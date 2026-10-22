@@ -80,6 +80,7 @@ export interface SharedSource {
   extractionStepId?: number;
   coverage?: SharedSourceCoverage;
   promptCoverage?: SharedSourceCoverage;
+  /** Legacy snapshot metadata; ignored and removed from new prompt projections. */
   projectionBounds?: { maxBytes: number; usedBytes: number };
   extractionByteBinding?: 'verified-same' | 'changed' | 'unverified';
   omittedFiles?: number;

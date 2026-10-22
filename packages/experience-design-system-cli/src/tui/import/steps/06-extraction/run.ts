@@ -18,6 +18,7 @@ import { runSelection } from './selection.js';
 import type { ExtractionHandoff } from '@contentful/experience-design-system-types/handoff';
 import type { ExtractionInput, ExtractionProgress, ExtractionResult } from './types.js';
 import { awaitWithSignal, linkAbortSignal, throwIfAborted } from '../../cancellation.js';
+import { recordDebugEvent } from '../../../debug-store.js';
 
 const TOKENS_SKILL_PATH = findSkillPath('generate-tokens.md');
 
@@ -100,8 +101,17 @@ export async function runExtraction(
   try {
     throwIfAborted(signal);
     onProgress(progress);
+    await recordDebugEvent('import.extraction.started', {
+      agent: input.agent,
+      fileCount: input.filePaths.length,
+      hasRawTokens: input.rawTokensPath !== '',
+      hasCredentials: input.credentials !== null,
+    });
+    throwIfAborted(signal);
 
     const auth = await awaitWithSignal(deps.checkAgentAuth(input.agent as AgentName), signal);
+    throwIfAborted(signal);
+    await recordDebugEvent('import.extraction.auth', { agent: input.agent, status: auth });
     throwIfAborted(signal);
     if (auth === 'not-found' || auth === 'unauthenticated') {
       return fail(`${input.agent} auth check`, agentAuthMessage(input.agent, auth));
@@ -177,8 +187,9 @@ export async function runExtraction(
           agent: input.agent as AgentName,
           model: input.agentModel,
           ...selectionPrompt,
-          noCache: true,
+          noCache: input.noCache,
           signal,
+          onActivity: (event) => update({ exploration: event }),
         });
         throwIfAborted(signal);
       })()
@@ -190,6 +201,8 @@ export async function runExtraction(
 
     let extracted: Awaited<ReturnType<typeof runExtractAndComposeSession>>;
     try {
+      await recordDebugEvent('import.extraction.source.started', { fileCount: input.filePaths.length });
+      throwIfAborted(signal);
       extracted = await deps.runExtractAndComposeSession({
         projectPath: input.projectPath,
         outDir,
@@ -206,7 +219,11 @@ export async function runExtraction(
           createdSessionId = sessionId;
         },
       });
+      await recordDebugEvent('import.extraction.source.completed', { componentCount: extracted.components.length });
     } catch (error) {
+      await recordDebugEvent('import.extraction.source.failed', {
+        errorName: error instanceof Error ? error.name : 'Error',
+      });
       await cancelAndDrain();
       return fail('analyze extract', errorMessage(error));
     }
@@ -222,14 +239,20 @@ export async function runExtraction(
       return fail('analyze extract', noComponentsMessage(input.projectPath));
     }
 
+    await recordDebugEvent('import.exploration.components.started', { componentCount: extracted.components.length });
+    throwIfAborted(signal);
     startSelection(extracted.sessionId, extracted.sourceEvidenceHandle);
 
     if (selection) await selection;
     else if (entities) await awaitWithSignal(entities, signal);
     if (selectionError) {
+      await recordDebugEvent('import.exploration.components.failed', {
+        errorName: selectionError instanceof Error ? selectionError.name : 'Error',
+      });
       await cancelAndDrain();
       return fail('selection agent', errorMessage(selectionError));
     }
+    await recordDebugEvent('import.exploration.components.completed');
 
     const tokens = await tokenGeneration;
     throwIfAborted(signal);
@@ -264,6 +287,7 @@ export async function runExtraction(
     await cancelAndDrain();
     return fail('analyze extract', errorMessage(error));
   } finally {
+    await recordDebugEvent('import.extraction.finished', { aborted: signal.aborted });
     linked.dispose();
   }
 }

@@ -28,6 +28,7 @@ export const EXCLUDED_SUFFIXES = [
 /** Directories skipped entirely during the walk. */
 export const IGNORED_DIRS = new Set([
   '.changeset',
+  '.contentful',
   '.git',
   '.github',
   '.idea',

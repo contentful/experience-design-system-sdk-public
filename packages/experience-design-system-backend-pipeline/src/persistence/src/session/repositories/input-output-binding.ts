@@ -1,26 +1,19 @@
-import {
-  canonicalSourceFactPath,
-  mapInputOutputLocations,
-  type SourceInputOutputEvidence,
-} from '../../../../steps/extraction/index.js';
+import { mapInputOutputLocations, type SourceInputOutputEvidence } from '../../../../steps/extraction/index.js';
 import type { CompletedSourceEvidence } from './db.js';
+import { createCapturedFileLookup } from './captured-file-lookup.js';
 
 /** Saved labels are checked against the completed captured bytes and source ranges on every reopen. */
 export function validateSavedInputOutput(
   evidence: SourceInputOutputEvidence,
   source: CompletedSourceEvidence,
-  closureBound: boolean,
+  componentBound: boolean,
 ): SourceInputOutputEvidence {
   let invalid = false;
+  const findFile = createCapturedFileLookup(source.readiness === 'ready' ? source.envelope.capture.files : []);
   const bound = mapInputOutputLocations(evidence, (location) => {
-    const file =
-      source.readiness === 'ready' && location.canonicalPath
-        ? source.envelope.capture.files.find(
-            (file) => file.canonicalPath === canonicalSourceFactPath(location.canonicalPath!),
-          )
-        : undefined;
+    const file = source.readiness === 'ready' ? findFile(location.canonicalPath) : undefined;
     let binding: typeof location.binding = 'unavailable';
-    if (closureBound && file && file.captured.kind === 'full' && file.textHash && location.textHash) {
+    if (componentBound && file && file.captured.kind === 'full' && file.textHash && location.textHash) {
       const text = file.captured.text;
       const start = location.startOffset;
       const end = location.endOffset;

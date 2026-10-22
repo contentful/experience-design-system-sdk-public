@@ -1,3 +1,4 @@
+import type { RunningLine } from '../../shared/running-step/logic.js';
 import { parseAgentModel, resolveAgent, resolveModel } from '@contentful/experience-design-system-backend-pipeline';
 import type { ExtractAndComposeProgress } from '@contentful/experience-design-system-backend-pipeline';
 import type { ExtractionProgress } from './types.js';
@@ -36,13 +37,41 @@ function compositionDone(progress: ExtractionProgress): boolean {
   return progress.composition === 'done' || progress.composition === 'cache-hit';
 }
 
+function explorationRow(progress: ExtractionProgress, agent: string): RunningLine {
+  const event = progress.exploration;
+  if (!event)
+    return {
+      text:
+        progress.selection === 'complete'
+          ? 'Selection agent complete'
+          : 'Component exploration waiting for source evidence...',
+      complete: progress.selection === 'complete',
+    };
+  const labels: Record<typeof event.stage, string> = {
+    loading: 'Loading saved component evidence...',
+    preparing: 'Preparing component exploration...',
+    cached: `Component exploration reused from cache${event.scope ? ` — ${event.scope}` : ''}`,
+    exploring: `Exploring components via ${agent}${event.scope ? ` — ${event.scope}` : ''}`,
+    checking: 'Checking component exploration evidence...',
+    reconciling: 'Reconciling exploration results...',
+    verifying: 'Verifying exploration findings...',
+    finalizing: 'Saving component exploration results...',
+    complete: 'Component exploration complete',
+  };
+  return {
+    text: labels[event.stage],
+    complete: event.stage === 'complete',
+    ...(!['loading', 'preparing'].includes(event.stage) ? { progress: { done: event.done, total: event.total } } : {}),
+  };
+}
+
 /** The rows the screen shows, in the order the wizard showed them. Rows that do not apply are left out. */
-export function progressRows(progress: ExtractionProgress, agent: string): Array<{ text: string; complete: boolean }> {
-  const { scan, composition, selection, existingEntities, tokens } = progress;
+export function progressRows(progress: ExtractionProgress, agent: string): RunningLine[] {
+  const { scan, composition, existingEntities, tokens } = progress;
   const scanned = scan?.scanned ?? 0;
   const scanComplete = (scan?.total ?? 0) > 0;
 
-  const rows: Array<{ text: string; complete: boolean }> = [
+  const rows: RunningLine[] = [
     {
       text: scan === null ? 'Scanning files...' : `${scanComplete ? 'Scanned' : 'Scanning'} ${plural(scanned, 'file')}`,
       complete: scanComplete,
@@ -56,10 +85,7 @@ export function progressRows(progress: ExtractionProgress, agent: string): Array
             : `Mapping composition via ${composition.startsWith('agent:') ? composition.slice('agent:'.length) : agent}...`,
       complete: compositionDone(progress),
     },
-    {
-      text: selection === 'complete' ? 'Selection agent complete' : `Filtering component selection via ${agent}...`,
-      complete: selection === 'complete',
-    },
+    explorationRow(progress, agent),
   ];
 
   if (existingEntities !== 'idle') {
