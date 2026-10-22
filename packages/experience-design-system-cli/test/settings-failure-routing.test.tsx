@@ -14,6 +14,7 @@ const deps = vi.hoisted(() => ({
 vi.mock('../src/tui/settings/debug-mode/debug-mode-store.js', () => ({
   readDebugModeSetting: deps.debugRead,
   writeDebugModeSetting: deps.debugWrite,
+  RETENTION_CHOICES: [7, 14, 30],
 }));
 vi.mock('../src/tui/settings/opt-in-analytics/analytics-store.js', () => ({
   readAnalyticsSetting: deps.analyticsRead,
@@ -32,12 +33,12 @@ vi.mock('../src/tui/help/help-info.js', () => ({ readHelpInfo: deps.helpRead }))
 import { HelpScreen } from '../src/tui/help/PageContainer.js';
 import { DebugModeScreen } from '../src/tui/settings/debug-mode/screen.js';
 import { OptInAnalyticsScreen } from '../src/tui/settings/opt-in-analytics/screen.js';
-import { ConfigurationScreen } from '../src/tui/settings/configuration/ConfigurationScreen.js';
+import { ProjectScreen as ConfigurationScreen } from '../src/tui/settings/configuration/project/ProjectScreen.js';
 let unmount: (() => void) | undefined;
 beforeEach(() => {
   vi.resetAllMocks();
   deps.finish.mockResolvedValue(undefined);
-  deps.debugRead.mockResolvedValue({ enabled: true });
+  deps.debugRead.mockResolvedValue({ enabled: true, retentionDays: 30 });
   deps.analyticsRead.mockResolvedValue({ enabled: true });
   deps.configRead.mockResolvedValue({ cmaToken: 'example-token' });
 });
@@ -180,11 +181,16 @@ it.each(screens.slice(0, 2))(
     view.stdin.write('q');
     await vi.waitFor(() => expect(done).toHaveBeenCalledOnce());
     expect(deps.finish).toHaveBeenCalledWith(
-      expect.objectContaining({ outputs: { enabled: false }, status: 'success', exitMethod: 'saved' }),
+      expect.objectContaining({
+        outputs: expect.objectContaining({ enabled: false }),
+        status: 'success',
+        exitMethod: 'saved',
+      }),
     );
   },
 );
 it('configuration masks credentials and shows save failure followed by successful storage and saved exit', async () => {
+  deps.configRead.mockResolvedValueOnce({ spaceId: 'example-space', cmaToken: 'example-token' });
   let reject!: (error: Error) => void;
   deps.configWrite.mockImplementationOnce(
     () =>
@@ -199,14 +205,16 @@ it('configuration masks credentials and shows save failure followed by successfu
   expect(view.lastFrame()).not.toContain('example-token');
   expect(view.lastFrame()).toContain('Root Project Directory');
   await new Promise((resolve) => setTimeout(resolve, 10));
+  view.stdin.write('\u0004');
+  await new Promise((resolve) => setTimeout(resolve, 10));
   view.stdin.write('s');
   await vi.waitFor(() => expect(reject).toBeDefined());
-  expect(view.lastFrame()).not.toContain('Configuration saved');
+  expect(view.lastFrame()).not.toContain('Project settings saved');
   reject(new Error('Configuration write failed'));
   await vi.waitFor(() => expect(view.lastFrame()).toContain('Configuration write failed'));
   deps.configWrite.mockResolvedValueOnce(undefined);
   view.stdin.write('s');
-  await vi.waitFor(() => expect(view.lastFrame()).toContain('Configuration saved'));
+  await vi.waitFor(() => expect(view.lastFrame()).toContain('Project settings saved'));
   view.stdin.write('q');
   await vi.waitFor(() => expect(done).toHaveBeenCalledOnce());
   expect(deps.finish).toHaveBeenCalledWith(expect.objectContaining({ exitMethod: 'saved', status: 'success' }));

@@ -1,9 +1,9 @@
 import {
-  canonicalSourceFactPath,
   mapReferenceIndexLocations,
   type SourceCapture,
   type SourceReferenceIndex,
 } from '../../../../steps/extraction/index.js';
+import { createCapturedFileLookup } from './captured-file-lookup.js';
 
 /** Recheck every endpoint against the immutable completed bytes, including lexical owners and sample origins. */
 export function bindSavedSourceReferences(
@@ -11,10 +11,9 @@ export function bindSavedSourceReferences(
   files: SourceCapture['files'],
 ): SourceReferenceIndex {
   let invalid = false;
+  const findFile = createCapturedFileLookup(files);
   const bound = mapReferenceIndexLocations(index, (location) => {
-    const file = location.canonicalPath
-      ? files.find((file) => file.canonicalPath === canonicalSourceFactPath(location.canonicalPath!))
-      : undefined;
+    const file = findFile(location.canonicalPath);
     let binding: typeof location.binding = 'unavailable';
     if (file?.captured.kind === 'full' && file.textHash && location.textHash) {
       const text = file.captured.text;

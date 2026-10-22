@@ -1,5 +1,5 @@
 import type { GenerationHandoff } from '@contentful/experience-design-system-types/handoff';
-import type { ScopeDecisions } from '@contentful/experience-design-system-backend-pipeline';
+import type { ExplorationProgressEvent, ScopeDecisions } from '@contentful/experience-design-system-backend-pipeline';
 
 // The generation stage runs after the user confirms the scope. It saves the decisions, generates the accepted components
 // (or takes them from the cache), and maps tokens onto them. What it leaves behind is the generated session the review
@@ -31,6 +31,18 @@ export interface GenerationInput {
 
 /** One line per thing the screen shows, in the order it shows them. */
 export interface GenerationProgress {
+  stage:
+    | 'preparing'
+    | 'saving-decisions'
+    | 'authenticating'
+    | 'exploring'
+    | 'generating'
+    | 'preparing-token-mapping'
+    | 'mapping-tokens'
+    | 'complete';
+  exploration?: ExplorationProgressEvent;
+  activeComponents: Array<{ name: string; attempt: number; maxAttempts: number }>;
+  failedComponents: number;
   /** Components finished, out of the total, and the one being worked on. Null until the first progress line. */
   components: { done: number; total: number; current: string } | null;
   mapTokens: 'idle' | 'running' | 'complete';

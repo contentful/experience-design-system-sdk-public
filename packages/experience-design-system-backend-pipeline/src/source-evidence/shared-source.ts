@@ -2,7 +2,6 @@ import type { SourceCapture } from '../steps/extraction/index.js';
 import type {
   SharedSource,
   SharedSourceFile,
-  BoundSourceFile,
   ExplorationSourceInput,
 } from '@contentful/experience-design-system-types';
 import type { SessionSourceEnvelope } from '../persistence/src/session/repositories/db.js';
@@ -178,178 +177,18 @@ export function renderSharedSource(source: SharedSource): string {
   return `${SOURCE_HEADER}${JSON.stringify(source)}\n\`\`\``;
 }
 
-function assertByteLimit(maxBytes: number): void {
-  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0)
-    throw new Error('Source projection byte bound must be a non-negative safe integer');
-}
-
-/** Count the exact consumer serialization, including its source-section header. */
-export function projectSharedSource(source: SharedSource, maxBytes: number): SharedSource {
-  assertByteLimit(maxBytes);
-  maxBytes = Math.min(maxBytes, source.projectionBounds?.maxBytes ?? maxBytes);
-  const projected: SharedSource = structuredClone(source);
-  const size = measuredProjection(projected, maxBytes, () => renderSharedSource(projected));
-  fitProjection(
-    projected,
-    maxBytes,
-    size,
-    (file) => {
-      const lines = file.content.split('\n');
-      return (file.ranges ?? []).map((range) => ({
-        startLine: range.startLine,
-        endLine: range.endLine,
-        text: lines
-          .slice(range.displayStartLine - 1, range.displayStartLine + range.endLine - range.startLine)
-          .join('\n'),
-      }));
-    },
-    (file, ranges) => {
-      file.content = ranges.map((range) => range.text).join('\n/* … */\n');
-      let line = 1;
-      file.ranges = ranges.map((range, index) => {
-        if (index > 0) line += 2;
-        const mapped = { startLine: range.startLine, endLine: range.endLine, displayStartLine: line };
-        line += range.text.split('\n').length;
-        return mapped;
-      });
-      file.partial = true;
-      file.coverage = 'partial';
-    },
-  );
+/** Preserve all saved evidence; historical projection bounds do not constrain prompts. */
+export function projectSharedSource(source: SharedSource): SharedSource {
+  const projected = structuredClone(source);
+  delete projected.projectionBounds;
   return projected;
-}
-
-type ProjectionMetadata = Pick<
-  SharedSource,
-  | 'components'
-  | 'promptCoverage'
-  | 'omittedFiles'
-  | 'omittedRanges'
-  | 'omittedComponents'
-  | 'omittedDiagnostics'
-  | 'omittedObservations'
-  | 'diagnostics'
-  | 'observations'
-  | 'compilerContexts'
-  | 'omittedCompilerContexts'
-  | 'inventory'
-  | 'omittedInventory'
->;
-type TextRange = { startLine: number; endLine: number; text: string };
-
-function measuredProjection(
-  source: { projectionBounds?: { maxBytes: number; usedBytes: number } },
-  maxBytes: number,
-  serialize: () => string,
-): () => number {
-  source.projectionBounds = { maxBytes, usedBytes: 0 };
-  return () => {
-    // Count this receipt too; its decimal byte count converges once the digit width is stable.
-    for (;;) {
-      const bytes = Buffer.byteLength(serialize(), 'utf8');
-      if (source.projectionBounds!.usedBytes === bytes) return bytes;
-      source.projectionBounds!.usedBytes = bytes;
-    }
-  };
-}
-
-/** One omission policy for source bodies, reference receipts and irreducible metadata. */
-function fitProjection<File extends { fileId?: string; path: string }>(
-  source: Omit<ProjectionMetadata, 'components'> & { components?: SharedSource['components']; files: File[] },
-  maxBytes: number,
-  size: () => number,
-  rangesFor: (file: File) => TextRange[],
-  setRanges: (file: File, ranges: TextRange[]) => void,
-): void {
-  // Additive metadata has its own omission receipts when the existing body projection cannot fit it.
-  if (size() > maxBytes && source.inventory !== undefined) {
-    source.inventory = undefined;
-    source.omittedInventory = (source.omittedInventory ?? 0) + 1;
-    source.promptCoverage = 'partial';
-  }
-  while (size() > maxBytes && source.observations?.referenceIndexes?.length) {
-    source.observations.referenceIndexes.pop();
-    source.omittedObservations = (source.omittedObservations ?? 0) + 1;
-    source.promptCoverage = 'partial';
-  }
-  while (size() > maxBytes && source.files.length) {
-    const file = source.files.at(-1)!;
-    const ranges = rangesFor(file);
-    const lines = ranges.map((range) => ({ ...range, lines: range.text.split('\n') }));
-    const totalLines = lines.reduce((total, range) => total + range.lines.length, 0);
-    source.promptCoverage = 'partial';
-    source.omittedRanges = (source.omittedRanges ?? 0) + ranges.length;
-    for (const owner of source.components ?? [])
-      for (const ref of owner.refs)
-        if (ref.fileId ? ref.fileId === file.fileId : ref.path === file.path) ref.partial = true;
-    // Keep only complete original lines; never split a UTF-8 sequence or invent line coordinates.
-    const prefix = (count: number): TextRange[] => {
-      const kept: TextRange[] = [];
-      for (const range of lines) {
-        const take = Math.min(count, range.lines.length);
-        if (take > 0)
-          kept.push({
-            startLine: range.startLine,
-            endLine: range.startLine + take - 1,
-            text: range.lines.slice(0, take).join('\n'),
-          });
-        count -= take;
-      }
-      return kept;
-    };
-    let low = 0,
-      high = Math.max(0, totalLines - 1);
-    while (low < high) {
-      const mid = Math.ceil((low + high) / 2);
-      setRanges(file, prefix(mid));
-      if (size() <= maxBytes) low = mid;
-      else high = mid - 1;
-    }
-    if (low > 0) {
-      setRanges(file, prefix(low));
-      if (size() <= maxBytes) break;
-    }
-    source.files.pop();
-    source.omittedFiles = (source.omittedFiles ?? 0) + 1;
-  }
-  if (size() > maxBytes) {
-    source.omittedObservations =
-      (source.omittedObservations ?? 0) +
-      (source.observations?.accepted.length ?? 0) +
-      (source.observations?.rejected.length ?? 0) +
-      (source.observations?.referenceIndexes?.length ?? 0) +
-      (source.observations?.callerCoverage ? 1 : 0);
-    source.omittedDiagnostics = (source.omittedDiagnostics ?? 0) + (source.diagnostics?.length ?? 0);
-    source.observations = { accepted: [], rejected: [] };
-    source.diagnostics = [];
-    source.promptCoverage = 'partial';
-  }
-  if (size() > maxBytes && source.inventory !== undefined) {
-    source.inventory = undefined;
-    source.omittedInventory = (source.omittedInventory ?? 0) + 1;
-    source.promptCoverage = 'partial';
-  }
-  while (size() > maxBytes && source.compilerContexts?.length) {
-    source.compilerContexts.pop();
-    source.omittedCompilerContexts = (source.omittedCompilerContexts ?? 0) + 1;
-    source.promptCoverage = 'partial';
-  }
-  while (size() > maxBytes && source.components?.length) {
-    source.components.pop();
-    source.omittedComponents = (source.omittedComponents ?? 0) + 1;
-    source.promptCoverage = 'partial';
-  }
-  if (size() > maxBytes) throw new Error('Source identity metadata exceeds prompt bound');
 }
 
 /** Assurance keeps original canonical ranges; this adapter uses the same saved index. */
 export function projectExplorationSource(
   envelope: SessionSourceEnvelope,
-  maxBytes: number,
   compilerDiagnostics?: unknown,
 ): ExplorationSourceInput {
-  assertByteLimit(maxBytes);
-  maxBytes = Math.min(maxBytes, envelope.capture.bounds.limits.maxPromptBytes);
   const index = buildSharedSource(envelope);
   const result: ExplorationSourceInput = {
     captureId: envelope.capture.captureId,
@@ -384,30 +223,14 @@ export function projectExplorationSource(
     observations: envelope.observations,
     ...(index.inventory ? { inventory: index.inventory } : {}),
   };
-  return projectExplorationSourceInput(result, maxBytes);
+  return projectExplorationSourceInput(result);
 }
 
-/** Reapply the saved source bound after a consumer filters its advisory metadata. */
-export function projectExplorationSourceInput(
-  source: ExplorationSourceInput,
-  maxBytes: number,
-): ExplorationSourceInput {
-  assertByteLimit(maxBytes);
-  maxBytes = Math.min(maxBytes, source.projectionBounds?.maxBytes ?? maxBytes);
+/** Preserve captured ranges and report their original coverage without prompt pruning. */
+export function projectExplorationSourceInput(source: ExplorationSourceInput): ExplorationSourceInput {
   const result = structuredClone(source);
-  const size = measuredProjection(result, maxBytes, () => JSON.stringify(result));
-  fitProjection<BoundSourceFile>(
-    result,
-    maxBytes,
-    size,
-    (file) => file.ranges,
-    (file, ranges) => {
-      file.ranges = ranges;
-      file.coverage = 'partial';
-    },
-  );
+  delete result.projectionBounds;
   if (result.files.some((file) => file.coverage !== 'complete-within-declared-bound'))
     result.promptCoverage = 'partial';
-  size();
   return result;
 }

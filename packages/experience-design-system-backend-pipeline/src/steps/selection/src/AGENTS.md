@@ -38,7 +38,7 @@ Empty input short-circuits with no agent call.
 
 ## External calls
 
-AI agent via the backend's shared `createLocalCliAgentInvoker`. Timeout: `EDS_AGENT_TIMEOUT_MS` env or 5 min. Claude and Codex prompts default to stdin; other agents retain argv delivery, with prompts over 100000 UTF-8 bytes refused before spawning. No HTTP calls.
+AI agent via the backend's shared `createLocalCliAgentInvoker`. Timeout: `EDS_AGENT_TIMEOUT_MS` env or 5 min. Claude and Codex prompts default to stdin; other agents retain argv delivery without an application prompt-size cap. No HTTP calls.
 
 ## DSI contribution
 

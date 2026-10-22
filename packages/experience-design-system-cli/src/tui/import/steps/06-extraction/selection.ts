@@ -24,6 +24,7 @@ import {
   loadExistingExplorationContext,
   type SourceEvidenceHandle,
   type RendererReferenceInput,
+  type ExplorationProgressEvent,
   runExplorationComponentsSession,
 } from '@contentful/experience-design-system-backend-pipeline';
 import { recordDebugEvent } from '../../../debug-store.js';
@@ -55,6 +56,7 @@ async function hashSelectPrompt(
 
 export interface SelectionOptions {
   rendererReference?: RendererReferenceInput;
+  onActivity?: (event: ExplorationProgressEvent) => void;
   signal?: AbortSignal;
   sessionId: string;
   agent: AgentName;
@@ -82,27 +84,50 @@ export async function runSelection(options: SelectionOptions): Promise<void> {
       signal: options.signal,
     });
     const { existingComponentsInline, existingTokensInline } = existingContext;
-    const result = await runExplorationComponentsSession({
-      sessionId: options.sessionId,
-      sourceEvidenceHandle: options.sourceEvidenceHandle,
-      agent: options.agent,
-      model: options.model,
-      signal: options.signal,
-      promptText: options.promptText,
-      promptPath: options.promptPath,
-      promptOverrides: options.promptOverrides,
-      invoker: createLocalCliAgentInvoker({}),
-      existingComponentsInline,
-      existingTokensInline,
-      existingContextStatus: {
-        status: existingContext.status,
-        ...(existingContext.reason ? { reason: existingContext.reason } : {}),
-      },
-      rendererReference: options.rendererReference,
-    });
-    throwIfAborted(options.signal);
-    if (!result.ok) throw new Error(result.error);
-    return;
+    const debugWrites: Promise<void>[] = [];
+    try {
+      const result = await runExplorationComponentsSession({
+        cache: !options.noCache,
+        sessionId: options.sessionId,
+        sourceEvidenceHandle: options.sourceEvidenceHandle,
+        agent: options.agent,
+        model: options.model,
+        signal: options.signal,
+        promptText: options.promptText,
+        promptPath: options.promptPath,
+        promptOverrides: options.promptOverrides,
+        invoker: createLocalCliAgentInvoker({
+          onDebugEvent: (event, payload) => {
+            debugWrites.push(
+              recordDebugEvent(event, { ...payload, sessionId: options.sessionId, phase: 'components' }),
+            );
+          },
+        }),
+        existingComponentsInline,
+        existingTokensInline,
+        existingContextStatus: {
+          status: existingContext.status,
+          ...(existingContext.reason ? { reason: existingContext.reason } : {}),
+        },
+        rendererReference: options.rendererReference,
+        onActivity: (event) => {
+          if (event.stage === 'cached')
+            debugWrites.push(
+              recordDebugEvent('import.exploration.cache.hit', {
+                sessionId: options.sessionId,
+                phase: 'components',
+                scope: event.scope,
+              }),
+            );
+          options.onActivity?.(event);
+        },
+      });
+      throwIfAborted(options.signal);
+      if (!result.ok) throw new Error(result.error);
+      return;
+    } finally {
+      await Promise.allSettled(debugWrites);
+    }
   }
   const db = openPipelineDb();
   let components: ReturnType<typeof loadRawComponents>;

@@ -94,7 +94,7 @@ describe('type-based DOM prop classification', () => {
     });
     expect(preClassifyProp(prop({ name: 'role', type: "'alert' | 'status'" }))).toEqual({
       category: 'design',
-      cdfTypeHint: 'enum',
+      cdfTypeHint: 'string',
     });
     expect(preClassifyComponent(component([prop({ name: 'className', category: 'design' })])).props).toEqual([
       expect.objectContaining({ name: 'className', category: 'design' }),

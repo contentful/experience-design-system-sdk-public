@@ -1,7 +1,7 @@
 import { runAgent } from '../../../../agents/index.js';
 import type { RawComponentDefinition } from '../../../extraction/src/types/component.js';
 import { resolveMapping } from '../helpers/edges/resolve-mapping.js';
-import { selectCandidateFiles, capCandidatesToPromptBudget } from '../helpers/candidates/candidate-files.js';
+import { selectCandidateFiles } from '../helpers/candidates/candidate-files.js';
 import { buildCompositionInputHash } from '../helpers/candidates/composition-cache-key.js';
 import { collectManifestDocEdges } from '../helpers/edges/manifest-doc-evidence.js';
 import { collectSourceCallSiteEvidence } from '../helpers/edges/source-call-site-evidence.js';
@@ -12,15 +12,7 @@ export async function runCompositionService(
 ): Promise<ResolveCompositionServiceResult> {
   const { components, allFiles, forceAgent, agent } = options;
 
-  const selectedCandidates = selectCandidateFiles(allFiles);
-  const capped = capCandidatesToPromptBudget(selectedCandidates);
-  const promptFiles = capped.kept;
-
-  if (capped.dropped.length > 0) {
-    options.onWarning?.(
-      `composition — ${capped.dropped.length} candidate file(s) omitted from the agent prompt to fit the context budget; resolution runs on the ${promptFiles.length} highest-value files.`,
-    );
-  }
+  const promptFiles = selectCandidateFiles(allFiles);
 
   const componentNameSet = new Set(components.map((c) => c.name));
   const runtimeFiles = allFiles.map((c) => ({ path: c.path, content: c.content }));

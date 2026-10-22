@@ -1,3 +1,4 @@
+import { throwIfAborted } from '../../../../helpers/abort.js';
 import type { RawComponentDefinition } from '../../../extraction/src/types/component.js';
 import {
   buildComponentEvidence,
@@ -18,9 +19,12 @@ import { runStageWithRetries } from '../../../../agents/helpers/run-stage-with-r
 import { parseExploreOutput } from '../parsers/parse-explore-output.js';
 import { assertUnique } from '../helpers/identity.js';
 import type { ExploreStageRequest } from '../types.js';
-import { sourcePropertyModel } from '../../../generation/src/services/property/source-property-model.js';
 import { loadStageContext } from '../helpers/load-stage-context.js';
 import { projectExplorationSourceInput } from '../../../../source-evidence/shared-source.js';
+import { prepareDiagnosticPrompt } from '../../../../source-evidence/prompt-diagnostics.js';
+import type { PromptOptions } from '../../../../agents/types/prompts.js';
+import { sourcePropertyModel } from '../../../generation/src/services/property/source-property-model.js';
+import { buildExploreCacheKey } from '../helpers/build-explore-cache-key.js';
 import { propertySourceEvidence } from '../helpers/property-source-evidence.js';
 export async function runExploreStage(request: ExploreStageRequest): Promise<ExploreStageResult> {
   assertUnique(request.scopes, 'requested scopes');
@@ -28,8 +32,11 @@ export async function runExploreStage(request: ExploreStageRequest): Promise<Exp
   const scopes: ExploreScopeResult[] = [];
   let context: ReturnType<typeof loadStageContext> | undefined;
   for (const scope of request.scopes) {
+    throwIfAborted(request.signal);
+    request.onScopeStart?.(scope);
     const candidateFree = (CANDIDATE_FREE_SCOPES as readonly string[]).includes(scope);
     let requestedComponents = request.requestedComponents;
+    let cacheKey: string | undefined;
     const result = await runStageWithRetries(
       { ...request, onAttempt: (attempt) => request.onAttempt?.({ ...attempt, scope }) },
       scope,
@@ -68,14 +75,20 @@ export async function runExploreStage(request: ExploreStageRequest): Promise<Exp
                   (request.sourceInput.observations.callerCoverage ? 1 : 0),
               }
             : request.sourceInput;
-        if (candidateFree && sourceInput?.projectionBounds)
-          sourceInput = projectExplorationSourceInput(sourceInput, sourceInput.projectionBounds.maxBytes);
+        if (sourceInput) sourceInput = projectExplorationSourceInput(sourceInput);
         const sharedSource =
           request.sharedSource && !sourceInput
             ? candidateFree
               ? { ...request.sharedSource, observations: { accepted: [], rejected: [] } }
               : request.sharedSource
             : undefined;
+        const assignment = {
+          scope,
+          identity: request.identity,
+          candidateFree,
+          requestedComponents,
+          ...(candidateFree ? {} : { slotCandidates: request.slotCandidates }),
+        };
         const analysisRepresentationCandidates = raw.flatMap((item) => {
           const component = item as unknown as RawComponentDefinition;
           if (!Array.isArray(component.sourceCandidates)) return [];
@@ -90,63 +103,73 @@ export async function runExploreStage(request: ExploreStageRequest): Promise<Exp
             return [{ component: component.name, source: component.source, ...summary }];
           });
         });
-        return buildPrompt({
+        const input = {
+          analysisRepresentationCandidates,
+          components: candidateFree
+            ? raw.map(({ name, source, component_id, sourcePath, framework }) => ({
+                name,
+                source,
+                component_id,
+                sourcePath,
+                framework,
+              }))
+            : raw.map(({ componentFacts: _facts, ...component }) => component),
+          ...(candidateFree ? { omittedComponentFacts } : { componentEvidence }),
+          sourceInput,
+          propertyEvidence: candidateFree ? undefined : propertySourceEvidence(request.representationProposalSources),
+          sourceRefs: request.sourceRefs,
+          rendererReference: loadedContext.rendererReference,
+          existingModel: loadedContext.existingModel,
+          existingContext: request.existingContextStatus,
+          projectRoot: request.projectRoot,
+          repositoryAccess: request.projectRoot
+            ? { status: 'unavailable', reason: 'Repository tools are not supplied by this invoker contract.' }
+            : undefined,
+          callSites: candidateFree ? undefined : loadedContext.callSites,
+          tokens: request.rawTokensInline,
+          existingTokens: request.existingTokensInline,
+          existingComponents: request.existingComponentsInline,
+          tokensFilename: request.rawTokensFilename,
+          propBuckets: candidateFree ? undefined : request.propBucketsInline,
+          representationProposalSources: scope.startsWith('components-')
+            ? undefined
+            : request.representationProposalSources?.map(({ component, source, properties }) => ({
+                component,
+                source,
+                properties: properties.map((model) => ({
+                  ...model.identity,
+                  name: model.identity.key,
+                  sourceNodeIds: model.source.graph.nodes.map((node) => node.id),
+                  sourceUseEvidence: model.source.useEvidence ?? [],
+                })),
+              })),
+        };
+        const options: PromptOptions = {
           sharedSource,
-          sourceProjectionMaxBytes: request.maxPromptBytes,
           skill: scope.startsWith('components-') ? 'explore-components' : 'explore-inventory',
           mode: 'autonomous',
           outDir: request.outDir,
-          stageAssignmentInline: JSON.stringify({
-            scope,
-            identity: request.identity,
-            candidateFree,
-            requestedComponents,
-            ...(candidateFree ? {} : { slotCandidates: request.slotCandidates }),
-          }),
-          stageInputInline: JSON.stringify({
-            analysisRepresentationCandidates,
-            components: candidateFree
-              ? raw.map(({ name, source, component_id, sourcePath, framework }) => ({
-                  name,
-                  source,
-                  component_id,
-                  sourcePath,
-                  framework,
-                }))
-              : raw.map(({ componentFacts: _facts, ...component }) => component),
-            ...(candidateFree ? { omittedComponentFacts } : { componentEvidence }),
-            sourceInput,
-            propertyEvidence: candidateFree ? undefined : propertySourceEvidence(request.representationProposalSources),
-            sourceRefs: request.sourceRefs,
-            rendererReference: loadedContext.rendererReference,
-            existingModel: loadedContext.existingModel,
-            existingContext: request.existingContextStatus,
-            projectRoot: request.projectRoot,
-            repositoryAccess: request.projectRoot
-              ? { status: 'unavailable', reason: 'Repository tools are not supplied by this invoker contract.' }
-              : undefined,
-            callSites: candidateFree ? undefined : loadedContext.callSites,
-            tokens: request.rawTokensInline,
-            existingTokens: request.existingTokensInline,
-            existingComponents: request.existingComponentsInline,
-            tokensFilename: request.rawTokensFilename,
-            propBuckets: candidateFree ? undefined : request.propBucketsInline,
-            representationProposalSources: scope.startsWith('components-')
-              ? undefined
-              : request.representationProposalSources?.map(({ component, source, properties }) => ({
-                  component,
-                  source,
-                  properties: properties.map((model) => ({
-                    ...model.identity,
-                    name: model.identity.key,
-                    sourceNodeIds: model.source.graph.nodes.map((node) => node.id),
-                    sourceUseEvidence: model.source.useEvidence ?? [],
-                  })),
-                })),
-          }),
+          stageAssignmentInline: JSON.stringify(assignment),
+          stageInputInline: JSON.stringify(input),
           skillContentOverride: request.skillContentOverride,
           skillPathOverride: request.skillPathOverride,
-        });
+        };
+        cacheKey = request.responseCache ? await buildExploreCacheKey(options, request) : undefined;
+        return prepareDiagnosticPrompt(
+          sourceInput?.diagnostics ?? sharedSource?.diagnostics,
+          (diagnostics) =>
+            buildPrompt({
+              ...options,
+              sharedSource: sharedSource ? { ...sharedSource, diagnostics } : undefined,
+              stageInputInline: JSON.stringify({
+                ...input,
+                sourceInput: sourceInput
+                  ? { ...sourceInput, diagnostics: diagnostics ?? sourceInput.diagnostics }
+                  : undefined,
+              }),
+            }),
+          request.signal,
+        );
       },
       (output) => {
         const parsed = parseExploreOutput(
@@ -186,6 +209,14 @@ export async function runExploreStage(request: ExploreStageRequest): Promise<Exp
           attempts: attempts.map((attempt) => ({ ...attempt, scope })),
         });
       },
+      request.responseCache
+        ? {
+            key: () => cacheKey,
+            load: request.responseCache.load,
+            save: request.responseCache.save,
+            hit: (key) => request.responseCache!.hit(key, scope),
+          }
+        : undefined,
     );
     const attempts = result.attempts.map((attempt) => ({ ...attempt, scope })) as ExploreAttempt[];
     if (!result.ok) return { ok: false, scope, attempts, error: result.error, scopes };

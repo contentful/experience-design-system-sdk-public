@@ -19,7 +19,8 @@ export interface SourceCaptureLimits {
   maxReadAttempts: number;
   maxResolverProbes: number;
   maxCaptureMs: number;
-  maxPromptBytes: number;
+  /** Legacy capture metadata; prompt construction ignores this value. */
+  maxPromptBytes?: number;
   maxReferenceNodes?: number;
 }
 
@@ -31,7 +32,6 @@ export const DEFAULT_SOURCE_CAPTURE_LIMITS: Readonly<SourceCaptureLimits> = {
   maxReadAttempts: 1024,
   maxResolverProbes: 4096,
   maxCaptureMs: 10_000,
-  maxPromptBytes: 256 * 1024,
   maxReferenceNodes: 100_000,
 };
 

@@ -67,7 +67,12 @@ describe('actual compiler controls', () => {
         'import type { Props } from "./Props"; export const Example = (props: Props) => <section>{props.label}</section>;',
     });
     const result = createCompilerContexts([join(root, 'Example.tsx')], /\.tsx$/, { projectRoot: root });
-    expect(compilerSourcesFromContexts(result.contexts, result.sourceInventory)).toEqual([]);
+    expect(compilerSourcesFromContexts(result.contexts, result.sourceInventory)).toEqual([
+      expect.objectContaining({
+        kind: 'config',
+        content: '{"compilerOptions":{"module":"ESNext","moduleResolution":"Bundler"}}',
+      }),
+    ]);
     expect(result.sourceInventory.omissions).toContainEqual({
       path: result.contexts[0]!.root,
       reason: 'compiler-loaded-source-program-unavailable',
@@ -139,7 +144,7 @@ it('retains virtual source analysis in the observed compiler host', () => {
   expect(result.contexts[0]?.project.getSourceFile(path), JSON.stringify(result.diagnostics.projects)).toBeDefined();
 });
 
-it('bounds native property wrapper traversal and measures underlying enumeration separately', () => {
+it('bounds native source traversal and records eager library wrapper allocation separately', () => {
   const project = new Project({ useInMemoryFileSystem: true });
   const source = project.createSourceFile(
     'fields.ts',
@@ -147,15 +152,22 @@ it('bounds native property wrapper traversal and measures underlying enumeration
   );
   const declaration = source.getTypeAliasOrThrow('Fields');
   const allWrappers = vi.spyOn(Type.prototype, 'getProperties');
-  const result = captureNativeSource(declaration.getType(), declaration, true, ['fields']);
-  expect(allWrappers).not.toHaveBeenCalled();
-  allWrappers.mockRestore();
+  let result: ReturnType<typeof captureNativeSource>;
+  try {
+    result = captureNativeSource(declaration.getType(), declaration, true, ['fields']);
+    expect(allWrappers).toHaveBeenCalledOnce();
+  } finally {
+    allWrappers.mockRestore();
+  }
   expect(result.graph.used?.enumeratedProperties).toBe(2100);
-  expect(result.graph.used?.wrappedProperties).toBeLessThan(result.graph.limits.maxNodes);
+  expect(result.graph.used?.wrappedProperties).toBe(2100);
   expect(result.graph.nodes.length).toBeLessThanOrEqual(result.graph.limits.maxNodes);
   expect(result.graph.coverage).toBe('partial');
   expect(result.graph.omittedCount).toBeGreaterThan(0);
   expect(result.graph.limitations).toContain('compiler-internal-type-resolution-is-not-preemptible');
+  expect(result.graph.limitations).toContain(
+    'ts-morph-property-wrapper-allocation-is-not-bounded-by-source-node-budget',
+  );
   expect(JSON.parse(JSON.stringify(result))).toEqual(result);
 });
 it('denies oversized support reads before bytes are delivered and records cancellation', () => {

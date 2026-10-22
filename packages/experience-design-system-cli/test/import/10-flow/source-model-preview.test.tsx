@@ -1,3 +1,4 @@
+import { PALETTE } from '../../../src/tui/theme.js';
 import { expect, it, vi } from 'vitest';
 import { render } from 'ink-testing-library';
 import type { ComponentTypeSummary, ServerPreviewResponse } from '@contentful/experience-design-system-types';
@@ -29,7 +30,7 @@ const current: ComponentTypeSummary = {
 it('keeps omitted proposed properties and slots unknown while explicit empty dictionaries remove them', () => {
   const unknown = computeComponentDiffLines(current, { key: 'Example' });
   expect(unknown.map((line) => line.text)).toEqual(['? proposed properties unknown', '? proposed slots unknown']);
-  expect(unknown.every((line) => line.color === 'yellow')).toBe(true);
+  expect(unknown.every((line) => line.color === PALETTE.warning)).toBe(true);
   const empty = computeComponentDiffLines(current, { definition: { $type: 'component', $properties: {}, $slots: {} } });
   expect(empty.map((line) => line.text)).toEqual(['- data: record, content, optional', '- slot: constructor']);
 });

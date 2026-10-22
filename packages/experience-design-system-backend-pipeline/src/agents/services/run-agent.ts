@@ -1,8 +1,9 @@
 import { spawn } from 'node:child_process';
 import {
   createAgentCancellationResult,
-  formatArgvPromptSizeLimitError,
-  MAX_ARGV_PROMPT_BYTES,
+  createAgentPromptArtifact,
+  shouldUsePromptArtifact,
+  type AgentPromptArtifact,
   runAgentProcess,
   shouldUseStdinForPrompt,
 } from '@contentful/experience-design-system-types';
@@ -35,53 +36,58 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentRunResult
 
   const binary = resolveBinary(agent);
   const useStdin = shouldUseStdinForPrompt(agent, promptViaStdin);
-  const promptBytes = Buffer.byteLength(prompt, 'utf8');
-  if (!useStdin && promptBytes > MAX_ARGV_PROMPT_BYTES) {
-    return {
-      stdout: '',
-      stderr: formatArgvPromptSizeLimitError(agent, promptBytes),
-      exitCode: 1,
-      timedOut: false,
-    };
-  }
-  const args = buildArgs(agent, prompt, model, useStdin, bedrock);
-  if (signal?.aborted) return createAgentCancellationResult();
+  let artifact: AgentPromptArtifact | undefined;
+  const preparationStarted = Date.now();
+  try {
+    if (shouldUsePromptArtifact(agent, prompt)) artifact = await createAgentPromptArtifact(prompt, signal);
+    const deliveredPrompt = artifact?.prompt ?? prompt;
+    const args = buildArgs(agent, deliveredPrompt, model, useStdin, bedrock);
+    if (signal?.aborted) return createAgentCancellationResult();
 
-  return runAgentProcess({
-    signal,
-    timeoutMs,
-    stdinText: useStdin ? prompt : undefined,
-    onOutput,
-    spawn: () => {
-      const bedrockEnv = bedrock ? BEDROCK_ENV_BY_AGENT[agent] : undefined;
-      return spawn(binary, args, {
-        stdio: ['pipe', 'pipe', 'pipe'],
-        ...(bedrockEnv ? { env: { ...process.env, ...bedrockEnv } } : {}),
-      });
-    },
-    onStart: () => {
-      onDebugEvent?.('run.start', {
-        agent,
-        binary,
-        model,
-        bedrock: !!bedrock,
-        timeoutMs,
-        promptLen: prompt.length,
-        promptHead: prompt.slice(0, 500),
-      });
-    },
-    onEnd: ({ result, signal: childSignal, durationMs }) => {
-      onDebugEvent?.('run.end', {
-        agent,
-        model,
-        durationMs,
-        exitCode: result.exitCode,
-        signal: childSignal,
-        timedOut: result.timedOut,
-        stdoutLen: result.stdout.length,
-        stderrLen: result.stderr.length,
-        stderrTail: result.stderr.slice(-1000),
-      });
-    },
-  });
+    return await runAgentProcess({
+      signal,
+      timeoutMs: artifact ? Math.max(1, timeoutMs - (Date.now() - preparationStarted)) : timeoutMs,
+      stdinText: useStdin ? deliveredPrompt : undefined,
+      onOutput,
+      spawn: () => {
+        const bedrockEnv = bedrock ? BEDROCK_ENV_BY_AGENT[agent] : undefined;
+        return spawn(binary, args, {
+          stdio: ['pipe', 'pipe', 'pipe'],
+          ...(bedrockEnv ? { env: { ...process.env, ...bedrockEnv } } : {}),
+        });
+      },
+      onStart: () => {
+        onDebugEvent?.('run.start', {
+          agent,
+          binary,
+          model,
+          bedrock: !!bedrock,
+          timeoutMs,
+          promptLen: prompt.length,
+          deliveredPromptLen: deliveredPrompt.length,
+          promptTransport: artifact ? 'file' : useStdin ? 'stdin' : 'argv',
+          ...(artifact ? { promptArtifact: artifact.path } : {}),
+          promptHead: prompt.slice(0, 500),
+        });
+      },
+      onEnd: ({ result, signal: childSignal, durationMs }) => {
+        onDebugEvent?.('run.end', {
+          agent,
+          model,
+          durationMs,
+          exitCode: result.exitCode,
+          signal: childSignal,
+          timedOut: result.timedOut,
+          stdoutLen: result.stdout.length,
+          stderrLen: result.stderr.length,
+          stderrTail: result.stderr.slice(-1000),
+        });
+      },
+    });
+  } catch (error) {
+    if (signal?.aborted) return createAgentCancellationResult();
+    throw error;
+  } finally {
+    await artifact?.dispose();
+  }
 }

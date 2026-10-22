@@ -6,6 +6,8 @@ export function initializeExplorationSchema(db: DatabaseSync): void {
     CREATE TABLE IF NOT EXISTS exploration_reports (run_id TEXT NOT NULL REFERENCES exploration_runs(id), scope TEXT NOT NULL, payload_json TEXT NOT NULL, PRIMARY KEY (run_id,scope));
     CREATE TABLE IF NOT EXISTS exploration_attempts (run_id TEXT NOT NULL REFERENCES exploration_runs(id), attempt_key TEXT NOT NULL, payload_json TEXT NOT NULL, PRIMARY KEY (run_id,attempt_key));
     CREATE TABLE IF NOT EXISTS exploration_records (run_id TEXT NOT NULL REFERENCES exploration_runs(id), family TEXT NOT NULL CHECK (family IN ('inclusion','slots','detail')), payload_json TEXT NOT NULL, PRIMARY KEY (run_id,family));
+    CREATE TABLE IF NOT EXISTS component_exploration_cache (cache_key TEXT PRIMARY KEY, origin_run_id TEXT NOT NULL REFERENCES exploration_runs(id), response_text TEXT NOT NULL, response_digest TEXT NOT NULL, created_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS component_exploration_cache_hits (run_id TEXT NOT NULL REFERENCES exploration_runs(id), cache_key TEXT NOT NULL, origin_run_id TEXT NOT NULL REFERENCES exploration_runs(id), scope TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (run_id,cache_key));
   `);
   const columns = new Set(
     (db.prepare('PRAGMA table_info(exploration_runs)').all() as Array<{ name: string }>).map((column) => column.name),

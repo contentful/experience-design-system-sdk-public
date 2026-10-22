@@ -27,9 +27,9 @@ export type Mode = 'autonomous';
  * token-mapping evidence. `content` is the real file text — this pipeline is
  * agent-fs-free by design, so the caller inlines the text here. `null` when
  * the file couldn't be read. `siblingFiles` carries relatively-imported files
- * (e.g. a co-located `.styles.ts`). `truncatedSiblingCount` is set when more
- * resolvable siblings were found than inlined. `usesNotShown` names properties
- * whose uses fell outside the excerpt budget.
+ * (e.g. a co-located `.styles.ts`). `truncatedSiblingCount` and `usesNotShown`
+ * retain omission receipts from partial saved source captures. The filesystem
+ * reader inlines every discovered file in full.
  */
 export interface ComponentSourceRef {
   component: string;
@@ -84,9 +84,8 @@ export interface PromptOptions {
   tokenTree?: Record<string, unknown>;
   /** Component source file references — consumption evidence for the components skill, explicit-restriction evidence (comments, allowlists) for map-tokens. */
   componentSourceRefs?: ComponentSourceRef[];
-  /** Deduplicated source snapshot; its bound covers this source section only. */
+  /** Deduplicated saved source snapshot, included in full. */
   sharedSource?: SharedSource;
-  sourceProjectionMaxBytes?: number;
   /** Custom prompt path override — bundled invariants do NOT apply under an override. */
   skillPathOverride?: string;
   /** Inline prompt instructions, taking precedence over the bundled skill or path override. */
@@ -95,7 +94,7 @@ export interface PromptOptions {
   existingComponentsInline?: string;
   /** JSON-serialized summary of existing space DesignTokens. */
   existingTokensInline?: string;
-  /** Bounded, saved-session source and observation evidence for current selection consumers. */
+  /** Saved-session source and observation evidence for current selection consumers. */
   selectionEvidenceInline?: string;
   /** JSON-serialized hard allowlist for generated slot allowed-components references. */
   componentAllowlistInline?: string;

@@ -11,7 +11,7 @@ export async function loadStageContext(request: ExploreStageRequest): Promise<{
     (
       await loadRendererReference(
         { kind: 'path', path: resolve(request.projectRoot ?? process.cwd(), path) },
-        { signal: request.signal, maxBytes: Math.min(64 * 1024, request.maxPromptBytes ?? 256 * 1024) },
+        { signal: request.signal },
       )
     ).text;
   return {

@@ -104,9 +104,7 @@ export function buildInputSections(options: PromptOptions): string[] {
   }
 
   if (options.sharedSource) {
-    sections.push(
-      renderSharedSource(projectSharedSource(options.sharedSource, options.sourceProjectionMaxBytes ?? 256 * 1024)),
-    );
+    sections.push(renderSharedSource(projectSharedSource(options.sharedSource)));
   } else if (componentSourceRefs && componentSourceRefs.length > 0) {
     const withContent = componentSourceRefs.filter((ref) => ref.content != null);
     const withoutContent = componentSourceRefs.filter((ref) => ref.content == null);

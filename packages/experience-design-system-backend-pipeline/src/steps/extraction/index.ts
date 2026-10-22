@@ -207,6 +207,7 @@ export type {
 } from './src/types/source-input-output.js';
 export { canonicalSourceFactPath } from './src/candidates/bind-source-candidates.js';
 export { discoverSourceEvidence, DEFAULT_SOURCE_DISCOVERY_LIMITS } from './source-evidence/discovery.js';
+export { aggregateExtractionSourceInventory } from './source-evidence/extraction-inventory.js';
 export type { SourceEvidenceInventory, SourceDiscoveryLimits } from './source-evidence/discovery.js';
 export type {
   SourceReferenceIndex,

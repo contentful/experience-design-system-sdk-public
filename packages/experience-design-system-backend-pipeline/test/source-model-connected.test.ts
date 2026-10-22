@@ -45,6 +45,10 @@ afterEach(() => {
 async function fixture() {
   const directory = mkdtempSync(join(tmpdir(), 'source-model-'));
   directories.push(directory);
+  writeFileSync(
+    join(directory, 'tsconfig.json'),
+    JSON.stringify({ compilerOptions: { strict: true, jsx: 'preserve' } }),
+  );
   const file = join(directory, 'Example.tsx');
   writeFileSync(
     file,
@@ -59,6 +63,7 @@ async function fixture() {
   const capture = await captureSourceEvidence({
     projectRoot: directory,
     filePaths: [file],
+    compilerSources: extracted.compilerSources,
     components: saved.map((row) => ({ componentId: row.component_id, name: row.name, sourcePath: file })),
   });
   completeExtractionWithSourceEvidence(db, {
@@ -123,7 +128,10 @@ it('derives compiler-owned records, repeated and tuple models without names and 
       validateRepresentationPlan(plan, model, representationContext(db, sessionId, owner.component_id, property)),
     ).toEqual([]);
     expect(evaluateRepresentationReadiness(plan).ready).toBe(false);
-    expect(plan.models.flatMap((generated) => Object.values(generated.entry.$slots ?? {})).length).toBeGreaterThan(0);
+    if (property === 'settings')
+      expect(plan.models.some((generated) => generated.entry.$properties.nested?.$type === 'record')).toBe(true);
+    else
+      expect(plan.models.flatMap((generated) => Object.values(generated.entry.$slots ?? {})).length).toBeGreaterThan(0);
     if (property === 'rows')
       expect(plan.models.some((generated) => generated.entry.$slots?.items?.$cardinality?.ordered)).toBe(true);
     if (property === 'pair')
@@ -155,6 +163,38 @@ it('atomically selects, edits, reopens and exports only reachable desired models
   let db = initialDb;
   const owner = fresh.find((row) => row.name === 'Example')!,
     other = fresh.find((row) => row.name === 'Other')!;
+  applyToolCalls(
+    db,
+    sessionId,
+    owner.component_id,
+    owner.name,
+    [
+      { tool: 'classify_component' },
+      {
+        tool: 'classify_prop',
+        prop: 'settings',
+        cdf_category: 'content',
+        cdf_type: 'record',
+        fields: {
+          title: { $type: 'string', $required: true, $values: ['a', 'b'] },
+          nested: { $type: 'record', $required: false, $fields: { flag: { $type: 'boolean', $required: true } } },
+        },
+      },
+      {
+        tool: 'classify_prop',
+        prop: 'rows',
+        cdf_category: 'content',
+        reason: 'Choose source representation in review',
+      },
+      {
+        tool: 'classify_prop',
+        prop: 'pair',
+        cdf_category: 'content',
+        reason: 'Choose source representation in review',
+      },
+    ],
+    [],
+  );
   for (const property of ['settings', 'rows', 'pair'])
     selectRepresentationPlan(db, sessionId, owner.component_id, property, 'component-model');
   selectRepresentationPlan(db, sessionId, other.component_id, 'settings', 'component-model');
@@ -171,8 +211,8 @@ it('atomically selects, edits, reopens and exports only reachable desired models
     provenConstraints: [],
     observations: [],
     judgment: 'Use the source-owned editable model',
-    desiredType: cdfToTarget(model.source.shape!).type,
-    desiredDefinition: cdfToTarget(model.source.shape!),
+    desiredType: 'Record' as const,
+    desiredDefinition: cdfToTarget(model.representation!),
   };
   delete (proposal as Partial<typeof model.identity>).nodeId;
   for (const forged of [
@@ -248,8 +288,10 @@ it('atomically selects, edits, reopens and exports only reachable desired models
     spaceId: 'example',
     environmentId: 'example',
   });
-  await expect(client.previewImport(full)).rejects.toThrow('prerequisites');
-  await expect(client.applyImport(full, { acknowledgeBreakingChanges: true })).rejects.toThrow('prerequisites');
+  await expect(client.previewImport(full)).rejects.toThrow('component-model-mapper remains unverified');
+  await expect(client.applyImport(full, { acknowledgeBreakingChanges: true })).rejects.toThrow(
+    'component-model-mapper remains unverified',
+  );
   expect(selected.length).toBe(
     1 +
       loadRepresentationPlans(db, sessionId, owner.component_id).reduce((sum, row) => sum + row.plan.models.length, 0),

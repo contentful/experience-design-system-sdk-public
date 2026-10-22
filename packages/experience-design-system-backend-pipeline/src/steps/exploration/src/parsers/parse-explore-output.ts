@@ -18,6 +18,21 @@ export function parseJsonOutput(output: string): unknown {
   const fence = /^```(?:json)?\s*\n([\s\S]*?)\n```$/.exec(trimmed);
   return JSON.parse(fence ? fence[1]! : trimmed);
 }
+/** A single prose note has the same meaning as a one-item list; decisions stay strict. */
+function normalizeModelingNotes(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || !('components' in value) || !Array.isArray(value.components)) return value;
+  return {
+    ...value,
+    components: value.components.map((component: unknown) =>
+      component &&
+      typeof component === 'object' &&
+      'modelingNotes' in component &&
+      typeof component.modelingNotes === 'string'
+        ? { ...component, modelingNotes: [component.modelingNotes] }
+        : component,
+    ),
+  };
+}
 export function unansweredSlotCandidates(
   components: ExploreCompanion['components'],
   candidates: SlotCandidates = [],
@@ -39,7 +54,12 @@ function parseCompanion(
   requestedComponents?: readonly KnownComponent[],
   proposalSources?: readonly ExploreRepresentationProposalSource[],
 ): ExploreCompanion {
-  const companion = ExploreCompanionSchema.parse(parseJsonOutput(output));
+  const parsed = ExploreCompanionSchema.safeParse(normalizeModelingNotes(parseJsonOutput(output)));
+  if (!parsed.success)
+    throw new Error(
+      `Invalid exploration report: ${parsed.error.issues.map((issue) => `${issue.path.join('.') || 'report'}: ${issue.message}`).join('; ')}`,
+    );
+  const companion = parsed.data;
   if (companion.agentRole !== scope) throw new Error('Exploration scope mismatch');
   assertUnique(
     companion.components.map((component) => JSON.stringify([component.name, component.source])),

@@ -40,13 +40,17 @@ export interface StageOptions {
   identity?: ExplorationIdentity;
   sourceInput?: ExplorationSourceInput;
   sourceRefs?: ExploreSourceRef[];
-  maxPromptBytes?: number;
   existingComponentsInline?: string;
   existingTokensInline?: string;
   existingContextStatus?: { status: 'absent' | 'available' | 'unavailable' | 'omitted'; reason?: string };
   onAttempt?: (attempt: AgentCallAttempt) => void | Promise<void>;
 }
 export interface ExploreStageRequest extends StageOptions {
+  responseCache?: {
+    load: (key: string) => string | undefined;
+    save: (key: string, output: string) => void;
+    hit: (key: string, scope: ExploreScope) => void;
+  };
   scopes: readonly ExploreScope[];
   requestedComponents?: readonly KnownComponent[];
   rawComponentsInline: string;
@@ -61,6 +65,7 @@ export interface ExploreStageRequest extends StageOptions {
   sdkReferencePath?: string;
   rendererReferenceInline?: string;
   existingModelPath?: string;
+  onScopeStart?: (scope: ExploreScope) => void;
   onScopeComplete?: (result: ExploreScopeResult) => void | Promise<void>;
 }
 export interface ExploreRepresentationProposalSource {

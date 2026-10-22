@@ -109,14 +109,13 @@ it('keeps nested configured source, callers and context hashes through first/fin
     expect(compatibility.compilerContexts).toEqual([savedContext]);
     expect(JSON.stringify(compatibility).match(/"compilerOptions":/g)).toHaveLength(1);
     expect(compatibility.siblingFiles?.some((file) => file.content.includes('Local({label:'))).toBe(true);
-    const exploration = buildExplorationSourceInput(saved.envelope, 10000);
+    const exploration = buildExplorationSourceInput(saved.envelope);
     expect(exploration.compilerContexts).toEqual([savedContext]);
     expect(exploration.files.find((file) => file.path === app)?.compilerContextId).toBe(savedContext.contextId);
     const selection = buildSelectionEvidenceInline(saved.envelope);
     expect(JSON.parse(selection).compilerContexts).toEqual([savedContext]);
-    expect(Buffer.byteLength(renderSelectionEvidenceInline(selection), 'utf8')).toBeLessThanOrEqual(
-      capture.bounds.limits.maxPromptBytes,
-    );
+    expect(renderSelectionEvidenceInline(selection)).toContain('compilerOptions');
+    expect(JSON.parse(selection).files).toHaveLength(saved.envelope.capture.files.length);
     const prompts: string[] = [];
     const generated = await runOneGenerateComponent(
       {

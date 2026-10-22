@@ -140,7 +140,7 @@ it('retains non-JSON kinds, discriminator provenance and complete ordered tuple 
   for (const name of ['Big', 'Symbolic', 'Callback']) {
     const declaration = file.getTypeAliasOrThrow(name);
     const captured = captureNativeSource(declaration.getType(), declaration, true, [name]);
-    expect(captured.graph.coverage).toBe('complete-within-declared-bound');
+    expect(captured.graph.coverage).toBe(name === 'Callback' ? 'partial' : 'complete-within-declared-bound');
     expect(captured.shape).toBeNull();
     expect(validateSourceGraph(captured.graph)).toEqual([]);
   }

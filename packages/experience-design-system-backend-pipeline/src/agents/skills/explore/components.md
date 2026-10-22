@@ -11,6 +11,8 @@ AllowedComponents are proposals unless independently supported by an applicable 
 Never set restriction.supported; an independent host-owned support stage decides it. Observed children, defaults and familiar names never close an open domain.
 Preserve declared alternatives/default/requiredness and modeling uncertainty; unavailable evidence is unknown, not a proof of absence.
 
+Output contract: modelingNotes, when present, is an array of strings. slots is an array of objects, never bare names; every slot object requires an explicit isRealSlot boolean, and true requires nonempty source evidence. Optional fields must retain their documented array or boolean types.
+
 Finite choices use `string`, `number` or `boolean` with nonempty, duplicate-free `values` of that same primitive type; preserve the source type and complete proven domain. `enum` is not a representation type. Keep observed source and caller samples in `observedValues`; they do not close a domain or establish `values`. A numeric design value stays numeric source intent unless separate token evidence establishes a token representation; names do not establish that evidence. Mapper readiness remains a separate caller-owned decision.
 
 ## Folder suitability is advisory

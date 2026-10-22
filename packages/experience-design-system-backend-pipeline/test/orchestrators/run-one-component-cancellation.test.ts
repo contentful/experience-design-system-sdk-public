@@ -96,8 +96,7 @@ describe('component generation preparation cancellation', () => {
         result: { stdout: '', stderr: 'failed', exitCode: 1, timedOut: false },
       });
       const running = runOneGenerateComponent(options(controller.signal), component, 0, 1);
-      for (let turn = 0; turn < 30; turn++) await Promise.resolve();
-      expect(deps.invokeAgentWithOutput).toHaveBeenCalledOnce();
+      await vi.waitFor(() => expect(deps.invokeAgentWithOutput).toHaveBeenCalledOnce());
       expect(vi.getTimerCount()).toBe(1);
 
       controller.abort();

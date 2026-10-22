@@ -58,7 +58,7 @@ export async function runCheckStage(request: CheckStageRequest): Promise<CheckSt
             }),
             stageInputInline: JSON.stringify({
               ...work,
-              source: request.sourceInput,
+              sourceInput: request.sourceInput,
               propertyEvidence: propertySourceEvidence(request.representationProposalSources, [work]),
               existingContext: request.existingContextStatus,
             }),

@@ -8,6 +8,7 @@ const deps = vi.hoisted(() => ({
   launchError: vi.fn(),
   extraction: vi.fn(),
   navigate: undefined as ((screen: 'import') => void) | undefined,
+  target: undefined as ((target: 'both') => void) | undefined,
   project: undefined as ((path: string) => void) | undefined,
   tokens: undefined as ((path: string) => void) | undefined,
   files: undefined as ((value: { filePaths: string[]; sourceInventory?: object }) => void) | undefined,
@@ -22,6 +23,10 @@ vi.mock('../../src/tui/home/home.js', () => ({
 }));
 vi.mock('../../src/tui/import/PageContainer.js', () => ({ ImportScreen: () => null }));
 vi.mock('../../src/tui/import/steps/index.js', () => ({
+  PreflightScreen: (props: { onChoose: typeof deps.target }) => {
+    deps.target = props.onChoose;
+    return null;
+  },
   WelcomeScreen: (props: { onContinue: typeof deps.project }) => {
     deps.project = props.onContinue;
     return null;
@@ -41,8 +46,9 @@ vi.mock('../../src/tui/import/steps/index.js', () => ({
   ExtractionScreen: () => null,
   TokenReuseScreen: () => null,
 }));
-vi.mock('../../src/tui/import/shared/index.js', () => ({ ErrorStep: deps.launchError }));
+vi.mock('../../src/tui/import/shared/index.js', () => ({ ErrorStep: deps.launchError, RunningStep: () => null }));
 vi.mock('../../src/tui/import/steps/06-extraction/logic.js', () => ({
+  initialProgress: () => ({}),
   resolveAgentChoice: () => ({ agent: 'claude' }),
   stepNumbers: () => ({}),
 }));
@@ -69,7 +75,10 @@ vi.mock('../../src/tui/settings/configuration/project/project-store.js', () => (
   readCredentials: deps.credentialsRead,
   writeCredentials: vi.fn(),
 }));
-vi.mock('../../src/tui/debug-store.js', () => ({ startImportRun: async () => '/project/.contentful' }));
+vi.mock('../../src/tui/debug-store.js', () => ({
+  startImportRun: async () => '/project/.contentful',
+  recordDebugEvent: vi.fn().mockResolvedValue(undefined),
+}));
 import { runApp } from '../../app.js';
 
 let unmount: (() => void) | undefined;
@@ -78,7 +87,7 @@ beforeEach(() => {
   deps.settings.mockResolvedValue({});
   deps.credentialsRead.mockResolvedValue({});
   deps.extraction.mockReturnValue(undefined);
-  deps.navigate = deps.project = deps.tokens = deps.files = deps.credentials = undefined;
+  deps.navigate = deps.target = deps.project = deps.tokens = deps.files = deps.credentials = undefined;
 });
 afterEach(() => {
   unmount?.();
@@ -106,6 +115,8 @@ describe('App attempt replacement cancellation', () => {
       );
       await vi.waitFor(() => expect(deps.navigate).toBeDefined());
       deps.navigate!('import');
+      await vi.waitFor(() => expect(deps.target).toBeDefined());
+      deps.target!('both');
       await vi.waitFor(() => expect(deps.project).toBeDefined());
       deps.project!('/project');
       await vi.waitFor(() => expect(deps.tokens).toBeDefined());
@@ -165,6 +176,8 @@ it('routes failed import defaults to the actual error screen and clears them on 
   errorProps.onExit();
   await vi.waitFor(() => expect(deps.credentialsRead).toHaveBeenCalledOnce());
   deps.navigate!('import');
+  await vi.waitFor(() => expect(deps.target).toBeDefined());
+  deps.target!('both');
   await vi.waitFor(() => expect(deps.project).toBeDefined());
   deps.project!('/example');
   await vi.waitFor(() => expect(deps.tokens).toBeDefined());

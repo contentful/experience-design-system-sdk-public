@@ -298,21 +298,19 @@ describe('complete stage failure budgets', () => {
       expect(result.attempts.every((attempt) => attempt.ok === false && attempt.stage === 'components-1')).toBe(true);
     },
   );
-  it('records bounded UTF-8 prompt failures without invoking the model', async () => {
-    const invoke = vi.fn(async () => output({}));
+  it('invokes the model with a complete UTF-8 prompt above the former byte cap', async () => {
+    const text = '🙂'.repeat(100_000);
+    const invoke = vi.fn(async (_request: { prompt: string }) => output({ agentRole: 'components-1', components: [] }));
     const result = await api.runExploreStage({
       ...options,
-      maxAttempts: undefined,
-      maxPromptBytes: 128,
-      skillContentOverride: '🙂'.repeat(100),
+      skillContentOverride: text,
       scopes: ['components-1'],
       rawComponentsInline: '[]',
       invoker: { invoke },
     });
-    expect(result.ok).toBe(false);
-    expect(invoke).not.toHaveBeenCalled();
-    if (result.ok) throw new Error('Expected bounded prompt failure');
-    expect(result.attempts).toHaveLength(6);
+    expect(result.ok).toBe(true);
+    expect(invoke).toHaveBeenCalledOnce();
+    expect(invoke.mock.calls[0]?.[0]?.prompt).toContain(text);
   });
   it('retains concurrent check attempts after a failed sibling and dispatches no queued work', async () => {
     const called: string[] = [];
@@ -429,15 +427,19 @@ it('does not create a named slot from slotless component evidence', () => {
   expect(api.deriveSlotsFromExploration(reports, roster, new Set(['Example'])).decisions).toEqual([]);
 });
 
-describe('bounded optional existing context', () => {
-  it('keeps oversized, malformed and missing optional context unavailable', async () => {
+describe('optional existing context', () => {
+  it('retains large valid optional context and marks malformed or missing context unavailable', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'exploration-existing-'));
     try {
       const path = join(directory, 'existing.json');
-      writeFileSync(path, 'x'.repeat(1025));
-      expect(await api.loadExistingExplorationContext(path, { maxBytes: 1024 })).toMatchObject({
-        status: 'unavailable',
-      });
+      const description = 'é'.repeat(100_000);
+      writeFileSync(
+        path,
+        JSON.stringify({ components: [{ sys: { id: 'example' }, name: 'Example', description }], tokens: [] }),
+      );
+      const context = await api.loadExistingExplorationContext(path);
+      expect(context.status).toBe('available');
+      expect(context.existingComponentsInline).toContain(description);
       writeFileSync(path, 'malformed');
       expect(await api.loadExistingExplorationContext(path)).toMatchObject({ status: 'unavailable' });
       expect(await api.loadExistingExplorationContext(join(directory, 'missing.json'))).toMatchObject({

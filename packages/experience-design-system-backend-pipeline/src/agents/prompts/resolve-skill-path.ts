@@ -6,26 +6,28 @@ import type { Skill } from '../types/prompts.js';
 
 export function resolveSkillPath(skill: Skill): string {
   if (!(skill in SKILL_FILES)) throw new Error(`Invalid skill: ${skill}`);
-  // Walk up until we find the skills/ directory (works from both src/ and dist/src/ contexts)
+  const file = SKILL_FILES[skill];
+  const stepDir = skill.startsWith('explore-')
+    ? 'explore'
+    : ['tier', 'verify', 'check'].includes(skill)
+      ? 'consensus'
+      : file === 'select-components.md' || file === 'debate-select.md'
+        ? 'selection'
+        : 'generation';
+  // The CLI carries primary assets; standalone backend builds carry grouped fallbacks.
+  const relativePaths = [
+    ...new Set([skill.startsWith('explore-') ? join('explore', file) : file, join(stepDir, file)]),
+  ];
   const thisDir = dirname(fileURLToPath(import.meta.url));
   let dir = thisDir;
   for (;;) {
-    const candidate = join(dir, 'skills');
-    if (existsSync(candidate)) {
-      // Each skill lives under skills/<step>/<file>; try every subdir until one hits.
-      const file = SKILL_FILES[skill];
-      const stepDir = skill.startsWith('explore-')
-        ? 'explore'
-        : ['tier', 'verify', 'check'].includes(skill)
-          ? 'consensus'
-          : file === 'select-components.md' || file === 'debate-select.md'
-            ? 'selection'
-            : 'generation';
-      return join(candidate, stepDir, file);
+    for (const relativePath of relativePaths) {
+      const candidate = join(dir, 'skills', relativePath);
+      if (existsSync(candidate)) return candidate;
     }
     const parent = resolve(dir, '..');
     if (parent === dir) {
-      throw new Error(`skill file missing from package (could not locate skills/ directory from: ${thisDir})`);
+      throw new Error(`skill file missing from package (could not locate ${file} in skills/ from: ${thisDir})`);
     }
     dir = parent;
   }

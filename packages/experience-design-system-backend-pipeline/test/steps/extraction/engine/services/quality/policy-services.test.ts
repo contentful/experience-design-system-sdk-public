@@ -37,7 +37,7 @@ describe('classification service', () => {
   it('classifies authorable design props and retains DOM provenance for saved results', () => {
     expect(preClassifyProp(prop({ name: 'variant', type: "'solid' | 'ghost'" }))).toEqual({
       category: 'design',
-      cdfTypeHint: 'enum',
+      cdfTypeHint: 'string',
     });
 
     const classified = preClassifyComponent(

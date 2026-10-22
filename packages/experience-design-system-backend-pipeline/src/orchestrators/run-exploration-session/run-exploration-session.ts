@@ -17,7 +17,6 @@ import {
   openPipelineDb,
   getPipelineDbPath,
   loadCompletedSourceEvidence,
-  loadRawComponents,
   loadScopeDecisions,
   loadExtractionSourceDiagnostics,
   type SourceEvidenceHandle,
@@ -46,13 +45,33 @@ import {
 import { checkBoundEvidence } from '../../steps/exploration/src/helpers/check-evidence.js';
 import { buildExplorationSourceInput } from './helpers/build-source-input.js';
 import { buildProposalSources } from './helpers/build-proposal-sources.js';
+import { runSourceAnalysis } from '../../source-analysis/run.js';
 import { loadExistingExplorationContext } from './helpers/load-existing-context.js';
 import { resolveStagePrompts } from './helpers/resolve-stage-prompts.js';
 import { loadRendererReference } from './helpers/load-renderer-reference.js';
 import { writePhaseArtifact } from './helpers/write-phase-artifact.js';
 import { finalizePhaseArtifacts } from './helpers/finalize-phase-artifacts.js';
 import { throwIfAborted } from '../../helpers/abort.js';
+import { createComponentExplorationCache } from '../../persistence/src/session/repositories/exploration/component-cache.js';
+export interface ExplorationProgressEvent {
+  phase: 'components' | 'detail';
+  stage:
+    | 'loading'
+    | 'preparing'
+    | 'cached'
+    | 'exploring'
+    | 'checking'
+    | 'reconciling'
+    | 'verifying'
+    | 'finalizing'
+    | 'complete';
+  done: number;
+  total: number;
+  scope?: string;
+}
 export interface RunExplorationSessionRequest {
+  /** Reuse compatible component explorer calls across imports; successful calls are always saved. */
+  cache?: boolean;
   sessionId: string;
   dbPath?: string;
   agent: AgentName;
@@ -76,6 +95,7 @@ export interface RunExplorationSessionRequest {
   existingComponentsInline?: string;
   existingTokensInline?: string;
   onProgress?: (phase: 'components' | 'detail', scope: string) => void;
+  onActivity?: (event: ExplorationProgressEvent) => void;
 }
 export type RunExplorationSessionResult =
   | { ok: true; runId?: string; skipped?: boolean }
@@ -87,12 +107,33 @@ async function execute(
   throwIfAborted(request.signal);
   const db = openPipelineDb(request.dbPath);
   let runId: string | undefined;
+  const scopes = phase === 'components' ? COMPONENT_SCOPES : DETAIL_SCOPES;
+  const completedScopes = new Set<string>();
+  const activity = (stage: ExplorationProgressEvent['stage'], scope?: string): void => {
+    throwIfAborted(request.signal);
+    request.onActivity?.({
+      phase,
+      stage,
+      done: completedScopes.size,
+      total: scopes.length,
+      ...(scope ? { scope } : {}),
+    });
+  };
   try {
     if (phase === 'detail' && !loadExplorationRun(db, request.sessionId, 'components'))
       return { ok: true, skipped: true };
-    const saved = loadCompletedSourceEvidence(db, request.sessionId, request.sourceEvidenceHandle);
+    activity('loading');
+    const { saved, raw } = await runSourceAnalysis(
+      'loadSession',
+      {
+        dbPath: request.dbPath ?? getPipelineDbPath(),
+        sessionId: request.sessionId,
+        handle: request.sourceEvidenceHandle,
+      },
+      { signal: request.signal },
+    );
+    throwIfAborted(request.signal);
     if (saved.readiness !== 'ready') throw new Error('Completed exploration source evidence unavailable');
-    const raw = loadRawComponents(db, request.sessionId);
     if (new Set(raw.map((component) => component.name)).size !== raw.length)
       throw new Error('Ambiguous duplicate component names are unsupported by the scope gate');
     const human = phase === 'detail' ? loadScopeDecisions(db, request.sessionId) : undefined;
@@ -126,12 +167,12 @@ async function execute(
     let existingContext: Awaited<ReturnType<typeof loadExistingExplorationContext>>;
     let sourceInput: ReturnType<typeof buildExplorationSourceInput>;
     let reference: Awaited<ReturnType<typeof loadRendererReference>>;
+    activity('preparing');
     const prepareStarted = Date.now();
     try {
       prompts = await resolveStagePrompts({
         ...request,
         phase,
-        maxBytes: saved.envelope.capture.bounds.limits.maxPromptBytes,
       });
       existingContext = request.existingContextStatus
         ? {
@@ -140,11 +181,15 @@ async function execute(
             existingTokensInline: request.existingTokensInline,
           }
         : await loadExistingExplorationContext(request.existingEntitiesPath, { signal: request.signal });
-      sourceInput = buildExplorationSourceInput(
-        saved.envelope,
-        Math.min(160 * 1024, Math.floor(saved.envelope.capture.bounds.limits.maxPromptBytes * 0.6)),
-        loadExtractionSourceDiagnostics(db, request.sessionId),
+      sourceInput = await runSourceAnalysis(
+        'projectExploration',
+        {
+          envelope: saved.envelope,
+          diagnostics: loadExtractionSourceDiagnostics(db, request.sessionId),
+        },
+        { signal: request.signal },
       );
+      throwIfAborted(request.signal);
       reference = await loadRendererReference(request.rendererReference, { signal: request.signal });
       await writePhaseArtifact(directory, 'reference.json', reference, request.signal);
     } catch (error) {
@@ -188,7 +233,6 @@ async function execute(
       identity: run,
       sourceInput,
       ...(phase === 'detail' ? { representationProposalSources: buildProposalSources(selected) } : {}),
-      maxPromptBytes: saved.envelope.capture.bounds.limits.maxPromptBytes,
       onAttempt: (attempt: import('@contentful/experience-design-system-types').AgentCallAttempt) =>
         storeExplorationAttempt(db, runId!, attempt),
     };
@@ -207,7 +251,16 @@ async function execute(
     }));
     const exploration = await runExploreStage({
       ...common,
-      scopes: phase === 'components' ? COMPONENT_SCOPES : DETAIL_SCOPES,
+      ...(phase === 'components'
+        ? {
+            responseCache: createComponentExplorationCache(db, runId, {
+              reuse: request.cache === true,
+              onHit: (scope) => activity('cached', scope),
+            }),
+          }
+        : {}),
+      scopes,
+      onScopeStart: (scope) => activity('exploring', scope),
       rawComponentsInline: JSON.stringify(selected),
       slotCandidates,
       requestedComponents: known,
@@ -216,7 +269,7 @@ async function execute(
       onScopeComplete: async (report) => {
         throwIfAborted(request.signal);
         assertScopeCurrent();
-        for (const component of report.companion.components)
+        for (const component of report.companion.components) {
           if (
             !known.some(
               (known) =>
@@ -226,14 +279,21 @@ async function execute(
             )
           )
             throw new Error('Exploration report component/source identity mismatch');
+          const owner = selected.find((raw) => raw.component_id === component.componentId);
+          for (const slot of component.slots ?? [])
+            if (slot.sourceInput && owner) validateComponentSourceInput(owner, slot.sourceInput);
+        }
         storeExplorationReport(db, runId!, report);
         await writePhaseArtifact(directory, `${report.scope}.json`, report, request.signal);
+        completedScopes.add(report.scope);
+        activity('exploring', report.scope);
         request.onProgress?.(phase, report.scope);
       },
     });
     if (!exploration.ok) throw new Error(exploration.error);
     throwIfAborted(request.signal);
     const finalize = async (name: string, payload: unknown): Promise<void> => {
+      activity('finalizing');
       await finalizePhaseArtifacts({
         directory,
         identity: run,
@@ -348,6 +408,7 @@ async function execute(
             reason: 'Independent source restriction requires support check.',
           };
         });
+        activity('checking');
         const checked = await runCheckStage({ ...common, ...prompts.check, components: proofs, verified });
         if (!checked.ok) throw new Error(checked.error);
         for (const item of checked.items)
@@ -393,6 +454,7 @@ async function execute(
       throwIfAborted(request.signal);
       publishExplorationRun(db, runId, { inclusion, slots });
     } else {
+      activity('reconciling');
       const components = loadExplorationReports(db, request.sessionId, 'components').map((report) => ({
         ...report,
         companion: {
@@ -406,8 +468,10 @@ async function execute(
       const tier = await runTierStage({ ...common, ...prompts.tier, disagreements: diff.disagreements });
       if (!tier.ok) throw new Error(tier.error);
       const work = buildVerifyWork({ diff, hypotheses: tier.hypotheses, sourceInput });
+      activity('verifying');
       const verification = await runVerifyStage({ ...common, ...prompts.verify, components: work });
       if (!verification.ok) throw new Error(verification.error);
+      activity('checking');
       const check = await runCheckStage({
         ...common,
         ...prompts.check,
@@ -427,6 +491,7 @@ async function execute(
       assertScopeCurrent();
       publishExplorationRun(db, runId, { detail });
     }
+    activity('complete');
     return { ok: true, runId };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

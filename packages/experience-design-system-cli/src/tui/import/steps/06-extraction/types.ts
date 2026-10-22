@@ -29,6 +29,7 @@ export interface ExtractionProgress {
   scan: { scanned: number; total: number | null } | null;
   composition: CompositionPhase;
   selection: 'running' | 'complete';
+  exploration?: import('@contentful/experience-design-system-backend-pipeline').ExplorationProgressEvent;
   existingEntities: JobStatus;
   tokens: JobStatus;
 }

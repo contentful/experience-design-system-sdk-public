@@ -121,7 +121,7 @@ it.each(['number', 'array', 'record'])(
     );
     try {
       await press('', { return: true });
-      for (let index = 0; index < 3; index++) await press('', { downArrow: true });
+      for (let index = 0; index < (type === 'number' ? 4 : 3); index++) await press('', { downArrow: true });
       await press('', { return: true });
       await press('x', { ctrl: true });
       await press(type === 'number' ? '1e' : '{');

@@ -1,3 +1,4 @@
+import { useInput } from 'ink';
 import React, { useEffect, useRef, useState } from 'react';
 import { HomeScreen } from './src/tui/home/home.js';
 import { ImportScreen } from './src/tui/import/PageContainer.js';
@@ -18,7 +19,7 @@ import {
   type InputAnswers,
 } from './src/tui/import/steps/00-preflight/logic.js';
 import { ErrorStep, RunningStep } from './src/tui/import/shared/index.js';
-import { resolveAgentChoice } from './src/tui/import/steps/06-extraction/logic.js';
+import { initialProgress, resolveAgentChoice } from './src/tui/import/steps/06-extraction/logic.js';
 import { readSettings } from '@contentful/experience-design-system-types/config';
 import { useExtraction } from './src/tui/import/steps/06-extraction/use-extraction.js';
 import type { TokensOnlyInput } from './src/tui/import/steps/06-extraction/run-tokens-only.js';
@@ -162,6 +163,9 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
     credentials: V1Credentials;
   }>();
 
+  // Keep terminal input active when a running screen has no interactive controls.
+  useInput(() => {});
+
   // Read the saved defaults each time the import flow opens, so a change in Settings shows up right away.
   // The screens only read their initial value on mount, so they wait for this to resolve.
   useEffect(() => {
@@ -227,6 +231,13 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
       );
       if (!directoryResult.current) return;
       const outDir = directoryResult.value;
+      await debugResult.value.recordDebugEvent('import.prepare.completed', {
+        attemptId: attempt.id,
+        agent,
+        target,
+        fileCount: launch.filePaths?.length ?? 0,
+      });
+      if (!isActiveAttempt(attempt)) return;
       const input: ExtractionInput = {
         signal: attempt.controller.signal,
         projectPath: resolveUserPath(launch.projectPath ?? ''),
@@ -467,10 +478,19 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
             <ErrorStep stepName={extraction.result.step} message={extraction.result.message} onExit={leaveImport} />
           );
         }
-        if (extraction?.status === 'running') {
-          return <ExtractionScreen progress={extraction.progress} agent={extractionRun.input.agent} />;
-        }
-        return <></>;
+        return (
+          <ExtractionScreen
+            progress={
+              extraction?.status === 'running'
+                ? extraction.progress
+                : initialProgress({
+                    hasCredentials: extractionRun.input.credentials !== null,
+                    hasRawTokens: extractionRun.input.rawTokensPath !== '',
+                  })
+            }
+            agent={extractionRun.input.agent}
+          />
+        );
       }
       if (scopeRun && scopeFlow) {
         if (scopeFlow.status === 'failed') {

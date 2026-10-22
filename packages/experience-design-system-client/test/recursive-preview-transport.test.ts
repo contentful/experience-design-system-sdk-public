@@ -16,14 +16,23 @@ import specification from '../openapi.json' with { type: 'json' };
 afterEach(() => vi.unstubAllGlobals());
 it('connects generated sourceful/sourceless transport and shared recursive public types', async () => {
   expectTypeOf<GeneratedBreakingChange>().toMatchTypeOf<BreakingChange>();
-  expectTypeOf<ServerPreviewResponse['components']['removed'][number]>().toExtend<GeneratedSummary>();
-  const entry: CDFComponentEntry = {
+  type SummaryIdentity = 'id' | 'name' | 'contentProperties' | 'designProperties' | 'slots';
+  expectTypeOf<Pick<ServerPreviewResponse['components']['removed'][number], SummaryIdentity>>().toExtend<
+    Pick<GeneratedSummary, SummaryIdentity>
+  >();
+  const entry = {
     $type: 'component',
-    $properties: JSON.parse(
-      '{"__proto__":{"$type":"record","$category":"content","$required":false,"$fields":{"a/b~c":{"$type":"boolean","$required":true}},"$default":{"a/b~c":false}}}',
-    ),
+    $properties: {
+      ['__proto__']: {
+        $type: 'record',
+        $category: 'content',
+        $required: false,
+        $fields: { 'a/b~c': { $type: 'boolean', $required: true } },
+        $default: { 'a/b~c': false },
+      },
+    },
     $slots: { constructor: { $required: false }, required: { $required: true } },
-  };
+  } satisfies CDFComponentEntry;
   const wireComponent: CdfComponent = entry;
   expect(wireComponent).toEqual(entry);
   const response = {

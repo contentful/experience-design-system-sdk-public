@@ -195,21 +195,26 @@ it('atomically rolls back actual versioned discovery/reference completion and fa
     const limited = structuredClone(completed.envelope);
     limited.capture.bounds.limits.maxPromptBytes = 2200;
     const selection = JSON.parse(buildSelectionEvidenceInline(limited));
-    expect(selection.promptCoverage).toBe('partial');
-    expect(selection.referenceIndexesOmitted).toBe(1);
+    expect(selection.promptCoverage).toBe(limited.capture.coverage);
+    expect(selection.referenceIndexesOmitted).toBe(0);
+    expect(selection.observations.referenceIndexes).toEqual(limited.observations.referenceIndexes);
     expect(
       selection.files?.some((file: { captured: { text?: string } }) =>
         file.captured.text?.includes('export function Surface'),
       ),
     ).toBe(true);
 
-    const shared = projectSharedSource(buildSharedSource(completed.envelope), 2200);
-    expect(shared.promptCoverage).toBe('partial');
-    expect(shared.omittedObservations).toBeGreaterThan(0);
-    expect(shared.omittedInventory).toBe(1);
-    const explored = projectExplorationSource(completed.envelope, 2200);
-    expect(explored.promptCoverage).toBe('partial');
-    expect(explored.omittedObservations).toBeGreaterThan(0);
+    const shared = projectSharedSource(buildSharedSource(completed.envelope));
+    expect(shared.promptCoverage).toBe(completed.envelope.capture.coverage);
+    expect(shared.observations).toEqual(completed.envelope.observations);
+    expect(shared.inventory).toBeDefined();
+    expect(shared.omittedObservations ?? 0).toBe(0);
+    expect(shared.omittedInventory ?? 0).toBe(0);
+    const explored = projectExplorationSource(completed.envelope);
+    expect(explored.promptCoverage).toBe(completed.envelope.capture.coverage);
+    expect(explored.observations).toEqual(completed.envelope.observations);
+    expect(explored.files).toHaveLength(completed.envelope.capture.files.length);
+    expect(explored.omittedObservations ?? 0).toBe(0);
   } finally {
     db.close();
   }

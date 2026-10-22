@@ -15,6 +15,7 @@ import { captureSourceEvidence } from '../../../../experience-design-system-back
 // The agent itself is scripted: it prints the tool calls a real agent would, and records the prompt it was given.
 const agent = vi.hoisted(() => ({
   invocations: [] as Array<{ prompt: string; signal?: AbortSignal }>,
+  debugSinks: [] as Array<((event: string, payload?: Record<string, unknown>) => void) | undefined>,
   result: { stdout: '', stderr: '', exitCode: 0, timedOut: false } as {
     stdout: string;
     stderr: string;
@@ -28,33 +29,38 @@ vi.mock('@contentful/experience-design-system-backend-pipeline', async (importOr
   const actual = await importOriginal<typeof import('@contentful/experience-design-system-backend-pipeline')>();
   return {
     ...actual,
-    createLocalCliAgentInvoker: () => ({
-      invoke: async (options: { prompt: string; signal?: AbortSignal }) => {
-        agent.invocations.push({ prompt: options.prompt, signal: options.signal });
-        const scope = /"scope":"([^"\n]+)"/.exec(options.prompt)?.[1];
-        if (scope) {
-          const input = JSON.parse(options.prompt.split('\nInput data:\n')[1]!.split('\n')[0]!) as {
-            components: Array<{ name: string; source: string; component_id: string }>;
-          };
-          return {
-            stdout: JSON.stringify({
-              agentRole: scope,
-              components: input.components.map((component) => ({
-                name: component.name,
-                source: component.source,
-                componentId: component.component_id,
-                included: true,
-              })),
-            }),
-            stderr: '',
-            exitCode: 0,
-            timedOut: false,
-          };
-        }
+    createLocalCliAgentInvoker: (
+      hooks: { onDebugEvent?: (event: string, payload?: Record<string, unknown>) => void } = {},
+    ) => {
+      agent.debugSinks.push(hooks.onDebugEvent);
+      return {
+        invoke: async (options: { prompt: string; signal?: AbortSignal }) => {
+          agent.invocations.push({ prompt: options.prompt, signal: options.signal });
+          const scope = /"scope":"([^"\n]+)"/.exec(options.prompt)?.[1];
+          if (scope) {
+            const input = JSON.parse(options.prompt.split('\nInput data:\n')[1]!.split('\n')[0]!) as {
+              components: Array<{ name: string; source: string; component_id: string }>;
+            };
+            return {
+              stdout: JSON.stringify({
+                agentRole: scope,
+                components: input.components.map((component) => ({
+                  name: component.name,
+                  source: component.source,
+                  componentId: component.component_id,
+                  included: true,
+                })),
+              }),
+              stderr: '',
+              exitCode: 0,
+              timedOut: false,
+            };
+          }
 
-        return (await agent.waiter) ?? agent.result;
-      },
-    }),
+          return (await agent.waiter) ?? agent.result;
+        },
+      };
+    },
   };
 });
 vi.mock('../../../src/tui/import/steps/06-extraction/find-skill-path.js', () => ({
@@ -120,6 +126,7 @@ describe('runSelection', () => {
     previousDbPath = process.env.EDS_PIPELINE_DB_PATH;
     process.env.EDS_PIPELINE_DB_PATH = join(dir, 'pipeline.db');
     agent.invocations.length = 0;
+    agent.debugSinks.length = 0;
     debug.record.mockClear();
     agent.result = { stdout: '', stderr: '', exitCode: 0, timedOut: false };
   });
@@ -289,12 +296,27 @@ describe('runSelection', () => {
 
     await writeFile(sourcePath, 'export const Card = () => "SELECTION_CAPTURE_B";\n', 'utf8');
     agent.result.stdout = lines({ tool: 'select_component', name: 'Card' });
+    const activity: Array<{ stage: string; done: number; total: number }> = [];
     await runSelection(
       options({
         noCache: true,
         sourceEvidenceHandle: handle,
+        onActivity: (event) => activity.push(event),
         rendererReference: { kind: 'text', text: 'Renderer reference', origin: 'fixture' },
       }),
+    );
+    const debugSink = agent.debugSinks[0];
+    expect(debugSink).toBeTypeOf('function');
+    debugSink?.('run.end', { agent: 'claude', exitCode: 2, stderrTail: 'Example startup failure.' });
+    await vi.waitFor(() =>
+      expect(debug.record).toHaveBeenCalledWith(
+        'run.end',
+        expect.objectContaining({
+          sessionId,
+          exitCode: 2,
+          stderrTail: 'Example startup failure.',
+        }),
+      ),
     );
 
     const prompt = agent.invocations[0]?.prompt ?? '';
@@ -303,6 +325,8 @@ describe('runSelection', () => {
     expect(prompt).toContain('selection-fixture');
     expect(prompt).toContain('"extractionByteBinding":"unverified"');
     expect(agent.invocations).toHaveLength(7);
+    expect(activity[0]).toMatchObject({ stage: 'loading', done: 0, total: 7 });
+    expect(activity.at(-1)).toMatchObject({ stage: 'complete', done: 7, total: 7 });
     const input = JSON.parse(prompt.split('\nInput data:\n')[1]!.split('\n')[0]!);
     expect(input.components[0].sourceCandidates[0].keyPath).toEqual(['__proto__']);
     expect(
@@ -314,7 +338,7 @@ describe('runSelection', () => {
       expect(input.components[0].sourceCandidates).toBeUndefined();
       expect(input.sourceInput.observations).toEqual({ accepted: [], rejected: [] });
     }
-  });
+  }, 30_000);
 
   it('rejects an unavailable supplied completion handle before invoking or saving selection', async () => {
     seed(['Card']);

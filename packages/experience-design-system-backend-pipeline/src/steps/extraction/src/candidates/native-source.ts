@@ -254,7 +254,10 @@ export function captureNativeSource(
   const graph: SourceTypeGraph = {
     schemaVersion: 1,
     used: { propertyEnumerations: 0, enumeratedProperties: 0, wrappedProperties: 0 },
-    limitations: ['compiler-internal-type-resolution-is-not-preemptible'],
+    limitations: [
+      'compiler-internal-type-resolution-is-not-preemptible',
+      'ts-morph-property-wrapper-allocation-is-not-bounded-by-source-node-budget',
+    ],
     rootId: '',
     nodes: [],
     coverage: 'complete-within-declared-bound',
@@ -477,12 +480,10 @@ export function captureNativeSource(
       const rawProperties = t.compilerType.getProperties();
       graph.used!.propertyEnumerations++;
       graph.used!.enumeratedProperties += rawProperties.length;
-      const remaining = graph.limits.maxFields - fieldCount;
-      const properties =
-        rawProperties.length > remaining
-          ? rawProperties.slice(0, remaining).map((symbol) => t.getProperty(symbol.name)!)
-          : t.getProperties();
-      graph.used!.wrappedProperties += properties.length;
+      const remaining = Math.min(graph.limits.maxFields - fieldCount, graph.limits.maxNodes - nodes.size);
+      // ts-morph wraps the full dictionary; getProperty repeats that work for every lookup.
+      const properties = t.getProperties().slice(0, remaining);
+      graph.used!.wrappedProperties += rawProperties.length;
       for (const [index, symbol] of properties.entries()) {
         if (fieldCount >= graph.limits.maxFields) {
           incomplete(node, 'source-field-budget', rawProperties.length - index);

@@ -53,6 +53,7 @@ it('connects actual producer to saved source, fresh session/direct generation, u
   const capture = await captureSourceEvidence({
     projectRoot: directory,
     filePaths: [file],
+    compilerSources: extracted.compilerSources,
     components: [{ componentId: saved.component_id, name: saved.name, sourcePath: file }],
   });
   completeExtractionWithSourceEvidence(db, {
@@ -160,8 +161,14 @@ it('connects actual producer to saved source, fresh session/direct generation, u
     ),
   ).toThrow();
   expect(JSON.stringify(loadCDFComponents(db, sessionId))).toBe(before);
-  expect(evaluateComponentReadiness(db, sessionId, fresh.component_id).import.ready).toBe(true);
-  expect(loadSelectedCDFComponents(db, sessionId, new Set([fresh.component_id]))).toHaveLength(1);
+  const readiness = evaluateComponentReadiness(db, sessionId, fresh.component_id);
+  expect(readiness.definition.ready, JSON.stringify(readiness)).toBe(true);
+  expect(readiness.import.ready).toBe(false);
+  expect(readiness.import.issues).toEqual([
+    'rows/$items/$fields/a.b~1λ/$values (finite-choice mapper unavailable)',
+    'settings/$fields/a.b~1λ/$values (finite-choice mapper unavailable)',
+  ]);
+  expect(() => loadSelectedCDFComponents(db, sessionId, new Set([fresh.component_id]))).toThrow('not ready');
   const cdf = buildCDF([reopened], []);
   expect(validateCDF(cdf).valid).toBe(true);
   expect(JSON.parse(JSON.stringify(cdf))).toEqual(cdf);

@@ -52,7 +52,8 @@ describe('buildVisibleRows nesting', () => {
 
   it('lists direct children of a cycle member once and does not loop', () => {
     const rows = rowsFor({ A: ['B'], B: ['A', 'C'], C: [] }, new Set(['A', 'B']));
-    const cycleChildren = rows.filter((r) => r.key.startsWith('cycle-child:A:'));
-    expect(cycleChildren.map((r) => r.key)).toEqual(['cycle-child:A:B']);
+    const cycleChildren = rows.filter((r) => r.kind === 'group-child' && r.rootName === 'A');
+    expect(cycleChildren).toHaveLength(1);
+    expect(cycleChildren[0]?.label).toContain('B (cycle)');
   });
 });

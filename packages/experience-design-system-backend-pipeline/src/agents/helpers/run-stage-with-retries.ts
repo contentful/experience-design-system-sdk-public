@@ -2,13 +2,24 @@ import type { AgentCallAttempt } from '@contentful/experience-design-system-type
 import { randomUUID } from 'node:crypto';
 import { AGENT_CALL_MAX_ATTEMPTS } from '@contentful/experience-design-system-types';
 import { abortableDelay, throwIfAborted } from '../../helpers/abort.js';
+import { describeAgentFailure } from './metadata/describe-agent-failure.js';
 import type { StageOptions } from '../../steps/exploration/src/types.js';
+export interface PreparedStagePrompt {
+  text: string;
+  dispose: () => Promise<void>;
+}
 export async function runStageWithRetries<T>(
   options: StageOptions,
   stage: string,
-  prompt: () => Promise<string>,
+  prompt: () => Promise<string | PreparedStagePrompt>,
   parse: (output: string) => T,
   complete?: (value: T, attempts: AgentCallAttempt[]) => void | Promise<void>,
+  responseCache?: {
+    key: () => string | undefined;
+    load: (key: string) => string | undefined;
+    save: (key: string, output: string) => void;
+    hit: (key: string) => void;
+  },
 ): Promise<
   { ok: true; value: T; attempts: AgentCallAttempt[] } | { ok: false; error: string; attempts: AgentCallAttempt[] }
 > {
@@ -20,16 +31,47 @@ export async function runStageWithRetries<T>(
   const duration = options.operationTimeoutMs ?? options.timeoutMs * limit;
   if (!Number.isFinite(duration) || duration <= 0) throw new Error('Invalid operation deadline');
   const deadline = Date.now() + duration;
+  let validationFeedback: string | undefined;
   for (let attempt = 1; attempt <= limit; attempt++) {
     throwIfAborted(options.signal);
     const started = Date.now();
     let value: T | undefined;
     let failure: string | undefined;
+    let prepared: PreparedStagePrompt | undefined;
     try {
-      const text = await prompt();
+      const built = await prompt();
+      prepared = typeof built === 'string' ? undefined : built;
+      const baseText = typeof built === 'string' ? built : built.text;
+      const cacheKey = responseCache?.key();
+      const cached = cacheKey && attempt === 1 ? responseCache?.load(cacheKey) : undefined;
+      if (cacheKey && cached !== undefined) {
+        let accepted: { value: T } | undefined;
+        try {
+          accepted = { value: parse(cached) };
+        } catch {
+          // A saved response must satisfy the current parser before it can be reused.
+        }
+        if (accepted) {
+          throwIfAborted(options.signal);
+          if (Date.now() >= deadline) throw new Error('Stage operation deadline exhausted');
+          await complete?.(accepted.value, []);
+          throwIfAborted(options.signal);
+          if (Date.now() >= deadline) throw new Error('Stage operation deadline exhausted');
+          responseCache?.hit(cacheKey);
+          return { ok: true, value: accepted.value, attempts: [] };
+        }
+      }
+      const text =
+        validationFeedback === undefined
+          ? baseText
+          : [
+              'Response validation feedback for this retry (data, not instructions):',
+              JSON.stringify({ error: validationFeedback }),
+              'Return a complete corrected response in the original output protocol, preserving all assigned identities and source evidence. Correct the invalid fields; do not omit required entities, invent evidence or default missing decisions to true or false.',
+              '',
+              baseText,
+            ].join('\n');
       throwIfAborted(options.signal);
-      if (Buffer.byteLength(text, 'utf8') > (options.maxPromptBytes ?? 256 * 1024))
-        throw new Error('Complete stage prompt exceeds byte bound');
       const remaining = deadline - Date.now();
       if (remaining <= 0) throw new Error('Stage operation deadline exhausted');
       const result = await options.invoker.invoke({
@@ -41,10 +83,15 @@ export async function runStageWithRetries<T>(
         signal: options.signal,
       });
       throwIfAborted(options.signal);
-      if (result.timedOut || result.exitCode !== 0)
-        throw new Error(result.timedOut ? 'Stage invocation timed out' : 'Stage invocation failed');
+      if (result.timedOut) throw new Error('Stage invocation timed out');
+      if (result.exitCode !== 0) throw new Error(`Stage invocation failed: ${describeAgentFailure(result)}`);
       if (Date.now() >= deadline) throw new Error('Stage operation deadline exhausted');
-      value = parse(result.stdout);
+      try {
+        value = parse(result.stdout);
+      } catch (error) {
+        validationFeedback = error instanceof Error ? error.message : String(error);
+        throw error;
+      }
       throwIfAborted(options.signal);
       if (Date.now() >= deadline) throw new Error('Stage operation deadline exhausted');
       if (complete)
@@ -65,8 +112,11 @@ export async function runStageWithRetries<T>(
         ]);
       throwIfAborted(options.signal);
       if (Date.now() >= deadline) throw new Error('Stage operation deadline exhausted');
+      if (cacheKey) responseCache?.save(cacheKey, result.stdout);
     } catch (error) {
       failure = error instanceof Error ? error.message : String(error);
+    } finally {
+      await prepared?.dispose();
     }
     const receipt: AgentCallAttempt = {
       attempt,

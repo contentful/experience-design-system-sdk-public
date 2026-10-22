@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { selectCandidateFiles, capCandidatesToPromptBudget } from '../../src/helpers/candidates/candidate-files.js';
+import { selectCandidateFiles } from '../../src/helpers/candidates/candidate-files.js';
 
 describe('selectCandidateFiles', () => {
   it('selects files whose path segment matches a name pattern', () => {
@@ -51,47 +51,5 @@ describe('selectCandidateFiles', () => {
 
     const byContent = selectCandidateFiles([{ path: 'src/x.ts', content: 'createContext' }]);
     expect(byContent[0]!.matchReason).toMatch(/^content:/);
-  });
-});
-
-describe('capCandidatesToPromptBudget', () => {
-  it('keeps all files within budget', () => {
-    const files = [{ path: 'a.ts', content: 'x'.repeat(100) }];
-    const { kept, dropped } = capCandidatesToPromptBudget(files, 1000);
-    expect(kept).toHaveLength(1);
-    expect(dropped).toHaveLength(0);
-  });
-
-  it('drops files that would exceed the token budget', () => {
-    const small = { path: 'small.ts', content: 'x'.repeat(100) };
-    const big = { path: 'big.ts', content: 'x'.repeat(5000) };
-    const { kept, dropped } = capCandidatesToPromptBudget([big, small], 1000);
-    expect(kept).toHaveLength(1);
-    expect(kept[0]!.path).toBe('small.ts');
-    expect(dropped[0]!.path).toBe('big.ts');
-  });
-
-  it('uses PROMPT_CANDIDATE_TOKEN_BUDGET as default', () => {
-    const files = [{ path: 'a.ts', content: 'x' }];
-    const { kept } = capCandidatesToPromptBudget(files);
-    expect(kept).toHaveLength(1);
-  });
-
-  it('returns empty kept and all dropped when budget is 0', () => {
-    const files = [{ path: 'a.ts', content: 'x' }];
-    const { kept, dropped } = capCandidatesToPromptBudget(files, 0);
-    expect(kept).toHaveLength(0);
-    expect(dropped).toHaveLength(1);
-  });
-
-  it('processes smaller files first, filling budget greedily', () => {
-    const files = [
-      { path: 'c.ts', content: 'x'.repeat(400) },
-      { path: 'a.ts', content: 'x'.repeat(100) },
-      { path: 'b.ts', content: 'x'.repeat(200) },
-    ];
-    const { kept, dropped } = capCandidatesToPromptBudget(files, 100);
-    expect(kept.map((f) => f.path).sort()).toEqual(['a.ts', 'b.ts']);
-    expect(dropped[0]!.path).toBe('c.ts');
   });
 });

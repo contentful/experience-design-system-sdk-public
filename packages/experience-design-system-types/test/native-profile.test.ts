@@ -10,6 +10,7 @@ import {
   validateRepresentationProposal,
   validateSourceGraph,
   validateSourceDomain,
+  SAME_SPACE_RESOURCE_SOURCE,
   type PropertyModel,
   type TargetDefinition,
 } from '../src/index.js';
@@ -41,7 +42,7 @@ const model = (): PropertyModel => ({
     },
   },
   category: 'content',
-  representation: { $type: 'number', $required: false },
+  representation: { $type: 'number', $required: false, $values: [0, 1] },
   defaultIntent: { action: 'set', value: 0 },
 });
 const context = { capabilities: { ':mapper': 'enabled' as const, ':default': 'enabled' as const } };
@@ -53,13 +54,12 @@ it.each([
   { type: 'Array', items: { type: 'String' }, defaultValue: [] },
   { type: 'Record', fields: { text: { type: 'String', required: false } }, defaultValue: {} },
   { type: 'Integer', defaultValue: 1 },
-  { type: 'DateTime', defaultValue: 'date' },
+  { type: 'DateTime', defaultValue: '2026-01-01T00:00:00Z' },
   { type: 'RichText' },
   { type: 'JSON' },
   {
     type: 'ResourceLink',
-    allowedResources: [{ type: 'Entry', source: 'same-space' }],
-    defaultValue: { id: 'example' },
+    allowedResources: [{ type: 'Contentful:Entry', source: SAME_SPACE_RESOURCE_SOURCE, allowedTypes: ['example'] }],
   },
   { type: 'Literal', value: null, valueType: { type: 'JSON' }, defaultValue: null },
 ] as TargetDefinition[])('validates modeled $type independently of mapper deployment', (definition) =>
@@ -95,7 +95,7 @@ it('snapshots revision two profile lists and enforces both default capability ga
   mutable.defaultSourceTypes.length = 0;
   expect(profile.defaultSourceTypes).toEqual(['number']);
   expect(Object.isFrozen(profile.defaultSourceTypes)).toBe(true);
-  expect(() => createPropertyProfile({ ...mutable, defaultTargetTypes: ['Integer'] })).toThrow();
+  expect(() => createPropertyProfile({ ...mutable, defaultTargetTypes: ['JSON'] })).toThrow();
   expect(projectProperty(model(), profile, context)).toMatchObject({
     outcome: 'supported',
     target: { defaultValue: 0 },
@@ -121,6 +121,7 @@ it('checks every proven source value and default; observations never narrow open
   original.source.graph.nodes[0]!.domain.declaredValues = [0, 'wrong'];
   expect(projectProperty(original, LOCAL_NATIVE_PROPERTY_PROFILE, context).outcome).toBe('unsupported');
   original.source.graph.nodes[0]!.domain = { openness: 'open', declaredValues: [], provenance: 'compiler' };
+  delete original.representation!.$values;
   original.source.observations = [0];
   expect(
     projectProperty({ ...original, defaultIntent: { action: 'set', value: 2 } }, LOCAL_NATIVE_PROPERTY_PROFILE, context)
@@ -224,7 +225,9 @@ const stringUnionGraph = () => {
   return graph;
 };
 it.each(['small', 'large'])('accepts a default belonging to one proven union branch: %s', (value) => {
-  expect(validateSourceDomain(stringUnionGraph(), { type: 'String', defaultValue: value })).toEqual([]);
+  expect(
+    validateSourceDomain(stringUnionGraph(), { type: 'String', values: ['small', 'large'], defaultValue: value }),
+  ).toEqual([]);
 });
 it('rejects a default outside every proven union branch while retaining member-domain checks', () => {
   expect(validateSourceDomain(stringUnionGraph(), { type: 'String', defaultValue: 'other' })).toContainEqual({

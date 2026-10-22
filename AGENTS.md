@@ -82,7 +82,7 @@ In tests, set `EDS_PIPELINE_DB_PATH` to a temp path to avoid polluting the devel
 
 ## The React Extractor
 
-`packages/experience-design-system-backend-pipeline/src/steps/extraction/src/react.ts` is the most complex file (~2500 lines). Before editing it:
+`packages/experience-design-system-backend-pipeline/src/steps/extraction/src/framework-adapters/react/extractor.ts` is the most complex file (~2500 lines). Before editing it:
 
 1. Understand the DOM attribute prop surfacing strategy — see "DOM attribute prop surfacing" in `ARCHITECTURE.md`
 2. Understand how SVGProps is handled — it is one of the curated DOM attribute wrapper types (`EXPANDABLE_DOM_ATTRIBUTE_TYPE_NAMES`)
@@ -104,23 +104,31 @@ The CLI owns wizard routing and calls the backend pipeline directly. The backend
 - `packages/experience-design-system-backend-pipeline/src/agents/prompts/` builds prompts from a skill file and runtime preamble; its prompt loader resolves bundled fallback skills
 - `packages/experience-design-system-backend-pipeline/src/orchestrators/` owns component and token generation sessions
 - `packages/experience-design-system-backend-pipeline/src/agents/skills/` is the source of the skill files copied into `packages/experience-design-system-cli/skills/` by the CLI `copy-assets` target
-- Matching fallback skill copies live under `packages/experience-design-system-backend-pipeline/src/agents/skills/`; the CLI passes its packaged skill paths to backend generation
+- Matching fallback skill copies live under `packages/experience-design-system-backend-pipeline/src/agents/skills/`; the CLI passes its packaged skill paths to backend generation. Backend skill lookup checks the actual file in the primary CLI layout (flat generation/selection plus `explore/` and `consensus/`) and grouped fallback layout. Exploration prepares all stage skill content before invoking an agent, so missing reconciliation assets fail during preparation.
 
 Generated data stays in the backend session database until the CLI review and save flow. Generated component and token data are validated within the import path; generation agents use the pre-emit output checklist and warning rules rather than a separate CLI validation route.
 
-Raw components are loaded from the session DB and embedded as an inline JSON block in the prompt — the agent never reads a file path. `PromptOptions.rawComponentsInline` carries this string; `rawComponentsPath` does not exist.
+Raw components are loaded from the session DB and embedded as an inline JSON block in the logical prompt. `PromptOptions.rawComponentsInline` carries this string; `rawComponentsPath` does not exist. Oversized Codex turns use a private temporary artifact of the complete prompt so the subprocess can inspect immutable supplied evidence without exceeding its initial-turn input limit; this is transport, not a file-based handoff between pipeline stages. Both local runners share this behavior and clean the artifact only after the subprocess settles.
+
+Exploration, reconciliation and verification summarize routine compiler-read diagnostics and group source exclusions. Full diagnostics remain saved, and an invocation-scoped private JSON audit preserves exact receipts for read-only inspection. Coverage, configuration warnings, resolution outcomes, notable read failures and changed bindings stay visible; unknown diagnostics stay inline. The audit remains available until the invocation settles and is cleaned on every exit path.
 
 The output protocol for component and token generation: the agent emits one JSON tool-call object per line to stdout. The backend pipeline parses these lines in `packages/experience-design-system-backend-pipeline/src/agents/parsers/parse-tool-calls.ts` and `parse-token-tool-calls.ts`.
 
-The output protocol for the selection agent: the agent emits exactly one JSON object on a single line — either `{"tool":"select_component",...}` or `{"tool":"reject_component",...}`. The backend pipeline parses it in `packages/experience-design-system-backend-pipeline/src/agents/parsers/parse-select-tool-calls.ts`.
+Component generation prepends the exact host-owned decision inventory to every attempt; corrections put rejected/missing subjects before source context. Advisory props can omit retained source inputs, so they are not the completeness checklist. A slot covers a source input only through an explicit accepted source-input association; matching names alone do not establish ownership. Every `classify_prop` requires a semantic category, including unresolved representations with no `cdf_type`; missing categories remain invalid. Prompt-only repairs can be checked through builds and static checks without running a live agent evaluation.
 
-**Do not use agent SDKs or APIs** — the import wizard invokes agents as subprocesses only. This is a firm constraint.
+An explicit `exclude_prop` still requires a current source snapshot and verified declaration ranges, but it does not require a complete editable type shape or resolved type/default dependencies. Represented properties retain full graph coverage and binding checks; an unknown type alone never creates an exclusion.
 
 Generation receives current, component-scoped exploration consensus, independently checked judgments, disagreements, hypotheses and modeling notes as advisory evidence. Reuse compatible judgments and explain departures; these records never overwrite source facts, narrow an open domain, change accepted source-owned slots or bypass property validation. The handoff checks the completed detail run, parent component run, source envelope and human scope before building the prompt; current-run checks still execute before decisions are applied.
 
 Both generation entrypoints enable canonical representation validation through `generateCompleteDecisions`. The agent receives structured per-property feedback and may run only the exact supplied read-only draft validator against immutable invocation evidence; live source reads and execution remain forbidden. Two attempts share one deadline, successful decisions remain fixed, and only missing decisions or pending representation metadata may be repaired. Unresolved properties retain semantic decisions and concrete reasons without invalid representation companions; `complete` accounts for the inventory, while `representationsComplete` reports local admission. Held-result review routing remains separate and may still block generation.
 
 Compiler configuration lookup searches bounded ancestors above the selected source root without widening discovery or component scope. Exact config/extends/reference bytes requested by the compiler are carried into capture, including package JSON configuration snapshots; standalone capture without those snapshots retains its inherited package-extends limitation. Nullability records present/absent/unknown separately for null and undefined: enabled strict checking can prove absence, direct syntax or alias evidence can prove presence, and compiler-erased or unresolved absence stays unknown.
+
+Accepted source slots that retain their original input name can receive their source-input identity from verified compiler declarations, parameter bindings and positive returned-output witnesses during publication and reopen. This binds an existing accepted slot; it does not infer slot authorability or restrictions from a name or framework. Explicit associations and human decisions are preserved, and ambiguous or unbound inputs remain unassociated. Input/output evidence binds to the component declaration and its own captured locations; unavailable unrelated closure nodes do not invalidate that local identity. Unresolved property calls omit `required` as well as other representation metadata; original requiredness stays in source evidence.
+
+The output protocol for the selection agent: the agent emits exactly one JSON object on a single line — either `{"tool":"select_component",...}` or `{"tool":"reject_component",...}`. The backend pipeline parses it in `packages/experience-design-system-backend-pipeline/src/agents/parsers/parse-select-tool-calls.ts`.
+
+**Do not use agent SDKs or APIs** — the import wizard invokes agents as subprocesses only. This is a firm constraint.
 
 ## The Selection Agent
 
@@ -159,6 +167,16 @@ The scope gate (`steps/07-scope-gate`) shows two columns at 100 or more terminal
 ## Session Persistence
 
 **Pipeline sessions** (extraction, internal generation, review) are in `pipeline.db` as described above. Override with `EDS_PIPELINE_DB_PATH`.
+
+### Component exploration cache
+
+- Normal imports automatically reuse completed `components-1` through `components-7` responses across fresh source sessions; no resume flag or saved-source route is needed.
+- Each response is saved after current parsing, assigned-component/source checks, source-input ownership checks and scope-report persistence, independently of later scope or phase failures.
+- Keys hash source bytes and evidence, coverage/omissions, component/slot candidates, full compiler diagnostics, bundled rules/skill, renderer content, existing-entity context, agent/model and Bedrock mode. Session/run/capture identity, source-closure capture-binding identity, renderer retrieval time and discovery timing do not define task identity; current source binding remains required.
+- Reused output is checksum-checked and reparsed; reports and accepted decisions are written under the current run and ownership/publication validation still executes. Separate cache-hit records retain original run provenance without pretending to invoke an agent again.
+- `--no-cache` bypasses reads and still saves new successful responses. Unknown/default-auto models cannot reuse responses; set a model in settings or with `--agent agent:model`. Unfingerprinted historical reports require one fresh pass.
+- Import-owned `.contentful` output is excluded from source discovery so debug logs, entity snapshots and generated import files do not change the next import's source evidence. Other generated source remains discoverable.
+- Source extraction/composition and component generation continue to run fresh; detail inventories and reconciliation/verification are outside this component-explorer cache. Bump the cache revision in `build-explore-cache-key.ts` when changed semantics require invalidating prior answers.
 
 The legacy `import.db` is read only by the session migration when present; the current apply flow does not use it for per-entity push resumption.
 

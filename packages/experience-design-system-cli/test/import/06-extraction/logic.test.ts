@@ -70,7 +70,7 @@ describe('progressRows', () => {
     expect(rows).toEqual([
       { text: 'Scanning files...', complete: false },
       { text: 'Mapping composition via claude...', complete: false },
-      { text: 'Filtering component selection via claude...', complete: false },
+      { text: 'Component exploration waiting for source evidence...', complete: false },
       { text: 'Fetching existing components and tokens...', complete: false },
       { text: 'Generating token definitions via claude...', complete: false },
     ]);
@@ -213,5 +213,38 @@ describe('resolveAgentChoice', () => {
 
   it('ignores saved values that are not strings', () => {
     expect(resolveAgentChoice(undefined, { agent: 7, agentModel: null })).toEqual({ agent: 'claude' });
+  });
+});
+
+describe('exploration progress rows', () => {
+  it('distinguishes saved-evidence loading from agent work', () => {
+    const row = progressRows(
+      base({ exploration: { phase: 'components', stage: 'loading', done: 0, total: 7 } }),
+      'codex',
+    )[2];
+    expect(row?.text).toBe('Loading saved component evidence...');
+    expect(row?.progress).toBeUndefined();
+  });
+  it('shows the active explorer and counts only completed scopes', () => {
+    const row = progressRows(
+      base({ exploration: { phase: 'components', stage: 'exploring', scope: 'components-3', done: 2, total: 7 } }),
+      'codex',
+    )[2];
+    expect(row).toMatchObject({
+      text: 'Exploring components via codex — components-3',
+      complete: false,
+      progress: { done: 2, total: 7 },
+    });
+  });
+  it('keeps finalization visible after every report has completed', () => {
+    const row = progressRows(
+      base({ exploration: { phase: 'components', stage: 'finalizing', done: 7, total: 7 } }),
+      'codex',
+    )[2];
+    expect(row).toMatchObject({
+      text: 'Saving component exploration results...',
+      complete: false,
+      progress: { done: 7, total: 7 },
+    });
   });
 });

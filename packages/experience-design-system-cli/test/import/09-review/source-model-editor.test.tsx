@@ -50,6 +50,10 @@ afterEach(() => {
 });
 it('chooses and edits a source model through mounted review handlers with canonical persisted identity', async () => {
   directory = mkdtempSync(join(tmpdir(), 'model-editor-'));
+  writeFileSync(
+    join(directory, 'tsconfig.json'),
+    JSON.stringify({ compilerOptions: { strict: true, jsx: 'preserve' } }),
+  );
   const file = join(directory, 'Example.tsx');
   writeFileSync(
     file,
@@ -65,6 +69,7 @@ it('chooses and edits a source model through mounted review handlers with canoni
   const capture = await captureSourceEvidence({
     projectRoot: directory,
     filePaths: [file],
+    compilerSources: extracted.compilerSources,
     components: [{ componentId: owner.component_id, name: owner.name, sourcePath: file }],
   });
   completeExtractionWithSourceEvidence(db, {

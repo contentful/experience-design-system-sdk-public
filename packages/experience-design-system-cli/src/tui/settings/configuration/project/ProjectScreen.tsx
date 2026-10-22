@@ -163,6 +163,7 @@ export function ProjectScreen({ onDone }: { onDone: () => void }): React.ReactEl
       .then(() => {
         if (!active.current) return;
         visit.persisted = snapshotOf(config);
+        visit.error = '';
         visit.trail.record('saved');
         // Start the session folder now rather than at the next launch.
         if (config.contentfulBaseDir)
@@ -204,6 +205,8 @@ export function ProjectScreen({ onDone }: { onDone: () => void }): React.ReactEl
       onQuit={quit}
       notice={notice}
       busy={saving}
-    />
+    >
+      {saving && <Text color={PALETTE.muted}>Saving; the submitted save may still finish after leaving.</Text>}
+    </FieldForm>
   );
 }

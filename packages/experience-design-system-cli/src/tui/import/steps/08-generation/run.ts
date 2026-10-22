@@ -18,6 +18,7 @@ import { findSkillPath } from '../06-extraction/find-skill-path.js';
 import { agentAuthMessage } from '../06-extraction/logic.js';
 import { prepareMapTokens } from './map-tokens.js';
 import { saveDecisions } from './save-decisions.js';
+import { initialProgress } from './logic.js';
 
 const COMPONENTS_SKILL_PATH = findSkillPath('generate-components.md');
 const MAP_TOKENS_SKILL_PATH = findSkillPath('map-tokens.md');
@@ -55,7 +56,7 @@ export async function runGeneration(
   deps: GenerationDeps = realDeps,
 ): Promise<GenerationResult> {
   const signal = input.signal;
-  let progress: GenerationProgress = { components: null, mapTokens: 'idle', mapTokensEligible: null };
+  let progress = initialProgress();
   const update = (change: Partial<GenerationProgress>): void => {
     if (signal?.aborted) return;
     progress = { ...progress, ...change };
@@ -74,6 +75,7 @@ export async function runGeneration(
 
   try {
     throwIfAborted(signal);
+    update({ stage: 'saving-decisions' });
     await deps.saveDecisions({ sessionId: input.sessionId, decisions: input.decisions, signal });
     throwIfAborted(signal);
   } catch (error) {
@@ -85,6 +87,7 @@ export async function runGeneration(
   let auth: Awaited<ReturnType<GenerationDeps['checkAgentAuth']>>;
   try {
     throwIfAborted(signal);
+    update({ stage: 'authenticating' });
     auth = await deps.checkAgentAuth(input.agent as AgentName);
     throwIfAborted(signal);
   } catch (error) {
@@ -98,6 +101,7 @@ export async function runGeneration(
     throwIfAborted(signal);
     const { errors } = parsePromptOverrides(input.promptOverrides);
     if (errors.length) throw new Error(errors.join('; '));
+    update({ stage: 'exploring' });
     const detail = await deps.runDetail?.({
       sessionId: input.sessionId,
       agent: input.agent as AgentName,
@@ -106,6 +110,7 @@ export async function runGeneration(
       promptOverrides: input.promptOverrides,
       existingEntitiesPath: input.existingEntitiesPath,
       signal,
+      onActivity: (event) => update({ exploration: event }),
     });
     throwIfAborted(signal);
     if (detail && !detail.ok) return fail('explore selected components', detail.error);
@@ -117,6 +122,10 @@ export async function runGeneration(
   let generated: RunGenerateComponentsSessionResponse;
   try {
     throwIfAborted(signal);
+    update({
+      stage: 'generating',
+      components: { done: 0, total: accepted.length, current: '' },
+    });
     generated = await deps.runGenerate({
       sessionId: input.sessionId,
       agent: input.agent,
@@ -127,7 +136,19 @@ export async function runGeneration(
       signal,
       existingEntitiesPath: input.existingEntitiesPath,
       precomputedCachedNames: new Set(handedOverNames),
-      onProgress: (event) => update({ components: applyProgressEvent(event, progress.components, accepted.length) }),
+      onProgress: (event) => {
+        const activeComponents =
+          event.kind === 'component:slot-renamed'
+            ? progress.activeComponents
+            : progress.activeComponents.filter((active) => active.name !== event.name);
+        if (event.kind === 'component:started')
+          activeComponents.push({ name: event.name, attempt: event.attempt, maxAttempts: event.maxAttempts });
+        update({
+          components: applyProgressEvent(event, progress.components, accepted.length),
+          activeComponents,
+          failedComponents: progress.failedComponents + (event.kind === 'component:failed' ? 1 : 0),
+        });
+      },
       onDebugEvent: (event, payload) => {
         debugWrites.push(recordDebugEvent(event, { ...payload, sessionId: input.sessionId }));
       },
@@ -148,6 +169,7 @@ export async function runGeneration(
   let plan;
   try {
     throwIfAborted(signal);
+    update({ stage: 'preparing-token-mapping' });
     plan = await deps.prepareMapTokens({ ...input, signal }, input.sessionId);
     throwIfAborted(signal);
   } catch (error) {
@@ -155,7 +177,7 @@ export async function runGeneration(
   }
   update({ mapTokensEligible: plan.eligible });
   if (plan.eligible) {
-    update({ mapTokens: 'running' });
+    update({ stage: 'mapping-tokens', mapTokens: 'running' });
     try {
       throwIfAborted(signal);
       const mapTokensOptions = await deps.prepareMapOptions(input, signal);
@@ -176,7 +198,7 @@ export async function runGeneration(
       return fail('map tokens', message);
     }
   }
-  update({ mapTokens: 'complete' });
+  update({ stage: 'complete', mapTokens: 'complete' });
 
   await new Promise<void>((r) => setImmediate(r));
   if (signal?.aborted) return fail('generate components', 'The operation was aborted.');
