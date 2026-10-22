@@ -5,7 +5,6 @@ import { formLabelWidth, type FormField, type FormNotice } from '@tui/shared/com
 import { ClearableTextInput } from '@tui/shared/components/ClearableTextInput.js';
 import { ControlHints } from '@tui/shared/components/ControlHints.js';
 import { StepHeader } from '@tui/shared/components/StepHeader.js';
-import { useTerminalWidth } from '@tui/use-terminal-width.js';
 import {
   credentialsPurpose,
   isUnchanged,
@@ -41,19 +40,6 @@ const MENU: readonly { choice: MenuChoice; label: string; description: string }[
   { choice: 'continue', label: 'Continue', description: 'Check the credentials and go on' },
   { choice: 'edit', label: 'Edit', description: 'Change the credentials' },
 ];
-
-/** A section label drawn as a faint rule with the name inline, such as "── Actions ────────", so it reads as a divider. */
-function SectionLabel({ label, active = false }: { label: string; active?: boolean }): React.ReactElement {
-  const columns = useTerminalWidth();
-  const rule = '─'.repeat(Math.max(2, columns - label.length - 8));
-  return (
-    <Text color={PALETTE.border} dimColor={!active}>
-      {'── '}
-      <Text color={active ? PALETTE.accent : PALETTE.muted}>{label}</Text>
-      {` ${rule}`}
-    </Text>
-  );
-}
 
 export function CredentialsScreen({
   onDone,
@@ -138,7 +124,9 @@ export function CredentialsScreen({
     <Box flexDirection="column">
       <StepHeader step="setup" />
       <Box flexDirection="column" paddingX={2} paddingBottom={1}>
-        <Text bold>Contentful Credentials</Text>
+        <Text bold color={PALETTE.accent}>
+          Contentful Credentials
+        </Text>
         <Text> </Text>
         <Text color={PALETTE.muted}>
           {prefilled
@@ -146,7 +134,7 @@ export function CredentialsScreen({
             : 'Enter the Contentful space you want to import into.'}
         </Text>
         <Text> </Text>
-        <SectionLabel label="Actions" active={!editing} />
+        <Text color={PALETTE.muted}>Actions</Text>
         {MENU.map((item, index) => {
           const focused = !editing && index === focus;
           return (
@@ -161,8 +149,16 @@ export function CredentialsScreen({
             </Box>
           );
         })}
-        <Box flexDirection="column" marginTop={1}>
-          <SectionLabel label="Space" active={editing} />
+        <Box
+          flexDirection="column"
+          marginTop={1}
+          borderStyle="single"
+          borderColor={PALETTE.border}
+          borderBottom={false}
+          borderLeft={false}
+          borderRight={false}
+        >
+          <Text color={PALETTE.muted}>Space</Text>
           {FIELDS.map((field, index) => {
             const open = editing && index === active;
             const value = values[field.key];
