@@ -10,8 +10,6 @@ export type ScanResult =
 
 export type PathPhase = 'scanning' | 'ready' | 'failed';
 
-export type KeyAction = 'confirm' | 'change-path' | 'back';
-
 export interface SummaryRow {
   label: string;
   count: number;
@@ -27,11 +25,6 @@ export interface Summary {
 export interface FailureMessage {
   headline: string;
   hints: string[];
-}
-
-interface Key {
-  escape: boolean;
-  return: boolean;
 }
 
 const COMPONENT_CATEGORIES: FileCategory[] = ['tsx', 'ts', 'vue', 'astro', 'jsx', 'js'];
@@ -104,14 +97,4 @@ export function summarize(counts: FileCounts, { hasTokens = true }: { hasTokens?
 export function phaseOf(scan: ScanResult | undefined): PathPhase {
   if (scan === undefined) return 'scanning';
   return scan.ok ? 'ready' : 'failed';
-}
-
-export function keyAction(phase: PathPhase, input: string, key: Key): KeyAction | undefined {
-  if (key.escape) return 'back';
-  if (phase === 'ready') {
-    if (key.return) return 'confirm';
-    if (input === 'e') return 'change-path';
-  }
-  if (phase === 'failed' && (key.return || input === 'e')) return 'change-path';
-  return undefined;
 }

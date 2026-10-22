@@ -1,11 +1,6 @@
-import React, { useState } from 'react';
-import { Box, Text } from 'ink';
-import { PALETTE } from '@tui/theme.js';
-import { ClearableTextInput } from '../../../shared/components/ClearableTextInput.js';
-import { WELCOME_CONTROLS, useWelcomeControls } from './controls.js';
+import React from 'react';
+import { PathStepScreen } from '@tui/shared/components/PathStepScreen.js';
 import { toProjectPath } from './logic.js';
-import { ControlHints } from '@tui/shared/components/ControlHints.js';
-import { StepHeader } from '@tui/shared/components/StepHeader.js';
 
 interface WelcomeScreenProps {
   onContinue: (projectPath: string) => void;
@@ -14,32 +9,16 @@ interface WelcomeScreenProps {
 }
 
 export function WelcomeScreen({ onContinue, onQuit, initialPath = '' }: WelcomeScreenProps): React.ReactElement {
-  const [projectPath, setProjectPath] = useState(initialPath);
-
-  useWelcomeControls(onQuit);
-
-  const submit = (value: string) => {
-    const path = toProjectPath(value);
-    if (path) onContinue(path);
-  };
-
   return (
-    <Box flexDirection="column">
-      <StepHeader step="setup" />
-      <Box flexDirection="column" gap={1} paddingX={2} paddingBottom={1}>
-        <Box flexDirection="column" gap={1}>
-          <Text color={PALETTE.text}>Where is your component library?</Text>
-          <Box>
-            <Text color={PALETTE.accent}>? </Text>
-            <Text>Project path: </Text>
-            <ClearableTextInput value={projectPath} onChange={setProjectPath} onSubmit={submit} />
-          </Box>
-        </Box>
-
-        <Box>
-          <ControlHints hints={WELCOME_CONTROLS} />
-        </Box>
-      </Box>
-    </Box>
+    <PathStepScreen
+      title="Where is your component library?"
+      subtitle="The folder with your components. You can use ~, relative, or absolute paths."
+      label="Project path"
+      initialPath={initialPath}
+      toPath={toProjectPath}
+      check={(path) => ({ ok: true, path })}
+      onContinue={onContinue}
+      onBack={onQuit}
+    />
   );
 }

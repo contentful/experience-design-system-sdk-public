@@ -1,14 +1,8 @@
 import React, { useRef, useState } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Text } from 'ink';
 import { PALETTE } from '@tui/theme.js';
-import {
-  FieldForm,
-  FormReadOnlyRow,
-  formLabelWidth,
-  type FormField,
-  type FormNotice,
-} from '@tui/shared/components/FieldForm.js';
-import { ControlHints } from '@tui/shared/components/ControlHints.js';
+import { FieldForm, type FormField, type FormNotice } from '@tui/shared/components/FieldForm.js';
+import { MenuScreen, type MenuItem } from '@tui/shared/components/MenuScreen.js';
 import { StepHeader } from '@tui/shared/components/StepHeader.js';
 import {
   credentialsPurpose,
@@ -40,99 +34,12 @@ const FIELDS: readonly FormField<CredentialField>[] = [
 
 type MenuChoice = 'continue' | 'edit' | 'skip' | 'quit';
 
-const MENU: readonly { choice: MenuChoice; label: string; description: string }[] = [
+const MENU: readonly MenuItem<MenuChoice>[] = [
   { choice: 'continue', label: 'Continue', description: 'Check the credentials and go on' },
   { choice: 'edit', label: 'Edit', description: 'Change the credentials' },
   { choice: 'skip', label: 'Skip', description: 'Save files only, nothing is pushed' },
   { choice: 'quit', label: 'Quit', description: 'Go back' },
 ];
-
-interface CredentialsReviewProps {
-  values: CredentialValues;
-  subtitle: string;
-  notice: FormNotice | null;
-  validating: boolean;
-  onChoose: (choice: MenuChoice) => void;
-  children?: React.ReactNode;
-}
-
-/** The credentials as read-only text with a menu above them, so Enter on Continue is all it takes to go on. */
-function CredentialsReview({
-  values,
-  subtitle,
-  notice,
-  validating,
-  onChoose,
-  children,
-}: CredentialsReviewProps): React.ReactElement {
-  const [focus, setFocus] = useState(0);
-
-  useInput((_input, key) => {
-    if (validating) return;
-    if (key.escape) onChoose('quit');
-    else if (key.return) onChoose(MENU[focus]!.choice);
-    else if (key.upArrow) setFocus((current) => (current - 1 + MENU.length) % MENU.length);
-    else if (key.downArrow || key.tab) setFocus((current) => (current + 1) % MENU.length);
-  });
-
-  const labelWidth = formLabelWidth([...FIELDS, ...MENU]);
-
-  return (
-    <Box flexDirection="column">
-      <StepHeader step="setup" />
-      <Box flexDirection="column" paddingX={2} paddingBottom={1}>
-        <Text bold>Contentful Credentials</Text>
-        <Text> </Text>
-        <Text color={PALETTE.muted}>{subtitle}</Text>
-        <Text> </Text>
-        {MENU.map((item, index) => {
-          const focused = index === focus;
-          return (
-            <Box key={item.choice} gap={1}>
-              <Text color={focused ? PALETTE.accent : undefined}>{focused ? '❯' : ' '}</Text>
-              <Box width={labelWidth} flexShrink={0}>
-                <Text bold={focused} color={focused ? PALETTE.accent : PALETTE.muted}>
-                  {item.label}
-                </Text>
-              </Box>
-              <Text color={PALETTE.muted}>{item.description}</Text>
-            </Box>
-          );
-        })}
-        <Text> </Text>
-        {FIELDS.map((field) => {
-          const value = values[field.key];
-          return (
-            <FormReadOnlyRow key={field.key} label={field.label} labelWidth={labelWidth}>
-              <Text bold={value !== ''}>{field.masked ? '•'.repeat(value.length) : value || '(empty)'}</Text>
-            </FormReadOnlyRow>
-          );
-        })}
-        {notice && (
-          <>
-            <Text> </Text>
-            <Text color={PALETTE.error}>✗ {notice.text}</Text>
-          </>
-        )}
-        {validating && (
-          <>
-            <Text> </Text>
-            <Text color={PALETTE.accent}>Validating credentials...</Text>
-          </>
-        )}
-        {children}
-        <Text> </Text>
-        <ControlHints
-          hints={[
-            { keys: '↑/↓', label: 'move' },
-            { keys: '⏎', label: MENU[focus]!.label.toLowerCase() },
-            { keys: 'Esc', label: 'back' },
-          ]}
-        />
-      </Box>
-    </Box>
-  );
-}
 
 export function CredentialsScreen({
   onDone,
@@ -184,14 +91,37 @@ export function CredentialsScreen({
 
   if (!editing) {
     return (
-      <CredentialsReview values={values} subtitle={subtitle} notice={notice} validating={validating} onChoose={choose}>
+      <MenuScreen
+        title="Contentful Credentials"
+        subtitle={subtitle}
+        menu={MENU}
+        rows={FIELDS.map((field) => ({
+          label: field.label,
+          value: field.masked ? '•'.repeat(values[field.key].length) : values[field.key],
+        }))}
+        onChoose={choose}
+        onEscape={onBack}
+        busy={validating}
+      >
+        {notice && (
+          <>
+            <Text> </Text>
+            <Text color={PALETTE.error}>✗ {notice.text}</Text>
+          </>
+        )}
+        {validating && (
+          <>
+            <Text> </Text>
+            <Text color={PALETTE.accent}>Validating credentials...</Text>
+          </>
+        )}
         {!isUnchanged(normalize(values), initialValues) && (
           <>
             <Text> </Text>
             <Text color={PALETTE.muted}>Changed values are saved after they validate.</Text>
           </>
         )}
-      </CredentialsReview>
+      </MenuScreen>
     );
   }
 

@@ -2,11 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Text } from 'ink';
 import { PALETTE } from '@tui/theme.js';
 import { resolveUserPath } from '../../resolve-user-path.js';
-import { controlsFor, usePathValidationControls } from './controls.js';
 import { scanFiles } from './helpers/scan-files.js';
-import { describeFailure, phaseOf, summarize, type ScanResult, type SummaryRow } from './logic.js';
-import { ControlHints } from '@tui/shared/components/ControlHints.js';
-import { StepHeader } from '@tui/shared/components/StepHeader.js';
+import { describeFailure, phaseOf, summarize, type PathPhase, type ScanResult, type SummaryRow } from './logic.js';
+import { MenuScreen, type MenuItem } from '@tui/shared/components/MenuScreen.js';
 
 interface PathValidationScreenProps {
   projectPath: string;
@@ -16,6 +14,20 @@ interface PathValidationScreenProps {
   /** False when the import does not generate tokens, so `.json` files are not described as design tokens. */
   hasTokens?: boolean;
 }
+
+type Choice = 'continue' | 'change-path' | 'back';
+
+const BACK: MenuItem<Choice> = { choice: 'back', label: 'Back', description: 'Go back' };
+
+const MENUS: Record<PathPhase, readonly MenuItem<Choice>[]> = {
+  scanning: [BACK],
+  ready: [
+    { choice: 'continue', label: 'Continue', description: 'Use these files and go on' },
+    { choice: 'change-path', label: 'Change path', description: 'Pick a different folder' },
+    BACK,
+  ],
+  failed: [{ choice: 'change-path', label: 'Try a different path', description: 'Pick a different folder' }, BACK],
+};
 
 function Row({ row }: { row: SummaryRow }): React.ReactElement {
   return (
@@ -62,7 +74,6 @@ function Summary({
         ))}
       </Box>
       {warning && <Text color={PALETTE.warning}>⚠ {warning}</Text>}
-      <Text>Does this look right?</Text>
     </Box>
   );
 }
@@ -83,30 +94,24 @@ export function PathValidationScreen({
 
   const phase = phaseOf(scan);
 
-  usePathValidationControls(phase, {
-    onConfirm: () => {
+  const choose = (choice: Choice): void => {
+    if (choice === 'continue') {
       if (scan?.ok) onConfirm({ projectPath: resolvedPath, filePaths: scan.filePaths });
-    },
-    onChangePath,
-    onBack,
-  });
+    } else if (choice === 'change-path') onChangePath();
+    else onBack();
+  };
 
   return (
-    <Box flexDirection="column">
-      <StepHeader step="setup" />
-      <Box flexDirection="column" gap={1} paddingX={2} paddingBottom={1}>
-        {scan === undefined && (
-          <Text color={PALETTE.muted}>
-            Scanning <Text bold>{resolvedPath}</Text>...
-          </Text>
-        )}
-        {scan?.ok === false && <Failure scan={scan} path={resolvedPath} />}
-        {scan?.ok === true && <Summary scan={scan} path={resolvedPath} hasTokens={hasTokens} />}
-
-        <Box marginTop={1}>
-          <ControlHints hints={controlsFor(phase)} />
-        </Box>
-      </Box>
-    </Box>
+    // keyed by phase: the menu changes length, so its focus starts over
+    <MenuScreen key={phase} title="Scan" menu={MENUS[phase]} onChoose={choose} onEscape={onBack}>
+      <Text> </Text>
+      {scan === undefined && (
+        <Text color={PALETTE.muted}>
+          Scanning <Text bold>{resolvedPath}</Text>...
+        </Text>
+      )}
+      {scan?.ok === false && <Failure scan={scan} path={resolvedPath} />}
+      {scan?.ok === true && <Summary scan={scan} path={resolvedPath} hasTokens={hasTokens} />}
+    </MenuScreen>
   );
 }
