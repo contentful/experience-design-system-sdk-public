@@ -392,7 +392,7 @@ describe('runGeneration', () => {
       expect(await runGeneration(input(), () => {}, deps)).toEqual({
         ok: false,
         step: 'generate components',
-        message: 'agent timed out',
+        message: 'Button: agent timed out',
       });
       expect(deps.prepareMapTokens).not.toHaveBeenCalled();
     });

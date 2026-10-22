@@ -5,6 +5,7 @@ import {
   loadExtractionSourceDiagnostics,
   loadRawComponents,
   openPipelineDb,
+  evaluateComponentReadiness,
 } from '../../persistence/src/session/repositories/db.js';
 import { hashContent, hashPromptForSkill } from '../../persistence/src/session/helpers/cache-keys.js';
 import { loadAcceptedNames } from '../../persistence/src/index.js';
@@ -27,6 +28,7 @@ import {
 } from '../../persistence/src/session/repositories/exploration/records.js';
 import { projectAcceptedRawSlots } from '../../steps/exploration/src/services/project-accepted-slots.js';
 import { loadScopeDecisions } from '../../persistence/src/session/repositories/db.js';
+import { buildCachedComponentResult } from './helpers/build-cached-component-result.js';
 
 export type {
   GenerateComponentsProgress,
@@ -117,13 +119,27 @@ export async function runGenerateComponentsSession(
     components = filtered;
 
     const duplicateNames = collectDuplicateNames(components);
+    const resumed = new Set<string>();
+    if (request.debugResume) {
+      for (const component of components) {
+        if (evaluateComponentReadiness(db, request.sessionId, component.component_id).definition.ready)
+          resumed.add(component.component_id);
+      }
+      if (request.debugRequireComplete && resumed.size !== components.length)
+        throw new Error('Some saved definitions are held or incomplete; resume from generation.');
+    }
     const invoker = createLocalCliAgentInvoker({});
     const concurrency = Math.max(1, Math.min(DEFAULT_COMPONENT_CONCURRENCY, components.length));
     const results = await runWithPool(
       components,
       concurrency,
-      (component, index, signal) =>
-        runOneGenerateComponent(
+      async (component, index, signal) => {
+        if (resumed.has(component.component_id)) {
+          throwIfAborted(signal);
+          request.onProgress?.({ kind: 'component:resumed', index, total: components.length, name: component.name });
+          return { ...buildCachedComponentResult(component.name), cached: false };
+        }
+        return runOneGenerateComponent(
           {
             db,
             explorationRunIds,
@@ -150,12 +166,14 @@ export async function runGenerateComponentsSession(
             allowedComponentNames,
             onProgress: request.onProgress,
             onDebugEvent: request.onDebugEvent,
+            debugArtifactDir: request.debugArtifactDir,
             signal,
           },
           component,
           index,
           components.length,
-        ),
+        );
+      },
       request.signal,
     );
 

@@ -26,7 +26,15 @@ const realDeps: Deps = { load: loadScopeGate, checkCache: checkGenerationCache }
 
 /** `input` is undefined until the extraction stage has produced a session, so the hook can be called unconditionally. */
 export function useScopeGateFlow(
-  input: { attemptId: number; signal: AbortSignal; sessionId: string; cache: CacheCheckInput } | undefined,
+  input:
+    | {
+        attemptId: number;
+        signal: AbortSignal;
+        sessionId: string;
+        cache: CacheCheckInput;
+        initialDecisions?: ScopeDecisions;
+      }
+    | undefined,
   deps: Deps = realDeps,
 ): ScopeGateFlow | undefined {
   const sessionId = input?.sessionId;
@@ -36,7 +44,14 @@ export function useScopeGateFlow(
 
   // Started once per attempt, as soon as the gate has components to show.
   useEffect(() => {
-    if (!input || input.signal.aborted || !loaded?.ok || cacheCheck.current?.attemptId === input.attemptId) return;
+    if (
+      !input ||
+      input.initialDecisions ||
+      input.signal.aborted ||
+      !loaded?.ok ||
+      cacheCheck.current?.attemptId === input.attemptId
+    )
+      return;
     const promise = Promise.resolve().then(() => (input.signal.aborted ? [] : deps.checkCache(input.cache)));
     void promise.catch(() => {});
     cacheCheck.current = { attemptId: input.attemptId, promise };
@@ -44,6 +59,8 @@ export function useScopeGateFlow(
 
   if (!input || input.signal.aborted || !loaded) return undefined;
   if (!loaded.ok) return { status: 'failed', message: loaded.message };
+  if (input.initialDecisions)
+    return { status: 'confirmed', decisions: input.initialDecisions, cachedNames: Promise.resolve([]) };
   const currentCacheCheck = cacheCheck.current?.attemptId === input.attemptId ? cacheCheck.current.promise : undefined;
   const currentConfirmation = confirmed?.attemptId === input.attemptId ? confirmed.decisions : undefined;
   if (currentConfirmation && currentCacheCheck)

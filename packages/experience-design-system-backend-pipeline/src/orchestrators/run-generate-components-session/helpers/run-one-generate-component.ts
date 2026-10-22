@@ -1,4 +1,6 @@
 import type { AgentDebugEvent } from '../../../agents/types/agent-run.js';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { bucketComponentProps } from '../../../steps/extraction/index.js';
 import { stripPropProvenance } from '../../../agents/prompts/helpers/strip-prop-provenance.js';
 import type { DatabaseSync } from 'node:sqlite';
@@ -35,6 +37,7 @@ const DEFAULT_TIMEOUT_MS = Number(process.env['EDS_AGENT_TIMEOUT_MS'] ?? 5 * 60 
 const RETRY_BACKOFF_MS = Number(process.env['EDS_RETRY_BACKOFF_MS'] ?? 5_000);
 
 export interface RunOneGenerateComponentOptions {
+  debugArtifactDir?: string;
   explorationRunIds?: { componentRunId: string; detailRunId: string };
   db: DatabaseSync;
   sessionId: string;
@@ -190,15 +193,42 @@ export async function runOneGenerateComponent(
     invoke: async ({ prompt: attemptPrompt, timeoutMs, signal: operationSignal, attempt }) => {
       onProgress?.({ kind: 'component:started', index, total, name: component.name, attempt, maxAttempts: 2 });
       throwIfAborted(signal);
-      return (
+      const invocation = (
         await invokeAgentWithOutput(
           invoker,
           { agent, model, prompt: attemptPrompt, timeoutMs, signal: operationSignal },
           verbose,
         )
       ).result;
+      if (options.debugArtifactDir) {
+        const directory = join(options.debugArtifactDir, encodeURIComponent(component.component_id));
+        await mkdir(directory, { recursive: true, mode: 0o700 });
+        await writeFile(
+          join(directory, `${Date.now()}-attempt-${attempt}.json`),
+          JSON.stringify({
+            component: component.name,
+            attempt,
+            prompt: attemptPrompt,
+            ...invocation,
+          }),
+          { mode: 0o600 },
+        );
+      }
+      return invocation;
     },
   });
+  if (options.debugArtifactDir) {
+    const directory = join(options.debugArtifactDir, encodeURIComponent(component.component_id));
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    await writeFile(
+      join(directory, `${Date.now()}-decisions.json`),
+      JSON.stringify({
+        component: component.name,
+        ...completed,
+      }),
+      { mode: 0o600 },
+    );
+  }
   throwIfAborted(signal);
   if (!completed.complete) {
     const error = completed.diagnostics.join('; ');

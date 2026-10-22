@@ -3,6 +3,9 @@ export interface ImportOptions {
   agent?: string;
   prompt: string[];
   cache: boolean;
+  debugResume?: string;
+  debugFrom?: string;
+  debugOutput?: string;
 }
 
 interface RawImportOptions {
@@ -10,6 +13,9 @@ interface RawImportOptions {
   prompt?: string[];
   // Commander turns `--no-cache` into `cache: false`; it is true when the flag is absent.
   cache?: boolean;
+  debugResume?: string | boolean;
+  debugFrom?: string;
+  debugOutput?: string;
 }
 
 export function toImportOptions(raw: RawImportOptions): ImportOptions {
@@ -17,5 +23,8 @@ export function toImportOptions(raw: RawImportOptions): ImportOptions {
     ...(raw.agent ? { agent: raw.agent } : {}),
     prompt: raw.prompt ?? [],
     cache: raw.cache !== false,
+    ...(raw.debugResume ? { debugResume: typeof raw.debugResume === 'string' ? raw.debugResume : 'latest' } : {}),
+    ...(raw.debugFrom ? { debugFrom: raw.debugFrom } : {}),
+    ...(raw.debugOutput ? { debugOutput: raw.debugOutput } : {}),
   };
 }

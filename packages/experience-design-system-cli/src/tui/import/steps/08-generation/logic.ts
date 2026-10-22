@@ -43,7 +43,7 @@ export function progressRows(progress: GenerationProgress, agent: string): Runni
       loading: 'Loading source evidence for property and slot reviews...',
       preparing: 'Preparing property and slot reviews...',
       cached: 'Reusing saved property and slot review...',
-      exploring: `Reviewing properties and slots via ${name}${scopeNumber ? ` — review ${scopeNumber} of ${exploration.total}` : ''}`,
+      exploring: `Reviewing properties and slots via ${name}${scopeNumber ? ` — review pass ${scopeNumber} of ${exploration.total}` : ''}`,
       reconciling: `Comparing reviews and classifying disagreements via ${name}...`,
       verifying: `Verifying disputed findings against source evidence via ${name}...`,
       checking: `Checking evidence supporting verified findings via ${name}...`,
@@ -54,7 +54,7 @@ export function progressRows(progress: GenerationProgress, agent: string): Runni
       text: labels[exploration.stage],
       complete: exploration.stage === 'complete',
       ...(['exploring', 'cached'].includes(exploration.stage)
-        ? { progress: { done: exploration.done, total: exploration.total } }
+        ? { progress: { done: exploration.done, total: exploration.total, label: 'review passes complete' } }
         : {}),
     });
   }
@@ -71,6 +71,11 @@ export function progressRows(progress: GenerationProgress, agent: string): Runni
     rows.push({ text: 'Preparing property and slot reviews...' });
   }
   if (components) {
+    if (progress.resumedComponents)
+      rows.push({
+        text: `Reused ${progress.resumedComponents} completed component definitions from this debug session`,
+        complete: true,
+      });
     const finished = components.done >= components.total && progress.activeComponents.length === 0;
     rows.push({
       text: finished

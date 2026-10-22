@@ -34,6 +34,14 @@ import type { ExtractionInput } from './src/tui/import/steps/06-extraction/types
 import { resolveUserPath } from './src/tui/import/resolve-user-path.js';
 import type { CredentialsResult } from './src/tui/import/steps/04-credentials/screen.js';
 import type { ImportOptions } from './src/commands/import-options.js';
+import {
+  assertDebugResumeStep,
+  DEBUG_RESUME_STEPS,
+  loadDebugResume,
+  type DebugResumeState,
+  type DebugResumeStep,
+} from './src/tui/import/debug-resume.js';
+import { DebugResumeScreen } from './src/tui/import/debug-resume-screen.js';
 import { buildFlowStart } from './src/tui/import/steps/10-flow/flow/build-flow-start.js';
 import type { FlowStart } from './src/tui/import/steps/10-flow/flow/controller.js';
 import { FlowScreen } from './src/tui/import/steps/10-flow/flow/screen.js';
@@ -120,7 +128,10 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
   const [launchError, setLaunchError] = useState<{ stepName: string; message: string }>();
   const [preparing, setPreparing] = useState(false);
   const [sourceInventory, setSourceInventory] = useState<ExtractionInput['sourceInventory']>();
-  const [screen, setScreen] = useState<Screen>('start');
+  const [screen, setScreen] = useState<Screen>(importOptions.debugResume ? 'import' : 'start');
+  const [debugResumeState, setDebugResumeState] = useState<DebugResumeState>();
+  const [debugResumeStep, setDebugResumeStep] = useState<DebugResumeStep>();
+  const debugResumeStarted = useRef(false);
   // Set when the import has ended, with the exit code the result screen shows.
   const [importExitCode, setImportExitCode] = useState<number>();
   const showImportResult = importExitCode !== undefined;
@@ -140,6 +151,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
       attemptId: scopeRun.attempt.id,
       signal: scopeRun.attempt.controller.signal,
       sessionId: scopeRun.extraction.sessionId,
+      initialDecisions: debugResumeStep && debugResumeStep !== 'scope' ? debugResumeState?.decisions : undefined,
       cache: {
         sessionId: scopeRun.extraction.sessionId,
         tokensPath: scopeRun.extraction.tokensPath,
@@ -162,6 +174,95 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
     tokenFile: string;
     credentials: V1Credentials;
   }>();
+
+  const startDebugResume = (state: DebugResumeState, step: DebugResumeStep): void => {
+    assertDebugResumeStep(state, step);
+    const attempt = beginAttempt();
+    const { checkpoint } = state;
+    const { agent, agentModel } = resolveAgentChoice(importOptions.agent, {
+      agent: checkpoint.agent,
+      agentModel: checkpoint.agentModel,
+    });
+    const input: ExtractionInput = {
+      signal: attempt.controller.signal,
+      projectPath: checkpoint.projectPath,
+      outDir: checkpoint.extraction.outDir,
+      filePaths: [],
+      rawTokensPath: checkpoint.rawTokensPath,
+      credentials: null,
+      agent,
+      ...(agentModel ? { agentModel } : {}),
+      promptOverrides: importOptions.prompt.length ? importOptions.prompt : checkpoint.promptOverrides,
+      noCache: true,
+    };
+    setDebugResumeStep(step);
+    setTarget('components');
+    if (step === 'review') {
+      const generation = {
+        route: 'review' as const,
+        sessionId: checkpoint.extraction.sessionId,
+        acceptedCount: state.decisions!.accepted.length,
+        generatedCount: state.decisions!.accepted.length,
+        mapTokensEligible: checkpoint.extraction.tokensPath !== '',
+      };
+      setFlowStart(
+        buildFlowStart({
+          extraction: input,
+          handoff: {
+            credentialsSkipped: true,
+            tokens: { strategy: 'reuse' },
+            extraction: checkpoint.extraction,
+            generation,
+          },
+        }),
+      );
+    } else {
+      setScopeRun({ attempt, launch: {}, credentialsSkipped: true, input, extraction: checkpoint.extraction });
+    }
+  };
+
+  useEffect(() => {
+    if (!importOptions.debugResume || !importDefaults || debugResumeStarted.current) return;
+    debugResumeStarted.current = true;
+    setPreparing(true);
+    let disposed = false;
+    void trackImportWork(
+      (async () => {
+        try {
+          if (importOptions.debugFrom && !(DEBUG_RESUME_STEPS as readonly string[]).includes(importOptions.debugFrom))
+            throw new Error(`Unknown debug step; choose ${DEBUG_RESUME_STEPS.join(', ')}.`);
+          const settings = await readSettings();
+          if (disposed) return;
+          const { agent, agentModel } = resolveAgentChoice(importOptions.agent, settings);
+          const state = await loadDebugResume(
+            importOptions.debugResume!,
+            importOptions.debugOutput
+              ? {
+                  outDir: resolveUserPath(importOptions.debugOutput),
+                  agent,
+                  agentModel,
+                  promptOverrides: importOptions.prompt,
+                }
+              : undefined,
+          );
+          if (disposed) return;
+          setDebugResumeState(state);
+          if (importOptions.debugFrom) startDebugResume(state, importOptions.debugFrom as DebugResumeStep);
+        } catch (error) {
+          if (!disposed)
+            setLaunchError({
+              stepName: 'debug resume',
+              message: error instanceof Error ? error.message : String(error),
+            });
+        } finally {
+          if (!disposed) setPreparing(false);
+        }
+      })(),
+    );
+    return () => {
+      disposed = true;
+    };
+  }, [importDefaults]);
 
   // Keep terminal input active when a running screen has no interactive controls.
   useInput(() => {});
@@ -340,6 +441,12 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
       noCache: input.noCache,
       hasTokens: produced.tokensPath !== '',
       ...(generatePromptPath ? { generatePromptPath } : {}),
+      ...(debugResumeStep
+        ? {
+            debugResumeFrom:
+              debugResumeStep === 'scope' ? 'details' : (debugResumeStep as 'details' | 'generation' | 'tokens'),
+          }
+        : {}),
     });
   }, [scopeFlow, scopeRun, generationInput]);
 
@@ -381,6 +488,8 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
     setScopeRun(undefined);
     setGenerationInput(undefined);
     setFlowStart(undefined);
+    setDebugResumeState(undefined);
+    setDebugResumeStep(undefined);
   };
 
   const finishImportResult = (): void => {
@@ -420,12 +529,20 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
           />
         );
       }
+      if (debugResumeState && !debugResumeStep)
+        return (
+          <DebugResumeScreen
+            state={debugResumeState}
+            onChoose={(step) => startDebugResume(debugResumeState, step)}
+            onQuit={leaveImport}
+          />
+        );
       if (importDefaults === undefined) return <></>;
       if (target === undefined) {
         return <PreflightScreen onChoose={setTarget} onQuit={leaveImport} />;
       }
       const inputStep = currentInputStep(target, answers);
-      if (!extractionRun && !tokensOnlyRun && inputStep !== 'credentials') {
+      if (!scopeRun && !extractionRun && !tokensOnlyRun && inputStep !== 'credentials') {
         switch (inputStep) {
           case 'project':
             return (

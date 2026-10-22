@@ -1,6 +1,7 @@
 export interface Progress {
   done: number;
   total: number;
+  label?: string;
 }
 
 export interface RunningLine {

@@ -26,6 +26,7 @@ function Line({ line }: { line: RunningLine }): React.ReactElement {
           </Box>
           <Text color={PALETTE.muted}>
             {line.progress.done}/{line.progress.total}
+            {line.progress.label ? ` ${line.progress.label}` : ''}
           </Text>
         </Box>
         <Text color={PALETTE.muted}>{line.text}</Text>

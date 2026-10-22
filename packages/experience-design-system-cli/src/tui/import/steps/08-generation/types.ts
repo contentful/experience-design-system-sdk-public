@@ -6,6 +6,7 @@ import type { ExplorationProgressEvent, ScopeDecisions } from '@contentful/exper
 // screen opens, which is what `GenerationHandoff` carries to the wizard.
 
 export interface GenerationInput {
+  debugResumeFrom?: 'details' | 'generation' | 'tokens';
   signal?: AbortSignal;
   /** The extraction session the scope was decided on. */
   sessionId: string;
@@ -48,6 +49,7 @@ export interface GenerationProgress {
   mapTokens: 'idle' | 'running' | 'complete';
   /** Whether token mapping will run at all; unknown until the generated components have been looked at. */
   mapTokensEligible: boolean | null;
+  resumedComponents?: number;
 }
 
 export type GenerationStepName =

@@ -9,6 +9,10 @@ import {
   runExplorationDetailSession,
   runMapTokens,
   summarizeForMapTokens,
+  loadExplorationRecord,
+  loadExplorationRun,
+  loadScopeDecisions,
+  openPipelineDb,
   type AgentName,
   type GenerateComponentsProgress,
   type RunGenerateComponentsSessionResponse,
@@ -24,6 +28,10 @@ const COMPONENTS_SKILL_PATH = findSkillPath('generate-components.md');
 const MAP_TOKENS_SKILL_PATH = findSkillPath('map-tokens.md');
 import type { GenerationInput, GenerationProgress, GenerationResult, GenerationStepName } from './types.js';
 import { throwIfAborted } from '../../cancellation.js';
+import { debugCheckpointDirectory, saveDebugTokenMappingComplete } from '../../debug-resume.js';
+import { rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { DETAIL_SCOPES } from '@contentful/experience-design-system-types';
 
 type Failure = Extract<GenerationResult, { ok: false }>;
 
@@ -76,7 +84,17 @@ export async function runGeneration(
   try {
     throwIfAborted(signal);
     update({ stage: 'saving-decisions' });
-    await deps.saveDecisions({ sessionId: input.sessionId, decisions: input.decisions, signal });
+    if (input.debugResumeFrom === 'generation' || input.debugResumeFrom === 'tokens') {
+      const db = openPipelineDb();
+      try {
+        if (JSON.stringify(loadScopeDecisions(db, input.sessionId)) !== JSON.stringify(input.decisions))
+          throw new Error('Saved debug scope changed; resume from scope.');
+      } finally {
+        db.close();
+      }
+    } else {
+      await deps.saveDecisions({ sessionId: input.sessionId, decisions: input.decisions, signal });
+    }
     throwIfAborted(signal);
   } catch (error) {
     return fail('save decisions', errorMessage(error));
@@ -102,18 +120,31 @@ export async function runGeneration(
     const { errors } = parsePromptOverrides(input.promptOverrides);
     if (errors.length) throw new Error(errors.join('; '));
     update({ stage: 'exploring' });
-    const detail = await deps.runDetail?.({
-      sessionId: input.sessionId,
-      agent: input.agent as AgentName,
-      model: input.agentModel,
-      selectedNames: accepted,
-      promptOverrides: input.promptOverrides,
-      existingEntitiesPath: input.existingEntitiesPath,
-      signal,
-      onActivity: (event) => update({ exploration: event }),
-    });
-    throwIfAborted(signal);
-    if (detail && !detail.ok) return fail('explore selected components', detail.error);
+    if (input.debugResumeFrom === 'generation' || input.debugResumeFrom === 'tokens') {
+      const db = openPipelineDb();
+      try {
+        if (!loadExplorationRecord(db, input.sessionId, 'detail', 'detail'))
+          throw new Error('Completed property and slot reviews unavailable; resume from details.');
+      } finally {
+        db.close();
+      }
+      update({
+        exploration: { phase: 'detail', stage: 'complete', done: DETAIL_SCOPES.length, total: DETAIL_SCOPES.length },
+      });
+    } else {
+      const detail = await deps.runDetail?.({
+        sessionId: input.sessionId,
+        agent: input.agent as AgentName,
+        model: input.agentModel,
+        selectedNames: accepted,
+        promptOverrides: input.promptOverrides,
+        existingEntitiesPath: input.existingEntitiesPath,
+        signal,
+        onActivity: (event) => update({ exploration: event }),
+      });
+      throwIfAborted(signal);
+      if (detail && !detail.ok) return fail('explore selected components', detail.error);
+    }
   } catch (error) {
     return fail('explore selected components', errorMessage(error));
   }
@@ -122,6 +153,7 @@ export async function runGeneration(
   let generated: RunGenerateComponentsSessionResponse;
   try {
     throwIfAborted(signal);
+    await rm(join(debugCheckpointDirectory(input.sessionId), 'token-mapping.json'), { force: true });
     update({
       stage: 'generating',
       components: { done: 0, total: accepted.length, current: '' },
@@ -133,6 +165,9 @@ export async function runGeneration(
       promptOverrides: appendGeneratePromptOverride(input),
       skillPath: COMPONENTS_SKILL_PATH,
       noCache: true,
+      debugResume: input.debugResumeFrom === 'generation' || input.debugResumeFrom === 'tokens',
+      debugRequireComplete: input.debugResumeFrom === 'tokens',
+      debugArtifactDir: join(debugCheckpointDirectory(input.sessionId), 'generation'),
       signal,
       existingEntitiesPath: input.existingEntitiesPath,
       precomputedCachedNames: new Set(handedOverNames),
@@ -147,6 +182,7 @@ export async function runGeneration(
           components: applyProgressEvent(event, progress.components, accepted.length),
           activeComponents,
           failedComponents: progress.failedComponents + (event.kind === 'component:failed' ? 1 : 0),
+          resumedComponents: (progress.resumedComponents ?? 0) + (event.kind === 'component:resumed' ? 1 : 0),
         });
       },
       onDebugEvent: (event, payload) => {
@@ -163,7 +199,10 @@ export async function runGeneration(
   if (generated.emptySession) return fail('generate components', 'no raw components in session');
   if (!generated.allOk) {
     const firstFailure = generated.results.find((r) => r.failed);
-    return fail('generate components', firstFailure?.error ?? 'unknown error');
+    return fail(
+      'generate components',
+      firstFailure ? `${firstFailure.componentName}: ${firstFailure.error ?? 'unknown error'}` : 'unknown error',
+    );
   }
 
   let plan;
@@ -199,6 +238,13 @@ export async function runGeneration(
     }
   }
   update({ stage: 'complete', mapTokens: 'complete' });
+  throwIfAborted(signal);
+  const db = openPipelineDb();
+  try {
+    await saveDebugTokenMappingComplete(input.sessionId, loadExplorationRun(db, input.sessionId, 'detail')?.runId);
+  } finally {
+    db.close();
+  }
 
   await new Promise<void>((r) => setImmediate(r));
   if (signal?.aborted) return fail('generate components', 'The operation was aborted.');
@@ -256,7 +302,12 @@ function applyProgressEvent(
   if (event.kind === 'component:started') {
     return { done: previous?.done ?? 0, total: event.total || total, current: event.name };
   }
-  if (event.kind === 'component:completed' || event.kind === 'component:failed' || event.kind === 'component:cached') {
+  if (
+    event.kind === 'component:completed' ||
+    event.kind === 'component:failed' ||
+    event.kind === 'component:cached' ||
+    event.kind === 'component:resumed'
+  ) {
     return { done: (previous?.done ?? 0) + 1, total: event.total || total, current: event.name };
   }
   return previous;

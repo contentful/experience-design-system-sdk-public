@@ -1,3 +1,4 @@
+import { saveDebugImportCheckpoint } from '../../debug-resume.js';
 import { mkdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import {
@@ -282,6 +283,7 @@ export async function runExtraction(
           : 'idle',
       compositionPhase: extracted.compositionPhase,
     };
+    await saveDebugImportCheckpoint(input, extraction);
     return { ok: true, extraction };
   } catch (error) {
     await cancelAndDrain();
