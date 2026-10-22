@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { jsonValueIssue } from '@contentful/experience-design-system-types';
+import { sourceClosureIdentity } from '../../../../steps/extraction/source-closure/source-evidence.js';
 import {
   readInputOutput,
   readSourceReferences,
@@ -127,6 +128,59 @@ const callableSignature = z
   .strict();
 const sourceObservations = z
   .object({
+    fieldSemantics: z
+      .object({
+        schemaVersion: z.literal(1),
+        semantics: z.literal('conditional-ordered-field-flow'),
+        componentDeclarationId: z.string().min(1),
+        source: location,
+        coverage: z.enum(['complete-within-declared-bound', 'partial', 'unavailable']),
+        proofs: z.array(
+          z
+            .object({
+              inputName: z.string(),
+              path: z.array(z.object({ kind: z.literal('field'), key: z.string() }).strict()),
+              valueIndependence: z
+                .object({
+                  status: z.enum(['conditional', 'unknown']),
+                  premises: z.array(z.string()),
+                  reasons: z.array(z.string()),
+                })
+                .strict(),
+              omissionSafety: z
+                .object({
+                  status: z.enum(['conditional', 'unknown']),
+                  premises: z.array(z.string()),
+                  reasons: z.array(z.string()),
+                })
+                .strict(),
+              outputDependence: z.enum(['possible', 'not-observed', 'unknown']),
+            })
+            .strict(),
+        ),
+        steps: z.array(
+          z
+            .object({
+              operation: z.enum(['binding', 'spread', 'write', 'read', 'call', 'return', 'branch']),
+              frame: z.number().int().nonnegative(),
+              location,
+              conditions: z.array(
+                z
+                  .object({
+                    expression: z.string(),
+                    branch: z.enum(['then', 'else', 'truthy', 'falsy', 'body', 'case', 'nullish']),
+                    location,
+                  })
+                  .strict(),
+              ),
+            })
+            .strict(),
+        ),
+        omissions: z.array(z.object({ reason: z.string(), location }).strict()),
+        used: z.object({ nodes: z.number().int().nonnegative(), maxDepth: z.number().int().nonnegative() }).strict(),
+      })
+      .strict()
+      .optional(),
     referenceIndex: z
       .custom<SourceReferenceIndex>((value) => readSourceReferences(value).status === 'available')
       .optional(),
@@ -319,6 +373,16 @@ export function readComponentFacts(value: unknown): ComponentFactsRead {
     if (
       collection &&
       typeof collection === 'object' &&
+      'fieldSemantics' in collection &&
+      collection.fieldSemantics &&
+      typeof collection.fieldSemantics === 'object' &&
+      'schemaVersion' in collection.fieldSemantics &&
+      collection.fieldSemantics.schemaVersion !== 1
+    )
+      return { status: 'unsupported' };
+    if (
+      collection &&
+      typeof collection === 'object' &&
       'referenceIndex' in collection &&
       readSourceReferences(collection.referenceIndex).status === 'unsupported'
     )
@@ -366,6 +430,29 @@ export function readComponentFacts(value: unknown): ComponentFactsRead {
     return { status: 'corrupt' };
   if (validated.success && validated.data.schemaVersion === COMPONENT_FACT_SCHEMA_VERSION) {
     const observations = validated.data.sourceObservations;
+    const semantics = observations?.fieldSemantics;
+    if (
+      semantics &&
+      observations &&
+      (semantics.componentDeclarationId !== observations.componentDeclarationId ||
+        sourceClosureIdentity(semantics.source) !== semantics.componentDeclarationId ||
+        semantics.used.nodes > observations.limits.maxNodes ||
+        semantics.steps.length > observations.limits.maxObservations ||
+        semantics.proofs.length > observations.limits.maxObservations ||
+        new Set(semantics.proofs.map((proof) => JSON.stringify([proof.inputName, proof.path]))).size !==
+          semantics.proofs.length ||
+        (semantics.coverage === 'complete-within-declared-bound' && semantics.omissions.length > 0) ||
+        semantics.proofs.some(
+          (proof) =>
+            (proof.valueIndependence.status === 'conditional' &&
+              !proof.valueIndependence.premises.includes('ordinary-own-data-inputs')) ||
+            (proof.omissionSafety.status === 'conditional' &&
+              (proof.valueIndependence.status !== 'conditional' ||
+                !proof.omissionSafety.premises.includes('ordinary-own-data-inputs') ||
+                !proof.omissionSafety.premises.includes('entry-delivery-admits-omission'))),
+        ))
+    )
+      return { status: 'corrupt' };
     const roots = observations?.observations.flatMap((observation) =>
       observation.kind === 'binding' && observation.inputPath?.segments.length === 0 ? [observation.inputPath] : [],
     );

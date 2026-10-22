@@ -1,5 +1,6 @@
 import type { Node as MorphNode } from 'ts-morph';
 import ts from 'typescript';
+import { collectFieldSemantics } from './collect-field-semantics.js';
 import type {
   ComponentObservationLimits,
   ComponentSourceObservation,
@@ -523,6 +524,7 @@ export function collectComponentSourceObservations(
       (a.location?.startOffset ?? 0) - (b.location?.startOffset ?? 0) ||
       a.reason.localeCompare(b.reason),
   );
+  collection.fieldSemantics = collectFieldSemantics(node, reader, options.signal);
   collection.inputOutput = collectInputOutput(node, reader, options.signal);
   collection.referenceIndex = collectSourceReferences(
     node,

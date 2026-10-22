@@ -17,6 +17,8 @@ Source extraction, source-evidence capture, deterministic composition evidence, 
 
 Selecting a component subdirectory does not limit compiler configuration lookup to that directory: a bounded ancestor search finds the applicable parent configuration, while selected source roots remain unchanged. Compiler-requested configuration bytes and hashes travel as configuration snapshots into source capture; capture keeps them separate from source discovery and uses the compiler snapshot if the live configuration changes. Package-based config dependencies are captured only when supplied as exact compiler snapshots. Source graphs record null and undefined independently as present, absent or unknown with provenance; strict compiler evidence can establish absence, while erased or unresolved checker types do not establish absence. Direct syntax and type-alias evidence can preserve positive nullability facts.
 
+Callable source observations include bounded, ordered field-flow evidence with separate value-independence, output-dependence and omission-safety findings. The evaluator follows initialized bindings, record construction and private writes, finite branches, and compiler-resolved helper bodies without recognizing component or field names. Findings are conditional on explicit ordinary-data and delivery premises; unknown effects, uncertain aliasing, unavailable bindings and exhausted bounds remain open. Source candidates are preserved, and neither conditional findings nor absent output dependencies authorize field deletion. Persisted evidence retains source locations and rejects unsupported semantic versions, changed root identity and claims promoted beyond their premises.
+
 ---
 
 ## System Context
