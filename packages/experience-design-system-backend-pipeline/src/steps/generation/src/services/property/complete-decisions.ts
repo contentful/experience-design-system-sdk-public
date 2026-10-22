@@ -54,6 +54,8 @@ export async function generateCompleteDecisions(options: CompleteDecisionOperati
   let diagnostics: string[] = [];
   const notes: string[] = [];
   let missing = accountClassificationCalls(options.inventory, []).missing;
+  const isPending = (key: string, call: ClassificationToolCall): boolean =>
+    pending.has(key) || (call.tool === 'classify_prop' && !call.cdf_type);
   const finish = (complete: boolean, additional: string[] = []): CompleteDecisionResult => ({
     calls: [...accepted.values()],
     diagnostics: [
@@ -65,8 +67,14 @@ export async function generateCompleteDecisions(options: CompleteDecisionOperati
           `Representation pending ${feedback.subject}: ${feedback.issues.map((issue) => `${issue.path}: ${issue.message}`).join('; ')}`,
       ),
     ],
-    complete,
-    representationsComplete: complete && !pending.size,
+    complete:
+      complete &&
+      !pending.size &&
+      [...accepted.values()].every((call) => call.tool !== 'classify_prop' || !!call.cdf_type),
+    representationsComplete:
+      complete &&
+      !pending.size &&
+      [...accepted.values()].every((call) => call.tool !== 'classify_prop' || !!call.cdf_type),
     representationFeedback: [...pending.values()],
     representationValidatorAvailable: !!validator,
   });
@@ -94,7 +102,8 @@ ${JSON.stringify(options.inventory)}
 - Emit exactly one classify_component.
 - Each name in properties requires exactly one classify_prop or reasoned exclude_prop, even when absent from the advisory props or also used as a slot name.
 - Each name in slots requires exactly one classify_slot. A slot accounts for a source property only through an explicit sourceInput association in this inventory; that owned property is already omitted from properties. Matching names alone do not establish ownership.
-- Every classify_prop requires cdf_category set to content, design or state, including decisions with unresolved representation. When cdf_type is omitted, also omit required, values, token_kind, default, default_intent, items and fields; retain the semantic category and a nonblank reason identifying the missing evidence or capability. Source requiredness and defaults remain in the independent evidence. Never infer a category just to satisfy validation.
+- Every classify_prop requires cdf_category set to content, design or state and a supported cdf_type. Missing cdf_type is an incomplete draft and cannot finish generation. Use source evidence to select the simplest compatible editable representation; never infer a category or invent a type just to satisfy validation.
+- Preserve compiler nullability independently from the authoring representation. Null is not automatically optional. When source behavior establishes that null and omission are equivalent, choose the underlying editable type, preserve declared requiredness, and include null_handling [{sourceNodeId, handling: "omit-equivalent", reason}] plus the current source_revision and source_node_id. The judgment must identify the nullable union and explain defaults, comparisons, forwarding and output effects from supplied evidence. Use "distinct" or "unknown" when equivalence is not established; never substitute empty strings, false, zero or empty containers for null. Ordinary scalar fields cannot carry null defaults; an omission-equivalent source null default stays in source evidence rather than the editable default.
 - If source semantics justify excluding a property, use exclude_prop with a nonblank reason rather than a classify_prop missing its category.
 
 ${options.representationValidation ? `## Current property representation identities\n${JSON.stringify(buildRepresentationContext({ ...options.representationValidation, inventory: options.inventory }))}\nSource-bound proposals must copy the current identities and cite these output-use references; mapper readiness remains caller-owned.` : ''}
@@ -119,15 +128,17 @@ ${options.originalPrompt}`;
         attempt === 1
           ? originalPrompt
           : `Correction request:\n${JSON.stringify({
-              acceptedDecisions: [...accepted.entries()].filter(([key]) => !pending.has(key)).map(([, call]) => call),
+              acceptedDecisions: [...accepted.entries()]
+                .filter(([key, call]) => !isPending(key, call))
+                .map(([, call]) => call),
               pendingSemanticDecisions: [...accepted.entries()]
-                .filter(([key]) => pending.has(key))
+                .filter(([key, call]) => isPending(key, call))
                 .map(([, call]) => call),
               pendingRepresentations: [...pending.values()],
               missingOrRejectedSubjects: missing,
               diagnostics,
               previousResponse,
-            })}\nReturn only decisions for missing/rejected subjects and the reported pending representations. Preserve successful decisions and the original source exactly. Repair only representation metadata on pending semantic decisions: preserve the property, category, description and source identity; do not replace them with exclusions. If unresolved, explain the concrete missing evidence or capability in reason and omit representation companions.\n\n${originalPrompt}`;
+            })}\nReturn only decisions for missing/rejected subjects and the reported pending representations. Preserve successful decisions and the original source exactly. Repair only representation metadata on pending semantic decisions: preserve the property, category, description and source identity; do not replace them with exclusions. Every retained property must select cdf_type. Resolve null handling from source behavior rather than demanding an editor control for every TypeScript union member. If compatibility remains unresolved, retain the chosen type and explain the concrete limitation in reason; validation will keep the component incomplete rather than silently completing it.\n\n${originalPrompt}`;
       let result;
       try {
         let onAbort: (() => void) | undefined;
@@ -162,6 +173,13 @@ ${options.originalPrompt}`;
       }
       const parsed = parseClassificationToolLines(result.stdout);
       diagnostics = [...parsed.warnings];
+      diagnostics.push(
+        ...parsed.calls.flatMap((call) =>
+          call.tool === 'classify_prop' && !call.cdf_type
+            ? [`property:${call.prop}: cdf_type must be selected before generation completes`]
+            : [],
+        ),
+      );
       const candidates = new Map(accepted);
       const candidateFeedback = new Map(pending);
       for (const parsedCall of parsed.calls) {
@@ -169,7 +187,7 @@ ${options.originalPrompt}`;
         const previous = accepted.get(key);
         let call = parsedCall;
         if (previous) {
-          if (!pending.has(key)) {
+          if (!isPending(key, previous)) {
             diagnostics.push(`Duplicate or conflicting subject ${key}; accepted decision preserved`);
             continue;
           }
@@ -215,7 +233,7 @@ ${options.originalPrompt}`;
       diagnostics.push(...missing.map((subject) => `Missing decision ${subject}`));
       throwIfAborted(options.signal);
       if (now() >= deadline || timeout.aborted) return finish(false, ['Operation deadline exhausted']);
-      if (!diagnostics.length && accounting.complete && (!pending.size || attempt === 2)) return finish(true);
+      if (!diagnostics.length && accounting.complete && !pending.size) return finish(true);
     }
     return finish(false);
   } finally {

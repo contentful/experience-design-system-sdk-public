@@ -6,6 +6,7 @@ export * from './mapper-readiness.js';
 export * from './property-model.js';
 export * from './representation-proposal.js';
 export * from './classification.js';
+export * from './null-handling.js';
 export * from './decision-protocol.js';
 export * from './property-decision.js';
 

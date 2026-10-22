@@ -42,7 +42,7 @@ export async function createGenerationRepresentationValidator(
         command,
         'The command reads only the supplied immutable evidence file, uses the host materializer and returns per-property validation, missing subjects, alternatives and capability requirements. You may also read that evidence file; embedded source paths remain citation labels.',
         'Use inline stdin (for example a quoted here-document); do not create a draft file, modify evidence or read or execute the live repository/source. Tool availability depends on the selected local agent. Host validation always runs independently and is authoritative.',
-        'Review feedback before final output. Preserve semantic decisions, source identity, successful representations and accepted exclusions/slot ownership; repair pending representations only. Unresolved outcomes require a concrete missing-evidence or capability reason.',
+        'Review feedback before final output and repair until complete and representationsComplete are both true. Every retained property requires cdf_type. Preserve semantic decisions, source identity, successful representations and accepted exclusions/slot ownership; repair pending representations only. Unresolved compatibility requires a concrete reason and keeps the component incomplete.',
       ].join('\n'),
     };
   } catch (error) {

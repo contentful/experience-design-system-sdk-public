@@ -22,6 +22,7 @@ import { finiteSourceValueDomain, isSourceBoundRepresentation } from './source-r
 import { validateRepresentationProposal, type RepresentationProposalDraft } from './representation-proposal.js';
 import { discriminatedUnionTag } from './discriminated-union.js';
 import { validateDiscriminatedUnionSourceDefinition } from './discriminated-union-source.js';
+import { validateNullHandlingSource, type NullHandlingJudgment } from './null-handling.js';
 
 export type MapperAvailability = 'enabled' | 'unavailable' | 'unknown';
 export interface SourceGraphDeclaration {
@@ -105,6 +106,7 @@ export interface PropertyModel {
   category?: 'content' | 'design' | 'state' | 'unattached';
   representation?: CDFFieldDefinition;
   representationProposal?: RepresentationProposalDraft;
+  nullHandling?: NullHandlingJudgment[];
   defaultIntent: DefaultIntent;
   defaultAuthority?: 'generation' | 'review' | 'existing' | 'token';
 }
@@ -614,8 +616,13 @@ export function validateSourceValue(
 }
 
 /** Source domains remain independently proven; caller defaults and observations never close them. */
-export function validateSourceDomain(graph: PropertySourceGraph, definition: TargetDefinition): PropertyIssue[] {
+export function validateSourceDomain(
+  graph: PropertySourceGraph,
+  definition: TargetDefinition,
+  nullHandling: readonly NullHandlingJudgment[] = [],
+): PropertyIssue[] {
   const invalid = validateSourceGraph(graph);
+  if (nullHandling.length) invalid.push(...validateNullHandlingSource(nullHandling, graph));
   if (invalid.length) return invalid;
   if (containsTargetDefinitionType(definition, 'DiscriminatedUnion'))
     return validateDiscriminatedUnionSourceDefinition(definition, graph);
@@ -635,6 +642,12 @@ export function validateSourceDomain(graph: PropertySourceGraph, definition: Tar
     const next = new Set(seen);
     next.add(id);
     const expectedRequired = required ?? node.required;
+    const nullJudgment = nullHandling.find((judgment) => judgment.sourceNodeId === id);
+    const omitNull =
+      node.kind === 'union' && nullJudgment?.handling === 'omit-equivalent' && !expectedRequired && !target.required;
+    const sourceValues = omitNull
+      ? node.domain.declaredValues.filter((value) => value !== null)
+      : node.domain.declaredValues;
     if (domainOwner && target.values?.length) {
       const complete =
         graph.coverage === 'complete-within-declared-bound' &&
@@ -642,12 +655,12 @@ export function validateSourceDomain(graph: PropertySourceGraph, definition: Tar
         node.coverage === 'complete-within-declared-bound' &&
         node.domain.provenance === 'compiler' &&
         node.domain.openness === 'closed' &&
-        node.domain.declaredValues.length > 0 &&
+        sourceValues.length > 0 &&
         !node.domain.unrepresentedValues?.length;
       if (
         !complete ||
-        node.domain.declaredValues.some((value) => !target.values!.some((allowed) => jsonEqual(allowed, value))) ||
-        target.values.some((allowed) => !node.domain.declaredValues.some((value) => jsonEqual(allowed, value)))
+        sourceValues.some((value) => !target.values!.some((allowed) => jsonEqual(allowed, value))) ||
+        target.values.some((allowed) => !sourceValues.some((value) => jsonEqual(allowed, value)))
       )
         issues.push({ path, message: 'Finite constraints require a complete matching compiler domain' });
     }
@@ -659,17 +672,17 @@ export function validateSourceDomain(graph: PropertySourceGraph, definition: Tar
       node.coverage === 'complete-within-declared-bound' &&
       node.domain.provenance === 'compiler' &&
       node.domain.openness === 'closed' &&
-      node.domain.declaredValues.length &&
+      sourceValues.length &&
       !node.domain.unrepresentedValues?.length &&
       !(
         target.type === 'Boolean' &&
-        node.domain.declaredValues.length === 2 &&
-        node.domain.declaredValues.includes(true) &&
-        node.domain.declaredValues.includes(false)
+        sourceValues.length === 2 &&
+        sourceValues.includes(true) &&
+        sourceValues.includes(false)
       ) &&
       (!target.values?.length ||
-        node.domain.declaredValues.some((value) => !target.values!.some((allowed) => jsonEqual(allowed, value))) ||
-        target.values.some((allowed) => !node.domain.declaredValues.some((value) => jsonEqual(allowed, value))))
+        sourceValues.some((value) => !target.values!.some((allowed) => jsonEqual(allowed, value))) ||
+        target.values.some((allowed) => !sourceValues.some((value) => jsonEqual(allowed, value))))
     )
       issues.push({ path, message: 'Finite source domain is not enforced; source retained' });
     if (target.type === 'Literal' || target.type === 'Integer' || target.type === 'DateTime') {
@@ -697,7 +710,7 @@ export function validateSourceDomain(graph: PropertySourceGraph, definition: Tar
       if (node.kind === 'union') delete memberTarget.defaultValue;
       for (const alternative of node.alternatives ?? []) {
         const member = nodes.get(alternative);
-        if (member && !['undefined', 'never'].includes(member.kind))
+        if (member && !['undefined', 'never'].includes(member.kind) && !(omitNull && member.kind === 'null'))
           walk(alternative, memberTarget, path, next, false, expectedRequired);
       }
     }
@@ -722,15 +735,11 @@ export function validateSourceDomain(graph: PropertySourceGraph, definition: Tar
       issues.push({ path, message: 'Representation narrows open source domain' });
     if (node.domain.unrepresentedValues?.length)
       issues.push({ path: `${path}/sourceDomain`, message: 'Source domain contains unrepresentable values' });
-    if (
-      node.domain.provenance === 'compiler' &&
-      node.domain.openness === 'closed' &&
-      node.domain.declaredValues.length
-    ) {
-      node.domain.declaredValues.forEach((value, i) =>
+    if (node.domain.provenance === 'compiler' && node.domain.openness === 'closed' && sourceValues.length) {
+      sourceValues.forEach((value, i) =>
         issues.push(...validateTargetValue(target, value, `${path}/sourceDomain/${i}`)),
       );
-      if (own(target, 'defaultValue') && !node.domain.declaredValues.some((v) => jsonEqual(v, target.defaultValue)))
+      if (own(target, 'defaultValue') && !sourceValues.some((v) => jsonEqual(v, target.defaultValue)))
         issues.push({ path: `${path}/defaultValue`, message: 'Default outside proven source domain' });
     }
     if (target.type === 'Record')
@@ -787,6 +796,8 @@ export function projectProperty(
   const snapshot = freezeJson(cloneJson(model));
   const profileSnapshot = createPropertyProfile(profile as PropertyProfile);
   const issues = validateSourceGraph(model.source.graph);
+  if (model.nullHandling !== undefined)
+    issues.push(...validateNullHandlingSource(model.nullHandling, model.source.graph));
   if (issues.length)
     return { model: snapshot, profile: profileSnapshot, outcome: 'unsupported', issues, requirements: [] };
   const requirements: PropertyProjection['requirements'] = [];
@@ -815,6 +826,12 @@ export function projectProperty(
       requirements,
     };
   const target = cdfToTarget(cloneJson(representation));
+  const omitRootNull =
+    !target.required &&
+    model.source.graph.nodes.find((node) => node.id === model.source.graph.rootId)?.required === false &&
+    model.nullHandling?.some(
+      (judgment) => judgment.sourceNodeId === model.source.graph.rootId && judgment.handling === 'omit-equivalent',
+    );
   if (isSourceBoundRepresentation(target.type)) {
     const proposal = model.representationProposal;
     const validation = validateRepresentationProposal(proposal, model, () => ({
@@ -925,6 +942,7 @@ export function projectProperty(
   else if (model.defaultIntent.action === 'set') target.defaultValue = cloneJson(model.defaultIntent.value);
   else if (
     !own(target, 'defaultValue') &&
+    !(omitRootNull && model.source.default?.value === null) &&
     model.source.default?.state === 'value' &&
     own(model.source.default, 'value')
   )
@@ -955,7 +973,7 @@ export function projectProperty(
   if (validation.valid) {
     const domainIssues = isSourceBoundRepresentation(target.type)
       ? []
-      : validateSourceDomain(model.source.graph, target);
+      : validateSourceDomain(model.source.graph, target, model.nullHandling);
     issues.push(...domainIssues);
     if (domainIssues.length) unsupported = true;
   }

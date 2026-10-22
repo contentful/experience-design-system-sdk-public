@@ -3,6 +3,7 @@ import { parseClassificationMetadata, type ClassifiedPropertyCall } from './clas
 import { cloneJson, jsonValueIssue, parseStrictJson, own } from './json-value.js';
 import { validateProposalDraft } from './representation-proposal.js';
 import { isSourceBoundRepresentation } from './source-representation.js';
+import { validateNullHandling } from './null-handling.js';
 
 export interface ComponentClassificationCall {
   tool: 'classify_component';
@@ -56,6 +57,7 @@ const fields = {
     'members',
     'allowedResources',
     'representation_proposal',
+    'null_handling',
   ],
 } as const;
 
@@ -109,6 +111,12 @@ export function normalizeClassificationCalls(values: readonly unknown[]): Normal
       const call = cloneJson(rec) as unknown as ClassificationToolCall;
       if (call.tool === 'classify_prop') {
         if (!['content', 'design', 'state'].includes(call.cdf_category)) throw new Error('Invalid semantic category');
+        if (own(rec, 'null_handling')) {
+          const issues = validateNullHandling(rec.null_handling);
+          if (issues.length) throw new Error(issues.map((issue) => `${issue.path}: ${issue.message}`).join('; '));
+          if (!call.source_revision?.trim() || !call.source_node_id?.trim())
+            throw new Error('Null handling requires the current source revision and property root node');
+        }
         if (own(rec, 'cdf_type')) {
           if (typeof rec.cdf_type !== 'string' || !(CDF_PROPERTY_TYPES as readonly string[]).includes(rec.cdf_type))
             throw new Error('Invalid representation type');
@@ -150,6 +158,7 @@ export function normalizeClassificationCalls(values: readonly unknown[]): Normal
               'members',
               'allowedResources',
               'representation_proposal',
+              'null_handling',
             ].some((key) => own(rec, key))
           )
             throw new Error('Representation companions require a representation');

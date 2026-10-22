@@ -59,7 +59,14 @@ export function validateGenerationPropertyDecision(
       (!materialized.projection || ['supported', 'lossy'].includes(materialized.projection.outcome))
     )
       return { state: 'ready', retainedCall: cloneJson(call) };
-    issues = materialized.projection?.issues ?? [{ path: '/representation', message: 'No representation decision' }];
+    issues = call.cdf_type
+      ? (materialized.projection?.issues ?? [{ path: '/representation', message: 'No representation decision' }])
+      : [
+          {
+            path: '/cdf_type',
+            message: 'Every retained property requires a selected cdf_type before generation completes',
+          },
+        ];
   } catch (error) {
     issues = [{ path: '/representation', message: error instanceof Error ? error.message : 'Invalid representation' }];
   }
@@ -86,11 +93,7 @@ export function validateGenerationPropertyDecision(
     })),
     draftDecision: cloneJson(call),
     repairInstruction:
-      'Repair only the representation from supplied source facts; preserve the exact property, semantic category and source identity. Candidate alternatives are unapproved and their mapper, cardinality and other requirements remain explicit. If evidence or capabilities are missing, omit cdf_type and all representation companions and explain the concrete remaining limitation in reason. Never substitute a generic type, narrow an open domain, exclude the retained property or invent mapper support.',
+      'Select a supported cdf_type and repair its representation from supplied source facts; preserve the exact property, semantic category and source identity. For nullable source inputs, select the underlying editable type and supply source-bound null_handling judgments when evidence establishes equivalence to omission. Keep distinct or unknown null behavior explicit. Candidate alternatives are unapproved and their mapper, cardinality and other requirements remain explicit. A retained property cannot finish generation without cdf_type. Never narrow an open domain, exclude the retained property to avoid representation repair or invent mapper support.',
   };
-  retainedCall.reason = `${retainedCall.reason} Representation pending: ${issues.map((issue) => `${issue.path}: ${issue.message}`).join('; ')}${requirements
-    .filter((requirement) => requirement.availability !== 'enabled')
-    .map((requirement) => `; ${requirement.path}: ${requirement.capability} ${requirement.availability}`)
-    .join('')}`;
-  return { state: 'pending', retainedCall, feedback };
+  return { state: 'pending', retainedCall: cloneJson(call), feedback };
 }

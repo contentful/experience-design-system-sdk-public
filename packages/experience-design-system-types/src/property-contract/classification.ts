@@ -4,6 +4,7 @@ import { isSourceBoundRepresentation } from './source-representation.js';
 import { cloneJson, own, type JsonValue } from './json-value.js';
 import type { DefaultIntent } from './property-model.js';
 import type { RepresentationProposalDraft } from './representation-proposal.js';
+import type { NullHandlingJudgment } from './null-handling.js';
 
 export interface ClassifiedPropertyCall {
   tool: 'classify_prop';
@@ -27,6 +28,7 @@ export interface ClassifiedPropertyCall {
   members?: CDFFieldDefinition[];
   allowedResources?: CDFFieldDefinition['allowedResources'];
   representation_proposal?: RepresentationProposalDraft;
+  null_handling?: NullHandlingJudgment[];
 }
 export function classificationDefinition(call: ClassifiedPropertyCall): CDFPropertyDefinition {
   if (!call.cdf_type) throw new Error('Absent representation has no field definition');

@@ -94,7 +94,13 @@ export function currentRepresentationModel(
   };
   if (record.disposition === 'exclude') throw new Error('Excluded property cannot receive a representation');
   const call = saved.definition
-    ? definitionCall(propertyName, saved.definition, record.defaultIntent, record.call?.representation_proposal)
+    ? definitionCall(
+        propertyName,
+        saved.definition,
+        record.defaultIntent,
+        record.call?.representation_proposal,
+        record.call,
+      )
     : {
         tool: 'classify_prop' as const,
         prop: propertyName,

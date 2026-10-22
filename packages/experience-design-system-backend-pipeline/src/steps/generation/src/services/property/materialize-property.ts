@@ -41,6 +41,13 @@ export function materializeProperty(
   const candidate = component.sourceCandidates?.find((candidate) => candidate.name === call.prop);
   const fact = candidate?.facts;
   if (!raw && !candidate) throw new Error(`Unknown property '${call.prop}'`);
+  if (call.null_handling && (!fact?.sourceGraph || !call.source_revision || !call.source_node_id))
+    throw new Error('Null handling requires current compiler source evidence and source identity');
+  const omitSourceNullDefault =
+    fact?.sourceGraph?.nodes.find((node) => node.id === fact.sourceGraph!.rootId)?.required === false &&
+    call.null_handling?.some(
+      (judgment) => judgment.sourceNodeId === fact!.sourceGraph!.rootId && judgment.handling === 'omit-equivalent',
+    );
   const definition = call.cdf_type ? classificationDefinition(call) : null;
   if (definition && !own(call, 'required')) definition.$required = fact?.declaredRequired ?? raw?.required ?? false;
   if (definition && !own(call, 'description') && raw?.description !== undefined)
@@ -54,7 +61,11 @@ export function materializeProperty(
     !own(definition, '$default') &&
     intent.action === 'absent'
   ) {
-    if (fact?.sourceDefault?.state === 'value' && own(fact.sourceDefault, 'value'))
+    if (
+      fact?.sourceDefault?.state === 'value' &&
+      own(fact.sourceDefault, 'value') &&
+      !(omitSourceNullDefault && fact.sourceDefault.value === null)
+    )
       definition.$default = cloneJson(fact.sourceDefault.value!);
     else if (!fact && raw?.defaultValue !== undefined) {
       if (definition.$type === 'boolean' && ['true', 'false'].includes(raw.defaultValue))
@@ -102,6 +113,7 @@ export function materializeProperty(
     category: call.cdf_category,
     ...(definition ? { representation: cloneJson(definition) } : {}),
     ...(call.representation_proposal ? { representationProposal: cloneJson(call.representation_proposal) } : {}),
+    ...(call.null_handling ? { nullHandling: cloneJson(call.null_handling) } : {}),
     defaultIntent: intent,
     defaultAuthority: options.defaultAuthority ?? 'generation',
   };

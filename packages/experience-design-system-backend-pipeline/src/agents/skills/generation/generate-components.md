@@ -101,7 +101,7 @@ Emit one JSON object per line. The CLI parses lines starting with `{`. Lines not
 - Source graphs and defaults remain independent of advisory shape/category/representation; unsupported deeper or cyclic positions retain source evidence and require an explicit plan with unknown mapper/cardinality context.
 - Proposal stdout is staged typed drafts only; caller readiness and activation are separate.
 - Every property in the host-owned required decision inventory must produce exactly one call: `classify_prop` OR `exclude_prop`, including inputs absent from advisory props.
-- Every `classify_prop` requires `cdf_category`: `content`, `design` or `state`, including when `cdf_type` is omitted for unresolved representation.
+- Every retained property requires `classify_prop` with a supported `cdf_type` and `cdf_category`: `content`, `design` or `state`. Missing `cdf_type` is an incomplete draft and cannot finish generation.
 - Every slot must produce exactly one `classify_slot` call.
 - Emit `classify_component` once at the start (required). The `description` field is **required** — always provide a brief description of the component's purpose.
 - `values` is optional for `cdf_type: "string"` — it must be a non-empty string array for a source-supported closed set of variant names. A default, one caller, or a partial lookup map does not establish the complete set. When no closed set is shown, emit `cdf_type: "string"` without `values`; do not guess.
@@ -176,6 +176,17 @@ A ref, event handler or style-shaped input still needs its own source reasoning;
 Keep structured/complex alternatives and source defaults in the evidence record when the target format cannot represent them; preserve that capability limit for review.
 Never manufacture requiredness from callers, typical usage or model agreement.
 
+## Null values and editable representations
+
+Preserve compiler nullability, declared requiredness, source defaults and complete source alternatives independently of the editable representation. Choose the simplest supported type for meaningful editable values. Nullability alone does not require JSON or a model Component.
+
+- Optional means the input can be omitted; nullable means it can contain explicit null. Do not make a required nullable input optional.
+- Assess defaults, comparisons, forwarding and output behavior using supplied source evidence. If null and omission have equivalent behavior, an optional underlying type can represent that authoring state. Neither a type union, a prop name nor a framework convention proves equivalence.
+- Record each nullable union judgment in `null_handling`: `[{"sourceNodeId":"<nullable-union-node>","handling":"omit-equivalent","reason":"<source behavior supporting equivalence>"}]`. Copy the current property `source_revision` and root `source_node_id` from the supplied identities. Each judgment applies only to its named source union. `distinct` and `unknown` retain meaningful or uncertain null behavior; they do not authorize omission.
+- A supported optional underlying type must still preserve every non-null alternative, finite domain, field and default. Never replace null with empty strings, false, zero or empty collections.
+- Ordinary scalar fields cannot carry null defaults. For established omission equivalence, leave the editable default absent and retain the original null default in source evidence; omission invokes the unchanged source behavior. Explicit incompatible defaults remain validation errors.
+- These are source-bound agent judgments, not compiler proofs. Keep their rationale separate from original source facts. Meaningful or uncertain distinctions require a compatible representation or a precise validation failure; do not discard the property or claim readiness.
+
 ## Handling structured source properties
 
 - Emit one definition for the original source property, retaining exact field keys in `fields` and array item metadata in `items`.
@@ -235,6 +246,7 @@ Before emitting any tool calls, verify:
 8. Every slot uses its original source name and authoritative accepted state; unknown restrictions are unset.
 9. Every `classify_slot` has a non-empty rationale; descriptions follow Description content rules.
 10. Input names, structural shapes, framework labels and observed children do not substitute for source reasoning.
+11. Every retained property selects `cdf_type`; nullable unions use explicit source-bound null handling when omission equivalence is needed.
 
 Before finishing, review the component output against this checklist and iterate on any warning the supplied evidence can resolve. Preserve unresolved warnings in the relevant `description` or `reason`; do not invent values.
 
@@ -242,10 +254,8 @@ Before finishing, review the component output against this checklist and iterate
 
 Use the independent source inventory, including retained inputs absent from advisory props, to account for every subject exactly once.
 Emit exactly one component decision even when there are no properties; accepted source-owned slots account for their original inputs without a conflicting property decision. Such owned inputs are already omitted from the required property inventory. Matching property and slot names alone do not establish ownership; any property still listed requires its own decision.
-For an input whose semantics are retained but whose representation is unresolved, emit `classify_prop` with its exact `prop`, the required `cdf_category` (`content`, `design` or `state`), a non-empty `reason`, and no `cdf_type` or representation companions.
-Without `cdf_type`, omit `required`, `values`, `token_kind`, `default`, `default_intent`, `items` and `fields`; source requiredness and defaults remain in the independent evidence.
-For example, an unresolved content input may emit `{"tool":"classify_prop","prop":"body","cdf_category":"content","reason":"Display content is retained; its representation is unresolved."}`; choose the category from source semantics rather than copying this example's category.
-This is an accounted held decision requiring review; do not invent String or another native type.
+Every retained input must select a supported `cdf_type`, the required `cdf_category` (`content`, `design` or `state`), and a non-empty source-grounded `reason`. An omitted type is only an incomplete draft; it cannot be saved as completed generation.
+Use the underlying editable type for evidence-backed null/omission equivalence with source-bound `null_handling`. If compatibility remains unresolved, retain the selected type and explain the concrete limitation; host validation keeps the component incomplete. Do not invent an arbitrary String representation or claim unsupported mapper capabilities.
 Use reasoned `exclude_prop` only for an explicit semantic exclusion.
 Defaults remain typed JSON with independent original source evidence; absent intent preserves a known source default, while generation must never set or clear a different known default.
 When a correction is requested, emit decisions only for reported missing/rejected subjects and pending representations; preserve successful decisions, accepted exclusions/slots and the original source.
@@ -303,4 +313,4 @@ The desired CDF vocabulary additionally includes `Integer`, `DateTime`, `Literal
 
 ## Discriminated union content representations
 
-`DiscriminatedUnion` is a desired content representation. A `classify_prop` call must carry `discriminator` and every complete recursive CDF `members` definition together. Members are `record` definitions with a required intrinsic `Literal` field at that discriminator key, using typed `value` and recursive `valueType`. Keep every compiler branch, each branch's fields and requiredness, and complete finite domains; do not flatten branches, infer tags from names, coerce tags, or use observed callers as an exhaustive domain. Defaults must match one exact branch. Treat the complete exploration `definition` as one advisory judgment to validate against current compiler evidence. Native positions, target tag lookup/path constraints, mapper support, exclusive branch cardinality and reconstruction remain separate requirements; preserve source-bound model alternatives when native representation cannot preserve them. If `cdf_type` is unresolved, omit `discriminator` and `members` along with every other representation companion.
+`DiscriminatedUnion` is a desired content representation. A `classify_prop` call must carry `discriminator` and every complete recursive CDF `members` definition together. Members are `record` definitions with a required intrinsic `Literal` field at that discriminator key, using typed `value` and recursive `valueType`. Keep every compiler branch, each branch's fields and requiredness, and complete finite domains; do not flatten branches, infer tags from names, coerce tags, or use observed callers as an exhaustive domain. Defaults must match one exact branch. Treat the complete exploration `definition` as one advisory judgment to validate against current compiler evidence. Native positions, target tag lookup/path constraints, mapper support, exclusive branch cardinality and reconstruction remain separate requirements; preserve source-bound model alternatives when native representation cannot preserve them. A final retained property must select `cdf_type`; a DiscriminatedUnion decision requires its complete discriminator and members before generation can finish.

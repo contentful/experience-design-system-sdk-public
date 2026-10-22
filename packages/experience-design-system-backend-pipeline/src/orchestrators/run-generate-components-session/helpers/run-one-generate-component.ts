@@ -230,7 +230,7 @@ export async function runOneGenerateComponent(
     );
   }
   throwIfAborted(signal);
-  if (!completed.complete) {
+  if (!completed.complete || !completed.representationsComplete) {
     const error = completed.diagnostics.join('; ');
     onProgress?.({ kind: 'component:failed', index, total, name: component.name, error });
     return buildFailedComponentResult(component.name, error, renames.length);

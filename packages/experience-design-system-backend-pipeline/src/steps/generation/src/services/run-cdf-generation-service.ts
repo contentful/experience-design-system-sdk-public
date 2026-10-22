@@ -117,7 +117,8 @@ async function generateOne(
     throwIfAborted(options.signal);
     onWarning?.(`${component.name}: ${warning}`);
   }
-  if (!completed.complete) return { failure: { componentName: component.name, error: warnings.join('; ') }, warnings };
+  if (!completed.complete || !completed.representationsComplete)
+    return { failure: { componentName: component.name, error: warnings.join('; ') }, warnings };
 
   throwIfAborted(options.signal);
   let materialized: CDFComponentEntry;

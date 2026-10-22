@@ -1044,7 +1044,13 @@ export function evaluateComponentReadiness(
       defaultIntent?: ClassifiedPropertyCall['default_intent'];
       call?: ClassifiedPropertyCall;
     };
-    return definitionCall(call.prop, definition, record.defaultIntent, record.call?.representation_proposal);
+    return definitionCall(
+      call.prop,
+      definition,
+      record.defaultIntent,
+      record.call?.representation_proposal,
+      record.call,
+    );
   });
   const accounting = accountClassificationCalls(inventory, effective);
   const sourceIssues: string[] = slotIssue ? [slotIssue] : [];
@@ -1272,6 +1278,7 @@ export function applyToolCalls(
       human.definition,
       (human.decision as { defaultIntent?: ClassifiedPropertyCall['default_intent'] }).defaultIntent,
       (human.decision as { call?: ClassifiedPropertyCall }).call?.representation_proposal,
+      (human.decision as { call?: ClassifiedPropertyCall }).call,
     );
     materializeProperty(rawComponent, retained, componentId, { defaultAuthority: 'review' });
     return retained;
@@ -1723,7 +1730,8 @@ export function storeRawComponents(
       let call: ToolCall | undefined;
       try {
         if (definition) {
-          call = definitionCall(snapshot.prop_name, definition, intent);
+          const sourceDecision = previous.call as ClassifiedPropertyCall | undefined;
+          call = definitionCall(snapshot.prop_name, definition, intent, undefined, sourceDecision);
           const current = materializeProperty(component, call, snapshot.component_id, {
             defaultAuthority: previous.kind === 'review' ? 'review' : 'generation',
           });
@@ -2582,6 +2590,7 @@ export function storeCDFComponents(
               (previous?.decision as { call?: { representation_proposal?: RepresentationProposalDraft } } | undefined)
                 ?.call?.representation_proposal,
             ),
+            (previous?.decision as { call?: ClassifiedPropertyCall } | undefined)?.call,
           ),
           source.component_id,
           { defaultAuthority: 'review' },
@@ -2788,6 +2797,7 @@ export function storeCDFComponents(
                 (saved?.decision as { defaultIntent?: ClassifiedPropertyCall['default_intent'] } | undefined)
                   ?.defaultIntent,
                 (saved?.decision as { call?: ClassifiedPropertyCall } | undefined)?.call?.representation_proposal,
+                (saved?.decision as { call?: ClassifiedPropertyCall } | undefined)?.call,
               ),
             );
           else {

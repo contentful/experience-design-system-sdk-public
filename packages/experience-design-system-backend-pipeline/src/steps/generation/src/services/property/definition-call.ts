@@ -31,6 +31,7 @@ export function definitionCall(
   definition: CDFPropertyDefinition,
   intent?: DefaultIntent,
   proposal?: RepresentationProposalDraft,
+  sourceDecision?: ClassifiedPropertyCall,
 ): ClassifiedPropertyCall {
   return {
     tool: 'classify_prop',
@@ -47,6 +48,13 @@ export function definitionCall(
     ...(definition.members ? { members: cloneJson(definition.members) } : {}),
     ...(definition.allowedResources ? { allowedResources: cloneJson(definition.allowedResources) } : {}),
     ...(proposal ? { representation_proposal: cloneJson(proposal) } : {}),
+    ...(sourceDecision?.null_handling
+      ? {
+          null_handling: cloneJson(sourceDecision.null_handling),
+          source_revision: sourceDecision.source_revision,
+          source_node_id: sourceDecision.source_node_id,
+        }
+      : {}),
     ...(definition.$values ? { values: cloneJson(definition.$values) } : {}),
     ...(definition['$token.kind'] ? { token_kind: definition['$token.kind'] } : {}),
     ...(intent

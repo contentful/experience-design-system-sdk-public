@@ -21,6 +21,13 @@ export function validateGenerationRepresentationDraft(evidence: RepresentationVa
   const parsed = parseClassificationToolLines(draft);
   const accounting = accountClassificationCalls(evidence.inventory, parsed.calls);
   const diagnostics = [...parsed.warnings, ...accounting.issues];
+  diagnostics.push(
+    ...accounting.accepted.flatMap((call) =>
+      call.tool === 'classify_prop' && !call.cdf_type
+        ? [`property:${call.prop}: cdf_type must be selected before generation completes`]
+        : [],
+    ),
+  );
   const representations = accounting.accepted.flatMap((call) => {
     if (call.tool !== 'classify_prop') return [];
     try {
@@ -31,7 +38,7 @@ export function validateGenerationRepresentationDraft(evidence: RepresentationVa
     }
   });
   return {
-    complete: accounting.complete && !diagnostics.length,
+    complete: accounting.complete && !diagnostics.length && representations.every((result) => result.state === 'ready'),
     representationsComplete:
       accounting.complete && !diagnostics.length && representations.every((result) => result.state === 'ready'),
     missingSubjects: accounting.missing,
