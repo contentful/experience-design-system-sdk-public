@@ -99,8 +99,14 @@ export function PathValidationScreen({
 
   return (
     // keyed by phase: the menu changes length, so its focus starts over
-    <MenuScreen key={phase} title="Scan" menu={MENUS[phase]} onChoose={choose} onEscape={onBack}>
-      <Text> </Text>
+    <MenuScreen
+      key={phase}
+      title="Scan"
+      dataTitle="Scan result"
+      menu={MENUS[phase]}
+      onChoose={choose}
+      onEscape={onBack}
+    >
       {scan === undefined && (
         <Text color={PALETTE.muted}>
           Scanning <Text bold>{resolvedPath}</Text>...

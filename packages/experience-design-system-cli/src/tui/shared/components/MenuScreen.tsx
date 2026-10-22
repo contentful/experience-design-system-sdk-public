@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { PALETTE } from '@tui/theme.js';
-import { ControlHints } from './ControlHints.js';
 import { FormReadOnlyRow, formLabelWidth } from './FieldForm.js';
 import { StepHeader } from './StepHeader.js';
 
@@ -27,7 +26,8 @@ interface MenuScreenProps<C extends string> {
   onChoose: (choice: C) => void;
   /** What Esc does. */
   onEscape: () => void;
-  escapeLabel?: string;
+  /** The heading over the read-only part, which sits under a divider and is never focusable. */
+  dataTitle?: string;
   /** Ignores keys while something is in flight. */
   busy?: boolean;
   /** Shown after the rows, for read-only content that belongs to the same screen. */
@@ -45,7 +45,7 @@ export function MenuScreen<C extends string>({
   rows = [],
   onChoose,
   onEscape,
-  escapeLabel = 'back',
+  dataTitle = 'Details',
   busy = false,
   children,
 }: MenuScreenProps<C>): React.ReactElement {
@@ -73,13 +73,14 @@ export function MenuScreen<C extends string>({
             <Text> </Text>
           </>
         )}
+        <Text color={PALETTE.muted}>ACTIONS</Text>
         {menu.map((item, index) => {
           const focused = index === focus;
           return (
             <Box key={item.choice} gap={1}>
               <Text color={focused ? PALETTE.accent : undefined}>{focused ? '❯' : ' '}</Text>
               <Box width={labelWidth} flexShrink={0}>
-                <Text bold={focused} color={focused ? PALETTE.accent : PALETTE.muted}>
+                <Text bold={focused} color={focused ? PALETTE.accent : undefined}>
                   {item.label}
                 </Text>
               </Box>
@@ -87,21 +88,25 @@ export function MenuScreen<C extends string>({
             </Box>
           );
         })}
-        {rows.length > 0 && <Text> </Text>}
-        {rows.map((row) => (
-          <FormReadOnlyRow key={row.label} label={row.label} labelWidth={labelWidth}>
-            <Text bold={row.value !== ''}>{row.value || '(empty)'}</Text>
-          </FormReadOnlyRow>
-        ))}
-        {children}
-        <Text> </Text>
-        <ControlHints
-          hints={[
-            { keys: '↑/↓', label: 'move' },
-            { keys: '⏎', label: menu[focus]!.label.toLowerCase() },
-            { keys: 'Esc', label: escapeLabel },
-          ]}
-        />
+        {(rows.length > 0 || children) && (
+          <Box
+            flexDirection="column"
+            marginTop={1}
+            borderStyle="single"
+            borderColor={PALETTE.border}
+            borderBottom={false}
+            borderLeft={false}
+            borderRight={false}
+          >
+            <Text color={PALETTE.muted}>{dataTitle.toUpperCase()}</Text>
+            {rows.map((row) => (
+              <FormReadOnlyRow key={row.label} label={row.label} labelWidth={labelWidth}>
+                <Text bold={row.value !== ''}>{row.value || '(empty)'}</Text>
+              </FormReadOnlyRow>
+            ))}
+            {children}
+          </Box>
+        )}
       </Box>
     </Box>
   );
