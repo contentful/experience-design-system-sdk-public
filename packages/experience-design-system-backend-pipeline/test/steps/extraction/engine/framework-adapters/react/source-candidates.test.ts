@@ -21,7 +21,7 @@ afterEach(() => {
 });
 
 describe('React source candidates', () => {
-  it('retains declared names excluded by the current prop projection and records exact metadata', async () => {
+  it('retains declared names in the prop projection and records exact metadata', async () => {
     const files = fixture({
       'Button.tsx': `
         type ButtonProps = {
@@ -43,11 +43,11 @@ describe('React source candidates', () => {
     const button = result.components.find((component) => component.name === 'Button')!;
     const candidates = button.sourceCandidates ?? [];
 
-    expect(button.props.some((prop) => prop.name === '__scopeDemo')).toBe(false);
+    expect(button.props.map((prop) => prop.name)).toEqual(expect.arrayContaining(['__scopeDemo', '_key', 'key']));
     expect(candidates.map((candidate) => candidate.name)).toEqual(
       expect.arrayContaining(['__scopeDemo', '_key', 'key', '$key', 'data.state/path', '']),
     );
-    expect(candidates.find((candidate) => candidate.name === '__scopeDemo')?.projection.kind).toBe('excluded');
+    expect(candidates.find((candidate) => candidate.name === '__scopeDemo')?.projection.kind).toBe('prop');
     expect(candidates.find((candidate) => candidate.name === 'data.state/path')?.keyPath).toEqual(['data.state/path']);
     expect(candidates.find((candidate) => candidate.name === '$key')?.facts?.domain).toMatchObject({
       observedLiterals: [
@@ -62,6 +62,28 @@ describe('React source candidates', () => {
       declarations: [{ textHash: expect.any(String), binding: 'unverified', startLine: expect.any(Number) }],
     });
   });
+
+  it.each(['value', '_value', '__scopeValue', '$value'])(
+    'retains the same source contract and DOM observation after renaming a field to %s',
+    async (name) => {
+      const files = fixture({
+        'Surface.tsx': `type Props = { ${name}: string }; export function Surface({ ${name} }: Props) { return <section id={${name}} />; }`,
+      });
+      const result = await extractReactComponents(files);
+      const component = result.components.find((entry) => entry.name === 'Surface')!;
+      expect(component.props.find((prop) => prop.name === name)).toMatchObject({ type: 'string' });
+      expect(component.sourceCandidates?.find((candidate) => candidate.name === name)?.projection.kind).toBe('prop');
+      expect(component.componentFacts?.sourceObservations?.inputOutput?.witnesses).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            inputName: name,
+            kind: 'intrinsic-attribute',
+            destination: expect.objectContaining({ inputName: 'id' }),
+          }),
+        ]),
+      );
+    },
+  );
 
   it('records implementation bindings beside useful declarations without changing projected props', async () => {
     const files = fixture({

@@ -1,7 +1,6 @@
 import { Node } from 'ts-morph';
 import type { FunctionLike } from './resolve-component-function.js';
 
-export { isImplementationOnlyAliasProp, filterImplementationOnlyAliasProps } from './filter-impl-alias-props.js';
 export { extractDestructuredBindingFallbackProps } from './extract-binding-fallback-props.js';
 
 function recordBindingPatternDefaults(nameNode: Node, defaults: Map<string, string>): void {

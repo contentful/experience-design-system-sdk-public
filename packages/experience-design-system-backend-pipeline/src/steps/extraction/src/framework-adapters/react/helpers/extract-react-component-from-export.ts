@@ -22,7 +22,6 @@ import {
   extractDefaultValues,
   extractSourceDefaultExpressions,
   extractSourceDefaultNodes,
-  filterImplementationOnlyAliasProps,
   extractDestructuredBindingFallbackProps,
 } from './extract-react-binding-defaults.js';
 import { inferPrimitiveDomPropsFromImplementation, hasImplementationChildrenHint } from './collect-react-impl-hints.js';
@@ -114,7 +113,7 @@ export function extractReactComponentFromExport(
   const { props, hasChildren } = resolvedPropsType.suppressProps
     ? { props: [], hasChildren: false }
     : extractPropsFromType(firstParamType, renderPropSlotNames, firstParamTypeNode);
-  const hasMeaningfulExtractedProps = props.some((prop) => !prop.name.startsWith('__scope'));
+  const hasExtractedProps = props.length > 0;
   const defaults = extractDefaultValues(funcNode);
   const sourceDefaults = extractSourceDefaultExpressions(funcNode);
   const hasImplementationChildren = hasImplementationChildrenHint(funcNode, params[0]);
@@ -132,7 +131,7 @@ export function extractReactComponentFromExport(
     ? []
     : inferPrimitiveDomPropsFromImplementation(funcNode, params[0]);
   const implementationPrimitiveDomProps =
-    !hasMeaningfulExtractedProps && syntheticDomProps.length === 0 ? allImplementationPrimitiveDomProps : [];
+    !hasExtractedProps && syntheticDomProps.length === 0 ? allImplementationPrimitiveDomProps : [];
   const sourceBindingFallbackProps = resolvedPropsType.suppressProps
     ? []
     : extractDestructuredBindingFallbackProps(funcNode, params[0], renderPropSlotNames);
@@ -140,7 +139,7 @@ export function extractReactComponentFromExport(
     !resolvedPropsType.suppressProps &&
     (containsImportedOmitWrappedCustomProps(firstParamTypeNode) ||
       containsAnyPickType(firstParamTypeNode) ||
-      (!hasMeaningfulExtractedProps && Node.isObjectBindingPattern(params[0].getNameNode())));
+      (!hasExtractedProps && Node.isObjectBindingPattern(params[0].getNameNode())));
   const bindingFallbackProps = shouldTryBindingFallback ? sourceBindingFallbackProps : [];
 
   const mergedPropsByName = new Map<string, RawPropDefinition>();
@@ -159,13 +158,13 @@ export function extractReactComponentFromExport(
   );
 
   const propDataflow = collectPropDataflow(funcNode, params[0], new Set(propsWithDefaults.map((p) => p.name)));
-  const filteredProps = filterImplementationOnlyAliasProps(propsWithDefaults, funcNode).map((prop) =>
+  const annotatedProps = propsWithDefaults.map((prop) =>
     propDataflow.intrinsicDomProps.has(prop.name) ? { ...prop, domAttribute: true } : prop,
   );
 
   const existingSlotNames = new Set(slots.map((s) => s.name));
   const expandedSlots: RawSlotDefinitionInternal[] = [];
-  const propsAfterSlotExpansion = filteredProps.filter((prop) => {
+  const propsAfterSlotExpansion = annotatedProps.filter((prop) => {
     if (existingSlotNames.has(prop.name)) return true;
     const isElementSlot = REACT_ELEMENT_GENERIC_TEST.test(prop.type);
     if (shouldBeSlot(prop.name, prop.type) || isElementSlot) {
