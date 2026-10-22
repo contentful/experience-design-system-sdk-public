@@ -118,7 +118,7 @@ describe('extractEndpoint', () => {
     expect(card?.reviewReasons).toEqual([]);
   });
 
-  it('preserves non-authorable signals as reviewable output instead of silently dropping components', async () => {
+  it('preserves missing-surface observations as reviewable output', async () => {
     const projectRoot = await mkdtemp(join(tmpdir(), 'extraction-endpoint-review-'));
     tempDirs.push(projectRoot);
     const sourcePath = join(projectRoot, 'AnalyticsBridge.tsx');
@@ -137,7 +137,7 @@ describe('extractEndpoint', () => {
     expect(result.components[0]?.validationIssues).toContainEqual(
       expect.objectContaining({ severity: 'warning', code: 'EMPTY_COMPONENT' }),
     );
-    expect(result.components[0]?.reviewReasons).toContain('non-authorable:component has no props and no slots');
+    expect(result.components[0]?.reviewReasons).toContain('surface-unobserved:component has no props and no slots');
     expect(result.warnings).toContain(
       'AnalyticsBridge: requires operator review (component has no props and no slots)',
     );

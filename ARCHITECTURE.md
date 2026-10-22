@@ -33,6 +33,8 @@ The shared reasoning channel includes a bounded lexical closure projection. It j
 
 Validated paired replay adds a component-specific `fieldProjectionPreview` to the reasoning evidence channel. Each exact field path carries separate value and omission applicability, unestablished premises, and retained reasons. The preview is always `retention-only`: matched replay reproduces captured source, while runtime and delivery premises remain unestablished. Missing paired replay or unavailable component facts withhold the preview; mismatched or unavailable replay retains uncertainty. Source candidates, shared shapes, sibling components, and authoring schemas are not changed, and uncovered fields remain retained. Caller-provided preview metadata cannot override the derived assessment.
 
+Extraction quality review does not infer non-authorability from prop names, textual handler/ref types or file-level context creation. Components with no extracted props or slots retain a neutral `surface-unobserved` review observation; captured returned-markup evidence can retain their visible-surface review path. Actual source facts, candidates, slots, validation diagnostics and explicit operator/extractor review decisions remain intact. Semantic state/callback/context judgments belong to evidence and reasoning rather than these quality heuristics.
+
 The shared extraction service preserves candidates returned by its framework readers without a second exclusion based on component names. A name resembling a hook does not establish rendering behavior. Reader discovery conventions and later authoring decisions remain separate stages, and unresolved behavior remains evidence for review.
 
 ---
