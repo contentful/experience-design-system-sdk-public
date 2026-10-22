@@ -49,6 +49,10 @@ it('routes real default observations through selection/generation/scoped explora
       expect(raw).not.toContain('componentFacts');
       const channel = prompt.match(/Compiler evidence and source candidates[^\n]*\n```json\n([\s\S]*?)\n```/)![1]!;
       expect(JSON.parse(channel).componentFacts[0].facts.sourceObservations).toEqual(collection);
+      expect(JSON.parse(channel).componentFacts[0].closureFactProjection).toMatchObject({
+        mode: 'lexical-advisory',
+        runtimeApplicability: 'unestablished',
+      });
     }
     const captured: Record<string, unknown>[] = [];
     const result = await runExploreStage({
@@ -75,6 +79,9 @@ it('routes real default observations through selection/generation/scoped explora
     });
     expect(result.ok).toBe(true);
     expect(captured[0]!.componentEvidence).toMatchObject([{ status: 'available', facts: component.componentFacts }]);
+    expect(
+      (captured[0]!.componentEvidence as { closureFactProjection: unknown }[])[0]!.closureFactProjection,
+    ).toBeDefined();
     expect((captured[0]!.components as Record<string, unknown>[])[0]!.componentFacts).toBeUndefined();
     expect(captured[1]!.componentEvidence).toBeUndefined();
     expect(captured[1]!.omittedComponentFacts).toBe(collection.observations.length);
