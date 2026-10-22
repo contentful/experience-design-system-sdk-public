@@ -10,6 +10,14 @@ import { hasNoAuthoringSurface } from '../../../../../../src/steps/extraction/sr
 import { extractReactComponents } from '../../../../../../src/steps/extraction/src/framework-adapters/react/extractor.js';
 import { inspectComponentSource } from '../../../../../../src/steps/extraction/src/services/quality/helpers/inspection/inspect-component-source.js';
 import { validateExtractedComponents } from '../../../../../../src/steps/extraction/src/services/quality/helpers/inspection/validate-extracted-components.js';
+import { evaluateExtractionQuality } from '../../../../../../src/steps/extraction/src/services/quality/evaluate-extraction-quality.js';
+import {
+  openPipelineDb,
+  getOrCreateSession,
+  storeRawComponents,
+  loadRawComponents,
+  loadScopeComponents,
+} from '../../../../../../src/persistence/src/session/repositories/db.js';
 
 const tempDirectories: string[] = [];
 
@@ -33,6 +41,115 @@ function component(overrides: Partial<RawComponentDefinition> = {}): RawComponen
 }
 
 describe('quality policy boundaries', () => {
+  it.each([
+    ['onReady', 'string'],
+    ['setCount', 'number'],
+    ['ref', 'string'],
+    ['innerRef', 'boolean'],
+    ['arbitrary', '() => void'],
+    ['arbitrary', 'EventHandler'],
+    ['arbitrary', 'Dispatch<SetStateAction<number>>'],
+    ['arbitrary', 'RefObject<string>'],
+    ['arbitrary', 'MutableRefObject<string>'],
+  ])('does not conclude authorability from spelling or type text: %s %s', async (name, type) => {
+    const input = component({ props: [prop({ name, type })] });
+    const before = JSON.stringify(input);
+    const result = await evaluateExtractionQuality([input]);
+    expect(result.components).toHaveLength(1);
+    expect(result.components[0]?.props).toEqual(input.props);
+    expect(result.components[0]?.reviewReasons).toEqual([]);
+    expect(result.components[0]?.needsReview).toBe(false);
+    expect(result.warnings).toEqual([]);
+    expect(JSON.stringify(input)).toBe(before);
+  });
+
+  it.each([
+    { props: [prop({ name: 'value' })], slots: [] },
+    { props: [prop({ name: 'arbitrary' })], slots: [] },
+    { props: [], slots: [{ name: 'arbitrary', isDefault: false }] },
+  ])('does not conclude authorability from a file-level context flag: %j', async (surface) => {
+    const input = component({ ...surface, usesCreateContext: true });
+    const result = await evaluateExtractionQuality([input]);
+    expect(result.components[0]).toMatchObject({ ...input, needsReview: false, reviewReasons: [] });
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('does not let unrelated context creation decide an extracted component authorability', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'source-inspection-'));
+    tempDirectories.push(directory);
+    const sourcePath = join(directory, 'Surface.tsx');
+    await writeFile(
+      sourcePath,
+      `
+      declare function createContext(value: null): unknown;
+      const unrelated = createContext(null);
+      export function Surface(props: { value: string }) { return <div>{props.value}</div>; }
+    `,
+    );
+    const input = (await extractReactComponents([sourcePath])).components[0]!;
+    expect(input.usesCreateContext).toBe(true);
+    const result = await evaluateExtractionQuality([input]);
+    expect(result.components[0]?.reviewReasons).toEqual([]);
+    expect(result.components[0]?.needsReview).toBe(false);
+    expect(result.components[0]?.componentFacts).toEqual(input.componentFacts);
+    expect(result.components[0]?.sourceCandidates).toEqual(input.sourceCandidates);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('keeps absent surface as a review observation rather than a non-authorability judgment', async () => {
+    const input = component({ props: [], slots: [], usesCreateContext: true });
+    const result = await evaluateExtractionQuality([input]);
+    expect(result.components[0]?.needsReview).toBe(true);
+    expect(result.components[0]?.reviewReasons).toEqual(['surface-unobserved:component has no props and no slots']);
+    expect(result.warnings).toContain('Button: requires operator review (component has no props and no slots)');
+  });
+
+  it('preserves explicit review decisions independently of spelling and context observations', async () => {
+    const input = component({
+      props: [prop({ name: 'value' })],
+      usesCreateContext: true,
+      needsReview: true,
+      reviewReasons: ['operator-requested-review'],
+    });
+    const result = await evaluateExtractionQuality([input]);
+    expect(result.components[0]?.needsReview).toBe(true);
+    expect(result.components[0]?.reviewReasons).toEqual(['operator-requested-review']);
+  });
+
+  it('saves fresh neutral review observations without inventing an agent decision', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'surface-review-'));
+    tempDirectories.push(directory);
+    const result = await evaluateExtractionQuality([
+      component({ name: 'Present', props: [prop({ name: 'value' })], usesCreateContext: true }),
+      component({ name: 'Absent', props: [], slots: [] }),
+    ]);
+    const path = join(directory, 'pipeline.db');
+    const db = openPipelineDb(path);
+    const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+    try {
+      storeRawComponents(db, sessionId, result.components);
+    } finally {
+      db.close();
+    }
+    const reopened = openPipelineDb(path);
+    try {
+      const saved = loadRawComponents(reopened, sessionId);
+      expect(saved.find((item) => item.name === 'Present')).toMatchObject({ needsReview: false, reviewReasons: [] });
+      expect(saved.find((item) => item.name === 'Absent')).toMatchObject({
+        needsReview: true,
+        reviewReasons: ['surface-unobserved:component has no props and no slots'],
+      });
+      expect(
+        loadScopeComponents(reopened, sessionId).map(({ aiDecision, aiReason }) => ({ aiDecision, aiReason })),
+      ).toEqual([
+        { aiDecision: null, aiReason: null },
+        { aiDecision: null, aiReason: null },
+      ]);
+    } finally {
+      reopened.close();
+    }
+  });
+
   it.each(['Card.tsx', 'Card-gql.tsx'])(
     'does not infer infrastructure or wrapper behavior from names in %s',
     async (filename) => {
@@ -110,14 +227,14 @@ describe('quality policy boundaries', () => {
     });
   });
 
-  it('filters components whose entire prop surface is handler or ref plumbing', () => {
+  it('leaves callable source inputs for semantic classification', () => {
     expect(
       hasNoAuthoringSurface(
         component({
           props: [prop({ name: 'onReady', type: '() => void' })],
         }),
       ),
-    ).toEqual({ skip: true, reason: 'every prop is a handler or ref' });
+    ).toEqual({ skip: false });
   });
 
   it('reports validation issues without changing extracted component data', () => {

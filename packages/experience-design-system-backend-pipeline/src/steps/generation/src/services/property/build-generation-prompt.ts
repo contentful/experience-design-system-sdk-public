@@ -2,6 +2,7 @@ import type { PromptOptions } from '../../../../../agents/types/prompts.js';
 import { buildPrompt } from '../../../../../agents/prompts/build-prompt.js';
 import { parseStrictJson } from '@contentful/experience-design-system-types';
 import type { RawComponentDefinition } from '../../../../extraction/src/types/component.js';
+import { buildComponentEvidence } from '../../../../../agents/prompts/helpers/build-component-evidence.js';
 
 /** Detailed observations remain in the invocation artifact, separate from the decision summary. */
 export function summarizeGenerationComponent(component: RawComponentDefinition, properties?: ReadonlySet<string>) {
@@ -31,9 +32,11 @@ export function summarizeGenerationComponent(component: RawComponentDefinition, 
 
 function compilerSummary(inline: string | undefined, component: RawComponentDefinition): string {
   let status: unknown = { readiness: 'caller-provided' };
+  let readiness: 'ready' | 'caller-provided' | 'unavailable' = 'caller-provided';
   if (inline) {
     try {
       const full = parseStrictJson(inline) as Record<string, unknown>;
+      readiness = full.readiness === 'ready' || full.readiness === 'caller-provided' ? full.readiness : 'unavailable';
       const compiler = full.compilerEvidence as Record<string, unknown> | undefined;
       const diagnostics = compiler?.runDiagnostics as Record<string, unknown> | undefined;
       status = {
@@ -44,10 +47,46 @@ function compilerSummary(inline: string | undefined, component: RawComponentDefi
         detailedDiagnostics: 'Preserved in the complete context artifact',
       };
     } catch {
+      readiness = 'unavailable';
       status = { readiness: 'unknown', reason: 'Compiler context could not be summarized; inspect complete context' };
     }
   }
-  return JSON.stringify({ status, component: summarizeGenerationComponent(component) });
+  const evidence = buildComponentEvidence([component], readiness)[0]!;
+  const preview = evidence.fieldProjectionPreview;
+  const closure = evidence.closureFactProjection;
+  return JSON.stringify({
+    status,
+    component: summarizeGenerationComponent(component),
+    evidence: {
+      status: evidence.status,
+      ...(evidence.fieldSemanticsPolicy ? { fieldSemanticsPolicy: evidence.fieldSemanticsPolicy } : {}),
+      ...(preview
+        ? {
+            fieldProjectionPreview: {
+              mode: preview.mode,
+              replayStatus: preview.replayStatus,
+              uncoveredFields: preview.uncoveredFields,
+              fieldCount: preview.fields.length,
+            },
+          }
+        : {}),
+      ...(closure
+        ? {
+            closureFactProjection: {
+              mode: closure.mode,
+              runtimeApplicability: closure.runtimeApplicability,
+              status: closure.status,
+              reason: closure.reason,
+              sourceBinding: closure.sourceBinding,
+              closureStatus: closure.closureStatus,
+              usedRecords: closure.usedRecords,
+              omittedRecords: closure.omittedRecords,
+            },
+          }
+        : {}),
+      detailedEvidence: 'Inspect the complete compiler component-facts entry in the immutable evidence artifact',
+    },
+  });
 }
 
 export async function buildGenerationPrompt(options: PromptOptions, component: RawComponentDefinition) {

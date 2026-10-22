@@ -13,7 +13,30 @@ function component(props: RawPropDefinition[], framework: RawComponentDefinition
   return { name: 'Field', source: '/project/Field.tsx', framework, props, slots: [] };
 }
 
-describe('type-based DOM prop classification', () => {
+describe('source-preserving category handoff', () => {
+  it.each([
+    ['onReady', 'string'],
+    ['ref', 'string'],
+    ['key', 'string'],
+    ['testId', 'string'],
+    ['callback', '() => void'],
+    ['arbitrary', 'Dispatch<string>'],
+    ['arbitrary', 'RefObject<string>'],
+    ['variant', 'string'],
+    ['disabled', 'boolean'],
+    ['componentId', 'string'],
+    ['size', 'number'],
+    ['arbitrary', 'number'],
+    ['arbitrary', 'boolean'],
+    ['arbitrary', "'first' | 'second'"],
+  ])('retains %s %s without guessing a semantic category', (name, type) => {
+    const input = component([prop({ name, type })]);
+    const before = JSON.stringify(input);
+    expect(preClassifyProp(input.props[0]!)).toBeUndefined();
+    expect(preClassifyComponent(input).props).toEqual(input.props);
+    expect(JSON.stringify(input)).toBe(before);
+  });
+
   it.each([
     'className',
     'class',
@@ -32,9 +55,9 @@ describe('type-based DOM prop classification', () => {
     'element',
     'modelValue',
   ])('retains the string prop %s regardless of its name', (name) => {
-    expect(preClassifyProp(prop({ name }))).toEqual({ category: 'content', cdfTypeHint: 'string' });
+    expect(preClassifyProp(prop({ name }))).toBeUndefined();
     expect(preClassifyComponent(component([prop({ name })])).props).toEqual([
-      expect.objectContaining({ name, type: 'string', category: 'content' }),
+      expect.objectContaining({ name, type: 'string' }),
     ]);
   });
 
@@ -51,7 +74,6 @@ describe('type-based DOM prop classification', () => {
           required: false,
           description: 'Form field name',
           defaultValue: 'contact',
-          category: 'content',
           domAttribute: true,
         },
       ]);
@@ -83,22 +105,18 @@ describe('type-based DOM prop classification', () => {
     expect(preClassifyComponent(component([input])).props).toEqual([input]);
   });
 
-  it('uses primitive and literal types while preserving existing categories', () => {
-    expect(preClassifyProp(prop({ name: 'hidden', type: 'boolean' }))).toEqual({
-      category: 'design',
-      cdfTypeHint: 'boolean',
-    });
-    expect(preClassifyProp(prop({ name: 'tabIndex', type: 'number' }))).toEqual({
-      category: 'design',
-      cdfTypeHint: 'string',
-    });
-    expect(preClassifyProp(prop({ name: 'role', type: "'alert' | 'status'" }))).toEqual({
-      category: 'design',
-      cdfTypeHint: 'string',
-    });
-    expect(preClassifyComponent(component([prop({ name: 'className', category: 'design' })])).props).toEqual([
-      expect.objectContaining({ name: 'className', category: 'design' }),
-    ]);
+  it('preserves primitive and literal type evidence without settling categories', () => {
+    for (const input of [
+      prop({ name: 'hidden', type: 'boolean' }),
+      prop({ name: 'tabIndex', type: 'number' }),
+      prop({ name: 'role', type: "'alert' | 'status'" }),
+    ]) {
+      expect(preClassifyProp(input)).toBeUndefined();
+      expect(preClassifyComponent(component([input])).props).toEqual([input]);
+    }
+    const decided = prop({ name: 'className', category: 'design' });
+    expect(preClassifyProp(decided)).toEqual({ category: 'design' });
+    expect(preClassifyComponent(component([decided])).props).toEqual([decided]);
   });
 
   it.each([
@@ -109,9 +127,9 @@ describe('type-based DOM prop classification', () => {
     ['testId', 'string'],
     ['dataTestId', 'string'],
     ['setValue', 'Dispatch<string>'],
-  ])('continues to exclude explicit wiring prop %s even when preclassified', (name, type) => {
+  ])('preserves explicit decisions and source input %s regardless of spelling', (name, type) => {
     const input = prop({ name, type, category: 'content' });
-    expect(preClassifyProp(input)).toEqual({ category: 'exclude' });
-    expect(preClassifyComponent(component([input])).props).toEqual([]);
+    expect(preClassifyProp(input)).toEqual({ category: 'content' });
+    expect(preClassifyComponent(component([input])).props).toEqual([input]);
   });
 });

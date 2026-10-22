@@ -1,3 +1,4 @@
+import { preflightGenerationResult, readGenerationContext } from '../../../test/generation-fixture.js';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -79,8 +80,8 @@ it('retains real default source observations through initial/final/cold/review s
           invoker: {
             checkAuth: async () => 'ok',
             invoke: async ({ prompt }) => {
-              prompts.push(prompt);
-              return {
+              prompts.push(readGenerationContext(prompt));
+              return preflightGenerationResult(prompt, {
                 stdout:
                   JSON.stringify({ tool: 'classify_component' }) +
                   '\n' +
@@ -93,7 +94,7 @@ it('retains real default source observations through initial/final/cold/review s
                 stderr: '',
                 exitCode: 0,
                 timedOut: false,
-              };
+              });
             },
           },
           agent: 'claude',

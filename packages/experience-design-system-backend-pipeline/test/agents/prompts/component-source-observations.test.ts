@@ -1,3 +1,4 @@
+import { preflightGenerationResult, readGenerationContext } from '../../generation-fixture.js';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,15 +9,15 @@ vi.mock('../../../src/agents/index.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../src/agents/index.js')>()),
   createLocalCliAgentInvoker: () => ({
     invoke: async ({ prompt }: { prompt: string }) => {
-      agent.prompts.push(prompt);
-      return {
+      agent.prompts.push(readGenerationContext(prompt));
+      return preflightGenerationResult(prompt, {
         stdout: prompt.includes('Generate from source.')
           ? '{"tool":"classify_component"}\n{"tool":"classify_prop","prop":"mode","cdf_type":"string","cdf_category":"content","values":["short","long"]}'
           : '',
         stderr: '',
         exitCode: 0,
         timedOut: false,
-      };
+      });
     },
   }),
 }));
@@ -44,11 +45,15 @@ it('routes real default observations through selection/generation/scoped explora
     });
     expect(agent.prompts).toHaveLength(2);
     for (const prompt of agent.prompts) {
-      const raw = prompt.match(/Raw component data \(JSON\):\n```json\n([\s\S]*?)\n```/)![1]!;
+      const raw = readGenerationContext(prompt).match(/Raw component data \(JSON\):\n```json\n([\s\S]*?)\n```/)![1]!;
       expect(raw).not.toContain('sourceObservations');
       expect(raw).not.toContain('componentFacts');
       const channel = prompt.match(/Compiler evidence and source candidates[^\n]*\n```json\n([\s\S]*?)\n```/)![1]!;
       expect(JSON.parse(channel).componentFacts[0].facts.sourceObservations).toEqual(collection);
+      expect(JSON.parse(channel).componentFacts[0].closureFactProjection).toMatchObject({
+        mode: 'lexical-advisory',
+        runtimeApplicability: 'unestablished',
+      });
     }
     const captured: Record<string, unknown>[] = [];
     const result = await runExploreStage({
@@ -56,12 +61,12 @@ it('routes real default observations through selection/generation/scoped explora
         invoke: async ({ prompt }) => {
           const scope = /"scope":"([^"\n]+)"/.exec(prompt)![1]!;
           captured.push(JSON.parse(prompt.split('\nInput data:\n')[1]!.split('\n')[0]!));
-          return {
+          return preflightGenerationResult(prompt, {
             stdout: JSON.stringify({ agentRole: scope, components: [{ name: 'Panel', source: path, included: true }] }),
             stderr: '',
             exitCode: 0,
             timedOut: false,
-          };
+          });
         },
       },
       agent: 'codex',
@@ -75,6 +80,9 @@ it('routes real default observations through selection/generation/scoped explora
     });
     expect(result.ok).toBe(true);
     expect(captured[0]!.componentEvidence).toMatchObject([{ status: 'available', facts: component.componentFacts }]);
+    expect(
+      (captured[0]!.componentEvidence as { closureFactProjection: unknown }[])[0]!.closureFactProjection,
+    ).toBeDefined();
     expect((captured[0]!.components as Record<string, unknown>[])[0]!.componentFacts).toBeUndefined();
     expect(captured[1]!.componentEvidence).toBeUndefined();
     expect(captured[1]!.omittedComponentFacts).toBe(collection.observations.length);

@@ -1,3 +1,4 @@
+import { preflightGenerationResult, readGenerationContext } from '../../../test/generation-fixture.js';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -18,7 +19,10 @@ import {
 
 const invoke = vi.hoisted(() => vi.fn());
 vi.mock('../../agents/invoker/create-local-cli-agent-invoker.js', () => ({
-  createLocalCliAgentInvoker: () => ({ invoke, checkAuth: async () => 'ok' }),
+  createLocalCliAgentInvoker: () => ({
+    checkAuth: async () => 'ok',
+    invoke: async (options: { prompt: string }) => preflightGenerationResult(options.prompt, await invoke(options)),
+  }),
 }));
 vi.mock('../../analytics/index.js', () => ({ bindAnalyticsSessionId: async () => undefined }));
 import { runSelectionService } from '../../steps/selection/src/services/run-selection-service.js';
@@ -180,8 +184,8 @@ it('delivers reopened evidence to actual selection and generation prompts and pr
     promptText: 'Select from source.',
     compilerEvidenceInline: buildCompilerEvidenceInline(saved, { readiness: 'ready' }),
   });
-  expect(invoke.mock.calls.at(-1)![0].prompt).toContain('"sourceClosure":');
-  expect(invoke.mock.calls.at(-1)![0].prompt).toContain(capture.captureId);
+  expect(readGenerationContext(invoke.mock.calls.at(-1)![0].prompt)).toContain('"sourceClosure":');
+  expect(readGenerationContext(invoke.mock.calls.at(-1)![0].prompt)).toContain(capture.captureId);
   invoke.mockResolvedValue({
     stdout: [
       { tool: 'classify_component' },
@@ -203,7 +207,7 @@ it('delivers reopened evidence to actual selection and generation prompts and pr
       noCache: true,
     });
     expect(generated.allOk, JSON.stringify(generated)).toBe(true);
-    const prompt = invoke.mock.calls.at(-1)![0].prompt;
+    const prompt = readGenerationContext(invoke.mock.calls.at(-1)![0].prompt);
     expect(prompt).toContain('"sourceClosure":');
     expect(prompt).toContain(capture.captureId);
     expect(prompt).toContain('"semantics":"lexical-source"');
@@ -225,14 +229,14 @@ it('delivers reopened evidence to actual selection and generation prompts and pr
         reason: 'completed-extraction-step-unavailable',
       }),
     });
-    expect(invoke.mock.calls.at(-1)![0].prompt).toContain('"facts":null');
+    expect(readGenerationContext(invoke.mock.calls.at(-1)![0].prompt)).toContain('"facts":null');
     await runGenerateComponentsSession({
       sessionId,
       agent: 'codex',
       promptOverrides: ['generate=Generate with explicit unavailable evidence.'],
       noCache: true,
     });
-    const unavailablePrompt = invoke.mock.calls.at(-1)![0].prompt;
+    const unavailablePrompt = readGenerationContext(invoke.mock.calls.at(-1)![0].prompt);
     expect(unavailablePrompt).toContain('"readiness":"unavailable"');
     expect(unavailablePrompt).toContain('"facts":null');
     expect(unavailablePrompt).toContain('completed-extraction-step-unavailable');

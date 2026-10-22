@@ -1,3 +1,4 @@
+import { preflightGenerationResult, readGenerationContext } from '../../generation-fixture.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -16,7 +17,11 @@ import type { RawComponentDefinition } from '../../../src/steps/extraction/src/t
 
 const agent = vi.hoisted(() => ({ invoke: vi.fn(), checkAuth: vi.fn() }));
 vi.mock('../../../src/agents/invoker/create-local-cli-agent-invoker.js', () => ({
-  createLocalCliAgentInvoker: () => agent,
+  createLocalCliAgentInvoker: () => ({
+    ...agent,
+    invoke: async (options: { prompt: string }) =>
+      preflightGenerationResult(options.prompt, await agent.invoke(options)),
+  }),
 }));
 
 vi.mock('../../../src/analytics/index.js', () => ({ bindAnalyticsSessionId: vi.fn(async () => {}) }));
@@ -42,6 +47,7 @@ const component: RawComponentDefinition = {
 };
 
 function assertPrompt(prompt: string): Record<string, unknown> {
+  prompt = readGenerationContext(prompt);
   const raw = prompt.match(/Raw component data \(JSON\):\n```json\n([\s\S]*?)\n```/);
   expect(raw).not.toBeNull();
   const decoded = JSON.parse(raw![1]!);
@@ -127,7 +133,9 @@ describe('production prompt provenance boundaries', () => {
     expect(result.failures).toEqual([]);
     expect(result.components[0]?.$properties?.label).toMatchObject({ $type: 'string', $category: 'content' });
     const buckets = assertPrompt(agent.invoke.mock.calls[0]![0].prompt);
-    expect(events.mock.calls).toEqual([['prop-buckets.generate', buckets]]);
+    expect(events.mock.calls.filter(([kind]) => kind === 'prop-buckets.generate')).toEqual([
+      ['prop-buckets.generate', buckets],
+    ]);
     expect(component).toEqual(original);
   });
 
@@ -164,7 +172,10 @@ describe('production prompt provenance boundaries', () => {
           {
             db,
             sessionId,
-            invoker: agent,
+            invoker: {
+              ...agent,
+              invoke: async (options) => preflightGenerationResult(options.prompt, await agent.invoke(options)),
+            },
             agent: 'claude',
             model: undefined,
             tokensInline: undefined,
@@ -187,7 +198,9 @@ describe('production prompt provenance boundaries', () => {
         );
         expect(result.failed, JSON.stringify(result)).toBe(timedOut);
         const buckets = assertPrompt(agent.invoke.mock.calls[0]![0].prompt);
-        expect(events.mock.calls).toEqual([['prop-buckets.generate', buckets]]);
+        expect(events.mock.calls.filter(([kind]) => kind === 'prop-buckets.generate')).toEqual([
+          ['prop-buckets.generate', buckets],
+        ]);
         expect(loadRawComponents(db, sessionId)[0]?.props).toEqual(component.props);
       } finally {
         db.close();
@@ -239,7 +252,9 @@ describe('production prompt provenance boundaries', () => {
       });
       expect(result.allOk, JSON.stringify(result)).toBe(true);
       const buckets = assertPrompt(agent.invoke.mock.calls[0]![0].prompt);
-      expect(events.mock.calls).toEqual([['prop-buckets.generate', buckets]]);
+      expect(events.mock.calls.filter(([kind]) => kind === 'prop-buckets.generate')).toEqual([
+        ['prop-buckets.generate', buckets],
+      ]);
     } finally {
       vi.unstubAllEnvs();
       rmSync(dir, { recursive: true, force: true });

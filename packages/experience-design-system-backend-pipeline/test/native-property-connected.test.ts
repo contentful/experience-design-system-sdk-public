@@ -1,3 +1,4 @@
+import { preflightGenerationResult, readGenerationContext } from './generation-fixture.js';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -26,8 +27,8 @@ vi.mock('../src/agents/index.js', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   createLocalCliAgentInvoker: () => ({
     invoke: async ({ prompt }: { prompt: string }) => {
-      fake.prompts.push(prompt);
-      return { stdout: fake.stdout, stderr: '', exitCode: 0, timedOut: false };
+      fake.prompts.push(readGenerationContext(prompt));
+      return preflightGenerationResult(prompt, { stdout: fake.stdout, stderr: '', exitCode: 0, timedOut: false });
     },
   }),
 }));
@@ -93,8 +94,13 @@ it('connects actual producer to saved source, fresh session/direct generation, u
       invoker: {
         checkAuth: async () => 'ok',
         invoke: async (request) => {
-          prompts.push(request.prompt);
-          return { stdout: fake.stdout, stderr: '', exitCode: 0, timedOut: false };
+          prompts.push(readGenerationContext(request.prompt));
+          return preflightGenerationResult(request.prompt, {
+            stdout: fake.stdout,
+            stderr: '',
+            exitCode: 0,
+            timedOut: false,
+          });
         },
       },
       agent: 'claude',

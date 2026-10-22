@@ -3,8 +3,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import { Node } from 'ts-morph';
-import { extractReactComponents as publicReact } from '../../../src/steps/extraction/index.js';
+import { extractReactComponents as publicReact, captureSourceEvidence } from '../../../src/steps/extraction/index.js';
 import { extractReactComponents } from '../../../src/steps/extraction/src/framework-adapters/react/extract-react-components.js';
+import {
+  openPipelineDb,
+  getOrCreateSession,
+  createStep,
+  completeExtractionWithSourceEvidence,
+  loadRawComponents,
+} from '../../../src/persistence/src/session/repositories/db.js';
+import { buildCompilerEvidenceInline } from '../../../src/agents/prompts/helpers/build-compiler-evidence-inline.js';
 
 const roots: string[] = [];
 afterEach(() => vi.restoreAllMocks());
@@ -16,6 +24,94 @@ function fixture(source: string): string {
   writeFileSync(path, source);
   return path;
 }
+
+it.each(['renderHeader', 'renderItem', 'paint', 'build'])(
+  'retains callable inputs without spelling-based slot conversion: %s',
+  async (name) => {
+    const path = fixture(`
+    type Element = { size: number };
+    type ReactElement<T> = { value: T };
+    export function Example(props: { ${name}: (value: number) => Element; additional: () => ReactElement<string>; label: string }) {
+      return <div>{props.label}</div>;
+    }
+  `);
+    for (const extract of [publicReact, extractReactComponents]) {
+      const component = (await extract([path])).components[0]!;
+      expect(component.props.map((prop) => prop.name)).toEqual(['additional', 'label', name].sort());
+      expect(component.slots).toEqual([]);
+      expect(component.props.find((prop) => prop.name === name)?.type).toContain('=>');
+      expect(component.sourceCandidates?.find((candidate) => candidate.name === name)?.projection.kind).toBe('prop');
+    }
+  },
+);
+
+it('retains invoked callable inputs beside their source output evidence', async () => {
+  const path = fixture(`
+    type ReactElement<T> = { value: T };
+    export function Example(props: { renderBody: () => ReactElement<string> }) {
+      return <div>{props.renderBody()}</div>;
+    }
+  `);
+  const component = (await publicReact([path])).components[0]!;
+  expect(component.props.map((prop) => prop.name)).toEqual(['renderBody']);
+  expect(component.slots).toEqual([]);
+  expect(
+    component.componentFacts?.sourceObservations?.inputOutput?.witnesses.some(
+      (witness) => witness.inputName === 'renderBody',
+    ),
+  ).toBe(true);
+});
+
+it.each([
+  '(() => ReactElement<string>) | string',
+  '(() => ReactElement<string>) | undefined',
+  '(() => ReactElement<string>) | null',
+])('retains callable alternatives without choosing a slot: %s', async (type) => {
+  const path = fixture(`
+    type ReactElement<T> = { value: T };
+    export function Example(props: { renderValue: ${type} }) { return <div/>; }
+  `);
+  const component = (await publicReact([path])).components[0]!;
+  expect(component.props.map((prop) => prop.name)).toEqual(['renderValue']);
+  expect(component.slots).toEqual([]);
+});
+
+it('saves and reopens callable inputs without invented slots after live source is removed', async () => {
+  const path = fixture(`
+    type ReactElement<T> = { value: T };
+    export function Example(props: { renderBody: () => ReactElement<string> }) { return <div>{props.renderBody()}</div>; }
+  `);
+  const root = join(path, '..');
+  const component = (await publicReact([path], undefined, { projectRoot: root })).components[0]!;
+  const dbPath = join(root, 'pipeline.db');
+  const db = openPipelineDb(dbPath);
+  const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+  try {
+    const capture = await captureSourceEvidence({ projectRoot: root, filePaths: [path] });
+    completeExtractionWithSourceEvidence(db, {
+      sessionId,
+      stepId: createStep(db, sessionId, 'analyze extract', {}),
+      components: [component],
+      cycles: [],
+      scannedFiles: ['Example.tsx'],
+      capture,
+      observations: { accepted: [], rejected: [] },
+    });
+  } finally {
+    db.close();
+  }
+  rmSync(path);
+  const reopened = openPipelineDb(dbPath);
+  try {
+    const saved = loadRawComponents(reopened, sessionId)[0]!;
+    expect(saved.props.map((prop) => prop.name)).toEqual(['renderBody']);
+    expect(saved.slots).toEqual([]);
+    expect(saved.sourceCandidates?.find((candidate) => candidate.name === 'renderBody')?.projection.kind).toBe('prop');
+    expect(buildCompilerEvidenceInline([saved], { readiness: 'ready' })).toContain('renderBody');
+  } finally {
+    reopened.close();
+  }
+});
 
 it('shares source binding observations beside useful declared props without changing authoring projection', async () => {
   const path = fixture(

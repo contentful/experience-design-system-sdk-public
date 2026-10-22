@@ -9,7 +9,7 @@ import type { RawComponentDefinition, RawPropDefinition, RawSlotDefinition } fro
 import { shouldBeSlot } from '../../../helpers/evidence/detect-slot-from-prop.js';
 import { collectPropDataflow, getComponentIdentity, type PropForwardingEdge } from './collect-prop-dataflow.js';
 import { resolveBestFunctionNode, type FunctionLike } from './resolve-component-function.js';
-import { collectRenderPropSlotNames, extractSlots } from './extract-react-slots.js';
+import { extractSlots } from './extract-react-slots.js';
 import { extractPropsFromType } from './extract-react-props-from-type.js';
 import {
   getSyntheticDomAttributeProps,
@@ -107,9 +107,7 @@ export function extractReactComponentFromExport(
   const resolvedPropsType = resolvePropsType(params[0]);
   const firstParamType = resolvedPropsType.type;
   const firstParamTypeNode = resolvedPropsType.typeNode;
-  const renderPropSlotNames = resolvedPropsType.suppressProps
-    ? new Set<string>()
-    : collectRenderPropSlotNames(firstParamType);
+  const renderPropSlotNames = new Set<string>();
   const { props, hasChildren } = resolvedPropsType.suppressProps
     ? { props: [], hasChildren: false }
     : extractPropsFromType(firstParamType, renderPropSlotNames, firstParamTypeNode);
@@ -166,6 +164,12 @@ export function extractReactComponentFromExport(
   const expandedSlots: RawSlotDefinitionInternal[] = [];
   const propsAfterSlotExpansion = annotatedProps.filter((prop) => {
     if (existingSlotNames.has(prop.name)) return true;
+    const sourceType = firstParamType.getProperty(prop.name)?.getTypeAtLocation(params[0]);
+    if (
+      sourceType?.getNonNullableType().getCallSignatures().length ||
+      sourceType?.getUnionTypes().some((alternative) => alternative.getCallSignatures().length)
+    )
+      return true;
     const isElementSlot = REACT_ELEMENT_GENERIC_TEST.test(prop.type);
     if (shouldBeSlot(prop.name, prop.type) || isElementSlot) {
       expandedSlots.push({

@@ -1,5 +1,5 @@
 export interface PreClassification {
-  category: 'content' | 'design' | 'state' | 'exclude';
+  category: 'content' | 'design' | 'state';
   cdfTypeHint?: 'string' | 'richtext' | 'media' | 'boolean';
 }
 

@@ -244,8 +244,9 @@ it('mounted known cycles block until a member is rejected and the accepted graph
   unmount = view.unmount;
   await vi.waitFor(() => expect(view.lastFrame()).toContain('Panel'));
   await new Promise((resolve) => setTimeout(resolve, 10));
+  expect(view.lastFrame()).toContain('auto-rejected');
   const before = view.lastFrame();
-  view.stdin.write('A');
+  view.stdin.write('a');
   await vi.waitFor(() => expect(view.lastFrame()).not.toBe(before));
   view.stdin.write('f');
   await vi.waitFor(() => expect(view.lastFrame()).toContain('accepted set still contains a cycle'));

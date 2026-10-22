@@ -1,3 +1,4 @@
+import { preflightGenerationResult, readGenerationContext } from '../../../test/generation-fixture.js';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -16,7 +17,10 @@ import type { SourceInputAssociation, SlotDecision } from '@contentful/experienc
 
 const invoke = vi.hoisted(() => vi.fn());
 vi.mock('../../agents/invoker/create-local-cli-agent-invoker.js', () => ({
-  createLocalCliAgentInvoker: () => ({ invoke, checkAuth: async () => 'ok' }),
+  createLocalCliAgentInvoker: () => ({
+    checkAuth: async () => 'ok',
+    invoke: async (options: { prompt: string }) => preflightGenerationResult(options.prompt, await invoke(options)),
+  }),
 }));
 vi.mock('../../analytics/index.js', () => ({ bindAnalyticsSessionId: async () => undefined }));
 const directories: string[] = [];
@@ -184,9 +188,9 @@ it('publishes exact associations from mounted default extraction and exploration
       noCache: true,
     });
     expect(generated.allOk, JSON.stringify(generated)).toBe(true);
-    expect(invoke.mock.calls.at(-1)![0].prompt).toContain('"inputOutput":');
-    expect(invoke.mock.calls.at(-1)![0].prompt).toContain('"sourceInput":');
-    expect(invoke.mock.calls.at(-1)![0].prompt).toContain('"referenceIndex":');
+    expect(readGenerationContext(invoke.mock.calls.at(-1)![0].prompt)).toContain('"inputOutput":');
+    expect(readGenerationContext(invoke.mock.calls.at(-1)![0].prompt)).toContain('"sourceInput":');
+    expect(readGenerationContext(invoke.mock.calls.at(-1)![0].prompt)).toContain('"referenceIndex":');
   } finally {
     if (oldPath === undefined) delete process.env.EDS_PIPELINE_DB_PATH;
     else process.env.EDS_PIPELINE_DB_PATH = oldPath;
@@ -200,7 +204,7 @@ it('publishes exact associations from mounted default extraction and exploration
   expect(stateless.failures).toEqual([]);
   expect(stateless.components[0]?.$properties).not.toHaveProperty('supplied');
   expect(stateless.components[0]?.$slots?.region?.$sourceInput).toEqual(f.association);
-  expect(invoke.mock.calls.at(-1)![0].prompt).toContain('"sourceInput":');
+  expect(readGenerationContext(invoke.mock.calls.at(-1)![0].prompt)).toContain('"sourceInput":');
   db = api.openPipelineDb(f.dbPath);
   api.applyToolCalls(
     db,

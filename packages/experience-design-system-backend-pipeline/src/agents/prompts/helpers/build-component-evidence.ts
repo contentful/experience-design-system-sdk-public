@@ -1,12 +1,28 @@
 import type { ComponentFacts, ComponentEvidenceReadStatus } from '../../../steps/extraction/index.js';
 import type { RawComponentDefinition } from '../../../steps/extraction/src/types/component.js';
 import { readComponentFacts } from '../../../persistence/src/session/repositories/component-facts-validation.js';
+import {
+  projectClosureFacts,
+  type ClosureFactProjection,
+} from '../../../steps/extraction/src/component-facts/project-closure-facts.js';
+import {
+  assessFieldApplicability,
+  type FieldProjectionPreview,
+} from '../../../steps/extraction/src/component-facts/assess-field-applicability.js';
 
 export interface ComponentEvidenceEntry {
   componentName: string;
   sourcePath: string;
   status: ComponentEvidenceReadStatus | 'unknown' | 'unavailable';
   facts: ComponentFacts | null;
+  fieldProjectionPreview?: FieldProjectionPreview;
+  closureFactProjection?: ClosureFactProjection;
+  fieldSemanticsPolicy?: {
+    claims: 'conditional-advisory';
+    replay: 'source-reproduction-only';
+    runtimeAndDeliveryApplicability: 'unestablished';
+    schemaChanges: 'not-authorized';
+  };
 }
 
 export function buildComponentEvidence(
@@ -30,6 +46,22 @@ export function buildComponentEvidence(
       sourcePath: component.sourcePath ?? component.source,
       status,
       facts: status === 'available' ? read.facts! : null,
+      ...(status === 'available' && read.facts?.sourceClosure
+        ? { closureFactProjection: projectClosureFacts(read.facts) }
+        : {}),
+      ...(status === 'available' && read.facts?.sourceObservations?.fieldSemantics?.relationalReplay
+        ? {
+            fieldProjectionPreview: assessFieldApplicability(
+              read.facts.sourceObservations.fieldSemantics.relationalReplay,
+            ),
+            fieldSemanticsPolicy: {
+              claims: 'conditional-advisory' as const,
+              replay: 'source-reproduction-only' as const,
+              runtimeAndDeliveryApplicability: 'unestablished' as const,
+              schemaChanges: 'not-authorized' as const,
+            },
+          }
+        : {}),
     };
   });
 }

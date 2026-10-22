@@ -10,6 +10,7 @@ const state = vi.hoisted(() => ({
   handlers: new Set<ImmediateInputHandler>(),
   entries: [] as unknown[],
   sets: 0,
+  saved: [] as unknown[],
   store: vi.fn(),
 }));
 vi.mock('../../../src/tui/import/steps/07-scope-gate/sidebar/hooks/useImmediateInput.js', async () => {
@@ -71,12 +72,22 @@ vi.mock('../../../src/tui/import/steps/09-review/use-review-session.js', async (
 vi.mock('@contentful/experience-design-system-backend-pipeline', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   openPipelineDb: () => ({ close: vi.fn() }),
-  storeCDFComponents: state.store,
+  storeReviewCDFComponent: (
+    db: unknown,
+    session: string,
+    component: { key: string; componentId?: string },
+    entry: unknown,
+  ) => {
+    state.store(db, session, component, entry);
+    state.saved = [{ ...component, componentId: component.componentId ?? 'component', entry }];
+  },
+  loadReviewCDFComponents: () => state.saved,
   storeSlotCycles: vi.fn(),
 }));
 afterEach(() => {
   state.store.mockReset();
   state.sets = 0;
+  state.saved = [];
 });
 const pause = () => new Promise((resolve) => setTimeout(resolve, 30));
 async function key(input: string, isReturn = false) {
@@ -135,7 +146,7 @@ it.each(['failure', 'success'])(
         expect(ui.lastFrame()).toContain('Cycle write failed');
       } else {
         expect(state.entries).not.toEqual(before);
-        const next = state.store.mock.calls[0]![2][0].entry.$slots.region;
+        const next = state.store.mock.calls[0]![3].$slots.region;
         expect(next.$sourceInput).toEqual(sourceInput);
         expect(next.$required).toBe(true);
         expect(next.$description).toBe('Original');

@@ -34,11 +34,8 @@ function component(overrides: Partial<RawComponentDefinition>): RawComponentDefi
 }
 
 describe('classification service', () => {
-  it('classifies authorable design props and retains DOM provenance for saved results', () => {
-    expect(preClassifyProp(prop({ name: 'variant', type: "'solid' | 'ghost'" }))).toEqual({
-      category: 'design',
-      cdfTypeHint: 'string',
-    });
+  it('retains declared type and DOM provenance for later semantic decisions', () => {
+    expect(preClassifyProp(prop({ name: 'variant', type: "'solid' | 'ghost'" }))).toBeUndefined();
 
     const classified = preClassifyComponent(
       component({
@@ -47,8 +44,8 @@ describe('classification service', () => {
     );
 
     expect(classified.props).toEqual([
-      expect.objectContaining({ name: 'name', category: 'content', domAttribute: true }),
-      expect.objectContaining({ name: 'variant', category: 'design' }),
+      expect.objectContaining({ name: 'name', domAttribute: true }),
+      expect.objectContaining({ name: 'variant', type: "'solid' | 'ghost'" }),
     ]);
   });
 

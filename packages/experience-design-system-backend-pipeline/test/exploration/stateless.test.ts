@@ -1,12 +1,15 @@
+import { preflightGenerationResult, readGenerationContext } from '../generation-fixture.js';
 import { describe, expect, it, vi } from 'vitest';
 const invocation = vi.hoisted(() => ({ prompts: [] as string[] }));
 vi.mock('../../src/agents/invoker/create-local-cli-agent-invoker.js', () => ({
   createLocalCliAgentInvoker: () => ({
     invoke: async ({ prompt }: { prompt: string }) => {
-      invocation.prompts.push(prompt);
-      const decoded = JSON.parse(prompt.match(/Raw component data \(JSON\):\n```json\n([\s\S]*?)\n```/)![1]!);
+      invocation.prompts.push(readGenerationContext(prompt));
+      const decoded = JSON.parse(
+        readGenerationContext(prompt).match(/Raw component data \(JSON\):\n```json\n([\s\S]*?)\n```/)![1]!,
+      );
       const raw = Array.isArray(decoded) ? decoded[0] : decoded;
-      return {
+      return preflightGenerationResult(prompt, {
         stdout: [
           { tool: 'classify_component' },
           { tool: 'classify_prop', prop: 'title', cdf_type: 'string', cdf_category: 'content' },
@@ -22,7 +25,7 @@ vi.mock('../../src/agents/invoker/create-local-cli-agent-invoker.js', () => ({
         stderr: '',
         exitCode: 0,
         timedOut: false,
-      };
+      });
     },
   }),
 }));

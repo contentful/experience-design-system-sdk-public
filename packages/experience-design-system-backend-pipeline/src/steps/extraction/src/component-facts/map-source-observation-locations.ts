@@ -1,7 +1,7 @@
 import type { SourceFactLocation } from '../candidates/types.js';
 import { mapInputOutputLocations } from '../types/source-input-output.js';
-import { mapReferenceIndexLocations } from '../types/source-references.js';
 import { mapFieldSemanticsLocations } from '../types/field-semantics.js';
+import { mapReferenceIndexLocations } from '../types/source-references.js';
 import type {
   ComponentSourceObservationCollection,
   SourceInputAccessPath,
