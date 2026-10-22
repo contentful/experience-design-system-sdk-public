@@ -1,4 +1,3 @@
-import type { SourceGraphNode } from '@contentful/experience-design-system-types';
 import type { CompilerCoverage, SourceFactLocation } from '../candidates/types.js';
 import type { SourceObservationContext } from './component-source-observations.js';
 
@@ -17,7 +16,7 @@ export interface ConditionalFieldClaim {
 }
 export interface SourceFieldSemanticProof {
   inputName: string;
-  path: NonNullable<SourceGraphNode['path']>;
+  path: Array<{ kind: 'field'; key: string }>;
   valueIndependence: ConditionalFieldClaim;
   omissionSafety: ConditionalFieldClaim;
   outputDependence: 'possible' | 'not-observed' | 'unknown';
@@ -38,6 +37,7 @@ export interface SourceFieldSemantics {
   }>;
   omissions: Array<{ reason: string; location: SourceFactLocation }>;
   used: { nodes: number; maxDepth: number };
+  relationalReplay?: import('./field-replay.js').SourceFieldReplay;
 }
 
 export function fieldSemanticsClaimsAreConsistent(value: SourceFieldSemantics): boolean {

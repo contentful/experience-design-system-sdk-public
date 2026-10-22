@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { FIELD_SEMANTICS_VERSION, FIELD_VALUE_PREMISES, type SourceFieldSemantics } from '../types/field-semantics.js';
 import { SourceObservationReader, isWithinSourceBoundary, sourceRealPath } from './source-observation-reader.js';
 import { SourceValueBindings } from './source-value-bindings.js';
+import { collectFieldReplay } from './collect-field-replay.js';
 
 type Callable = ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunction | ts.MethodDeclaration;
 const callable = (node: ts.Node): node is Callable =>
@@ -542,5 +543,15 @@ export function collectFieldSemantics(
           : ('not-observed' as const),
     };
   });
+  evidence.relationalReplay = collectFieldReplay(
+    node,
+    evidence,
+    {
+      maxNodes: limits.maxNodes,
+      maxDepth: limits.maxDepth,
+      maxOperations: limits.maxObservations,
+    },
+    signal,
+  );
   return evidence;
 }

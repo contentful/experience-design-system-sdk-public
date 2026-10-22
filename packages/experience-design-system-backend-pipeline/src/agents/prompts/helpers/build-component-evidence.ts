@@ -7,6 +7,12 @@ export interface ComponentEvidenceEntry {
   sourcePath: string;
   status: ComponentEvidenceReadStatus | 'unknown' | 'unavailable';
   facts: ComponentFacts | null;
+  fieldSemanticsPolicy?: {
+    claims: 'conditional-advisory';
+    replay: 'source-reproduction-only';
+    runtimeAndDeliveryApplicability: 'unestablished';
+    schemaChanges: 'not-authorized';
+  };
 }
 
 export function buildComponentEvidence(
@@ -30,6 +36,16 @@ export function buildComponentEvidence(
       sourcePath: component.sourcePath ?? component.source,
       status,
       facts: status === 'available' ? read.facts! : null,
+      ...(status === 'available' && read.facts?.sourceObservations?.fieldSemantics?.relationalReplay
+        ? {
+            fieldSemanticsPolicy: {
+              claims: 'conditional-advisory' as const,
+              replay: 'source-reproduction-only' as const,
+              runtimeAndDeliveryApplicability: 'unestablished' as const,
+              schemaChanges: 'not-authorized' as const,
+            },
+          }
+        : {}),
     };
   });
 }

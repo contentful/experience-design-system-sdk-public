@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { jsonValueIssue } from '@contentful/experience-design-system-types';
 import { sourceClosureIdentity } from '../../../../steps/extraction/source-closure/source-evidence.js';
+import { FieldReplaySchema, fieldReplayIsConsistent } from '../../../../steps/extraction/src/types/field-replay.js';
 import {
   FIELD_SEMANTICS_VERSION,
   fieldSemanticsClaimsAreConsistent,
@@ -134,6 +135,7 @@ const sourceObservations = z
   .object({
     fieldSemantics: z
       .object({
+        relationalReplay: FieldReplaySchema.optional(),
         schemaVersion: z.literal(FIELD_SEMANTICS_VERSION),
         semantics: z.literal('conditional-ordered-field-flow'),
         componentDeclarationId: z.string().min(1),
@@ -446,7 +448,20 @@ export function readComponentFacts(value: unknown): ComponentFactsRead {
         new Set(semantics.proofs.map((proof) => JSON.stringify([proof.inputName, proof.path]))).size !==
           semantics.proofs.length ||
         (semantics.coverage === 'complete-within-declared-bound' && semantics.omissions.length > 0) ||
-        !fieldSemanticsClaimsAreConsistent(semantics))
+        !fieldSemanticsClaimsAreConsistent(semantics) ||
+        (semantics.relationalReplay &&
+          (!fieldReplayIsConsistent(semantics.relationalReplay) ||
+            semantics.relationalReplay.limits.maxNodes > observations.limits.maxNodes ||
+            semantics.relationalReplay.limits.maxDepth > observations.limits.maxDepth ||
+            semantics.relationalReplay.limits.maxOperations > observations.limits.maxObservations ||
+            ((semantics.coverage !== 'complete-within-declared-bound' || semantics.omissions.length > 0) &&
+              semantics.relationalReplay.results.some(
+                (result) =>
+                  result.valueIndependence.status === 'conditional' || result.omissionSafety.status === 'conditional',
+              )) ||
+            semantics.relationalReplay.componentDeclarationId !== semantics.componentDeclarationId ||
+            JSON.stringify(semantics.relationalReplay.domain) !==
+              JSON.stringify(semantics.proofs.map(({ inputName, path }) => ({ inputName, path }))))))
     )
       return { status: 'corrupt' };
     const roots = observations?.observations.flatMap((observation) =>

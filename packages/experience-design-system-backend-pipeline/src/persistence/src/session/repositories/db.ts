@@ -13,6 +13,7 @@ import {
   reviewRepresentationProposal,
 } from '../../../../steps/generation/src/services/property/definition-call.js';
 import { validateSavedSourceClosure } from './source-closure-binding.js';
+import { validateSavedFieldReplay } from './field-replay-binding.js';
 import {
   validateCDFProperty,
   validateSourceGraph,
@@ -1989,27 +1990,42 @@ export function loadRawComponents(
   const componentFactsByComponent = new Map<string, ComponentFactsRead>(
     sourceEvidenceRows.map((row) => [row.component_id, readComponentFactsJson(row.component_facts_json)]),
   );
-  if ([...componentFactsByComponent.values()].some((read) => read.facts?.sourceClosure)) {
+  if (
+    [...componentFactsByComponent.values()].some(
+      (read) => read.facts?.sourceClosure || read.facts?.sourceObservations?.fieldSemantics?.relationalReplay,
+    )
+  ) {
     const source = loadCompletedSourceEvidence(db, sessionId);
     for (const [id, read] of componentFactsByComponent) {
-      if (read.facts?.sourceClosure) {
-        const sourceClosure = validateSavedSourceClosure(read.facts.sourceClosure, source);
+      if (read.facts && (read.facts.sourceClosure || read.facts.sourceObservations?.fieldSemantics?.relationalReplay)) {
+        const sourceClosure = read.facts.sourceClosure
+          ? validateSavedSourceClosure(read.facts.sourceClosure, source)
+          : undefined;
         const observations = read.facts.sourceObservations;
         componentFactsByComponent.set(id, {
           ...read,
           facts: {
             ...read.facts,
-            sourceClosure,
+            ...(sourceClosure ? { sourceClosure } : {}),
             ...(observations
               ? {
                   sourceObservations: {
                     ...observations,
+                    ...(observations.fieldSemantics
+                      ? {
+                          fieldSemantics: validateSavedFieldReplay(
+                            observations.fieldSemantics,
+                            source.readiness === 'ready' ? source.envelope.capture.files : [],
+                          ),
+                        }
+                      : {}),
                     ...(observations.inputOutput
                       ? {
                           inputOutput: validateSavedInputOutput(
                             observations.inputOutput,
                             source,
-                            sourceClosure.rootId === observations.componentDeclarationId &&
+                            !!sourceClosure &&
+                              sourceClosure.rootId === observations.componentDeclarationId &&
                               sourceClosure.nodes.some(
                                 (node) => node.id === sourceClosure.rootId && node.location.binding === 'verified',
                               ),
