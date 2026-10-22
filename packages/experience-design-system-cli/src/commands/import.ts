@@ -23,8 +23,7 @@ export function registerImportCommand(program: Command, openTui: (options: Impor
       (value: string, previous: string[]) => [...previous, value],
       [] as string[],
     )
-    .option('--no-cache', 'Re-run every step even if its output already exists')
-    .action(async (_args: string[], raw: { agent?: string; prompt?: string[]; cache?: boolean }) => {
+    .action(async (_args: string[], raw: { agent?: string; prompt?: string[] }) => {
       const { watch, rest: forwarded } = extractWatchFlag(stripImportArg(process.argv.slice(2)));
       if (watch) {
         process.exit(await runDevWatch(forwarded));
