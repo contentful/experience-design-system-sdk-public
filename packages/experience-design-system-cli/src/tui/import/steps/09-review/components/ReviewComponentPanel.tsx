@@ -130,7 +130,7 @@ function ReviewPanelFooter({
           ? sidebarFooter
           : reviewEditor.showJson
             ? '  [↑↓] scroll  [Ctrl+u/d] half-page  [gg/G] top/bottom  [Tab] focus list'
-            : '  [Tab] focus list  (edit fields)' +
+            : '  [Tab] focus list  [Enter] edit fields' +
               (reviewEditor.currentTokenSuggestions().length > 0 ? '  [t] token review' : '')}
     </>
   );
