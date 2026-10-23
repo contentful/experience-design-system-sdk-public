@@ -171,3 +171,13 @@ it('supports canonical direct aliases and independent reused schemas in one Open
     ),
   ).toThrow('direction');
 });
+
+it('exports structural schemas with refinements without treating checks as opaque schema nodes', () => {
+  const scope = createCDFSchemaExportScope();
+  const refined = z.strictObject({ name: z.string() }).check(z.refine((value) => value.name.length > 0));
+  const document = scope.convert(refined);
+  expect(document).toMatchObject({ type: 'object', required: ['name'] });
+  const properties = document.properties as Record<string, { $ref: string }>;
+  const definitions = document.$defs as Record<string, unknown>;
+  expect(definitions[properties.name!.$ref.slice('#/$defs/'.length)]).toEqual({ type: 'string' });
+});

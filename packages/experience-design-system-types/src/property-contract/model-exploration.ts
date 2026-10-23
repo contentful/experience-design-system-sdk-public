@@ -34,9 +34,10 @@ export const ModelComponentExplorationSchema = z
   .strict();
 
 export type ModelComponentExploration = z.infer<typeof ModelComponentExplorationSchema>;
-export const modelComponentExplorationJsonSchema = z.toJSONSchema(ModelComponentExplorationSchema, {
-  target: 'draft-7',
-});
+// Generated descriptors carry non-enumerable standard-schema helpers; publish plain JSON.
+export const modelComponentExplorationJsonSchema = JSON.parse(
+  JSON.stringify(z.toJSONSchema(ModelComponentExplorationSchema, { target: 'draft-7' })),
+) as ReturnType<typeof z.toJSONSchema>;
 
 /** Apply source-bound authoring judgments before model definitions receive their signed identities. */
 export function applyModelComponentExploration(

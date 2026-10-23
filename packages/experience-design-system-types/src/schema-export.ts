@@ -164,6 +164,8 @@ export class SchemaExportScope {
       seen.add(value);
       if ('_zod' in value) {
         const node = value as core.$ZodType;
+        // Refinement checks carry internals but are not schema nodes.
+        if (!node._zod.traits.has('$ZodType')) return;
         if (this.nodes.has(node)) return;
         const def = node._zod.def as unknown as Record<string, unknown>;
         if (
@@ -184,7 +186,9 @@ export class SchemaExportScope {
         )
           throw new Error('Unsupported schema requires an explicit scoped descriptor');
         if (def.type === 'lazy') inspect((def.getter as () => unknown)());
-        for (const member of Object.values(def)) inspect(member);
+        for (const [key, member] of Object.entries(def)) {
+          if (key !== 'checks') inspect(member);
+        }
       } else for (const member of Object.values(value)) inspect(member);
     };
     inspect(schema);
