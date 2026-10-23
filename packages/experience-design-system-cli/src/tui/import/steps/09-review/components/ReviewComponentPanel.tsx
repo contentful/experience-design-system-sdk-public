@@ -125,13 +125,13 @@ function ReviewPanelFooter({
   return (
     <>
       {reviewEditor.panelOpen === 'token-review'
-        ? '  [↑/↓] move  [Enter] edit allowed  [Esc] close'
+        ? ''
         : sidebarFocused
           ? sidebarFooter
           : reviewEditor.showJson
             ? '  [↑↓] scroll  [Ctrl+u/d] half-page  [gg/G] top/bottom  [Tab] focus list'
             : '  [Tab] focus list  [Enter] edit fields' +
-              (reviewEditor.currentTokenSuggestions().length > 0 ? '  [t] token review' : '')}
+              (reviewEditor.currentTokenSuggestions().length > 0 ? '  [t] review mapped tokens' : '')}
     </>
   );
 }

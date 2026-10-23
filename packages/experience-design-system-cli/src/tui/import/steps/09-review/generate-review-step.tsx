@@ -333,7 +333,7 @@ const HELP_SECTIONS: HelpSection[] = [
       { keys: 'P', label: 'Component rationale' },
       { keys: 's', label: 'Source code snippet' },
       { keys: 'J', label: 'Toggle JSON' },
-      { keys: 't', label: 'Token review' },
+      { keys: 't', label: 'Review mapped tokens' },
     ],
   },
   {
@@ -1651,7 +1651,7 @@ function GenerateReviewStepView({
         autocompleteCandidates={autocompleteCandidates}
         hidden={dialogOpen}
       />
-      {!dialogOpen && sidebarFocused && (
+      {!dialogOpen && sidebarFocused && reviewEditor.panelOpen !== 'token-review' && (
         <CompactControlBar hasGroupRoots={hasGroupRoots} searchActive={searchOpen || searchQuery.length > 0} />
       )}
     </Box>

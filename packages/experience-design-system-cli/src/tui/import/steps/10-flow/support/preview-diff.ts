@@ -175,12 +175,22 @@ function diffProperty(name: string, old: PropertySummary, newDef: Record<string,
   return diffs;
 }
 
+/** Shows a design-token ResourceLink as its file name (e.g. `spacing.md`) instead of its raw JSON. */
+function formatDefault(value: unknown): string {
+  const sys = (value as { sys?: { urn?: unknown; linkType?: unknown } } | null)?.sys;
+  if (sys?.linkType === 'Contentful:DesignToken' && typeof sys.urn === 'string') {
+    const name = sys.urn.split('/designTokens/')[1];
+    if (name) return name;
+  }
+  return JSON.stringify(value);
+}
+
 function formatOldProp(prop: PropertySummary): string {
   const parts: string[] = [];
   if (prop.type) parts.push(prop.type);
   if (prop.category) parts.push(prop.category);
   parts.push(prop.required ? 'required' : 'optional');
-  if (prop.default !== undefined) parts.push(`default=${JSON.stringify(prop.default)}`);
+  if (prop.default !== undefined) parts.push(`default=${formatDefault(prop.default)}`);
   return parts.join(', ');
 }
 
@@ -190,6 +200,6 @@ function formatPropDef(def: Record<string, unknown>): string {
   if (def['$category']) parts.push(def['$category'] as string);
   if (def['$required'] === true) parts.push('required');
   else parts.push('optional');
-  if (def['$default'] !== undefined) parts.push(`default=${JSON.stringify(def['$default'])}`);
+  if (def['$default'] !== undefined) parts.push(`default=${formatDefault(def['$default'])}`);
   return parts.join(', ');
 }
