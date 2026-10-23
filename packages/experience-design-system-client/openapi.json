@@ -32034,7 +32034,8 @@
                   "slot_removed",
                   "slot_allowed_components_narrowed",
                   "slot_became_required",
-                  "slot_added_required"
+                  "slot_added_required",
+                  "slot_cardinality_narrowed"
                 ]
               }
             },
@@ -33727,7 +33728,8 @@
                   "slot_removed",
                   "slot_allowed_components_narrowed",
                   "slot_became_required",
-                  "slot_added_required"
+                  "slot_added_required",
+                  "slot_cardinality_narrowed"
                 ]
               }
             },
@@ -35600,7 +35602,8 @@
                   "slot_removed",
                   "slot_allowed_components_narrowed",
                   "slot_became_required",
-                  "slot_added_required"
+                  "slot_added_required",
+                  "slot_cardinality_narrowed"
                 ]
               }
             },
@@ -37344,7 +37347,8 @@
                   "slot_removed",
                   "slot_allowed_components_narrowed",
                   "slot_became_required",
-                  "slot_added_required"
+                  "slot_added_required",
+                  "slot_cardinality_narrowed"
                 ]
               }
             },

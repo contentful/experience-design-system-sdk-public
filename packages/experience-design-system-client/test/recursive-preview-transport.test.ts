@@ -16,6 +16,10 @@ import specification from '../openapi.json' with { type: 'json' };
 afterEach(() => vi.unstubAllGlobals());
 it('connects generated sourceful/sourceless transport and shared recursive public types', async () => {
   expectTypeOf<GeneratedBreakingChange>().toMatchTypeOf<BreakingChange>();
+  const cardinalityChange = {
+    slotId: 'items',
+    reason: 'slot_cardinality_narrowed',
+  } satisfies GeneratedBreakingChange;
   type SummaryIdentity = 'id' | 'name' | 'contentProperties' | 'designProperties' | 'slots';
   expectTypeOf<Pick<ServerPreviewResponse['components']['removed'][number], SummaryIdentity>>().toExtend<
     Pick<GeneratedSummary, SummaryIdentity>
@@ -65,6 +69,7 @@ it('connects generated sourceful/sourceless transport and shared recursive publi
             breakingChanges: [
               { slotId: 'required', reason: 'slot_became_required' },
               { slotId: 'new', reason: 'slot_added_required' },
+              cardinalityChange,
             ],
           },
           projectionDiagnostics: [
@@ -113,5 +118,8 @@ it('connects generated sourceful/sourceless transport and shared recursive publi
   expect(
     (specification.components.schemas as Record<string, any>).BreakingChange.oneOf[1].properties.reason.enum,
   ).toContain('slot_added_required');
+  expect(
+    (specification.components.schemas as Record<string, any>).BreakingChange.oneOf[1].properties.reason.enum,
+  ).toContain('slot_cardinality_narrowed');
   expect(CDF_SCHEMA_URL).toEqual(cdf.$schema);
 });
