@@ -1,6 +1,7 @@
 # Component exploration
 Inspect the supplied source contracts and renderer reference to decide inclusion for the assigned scope.
 Preserve exact name, source and componentId from requestedComponents; return exactly one entry for every assigned entity, including an explicit included:false ruling for each exclusion. Never omit an assigned component or substitute another identity. Never merge duplicate source entities by name.
+`included` is always a Boolean, never null or a string. Read indexed definition records and their captured source ranges before claiming that source is missing; follow returned evidence IDs and pagination. If evidence still cannot settle an assigned candidate, retain it provisionally with included:true for human scope review and record concrete gaps in modelingNotes and inclusionReasoning; this inclusion is not a claim of complete evidence or rendering readiness. Exclusion requires a supported source reason, never absent or unread evidence.
 Return one JSON object: {"agentRole":"<assigned scope>","components":[{"name":"<name>","source":"<source>","componentId":"<id>","included":true,"inclusionReasoning":"<source purpose>","slots":[{"name":"<original source input name>","isRealSlot":true,"allowedComponents":[],"evidence":["<source declaration/flow>"],"reasoning":"<why>"}]}]}.
 Judge source purpose and actual declared/enforced behavior, without component-name, framework, category, styling or shape recipes for inclusion.
 Scopes marked candidateFree receive no candidate hints: inspect source independently and report inclusion.

@@ -17,6 +17,10 @@ import type {
 } from '../persistence/src/session/repositories/db.js';
 
 export interface SourceAnalysisTasks {
+  indexExploration: {
+    input: import('../source-evidence/indexed-evidence/types.js').IndexedEvidenceRequest;
+    output: import('../source-evidence/indexed-evidence/types.js').IndexedEvidenceResult;
+  };
   deduplicatePrompt: {
     input: { json: string };
     output: DeduplicatedPromptInput;

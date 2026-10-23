@@ -46,6 +46,7 @@ export async function buildExploreCacheKey(options: PromptOptions, request: Stag
   const assignment = JSON.parse(options.stageAssignmentInline ?? '{}') as Record<string, unknown>;
   const input = JSON.parse(options.stageInputInline ?? '{}') as Record<string, unknown>;
   delete assignment.identity;
+  delete input.storage;
   input.sourceInput = sourceForCache(input.sourceInput);
   input.rendererReference = referenceForCache(input.rendererReference);
   if (Array.isArray(input.componentEvidence))
@@ -63,6 +64,6 @@ export async function buildExploreCacheKey(options: PromptOptions, request: Stag
     stageInputInline: stableJson(input),
   });
   return createHash('sha256')
-    .update(stableJson({ revision: 1, agent: request.agent, model, bedrock, prompt }))
+    .update(stableJson({ revision: 2, agent: request.agent, model, bedrock, prompt }))
     .digest('hex');
 }

@@ -56,7 +56,8 @@ export interface ExploreStageRequest extends StageOptions {
   };
   scopes: readonly ExploreScope[];
   requestedComponents?: readonly KnownComponent[];
-  rawComponentsInline: string;
+  rawComponentsInline?: string;
+  rawComponents?: readonly import('../../extraction/src/types/component.js').RawComponentDefinition[];
   slotCandidates?: SlotCandidates;
   propBucketsInline?: string;
   callSiteEvidenceInline?: string;

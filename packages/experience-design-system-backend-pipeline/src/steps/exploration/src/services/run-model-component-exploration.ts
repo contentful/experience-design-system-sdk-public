@@ -3,14 +3,12 @@ import type {
   RepresentationPlan,
   SharedSource,
 } from '@contentful/experience-design-system-types';
-import { buildPrompt } from '../../../../agents/prompts/build-prompt.js';
 import type { ComponentSourceRef } from '../../../../agents/types/prompts.js';
 import { runStageWithRetries } from '../../../../agents/helpers/run-stage-with-retries.js';
 import { throwIfAborted } from '../../../../helpers/abort.js';
 import { parseModelComponentOutput, type ModelExplorationEvidence } from '../parsers/parse-model-component-output.js';
-import { prepareExplorationValidator } from './exploration-validator-artifact.js';
+import { prepareIndexedExplorationPrompt } from './indexed-exploration-prompt.js';
 import type { StageOptions } from '../types.js';
-import { prepareDiagnosticPrompt } from '../../../../source-evidence/prompt-diagnostics.js';
 
 export interface RunModelComponentExplorationRequest extends StageOptions {
   plan: RepresentationPlan;
@@ -51,37 +49,33 @@ export async function runModelComponentExploration(
       },
       'explore-model',
       () =>
-        prepareDiagnosticPrompt(
-          request.sharedSource?.diagnostics,
-          (diagnostics) =>
-            buildPrompt({
-              signal: request.signal,
-              skill: 'explore-model',
-              mode: 'autonomous',
-              outDir: request.outDir,
-              sharedSource: request.sharedSource ? { ...request.sharedSource, diagnostics } : undefined,
-              componentSourceRefs: request.sourceRefs,
-              explorationJudgmentsInline: request.explorationJudgmentsInline,
-              stageAssignmentInline: JSON.stringify({
-                scope: 'explore-model',
-                sourceOwner: request.sourceOwner,
-                property: plan.identity.key,
-                modelKey: generated.originalKey,
-                nodeId: generated.nodeId,
-                sourceRevision: plan.identity.sourceRevision,
-                reservedNames: [...request.reservedNames, ...reports.map((report) => report.name)],
-              }),
-              stageInputInline: JSON.stringify({
-                derivedDefinition: generated.entry,
-                logicalGraph: plan.logicalGraph,
-                propertySource: plan.sourceModel.source,
-                fieldMappings: plan.mappings.filter((mapping) => mapping.componentKey === generated.key),
-                runtimeRequirements: plan.requirements,
-              }),
+        prepareIndexedExplorationPrompt(
+          {
+            signal: request.signal,
+            skill: 'explore-model',
+            mode: 'autonomous',
+            outDir: request.outDir,
+            sharedSource: request.sharedSource,
+            componentSourceRefs: request.sourceRefs,
+            explorationJudgmentsInline: request.explorationJudgmentsInline,
+            stageAssignmentInline: JSON.stringify({
+              scope: 'explore-model',
+              sourceOwner: request.sourceOwner,
+              property: plan.identity.key,
+              modelKey: generated.originalKey,
+              nodeId: generated.nodeId,
+              sourceRevision: plan.identity.sourceRevision,
+              reservedNames: [...request.reservedNames, ...reports.map((report) => report.name)],
             }),
-          request.signal,
-        ).then((prompt) =>
-          prepareExplorationValidator(prompt, { kind: 'model', evidence: validationEvidence }, request.signal),
+          },
+          {
+            derivedDefinition: generated.entry,
+            logicalGraph: plan.logicalGraph,
+            propertySource: plan.sourceModel.source,
+            fieldMappings: plan.mappings.filter((mapping) => mapping.componentKey === generated.key),
+            runtimeRequirements: plan.requirements,
+          },
+          { kind: 'model', evidence: validationEvidence },
         ),
       (output) => parseModelComponentOutput(output, validationEvidence),
     );

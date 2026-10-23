@@ -11,6 +11,7 @@ export async function prepareExplorationValidator(
   prompt: string | PreparedStagePrompt,
   evidence: ExplorationValidationEvidence,
   signal?: AbortSignal,
+  evidenceInstructions = '',
 ): Promise<PreparedStagePrompt> {
   const original = typeof prompt === 'string' ? prompt : prompt.text;
   let directory: string | undefined;
@@ -41,6 +42,7 @@ export async function prepareExplorationValidator(
     signal?.throwIfAborted();
     const command = [process.execPath, entrypoint, evidencePath].map(shellArgument).join(' ');
     const instructions = [
+      evidenceInstructions,
       '## Canonical exploration draft validation',
       `Complete immutable original task and source context: ${JSON.stringify(contextPath)}.`,
       'This artifact stays available throughout this scope and its repair attempts. Read targeted sections as needed; source paths are citation labels, not permission to access the live repository.',

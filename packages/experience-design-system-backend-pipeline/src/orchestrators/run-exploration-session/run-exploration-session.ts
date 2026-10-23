@@ -273,7 +273,7 @@ async function execute(
         : {}),
       scopes,
       onScopeStart: (scope) => activity('exploring', scope),
-      rawComponentsInline: JSON.stringify(selected),
+      rawComponents: selected,
       slotCandidates,
       requestedComponents: known,
       rendererReferenceInline: JSON.stringify(reference),

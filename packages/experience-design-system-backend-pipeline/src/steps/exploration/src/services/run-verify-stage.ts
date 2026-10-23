@@ -1,12 +1,10 @@
 import type { VerifyStageResult, VerifyAttempt, VerifiedItem } from '@contentful/experience-design-system-types';
-import { buildPrompt } from '../../../../agents/index.js';
 import { runStageWithRetries } from '../../../../agents/helpers/run-stage-with-retries.js';
 import { parseVerifyOutput } from '../parsers/parse-verify-output.js';
 import { runStageWork } from '../helpers/run-stage-work.js';
 import type { VerifyStageRequest } from '../types.js';
-import { prepareDiagnosticPrompt } from '../../../../source-evidence/prompt-diagnostics.js';
 import { propertySourceEvidence } from '../helpers/property-source-evidence.js';
-import { prepareExplorationValidator } from './exploration-validator-artifact.js';
+import { prepareIndexedExplorationPrompt } from './indexed-exploration-prompt.js';
 export async function runVerifyStage(request: VerifyStageRequest): Promise<VerifyStageResult> {
   const items: VerifiedItem[] = [],
     attempts: VerifyAttempt[] = [];
@@ -26,40 +24,30 @@ export async function runVerifyStage(request: VerifyStageRequest): Promise<Verif
         },
         'verify',
         () =>
-          prepareDiagnosticPrompt(
-            request.sourceInput?.diagnostics,
-            (diagnostics) =>
-              buildPrompt({
-                signal: request.signal,
-                skill: 'verify',
-                mode: 'autonomous',
-                existingComponentsInline: request.existingComponentsInline,
-                existingTokensInline: request.existingTokensInline,
-                outDir: request.outDir,
-                stageAssignmentInline: JSON.stringify({
-                  component: work.component,
-                  source: work.source,
-                  itemIds: work.items.map((item) => item.itemId),
-                  identity: request.identity,
-                }),
-                stageInputInline: JSON.stringify({
-                  work,
-                  propertyEvidence: propertySourceEvidence(request.representationProposalSources, [work]),
-                  source: request.sourceInput
-                    ? { ...request.sourceInput, diagnostics: diagnostics ?? request.sourceInput.diagnostics }
-                    : undefined,
-                  existingContext: request.existingContextStatus,
-                }),
-                skillContentOverride: request.skillContentOverride,
-                skillPathOverride: request.skillPathOverride,
+          prepareIndexedExplorationPrompt(
+            {
+              signal: request.signal,
+              skill: 'verify',
+              mode: 'autonomous',
+              existingComponentsInline: request.existingComponentsInline,
+              existingTokensInline: request.existingTokensInline,
+              outDir: request.outDir,
+              stageAssignmentInline: JSON.stringify({
+                component: work.component,
+                source: work.source,
+                itemIds: work.items.map((item) => item.itemId),
+                identity: request.identity,
               }),
-            request.signal,
-          ).then((prompt) =>
-            prepareExplorationValidator(
-              prompt,
-              { kind: 'verify', work, sourceInput: request.sourceInput },
-              request.signal,
-            ),
+              skillContentOverride: request.skillContentOverride,
+              skillPathOverride: request.skillPathOverride,
+            },
+            {
+              work,
+              propertyEvidence: propertySourceEvidence(request.representationProposalSources, [work]),
+              source: request.sourceInput,
+              existingContext: request.existingContextStatus,
+            },
+            { kind: 'verify', work, sourceInput: request.sourceInput },
           ),
         (output) => {
           const parsed = parseVerifyOutput(output, work, request.sourceInput);

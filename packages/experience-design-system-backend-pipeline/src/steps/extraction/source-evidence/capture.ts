@@ -669,6 +669,9 @@ export async function captureSourceEvidence(request: CaptureSourceEvidenceReques
     visited.add(canonical.path);
   };
 
+  // Preserve assigned definition bytes before dependency resolution spends its separate probe budget.
+  rootPaths.sort((a, b) => Number(componentPaths.has(b.path)) - Number(componentPaths.has(a.path)));
+  for (const root of rootPaths) if (componentPaths.has(root.path)) addCapturedFile(root.path, 'definition');
   for (const root of rootPaths) {
     if (root.excluded) {
       diagnostics.push({ kind: 'excluded', reason: `entry-outside-project-root:${relative(projectRoot, root.path)}` });
@@ -682,6 +685,8 @@ export async function captureSourceEvidence(request: CaptureSourceEvidenceReques
         : selectedSourcePaths.includes(root.path)
           ? ['entrypoint']
           : ['evidence'];
+    const captured = filesByPath.get(root.path);
+    if (captured?.captured.kind === 'full') contextFor(captured);
     for (const role of roles) resolveFile(root.path, 0, role);
   }
 

@@ -4,14 +4,13 @@ import type {
   EvidenceCheck,
   VerifyAttempt,
 } from '@contentful/experience-design-system-types';
-import { buildPrompt } from '../../../../agents/index.js';
 import { runStageWithRetries } from '../../../../agents/helpers/run-stage-with-retries.js';
 import { buildCheckWork } from '../helpers/build-check-work.js';
 import { parseCheckOutput } from '../parsers/parse-check-output.js';
 import { runStageWork } from '../helpers/run-stage-work.js';
 import type { CheckStageRequest } from '../types.js';
 import { propertySourceEvidence } from '../helpers/property-source-evidence.js';
-import { prepareExplorationValidator } from './exploration-validator-artifact.js';
+import { prepareIndexedExplorationPrompt } from './indexed-exploration-prompt.js';
 export function applyChecks(verified: VerifiedItem[], checks: EvidenceCheck[]): VerifiedItem[] {
   return verified.map((item) => {
     if (item.outcome === 'conflicting') return item;
@@ -46,28 +45,31 @@ export async function runCheckStage(request: CheckStageRequest): Promise<CheckSt
         },
         'check',
         () =>
-          buildPrompt({
-            signal: request.signal,
-            skill: 'check',
-            mode: 'autonomous',
-            existingComponentsInline: request.existingComponentsInline,
-            existingTokensInline: request.existingTokensInline,
-            outDir: request.outDir,
-            stageAssignmentInline: JSON.stringify({
-              component: work.component,
-              source: work.source,
-              checkIds: work.entries.map((entry) => entry.checkId),
-              identity: request.identity,
-            }),
-            stageInputInline: JSON.stringify({
+          prepareIndexedExplorationPrompt(
+            {
+              signal: request.signal,
+              skill: 'check',
+              mode: 'autonomous',
+              existingComponentsInline: request.existingComponentsInline,
+              existingTokensInline: request.existingTokensInline,
+              outDir: request.outDir,
+              stageAssignmentInline: JSON.stringify({
+                component: work.component,
+                source: work.source,
+                checkIds: work.entries.map((entry) => entry.checkId),
+                identity: request.identity,
+              }),
+              skillContentOverride: request.skillContentOverride,
+              skillPathOverride: request.skillPathOverride,
+            },
+            {
               ...work,
               sourceInput: request.sourceInput,
               propertyEvidence: propertySourceEvidence(request.representationProposalSources, [work]),
               existingContext: request.existingContextStatus,
-            }),
-            skillContentOverride: request.skillContentOverride,
-            skillPathOverride: request.skillPathOverride,
-          }).then((prompt) => prepareExplorationValidator(prompt, { kind: 'check', work }, request.signal)),
+            },
+            { kind: 'check', work },
+          ),
         (output) => {
           const parsed = parseCheckOutput(output, work);
           if (!parsed.ok) throw new Error(parsed.error);
