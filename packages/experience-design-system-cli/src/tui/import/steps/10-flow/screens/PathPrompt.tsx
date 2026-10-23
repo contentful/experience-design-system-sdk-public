@@ -14,6 +14,8 @@ export type PathPromptProps = {
   onSubmit: (path: string) => void;
   onCancel: () => void;
   label?: string;
+  /** What is being saved, shown above the path, such as "Saving 42 design tokens." */
+  summary?: string;
 };
 
 function autocomplete(partial: string): string | null {
@@ -44,6 +46,7 @@ export function PathPrompt({
   onSubmit,
   onCancel,
   label = 'Save to',
+  summary,
 }: PathPromptProps): React.ReactElement {
   const [input, setInput] = useState('');
   const cursorVisible = useBlinkingCursor();
@@ -81,6 +84,7 @@ export function PathPrompt({
     <Box flexDirection="column">
       <StepHeader step="push" />
       <Box flexDirection="column" gap={1} paddingX={2} paddingBottom={1}>
+        {summary && <Text color={PALETTE.muted}>{summary}</Text>}
         <Box gap={1}>
           <Text color={PALETTE.accent}>?</Text>
           <Text bold>{label}:</Text>

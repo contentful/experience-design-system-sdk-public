@@ -3,7 +3,7 @@ import { Box, Text } from 'ink';
 import { ProgressBar, ThemeProvider } from '@inkjs/ui';
 import type { PushProgress } from '../support/push-progress.js';
 import { StepHeader } from '@tui/shared/components/StepHeader.js';
-import { writtenThings, type Produced } from '../support/produced.js';
+import { countedThings, type Produced, type ProducedCounts } from '../support/produced.js';
 import { useTimedSpinner } from '../support/use-timed-spinner.js';
 import { PROGRESS_THEME } from '../../../shared/running-step/theme.js';
 import { PALETTE } from '@tui/theme.js';
@@ -11,10 +11,11 @@ import { PALETTE } from '@tui/theme.js';
 type PushingStepProps = {
   progress: PushProgress;
   produced: Produced;
+  counts: ProducedCounts;
 };
 
-export function PushingStep({ progress, produced }: PushingStepProps): React.ReactElement {
-  const { elapsed } = useTimedSpinner();
+export function PushingStep({ progress, produced, counts }: PushingStepProps): React.ReactElement {
+  const { spinner, elapsed } = useTimedSpinner();
 
   const operationId = progress && progress.kind === 'queued' ? progress.operationId : null;
 
@@ -25,7 +26,10 @@ export function PushingStep({ progress, produced }: PushingStepProps): React.Rea
     <Box flexDirection="column">
       <StepHeader step="push" />
       <Box flexDirection="column" gap={1} paddingX={2} paddingBottom={1}>
-        <Text>Writing {writtenThings(produced)} to your Contentful space...</Text>
+        <Box gap={1}>
+          {spinner}
+          <Text>Writing {countedThings(produced, counts)} to your Contentful space...</Text>
+        </Box>
 
         {operationId && (
           <Box gap={1}>
