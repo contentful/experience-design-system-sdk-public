@@ -9,7 +9,10 @@ import {
   prepareAnalysisRepresentationCandidates,
   type AnalysisRepresentationCandidates,
   validateRepresentationPlan,
-  evaluateRepresentationReadiness,
+  representationDefinitionImportIssues,
+  componentDefinitionImportIssues,
+  slotDefinitionImportIssues,
+  propertyDefinitionImportBlockers,
   LOCAL_NATIVE_PROPERTY_PROFILE,
   type CDFComponentEntry,
   type RepresentationPlan,
@@ -375,7 +378,14 @@ export function selectedRepresentationValidity(
         representationContext(db, sessionId, componentId, row.propertyName),
       );
       issues.push(...invalid.map((issue) => issue.message));
-      if (invalid.length || !evaluateRepresentationReadiness(row.plan).ready) heldProperties.add(row.propertyName);
+      if (
+        invalid.length ||
+        representationDefinitionImportIssues(row.plan).length ||
+        row.plan.models.some(({ entry }) => componentDefinitionImportIssues(entry).length) ||
+        (row.plan.attachment && slotDefinitionImportIssues(row.plan.attachment.definition).length) ||
+        (row.plan.nativeDefinition && propertyDefinitionImportBlockers(row.plan.nativeDefinition).length)
+      )
+        heldProperties.add(row.propertyName);
     } catch (error) {
       issues.push(error instanceof Error ? error.message : 'Representation source unavailable');
       heldProperties.add(row.propertyName);

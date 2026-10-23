@@ -2,7 +2,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { extractReactComponents, captureSourceEvidence } from '../src/steps/extraction/index.js';
 import {
   buildCDF,
@@ -40,7 +40,47 @@ import {
 
 const directories: string[] = [];
 afterEach(() => {
+  vi.unstubAllGlobals();
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
+});
+
+it('imports an acyclic source-derived model after save/reopen while keeping rendering requirements', async () => {
+  const initial = await fixture();
+  const { path, sessionId, fresh } = initial;
+  let db = initial.db;
+  const owner = fresh.find((row) => row.name === 'Other')!;
+  selectRepresentationPlan(db, sessionId, owner.component_id, 'settings', 'component-model');
+  const plan = loadRepresentationPlans(db, sessionId, owner.component_id)[0]!.plan;
+  expect(plan.requirements.some(({ capability }) => capability === 'source-reconstruction')).toBe(true);
+  expect(evaluateRepresentationReadiness(plan).ready).toBe(false);
+  db.close();
+  db = openPipelineDb(path);
+  try {
+    expect(evaluateComponentReadiness(db, sessionId, owner.component_id).import.ready).toBe(true);
+    const selected = loadSelectedCDFComponents(db, sessionId, new Set([owner.component_id]));
+    const document = buildCDF(selected, [])!;
+    const fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            sys: { id: 'example-operation', status: 'pending' },
+            components: { created: [], updated: [], removed: [], unchanged: [] },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+    );
+    vi.stubGlobal('fetch', fetch);
+    const client = new ApiClient({ cmaToken: 'example', spaceId: 'example', environmentId: 'example' });
+    await client.previewImport(document);
+    await client.applyImport(document, { acknowledgeBreakingChanges: false });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    for (const [index, [request]] of (fetch.mock.calls as unknown as Array<[Request]>).entries()) {
+      expect(await request.json()).toEqual(index === 0 ? document : { ...document, acknowledgeBreakingChanges: false });
+    }
+    expect(loadRepresentationPlans(db, sessionId, owner.component_id)[0]!.plan.requirements).toEqual(plan.requirements);
+  } finally {
+    db.close();
+  }
 });
 async function fixture() {
   const directory = mkdtempSync(join(tmpdir(), 'source-model-'));
@@ -291,9 +331,9 @@ it('atomically selects, edits, reopens and exports only reachable desired models
     spaceId: 'example',
     environmentId: 'example',
   });
-  await expect(client.previewImport(full)).rejects.toThrow('component-model-mapper remains unverified');
+  await expect(client.previewImport(full)).rejects.toThrow('positional model semantics');
   await expect(client.applyImport(full, { acknowledgeBreakingChanges: true })).rejects.toThrow(
-    'component-model-mapper remains unverified',
+    'positional model semantics',
   );
   expect(selected.length).toBe(
     1 +

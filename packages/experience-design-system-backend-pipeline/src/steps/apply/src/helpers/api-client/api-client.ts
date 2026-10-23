@@ -1,9 +1,9 @@
 import {
   parseCDFComponents,
   validateCDF,
-  mapperApplyBlockers,
+  componentDefinitionImportIssues,
+  componentModelFamilyIssues,
   validateImportPrerequisites,
-  type CDFComponentEntry,
 } from '@contentful/experience-design-system-types';
 import {
   designSystemImportApply,
@@ -142,6 +142,11 @@ export class ApiClient {
   private admitRepresentations(cdf: CDFDocument): void {
     const parsed = parseCDFComponents(cdf);
     const components = parsed.components;
+    const familyIssues = componentModelFamilyIssues(components);
+    if (familyIssues.length)
+      throw new Error(
+        `Invalid complete representation document: ${familyIssues.map((issue) => issue.path + ': ' + issue.message).join('; ')}`,
+      );
     if (components.some(({ entry }) => entry.$model || entry.$representationPlans)) {
       const validation = validateCDF(cdf);
       if (!validation.valid)
@@ -169,19 +174,10 @@ export class ApiClient {
         db.close();
       }
     } else assertResolvedImportPrerequisites(prerequisites.plan);
-    const blockers = mapperApplyBlockers(components);
-    if (blockers.length) throw new Error(`Property mapper prerequisites unavailable: ${blockers.join('; ')}`);
-    for (const { entry } of components) {
-      const component = entry as CDFComponentEntry;
-      if (
-        component.$model ||
-        Object.values(component.$slots ?? {}).some((slot) => slot.$modelBinding || slot.$cardinality) ||
-        Object.values(component.$representationPlans ?? {}).some(
-          (plan) => plan.kind !== 'native' || !plan.sdkValid || plan.requirements.length > 0,
-        )
-      )
-        throw new Error('Component model mapper, cardinality and reconstruction prerequisites are unavailable');
-    }
+    const blockers = components.flatMap(({ key, entry }) =>
+      componentDefinitionImportIssues(entry).map((issue) => `${key}${issue.path}: ${issue.message}`),
+    );
+    if (blockers.length) throw new Error(`Definition import prerequisites unavailable: ${blockers.join('; ')}`);
   }
 
   async previewImport(cdf: CDFDocument): Promise<ServerPreviewResponse> {

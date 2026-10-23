@@ -3,6 +3,7 @@ export * from './target-definition.js';
 export * from './date-time-value.js';
 export * from './source-representation.js';
 export * from './mapper-readiness.js';
+export * from './definition-import.js';
 export * from './property-model.js';
 export * from './representation-proposal.js';
 export * from './classification.js';

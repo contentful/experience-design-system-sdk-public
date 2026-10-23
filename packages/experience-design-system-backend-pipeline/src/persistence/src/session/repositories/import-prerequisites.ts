@@ -7,6 +7,7 @@ import {
   DESIGN_TOKEN_TYPES,
   LOCAL_NATIVE_PROPERTY_PROFILE,
   validateImportPrerequisites,
+  definitionImportCapabilityStatus,
   parseCDFComponents,
   type CDFDocument,
   type DesignTokenType,
@@ -302,7 +303,8 @@ export function assertResolvedImportPrerequisites(
   snapshot?: SessionPrerequisiteSnapshot,
 ): void {
   for (const requirement of plan.capabilityRequirements)
-    throw new Error(`Required capability ${requirement.capability} remains unverified at ${requirement.path}`);
+    if (definitionImportCapabilityStatus(requirement.capability) === 'unavailable')
+      throw new Error(`Required capability ${requirement.capability} remains unverified at ${requirement.path}`);
   for (const requirement of plan.obligations) {
     if (requirement.resolution === 'planned') continue;
     const mapping =

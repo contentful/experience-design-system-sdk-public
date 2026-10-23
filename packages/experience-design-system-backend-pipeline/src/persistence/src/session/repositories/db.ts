@@ -26,7 +26,7 @@ import {
   jsonValueIssue,
   cloneJson,
   own,
-  propertyMapperBlockers,
+  propertyDefinitionImportBlockers,
   validateRepresentationPlan,
   modelExplorationComplete,
   type RepresentationPlan,
@@ -1176,7 +1176,7 @@ export function evaluateComponentReadiness(
         importIssues.push(`Property held ${call.prop}`);
         definitionIssues.push(`Property held ${call.prop}`);
       }
-      if (current.definition) importIssues.push(...propertyMapperBlockers(current.definition, call.prop));
+      if (current.definition) importIssues.push(...propertyDefinitionImportBlockers(current.definition, call.prop));
     } catch (error) {
       const issue = error instanceof Error ? error.message : 'Invalid current property decision';
       importIssues.push(issue);

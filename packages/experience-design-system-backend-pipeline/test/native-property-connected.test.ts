@@ -169,12 +169,9 @@ it('connects actual producer to saved source, fresh session/direct generation, u
   expect(JSON.stringify(loadCDFComponents(db, sessionId))).toBe(before);
   const readiness = evaluateComponentReadiness(db, sessionId, fresh.component_id);
   expect(readiness.definition.ready, JSON.stringify(readiness)).toBe(true);
-  expect(readiness.import.ready).toBe(false);
-  expect(readiness.import.issues).toEqual([
-    'rows/$items/$fields/a.b~1λ/$values (finite-choice mapper unavailable)',
-    'settings/$fields/a.b~1λ/$values (finite-choice mapper unavailable)',
-  ]);
-  expect(() => loadSelectedCDFComponents(db, sessionId, new Set([fresh.component_id]))).toThrow('not ready');
+  expect(readiness.import.ready, JSON.stringify(readiness.import)).toBe(true);
+  expect(readiness.import.issues).toEqual([]);
+  expect(loadSelectedCDFComponents(db, sessionId, new Set([fresh.component_id]))).toHaveLength(1);
   const cdf = buildCDF([reopened], []);
   expect(validateCDF(cdf).valid).toBe(true);
   expect(JSON.parse(JSON.stringify(cdf))).toEqual(cdf);
