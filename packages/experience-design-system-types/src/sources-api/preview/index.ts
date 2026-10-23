@@ -13,6 +13,7 @@ export const SLOT_BREAKING_REASONS = [
   'slot_allowed_components_narrowed',
   'slot_became_required',
   'slot_added_required',
+  'slot_cardinality_narrowed',
 ] as const;
 
 interface PropertyBreakingChange {

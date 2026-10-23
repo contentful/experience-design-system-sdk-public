@@ -12,6 +12,7 @@ const SLOT_REASON_COPY: Record<string, string> = {
   slot_became_required: 'slot now required',
   slot_added_required: 'new required slot',
   slot_allowed_components_narrowed: 'allowed components narrowed',
+  slot_cardinality_narrowed: 'allowed child count narrowed',
 };
 
 export function formatBreakingChange(

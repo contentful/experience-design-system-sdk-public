@@ -28,7 +28,7 @@ it('conserves recursive own definitions and both slot requirement states through
 it('uses one own-ID breaking vocabulary without clearing top-level classification or evaluating unsafe data', () => {
   expect(
     sanitizeBreakingChanges(SLOT_BREAKING_REASONS.map((reason) => ({ slotId: '__proto__', reason }))),
-  ).toHaveLength(4);
+  ).toHaveLength(SLOT_BREAKING_REASONS.length);
   for (const value of [
     { propertyId: 'a', slotId: 'b', reason: 'removed' },
     { slotId: '', reason: 'slot_became_required' },
@@ -37,6 +37,11 @@ it('uses one own-ID breaking vocabulary without clearing top-level classificatio
     Object.create({ slotId: 'a', reason: 'slot_added_required' }),
   ])
     expect(sanitizeBreakingChanges([value])).toEqual([]);
+});
+
+it('preserves cardinality narrowing through the shared preview contract', () => {
+  const change = { slotId: 'items', reason: 'slot_cardinality_narrowed' };
+  expect(sanitizeBreakingChanges([change])).toEqual([change]);
 });
 
 it('exports scoped composed schemas with direction/default/null fidelity and independent documents', () => {

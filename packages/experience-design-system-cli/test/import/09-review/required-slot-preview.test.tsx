@@ -37,6 +37,7 @@ it('carries required-slot reasons through the real API sanitizer and wizard deta
             breakingChanges: [
               { slotId: 'constructor', reason: 'slot_became_required' },
               { slotId: 'new', reason: 'slot_added_required' },
+              { slotId: 'items', reason: 'slot_cardinality_narrowed' },
               { slotId: 'bad', propertyId: 'bad', reason: 'removed' },
             ],
           },
@@ -69,8 +70,13 @@ it('carries required-slot reasons through the real API sanitizer and wizard deta
     expect(rows.map((row) => row.focusTarget)).toEqual([
       { kind: 'slot', name: 'constructor' },
       { kind: 'slot', name: 'new' },
+      { kind: 'slot', name: 'items' },
     ]);
-    expect(rows.map((row) => row.label)).toEqual(['constructor — slot now required', 'new — new required slot']);
+    expect(rows.map((row) => row.label)).toEqual([
+      'constructor — slot now required',
+      'new — new required slot',
+      'items — allowed child count narrowed',
+    ]);
     const ui = render(<Text>{rows.map((row) => row.label).join('\n')}</Text>);
     try {
       expect(ui.lastFrame()).toContain('new required slot');
