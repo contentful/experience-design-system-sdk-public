@@ -1,7 +1,7 @@
 import ts from 'typescript';
 import type { SourceCallerValue, SourceCompilerReference, SourceReferenceIndex } from '../types/source-references.js';
 import { isWithinSourceBoundary, SourceObservationReader } from './source-observation-reader.js';
-import { SourceValueBindings } from './source-value-bindings.js';
+import { scanReferenceMutations } from './reference-mutation-scan.js';
 
 type Conditions = SourceCompilerReference['conditions'];
 type Target = SourceCompilerReference['targets'][number];
@@ -35,7 +35,6 @@ export function collectSourceReferences(
   bindings: readonly ts.Node[],
   signal?: AbortSignal,
 ): SourceReferenceIndex {
-  const values = new SourceValueBindings(reader.checker);
   const index: SourceReferenceIndex = {
     schemaVersion: 1,
     semantics: 'lexical-reference-observations',
@@ -77,17 +76,21 @@ export function collectSourceReferences(
           isWithinSourceBoundary(reader.collection.repositoryRoot, reader.location(file).canonicalPath!)),
     )
     .sort((a, b) => a.fileName.localeCompare(b.fileName));
+  const admittedFiles = files.slice(0, index.limits.maxFiles);
+  // Each admitted file has independent mutation and reference capacity; omitted source stays explicit.
+  const nodesPerFile = Math.min(
+    reader.collection.limits.maxNodes,
+    Math.floor(Number.MAX_SAFE_INTEGER / (2 * Math.max(1, admittedFiles.length))),
+  );
+  index.limits.maxNodes = nodesPerFile * 2 * Math.max(1, admittedFiles.length);
   if (files.length > index.limits.maxFiles) omit('max-reference-files');
-  let mutationComplete = files.length <= index.limits.maxFiles;
-  for (const file of files.slice(0, index.limits.maxFiles)) {
+  const { values, incompleteFiles } = scanReferenceMutations(reader.program, admittedFiles, nodesPerFile, signal);
+  const mutationComplete = files.length <= index.limits.maxFiles && incompleteFiles.length === 0;
+  for (const file of admittedFiles) {
     if ((file as ts.SourceFile & { parseDiagnostics?: readonly ts.Diagnostic[] }).parseDiagnostics?.length)
       omit('reference-source-parse-error', file);
-    if (!values.scan(file, index.limits.maxNodes - values.scanNodes)) {
-      mutationComplete = false;
-      omit('mutation-scan-budget', file);
-      break;
-    }
   }
+  for (const file of incompleteFiles) omit('mutation-scan-budget', file);
   index.used.nodes = values.scanNodes;
   const inputType = component.parameters[0] ? reader.checker.getTypeAtLocation(component.parameters[0]) : null;
   const declared = new Map(inputType?.getProperties().map((symbol) => [symbol.name, symbol]) ?? []);
@@ -483,16 +486,18 @@ export function collectSourceReferences(
     }
     index.references.push(item);
   }
+  let fileNodes = 0;
   const visit = (node: ts.Node, guards: Conditions, ancestors: ts.FunctionLikeDeclaration[], depth: number) => {
     if (signal?.aborted) {
       omit('reference-collection-cancelled', node);
       return;
     }
-    if (index.used.nodes >= index.limits.maxNodes) {
+    if (fileNodes >= nodesPerFile) {
       omit('max-reference-nodes', node);
       return;
     }
     index.used.nodes += 1;
+    fileNodes += 1;
     index.used.depth = Math.max(index.used.depth, depth);
     if (depth > index.limits.maxDepth) {
       omit('max-reference-depth', node);
@@ -533,13 +538,14 @@ export function collectSourceReferences(
     }
     ts.forEachChild(node, (child) => {
       visit(child, guards, owners, depth + 1);
-      return index.used.nodes >= index.limits.maxNodes ? true : undefined;
+      return fileNodes >= nodesPerFile ? true : undefined;
     });
   };
-  for (const file of files.slice(0, index.limits.maxFiles)) {
-    if (index.used.nodes >= index.limits.maxNodes) {
+  for (const file of admittedFiles) {
+    fileNodes = 0;
+    if (nodesPerFile === 0) {
       omit('max-reference-nodes', file);
-      break;
+      continue;
     }
     index.files.push({
       location: reader.range(file, 0, file.text.length),
@@ -548,6 +554,7 @@ export function collectSourceReferences(
     });
     index.used.files += 1;
     visit(file, [], [], 0);
+    if (fileNodes >= nodesPerFile) omit('max-reference-nodes', file);
   }
   index.references.sort(
     (a, b) =>

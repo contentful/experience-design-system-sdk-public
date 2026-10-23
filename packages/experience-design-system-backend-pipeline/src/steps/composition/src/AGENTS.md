@@ -36,7 +36,7 @@ Legacy `agent`, `forceAgent`, `promptOverride`, `onCacheLookup` and `onCacheStor
 
 ## External calls
 
-None. Import runs deterministic source analysis in a cancellable worker; the public composition service projects supplied indexed evidence in-process. Neither path starts an agent subprocess.
+None. Import runs deterministic source analysis in a cancellable worker; the public composition service projects supplied indexed evidence in-process. Neither path starts an agent subprocess. The observation-count summary also reports partial caller coverage; unknown coverage never establishes the absence of callers.
 
 ## DSI contribution
 

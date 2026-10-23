@@ -669,25 +669,28 @@ export async function captureSourceEvidence(request: CaptureSourceEvidenceReques
     visited.add(canonical.path);
   };
 
-  // Preserve assigned definition bytes before dependency resolution spends its separate probe budget.
+  // Preserve supplied source bytes before configuration/dependency resolution spends its probe budget.
   rootPaths.sort((a, b) => Number(componentPaths.has(b.path)) - Number(componentPaths.has(a.path)));
-  for (const root of rootPaths) if (componentPaths.has(root.path)) addCapturedFile(root.path, 'definition');
+  const rootRole = (path: string): string =>
+    componentPaths.has(path) ? 'definition' : selectedSourcePaths.includes(path) ? 'entrypoint' : 'evidence';
+  for (const root of rootPaths) {
+    if (root.excluded) continue;
+    if (!filesByPath.has(root.path) && used.files >= limits.maxFiles) {
+      diagnostics.push({ kind: 'budget', reason: 'max-files' });
+      incomplete = true;
+      break;
+    }
+    addCapturedFile(root.path, rootRole(root.path));
+  }
   for (const root of rootPaths) {
     if (root.excluded) {
       diagnostics.push({ kind: 'excluded', reason: `entry-outside-project-root:${relative(projectRoot, root.path)}` });
       incomplete = true;
       continue;
     }
-    const componentMatches = componentPaths.get(root.path) ?? [];
-    const roles =
-      componentMatches.length > 0
-        ? ['definition']
-        : selectedSourcePaths.includes(root.path)
-          ? ['entrypoint']
-          : ['evidence'];
     const captured = filesByPath.get(root.path);
     if (captured?.captured.kind === 'full') contextFor(captured);
-    for (const role of roles) resolveFile(root.path, 0, role);
+    resolveFile(root.path, 0, rootRole(root.path));
   }
 
   for (const component of request.components ?? []) {

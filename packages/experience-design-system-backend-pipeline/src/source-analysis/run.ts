@@ -4,7 +4,7 @@ import { createAbortError, throwIfAborted } from '../helpers/abort.js';
 import type { ExtractionEndpointProgress } from '../steps/extraction/src/types/contract.js';
 import type { SourceAnalysisReply, SourceAnalysisTasks } from './types.js';
 
-/** Source analysis performs no database writes and owns no agent process, so cancellation can stop its thread immediately. */
+/** Read workers stop immediately on cancellation; publication joins its atomic write before settling. */
 export async function runSourceAnalysis<K extends keyof SourceAnalysisTasks>(
   kind: K,
   input: SourceAnalysisTasks[K]['input'],
@@ -15,6 +15,7 @@ export async function runSourceAnalysis<K extends keyof SourceAnalysisTasks>(
   } = {},
 ): Promise<SourceAnalysisTasks[K]['output']> {
   throwIfAborted(options.signal);
+  const writesSession = kind === 'publishExtraction' || kind === 'storeExtraction';
   return new Promise((resolve, reject) => {
     // The compiled backend has a sibling worker; a bundled CLI uses the installed backend artifact.
     const sibling = new URL('./worker.js', import.meta.url);
@@ -33,11 +34,14 @@ export async function runSourceAnalysis<K extends keyof SourceAnalysisTasks>(
       void worker.terminate().then(complete, reject);
     };
     const fail = (error: unknown): void => finish(() => reject(error));
-    const onAbort = (): void => fail(createAbortError(options.signal?.reason));
+    const onAbort = (): void => {
+      // Publication must finish or roll back its transaction before the caller can release the session.
+      if (!writesSession) fail(createAbortError(options.signal?.reason));
+    };
     worker.on('message', (message: SourceAnalysisReply<K>) => {
       if (settled) return;
       try {
-        throwIfAborted(options.signal);
+        if (!writesSession) throwIfAborted(options.signal);
         switch (message.kind) {
           case 'activity':
             options.onActivity?.(message.activity);

@@ -3,11 +3,10 @@ import { relative } from 'node:path';
 import { evaluateExtractionQuality, preClassifyComponent } from '../../steps/extraction/index.js';
 import {
   createStep,
-  completeExtractionWithSourceEvidence,
+  getPipelineDbPath,
   getCliCacheVersion,
   getOrCreateSession,
   openPipelineDb,
-  storeRawComponents,
 } from '../../persistence/src/session/repositories/db.js';
 import { emitPreClassificationExclusions } from './helpers/emit-pre-classification-exclusions.js';
 import { extractComponentsWithCache } from './helpers/extract-components-with-cache.js';
@@ -15,7 +14,6 @@ import { persistExtractCache } from './helpers/persist-extract-cache.js';
 import { calculateSlotCycles } from './helpers/persist-slot-cycles.js';
 import { resolveComposition } from './helpers/resolve-composition.js';
 import { parsePromptOverrides } from '../../agents/helpers/prompt-overrides/parse-prompt-overrides.js';
-import { retryDatabaseWrite } from './helpers/retry-database-write.js';
 import {
   bindAnalyticsSessionId,
   emitSessionStarted,
@@ -43,8 +41,7 @@ export type {
  * Writes to the session DB:
  *   - sessions row (via `getOrCreateSession`)
  *   - steps row (via `createStep` / `updateStep`)
- *   - raw_components (two writes: before composition, then after with
- *     `preserveStatus: true`)
+ *   - raw_components (initial worker save, then atomic completed-source publication preserving review state)
  *   - extract_cache rows (one per source file, when the extract-cache miss
  *     path was taken)
  *   - slot_cycles rows
@@ -132,10 +129,16 @@ export async function runExtractAndComposeSession(
       await evaluateExtractionQuality(classifiedComponents);
     throwIfAborted(request.signal);
 
-    // Persist initial rows for composition; downstream selection waits for final completion.
-    storeRawComponents(db, sessionId, initialValidatedComponents, {
-      extractionDiagnostics: extraction.extractionDiagnostics,
-    });
+    await runSourceAnalysis(
+      'storeExtraction',
+      {
+        dbPath: getPipelineDbPath(),
+        sessionId,
+        components: initialValidatedComponents,
+        extractionDiagnostics: extraction.extractionDiagnostics,
+      },
+      { signal: request.signal },
+    );
     throwIfAborted(request.signal);
 
     onProgress?.({
@@ -178,9 +181,11 @@ export async function runExtractAndComposeSession(
       phase: 'publishing',
       activity: 'Saving source evidence and component relationships…',
     });
-    const sourceEvidenceHandle = await retryDatabaseWrite(
-      () =>
-        completeExtractionWithSourceEvidence(db, {
+    const sourceEvidenceHandle = await runSourceAnalysis(
+      'publishExtraction',
+      {
+        dbPath: getPipelineDbPath(),
+        extraction: {
           sessionId,
           stepId,
           components: composition.components,
@@ -193,9 +198,9 @@ export async function runExtractAndComposeSession(
             ...(composition.sourceCallSiteCoverage ? { callerCoverage: composition.sourceCallSiteCoverage } : {}),
           },
           extractionDiagnostics: extraction.extractionDiagnostics,
-        }),
-      8,
-      request.signal,
+        },
+      },
+      { signal: request.signal },
     );
     throwIfAborted(request.signal);
 

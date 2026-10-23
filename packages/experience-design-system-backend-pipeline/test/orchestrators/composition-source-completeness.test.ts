@@ -5,6 +5,7 @@ import { expect, it, vi } from 'vitest';
 import { runAgent } from '../../src/agents/index.js';
 import { runCompositionService } from '../../src/steps/composition/src/services/run-composition-service.js';
 import { readCompositionFiles } from '../../src/orchestrators/run-extract-and-compose-session/helpers/read-composition-files.js';
+import { resolveComposition } from '../../src/orchestrators/run-extract-and-compose-session/helpers/resolve-composition.js';
 
 vi.mock('../../src/agents/index.js', () => ({
   runAgent: vi.fn(async () => ({ stdout: '', stderr: '', exitCode: 0, timedOut: false })),
@@ -42,4 +43,22 @@ it('resolves composition without invoking the retired agent or its cache callbac
   expect(onCacheStore).not.toHaveBeenCalled();
   expect(onProgress.mock.calls).toEqual([['resolving'], ['done']]);
   expect(result).toMatchObject({ components: [], warnings: [], sourceCallSiteEvidence: [] });
+});
+
+it('reports incomplete caller coverage instead of presenting an unavailable index as confirmed absence', async () => {
+  const onProgress = vi.fn();
+  const result = await resolveComposition({
+    components: [{ name: 'Surface', source: '/unavailable/Surface.tsx', framework: 'react', props: [], slots: [] }],
+    sourceFiles: [],
+    onProgress,
+  });
+  expect(result.sourceCallSiteCoverage?.components[0]?.outcome).toBe('unknown');
+  expect(onProgress).toHaveBeenCalledWith(
+    expect.objectContaining({
+      kind: 'composition',
+      phase: 'done',
+      activity:
+        '0 source call-site observations collected · partial caller coverage — unobserved callers remain unknown',
+    }),
+  );
 });

@@ -3,6 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import * as api from '../../../../../src/steps/extraction/index.js';
+import { collectSourceCallSiteEvidence } from '../../../../../src/steps/composition/src/helpers/edges/source-call-site-evidence.js';
+import { readFileSync } from 'node:fs';
 
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })));
@@ -182,9 +184,61 @@ it('discloses global node and depth budgets without invalid plain records', asyn
     componentObservationLimits: { maxNodes: 20 },
   });
   const index = result.components[0]!.componentFacts!.sourceObservations!.referenceIndex!;
-  expect(index.used.nodes).toBeLessThanOrEqual(20);
+  expect(index.used.nodes).toBeLessThanOrEqual(index.limits.maxNodes);
+  expect(index.limits.maxNodes).toBe(20 * 2 * 2);
   expect(index.omissions.some((item) => item.reason.includes('budget') || item.reason.includes('nodes'))).toBe(true);
   expect(api.readSourceReferences(index).status).toBe('available');
+});
+
+it('collects configured caller observations beyond unrelated source without exhausting discovery in mutation scanning', async () => {
+  const padding = Object.fromEntries(
+    Array.from({ length: 30 }, (_, file) => [
+      `A-padding-${file}.ts`,
+      Array.from({ length: 100 }, (_, value) => `export const item${value} = ${value};`).join('\n'),
+    ]),
+  );
+  const f = await fixture(
+    `import {Surface} from '@surface';export const Caller=()=> <Surface label="kept" mode="a"/>;`,
+    padding,
+  );
+  const paths = [f.selected, f.evidence, ...Object.keys(padding).map((file) => join(f.root, file))];
+  const result = await api.extractReactComponents([f.selected], undefined, {
+    projectRoot: f.root,
+    evidenceFilePaths: paths.slice(1),
+  });
+  const index = result.components[0]!.componentFacts!.sourceObservations!.referenceIndex!;
+  expect(api.readSourceReferences(index).status).toBe('available');
+  expect(index.used.nodes).toBeLessThanOrEqual(index.limits.maxNodes);
+  expect(index.omissions).toEqual([]);
+  const projected = collectSourceCallSiteEvidence(
+    paths.map((path) => ({ path, content: readFileSync(path, 'utf8') })),
+    result.components,
+  );
+  expect(projected.accepted).toMatchObject([{ child: 'Surface', execution: 'lexical-reference' }]);
+  expect(projected.coverage.components[0]?.outcome).toBe('observed');
+});
+
+it('retains lexical callers when another file exceeds its budget without trusting unverified value bindings', async () => {
+  const f = await fixture(
+    `import {Surface} from '@surface';const label='uncertain';export const Caller=()=> <Surface label={label} mode="a"/>;`,
+    { 'A-large.ts': Array.from({ length: 1200 }, (_, n) => `const v${n}=${n};`).join('\n') },
+  );
+  const result = await api.extractReactComponents([f.selected], undefined, {
+    projectRoot: f.root,
+    evidenceFilePaths: [f.evidence, join(f.root, 'A-large.ts')],
+  });
+  const index = result.components[0]!.componentFacts!.sourceObservations!.referenceIndex!;
+  expect(api.readSourceReferences(index).status).toBe('available');
+  expect(index.omissions.map((item) => item.reason)).toContain('mutation-scan-budget');
+  expect(index.omissions.map((item) => item.reason)).toContain('max-reference-nodes');
+  const call = index.references.find((item) => item.kind === 'jsx')!;
+  expect(call).toBeDefined();
+  expect(call.reasons).toContain('target-mutation-scan-incomplete');
+  expect(call.inputs.find((item) => item.name === 'label')).toMatchObject({
+    state: 'unknown',
+    reasons: ['mutation-scan-incomplete'],
+  });
+  expect(call.inputs.find((item) => item.name === 'mode')?.value).toBe('a');
 });
 it('rejects positive but inconsistent summary counts and fabricated alternate target endpoints', async () => {
   const { component } = await fixture(`import {Surface} from '@surface';const a=<Surface label="sample" mode="a"/>;`);

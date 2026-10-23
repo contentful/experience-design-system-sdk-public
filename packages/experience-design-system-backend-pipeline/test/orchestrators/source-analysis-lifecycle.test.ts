@@ -55,6 +55,24 @@ it('terminates active work on cancellation and ignores late progress or success'
   expect(worker.terminate).toHaveBeenCalledOnce();
 });
 
+it('joins atomic publication before acknowledging cancellation', async () => {
+  const controller = new AbortController();
+  const work = runSourceAnalysis(
+    'publishExtraction',
+    {
+      dbPath: '/unused/pipeline.db',
+      extraction: {} as Parameters<typeof runSourceAnalysis<'publishExtraction'>>[1]['extraction'],
+    },
+    { signal: controller.signal },
+  );
+  const rejected = expect(work).rejects.toMatchObject({ name: 'AbortError' });
+  controller.abort();
+  expect(worker.terminate).not.toHaveBeenCalled();
+  worker.emit('message', { kind: 'result', result: {} });
+  await rejected;
+  expect(worker.terminate).toHaveBeenCalledOnce();
+});
+
 it('does not start a worker for an already cancelled operation', async () => {
   const controller = new AbortController();
   controller.abort();

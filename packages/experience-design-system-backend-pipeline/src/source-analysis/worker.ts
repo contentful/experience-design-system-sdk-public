@@ -11,6 +11,30 @@ if (!port) throw new Error('Source analysis must run in a worker thread.');
 
 async function analyze(task: SourceAnalysisTask, port: MessagePort): Promise<unknown> {
   switch (task.kind) {
+    case 'storeExtraction': {
+      const { openPipelineDb, storeRawComponents } = await import('../persistence/src/session/repositories/db.js');
+      const db = openPipelineDb(task.input.dbPath);
+      try {
+        storeRawComponents(db, task.input.sessionId, task.input.components, {
+          extractionDiagnostics: task.input.extractionDiagnostics,
+        });
+      } finally {
+        db.close();
+      }
+      return;
+    }
+    case 'publishExtraction': {
+      const { openPipelineDb, completeExtractionWithSourceEvidence } =
+        await import('../persistence/src/session/repositories/db.js');
+      const { retryDatabaseWrite } =
+        await import('../orchestrators/run-extract-and-compose-session/helpers/retry-database-write.js');
+      const db = openPipelineDb(task.input.dbPath);
+      try {
+        return await retryDatabaseWrite(() => completeExtractionWithSourceEvidence(db, task.input.extraction));
+      } finally {
+        db.close();
+      }
+    }
     case 'indexExploration': {
       const { writeIndexedEvidence } = await import('../source-evidence/indexed-evidence/write.js');
       return writeIndexedEvidence(task.input);

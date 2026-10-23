@@ -89,7 +89,11 @@ export async function resolveComposition(request: ResolveCompositionRequest): Pr
   onProgress?.({
     kind: 'composition',
     phase: 'done',
-    activity: `${sourceCallSites.accepted.length} source call-site observations collected`,
+    activity: `${sourceCallSites.accepted.length} source call-site observations collected · partial caller coverage${
+      sourceCallSites.coverage.components.some((component) => component.outcome === 'unknown')
+        ? ' — unobserved callers remain unknown'
+        : ''
+    }`,
   });
 
   for (const w of result.warnings) warnings.push(`composition — ${w}`);

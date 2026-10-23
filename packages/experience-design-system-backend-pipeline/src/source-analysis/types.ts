@@ -17,6 +17,24 @@ import type {
 } from '../persistence/src/session/repositories/db.js';
 
 export interface SourceAnalysisTasks {
+  storeExtraction: {
+    input: {
+      dbPath: string;
+      sessionId: string;
+      components: RawComponentDefinition[];
+      extractionDiagnostics?: import('../steps/extraction/src/candidates/types.js').ExtractionDiagnostics;
+    };
+    output: void;
+  };
+  publishExtraction: {
+    input: {
+      dbPath: string;
+      extraction: Parameters<
+        typeof import('../persistence/src/session/repositories/db.js').completeExtractionWithSourceEvidence
+      >[1];
+    };
+    output: SourceEvidenceHandle;
+  };
   indexExploration: {
     input: import('../source-evidence/indexed-evidence/types.js').IndexedEvidenceRequest;
     output: import('../source-evidence/indexed-evidence/types.js').IndexedEvidenceResult;
