@@ -28,9 +28,7 @@ describe('what an import produced', () => {
 describe('the wording that depends on it', () => {
   it('keeps the original wording when both were produced', () => {
     expect(writtenThings({ components: true, tokens: true })).toBe('component types and design tokens');
-    expect(credentialsPurpose(false)).toBe(
-      'We use it to check what components already exist and to push your import. If you skip, files are saved locally and nothing is pushed.',
-    );
+    expect(credentialsPurpose(false)).toBe('We use it to check what components already exist and to push your import.');
   });
 
   it('names only what was produced otherwise', () => {

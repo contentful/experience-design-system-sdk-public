@@ -14,7 +14,7 @@ export function credentialsPurpose(tokensOnly: boolean): string {
   const use = tokensOnly
     ? 'We use it to push your design tokens'
     : 'We use it to check what components already exist and to push your import';
-  return `${use}. If you skip, files are saved locally and nothing is pushed.`;
+  return `${use}.`;
 }
 
 export function normalize(values: CredentialValues): CredentialValues {
