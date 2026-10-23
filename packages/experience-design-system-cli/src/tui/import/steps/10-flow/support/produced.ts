@@ -19,8 +19,29 @@ export function fileSummaryLabel({ components }: Produced): string {
   return components ? 'components.json' : 'components.json (design tokens only)';
 }
 
+/** How many of each thing a run writes. A missing or zero count is left out of the wording, never shown as "0". */
+export interface ProducedCounts {
+  components?: number;
+  tokens?: number;
+}
+
+function counted(count: number | undefined, noun: string): string {
+  if (!count) return `${noun}s`;
+  return `${count} ${noun}${count === 1 ? '' : 's'}`;
+}
+
+/**
+ * "12 component types and 42 design tokens", "42 design tokens", or "component types": the things this run writes, with
+ * how many of each when known.
+ */
+export function countedThings({ components, tokens }: Produced, counts: ProducedCounts = {}): string {
+  const parts: string[] = [];
+  if (components || !tokens) parts.push(counted(counts.components, 'component type'));
+  if (tokens) parts.push(counted(counts.tokens, 'design token'));
+  return parts.join(' and ');
+}
+
 /** "component types and design tokens", "design tokens", or "component types": the things this run writes. */
-export function writtenThings({ components, tokens }: Produced): string {
-  if (components && tokens) return 'component types and design tokens';
-  return tokens ? 'design tokens' : 'component types';
+export function writtenThings(produced: Produced): string {
+  return countedThings(produced);
 }
