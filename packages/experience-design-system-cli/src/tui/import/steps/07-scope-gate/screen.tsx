@@ -45,7 +45,7 @@ const HELP_SECTIONS: HelpSection[] = [
     title: 'Panels',
     entries: [
       { keys: 'c', label: 'Cycle list' },
-      { keys: 'd', label: 'Show slot dependenciess' },
+      { keys: 'd', label: 'Show confirmed slot dependencies' },
       { keys: 'x', label: 'Review flags and source notes' },
     ],
   },
@@ -100,6 +100,11 @@ function ScopeGateView({ components, savedDecisions, onConfirm, onQuit }: ScopeG
             <Text dimColor>Source guidance is advisory — press [x] to review notes before selecting components.</Text>
           </Box>
         )}
+        {gate.hasSourceRelationships && (
+          <Box>
+            <Text dimColor>Source links show rendered composition; selection follows confirmed slots.</Text>
+          </Box>
+        )}
         {graph.cycles.length > 0 && (
           <Box marginTop={1}>
             <Text color={PALETTE.muted}>
@@ -146,7 +151,7 @@ function ScopeGateView({ components, savedDecisions, onConfirm, onQuit }: ScopeG
               visibleRows={gate.visibleRows}
               emptyMessage={gate.emptyMessage}
               viewMode={gate.columnOneView}
-              graph={graph.nodes}
+              graph={gate.displayNodes}
             />
           )}
           {columnPlan.layout === 'two-column' && (

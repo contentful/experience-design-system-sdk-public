@@ -129,8 +129,10 @@ export function buildVisibleRows(props: {
   viewMode?: 'grouped' | 'flat';
   graph: ComponentGraphNode[];
   filterVisibleKeys?: Set<string>;
+  edgeLabel?: string;
 }): VisibleRow[] {
   const { items, cycleParticipants, alwaysExpanded, showFlatTier, viewMode, graph, filterVisibleKeys } = props;
+  const edgeLabel = props.edgeLabel ?? 'dep';
 
   if (viewMode === 'flat') {
     const rows: VisibleRow[] = [];
@@ -168,7 +170,7 @@ export function buildVisibleRows(props: {
       const rec = itemByKey.get(key);
       if (!rec) continue;
       const dep = depCountByKey.get(key);
-      const suffix = dep !== undefined ? ` (${dep} dep${dep === 1 ? '' : 's'})` : '';
+      const suffix = dep !== undefined ? ` (${dep} ${edgeLabel}${dep === 1 ? '' : 's'})` : '';
       rows.push({
         kind: 'flat',
         key: sidebarRowKey('flat', key),
@@ -328,7 +330,7 @@ export function buildVisibleRows(props: {
     rows.push({
       kind: 'group-root',
       key: sidebarRowKey('group-root', root),
-      label: `${glyphExpand} ${root} (${depCount} dep${depCount === 1 ? '' : 's'})${aggregate ? ' ' + aggregate : ''}`,
+      label: `${glyphExpand} ${root} (${depCount} ${edgeLabel}${depCount === 1 ? '' : 's'})${aggregate ? ' ' + aggregate : ''}`,
       indent: 0,
       aggregateGlyph: aggregate,
       itemIdx: rec.idx,

@@ -3182,6 +3182,8 @@ export type ScopeComponentRow = {
   modelingNotes?: string[];
   needsReview: boolean;
   slots: Array<{ name: string; allowedComponents: string[] }>;
+  /** Extracted relationships for navigation, independent of accepted slot restrictions. */
+  sourceRelationships?: Array<{ slot: string; components: string[] }>;
 };
 
 export interface ScopeDecisionProvenance {
@@ -3354,6 +3356,12 @@ export function loadScopeComponents(db: DatabaseSync, sessionId: string): ScopeC
       aiReason: r.reject_reason ?? nonAuthorableReason?.slice('non-authorable:'.length) ?? null,
       ...(modelingNotes.length > 0 ? { modelingNotes } : {}),
       needsReview: Boolean(r.needs_review),
+      sourceRelationships: (slotsByComponent.get(r.component_id) ?? []).flatMap((slot) => {
+        const components = (allowedBySlot.get(`${r.component_id}::${slot.name}`) ?? []).map(
+          (allowed) => allowed.allowed_component,
+        );
+        return components.length > 0 ? [{ slot: slot.name, components }] : [];
+      }),
       slots:
         acceptedSlots !== undefined
           ? acceptedSlots

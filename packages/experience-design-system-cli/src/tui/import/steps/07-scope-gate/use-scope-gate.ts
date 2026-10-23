@@ -3,7 +3,8 @@ import { buildAddedComponentsList, computeColumnWidths, computeCounters, compute
 import { findAllAncestors } from './graph/search-neighborhood.js';
 import { computeDirectNeighborhood } from './graph/search-neighborhood.js';
 import { fuzzyMatches } from './graph/fuzzy-search.js';
-import { buildScopeGraph, rejectCascade, sidebarItems } from './graph/index.js';
+import { buildRelationshipNodes, buildScopeGraph, rejectCascade, sidebarItems } from './graph/index.js';
+import { computeClosure } from './graph/composite-closure.js';
 import { resolveKey, type GateAction, type GateContext, type GateMode } from './keymap.js';
 import { isAiFlagged } from './sidebar/ai-flag.js';
 import { buildVisibleRows } from './sidebar/components/GroupedSidebar.js';
@@ -80,9 +81,19 @@ export function useScopeGate({ components, savedDecisions, onConfirm, onQuit }: 
     setShowHelp,
   } = search;
 
-  const groupedItems = useMemo(() => sidebarItems(components), [components]);
+  const displayNodes = useMemo(() => buildRelationshipNodes(components), [components]);
+  const groupedItems = useMemo(() => sidebarItems(components, displayNodes), [components, displayNodes]);
   const graph = useMemo(() => buildScopeGraph(components), [components]);
-  const { cycles: slotCycles, cycleParticipants, cycleUnits, closures } = graph;
+  const { cycles: slotCycles, cycleParticipants, cycleUnits } = graph;
+  const closures = useMemo(
+    () =>
+      new Map(
+        displayNodes
+          .filter((node) => node.slots.some((slot) => slot.allowedComponents?.some((target) => target !== node.name)))
+          .map((node) => [node.name, computeClosure(node.name, displayNodes)]),
+      ),
+    [displayNodes],
+  );
   const hasCycles = slotCycles.length > 0;
   const cyclesJumpables = useMemo(
     () => slotCycles.map((c, i) => ({ cycleIndex: i, jumpTarget: c.path[0] })),
@@ -124,7 +135,7 @@ export function useScopeGate({ components, savedDecisions, onConfirm, onQuit }: 
   const dependencyFilterKeys = useMemo<Set<string> | undefined>(() => {
     if (!showDependencies) return undefined;
     const keys = new Set<string>();
-    for (const [root, closure] of closures) {
+    for (const [root, closure] of graph.closures) {
       if (closure.nodes.length <= 1 || decisions.get(root) !== 'accepted') continue;
       for (const node of closure.nodes) keys.add(node.name);
     }
@@ -133,10 +144,10 @@ export function useScopeGate({ components, savedDecisions, onConfirm, onQuit }: 
       for (const name of unit) keys.add(name);
     }
     return keys;
-  }, [closures, cycleUnits, showDependencies, decisions]);
+  }, [graph, cycleUnits, showDependencies, decisions]);
 
   const filterVisibleKeys = useMemo<Set<string> | undefined>(() => {
-    if (jumpFilterTarget) return findAllAncestors(jumpFilterTarget, graph.nodes);
+    if (jumpFilterTarget) return findAllAncestors(jumpFilterTarget, displayNodes);
     const categoryKeys = computeFilterKeys({
       filters: activeFilters,
       data: { cycles: cycleParticipants, broken: brokenKeys },
@@ -145,7 +156,7 @@ export function useScopeGate({ components, savedDecisions, onConfirm, onQuit }: 
       if (!searchQuery) return undefined;
       const matches = groupedItems.map((it) => it.key).filter((k) => fuzzyMatches(searchQuery, k));
       if (matches.length === 0) return undefined;
-      return computeDirectNeighborhood(matches, graph.nodes);
+      return computeDirectNeighborhood(matches, displayNodes);
     })();
     return intersectFilterKeys(intersectFilterKeys(categoryKeys, searchKeys), dependencyFilterKeys);
   }, [
@@ -155,7 +166,7 @@ export function useScopeGate({ components, savedDecisions, onConfirm, onQuit }: 
     brokenKeys,
     searchQuery,
     groupedItems,
-    graph,
+    displayNodes,
     dependencyFilterKeys,
   ]);
 
@@ -167,10 +178,11 @@ export function useScopeGate({ components, savedDecisions, onConfirm, onQuit }: 
         expandedGroups,
         showFlatTier: false,
         viewMode: columnOneView,
-        graph: graph.nodes,
+        graph: displayNodes,
+        edgeLabel: 'relationship',
         filterVisibleKeys,
       }),
-    [groupedItems, cycleParticipants, expandedGroups, columnOneView, graph, filterVisibleKeys],
+    [groupedItems, cycleParticipants, expandedGroups, columnOneView, displayNodes, filterVisibleKeys],
   );
 
   const emptyMessage =
@@ -497,7 +509,7 @@ export function useScopeGate({ components, savedDecisions, onConfirm, onQuit }: 
           items: groupedItems,
           cycleParticipants,
           expandedGroups,
-          graph: graph.nodes,
+          graph: displayNodes,
         });
         setColumnOneView(next.view);
         setNav({ cursor: next.cursor, scrollOffset: next.scroll });
@@ -536,7 +548,9 @@ export function useScopeGate({ components, savedDecisions, onConfirm, onQuit }: 
     // sidebar
     groupedItems,
     graph,
+    displayNodes,
     hasGroupRoots,
+    hasSourceRelationships: components.some((component) => (component.sourceRelationships?.length ?? 0) > 0),
     expandedGroups,
     toggleExpanded,
     visibleRows,

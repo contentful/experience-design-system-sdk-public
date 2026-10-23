@@ -31,6 +31,8 @@ The CLI owns the full wizard flow in one process, including extraction, the scop
 
 A single human review gate (`scope-gate`) precedes generation. The final-review step edits names, `$description`, `$default`, `$allowedComponents` and `$values` inline, with source and rationale panels. After final-review the flow always saves one combined `components.json` CDF and, unless credentials were skipped, previews and pushes it.
 
+The scope gate displays saved extracted source relationships separately from accepted slot restrictions. Source relationships participate in tree grouping, search and lineage navigation; confirmed slot decisions govern automatic selection cascades and slot-cycle warnings. Open slots remain open even when observed child relationships are shown. Scope decisions for completed exploration are read directly from SQLite; do not serialize full source evidence into duplicate legacy review proposals at the generation handoff.
+
 ### Run records
 
 Each successful wizard run appends a record to `~/.contentful/experience-design-system-cli/state/runs.json`. There is no command for listing them.

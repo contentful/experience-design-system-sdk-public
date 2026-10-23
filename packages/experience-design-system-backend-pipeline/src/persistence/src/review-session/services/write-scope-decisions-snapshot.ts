@@ -2,22 +2,24 @@ import { mkdir } from 'node:fs/promises';
 import type { DatabaseSync } from 'node:sqlite';
 import type { RawComponentDefinition } from '../../../../steps/extraction/src/types/component.js';
 import { loadRawComponents, loadScopeDecisions, loadSavedSharedSource } from '../../session/repositories/db.js';
+import { loadExplorationRun } from '../../session/repositories/exploration/records.js';
 import { getRefineArtifactsRoot } from '../repositories/review-artifacts-root.js';
 import { getRefineSessionPaths } from '../repositories/review-session-paths.js';
 import { saveReviewState } from '../repositories/save-review-state.js';
 import type { ReviewComponentRecord, ReviewComponentStatus } from '../types/review-component.js';
 
 /**
- * Persist authoritative saved scope-gate decisions to `current-review-state.json` so downstream
- * consumers (notably `loadAcceptedNames` in `generate components`) can filter
- * out rejected components. The wizard's scope-gate doesn't drive the rich
- * `analyze select` TUI, so fields that file consumes (resolvedSourcePath,
- * sourceCode) are populated with safe placeholders. Only `name` and `status`
- * matter for `loadAcceptedNames`.
+ * Legacy generation reads scope from the review snapshot. Completed exploration
+ * uses authoritative database scope decisions directly and needs no duplicate snapshot.
  */
 export async function writeScopeDecisionsSnapshot(db: DatabaseSync, sessionId: string): Promise<void> {
   const decisions = loadScopeDecisions(db, sessionId);
   if (!decisions) throw new Error(`No saved scope decisions found for session ${sessionId}`);
+  const exploration = loadExplorationRun(db, sessionId, 'components');
+  if (exploration) {
+    if (exploration.status !== 'complete') throw new Error('Component exploration must complete before saving scope.');
+    return;
+  }
   const acceptedSet = new Set(decisions.accepted);
   const rawComponents = loadRawComponents(db, sessionId);
   const records: ReviewComponentRecord[] = rawComponents.map((c) => {

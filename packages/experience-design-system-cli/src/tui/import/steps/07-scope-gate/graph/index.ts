@@ -37,23 +37,42 @@ export interface SidebarItem {
 }
 
 /** What the sidebar draws a row from: an entry standing in for the component (its slots are what matter), and its status. */
-export function sidebarItems(components: ScopeComponent[]): SidebarItem[] {
+export function sidebarItems(components: ScopeComponent[], displayNodes?: ComponentGraphNode[]): SidebarItem[] {
+  const displayByName = new Map(displayNodes?.map((node) => [node.name, node.slots]));
   return components.map((c) => ({
     key: c.name,
-    entry: toSidebarEntry(c),
+    entry: toSidebarEntry(displayByName.get(c.name) ?? c.slots ?? []),
     status: isAiFlagged(c) ? 'warning' : 'ok',
   }));
 }
 
-function toSidebarEntry(c: ScopeComponent): CDFComponentEntry {
+function toSidebarEntry(slots: ComponentGraphNode['slots']): CDFComponentEntry {
   const $slots: NonNullable<CDFComponentEntry['$slots']> = {};
-  for (const s of c.slots ?? []) $slots[s.name] = { $allowedComponents: s.allowedComponents };
+  for (const s of slots) $slots[s.name] = { $allowedComponents: s.allowedComponents };
   const entry: CDFComponentEntry = {
     $type: 'component',
     $properties: { __scopeGate: { $type: 'string', $category: 'content' } },
   };
   if (Object.keys($slots).length > 0) entry.$slots = $slots;
   return entry;
+}
+
+/** Source relationships guide navigation; they do not establish slot restrictions or selection cascades. */
+export function buildRelationshipNodes(components: ScopeComponent[]): ComponentGraphNode[] {
+  const known = new Set(components.map((component) => component.name));
+  return components.map((component) => {
+    const slots = new Map<string, Set<string>>();
+    for (const slot of component.slots ?? []) slots.set(slot.name, new Set(slot.allowedComponents));
+    for (const relationship of component.sourceRelationships ?? []) {
+      const targets = slots.get(relationship.slot) ?? new Set<string>();
+      for (const target of relationship.components) if (known.has(target)) targets.add(target);
+      slots.set(relationship.slot, targets);
+    }
+    return {
+      name: component.name,
+      slots: [...slots].map(([name, targets]) => ({ name, allowedComponents: [...targets].sort() })),
+    };
+  });
 }
 
 export function buildScopeGraph(components: ScopeComponent[]): ScopeGraph {
