@@ -26,12 +26,17 @@ type JobStatus = 'idle' | 'running' | 'complete' | 'failed';
 
 /** Everything the extracting screen shows. One field per row. */
 export interface ExtractionProgress {
-  scan: { scanned: number; total: number | null } | null;
+  scan: { scanned: number; total: number | null; componentsFound?: number } | null;
+  sourceActivity?: { phase: 'analyzing' | 'validating' | 'capturing' | 'captured' | 'publishing' | 'complete'; activity: string };
   composition: CompositionPhase;
+  compositionActivity?: string;
   selection: 'running' | 'complete';
   exploration?: import('@contentful/experience-design-system-backend-pipeline').ExplorationProgressEvent;
   existingEntities: JobStatus;
+  existingEntitiesActivity?: string;
   tokens: JobStatus;
+  tokenActivity?: import('@contentful/experience-design-system-backend-pipeline').GenerateTokensProgress;
+  tokenCount?: number;
 }
 
 /** The label the error screen shows, as the wizard labelled it. */

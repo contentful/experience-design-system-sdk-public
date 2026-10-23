@@ -36,6 +36,7 @@ export interface ExtractionDeps {
     credentials: NonNullable<ExtractionInput['credentials']>,
     outDir: string,
     onCapture?: (entities: ExistingContentfulEntities) => void,
+    onActivity?: (activity: string) => void,
   ) => Promise<string | null>;
   runExtractAndComposeSession: typeof runExtractAndComposeSession;
   runGenerateTokensSession: typeof runGenerateTokensSession;
@@ -134,9 +135,10 @@ export async function runExtraction(
               skillPath: TOKENS_SKILL_PATH,
               noCache: input.noCache,
               signal,
+              onProgress: (tokenActivity) => update({ tokenActivity }),
             })
             .then((result): TokenGenerationResult => {
-              update({ tokens: 'complete' });
+              update({ tokens: 'complete', tokenCount: result.tokenCount });
               return {
                 ok: true,
                 tokensPath: result.tokensPath,
@@ -158,9 +160,14 @@ export async function runExtraction(
     let capturedEntities: ExistingContentfulEntities | undefined;
     entities = input.credentials
       ? deps
-          .fetchEntities(input.credentials, outDir, (capture) => {
-            capturedEntities = capture;
-          })
+          .fetchEntities(
+            input.credentials,
+            outDir,
+            (capture) => {
+              capturedEntities = capture;
+            },
+            (existingEntitiesActivity) => update({ existingEntitiesActivity }),
+          )
           .then((path) => {
             existingEntitiesPath = path;
             update({ existingEntities: path ? 'complete' : 'failed' });
@@ -298,6 +305,7 @@ async function fetchEntities(
   credentials: NonNullable<ExtractionInput['credentials']>,
   outDir: string,
   onCapture?: (entities: ExistingContentfulEntities) => void,
+  onActivity?: (activity: string) => void,
 ): Promise<string | null> {
   try {
     await mkdir(outDir, { recursive: true });
@@ -307,6 +315,7 @@ async function fetchEntities(
       cmaToken: credentials.cmaToken,
       ...(credentials.host ? { host: credentials.host } : {}),
       outDir,
+      onProgress: onActivity,
     });
     if (!result.ok) return null;
     onCapture?.(result.entities);

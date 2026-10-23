@@ -11,8 +11,9 @@ import type { SourceEvidenceHandle } from '../../persistence/src/session/reposit
  * handing `filePaths` to the orchestrator.
  */
 export type ExtractAndComposeProgress =
-  | { kind: 'extract'; done: number; total: number; componentsSoFar: number }
-  | { kind: 'composition'; phase: 'resolving' | 'cache-hit' | `agent:${string}` | 'done' };
+  | { kind: 'extract'; done: number; total: number; componentsSoFar: number; activity?: string }
+  | { kind: 'source'; phase: 'validating' | 'capturing' | 'captured' | 'publishing' | 'complete'; activity: string }
+  | { kind: 'composition'; phase: 'resolving' | 'cache-hit' | `agent:${string}` | 'done'; activity?: string };
 
 export interface RunExtractAndComposeSessionRequest {
   evidenceFilePaths?: readonly string[];

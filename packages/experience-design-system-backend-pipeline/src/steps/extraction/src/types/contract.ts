@@ -3,6 +3,7 @@ import type { ExtractorOptions } from './options.js';
 import type { ExtractionDiagnostics } from '../candidates/types.js';
 
 export type ExtractionEndpointProgress = {
+  activity?: string;
   phase: 'extract'; // BOI give each phase a type
   filesProcessed: number;
   totalFiles: number;

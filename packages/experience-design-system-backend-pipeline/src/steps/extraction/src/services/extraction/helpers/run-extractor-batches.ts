@@ -29,6 +29,7 @@ export async function runExtractorBatches(
           perExtractorFiles.set(extractor, progress.filesProcessed);
           perExtractorComponents.set(extractor, progress.componentsFound);
           onProgress?.({
+            ...(progress.activity ? { activity: progress.activity } : {}),
             filesProcessed: totalFilesProcessed,
             componentsFound: totalComponentsFound,
           });

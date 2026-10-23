@@ -8,7 +8,11 @@ import type { SourceAnalysisReply, SourceAnalysisTasks } from './types.js';
 export async function runSourceAnalysis<K extends keyof SourceAnalysisTasks>(
   kind: K,
   input: SourceAnalysisTasks[K]['input'],
-  options: { signal?: AbortSignal; onProgress?: (progress: ExtractionEndpointProgress) => void } = {},
+  options: {
+    signal?: AbortSignal;
+    onProgress?: (progress: ExtractionEndpointProgress) => void;
+    onActivity?: (activity: string) => void;
+  } = {},
 ): Promise<SourceAnalysisTasks[K]['output']> {
   throwIfAborted(options.signal);
   return new Promise((resolve, reject) => {
@@ -35,6 +39,9 @@ export async function runSourceAnalysis<K extends keyof SourceAnalysisTasks>(
       try {
         throwIfAborted(options.signal);
         switch (message.kind) {
+          case 'activity':
+            options.onActivity?.(message.activity);
+            break;
           case 'progress':
             options.onProgress?.(message.progress);
             break;

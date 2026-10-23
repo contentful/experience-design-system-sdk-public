@@ -30,9 +30,16 @@ async function analyze(task: SourceAnalysisTask, port: MessagePort): Promise<unk
       return captureSourceEvidence(task.input);
     case 'composition': {
       const { files, components } = task.input;
+      port.postMessage({
+        kind: 'activity',
+        activity: 'Reading declared relationships from manifests and documentation…',
+      });
+      const extraEdges = collectManifestDocEdges(files, components, new Set(components.map(({ name }) => name)));
+      port.postMessage({ kind: 'activity', activity: 'Resolving component references and call-site evidence…' });
+      const sourceCallSites = collectSourceCallSiteEvidence(files, components);
       return {
-        extraEdges: collectManifestDocEdges(files, components, new Set(components.map(({ name }) => name))),
-        sourceCallSites: collectSourceCallSiteEvidence(files, components),
+        extraEdges,
+        sourceCallSites,
       };
     }
   }

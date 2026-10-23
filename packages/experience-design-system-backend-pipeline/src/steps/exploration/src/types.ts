@@ -1,4 +1,5 @@
 import type { AgentInvoker, AgentName } from '../../../agents/index.js';
+import type { AgentInvocationActivity } from '../../../agents/types/agent-run.js';
 import type {
   AgentCallAttempt,
   KnownComponent,
@@ -45,6 +46,7 @@ export interface StageOptions {
   existingTokensInline?: string;
   existingContextStatus?: { status: 'absent' | 'available' | 'unavailable' | 'omitted'; reason?: string };
   onAttempt?: (attempt: AgentCallAttempt) => void | Promise<void>;
+  onInvocation?: (activity: AgentInvocationActivity) => void;
 }
 export interface ExploreStageRequest extends StageOptions {
   responseCache?: {

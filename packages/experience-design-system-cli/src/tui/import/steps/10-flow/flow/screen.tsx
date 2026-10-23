@@ -59,7 +59,13 @@ export function FlowScreen({
         );
 
       case 'previewing':
-        return <RunningStep step="push" description="Computing diff against your Contentful space..." />;
+        return (
+          <RunningStep
+            step="push"
+            description="Computing diff against your Contentful space..."
+            lines={[{ id: 'preview', text: 'Requesting the import preview and comparing definitions…' }]}
+          />
+        );
 
       case 'preview-gate':
         if (!state.serverPreview) return null;
@@ -88,7 +94,13 @@ export function FlowScreen({
         );
 
       case 'printing':
-        return <RunningStep step="push" description="Writing output files to disk..." />;
+        return (
+          <RunningStep
+            step="push"
+            description="Writing output files to disk..."
+            lines={[{ id: 'save', text: 'Saving component definitions, tokens and import mappings…' }]}
+          />
+        );
 
       case 'print-gate': {
         const teaser = buildRunTeaserLine(state.lastRunId);

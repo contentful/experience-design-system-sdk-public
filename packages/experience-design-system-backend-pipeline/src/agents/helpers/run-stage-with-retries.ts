@@ -44,7 +44,17 @@ export async function runStageWithRetries<T>(
       let value: T | undefined;
       let failure: string | undefined;
       let prepared: PreparedStagePrompt | undefined;
+      const activity = (phase: 'preparing' | 'running' | 'validating' | 'retrying') =>
+        options.onInvocation?.({
+          phase,
+          stage,
+          component: options.component,
+          attempt,
+          maxAttempts: limit,
+          resumed: !!conversation,
+        });
       try {
+        if (!retainedPrompt) activity('preparing');
         const built = options.preserveConversation ? (retainedPrompt ??= await prompt()) : await prompt();
         prepared = typeof built === 'string' ? undefined : built;
         const baseText = typeof built === 'string' ? built : built.text;
@@ -89,6 +99,7 @@ export async function runStageWithRetries<T>(
         throwIfAborted(options.signal);
         const remaining = deadline - Date.now();
         if (remaining <= 0) throw new Error('Stage operation deadline exhausted');
+        activity('running');
         const result = await options.invoker.invoke({
           agent: options.agent,
           model: options.model,
@@ -112,6 +123,7 @@ export async function runStageWithRetries<T>(
         if (result.exitCode !== 0) throw new Error(`Stage invocation failed: ${describeAgentFailure(result)}`);
         if (Date.now() >= deadline) throw new Error('Stage operation deadline exhausted');
         try {
+          activity('validating');
           value = parse(result.stdout);
         } catch (error) {
           validationFeedback = error instanceof Error ? error.message : String(error);
@@ -162,6 +174,7 @@ export async function runStageWithRetries<T>(
       throwIfAborted(options.signal);
       if (failure === undefined) return { ok: true, value: value!, attempts };
       if (attempt === limit || Date.now() >= deadline) return { ok: false, error: failure, attempts };
+      activity('retrying');
       const base = options.backoffMs ?? 250;
       const delay = Math.min(base * 2 ** (attempt - 1), 5000, Math.max(0, deadline - Date.now()));
       await abortableDelay(delay, options.signal);

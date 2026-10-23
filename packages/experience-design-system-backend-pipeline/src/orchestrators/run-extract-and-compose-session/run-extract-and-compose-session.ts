@@ -127,6 +127,7 @@ export async function runExtractAndComposeSession(
     emitPreClassificationExclusions(extraction, onExclusion);
 
     const classifiedComponents = extraction.components.map(preClassifyComponent);
+    onProgress?.({ kind: 'source', phase: 'validating', activity: 'Checking extracted component definitions…' });
     const { components: initialValidatedComponents, warnings: filterWarnings } =
       await evaluateExtractionQuality(classifiedComponents);
     throwIfAborted(request.signal);
@@ -137,6 +138,11 @@ export async function runExtractAndComposeSession(
     });
     throwIfAborted(request.signal);
 
+    onProgress?.({
+      kind: 'source',
+      phase: 'capturing',
+      activity: 'Capturing source files, dependencies and compiler evidence…',
+    });
     const sourceCapture = await runSourceAnalysis(
       'capture',
       {
@@ -155,6 +161,7 @@ export async function runExtractAndComposeSession(
     );
     throwIfAborted(request.signal);
 
+    onProgress?.({ kind: 'source', phase: 'captured', activity: 'Waiting for relationship evidence before saving…' });
     const composition = await resolveComposition({
       components: initialValidatedComponents,
       sourceFiles,
@@ -166,6 +173,11 @@ export async function runExtractAndComposeSession(
 
     // Final rows, source evidence and completion identity publish together.
     throwIfAborted(request.signal);
+    onProgress?.({
+      kind: 'source',
+      phase: 'publishing',
+      activity: 'Saving source evidence and component relationships…',
+    });
     const sourceEvidenceHandle = await retryDatabaseWrite(
       () =>
         completeExtractionWithSourceEvidence(db, {
@@ -189,6 +201,7 @@ export async function runExtractAndComposeSession(
 
     enrichCommandResult({ extracted_component_count: composition.components.length });
 
+    onProgress?.({ kind: 'source', phase: 'complete', activity: 'Source evidence ready for exploration' });
     return {
       sessionId,
       compositionPhase: composition.phase,

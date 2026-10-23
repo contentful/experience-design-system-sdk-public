@@ -1,5 +1,5 @@
 import { type SourceFile } from 'ts-morph';
-import type { ComponentExtractionResult } from '../../types/component.js';
+import type { ComponentExtractionResult, ExtractorProgress } from '../../types/component.js';
 import { extractTsxComponents } from '../shared/helpers/tsx-shared.js';
 import { resolveReactAllowedComponents } from './helpers/extract-react-allowed-components.js';
 import { synthesizeReactStructuralSlots } from './helpers/synthesize-react-structural-slots.js';
@@ -22,7 +22,7 @@ function isNextJsComponent(filePath: string, exportedNames: string[]): boolean {
 
 export async function extractReactComponents(
   filePaths: string[],
-  _onProgress?: (progress: { filesProcessed: number; componentsFound: number }) => void,
+  onProgress?: (progress: ExtractorProgress) => void,
   options: ExtractorOptions = {},
 ): Promise<ComponentExtractionResult> {
   const { components, warnings, exclusions, contexts, extractionDiagnostics, sourceInventory } = extractTsxComponents(
@@ -41,8 +41,14 @@ export async function extractReactComponents(
       });
     },
     options,
+    onProgress,
   );
 
+  onProgress?.({
+    filesProcessed: filePaths.length,
+    componentsFound: components.length,
+    activity: 'Resolving structural slots and property forwarding…',
+  });
   resolveReactAllowedComponents(components);
   for (const context of contexts) {
     const componentPaths = new Set(context.componentFiles);
@@ -54,6 +60,12 @@ export async function extractReactComponents(
     );
   }
   resolveReactPropForwarding(components);
+  onProgress?.({
+    filesProcessed: filePaths.length,
+    componentsFound: components.length,
+    activity: 'Collecting compiler source and reference evidence…',
+  });
+  const compilerSources = compilerSourcesFromContexts(contexts, sourceInventory);
 
   return {
     components: components.sort((a, b) => a.name.localeCompare(b.name)),
@@ -61,6 +73,6 @@ export async function extractReactComponents(
     exclusions,
     extractionDiagnostics,
     sourceInventory,
-    compilerSources: compilerSourcesFromContexts(contexts, sourceInventory),
+    compilerSources,
   };
 }

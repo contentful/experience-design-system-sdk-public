@@ -102,6 +102,7 @@ export interface ExtractionExclusion {
 }
 
 export type ExtractorProgress = {
+  activity?: string;
   filesProcessed: number;
   componentsFound: number;
 };

@@ -1,7 +1,7 @@
 import { validateComponentSourceInput } from '../../steps/exploration/src/services/source-input-ownership.js';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { AgentInvoker, AgentName } from '../../agents/index.js';
+import type { AgentInvocationActivity, AgentInvoker, AgentName } from '../../agents/index.js';
 import { createLocalCliAgentInvoker } from '../../agents/index.js';
 import {
   COMPONENT_SCOPES,
@@ -68,6 +68,7 @@ export interface ExplorationProgressEvent {
   done: number;
   total: number;
   scope?: string;
+  invocation?: AgentInvocationActivity;
 }
 export interface RunExplorationSessionRequest {
   /** Reuse compatible component explorer calls across imports; successful calls are always saved. */
@@ -109,14 +110,23 @@ async function execute(
   let runId: string | undefined;
   const scopes = phase === 'components' ? COMPONENT_SCOPES : DETAIL_SCOPES;
   const completedScopes = new Set<string>();
-  const activity = (stage: ExplorationProgressEvent['stage'], scope?: string): void => {
+  let activeStage: ExplorationProgressEvent['stage'] = 'loading';
+  let activeScope: string | undefined;
+  const activity = (
+    stage: ExplorationProgressEvent['stage'],
+    scope?: string,
+    invocation?: AgentInvocationActivity,
+  ): void => {
     throwIfAborted(request.signal);
+    activeStage = stage;
+    activeScope = scope;
     request.onActivity?.({
       phase,
       stage,
       done: completedScopes.size,
       total: scopes.length,
       ...(scope ? { scope } : {}),
+      ...(invocation ? { invocation } : {}),
     });
   };
   try {
@@ -211,6 +221,8 @@ async function execute(
       componentId: component.component_id,
     }));
     const common = {
+      onInvocation: (invocation: AgentInvocationActivity) =>
+        activity(activeStage, invocation.component ?? activeScope, invocation),
       invoker: request.invoker ?? createLocalCliAgentInvoker(),
       agent: request.agent,
       model: request.model,

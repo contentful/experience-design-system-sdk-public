@@ -10,6 +10,7 @@ export interface FetchAndPersistExistingEntitiesRequest {
   spaceId: string;
   environmentId: string;
   outDir: string;
+  onProgress?: (activity: string) => void;
 }
 
 export interface FetchAndPersistSuccess {
@@ -41,11 +42,16 @@ export async function fetchAndPersistExistingContentfulEntities(
       cmaToken: request.cmaToken,
       ...(request.host ? { host: request.host } : {}),
     });
-    const entities = await fetchExistingContentfulEntitiesFromContentful(client, {
-      spaceId: request.spaceId,
-      environmentId: request.environmentId,
-    });
+    const entities = await fetchExistingContentfulEntitiesFromContentful(
+      client,
+      {
+        spaceId: request.spaceId,
+        environmentId: request.environmentId,
+      },
+      request.onProgress,
+    );
     const path = join(request.outDir, '.existing-entities.json');
+    request.onProgress?.('Saving existing components and tokens…');
     await writeFile(path, JSON.stringify(entities, null, 2), 'utf8');
     return { ok: true, path, durationMs: Date.now() - t0, entities };
   } catch (error) {

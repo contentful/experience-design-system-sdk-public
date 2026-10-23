@@ -201,7 +201,7 @@ export { AGENT_BINARIES } from './agents/constants/binaries.js';
 export { isAgentName } from './agents/helpers/resolution/is-agent-name.js';
 export { agentSupportsBedrock } from './agents/helpers/bedrock/agent-supports-bedrock.js';
 export { checkAgentAuth } from './agents/services/check-agent-auth.js';
-export type { AgentAuthStatus } from './agents/types/agent-run.js';
+export type { AgentAuthStatus, AgentInvocationActivity } from './agents/types/agent-run.js';
 export { buildPrompt } from './agents/prompts/build-prompt.js';
 export { buildCompilerEvidenceInline } from './agents/prompts/helpers/build-compiler-evidence-inline.js';
 export type { CompilerEvidenceReadiness } from './agents/prompts/helpers/build-compiler-evidence-inline.js';

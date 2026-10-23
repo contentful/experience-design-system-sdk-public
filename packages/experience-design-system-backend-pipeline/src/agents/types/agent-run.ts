@@ -5,6 +5,15 @@ export interface AgentConversation {
   id: string;
 }
 
+export interface AgentInvocationActivity {
+  phase: 'preparing' | 'running' | 'validating' | 'retrying';
+  stage: string;
+  component?: string;
+  attempt: number;
+  maxAttempts: number;
+  resumed: boolean;
+}
+
 export interface AgentRunResult {
   exitCode: number;
   stdout: string;

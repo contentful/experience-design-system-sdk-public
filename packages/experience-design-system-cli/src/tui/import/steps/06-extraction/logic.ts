@@ -2,6 +2,7 @@ import type { RunningLine } from '../../shared/running-step/logic.js';
 import { parseAgentModel, resolveAgent, resolveModel } from '@contentful/experience-design-system-backend-pipeline';
 import type { ExtractAndComposeProgress } from '@contentful/experience-design-system-backend-pipeline';
 import type { ExtractionProgress } from './types.js';
+import { describeAgentActivity } from '../../shared/agent-activity.js';
 
 /** Structured progress events emitted by the orchestrator (extraction + composition). */
 export type ProgressEvent = ExtractAndComposeProgress;
@@ -23,9 +24,15 @@ export function initialProgress(input: { hasCredentials: boolean; hasRawTokens: 
 export function applyProgressEvent(progress: ExtractionProgress, event: ProgressEvent): ExtractionProgress {
   switch (event.kind) {
     case 'extract':
-      return { ...progress, scan: { scanned: event.done, total: event.total } };
+      return {
+        ...progress,
+        scan: { scanned: event.done, total: event.total, componentsFound: event.componentsSoFar },
+        sourceActivity: { phase: 'analyzing', activity: event.activity ?? 'Reading component definitions…' },
+      };
+    case 'source':
+      return { ...progress, sourceActivity: { phase: event.phase, activity: event.activity } };
     case 'composition':
-      return { ...progress, composition: event.phase };
+      return { ...progress, composition: event.phase, compositionActivity: event.activity };
   }
 }
 
@@ -41,10 +48,13 @@ function explorationRow(progress: ExtractionProgress, agent: string): RunningLin
   const event = progress.exploration;
   if (!event)
     return {
+      id: 'exploration',
       text:
         progress.selection === 'complete'
-          ? 'Selection agent complete'
-          : 'Component exploration waiting for source evidence...',
+          ? 'Component exploration complete'
+          : progress.sourceActivity?.phase === 'complete' && progress.existingEntities === 'running'
+            ? 'Component exploration waiting for existing entities…'
+            : 'Component exploration waiting for source evidence...',
       complete: progress.selection === 'complete',
       ...(progress.selection !== 'complete' ? { pending: true } : {}),
     };
@@ -60,9 +70,13 @@ function explorationRow(progress: ExtractionProgress, agent: string): RunningLin
     complete: 'Component exploration complete',
   };
   return {
+    id: 'exploration',
     text: labels[event.stage],
+    detail: describeAgentActivity(event.invocation),
     complete: event.stage === 'complete',
-    ...(!['loading', 'preparing'].includes(event.stage) ? { progress: { done: event.done, total: event.total } } : {}),
+    ...(['exploring', 'cached', 'complete'].includes(event.stage)
+      ? { progress: { done: event.done, total: event.total, label: 'explorer passes complete' } }
+      : {}),
   };
 }
 
@@ -71,13 +85,25 @@ export function progressRows(progress: ExtractionProgress, agent: string): Runni
   const { scan, composition, existingEntities, tokens } = progress;
   const scanned = scan?.scanned ?? 0;
   const total = scan?.total ?? 0;
-  const scanComplete = total > 0 && scanned >= total;
-  const compositionPending = composition === 'resolving' && !scanComplete;
+  const scanComplete = progress.sourceActivity
+    ? progress.sourceActivity.phase === 'complete'
+    : total > 0 && scanned >= total;
+  const compositionPending = composition === 'resolving' && !progress.compositionActivity;
+  const sourceLabels = {
+    analyzing: 'Analyzing source files…',
+    validating: 'Validating extracted components…',
+    capturing: 'Capturing source evidence…',
+    captured: 'Source files captured; awaiting relationship evidence…',
+    publishing: 'Saving source analysis…',
+    complete: `Analyzed ${plural(scanned, 'source file')}`,
+  };
 
   const rows: RunningLine[] = [
     {
-      text:
-        scan === null
+      id: 'source-analysis',
+      text: progress.sourceActivity
+        ? sourceLabels[progress.sourceActivity.phase]
+        : scan === null
           ? 'Analyzing source files...'
           : scanComplete
             ? `Analyzed ${plural(scanned, 'source file')}`
@@ -85,17 +111,32 @@ export function progressRows(progress: ExtractionProgress, agent: string): Runni
               ? `Analyzing ${plural(scanned, 'source file')}...`
               : `Analyzing source files — ${scanned}/${scan.total}`,
       complete: scanComplete,
+      pending: progress.sourceActivity?.phase === 'captured',
+      detail:
+        [
+          progress.sourceActivity?.activity,
+          scan?.componentsFound === undefined ? undefined : `${plural(scan.componentsFound, 'component')} found`,
+        ]
+          .filter(Boolean)
+          .join(' · ') || undefined,
+      ...(scan &&
+      total > 0 &&
+      (!progress.sourceActivity || progress.sourceActivity.phase === 'analyzing' || scanComplete)
+        ? { progress: { done: scanned, total, label: 'source files considered' } }
+        : {}),
     },
     {
+      id: 'relationships',
       text:
         composition === 'cache-hit'
           ? 'Component relationships (cached)'
           : compositionDone(progress)
             ? 'Component relationships collected'
             : compositionPending
-              ? 'Component relationships waiting for source analysis...'
-              : 'Collecting component relationships from source...',
+              ? 'Source relationship evidence waiting for analysis…'
+              : 'Collecting source relationship evidence…',
       complete: compositionDone(progress),
+      detail: progress.compositionActivity,
       ...(compositionPending ? { pending: true } : {}),
     },
     explorationRow(progress, agent),
@@ -103,6 +144,7 @@ export function progressRows(progress: ExtractionProgress, agent: string): Runni
 
   if (existingEntities !== 'idle') {
     rows.push({
+      id: 'existing-entities',
       text:
         existingEntities === 'running'
           ? 'Fetching existing components and tokens...'
@@ -110,11 +152,14 @@ export function progressRows(progress: ExtractionProgress, agent: string): Runni
             ? 'Existing components and tokens ready'
             : 'Existing entities unavailable; continuing without them',
       complete: existingEntities !== 'running',
+      failed: existingEntities === 'failed',
+      detail: existingEntities === 'running' ? progress.existingEntitiesActivity : undefined,
     });
   }
 
   if (tokens !== 'idle') {
     rows.push({
+      id: 'tokens',
       text:
         tokens === 'complete'
           ? 'Token definitions ready'
@@ -122,10 +167,25 @@ export function progressRows(progress: ExtractionProgress, agent: string): Runni
             ? 'Token definition generation failed'
             : `Generating token definitions via ${agent}...`,
       complete: tokens === 'complete',
+      failed: tokens === 'failed',
+      detail:
+        tokens === 'complete' && progress.tokenCount !== undefined
+          ? `${plural(progress.tokenCount, 'token')} generated`
+          : tokens === 'running'
+            ? tokenActivityLabel(progress.tokenActivity?.kind)
+            : undefined,
     });
   }
 
   return rows;
+}
+
+function tokenActivityLabel(kind?: NonNullable<ExtractionProgress['tokenActivity']>['kind']): string {
+  if (kind === 'writing-file') return 'Writing token definitions…';
+  if (kind === 'cache-hit') return 'Loading previously generated token definitions…';
+  if (kind?.startsWith('agent:')) return 'Agent is analyzing token values and generating definitions…';
+  if (kind === 'done') return 'Token definitions saved';
+  return 'Reading token source and preparing generation…';
 }
 
 /** True when every job is already done, so the screen would only flash. The wizard shows nothing in this case. */

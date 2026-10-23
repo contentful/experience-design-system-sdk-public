@@ -51,5 +51,6 @@ export type SourceAnalysisTask = {
 
 export type SourceAnalysisReply<K extends keyof SourceAnalysisTasks> =
   | { kind: 'progress'; progress: ExtractionEndpointProgress }
+  | { kind: 'activity'; activity: string }
   | { kind: 'result'; result: SourceAnalysisTasks[K]['output'] }
   | { kind: 'error'; error: { name: string; message: string } };

@@ -74,6 +74,13 @@ export async function extractComponentsWithCache({
     };
   }
 
+  onProgress?.({
+    kind: 'extract',
+    done: 0,
+    total: sourceFiles.length,
+    componentsSoFar: 0,
+    activity: 'Starting source analysis worker…',
+  });
   const extraction = await runSourceAnalysis(
     'extract',
     {
@@ -83,15 +90,23 @@ export async function extractComponentsWithCache({
     },
     {
       signal,
-      onProgress: ({ filesProcessed, componentsFound }) => {
+      onProgress: ({ filesProcessed, componentsFound, activity }) => {
         onProgress?.({
           kind: 'extract',
           done: filesProcessed,
           total: sourceFiles.length,
           componentsSoFar: componentsFound,
+          ...(activity ? { activity } : {}),
         });
       },
     },
   );
+  onProgress?.({
+    kind: 'extract',
+    done: sourceFiles.length,
+    total: sourceFiles.length,
+    componentsSoFar: extraction.components.length,
+    activity: 'Component definitions extracted',
+  });
   return { extraction, cacheHits: 0 };
 }

@@ -38,7 +38,7 @@ export async function resolveComposition(request: ResolveCompositionRequest): Pr
   throwIfAborted(request.signal);
   const warnings: string[] = [];
 
-  onProgress?.({ kind: 'composition', phase: 'resolving' });
+  onProgress?.({ kind: 'composition', phase: 'resolving', activity: 'Loading captured source files…' });
   throwIfAborted(request.signal);
 
   const runtimeFiles = await readCompositionFiles(components, sourceFiles, sourceCapture);
@@ -66,9 +66,17 @@ export async function resolveComposition(request: ResolveCompositionRequest): Pr
       files: runtimeFiles,
       components: evidenceComponents,
     },
-    { signal: request.signal },
+    {
+      signal: request.signal,
+      onActivity: (activity) => onProgress?.({ kind: 'composition', phase: 'resolving', activity }),
+    },
   );
   throwIfAborted(request.signal);
+  onProgress?.({
+    kind: 'composition',
+    phase: 'resolving',
+    activity: 'Merging declared relationships and structural slots…',
+  });
   const result = await resolveMapping({
     components,
     ...(extraEdges.length > 0 ? { extraEdges } : {}),
@@ -78,7 +86,11 @@ export async function resolveComposition(request: ResolveCompositionRequest): Pr
   });
   throwIfAborted(request.signal);
 
-  onProgress?.({ kind: 'composition', phase: 'done' });
+  onProgress?.({
+    kind: 'composition',
+    phase: 'done',
+    activity: `${sourceCallSites.accepted.length} source call-site observations collected`,
+  });
 
   for (const w of result.warnings) warnings.push(`composition — ${w}`);
   const conflicts: EdgeConflict[] = [];

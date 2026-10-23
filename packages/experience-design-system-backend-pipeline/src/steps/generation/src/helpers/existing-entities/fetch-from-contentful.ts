@@ -10,6 +10,7 @@ export interface FetchExistingEntitiesParams {
 export async function fetchExistingContentfulEntitiesFromContentful(
   client: PlainClientAPI,
   params: FetchExistingEntitiesParams,
+  onProgress?: (activity: string) => void,
 ): Promise<ExistingContentfulEntities> {
   const componentScope = {
     spaceId: params.spaceId,
@@ -21,7 +22,9 @@ export async function fetchExistingContentfulEntitiesFromContentful(
     environmentId: params.environmentId,
     query: { cursor: true, limit: 1000 } as unknown as Parameters<PlainClientAPI['designToken']['getMany']>[0]['query'],
   };
+  onProgress?.('Fetching existing component definitions…');
   const components = await fetchAll(client.component.getMany, componentScope);
+  onProgress?.(`Fetched ${components.length} components; fetching existing design tokens…`);
   const tokens = await fetchAll(client.designToken.getMany, tokenScope);
   return { components, tokens };
 }

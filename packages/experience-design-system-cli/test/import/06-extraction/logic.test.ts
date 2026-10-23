@@ -42,13 +42,13 @@ describe('initialProgress', () => {
 describe('applyProgressEvent', () => {
   it('tracks the extract progress with done, total, and components-so-far', () => {
     const after = applyProgressEvent(base(), { kind: 'extract', done: 3, total: 40, componentsSoFar: 7 });
-    expect(after.scan).toEqual({ scanned: 3, total: 40 });
+    expect(after.scan).toEqual({ scanned: 3, total: 40, componentsFound: 7 });
   });
 
   it('advances the scan as more extract events arrive', () => {
     const first = applyProgressEvent(base(), { kind: 'extract', done: 1, total: 40, componentsSoFar: 0 });
     const next = applyProgressEvent(first, { kind: 'extract', done: 40, total: 40, componentsSoFar: 12 });
-    expect(next.scan).toEqual({ scanned: 40, total: 40 });
+    expect(next.scan).toEqual({ scanned: 40, total: 40, componentsFound: 12 });
   });
 
   it('records the composition phase and leaves the other rows alone', () => {
@@ -68,37 +68,43 @@ describe('progressRows', () => {
   it('shows the first frame of a fresh run', () => {
     const rows = progressRows(initialProgress({ hasCredentials: true, hasRawTokens: true }), 'claude');
     expect(rows).toEqual([
-      { text: 'Analyzing source files...', complete: false },
-      { text: 'Component relationships waiting for source analysis...', complete: false, pending: true },
-      { text: 'Component exploration waiting for source evidence...', complete: false, pending: true },
-      { text: 'Fetching existing components and tokens...', complete: false },
-      { text: 'Generating token definitions via claude...', complete: false },
+      { id: 'source-analysis', text: 'Analyzing source files...', complete: false },
+      { id: 'relationships', text: 'Source relationship evidence waiting for analysis…', complete: false, pending: true },
+      { id: 'exploration', text: 'Component exploration waiting for source evidence...', complete: false, pending: true },
+      { id: 'existing-entities', text: 'Fetching existing components and tokens...', complete: false, failed: false },
+      { id: 'tokens', text: 'Generating token definitions via claude...', complete: false, failed: false, detail: 'Reading token source and preparing generation…' },
     ]);
   });
 
   it('counts analyzed files and marks the row done only once every file is processed', () => {
     expect(progressRows(base({ scan: { scanned: 1, total: 40 } }), 'claude')[0]).toEqual({
+      id: 'source-analysis',
       text: 'Analyzing source files — 1/40',
       complete: false,
+      progress: { done: 1, total: 40, label: 'source files considered' },
     });
     expect(progressRows(base({ scan: { scanned: 40, total: 40 } }), 'claude')[0]).toEqual({
+      id: 'source-analysis',
       text: 'Analyzed 40 source files',
       complete: true,
+      progress: { done: 40, total: 40, label: 'source files considered' },
     });
   });
 
   it('describes source evidence collection without claiming an agent is mapping composition', () => {
     expect(progressRows(base({ composition: 'agent:codex' }), 'claude')[1]?.text).toBe(
-      'Collecting component relationships from source...',
+      'Collecting source relationship evidence…',
     );
   });
 
   it('says when composition came from the cache', () => {
     expect(progressRows(base({ composition: 'cache-hit' }), 'claude')[1]).toEqual({
+      id: 'relationships',
       text: 'Component relationships (cached)',
       complete: true,
     });
     expect(progressRows(base({ composition: 'done' }), 'claude')[1]).toEqual({
+      id: 'relationships',
       text: 'Component relationships collected',
       complete: true,
     });
@@ -113,7 +119,7 @@ describe('progressRows', () => {
     ['complete', 'Existing components and tokens ready', true],
     ['failed', 'Existing entities unavailable; continuing without them', true],
   ] as const)('shows the entities row when it is %s', (existingEntities, text, complete) => {
-    expect(progressRows(base({ existingEntities }), 'claude')[3]).toEqual({ text, complete });
+    expect(progressRows(base({ existingEntities }), 'claude')[3]).toEqual({ id: 'existing-entities', text, complete, failed: existingEntities === 'failed' });
   });
 
   it.each([
@@ -121,7 +127,7 @@ describe('progressRows', () => {
     ['complete', 'Token definitions ready', true],
     ['failed', 'Token definition generation failed', false],
   ] as const)('shows the token row when it is %s', (tokens, text, complete) => {
-    expect(progressRows(base({ tokens }), 'claude')[3]).toEqual({ text, complete });
+    expect(progressRows(base({ tokens }), 'claude')[3]).toEqual({ id: 'tokens', text, complete, failed: tokens === 'failed', detail: tokens === 'running' ? 'Reading token source and preparing generation…' : undefined });
   });
 });
 
@@ -244,7 +250,7 @@ describe('exploration progress rows', () => {
     expect(row).toMatchObject({
       text: 'Saving component exploration results...',
       complete: false,
-      progress: { done: 7, total: 7 },
     });
+    expect(row?.progress).toBeUndefined();
   });
 });

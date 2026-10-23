@@ -23,12 +23,13 @@ export async function extractEndpoint(request: ExtractionEndpointRequest): Promi
     ...(request.signal !== undefined ? { signal: request.signal } : {}),
     ...(request.resolveUnreachable !== undefined ? { resolveUnreachable: request.resolveUnreachable } : {}),
     ...(request.projectRoot !== undefined ? { projectRoot: request.projectRoot } : {}),
-    onProgress: ({ filesProcessed, componentsFound }) => {
+    onProgress: ({ filesProcessed, componentsFound, activity }) => {
       request.onProgress?.({
         phase: 'extract',
         filesProcessed,
         totalFiles: filePaths.length,
         componentsFound,
+        ...(activity ? { activity } : {}),
       });
     },
   });

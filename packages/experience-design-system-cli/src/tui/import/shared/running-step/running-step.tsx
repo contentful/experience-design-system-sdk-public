@@ -2,11 +2,11 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import { ProgressBar, Spinner, ThemeProvider } from '@inkjs/ui';
 import { PALETTE } from '@tui/theme.js';
-import { progressPercent, type RunningLine } from './logic.js';
+import { activitySegment, formatElapsed, progressPercent, type RunningLine } from './logic.js';
 import { PROGRESS_THEME } from './theme.js';
 import { StepHeader } from '@tui/shared/components/StepHeader.js';
 import type { ImportStepId } from '@tui/shared/components/StepHeader.js';
-import { useElapsed } from './use-elapsed.js';
+import { useElapsed, useElapsedSeconds } from './use-elapsed.js';
 
 interface RunningStepProps {
   step: ImportStepId;
@@ -16,34 +16,52 @@ interface RunningStepProps {
 }
 
 function Line({ line }: { line: RunningLine }): React.ReactElement {
-  if (line.progress) {
-    return (
-      <Box flexDirection="column" gap={1}>
-        <Box gap={2}>
-          <Box width={40}>
+  const active = !line.complete && !line.pending && !line.failed;
+  const seconds = useElapsedSeconds(active);
+  const position = activitySegment(seconds);
+  const counted = line.progress && line.progress.total > 0 ? line.progress : undefined;
+  return (
+    <Box flexDirection="column">
+      <Box gap={1}>
+        {line.failed ? (
+          <Text color={PALETTE.error}>✗</Text>
+        ) : line.complete ? (
+          <Text color={PALETTE.success}>✓</Text>
+        ) : line.pending ? (
+          <Text color={PALETTE.muted}>◯</Text>
+        ) : (
+          <Spinner />
+        )}
+        <Text color={PALETTE.muted}>{line.text}</Text>
+        {!line.pending && <Text color={PALETTE.muted}> · {formatElapsed(seconds)}</Text>}
+      </Box>
+      {line.detail && (
+        <Box paddingLeft={2}>
+          <Text color={PALETTE.muted}>{line.detail}</Text>
+        </Box>
+      )}
+      {counted ? (
+        <Box paddingLeft={2} gap={2}>
+          <Box width={24}>
             <ThemeProvider theme={PROGRESS_THEME}>
-              <ProgressBar value={progressPercent(line.progress)} />
+              <ProgressBar value={progressPercent(counted)} />
             </ThemeProvider>
           </Box>
           <Text color={PALETTE.muted}>
-            {line.progress.done}/{line.progress.total}
-            {line.progress.label ? ` ${line.progress.label}` : ''}
+            {counted.done}/{counted.total}
+            {counted.label ? ` ${counted.label}` : ''}
           </Text>
         </Box>
-        <Text color={PALETTE.muted}>{line.text}</Text>
-      </Box>
-    );
-  }
-  return (
-    <Box gap={1}>
-      {line.complete ? (
-        <Text color={PALETTE.success}>✓</Text>
-      ) : line.pending ? (
-        <Text color={PALETTE.muted}>◯</Text>
-      ) : (
-        <Spinner />
-      )}
-      <Text color={PALETTE.muted}>{line.text}</Text>
+      ) : active ? (
+        <Box paddingLeft={2} gap={2}>
+          <Text color={PALETTE.muted}>
+            {'░'.repeat(position)}
+            <Text color={PALETTE.accent}>{'━'.repeat(4)}</Text>
+            {'░'.repeat(20 - position)}
+          </Text>
+          <Text color={PALETTE.muted}>Working…</Text>
+        </Box>
+      ) : null}
     </Box>
   );
 }
@@ -63,7 +81,7 @@ export function RunningStep({
         <Text>{description}</Text>
         <Box marginTop={1} flexDirection="column" gap={1}>
           {lines.map((line, index) => (
-            <Line key={index} line={line} />
+            <Line key={line.id ?? index} line={line} />
           ))}
         </Box>
         <Box marginTop={1}>

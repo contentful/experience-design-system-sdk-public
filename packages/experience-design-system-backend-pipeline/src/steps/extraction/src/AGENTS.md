@@ -15,7 +15,7 @@ Walks a set of source file paths, routes each one to the correct framework extra
 | `filePaths`    | `string[]`                             | Non-empty absolute or project-relative |
 | `projectRoot`  | `string?`                              | Resolves relative paths                |
 | `opts`         | `ExtractorOptions?`                    | Framework and parser overrides         |
-| `onProgress`   | `(progress) => void`                   | Fires per processed file (Svelte only) |
+| `onProgress`   | `(progress) => void`                   | Reports processed files and optional activity |
 
 ## Output
 

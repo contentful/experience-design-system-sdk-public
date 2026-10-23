@@ -1,7 +1,7 @@
 import type { SourceFile } from 'ts-morph';
 import { canonicalSourceFactPath } from '../../../candidates/bind-source-candidates.js';
-import { resolve } from 'node:path';
-import type { ExtractionExclusion } from '../../../types/component.js';
+import { basename, resolve } from 'node:path';
+import type { ExtractionExclusion, ExtractorProgress } from '../../../types/component.js';
 import type { ExtractionDiagnostics } from '../../../candidates/types.js';
 import type { ExtractorOptions } from '../../../types/options.js';
 import { createCompilerContexts, type CompilerContextResult } from '../../../compiler/context.js';
@@ -32,6 +32,7 @@ export function extractTsxComponents<T>(
   componentFilePattern: RegExp,
   extract: (sourceFile: SourceFile, exclusions: ExtractionExclusion[], diagnostics: ExtractionDiagnostics) => T[],
   options: ExtractorOptions = {},
+  onProgress?: (progress: ExtractorProgress) => void,
 ): {
   components: T[];
   warnings: string[];
@@ -40,10 +41,16 @@ export function extractTsxComponents<T>(
   extractionDiagnostics: CompilerContextResult['diagnostics'];
   sourceInventory: CompilerContextResult['sourceInventory'];
 } {
+  onProgress?.({
+    filesProcessed: 0,
+    componentsFound: 0,
+    activity: 'Preparing compiler configuration and dependencies…',
+  });
   const extractionContext = getTsxExtractionContext(filePaths, componentFilePattern, options);
   const components: T[] = [];
   const warnings: string[] = [];
   const exclusions: ExtractionExclusion[] = [];
+  let filesProcessed = 0;
 
   for (const context of extractionContext.contexts) {
     for (const filePath of context.componentFiles) {
@@ -57,6 +64,11 @@ export function extractTsxComponents<T>(
         });
         continue;
       }
+      onProgress?.({
+        filesProcessed,
+        componentsFound: components.length,
+        activity: `Inspecting ${basename(filePath)}…`,
+      });
       try {
         const sourceFile = context.project.getSourceFile(filePath);
         if (!sourceFile) continue;
@@ -93,6 +105,12 @@ export function extractTsxComponents<T>(
           reason: 'compiler-source-reader-throw',
         });
         warnings.push(`Failed to extract from ${filePath}: ${e instanceof Error ? e.message : String(e)}`);
+      } finally {
+        onProgress?.({
+          filesProcessed: ++filesProcessed,
+          componentsFound: components.length,
+          activity: `Inspected ${basename(filePath)}`,
+        });
       }
     }
   }

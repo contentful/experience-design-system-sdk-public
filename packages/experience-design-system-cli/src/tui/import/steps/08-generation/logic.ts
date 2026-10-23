@@ -1,5 +1,6 @@
 import type { GenerationProgress } from './types.js';
 import type { RunningLine } from '../../shared/running-step/logic.js';
+import { describeAgentActivity } from '../../shared/agent-activity.js';
 
 export function initialProgress(): GenerationProgress {
   return {
@@ -51,7 +52,9 @@ export function progressRows(progress: GenerationProgress, agent: string): Runni
       complete: 'Property and slot reviews complete',
     };
     rows.push({
+      id: 'exploration',
       text: labels[exploration.stage],
+      detail: describeAgentActivity(exploration.invocation),
       complete: exploration.stage === 'complete',
       ...(['exploring', 'cached'].includes(exploration.stage)
         ? { progress: { done: exploration.done, total: exploration.total, label: 'review passes complete' } }
@@ -60,6 +63,7 @@ export function progressRows(progress: GenerationProgress, agent: string): Runni
   }
   if (['preparing', 'saving-decisions', 'authenticating'].includes(stage)) {
     rows.push({
+      id: 'preparation',
       text:
         stage === 'authenticating'
           ? `Checking ${name} authentication...`
@@ -68,26 +72,30 @@ export function progressRows(progress: GenerationProgress, agent: string): Runni
             : 'Preparing selected components...',
     });
   } else if (stage === 'exploring' && !exploration) {
-    rows.push({ text: 'Preparing property and slot reviews...' });
+    rows.push({ id: 'preparation', text: 'Preparing property and slot reviews...' });
   }
   if (components) {
     if (progress.resumedComponents)
       rows.push({
+        id: 'resumed-definitions',
         text: `Reused ${progress.resumedComponents} completed component definitions from this debug session`,
         complete: true,
       });
     const finished = components.done >= components.total && progress.activeComponents.length === 0;
     rows.push({
+      id: 'definitions',
       text: finished
         ? progress.failedComponents
           ? `Definition generation finished — ${progress.failedComponents} failed`
           : 'Component definitions ready'
         : `Generating component definitions via ${name}...`,
       complete: finished,
-      progress: { done: components.done, total: components.total },
+      failed: finished && progress.failedComponents > 0,
+      progress: { done: components.done, total: components.total, label: 'components processed' },
     });
     for (const active of progress.activeComponents) {
       rows.push({
+        id: `component:${active.name}`,
         text: active.exploringModel
           ? `Exploring a new model Component for ${active.name}`
           : active.attempt > 1
@@ -96,13 +104,14 @@ export function progressRows(progress: GenerationProgress, agent: string): Runni
       });
     }
     if (!finished && !progress.activeComponents.length)
-      rows.push({ text: 'Preparing the next component definition...' });
+      rows.push({ id: 'next-definition', text: 'Preparing the next component definition...' });
   }
   if (stage === 'preparing-token-mapping') {
-    rows.push({ text: 'Checking which properties can use design tokens...' });
+    rows.push({ id: 'token-eligibility', text: 'Checking which properties can use design tokens...' });
   }
   if (mapTokens !== 'idle') {
     rows.push({
+      id: 'token-mapping',
       text: mapTokens === 'running' ? `Mapping token restrictions via ${name}...` : 'Token restrictions ready',
       complete: mapTokens === 'complete',
     });
