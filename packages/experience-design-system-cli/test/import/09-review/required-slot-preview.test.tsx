@@ -21,6 +21,11 @@ it('carries required-slot reasons through the real API sanitizer and wizard deta
             contentProperties: [],
             designProperties: [],
             slots: ['constructor'],
+            sourceDefinition: { $type: 'component', $properties: {} },
+            targetDefinition: {
+              name: 'Example',
+              metadata: { arbitrary: { ['__proto__']: 'retained', sys: { custom: true } } },
+            },
             fullProperties: {
               future: {
                 type: 'Future',
@@ -65,6 +70,12 @@ it('carries required-slot reasons through the real API sanitizer and wizard deta
     expect(preview.components.changed[0]!.changeClassification?.classification).toBe('breaking');
     expect(preview.components.changed[0]!.current.fullProperties).toEqual(
       response.components.changed[0]!.current.fullProperties,
+    );
+    expect(preview.components.changed[0]!.current.sourceDefinition).toEqual(
+      response.components.changed[0]!.current.sourceDefinition,
+    );
+    expect(preview.components.changed[0]!.current.targetDefinition).toEqual(
+      response.components.changed[0]!.current.targetDefinition,
     );
     const rows = buildBreakingRows(deriveBreakingChanges(preview));
     expect(rows.map((row) => row.focusTarget)).toEqual([

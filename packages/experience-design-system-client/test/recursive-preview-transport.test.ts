@@ -50,6 +50,11 @@ it('connects generated sourceful/sourceless transport and shared recursive publi
             contentProperties: [],
             designProperties: [],
             slots: ['required'],
+            sourceDefinition: entry,
+            targetDefinition: {
+              name: 'Example',
+              metadata: { arbitrary: { ['__proto__']: 'retained', sys: { custom: true } } },
+            },
             fullProperties: {
               opaque: {
                 type: 'Future',
@@ -105,6 +110,9 @@ it('connects generated sourceful/sourceless transport and shared recursive publi
     body: cdf as never,
   });
   expect(result.data).toEqual(response);
+  expect(result.data?.components.changed[0]?.current.targetDefinition).toEqual(
+    response.components.changed[0]!.current.targetDefinition,
+  );
   expect(JSON.parse(await requests[0]!.text())).toEqual(cdf);
   const source = await designSystemImportCreate({
     baseUrl: 'https://api.example.com',
@@ -122,4 +130,7 @@ it('connects generated sourceful/sourceless transport and shared recursive publi
     (specification.components.schemas as Record<string, any>).BreakingChange.oneOf[1].properties.reason.enum,
   ).toContain('slot_cardinality_narrowed');
   expect(CDF_SCHEMA_URL).toEqual(cdf.$schema);
+  expect((specification.components.schemas as Record<string, any>).ComponentTypeSummary.properties).toHaveProperty(
+    'targetDefinition',
+  );
 });
