@@ -27,7 +27,10 @@ type JobStatus = 'idle' | 'running' | 'complete' | 'failed';
 /** Everything the extracting screen shows. One field per row. */
 export interface ExtractionProgress {
   scan: { scanned: number; total: number | null; componentsFound?: number } | null;
-  sourceActivity?: { phase: 'analyzing' | 'validating' | 'capturing' | 'captured' | 'publishing' | 'complete'; activity: string };
+  sourceActivity?: {
+    phase: 'analyzing' | 'validating' | 'capturing' | 'captured' | 'publishing' | 'complete';
+    activity: string;
+  };
   composition: CompositionPhase;
   compositionActivity?: string;
   selection: 'running' | 'complete';

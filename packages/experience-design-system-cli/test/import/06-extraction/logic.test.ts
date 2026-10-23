@@ -69,10 +69,26 @@ describe('progressRows', () => {
     const rows = progressRows(initialProgress({ hasCredentials: true, hasRawTokens: true }), 'claude');
     expect(rows).toEqual([
       { id: 'source-analysis', text: 'Analyzing source files...', complete: false },
-      { id: 'relationships', text: 'Source relationship evidence waiting for analysis…', complete: false, pending: true },
-      { id: 'exploration', text: 'Component exploration waiting for source evidence...', complete: false, pending: true },
+      {
+        id: 'relationships',
+        text: 'Source relationship evidence waiting for analysis…',
+        complete: false,
+        pending: true,
+      },
+      {
+        id: 'exploration',
+        text: 'Component exploration waiting for source evidence...',
+        complete: false,
+        pending: true,
+      },
       { id: 'existing-entities', text: 'Fetching existing components and tokens...', complete: false, failed: false },
-      { id: 'tokens', text: 'Generating token definitions via claude...', complete: false, failed: false, detail: 'Reading token source and preparing generation…' },
+      {
+        id: 'tokens',
+        text: 'Generating token definitions via claude...',
+        complete: false,
+        failed: false,
+        detail: 'Reading token source and preparing generation…',
+      },
     ]);
   });
 
@@ -119,7 +135,12 @@ describe('progressRows', () => {
     ['complete', 'Existing components and tokens ready', true],
     ['failed', 'Existing entities unavailable; continuing without them', true],
   ] as const)('shows the entities row when it is %s', (existingEntities, text, complete) => {
-    expect(progressRows(base({ existingEntities }), 'claude')[3]).toEqual({ id: 'existing-entities', text, complete, failed: existingEntities === 'failed' });
+    expect(progressRows(base({ existingEntities }), 'claude')[3]).toEqual({
+      id: 'existing-entities',
+      text,
+      complete,
+      failed: existingEntities === 'failed',
+    });
   });
 
   it.each([
@@ -127,7 +148,13 @@ describe('progressRows', () => {
     ['complete', 'Token definitions ready', true],
     ['failed', 'Token definition generation failed', false],
   ] as const)('shows the token row when it is %s', (tokens, text, complete) => {
-    expect(progressRows(base({ tokens }), 'claude')[3]).toEqual({ id: 'tokens', text, complete, failed: tokens === 'failed', detail: tokens === 'running' ? 'Reading token source and preparing generation…' : undefined });
+    expect(progressRows(base({ tokens }), 'claude')[3]).toEqual({
+      id: 'tokens',
+      text,
+      complete,
+      failed: tokens === 'failed',
+      detail: tokens === 'running' ? 'Reading token source and preparing generation…' : undefined,
+    });
   });
 });
 
