@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { buildAddedComponentsList, computeColumnWidths, computeCounters, computePanelLayout } from './columns.js';
+import { computeColumnWidths, computeCounters, computePanelLayout } from './columns.js';
 import { findAllAncestors } from './graph/search-neighborhood.js';
 import { computeDirectNeighborhood } from './graph/search-neighborhood.js';
 import { fuzzyMatches } from './graph/fuzzy-search.js';
@@ -30,11 +30,13 @@ import type { ScopeComponent, ScopeDecisions } from './types.js';
 
 interface UseScopeGateOptions {
   components: ScopeComponent[];
+  tokenCount: number;
+  tokensWidth: number;
   onConfirm: (decisions: ScopeDecisions) => void;
   onQuit: () => void;
 }
 
-type FocusedColumn = 'main' | 'added-components';
+type FocusedColumn = 'main' | 'tokens';
 
 export interface PendingRejectCascade {
   target: string;
@@ -42,14 +44,17 @@ export interface PendingRejectCascade {
   descendants: string[];
 }
 
-export function useScopeGate({ components, onConfirm, onQuit }: UseScopeGateOptions) {
+export function useScopeGate({ components, tokenCount, tokensWidth, onConfirm, onQuit }: UseScopeGateOptions) {
   const { columns: totalWidth, rows: terminalRows } = useTerminalSize();
-  const columnPlan = useMemo(() => computeColumnWidths(totalWidth), [totalWidth]);
+  const columnPlan = useMemo(
+    () => computeColumnWidths(totalWidth, tokenCount > 0, tokensWidth),
+    [totalWidth, tokenCount, tokensWidth],
+  );
 
   const [decisions, setDecisions] = useState<DecisionState>(new Map());
   const [nav, setNav] = useState<{ cursor: number; scrollOffset: number }>({ cursor: 0, scrollOffset: 0 });
   const [focusedColumn, setFocusedColumn] = useState<FocusedColumn>('main');
-  const [addedComponentsCursor, setAddedComponentsCursor] = useState(0);
+  const [tokensCursor, setTokensCursor] = useState(0);
   const [showDependencies, setShowDependencies] = useState(false);
   const [cyclesPanelOpen, setCyclesPanelOpen] = useState(false);
   const [cyclesCursor, setCyclesCursor] = useState(0);
@@ -220,15 +225,11 @@ export function useScopeGate({ components, onConfirm, onQuit }: UseScopeGateOpti
     [aiExcluded],
   );
 
-  const addedComponents = useMemo(
-    () => buildAddedComponentsList(components, selectionStateByKey, cycleParticipants),
-    [components, selectionStateByKey, cycleParticipants],
-  );
   const counters = useMemo(
     () => computeCounters(components, closures, selectionStateByKey),
     [components, closures, selectionStateByKey],
   );
-  const safeAddedComponentsCursor = Math.min(addedComponentsCursor, Math.max(0, addedComponents.length - 1));
+  const safeTokensCursor = Math.min(tokensCursor, Math.max(0, tokenCount - 1));
 
   const focusedRowKey = (): string | undefined => {
     const row = visibleRows[safeCursor];
@@ -301,7 +302,7 @@ export function useScopeGate({ components, onConfirm, onQuit }: UseScopeGateOpti
     hasFlagReasons: aiRows.length > 0,
     jumpFilterActive: jumpFilterTarget !== null,
     searchActive: searchQuery.length > 0,
-    focusedListEmpty: focusedColumn === 'added-components' ? addedComponents.length === 0 : total === 0,
+    focusedListEmpty: focusedColumn === 'tokens' ? tokenCount === 0 : total === 0,
   };
 
   const submitSearch = (): void => {
@@ -341,8 +342,8 @@ export function useScopeGate({ components, onConfirm, onQuit }: UseScopeGateOpti
       setAiCursor((c) => Math.max(0, Math.min(Math.max(0, aiRows.length - 1), c + delta)));
       return;
     }
-    if (focusedColumn === 'added-components') {
-      setAddedComponentsCursor((c) => Math.max(0, Math.min(addedComponents.length - 1, c + delta)));
+    if (focusedColumn === 'tokens') {
+      setTokensCursor((c) => Math.max(0, Math.min(tokenCount - 1, c + delta)));
       return;
     }
     setNav(({ cursor: c, scrollOffset: prev }) => {
@@ -404,10 +405,6 @@ export function useScopeGate({ components, onConfirm, onQuit }: UseScopeGateOpti
           const row = aiRows[aiCursor];
           if (row) jumpCursorTo(row.jumpTarget);
           aiRationalePanel.close();
-        } else {
-          const entry = addedComponents[safeAddedComponentsCursor];
-          if (entry) jumpCursorTo(entry.name);
-          setFocusedColumn('main');
         }
         return;
       case 'accept': {
@@ -416,8 +413,7 @@ export function useScopeGate({ components, onConfirm, onQuit }: UseScopeGateOpti
         return;
       }
       case 'reject': {
-        const key =
-          focusedColumn === 'added-components' ? addedComponents[safeAddedComponentsCursor]?.name : focusedRowKey();
+        const key = focusedRowKey();
         if (key) requestReject(key);
         return;
       }
@@ -440,7 +436,7 @@ export function useScopeGate({ components, onConfirm, onQuit }: UseScopeGateOpti
         setExpandedGroups(new Set());
         return;
       case 'switch-column': {
-        const order: FocusedColumn[] = ['main', 'added-components'];
+        const order: FocusedColumn[] = ['main', 'tokens'];
         const at = order.indexOf(focusedColumn);
         setFocusedColumn(order[(at + action.delta + order.length) % order.length]);
         return;
@@ -471,7 +467,7 @@ export function useScopeGate({ components, onConfirm, onQuit }: UseScopeGateOpti
         });
         return;
       case 'toggle-jump-filter': {
-        const target = focusedColumn === 'main' ? focusedRowKey() : addedComponents[safeAddedComponentsCursor]?.name;
+        const target = focusedRowKey();
         if (target) setJumpFilterTarget((prev) => (prev === target ? null : target));
         return;
       }
@@ -546,9 +542,8 @@ export function useScopeGate({ components, onConfirm, onQuit }: UseScopeGateOpti
     aiRows,
     aiExcludedCount: aiExcluded.length,
     pendingRejectCascade,
-    // added column
-    addedComponents,
-    safeAddedComponentsCursor,
+    // token column
+    safeTokensCursor,
     counters,
     // search
     search,

@@ -7,6 +7,7 @@ import {
   PathValidationScreen,
   PreflightScreen,
   TokenInputScreen,
+  TokenReviewScreen,
   WelcomeScreen,
 } from './src/tui/import/steps/index.js';
 import {
@@ -37,6 +38,7 @@ import { buildFlowStart } from './src/tui/import/steps/10-flow/flow/build-flow-s
 import type { FlowStart } from './src/tui/import/steps/10-flow/flow/controller.js';
 import { FlowScreen } from './src/tui/import/steps/10-flow/flow/screen.js';
 import { useFlow } from './src/tui/import/steps/10-flow/flow/use-flow.js';
+import { HiddenStepsContext, type ImportStepId as HeaderStepId } from '@tui/shared/components/StepHeader.js';
 import { HelpScreen } from './src/tui/help/PageContainer.js';
 import { SettingsScreen } from './src/tui/settings/PageContainer.js';
 import { ConfigurationScreen } from './src/tui/settings/configuration/ConfigurationScreen.js';
@@ -90,6 +92,8 @@ interface ScopeRun {
   extraction: ExtractionHandoff;
 }
 
+const TOKENS_ONLY_HIDDEN_STEPS: readonly HeaderStepId[] = ['extraction', 'scope-gate'];
+
 interface AppProps {
   importOptions: ImportOptions;
   inkClear: () => void;
@@ -110,6 +114,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
   const extraction = useExtraction(extractionRun?.input);
   const [tokensOnlyRun, setTokensOnlyRun] = useState<TokensOnlyRun>();
   const tokensOnly = useTokensOnly(tokensOnlyRun?.tokens);
+  const [tokenReview, setTokenReview] = useState<{ tokensPath: string; onContinue: () => void }>();
   const [scopeRun, setScopeRun] = useState<ScopeRun>();
   const scopeFlow = useScopeGateFlow(
     scopeRun && {
@@ -232,15 +237,22 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
     const { credentialsSkipped, input, tokens } = tokensOnlyRun;
     const { tokensPath, tokenSessionId, tokenCount } = tokensOnly.result;
     inkClear();
-    setTokensOnlyRun(undefined);
-    setFlowStart(
-      buildFlowStart({
-        extraction: input,
-        saved: importDefaults?.credentials,
-        handoff: { credentialsSkipped, tokens: { strategy: 'generate' } },
-        tokensOnly: { tokensPath, tokenSessionId, tokenCount, outDir: tokens.outDir },
-      }),
-    );
+    setTokenReview({
+      tokensPath,
+      onContinue: () => {
+        inkClear();
+        setTokenReview(undefined);
+        setTokensOnlyRun(undefined);
+        setFlowStart(
+          buildFlowStart({
+            extraction: input,
+            saved: importDefaults?.credentials,
+            handoff: { credentialsSkipped, tokens: { strategy: 'generate' } },
+            tokensOnly: { tokensPath, tokenSessionId, tokenCount, outDir: tokens.outDir },
+          }),
+        );
+      },
+    });
   }, [tokensOnly, tokensOnlyRun]);
 
   // A finished extraction opens the scope gate, once, with what the stage produced.
@@ -301,6 +313,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
     setAnswers({});
     setExtractionRun(undefined);
     setTokensOnlyRun(undefined);
+    setTokenReview(undefined);
     setScopeRun(undefined);
     setGenerationInput(undefined);
     setFlowStart(undefined);
@@ -325,130 +338,147 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
     else setAnswers(back.answers);
   };
 
-  switch (screen) {
-    case 'import':
-      if (showImportResult) return <ImportScreen exitCode={importExitCode} onDone={finishImportResult} />;
-      if (flow && flowStart) {
-        return (
-          <FlowScreen
-            state={flow.state}
-            controller={flow.controller}
-            generatePromptPath={flowStart.generatePromptPath}
-            onExit={setImportExitCode}
-          />
-        );
-      }
-      if (importDefaults === undefined) return <></>;
-      if (target === undefined) {
-        return <PreflightScreen onChoose={setTarget} onQuit={leaveImport} />;
-      }
-      const inputStep = currentInputStep(target, answers);
-      if (!extractionRun && !tokensOnlyRun && inputStep !== 'credentials') {
-        switch (inputStep) {
-          case 'project':
-            return (
-              <WelcomeScreen
-                onContinue={(projectPath) => answer({ projectPath })}
-                onQuit={() => goBackFrom('project')}
-                initialPath={importDefaults.componentDir}
-              />
-            );
-          case 'token-file':
-            return (
-              <TokenInputScreen
-                initialPath={importDefaults.tokenFile}
-                onConfirm={(tokensPath) => answer({ tokensPath })}
-                onBack={() => goBackFrom('token-file')}
-              />
-            );
-          case 'path-validation':
-            return (
-              <PathValidationScreen
-                projectPath={answers.projectPath ?? ''}
-                hasTokens={target !== 'components'}
-                onConfirm={({ filePaths }) => answer({ scannedFiles: filePaths })}
-                onChangePath={() => resetImport(true)}
-                onBack={() => goBackFrom('path-validation')}
-              />
-            );
-        }
-      }
-      if (tokensOnlyRun) {
-        if (tokensOnly?.status === 'done' && !tokensOnly.result.ok) {
+  const content = ((): React.ReactElement => {
+    switch (screen) {
+      case 'import':
+        if (showImportResult) return <ImportScreen exitCode={importExitCode} onDone={finishImportResult} />;
+        if (flow && flowStart) {
           return (
-            <ErrorStep stepName={tokensOnly.result.step} message={tokensOnly.result.message} onExit={leaveImport} />
+            <FlowScreen
+              state={flow.state}
+              controller={flow.controller}
+              generatePromptPath={flowStart.generatePromptPath}
+              onExit={setImportExitCode}
+            />
           );
         }
-        return (
-          <RunningStep
-            step="generation"
-            description="Generating design tokens from your token file."
-            lines={[{ text: `Generating token definitions via ${tokensOnlyRun.input.agent}...`, complete: false }]}
-          />
-        );
-      }
-      if (extractionRun) {
-        if (extraction?.status === 'done' && !extraction.result.ok) {
+        if (tokenReview) {
           return (
-            <ErrorStep stepName={extraction.result.step} message={extraction.result.message} onExit={leaveImport} />
-          );
-        }
-        if (extraction?.status === 'running') {
-          return <ExtractionScreen progress={extraction.progress} agent={extractionRun.input.agent} />;
-        }
-        return <></>;
-      }
-      if (scopeRun && scopeFlow) {
-        if (scopeFlow.status === 'failed') {
-          return <ErrorStep stepName="scope gate" message={scopeFlow.message} onExit={leaveImport} />;
-        }
-        if (scopeFlow.status === 'deciding') {
-          return (
-            <ScopeGateScreen
-              components={scopeFlow.load.components}
-              onConfirm={scopeFlow.confirm}
+            <TokenReviewScreen
+              tokensPath={tokenReview.tokensPath}
+              onContinue={tokenReview.onContinue}
               onQuit={leaveImport}
             />
           );
         }
-        if (generation?.status === 'done' && !generation.result.ok) {
-          return (
-            <ErrorStep stepName={generation.result.step} message={generation.result.message} onExit={leaveImport} />
-          );
+        if (importDefaults === undefined) return <></>;
+        if (target === undefined) {
+          return <PreflightScreen onChoose={setTarget} onQuit={leaveImport} />;
         }
-        if (generation?.status === 'running') {
+        const inputStep = currentInputStep(target, answers);
+        if (!extractionRun && !tokensOnlyRun && inputStep !== 'credentials') {
+          switch (inputStep) {
+            case 'project':
+              return (
+                <WelcomeScreen
+                  onContinue={(projectPath) => answer({ projectPath })}
+                  onQuit={() => goBackFrom('project')}
+                  initialPath={importDefaults.componentDir}
+                />
+              );
+            case 'token-file':
+              return (
+                <TokenInputScreen
+                  initialPath={importDefaults.tokenFile}
+                  onConfirm={(tokensPath) => answer({ tokensPath })}
+                  onBack={() => goBackFrom('token-file')}
+                />
+              );
+            case 'path-validation':
+              return (
+                <PathValidationScreen
+                  projectPath={answers.projectPath ?? ''}
+                  hasTokens={target !== 'components'}
+                  onConfirm={({ filePaths }) => answer({ scannedFiles: filePaths })}
+                  onChangePath={() => resetImport(true)}
+                  onBack={() => goBackFrom('path-validation')}
+                />
+              );
+          }
+        }
+        if (tokensOnlyRun) {
+          if (tokensOnly?.status === 'done' && !tokensOnly.result.ok) {
+            return (
+              <ErrorStep stepName={tokensOnly.result.step} message={tokensOnly.result.message} onExit={leaveImport} />
+            );
+          }
           return (
-            <GenerationScreen
-              progress={generation.progress}
-              agent={scopeRun.input.agent}
-              acceptedCount={scopeFlow.decisions.accepted.length}
-              hasTokens={scopeRun.extraction.tokensPath !== ''}
+            <RunningStep
+              step="generation"
+              description="Generating design tokens from your token file."
+              lines={[{ text: `Generating token definitions via ${tokensOnlyRun.input.agent}...`, complete: false }]}
             />
           );
         }
-        return <></>;
-      }
-      return (
-        <CredentialsScreen
-          initial={importDefaults.credentials}
-          tokensOnly={target === 'tokens'}
-          onBack={() => goBackFrom('credentials')}
-          onDone={(result) => void finishCredentials(result, answers)}
-        />
-      );
-    case 'help':
-      return <HelpScreen onDone={goToStart} />;
-    case 'settings':
-      return <SettingsScreen onNavigate={setScreen} onBack={goToStart} />;
-    case 'settings-configuration':
-      return <ConfigurationScreen onDone={goToSettings} />;
-    case 'settings-opt-in-analytics':
-      return <OptInAnalyticsScreen onDone={goToSettings} />;
-    case 'settings-debug-mode':
-      return <DebugModeScreen onDone={goToSettings} />;
-    case 'start':
-      return <HomeScreen onNavigate={setScreen} />;
-  }
+        if (extractionRun) {
+          if (extraction?.status === 'done' && !extraction.result.ok) {
+            return (
+              <ErrorStep stepName={extraction.result.step} message={extraction.result.message} onExit={leaveImport} />
+            );
+          }
+          if (extraction?.status === 'running') {
+            return <ExtractionScreen progress={extraction.progress} agent={extractionRun.input.agent} />;
+          }
+          return <></>;
+        }
+        if (scopeRun && scopeFlow) {
+          if (scopeFlow.status === 'failed') {
+            return <ErrorStep stepName="scope gate" message={scopeFlow.message} onExit={leaveImport} />;
+          }
+          if (scopeFlow.status === 'deciding') {
+            return (
+              <ScopeGateScreen
+                components={scopeFlow.load.components}
+                {...(scopeRun.extraction.tokensPath ? { tokensPath: scopeRun.extraction.tokensPath } : {})}
+                onConfirm={scopeFlow.confirm}
+                onQuit={leaveImport}
+              />
+            );
+          }
+          if (generation?.status === 'done' && !generation.result.ok) {
+            return (
+              <ErrorStep stepName={generation.result.step} message={generation.result.message} onExit={leaveImport} />
+            );
+          }
+          if (generation?.status === 'running') {
+            return (
+              <GenerationScreen
+                progress={generation.progress}
+                agent={scopeRun.input.agent}
+                acceptedCount={scopeFlow.decisions.accepted.length}
+                hasTokens={scopeRun.extraction.tokensPath !== ''}
+              />
+            );
+          }
+          return <></>;
+        }
+        return (
+          <CredentialsScreen
+            initial={importDefaults.credentials}
+            tokensOnly={target === 'tokens'}
+            onBack={() => goBackFrom('credentials')}
+            onDone={(result) => void finishCredentials(result, answers)}
+          />
+        );
+      case 'help':
+        return <HelpScreen onDone={goToStart} />;
+      case 'settings':
+        return <SettingsScreen onNavigate={setScreen} onBack={goToStart} />;
+      case 'settings-configuration':
+        return <ConfigurationScreen onDone={goToSettings} />;
+      case 'settings-opt-in-analytics':
+        return <OptInAnalyticsScreen onDone={goToSettings} />;
+      case 'settings-debug-mode':
+        return <DebugModeScreen onDone={goToSettings} />;
+      case 'start':
+        return <HomeScreen onNavigate={setScreen} />;
+    }
+  })();
+  return (
+    <HiddenStepsContext.Provider value={target === 'tokens' ? TOKENS_ONLY_HIDDEN_STEPS : []}>
+      {content}
+    </HiddenStepsContext.Provider>
+  );
 }
 
 export async function runApp(

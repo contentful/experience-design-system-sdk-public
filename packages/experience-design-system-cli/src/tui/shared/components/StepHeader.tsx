@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { createContext, useContext } from 'react';
 import { Box, Text } from 'ink';
 import figures from 'figures';
 import { PALETTE } from '@tui/theme.js';
@@ -16,6 +16,9 @@ const IMPORT_STEPS = [
 
 export type ImportStepId = (typeof IMPORT_STEPS)[number]['id'];
 
+/** Steps the current import never goes through, left out of the header. A tokens-only import has no extract, select or generate. */
+export const HiddenStepsContext = createContext<readonly ImportStepId[]>([]);
+
 export interface StepHeaderProps {
   step: ImportStepId | 'done';
 }
@@ -29,7 +32,9 @@ const WIDE_SPACING_MIN_COLUMNS = 100;
 export function StepHeader({ step }: StepHeaderProps): React.ReactElement {
   const columns = useTerminalWidth();
   const padding = columns >= WIDE_SPACING_MIN_COLUMNS ? '  ' : ' ';
-  const current = step === 'done' ? IMPORT_STEPS.length : IMPORT_STEPS.findIndex((candidate) => candidate.id === step);
+  const hidden = useContext(HiddenStepsContext);
+  const steps = IMPORT_STEPS.filter((candidate) => !hidden.includes(candidate.id));
+  const current = step === 'done' ? steps.length : steps.findIndex((candidate) => candidate.id === step);
 
   return (
     <Box
@@ -44,7 +49,7 @@ export function StepHeader({ step }: StepHeaderProps): React.ReactElement {
       borderRight={false}
     >
       <Box>
-        {IMPORT_STEPS.map((candidate, index) => (
+        {steps.map((candidate, index) => (
           <React.Fragment key={candidate.id}>
             {index > 0 && <Text color={PALETTE.muted}>{`${padding}${figures.arrowRight}${padding}`}</Text>}
             {index < current ? (
