@@ -11,6 +11,7 @@ import { parseCheckOutput } from '../parsers/parse-check-output.js';
 import { runStageWork } from '../helpers/run-stage-work.js';
 import type { CheckStageRequest } from '../types.js';
 import { propertySourceEvidence } from '../helpers/property-source-evidence.js';
+import { prepareExplorationValidator } from './exploration-validator-artifact.js';
 export function applyChecks(verified: VerifiedItem[], checks: EvidenceCheck[]): VerifiedItem[] {
   return verified.map((item) => {
     if (item.outcome === 'conflicting') return item;
@@ -37,6 +38,7 @@ export async function runCheckStage(request: CheckStageRequest): Promise<CheckSt
       const result = await runStageWithRetries(
         {
           ...request,
+          preserveConversation: true,
           component: work.component,
           source: work.source,
           workIds: work.entries.map((entry) => entry.checkId),
@@ -65,7 +67,7 @@ export async function runCheckStage(request: CheckStageRequest): Promise<CheckSt
             }),
             skillContentOverride: request.skillContentOverride,
             skillPathOverride: request.skillPathOverride,
-          }),
+          }).then((prompt) => prepareExplorationValidator(prompt, { kind: 'check', work }, request.signal)),
         (output) => {
           const parsed = parseCheckOutput(output, work);
           if (!parsed.ok) throw new Error(parsed.error);

@@ -5,6 +5,7 @@ import {
 } from '@contentful/experience-design-system-types';
 import { parseJsonOutput } from './parse-explore-output.js';
 import { assertUnique } from '../helpers/identity.js';
+import { explorationWorkCoverage } from '../helpers/exploration-diagnostics.js';
 export type ParsedTierOutput = { ok: true; hypotheses: TierHypothesis[] } | { ok: false; error: string };
 export function parseTierOutput(output: string, disagreements: ExplorationDisagreement[]): ParsedTierOutput {
   try {
@@ -16,7 +17,9 @@ export function parseTierOutput(output: string, disagreements: ExplorationDisagr
     assertUnique(expected, 'disagreement IDs');
     assertUnique(actual, 'tier IDs');
     if (actual.length !== expected.length || actual.some((id) => !expected.includes(id)))
-      throw new Error('Tier IDs do not exactly cover requested work');
+      throw new Error(
+        `Tier IDs do not exactly cover requested work: ${explorationWorkCoverage(expected, actual)} Assigned subjects: ${JSON.stringify(disagreements.map(({ id, component, source, scope, member, path }) => ({ id, component, source, scope, member, path })))}`,
+      );
     return { ok: true, hypotheses };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };

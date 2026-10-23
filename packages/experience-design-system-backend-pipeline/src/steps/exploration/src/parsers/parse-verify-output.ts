@@ -7,6 +7,7 @@ import {
 import { parseJsonOutput } from './parse-explore-output.js';
 import { assertUnique } from '../helpers/identity.js';
 import { checkBoundEvidence } from '../helpers/check-evidence.js';
+import { explorationWorkCoverage } from '../helpers/exploration-diagnostics.js';
 export { checkEvidence } from '../helpers/check-evidence.js';
 export type ParsedVerifyOutput = { ok: true; items: VerifiedItem[] } | { ok: false; error: string };
 export function parseVerifyOutput(
@@ -26,11 +27,19 @@ export function parseVerifyOutput(
       work.items.map((item) => item.itemId),
       'requested item IDs',
     );
-    if (items.length !== work.items.length) throw new Error('Verified items must cover every requested item');
+    if (items.length !== work.items.length)
+      throw new Error(
+        `Verified items must cover every requested item for ${work.component} (${work.source}): ${explorationWorkCoverage(
+          work.items.map((item) => item.itemId),
+          items.map((item) => item.itemId),
+        )}`,
+      );
     for (const item of items) {
       const requested = work.items.find((requested) => requested.itemId === item.itemId);
       if (!requested || item.component !== work.component || item.source !== work.source)
-        throw new Error('Verified item identity mismatch');
+        throw new Error(
+          `Verified item identity mismatch: received ${JSON.stringify({ itemId: item.itemId, component: item.component, source: item.source })}; expected component ${work.component} (${work.source}), item IDs ${JSON.stringify(work.items.map((item) => item.itemId))}`,
+        );
       if (item.outcome === 'conflicting') continue;
       const expected = requested.claims.map((claim) => claim.path);
       const resolutions = item.resolved ?? [];

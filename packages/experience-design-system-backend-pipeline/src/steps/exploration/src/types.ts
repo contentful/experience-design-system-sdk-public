@@ -37,6 +37,7 @@ export interface StageOptions {
   skillContentOverride?: string;
   skillPathOverride?: string;
   signal?: AbortSignal;
+  preserveConversation?: boolean;
   identity?: ExplorationIdentity;
   sourceInput?: ExplorationSourceInput;
   sourceRefs?: ExploreSourceRef[];

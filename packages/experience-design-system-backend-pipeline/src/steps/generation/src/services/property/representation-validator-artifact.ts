@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import type { RepresentationValidationEvidence } from './validate-representation-draft.js';
 import { parseClassificationToolLines, type ClassificationToolCall } from '@contentful/experience-design-system-types';
 import { generationDraftDigest } from './generation-decision-repair.js';
+import { shellArgument } from '../../../../../helpers/shell-argument.js';
 
 export interface GenerationAttemptValidator {
   instructions: string;
@@ -22,8 +23,6 @@ export interface GenerationRepresentationValidator {
   ) => Promise<GenerationAttemptValidator>;
   dispose: () => Promise<void>;
 }
-
-const shellArgument = (value: string): string => "'" + value.replace(/'/g, "'\"'\"'") + "'";
 
 export async function createGenerationRepresentationValidator(
   evidence: RepresentationValidationEvidence,

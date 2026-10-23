@@ -26,6 +26,7 @@ import type { PromptOptions } from '../../../../agents/types/prompts.js';
 import { sourcePropertyModel } from '../../../generation/src/services/property/source-property-model.js';
 import { buildExploreCacheKey } from '../helpers/build-explore-cache-key.js';
 import { propertySourceEvidence } from '../helpers/property-source-evidence.js';
+import { prepareExplorationValidator } from './exploration-validator-artifact.js';
 export async function runExploreStage(request: ExploreStageRequest): Promise<ExploreStageResult> {
   assertUnique(request.scopes, 'requested scopes');
   if (request.scopes.some((scope) => !EXPLORE_SCOPES.includes(scope))) throw new Error('Unknown exploration scope');
@@ -38,7 +39,7 @@ export async function runExploreStage(request: ExploreStageRequest): Promise<Exp
     let requestedComponents = request.requestedComponents;
     let cacheKey: string | undefined;
     const result = await runStageWithRetries(
-      { ...request, onAttempt: (attempt) => request.onAttempt?.({ ...attempt, scope }) },
+      { ...request, preserveConversation: true, onAttempt: (attempt) => request.onAttempt?.({ ...attempt, scope }) },
       scope,
       async () => {
         const loadedContext = await (context ??= loadStageContext(request).catch((error: unknown) => {
@@ -156,7 +157,7 @@ export async function runExploreStage(request: ExploreStageRequest): Promise<Exp
           skillPathOverride: request.skillPathOverride,
         };
         cacheKey = request.responseCache ? await buildExploreCacheKey(options, request) : undefined;
-        return prepareDiagnosticPrompt(
+        const prompt = await prepareDiagnosticPrompt(
           sourceInput?.diagnostics ?? sharedSource?.diagnostics,
           (diagnostics) =>
             buildPrompt({
@@ -169,6 +170,17 @@ export async function runExploreStage(request: ExploreStageRequest): Promise<Exp
                   : undefined,
               }),
             }),
+          request.signal,
+        );
+        return prepareExplorationValidator(
+          prompt,
+          {
+            kind: 'explore',
+            scope,
+            slotCandidates: candidateFree ? [] : request.slotCandidates,
+            requestedComponents,
+            representationProposalSources: request.representationProposalSources,
+          },
           request.signal,
         );
       },

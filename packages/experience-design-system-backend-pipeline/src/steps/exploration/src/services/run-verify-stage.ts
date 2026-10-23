@@ -6,6 +6,7 @@ import { runStageWork } from '../helpers/run-stage-work.js';
 import type { VerifyStageRequest } from '../types.js';
 import { prepareDiagnosticPrompt } from '../../../../source-evidence/prompt-diagnostics.js';
 import { propertySourceEvidence } from '../helpers/property-source-evidence.js';
+import { prepareExplorationValidator } from './exploration-validator-artifact.js';
 export async function runVerifyStage(request: VerifyStageRequest): Promise<VerifyStageResult> {
   const items: VerifiedItem[] = [],
     attempts: VerifyAttempt[] = [];
@@ -17,6 +18,7 @@ export async function runVerifyStage(request: VerifyStageRequest): Promise<Verif
       const result = await runStageWithRetries(
         {
           ...request,
+          preserveConversation: true,
           component: work.component,
           source: work.source,
           workIds: work.items.map((item) => item.itemId),
@@ -52,6 +54,12 @@ export async function runVerifyStage(request: VerifyStageRequest): Promise<Verif
                 skillPathOverride: request.skillPathOverride,
               }),
             request.signal,
+          ).then((prompt) =>
+            prepareExplorationValidator(
+              prompt,
+              { kind: 'verify', work, sourceInput: request.sourceInput },
+              request.signal,
+            ),
           ),
         (output) => {
           const parsed = parseVerifyOutput(output, work, request.sourceInput);

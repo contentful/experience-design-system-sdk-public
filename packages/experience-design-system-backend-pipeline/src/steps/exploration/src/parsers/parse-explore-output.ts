@@ -13,6 +13,7 @@ import {
 } from '@contentful/experience-design-system-types';
 import type { SlotCandidates, ExploreRepresentationProposalSource } from '../types.js';
 import { assertUnique } from '../helpers/identity.js';
+import { explorationCoverageDiagnostic, explorationIssueSubject } from '../helpers/exploration-diagnostics.js';
 export function parseJsonOutput(output: string): unknown {
   const trimmed = output.trim();
   const fence = /^```(?:json)?\s*\n([\s\S]*?)\n```$/.exec(trimmed);
@@ -54,13 +55,15 @@ function parseCompanion(
   requestedComponents?: readonly KnownComponent[],
   proposalSources?: readonly ExploreRepresentationProposalSource[],
 ): ExploreCompanion {
-  const parsed = ExploreCompanionSchema.safeParse(normalizeModelingNotes(parseJsonOutput(output)));
+  const value = normalizeModelingNotes(parseJsonOutput(output));
+  const parsed = ExploreCompanionSchema.safeParse(value);
   if (!parsed.success)
     throw new Error(
-      `Invalid exploration report: ${parsed.error.issues.map((issue) => `${issue.path.join('.') || 'report'}: ${issue.message}`).join('; ')}`,
+      `Invalid exploration report: ${parsed.error.issues.map((issue) => `${explorationIssueSubject(value, issue.path)}: ${issue.message}`).join('; ')}`,
     );
   const companion = parsed.data;
-  if (companion.agentRole !== scope) throw new Error('Exploration scope mismatch');
+  if (companion.agentRole !== scope)
+    throw new Error(`Exploration scope mismatch: expected ${scope}; received ${companion.agentRole}`);
   assertUnique(
     companion.components.map((component) => JSON.stringify([component.name, component.source])),
     'report components',
@@ -70,19 +73,8 @@ function parseCompanion(
       requestedComponents.map((component) => JSON.stringify([component.name, component.source])),
       'requested components',
     );
-    if (
-      companion.components.length !== requestedComponents.length ||
-      companion.components.some(
-        (component) =>
-          !requestedComponents.some(
-            (requested) =>
-              requested.name === component.name &&
-              requested.source === component.source &&
-              (requested.componentId === undefined || requested.componentId === component.componentId),
-          ),
-      )
-    )
-      throw new Error('Exploration report must exactly cover assigned component/source identities');
+    const coverageError = explorationCoverageDiagnostic(requestedComponents, companion.components);
+    if (coverageError) throw new Error(coverageError);
   }
   for (const component of companion.components) {
     const owners = proposalSources?.filter(
@@ -92,11 +84,11 @@ function parseCompanion(
       throw new Error(`Detail decisions require one exact current component/source owner for ${component.name}`);
     assertUnique(
       (component.props ?? []).map((prop) => prop.name),
-      'reported properties',
+      `reported properties for ${component.name} (${component.source})`,
     );
     assertUnique(
       (component.slots ?? []).map((slot) => slot.name),
-      'reported slots',
+      `reported slots for ${component.name} (${component.source})`,
     );
     for (const prop of component.props ?? []) {
       const sources = owners?.flatMap((owner) =>
@@ -161,15 +153,16 @@ function parseCompanion(
     }
     for (const slot of component.slots ?? [])
       if (slot.isRealSlot && !slot.evidence?.some((evidence) => evidence.trim()))
-        throw new Error('True slot evidence missing');
+        throw new Error(`True slot evidence missing: ${component.name}:${slot.name} (${component.source})`);
     if (scope.startsWith('components-') && typeof component.included !== 'boolean')
-      throw new Error('Component inclusion ruling missing');
+      throw new Error(`Component inclusion ruling missing: ${component.name} (${component.source})`);
   }
-  if (
-    !(CANDIDATE_FREE_SCOPES as readonly string[]).includes(scope) &&
-    unansweredSlotCandidates(companion.components, candidates).length
-  )
-    throw new Error('Unanswered slot candidates');
+  const unanswered = (CANDIDATE_FREE_SCOPES as readonly string[]).includes(scope)
+    ? []
+    : candidates.flatMap((candidate) =>
+        unansweredSlotCandidates(companion.components, [candidate]).map((name) => `${name} (${candidate.source})`),
+      );
+  if (unanswered.length) throw new Error(`Unanswered slot candidates: ${unanswered.join('; ')}`);
   return companion;
 }
 
