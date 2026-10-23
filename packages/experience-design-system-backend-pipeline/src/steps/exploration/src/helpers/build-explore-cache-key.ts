@@ -64,6 +64,6 @@ export async function buildExploreCacheKey(options: PromptOptions, request: Stag
     stageInputInline: stableJson(input),
   });
   return createHash('sha256')
-    .update(stableJson({ revision: 2, agent: request.agent, model, bedrock, prompt }))
+    .update(stableJson({ revision: 3, agent: request.agent, model, bedrock, prompt }))
     .digest('hex');
 }

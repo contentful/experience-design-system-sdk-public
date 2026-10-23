@@ -6,23 +6,16 @@
   "tags": [],
   "targets": {
     "build": {
-      "executor": "@nx/js:tsc",
-      "outputs": ["{options.outputPath}"],
+      "executor": "nx:run-commands",
+      "outputs": [
+        "{workspaceRoot}/packages/experience-design-system-backend-pipeline/dist"
+      ],
       "options": {
-        "outputPath": "packages/experience-design-system-backend-pipeline/dist",
-        "main": "packages/experience-design-system-backend-pipeline/src/index.ts",
-        "tsConfig": "packages/experience-design-system-backend-pipeline/tsconfig.build.json",
-        "assets": [
-          {
-            "input": "packages/experience-design-system-backend-pipeline/src/agents/skills/selection",
-            "glob": "debate-select.md",
-            "output": "src/agents/skills/selection"
-          },
-          {
-            "input": "packages/experience-design-system-backend-pipeline/src/agents/skills",
-            "glob": "**/*.md",
-            "output": "src/agents/skills"
-          }
+        "parallel": false,
+        "commands": [
+          "nx run experience-design-system-backend-pipeline:compile",
+          "nx run experience-design-system-backend-pipeline:bundle-evidence-reader",
+          "nx run experience-design-system-backend-pipeline:bundle-exploration-validator"
         ]
       },
       "dependsOn": ["^build"]
@@ -80,6 +73,92 @@
         "packageRoot": "packages/experience-design-system-backend-pipeline"
       },
       "dependsOn": ["build"]
+    },
+    "compile": {
+      "executor": "@nx/js:tsc",
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "options": {
+        "outputPath": "packages/experience-design-system-backend-pipeline/dist",
+        "main": "packages/experience-design-system-backend-pipeline/src/index.ts",
+        "tsConfig": "packages/experience-design-system-backend-pipeline/tsconfig.build.json",
+        "assets": [
+          {
+            "input": "packages/experience-design-system-backend-pipeline/src/agents/skills/selection",
+            "glob": "debate-select.md",
+            "output": "src/agents/skills/selection"
+          },
+          {
+            "input": "packages/experience-design-system-backend-pipeline/src/agents/skills",
+            "glob": "**/*.md",
+            "output": "src/agents/skills"
+          }
+        ]
+      },
+      "dependsOn": [
+        "^build"
+      ]
+    },
+    "bundle-evidence-reader": {
+      "executor": "@nx/esbuild:esbuild",
+      "outputs": [
+        "{options.outputPath}/read.mjs"
+      ],
+      "options": {
+        "outputPath": "packages/experience-design-system-backend-pipeline/dist/tools",
+        "outputFileName": "read.mjs",
+        "main": "packages/experience-design-system-backend-pipeline/src/source-evidence/indexed-evidence/read.ts",
+        "tsConfig": "packages/experience-design-system-backend-pipeline/tsconfig.build.json",
+        "platform": "node",
+        "format": [
+          "esm"
+        ],
+        "bundle": true,
+        "thirdParty": true,
+        "declaration": false,
+        "deleteOutputPath": false,
+        "generatePackageJson": false,
+        "assets": [],
+        "esbuildOptions": {
+          "outExtension": {
+            ".js": ".mjs"
+          }
+        }
+      },
+      "dependsOn": [
+        "^build"
+      ]
+    },
+    "bundle-exploration-validator": {
+      "executor": "@nx/esbuild:esbuild",
+      "outputs": [
+        "{options.outputPath}/validate.mjs"
+      ],
+      "options": {
+        "outputPath": "packages/experience-design-system-backend-pipeline/dist/tools",
+        "outputFileName": "validate.mjs",
+        "main": "packages/experience-design-system-backend-pipeline/src/steps/exploration/src/services/validate-exploration-draft.ts",
+        "tsConfig": "packages/experience-design-system-backend-pipeline/tsconfig.build.json",
+        "platform": "node",
+        "format": [
+          "esm"
+        ],
+        "bundle": true,
+        "thirdParty": true,
+        "declaration": false,
+        "deleteOutputPath": false,
+        "generatePackageJson": false,
+        "assets": [],
+        "esbuildOptions": {
+          "outExtension": {
+            ".js": ".mjs"
+          }
+        }
+      },
+      "dependsOn": [
+        "^build"
+      ]
     }
   }
 }

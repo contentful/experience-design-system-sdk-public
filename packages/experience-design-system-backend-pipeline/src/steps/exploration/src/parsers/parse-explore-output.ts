@@ -56,6 +56,15 @@ function parseCompanion(
   proposalSources?: readonly ExploreRepresentationProposalSource[],
 ): ExploreCompanion {
   const value = normalizeModelingNotes(parseJsonOutput(output));
+  if (
+    value &&
+    typeof value === 'object' &&
+    (!('components' in value) || (Array.isArray(value.components) && value.components.length === 0))
+  ) {
+    const blocker = 'blocker' in value ? value.blocker : 'error' in value ? value.error : undefined;
+    if (typeof blocker === 'string' && blocker.trim())
+      throw new Error(`Exploration agent reported blocker: ${blocker.trim()}`);
+  }
   const parsed = ExploreCompanionSchema.safeParse(value);
   if (!parsed.success)
     throw new Error(

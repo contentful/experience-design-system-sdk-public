@@ -33,6 +33,7 @@ export async function prepareIndexedExplorationPrompt(
       existingComponentsInline: undefined,
       existingTokensInline: undefined,
       stageInputInline: JSON.stringify({ ...evidence.index, evidenceDigest: evidence.digest }),
+      stageInputEncoding: 'indexed-evidence',
     });
     const prepared = await prepareExplorationValidator(prompt, validation, options.signal, evidence.instructions);
     return {

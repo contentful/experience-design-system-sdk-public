@@ -41,9 +41,17 @@ export async function buildPrompt(options: PromptOptions): Promise<string> {
     const inputBlock = sections.length > 0 ? `\n\n${sections.join('\n\n')}` : '';
     const input = options.stageInputInline ?? '{}';
     const compact =
-      input.length > 262144
-        ? await runSourceAnalysis('deduplicatePrompt', { json: input }, { signal: options.signal })
-        : deduplicatePromptInput(input);
+      options.stageInputEncoding === 'indexed-evidence'
+        ? {
+            json: input,
+            referenceKey: undefined,
+            referenceCount: 0,
+            originalCharacters: input.length,
+            compactCharacters: input.length,
+          }
+        : input.length > 262144
+          ? await runSourceAnalysis('deduplicatePrompt', { json: input }, { signal: options.signal })
+          : deduplicatePromptInput(input);
     const referenceInstructions = compact.referenceKey ? `\n${promptReferenceInstructions(compact.referenceKey)}` : '';
     return buildStructuredStagePrompt(
       { ...options, stageInputInline: compact.json },

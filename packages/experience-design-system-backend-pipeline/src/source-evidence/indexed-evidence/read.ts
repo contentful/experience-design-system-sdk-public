@@ -142,6 +142,55 @@ export class IndexedEvidenceReader {
       }),
     };
   }
+  component(pointer: string): unknown {
+    const component = this.record(this.value(pointer));
+    const root = this.record(this.manifest.root);
+    if (component.kind !== 'object' || root.kind !== 'object') throw new Error('Expected component and task objects');
+    const fields = component.entries;
+    const componentId = fields.component_id ?? fields.componentId;
+    const sourceKey = ['sourceInput', 'source', 'sharedSource'].find(
+      (key) => root.entries[key] && typeof root.entries[key] === 'object',
+    );
+    const definitions: unknown[] = [];
+    if (sourceKey) {
+      const source = this.record(root.entries[sourceKey]!);
+      const files =
+        source.kind === 'object' && source.entries.files && typeof source.entries.files === 'object'
+          ? this.record(source.entries.files)
+          : undefined;
+      if (files?.kind === 'array')
+        files.entries.forEach((value, i) => {
+          const file = this.record(value);
+          if (file.kind !== 'object') return;
+          const refs = file.entries.componentRefs
+            ? (this.expand(file.entries.componentRefs, Infinity) as Array<{ componentId: string; roles: string[] }>)
+            : [];
+          const owner =
+            typeof componentId === 'string' &&
+            refs.some((ref) => ref.componentId === componentId && ref.roles.includes('definition'));
+          if (
+            owner ||
+            [file.entries.path, file.entries.canonicalPath].some(
+              (path) => typeof path === 'string' && [fields.source, fields.sourcePath].includes(path),
+            )
+          )
+            definitions.push({ pointer: `/${sourceKey}/files/${i}`, file: this.expand(value, Infinity) });
+        });
+    }
+    return {
+      identity: { name: fields.name, source: fields.source, componentId },
+      definitions,
+      definitionStatus: definitions.length ? 'indexed' : 'not-captured',
+      props: fields.props ? this.expand(fields.props, Infinity) : undefined,
+      slots: fields.slots ? this.expand(fields.slots, Infinity) : undefined,
+      sourceInputs: fields.sourceCandidates
+        ? this.expand(fields.sourceCandidates, 0)
+        : { status: 'withheld-or-unavailable' },
+      componentFacts: fields.componentFacts
+        ? this.expand(fields.componentFacts, 0)
+        : { status: 'withheld-or-unavailable' },
+    };
+  }
   source(pointer: string, start: number, end: number): unknown {
     const file = this.exact(pointer) as {
       fileId?: string;
@@ -233,9 +282,19 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   try {
     const [directory, operation, pointer = '', first, second] = process.argv.slice(2);
     if (!directory) throw new Error('Missing immutable evidence directory');
+    const maximum = ['component', 'exact'].includes(operation ?? '')
+      ? 3
+      : ['read', 'candidates'].includes(operation ?? '')
+        ? 4
+        : 5;
+    if (process.argv.length - 2 > maximum)
+      throw new Error('Use one reader operation per command; unexpected trailing arguments');
     reader = new IndexedEvidenceReader(directory);
     let result: unknown;
     switch (operation) {
+      case 'component':
+        result = reader.component(pointer);
+        break;
       case 'read':
         result = reader.read(pointer, integer(first, 1));
         break;
@@ -264,7 +323,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         result = reader.candidates(pointer, first);
         break;
       default:
-        throw new Error('Expected read, exact, list, inputs, source or candidates');
+        throw new Error('Expected component, read, exact, list, inputs, source or candidates');
     }
     process.stdout.write(JSON.stringify(result) + '\n');
   } catch (error) {

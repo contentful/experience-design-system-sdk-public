@@ -19,10 +19,13 @@ The reader does not discover or execute project files. Source paths remain citat
 
 A worker writes content-addressed object, array and long-text records into a packed file and records byte offsets in a manifest. Identical records share storage while their original owner paths remain distinct. The reader verifies each requested record hash and reconstructs original values without reparsing the entire evidence document. JSON Pointers resolve within the original task input; returned record IDs also support direct lookup.
 
+The initial index stays directly readable JSON rather than introducing a second shared-reference encoding. Start inclusion work with one `component` read, which returns captured definition text and short extracted inputs without dumping the complete compiler-fact record. Unread records are remaining work to inspect; they do not justify returning an empty report. Reader commands accept one operation at a time and reject trailing operations that would otherwise be silently ignored.
+
 The supplied command accepts:
 
 | Operation | Result |
 | --- | --- |
+| `component COMPONENT_POINTER` | Identity, captured definition text, extracted props/slots and references to detailed evidence. |
 | `read POINTER DEPTH` | Structure with explicit references for unread records. |
 | `list POINTER OFFSET LIMIT` | Entries with total count and `nextOffset`; no silent truncation. |
 | `exact POINTER` | Complete original value with storage references resolved. |
@@ -35,6 +38,8 @@ Page sizes and text chunks are navigation choices, not evidence limits. Complete
 ## Lifecycle and admission
 
 Indexing, serialization and source fact projections execute within the cancellable source-analysis worker boundary. A component exploration phase prepares one candidate-aware view and one candidate-free view lazily, reusing each across applicable passes. Other work units prepare an immutable view that survives their repair attempts. After invocations settle, disposal removes evidence, task context and validator artifacts on success, failure or cancellation.
+
+Nx builds the reader and exploration validator as standalone Node bundles, and each work unit copies its tools into its private artifact directory before invocation. Rebuilding package output cannot remove those retained executables or replace their imported code during a conversation. Preparation fails before invocation if a tool cannot be snapshotted. Repair prompts retain the exact assigned inventory and state the remaining invocation/operation budgets. Explicit agent blockers retain their reason in host errors; a blocker or empty report never satisfies coverage validation.
 
 The logical-input fingerprint retains complete evidence, diagnostics, source bytes, coverage and reference content; temporary artifact paths do not define identity. Existing source identity/timing normalization remains separate from source binding. The response-cache revision changes because task delivery and inclusion guidance changed.
 

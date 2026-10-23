@@ -60,6 +60,7 @@ export interface PromptOptions {
   signal?: AbortSignal;
   stageAssignmentInline?: string;
   stageInputInline?: string;
+  stageInputEncoding?: 'json' | 'indexed-evidence';
   skill: Skill;
   mode: Mode;
   /** For debate-select: which position to argue; defaults to `for`. */

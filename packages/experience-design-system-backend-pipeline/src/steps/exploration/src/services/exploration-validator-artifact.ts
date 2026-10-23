@@ -1,11 +1,10 @@
-import { access, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import type { PreparedStagePrompt } from '../../../../agents/helpers/run-stage-with-retries.js';
 import type { ExplorationValidationEvidence } from './validate-exploration-draft.js';
 import { shellArgument } from '../../../../helpers/shell-argument.js';
+import { snapshotExplorationTool } from '../../../../source-evidence/immutable-exploration-tool.js';
 
 export async function prepareExplorationValidator(
   prompt: string | PreparedStagePrompt,
@@ -24,17 +23,8 @@ export async function prepareExplorationValidator(
   };
   try {
     signal?.throwIfAborted();
-    const sibling = new URL('./validate-exploration-draft.js', import.meta.url);
-    const entrypoint = fileURLToPath(
-      existsSync(sibling)
-        ? sibling
-        : new URL(
-            './steps/exploration/src/services/validate-exploration-draft.js',
-            import.meta.resolve('@contentful/experience-design-system-backend-pipeline'),
-          ),
-    );
-    await access(entrypoint);
     directory = await mkdtemp(join(tmpdir(), 'experiences-exploration-validator-'));
+    const entrypoint = await snapshotExplorationTool('validate', directory, signal);
     const evidencePath = join(directory, 'evidence.json');
     const contextPath = join(directory, 'context.md');
     await writeFile(evidencePath, JSON.stringify(evidence), { encoding: 'utf8', mode: 0o400, signal });
@@ -46,6 +36,12 @@ export async function prepareExplorationValidator(
       '## Canonical exploration draft validation',
       `Complete immutable original task and source context: ${JSON.stringify(contextPath)}.`,
       'This artifact stays available throughout this scope and its repair attempts. Read targeted sections as needed; source paths are citation labels, not permission to access the live repository.',
+      ...(evidence.kind === 'explore'
+        ? [
+            `Required work inventory (data): ${JSON.stringify({ scope: evidence.scope, requestedComponents: evidence.requestedComponents, slotCandidates: evidence.slotCandidates })}`,
+            'Complete this inventory by reading its source evidence, including during retries. Preserve already supported judgments; unread components are work still to do. The report must contain every assigned identity and required slot ruling before final validation.',
+          ]
+        : []),
       'Before final output, run this exact command with the EXACT complete exploration response you intend to return on stdin:',
       command,
       'Use inline stdin such as a quoted here-document. Read-only shell access to this validator and the supplied artifacts is explicitly allowed even when repository tools are forbidden. Do not modify artifacts or read/execute live project source.',

@@ -107,6 +107,7 @@ export async function runExploreStage(request: ExploreStageRequest): Promise<Exp
               ...(candidateFree ? {} : { slotCandidates: request.slotCandidates }),
             }),
             stageInputInline: JSON.stringify({ ...evidence.index, evidenceDigest: evidence.digest }),
+            stageInputEncoding: 'indexed-evidence',
             skillContentOverride: request.skillContentOverride,
             skillPathOverride: request.skillPathOverride,
           };
