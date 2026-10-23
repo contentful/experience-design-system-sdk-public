@@ -4,7 +4,6 @@ import type { CDFComponentEntry } from '@contentful/experience-design-system-typ
 import { PALETTE } from '@tui/theme.js';
 import type { CdfReviewEntry } from '../types.js';
 import type { UseReviewEditorResult } from '../use-review-editor.js';
-import type { UseLivePreviewReturn } from '../use-live-preview.js';
 import { getReviewJsonPanelValue } from '../review-json-panel.js';
 import { ReviewDetailsEditor, type ReviewDetailsEditorProps } from './ReviewDetailsEditor.js';
 import { FixedPanel } from '../../07-scope-gate/sidebar/components/windowed-panel.js';
@@ -27,8 +26,6 @@ export type ReviewComponentPanelProps = ReviewDetailsEditorConfig & {
   selectedEntry: CDFComponentEntry;
   saveError: string | null;
   sidebarFooter?: React.ReactNode;
-  livePreview: Pick<UseLivePreviewReturn, 'status' | 'disabled'>;
-  livePreviewSpinner: string;
 };
 
 type ReviewFieldEditor = ReviewDetailsEditorProps['fieldEditor'];
@@ -120,14 +117,10 @@ function ReviewPanelFooter({
   reviewEditor,
   sidebarFocused,
   sidebarFooter,
-  livePreview,
-  livePreviewSpinner,
 }: {
   reviewEditor: Pick<UseReviewEditorResult, 'panelOpen' | 'showJson' | 'currentTokenSuggestions'>;
   sidebarFocused: boolean;
   sidebarFooter: React.ReactNode;
-  livePreview: Pick<UseLivePreviewReturn, 'status' | 'disabled'>;
-  livePreviewSpinner: string;
 }): React.ReactElement {
   return (
     <>
@@ -139,8 +132,6 @@ function ReviewPanelFooter({
             ? '  [↑↓] scroll  [Ctrl+u/d] half-page  [gg/G] top/bottom  [Tab] focus list'
             : '  [Tab] focus list  (edit fields)' +
               (reviewEditor.currentTokenSuggestions().length > 0 ? '  [t] token review' : '')}
-      {livePreview.status === 'running' && <Text>{`  ${livePreviewSpinner} live preview`}</Text>}
-      {livePreview.disabled && <Text>{'  · live preview disabled'}</Text>}
     </>
   );
 }
@@ -187,8 +178,6 @@ export function ReviewComponentPanel({
   fieldEditor,
   saveError,
   sidebarFooter,
-  livePreview,
-  livePreviewSpinner,
 }: ReviewComponentPanelProps): React.ReactElement {
   const propCount = Object.keys(selectedEntry.$properties).length;
   const slotCount = selectedEntry.$slots ? Object.keys(selectedEntry.$slots).length : 0;
@@ -230,8 +219,6 @@ export function ReviewComponentPanel({
               reviewEditor={reviewEditor}
               sidebarFocused={sidebarFocused}
               sidebarFooter={sidebarFooter}
-              livePreview={livePreview}
-              livePreviewSpinner={livePreviewSpinner}
             />
           </Text>
         </Box>

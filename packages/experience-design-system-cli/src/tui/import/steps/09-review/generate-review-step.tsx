@@ -1617,8 +1617,6 @@ function GenerateReviewStepView({
                 },
               )}
               saveError={reviewEditor.saveError}
-              livePreview={livePreviewHook}
-              livePreviewSpinner={livePreviewSpinner}
             />
           ) : (
             <ReviewNoSelection />
