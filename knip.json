@@ -14,10 +14,11 @@
     "packages/experience-design-system-cli": {
       "ignoreDependencies": [
         "@contentful/experience-design-system-types",
-        "@inkjs/ui",
         "@segment/analytics-node",
+        "ajv",
         "contentful-management",
-        "figures"
+        "figures",
+        "zod"
       ]
     }
   }

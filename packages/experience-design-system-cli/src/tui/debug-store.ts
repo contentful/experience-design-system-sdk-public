@@ -1,9 +1,10 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { existsSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
-import { debugSessionsDir } from '@contentful/experience-design-system-types/config';
-import { readPackageVersion } from './upgrade/version.js';
+import { join, resolve } from 'node:path';
+import { readSettings } from '@contentful/experience-design-system-types/config';
+import { readPackageVersion } from './home/version.js';
 import { readDebugModeSetting } from './settings/debug-mode/debug-mode-store.js';
+import { pruneExpiredLogs } from './debug-prune.js';
 
 type PendingRun = {
   flow: string;
@@ -37,13 +38,22 @@ function slugify(value: string): string {
     .replace(/^-|-$/g, '');
 }
 
+// Where the user asked `.contentful` to live (Settings > Contentful Configuration). Empty means the structure is only
+// created once the import knows its project.
+async function readBaseDir(): Promise<string | undefined> {
+  try {
+    const dir = (await readSettings())['contentfulBaseDir'];
+    return typeof dir === 'string' && dir !== '' ? resolve(dir) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 // MM-DD-YYYY-session-N: N increments per terminal session started that day (1, 2, 3, ...),
 // so runs from the same day group together and still sort in the order they happened.
-function generateSessionId(): string {
+function nextSessionId(contentfulDir: string): string {
   const today = datePrefix();
-
-  const root = debugSessionsDir();
-  const existing = existsSync(root) ? readdirSync(root) : [];
+  const existing = existsSync(contentfulDir) ? readdirSync(contentfulDir) : [];
   const seqPattern = new RegExp(`^${today}-session-(\\d+)$`);
   const maxSeq = existing.reduce((max, entry) => {
     const match = seqPattern.exec(entry);
@@ -53,25 +63,89 @@ function generateSessionId(): string {
   return `${today}-session-${maxSeq + 1}`;
 }
 
-// Computed once, at module load, rather than lazily — this module is pulled in via
-// app.tsx's static imports as soon as the TUI boots, so "once per module load" is
-// "once per terminal session."
-const SESSION_ID = generateSessionId();
+// This terminal session's folder: <base>/.contentful/<session>/. Set once, from the configured base directory at boot
+// or, when none is configured, from the project the import is started for.
+let sessionDir: string | undefined;
 
-function sessionDebugDir(): string {
-  return join(debugSessionsDir(), SESSION_ID);
+function startSession(base: string, { replace }: { replace: boolean }): string {
+  const contentfulDir = join(base, '.contentful');
+  if (replace || !sessionDir) sessionDir = join(contentfulDir, nextSessionId(contentfulDir));
+  return sessionDir;
 }
 
-// Folder this terminal session writes its debug logs to (created only while Debug Mode is on).
-export function currentDebugSessionDir(): string {
-  return sessionDebugDir();
+// Folder this terminal session writes its debug logs to, or undefined until it is known.
+export function currentDebugSessionDir(): string | undefined {
+  return sessionDir && join(sessionDir, 'debug');
+}
+
+/** This terminal session's folder, `<base>/.contentful/<session>/`, or undefined until it is known. */
+export function currentSessionDir(): string | undefined {
+  return sessionDir;
+}
+
+/**
+ * Starts this terminal session's folder in `base`. The base directory setting being saved passes `replace` so the new
+ * location wins; the import passes nothing and only starts a session when none exists yet. Fail-open like the rest of
+ * the logger.
+ */
+export async function startDebugSessionIn(base: string, { replace = false } = {}): Promise<void> {
+  try {
+    if (!(await isDebugModeEnabled())) return;
+    await mkdir(join(startSession(resolve(base), { replace }), 'debug'), { recursive: true });
+  } catch {
+    // Debug logging must never get in the way of the user.
+  }
+}
+
+// Every import run gets its own folder in the session, dsi-import-1, dsi-import-2, ..., so a second import in the same
+// terminal session never overwrites the first.
+function nextImportRunDir(session: string): string {
+  const existing = existsSync(session) ? readdirSync(session) : [];
+  const maxRun = existing.reduce((max, entry) => {
+    const match = /^dsi-import-(\d+)$/.exec(entry);
+    return match ? Math.max(max, Number(match[1])) : max;
+  }, 0);
+  return join(session, `dsi-import-${maxRun + 1}`);
+}
+
+/**
+ * Where this import run writes everything it produces (tokens.json, .existing-entities.json, components.json): a new
+ * `dsi-import-N` folder in this session's folder, next to the debug logs. The session is started here, and waited for,
+ * so the answer does not depend on how quickly the boot-time start finished. Without a session (Debug Mode off, or a
+ * folder that cannot be created) the files stay in `<project>/.contentful`, as before.
+ */
+export async function startImportRun(projectPath: string): Promise<string> {
+  await startDebugSessionIn(projectPath);
+  if (!sessionDir) return join(resolve(projectPath), '.contentful');
+  const dir = nextImportRunDir(sessionDir);
+  await mkdir(dir, { recursive: true });
+  return dir;
 }
 
 // Fire-and-forget so a user who never visits a wired flow still sees an (empty)
 // session directory the moment they boot — matches startDebugRun's fail-open style.
-void isDebugModeEnabled().then((enabled) => {
-  if (!enabled) return undefined;
-  return mkdir(sessionDebugDir(), { recursive: true });
+void Promise.all([isDebugModeEnabled(), readBaseDir()]).then(async ([enabled, base]) => {
+  if (!base) return;
+  // Expired logs go whether or not logging is on now, so turning it off does not keep old ones around.
+  const retention = await readDebugModeSetting().catch(() => undefined);
+  const pruned = retention ? await pruneExpiredLogs(base, retention.retentionDays).catch(() => undefined) : undefined;
+  if (!enabled) return;
+  const debugDir = join(startSession(base, { replace: false }), 'debug');
+  await mkdir(debugDir, { recursive: true });
+  // Say what was deleted, so "my logs are gone" can be answered from the log. Nothing is written when nothing expired.
+  if (retention && pruned && pruned.logs + pruned.folders > 0) {
+    await writeFile(
+      join(debugDir, `${datePrefix()}-cleanup-${generateRunId()}.md`),
+      `# Debug Log Cleanup
+
+- Date: ${new Date().toISOString()}
+- Retention: ${retention.retentionDays} days
+- Logs deleted: ${pruned.logs}
+- Empty folders removed: ${pruned.folders}
+`,
+      { mode: 0o600 },
+    );
+  }
 });
 
 async function isDebugModeEnabled(): Promise<boolean> {
@@ -131,8 +205,11 @@ export async function finishDebugRun({
   const durationMs = Date.now() - run.startedAt;
   const content = renderMarkdown(run, { outputs: redact(outputs), status, exitMethod, durationMs });
 
+  // Without a configured base directory nothing is logged until the import has started the session.
+  const root = currentDebugSessionDir();
+  if (!root) return;
   const flowSegments = run.flow.split('/');
-  const dir = join(sessionDebugDir(), ...flowSegments);
+  const dir = join(root, ...flowSegments);
 
   await mkdir(dir, { recursive: true });
   const filename = nextAttemptFilename(dir, run.menuOption);

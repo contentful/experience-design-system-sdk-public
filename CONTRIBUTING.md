@@ -83,7 +83,6 @@ From a checkout, run the TUI in watch mode instead of rebuilding by hand:
 ```bash
 experiences import --watch          # after a first `pnpm build`, which links the command
 pnpm dev                            # same thing from the repo root
-pnpm dev import --project ./src     # extra arguments are passed to the app
 ```
 
 It rebuilds `dist/` whenever the source changes and restarts the app, so you land back on the Start screen after each
@@ -99,7 +98,7 @@ save. Notes:
 ### Testing the import wizard against a real codebase
 
 ```bash
-node packages/experience-design-system-cli/bin/cli.js import --project /path/to/your/component-library
+node packages/experience-design-system-cli/bin/cli.js import
 ```
 
 `import` needs an interactive terminal and a coding agent on your `$PATH` (`claude` by default; pick another with `--agent`). Extracted components are stored in the session database (`EDS_PIPELINE_DB_PATH` overrides its location); use a temp path to avoid touching your real one. Pass `--tokens <file>` to include a token source. To push, run `experiences setup` first or export the `CONTENTFUL_*` variables described in the CLI README.

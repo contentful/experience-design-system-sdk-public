@@ -15,7 +15,7 @@ Nx monorepo with six packages:
 
 The CLI extracts React/Vue/Astro/Stencil/Web Component definitions from customer codebases using the TypeScript compiler API (ts-morph), invokes a coding agent to produce CDF artifacts, validates them against JSON schemas, and provides interactive terminal UIs (Ink) for reviewing, finalizing, and pushing them to Contentful ExO.
 
-The supported import pipeline is internal to `experiences import`: **extract → selection agent → internal generation → validate → apply.** When a raw token source is supplied (`--tokens` or the token-input step), the wizard performs token generation internally before component extraction and generation, then runs token mapping after generation. The extraction and selection stages are implementation modules, not public commands.
+The supported import pipeline is internal to `experiences import`: **extract → selection agent → internal generation → validate → apply.** When a raw token source is supplied (the token-input screen), the wizard performs token generation internally before component extraction and generation, then runs token mapping after generation. The extraction and selection stages are implementation modules, not public commands.
 
 Unless stated otherwise, `src/...` paths below are relative to `packages/experience-design-system-cli-legacy`.
 
@@ -24,14 +24,14 @@ Legacy commands: `import`, `apply <file>`, `setup`, `doctor`, `build`. Hidden in
 ### Wizard step machine (`packages/experience-design-system-cli-legacy/src/import/tui/`)
 
 ```
-welcome → token-input → path-validation → credentials → extracting (selection agent runs here)
+extracting (selection agent runs here)
         → scope-gate → generating → final-review → path-prompt
         → previewing → preview-gate → pushing → done
 ```
 
-`--project` starts at `token-input`; `--tokens` starts at `path-validation` (with `--project`) or `credentials` (without it). Choosing `[s]` on `credentials` saves files only: the preview is bypassed and push is refused.
+The Welcome, Token input, Path validation and Credentials screens live in the new CLI (`packages/experience-design-system-cli/src/tui/import/steps/`), which validates and saves the credentials. The new CLI also runs extraction, shows the scope gate, generates the definitions and then runs the review, save, preview and push itself (`steps/09-review`, `steps/10-flow`) in the same process, from what the earlier stages produced (`ImportHandoff` in `@contentful/experience-design-system-types/handoff`); choosing skip on the Credentials screen sets `credentialsSkipped` in it, which saves files only. Choosing `[s]` on `credentials` saves files only: the preview is bypassed and push is refused.
 
-A single human review gate (`scope-gate`) precedes generation. The final-review step edits names, `$description`, `$default`, `$allowedComponents` and `$values` inline, with source and rationale panels. After final-review the wizard always saves one combined `components.json` CDF and, unless credentials were skipped, previews and pushes it.
+A single human review gate (`scope-gate`) precedes generation. The final-review step edits names, `$description`, `$default`, `$allowedComponents` and `$values` inline, with source and rationale panels. After final-review the flow always saves one combined `components.json` CDF and, unless credentials were skipped, previews and pushes it.
 
 ### Run records
 
@@ -39,7 +39,7 @@ Each successful wizard run appends a record to `~/.contentful/experience-design-
 
 ### Import options
 
-`experiences import` accepts `--project`, `--tokens`, `--agent`, `--prompt <stage=value>` and `--no-cache`. `--model`, `--composition-map`, `--skip-map-tokens` and `--raw-tokens` were removed and are rejected. The model is passed as `--agent agent:model`; it resolves `--agent` → `credentials.json` → built-in default, and `EDS_AGENT_MODEL_<AGENT>` sets a per-agent model.
+The public `experiences import` opens the TUI and takes `--agent`, `--prompt <stage=value>` and `--no-cache`; the project and tokens file are collected on the TUI's own screens. The bundled legacy `import` command (still shipped with the legacy package, no longer launched by the TUI) also accepts `--project` and `--tokens`. `--model`, `--composition-map`, `--skip-map-tokens` and `--raw-tokens` were removed and are rejected. The model is passed as `--agent agent:model`; it resolves `--agent` → `credentials.json` → built-in default, and `EDS_AGENT_MODEL_<AGENT>` sets a per-agent model.
 
 ## Build System
 
@@ -128,9 +128,10 @@ The output protocol for the selection agent: the agent emits exactly one JSON ob
 
 ## The Selection Agent
 
-`src/import/tui/run-selection-agent.ts` runs one agent invocation per component during the wizard's `extracting` step to decide whether each component belongs in Contentful ExO as a Component Type. The decisions feed the `scope-gate` step, where the operator confirms or changes them.
+`packages/experience-design-system-cli/src/tui/import/steps/06-extraction/selection.ts` runs in the new CLI during the extraction stage, once `__extract` has stored the components. It makes one agent call for the components it has not decided yet to decide whether each belongs in Contentful ExO as a Component Type. The decisions feed the scope gate (`steps/07-scope-gate`), where the operator confirms or changes them.
 
-- Runs with concurrency 10 (respects `EDS_GENERATE_CONCURRENCY`)
+- Skips components whose decision is cached (keyed on the component, the prompt and the CLI version); `--no-cache` asks again for everything
+- Times out after 5 minutes (`EDS_AGENT_TIMEOUT_MS`), and writes nothing if the call fails
 - Stores accept and reject decisions, with rationale, in the pipeline DB (`raw_components.reject_reason`)
 - `--prompt select=<file-or-text>` overrides its prompt
 
@@ -152,9 +153,9 @@ The apply flow validates the target, builds a `ManifestPayload` through the shar
 
 ## The Wizard (interactive)
 
-`src/import/tui/WizardApp.tsx` is the import wizard. There is no headless mode: `experiences import` requires an interactive terminal. State transitions live in `wizard-state-transitions.ts`; the step components are in `src/import/tui/steps/`. `WizardApp` reads pipeline-DB state itself and passes it directly to the step components; `ScopeGateStep` and `GenerateReviewStep` each guard their own missing-session/empty-components case. `runLivePreview.ts` re-runs the diff after each FieldEditor save. Extraction and generation run as `__extract` and `__generate` subprocesses.
+`src/import/tui/WizardApp.tsx` is the import wizard. There is no headless mode: `experiences import` requires an interactive terminal. State transitions live in `wizard-state-transitions.ts`; the step components are in `src/import/tui/steps/`. `WizardApp` reads pipeline-DB state itself and passes it directly to the step components; `GenerateReviewStep` guards its own missing-session/empty-components case (the scope gate is shown by the new CLI). `runLivePreview.ts` re-runs the diff after each FieldEditor save. Extraction and generation run as `__extract` and `__generate` subprocesses.
 
-The new CLI's Import option (`packages/experience-design-system-cli/src/tui/import/`) spawns the bundled legacy `import` (`spawn-v1-import.ts`, `src/legacy/`) rather than reimplementing the wizard.
+The new CLI's Import option (`packages/experience-design-system-cli/src/tui/import/`) runs the whole import in-process. The bundled legacy CLI (`src/legacy/`) is only used to forward the `apply`, `setup`, `doctor`, `print`, `map`, `__extract` and `__generate` commands.
 
 ## TUI Components
 
@@ -163,12 +164,14 @@ All TUI components are standard React functional components rendered by Ink. The
 - `src/analyze/select/tui/` — shared editor pieces (`TopBar`, `useImmediateInput`, theme `PALETTE`) reused by the wizard
 - `src/print/` — hidden `print` command and `validate` view
 - `src/apply/tui/` — `SummaryView`, `EntityDiffView`, `ServerApplyView`
-- `src/import/tui/` — the wizard: `WizardApp` and step components in `steps/` (`WelcomeStep`, `TokenInputStep`, `PathValidationStep`, `CredentialsStep`, `ScopeGateStep`, `GenerateReviewStep`, `WizardPreviewStep`, `PreviewValidationErrorStep`, `PushingStep`, `DoneStep`, `ErrorStep`, `GateStep`, `RunningStep`)
+- `src/import/tui/` — the wizard: `WizardApp` and step components in `steps/` (`GenerateReviewStep`, `WizardPreviewStep`, `PreviewValidationErrorStep`, `PushingStep`, `DoneStep`, `ErrorStep`, `GateStep`, `RunningStep`)
 - `packages/experience-design-system-cli/src/tui/` — the new CLI's TUI; see `DSI_TUI_ARCHITECTURE.md` in that package
+
+Colors come from the shared `PALETTE` in `packages/experience-design-system-cli/src/tui/theme.ts`, imported as `@tui/theme.js` (the `@tui/*` alias maps to `src/tui/*`; it is set in `tsconfig.json` and `vitest.config.ts`). Do not hardcode colours or define another palette. Control hints use `ControlHints` and the import's step tabs use `StepHeader`, both in `src/tui/shared/components/`.
 
 When writing TUI tests, use `ink-testing-library`. Set `NO_COLOR=1` in the environment before running tests to suppress ANSI escape codes. Strip ANSI before snapshot assertions if the test renders raw strings.
 
-The `scope-gate` step shows two columns at 100 or more terminal columns (`scope-gate-columns.ts`) and one column below that.
+The scope gate (`steps/07-scope-gate`, in the new CLI) shows two columns at 100 or more terminal columns (`columns.ts`) and one column below that.
 
 ## Session Persistence
 

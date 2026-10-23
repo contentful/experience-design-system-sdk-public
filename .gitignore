@@ -10,6 +10,9 @@ packages/experience-design-system-cli-legacy/skills/
 # generated build-time copy of the legacy CLI bundled into the cli package
 packages/experience-design-system-cli/legacy/
 
+# generated build-time copy of generation's skills/, read by the selection agent that runs in the cli bundle
+packages/experience-design-system-cli/skills/
+
 # misc
 *.log
 **/*.DS_Store

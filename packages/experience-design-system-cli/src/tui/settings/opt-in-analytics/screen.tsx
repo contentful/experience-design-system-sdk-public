@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { PALETTE } from '../../home/home.theme.js';
+import { PALETTE } from '../../theme.js';
 import { readAnalyticsSetting, writeAnalyticsSetting } from './analytics-store.js';
 import { startDebugRun, finishDebugRun } from '../../debug-store.js';
-import { ControlHints } from '../../control-hints.js';
+import { ControlHints } from '@tui/shared/components/ControlHints.js';
 
 export function OptInAnalyticsScreen({ onDone }: { onDone: () => void }): React.ReactElement {
   const [loading, setLoading] = useState(true);
@@ -54,8 +54,8 @@ export function OptInAnalyticsScreen({ onDone }: { onDone: () => void }): React.
             </Text>
           </Text>
           <Text> </Text>
-          <Text dimColor>Shares which CLI commands are used and where imports succeed or fail.</Text>
-          <Text dimColor>Never includes source code, file paths, credentials, or authored content.</Text>
+          <Text color={PALETTE.muted}>Shares which CLI commands are used and where imports succeed or fail.</Text>
+          <Text color={PALETTE.muted}>Never includes source code, file paths, credentials, or authored content.</Text>
         </>
       )}
       <Text> </Text>

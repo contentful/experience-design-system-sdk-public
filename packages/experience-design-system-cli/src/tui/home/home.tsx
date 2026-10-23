@@ -1,32 +1,27 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text, useApp, useInput } from 'ink';
 import type { Screen } from '../../../app.js';
-import { FOCUS_MARKER, PALETTE, brandBar } from './home.theme.js';
-import { checkForUpgrade, readPackageVersion, type UpgradeCheckResult } from '../upgrade/version.js';
+import { PALETTE } from '../theme.js';
+import { FOCUS_MARKER, brandBar } from './home.theme.js';
+import { checkForUpgrade, readPackageVersion, type UpgradeCheckResult } from './version.js';
 import { useTerminalWidth } from '../use-terminal-width.js';
-import { ControlHints } from '../control-hints.js';
+import { ControlHints } from '@tui/shared/components/ControlHints.js';
 
 const VERSION = readPackageVersion();
-const HEADING = 'Contentful Experiences';
-const SUBTITLE = "Let's import your design system into Contentful";
-
+const HEADING = 'Contentful Design System Import';
 const MIN_TERMINAL_WIDTH = 164;
 
 const START_ITEMS: { label: string; screen: Screen }[] = [
   { label: 'Import', screen: 'import' },
-  { label: 'Upgrade Version', screen: 'upgrade' },
   { label: 'Settings', screen: 'settings' },
   { label: 'Help', screen: 'help' },
 ];
 
-function upgradeItemDisplay(upgradeCheck: UpgradeCheckResult | undefined): { label: string; color?: string } {
+function versionStatus(upgradeCheck: UpgradeCheckResult | undefined): { text: string; color: string } | undefined {
   if (upgradeCheck?.status === 'update-available') {
-    return { label: `Upgrade Version (v${upgradeCheck.latest} available)`, color: PALETTE.warning };
+    return { text: ` (upgrade available v${upgradeCheck.latest})`, color: PALETTE.success };
   }
-  if (upgradeCheck?.status === 'up-to-date') {
-    return { label: 'Upgrade Version (up to date)', color: PALETTE.muted };
-  }
-  return { label: 'Upgrade Version' };
+  return undefined;
 }
 
 export function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => void }): React.ReactElement {
@@ -35,7 +30,7 @@ export function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => voi
   const { exit } = useApp();
   const terminalWidth = useTerminalWidth();
   const tooNarrow = terminalWidth < MIN_TERMINAL_WIDTH;
-  const upgradeDisabled = upgradeCheck?.status === 'up-to-date';
+  const status = versionStatus(upgradeCheck);
 
   useEffect(() => {
     checkForUpgrade()
@@ -60,7 +55,6 @@ export function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => voi
     }
     if (key.return) {
       const item = START_ITEMS[focusIdx]!;
-      if (item.screen === 'upgrade' && upgradeDisabled) return;
       onNavigate(item.screen);
       return;
     }
@@ -82,9 +76,7 @@ export function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => voi
   return (
     <Box flexDirection="column" paddingX={2} paddingY={1}>
       <Box flexDirection="column" alignItems="center">
-        <Text bold color={PALETTE.heading}>
-          {HEADING}
-        </Text>
+        <Text bold>{HEADING}</Text>
         <Text>
           {brandBar(HEADING.length).map((segment, i) => (
             <Text key={i} color={segment.color}>
@@ -92,26 +84,20 @@ export function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => voi
             </Text>
           ))}
         </Text>
-        <Text color={PALETTE.muted}>{SUBTITLE}</Text>
-        <Text color={PALETTE.muted}>v{VERSION}</Text>
+        <Text color={PALETTE.muted}>
+          v{VERSION}
+          {status && <Text color={status.color}>{status.text}</Text>}
+        </Text>
       </Box>
 
       <Box marginTop={1} justifyContent="center">
         <Box flexDirection="column">
           {START_ITEMS.map((item, i) => {
             const focused = i === focusIdx;
-            const isUpgradeItem = item.screen === 'upgrade';
-            const display = isUpgradeItem ? upgradeItemDisplay(upgradeCheck) : { label: item.label };
-            const dimmed = isUpgradeItem && upgradeDisabled;
             return (
-              <Text
-                key={item.label}
-                bold={focused && !dimmed}
-                dimColor={dimmed}
-                color={focused && !dimmed ? PALETTE.accent : display.color}
-              >
+              <Text key={item.label} bold={focused} color={focused ? PALETTE.accent : undefined}>
                 {focused ? `${FOCUS_MARKER} ` : '  '}
-                {display.label}
+                {item.label}
               </Text>
             );
           })}

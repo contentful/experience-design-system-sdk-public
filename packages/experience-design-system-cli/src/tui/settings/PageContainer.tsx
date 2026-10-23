@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { Screen } from '../../../app.js';
-import { ControlHints } from '../control-hints.js';
+import { ControlHints } from '@tui/shared/components/ControlHints.js';
+import { PALETTE } from '../theme.js';
 
 export function SettingsScreen({
   onNavigate,
@@ -41,9 +42,9 @@ export function SettingsScreen({
   return (
     <Box flexDirection="column" paddingX={2} paddingY={1}>
       <Text bold>Settings</Text>
-      <Text> </Text>
+      <Text color={PALETTE.muted}> </Text>
       {items.map((item, i) => (
-        <Text key={item.label} color={i === focusIdx ? 'cyan' : undefined}>
+        <Text key={item.label} color={i === focusIdx ? PALETTE.accent : undefined}>
           {i === focusIdx ? '> ' : '  '}
           {item.label}
         </Text>

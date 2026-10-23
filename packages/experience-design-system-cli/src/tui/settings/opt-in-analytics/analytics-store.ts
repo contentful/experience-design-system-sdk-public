@@ -1,4 +1,4 @@
-import { readV1Store, writeV1Store } from '../utils/v1-store.js';
+import { readV1Store, writeV1Store } from '../shared/v1-store.js';
 
 export interface AnalyticsSetting {
   enabled: boolean;

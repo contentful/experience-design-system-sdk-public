@@ -24,6 +24,7 @@ export class ApiClient {
   private spaceId: string;
   private environmentId: string;
   private retry: RetryConfig;
+  private userAgent: string;
   private lastRequestId?: string;
 
   constructor(opts: ApiClientOptions) {
@@ -31,6 +32,7 @@ export class ApiClient {
     this.token = opts.cmaToken;
     this.spaceId = opts.spaceId;
     this.environmentId = opts.environmentId;
+    this.userAgent = opts.userAgent ?? USER_AGENT;
     const initialDelayMs = Math.max(0, opts.retry?.initialDelayMs ?? 250);
     this.retry = {
       maxAttempts: Math.max(1, Math.floor(opts.retry?.maxAttempts ?? 3)),
@@ -53,7 +55,7 @@ export class ApiClient {
     return {
       Authorization: `Bearer ${this.token}`,
       'Content-Type': 'application/json',
-      'X-Contentful-User-Agent': USER_AGENT,
+      'X-Contentful-User-Agent': this.userAgent,
     };
   }
 

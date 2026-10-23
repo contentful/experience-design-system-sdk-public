@@ -1,0 +1,38 @@
+import {
+  ApiError,
+  formatApiError,
+  ImportApiClient,
+  toApiHost,
+} from '@contentful/experience-design-system-backend-pipeline';
+import { cliUserAgent } from '../../../user-agent.js';
+import type { CredentialValues } from './logic.js';
+
+export type ValidationResult = { ok: true } | { ok: false; error: string };
+
+export async function validateCredentials(values: CredentialValues): Promise<ValidationResult> {
+  const host = toApiHost(values.host);
+  const client = new ImportApiClient({
+    host,
+    spaceId: values.spaceId,
+    environmentId: values.environmentId,
+    cmaToken: values.cmaToken,
+    userAgent: cliUserAgent(),
+  });
+  try {
+    await client.validateToken();
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: toUserError(error, host) };
+  }
+}
+
+function toUserError(error: unknown, host: string): string {
+  if (error instanceof ApiError) {
+    if (error.status === 404 && error.message.startsWith('preflight failed:')) {
+      return 'Not found. Check the space ID, environment and API host.';
+    }
+    return formatApiError({ error });
+  }
+  if (error instanceof Error) return `Could not reach ${host}: ${error.message}`;
+  return String(error);
+}

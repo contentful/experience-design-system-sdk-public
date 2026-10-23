@@ -1,5 +1,12 @@
 // --- File collection (source-tree walker) ---
-export { collectFiles } from './helpers/collect-files.js';
+export { collectFiles } from './helpers/collect-files/index.js';
+export type {
+  CollectFilesOptions,
+  CollectFilesOutcome,
+  CollectFilesResult,
+  CollectFilesFailure,
+  FileCounts,
+} from './types/collect-files-result.js';
 
 // --- Runs ledger (runs.json) ---
 export {

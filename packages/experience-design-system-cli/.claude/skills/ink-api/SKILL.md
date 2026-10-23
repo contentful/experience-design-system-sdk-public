@@ -40,7 +40,7 @@ Render text with optional styling.
 ```tsx
 import { Text } from "ink";
 
-<Text bold color="green" dimColor>
+<Text bold color="green">
   Success!
 </Text>;
 ```
@@ -51,7 +51,7 @@ import { Text } from "ink";
 - `backgroundColor`: background color
 - `bold`: boolean
 - `italic`: boolean
-- `dimColor`: boolean (gray out)
+- `dimColor`: boolean (gray out). Avoid it for text that carries meaning: Use plain text for key hints and `PALETTE.muted` for quieter text
 - `inverse`: boolean (swap fg/bg)
 - `underline`: boolean
 - `strikethrough`: boolean

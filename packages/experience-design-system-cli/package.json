@@ -25,7 +25,8 @@
   "files": [
     "bin/",
     "dist/",
-    "legacy/"
+    "legacy/",
+    "skills/"
   ],
   "scripts": {
     "build": "nx build experience-design-system-cli",
@@ -37,10 +38,12 @@
     "dev": "node scripts/dev.mjs"
   },
   "dependencies": {
+    "@contentful/experience-design-system-backend-pipeline": "workspace:*",
     "@contentful/experience-design-system-types": "workspace:*",
     "@inkjs/ui": "^2.0.0",
     "@segment/analytics-node": "^3.0.0",
     "@vue/compiler-sfc": "^3.5.31",
+    "ajv": "^8.18.0",
     "commander": "^13.1.0",
     "contentful-management": "^12.17.0",
     "figures": "6.1.0",
@@ -51,7 +54,8 @@
     "semver": "^7.7.2",
     "svelte": "^5.56.4",
     "ts-morph": "^27.0.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@tsconfig/node24": "^24.0.4",
@@ -62,6 +66,7 @@
     "eslint": "^9.39.5",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.6",
+    "ink-testing-library": "^4.0.0",
     "typescript-eslint": "^8.67.0",
     "vitest": "^4.0.16"
   },

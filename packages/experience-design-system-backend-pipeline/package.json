@@ -18,7 +18,8 @@
     "registry": "https://npm.pkg.github.com/"
   },
   "files": [
-    "dist/"
+    "dist/",
+    "prompts/"
   ],
   "scripts": {
     "build": "nx build experience-design-system-backend-pipeline",
@@ -30,6 +31,8 @@
   },
   "dependencies": {
     "@contentful/experience-design-system-client": "workspace:*",
+    "@contentful/experience-design-system-types": "workspace:*",
+    "@segment/analytics-node": "^3.0.0",
     "@vue/compiler-sfc": "^3.5.31",
     "ajv": "^8.17.1",
     "contentful-management": "^12.17.0",

@@ -13,10 +13,13 @@ This package is the Terminal UI flow that the customer interacts with
 This is where all the api calls are made that the TUI needs
 
 **~/.contentful/experience-design-system-cli/config.json**
-The single settings file, read and written through `@contentful/experience-design-system-types/config` (the only module that knows the path). Holds credentials (spaceId, environmentId, cmaToken, host), preferences (analyticsDisabled, debug, debugMode) and defaults. The CLI and the bundled legacy import share it; `EDS_HOME` relocates the whole folder (used by tests).
+The single settings file, read and written through `@contentful/experience-design-system-types/config` (the only module that knows the path). Holds credentials (spaceId, environmentId, cmaToken, host), preferences (analyticsDisabled, debug, debugMode), agent settings (agent, agentModel, agents) and defaults. `EDS_HOME` relocates the whole folder (used by tests).
 
-**~/.contentful/experience-design-system-cli/debug/sessions**
-Per-session debug logs. v2 creates `MM-DD-YYYY-session-N/` directories with markdown run snapshots for each flow visit. Logging is toggled from Settings > Debug Mode.
+**<root>/.contentful/MM-DD-YYYY-session-N/**
+One folder per terminal session, numbered per day. `<root>` is the "Root Project Directory" setting (Settings > Configuration > Project). When it is empty, the session is created once the import starts, in the project being imported.
+
+- `debug/` holds the per-screen debug logs (markdown run snapshots), written only while Debug Mode is on.
+- `dsi-import-N/` holds one import run's output: `tokens.json`, `.existing-entities.json` and `components.json`. Each import in the session gets the next number, so a second import never overwrites the first. Token reuse offers the newest `tokens.json` found across all sessions.
 
 ## Project Architecture
 
@@ -28,7 +31,7 @@ For each directory and flow, there is always a top level parent container screen
 
 ### Settings Flow (`src/tui/settings/`)
 
-Settings pages persist user preferences and credentials to `~/.contentful/experience-design-system-cli/config.json` (shared with the bundled legacy import). `utils/v1-store.ts` re-exports the shared read/write functions from `@contentful/experience-design-system-types/config`.
+Settings pages persist user preferences and credentials to `~/.contentful/experience-design-system-cli/config.json`. `utils/v1-store.ts` re-exports the shared read/write functions from `@contentful/experience-design-system-types/config`.
 
 Each preference screen:
 
@@ -65,11 +68,20 @@ Use Ink's `useInput` for keys. The existing screens treat `q` and `Esc` as "go b
 
 ### Theme
 
-Each flow owns its styling. The home menu keeps its palette in `src/tui/home/home.theme.ts`; other flows define theirs beside their screens. There is no shared `ui/` folder.
+The shared colour palette lives in `src/tui/theme.ts`. It has a dark and a light set and picks one from the terminal background. Screens import `PALETTE` from there and should not hardcode colours, including named ones like `'red'` or `'gray'`. Use `PALETTE.accent` for emphasis and `PALETTE.onAccent` for text on an accent background. Do not define a second palette in a flow.
+
+Import it through the `@tui` alias, not a long relative path: `import { PALETTE } from '@tui/theme.js';`. The alias maps `@tui/*` to `src/tui/*`. It is set in `tsconfig.json` (`paths`, used by the type check and the esbuild build) and in `vitest.config.ts` (`resolve.alias`), so a new alias needs both. Use it when the relative path goes up three or more folders.
+
+### Shared components
+
+Components used by more than one flow live in `src/tui/shared/components/`. Flows keep any other styling beside their screens.
+
+- `ControlHints`: the one control-hint line. It shows `[keys]` in the accent colour and the label in the normal text colour, with no border. Use it for every screen's key hints, passing `{ keys, label }` entries (add `active: true` to highlight a hint whose mode is on). Do not hand-write hint lines.
+- `StepHeader`: the import's tab bar: Extract, Select, Generate, Review and Push, with the version on the right and a rule across the full width. Pass `step="extraction"` and so on; `step="done"` marks every step finished. Render it above the screen's padded content, not inside the padding, so the rule reaches the edges.
 
 ### The Import flow
 
-`src/tui/import/` is the Import menu item. The Import menu item shows the Welcome step (`steps/01-welcome`) and collects the project path. `app.tsx` then stops reading stdin and spawns the bundled legacy `import` with `--project <path>`, so the legacy wizard starts after its own Welcome step. `PageContainer.tsx` shows the result when it exits with inherited stdio (`spawn-v1-import.ts`, `terminal-input.ts`), then resumes the menu. `src/legacy/legacy-cli-path.ts` locates the bundled legacy CLI (`legacy/bin/cli.js` in an installed package, the sibling `experience-design-system-cli-legacy` package in the monorepo). This package must never import legacy code.
+`src/tui/import/` is the Import menu item. The Import menu item shows the Welcome step (`steps/01-welcome`) and collects the project path, then the Token input step (`steps/02-token-input`) and collects the token file, then the Path validation step (`steps/03-path-validation`), which scans the project folder and asks the user to confirm it. `app.tsx` then runs the rest of the import in the same process: credentials (`steps/04-credentials`), token reuse, extraction, the scope gate, generation, the review (`steps/09-review`) and the save, preview, push and done screens (`steps/10-flow`). The flow's state machine is `steps/10-flow/flow/controller.ts`, kept free of React so it can be tested; `flow/use-flow.ts` and `flow/screen.tsx` connect it to the terminal. When the flow ends it reports an exit code and `PageContainer.tsx` shows the result, then resumes the menu.
 
 ### Multi-step flows
 
@@ -119,7 +131,7 @@ export function ConfirmScreen({
   return (
     <Box flexDirection="column" paddingX={2}>
       <Text bold>Continue?</Text>
-      <Text dimColor>Enter to confirm, Esc to go back</Text>
+      <Text>[Enter] Confirm · [Esc] Back</Text>
     </Box>
   );
 }
