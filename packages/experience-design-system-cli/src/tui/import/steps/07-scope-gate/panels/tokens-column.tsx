@@ -15,10 +15,8 @@ interface TokensColumnProps {
   visibleCount: number;
 }
 
-/** The design tokens that will be imported with the components. Read only: scrolling is all it allows. */
 export function TokensColumn(props: TokensColumnProps): React.ReactElement {
   const { title, width, height, tokens, cursor, focused, visibleCount } = props;
-  // Names are padded to the longest so the values line up; the panel's border, cursor and padding take the rest.
   const nameWidth = Math.min(longestEntries(tokens).path + 2, Math.floor((width - 8) / 2));
   const window = computeColumnWindow(tokens.length, cursor, Math.max(1, visibleCount));
   return (

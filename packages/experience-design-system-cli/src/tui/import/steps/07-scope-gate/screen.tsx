@@ -81,7 +81,6 @@ function ScopeGateView({ components, tokensPath, onConfirm, onQuit }: ScopeGateS
     const loaded = tokensPath ? loadTokenRows(tokensPath) : undefined;
     return loaded?.ok ? loaded.rows : [];
   }, [tokensPath]);
-  // Name, the space between, the value, and the panel's border, cursor and padding.
   const longest = useMemo(() => longestEntries(tokens), [tokens]);
   const gate = useScopeGate({
     components,

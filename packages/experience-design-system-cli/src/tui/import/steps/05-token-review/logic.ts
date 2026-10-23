@@ -1,5 +1,4 @@
 export interface TokenRow {
-  /** Dot-separated DTCG path, e.g. `color.brand.primary`. */
   path: string;
   type: string;
   value: string;
@@ -33,7 +32,6 @@ export function flattenTokens(tree: unknown): TokenRow[] {
   return rows;
 }
 
-/** The longest token name and value, which a side-by-side listing needs room for. */
 export function longestEntries(rows: readonly TokenRow[]): { path: number; value: number } {
   return {
     path: Math.max(0, ...rows.map((row) => row.path.length)),
@@ -41,7 +39,6 @@ export function longestEntries(rows: readonly TokenRow[]): { path: number; value
   };
 }
 
-/** The rows to draw: a window of `visibleCount` around the cursor, and how many rows are cut off above and below. */
 export function computeColumnWindow(
   total: number,
   cursor: number,

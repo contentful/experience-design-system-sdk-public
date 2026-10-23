@@ -15,10 +15,8 @@ interface TokenReviewScreenProps {
 
 const VISIBLE_ROWS = 15;
 
-/** Space left after the longest entry of the Token and Type columns. */
 const COLUMN_GAP = 3;
 
-/** Shows the generated design tokens before the import goes on. Read only: the tokens are pushed as they are. */
 export function TokenReviewScreen({ tokensPath, onContinue, onQuit }: TokenReviewScreenProps): React.ReactElement {
   const loaded = useMemo(() => loadTokenRows(tokensPath), [tokensPath]);
   const rows = loaded.ok ? loaded.rows : [];
@@ -37,8 +35,6 @@ export function TokenReviewScreen({ tokensPath, onContinue, onQuit }: TokenRevie
     else if (key.pageDown) move(selected + VISIBLE_ROWS);
   });
 
-  // Columns are as wide as their longest entry, capped so the value always has room. The screen padding (2 each side) and
-  // the pointer column come off the width; truncation keeps a row on one line.
   const innerWidth = Math.max(40, columns - 4 - 2);
   const pathWidth = Math.min(
     Math.max(10, ...rows.map((row) => row.path.length)) + COLUMN_GAP,

@@ -92,7 +92,6 @@ interface ScopeRun {
   extraction: ExtractionHandoff;
 }
 
-// A tokens-only import has no components to extract, select or generate; the header shows Setup, Generate, Review and Push.
 const TOKENS_ONLY_HIDDEN_STEPS: readonly HeaderStepId[] = ['extraction', 'scope-gate'];
 
 interface AppProps {
@@ -115,7 +114,6 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
   const extraction = useExtraction(extractionRun?.input);
   const [tokensOnlyRun, setTokensOnlyRun] = useState<TokensOnlyRun>();
   const tokensOnly = useTokensOnly(tokensOnlyRun?.tokens);
-  // Set while the generated tokens of a tokens-only run are shown for review. With components the scope gate lists them.
   const [tokenReview, setTokenReview] = useState<{ tokensPath: string; onContinue: () => void }>();
   const [scopeRun, setScopeRun] = useState<ScopeRun>();
   const scopeFlow = useScopeGateFlow(

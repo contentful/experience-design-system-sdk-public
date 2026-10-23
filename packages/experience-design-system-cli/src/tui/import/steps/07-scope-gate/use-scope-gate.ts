@@ -30,9 +30,7 @@ import type { ScopeComponent, ScopeDecisions } from './types.js';
 
 interface UseScopeGateOptions {
   components: ScopeComponent[];
-  /** How many design tokens the side column lists. It is read only, so the hook only needs to scroll it. */
   tokenCount: number;
-  /** The width the token column would like: its longest name and value side by side. */
   tokensWidth: number;
   onConfirm: (decisions: ScopeDecisions) => void;
   onQuit: () => void;

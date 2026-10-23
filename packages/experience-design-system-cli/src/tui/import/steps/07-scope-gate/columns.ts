@@ -31,11 +31,9 @@ export function computePanelLayout(mainVisibleCount: number): ScopeGatePanelLayo
   return { height, mainVisibleCount: safeMainVisibleCount, sideVisibleCount };
 }
 
-/** The token column needs the width and something to show; without either the gate is the main column alone. */
 export function computeColumnWidths(
   totalWidth: number,
   hasTokens: boolean,
-  /** The width the token column would like, so no row has to be cut. It gets at most what the terminal has left. */
   wantedTokensWidth = TOKENS_COLUMN_WIDTH,
 ): {
   layout: 'single' | 'two-column';
