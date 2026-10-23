@@ -7,7 +7,13 @@ import {
   rewriteSchemaReferences,
   sanitizeBreakingChanges,
   SLOT_BREAKING_REASONS,
+  previewContractSchemas,
 } from '../src/index.js';
+
+it('keeps complete target component definitions distinct from source descriptors in preview exports', () => {
+  expect(previewContractSchemas.ComponentTypeSummary).toHaveProperty('properties.targetDefinition', {});
+  expect(previewContractSchemas.ComponentTypeSummary).toHaveProperty('properties.sourceDefinition', {});
+});
 
 it('conserves recursive own definitions and both slot requirement states through actual build/filter/parse', () => {
   const entry = {

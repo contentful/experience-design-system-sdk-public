@@ -75,6 +75,7 @@ export const previewContractSchemas: Readonly<Record<string, SchemaDescriptor>> 
       contentProperties: array({ type: 'string' }),
       designProperties: array({ type: 'string' }),
       slots: array({ type: 'string' }),
+      targetDefinition: opaque,
       definition: opaque,
       sourceDefinition: opaque,
       fullProperties: { type: 'object', additionalProperties: ref('PropertySummary') },

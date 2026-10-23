@@ -96,6 +96,7 @@ export interface ComponentTypeSummary {
   contentProperties: string[];
   designProperties: string[];
   slots: string[];
+  targetDefinition?: import('../../property-contract/json-value.js').JsonValue;
   definition?: import('../../property-contract/json-value.js').JsonValue;
   sourceDefinition?: import('../../property-contract/json-value.js').JsonValue;
   fullSlots?: Record<string, SlotSummary>;
