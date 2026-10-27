@@ -17,7 +17,7 @@ import {
 } from '../src/property-contract/json-value.js';
 
 describe('TARGET_PROPERTY_TYPES', () => {
-  it('contains all 12 target types with the 9 new pillar-#4 additions', () => {
+  it('contains the 12 target property types (3 primitive + 9 structured)', () => {
     expect(new Set(TARGET_PROPERTY_TYPES)).toEqual(
       new Set([
         'String',
@@ -134,9 +134,7 @@ describe('validateTargetDefinition — definition shape', () => {
   it('accepts a ResourceLink referencing Entry types in the same space', () => {
     const result = validateTargetDefinition({
       type: 'ResourceLink',
-      allowedResources: [
-        { type: 'Contentful:Entry', source: SAME_SPACE_RESOURCE_SOURCE, allowedTypes: ['card'] },
-      ],
+      allowedResources: [{ type: 'Contentful:Entry', source: SAME_SPACE_RESOURCE_SOURCE, allowedTypes: ['card'] }],
     });
     expect(result.valid).toBe(true);
   });
