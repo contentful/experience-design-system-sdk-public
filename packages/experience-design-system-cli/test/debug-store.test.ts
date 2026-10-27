@@ -56,15 +56,22 @@ describe('the debug store', () => {
 
   it('creates nothing until the import starts when no base directory is set', async () => {
     const store = await load();
-    store.startDebugRun({ flow: 'settings/x', step: '01', menuOption: 'Run', inputs: {} });
+    // The first import step finishes before the project, and so the session folder, is known.
+    store.startDebugRun({ flow: 'import/preflight', step: '00', menuOption: 'Preflight', inputs: {} });
+    await new Promise((resolve) => setTimeout(resolve, 100)); // the run registers once Debug Mode has been read
     await store.finishDebugRun({ outputs: {}, status: 'success', exitMethod: 'saved' });
 
     expect(store.currentDebugSessionDir()).toBeUndefined();
     expect(existsSync(join(home, 'debug'))).toBe(false);
 
     await store.startDebugSessionIn(base);
+    await store.startDebugSessionIn(base);
 
     expect(store.currentDebugSessionDir()).toMatch(/\.contentful\/\d\d-\d\d-\d{4}-session-1\/debug$/);
+    // The early log is written when the session starts, once, and not again by the next start.
+    expect(await logFiles(join(base, '.contentful'))).toEqual([
+      expect.stringMatching(/debug\/import\/preflight\/\d\d-\d\d-\d{4}-preflight-attempt-1\.md$/),
+    ]);
     await logRun(store, join(base, '.contentful'));
   });
 

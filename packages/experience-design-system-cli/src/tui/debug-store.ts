@@ -92,6 +92,7 @@ export async function startDebugSessionIn(base: string, { replace = false } = {}
   try {
     if (!(await isDebugModeEnabled())) return;
     await mkdir(join(startSession(resolve(base), { replace }), 'debug'), { recursive: true });
+    await writeWaitingLogs();
   } catch {
     // Debug logging must never get in the way of the user.
   }
@@ -132,6 +133,7 @@ void Promise.all([isDebugModeEnabled(), readBaseDir()]).then(async ([enabled, ba
   if (!enabled) return;
   const debugDir = join(startSession(base, { replace: false }), 'debug');
   await mkdir(debugDir, { recursive: true });
+  await writeWaitingLogs();
   // Say what was deleted, so "my logs are gone" can be answered from the log. Nothing is written when nothing expired.
   if (retention && pruned && pruned.logs + pruned.folders > 0) {
     await writeFile(
@@ -203,17 +205,45 @@ export async function finishDebugRun({
   pendingRun = undefined;
 
   const durationMs = Date.now() - run.startedAt;
-  const content = renderMarkdown(run, { outputs: redact(outputs), status, exitMethod, durationMs });
+  const log: FinishedLog = {
+    flow: run.flow,
+    menuOption: run.menuOption,
+    content: renderMarkdown(run, { outputs: redact(outputs), status, exitMethod, durationMs }),
+  };
 
-  // Without a configured base directory nothing is logged until the import has started the session.
+  // Without a session folder yet (no base directory is configured and the import has not started) the log waits.
+  const root = currentDebugSessionDir();
+  if (!root) {
+    if (waiting.length < WAITING_LIMIT) waiting.push(log);
+    return;
+  }
+  await writeLog(root, log);
+}
+
+type FinishedLog = { flow: string; menuOption: string; content: string };
+
+// The first import steps finish before the project, and so the session folder, is known. Their logs wait here and are
+// written, in order and once, when the folder is created. The limit keeps a long session with no folder from growing.
+const WAITING_LIMIT = 50;
+const waiting: FinishedLog[] = [];
+
+async function writeLog(root: string, log: FinishedLog): Promise<void> {
+  const dir = join(root, ...log.flow.split('/'));
+  await mkdir(dir, { recursive: true });
+  const filename = nextAttemptFilename(dir, log.menuOption);
+  await writeFile(join(dir, filename), log.content, { mode: 0o600 });
+}
+
+async function writeWaitingLogs(): Promise<void> {
   const root = currentDebugSessionDir();
   if (!root) return;
-  const flowSegments = run.flow.split('/');
-  const dir = join(root, ...flowSegments);
-
-  await mkdir(dir, { recursive: true });
-  const filename = nextAttemptFilename(dir, run.menuOption);
-  await writeFile(join(dir, filename), content, { mode: 0o600 });
+  for (const log of waiting.splice(0)) {
+    try {
+      await writeLog(root, log);
+    } catch {
+      // Debug logging must never get in the way of the user.
+    }
+  }
 }
 
 // MM-DD-YYYY-<menu-option>-attempt-N.md: same date convention as the session directory,
