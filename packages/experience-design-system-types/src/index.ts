@@ -1,3 +1,22 @@
+// Agent-process + prompt-transport primitives — reusable helpers for
+// spawning agent CLIs with timeouts/stdin/prompt-artifact support. Dormant
+// on `development`: no current caller uses these. Pre-landed from the
+// in-flight import-pipeline refactor so follow-up work can depend on
+// them without re-introducing the plumbing. See INTEG-4927.
+export { shouldUseStdinForPrompt } from './agent-prompt-transport.js';
+export {
+  createAgentPromptArtifact,
+  shouldUsePromptArtifact,
+  type AgentPromptArtifact,
+} from './agent-prompt-artifact.js';
+export {
+  createAgentCancellationResult,
+  runAgentProcess,
+  type AgentProcessEndDetails,
+  type AgentProcessResult,
+  type RunAgentProcessOptions,
+} from './agent-process-lifecycle.js';
+
 // CDF (Component Definition Format) exports — one schema/file for both
 // components and design tokens, no separate manifest envelope.
 export {
