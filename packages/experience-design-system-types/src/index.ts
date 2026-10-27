@@ -61,3 +61,8 @@ export type {
   ApplyOperationResponse,
   ApplyGateError,
 } from './sources-api/apply/index.js';
+
+// Property contract — pillar #4 foundation (target types + validators).
+// Dormant: no current consumer imports these. Available for forthcoming
+// evidence-aware extractors and generation. See INTEG-5147 / INTEG-4927.
+export * from './property-contract/index.js';
