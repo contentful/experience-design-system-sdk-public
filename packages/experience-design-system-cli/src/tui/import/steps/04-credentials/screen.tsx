@@ -1,15 +1,21 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { PALETTE } from '@tui/theme.js';
+import { startDebugRun, finishDebugRun } from '@tui/debug-store.js';
+import type { ImportTarget } from '../00-preflight/logic.js';
 import { formLabelWidth, type FormField, type FormNotice } from '@tui/shared/components/FieldForm.js';
 import { ClearableTextInput } from '@tui/shared/components/ClearableTextInput.js';
 import { ControlHints } from '@tui/shared/components/ControlHints.js';
 import { StepHeader } from '@tui/shared/components/StepHeader.js';
 import {
+  credentialsLog,
+  credentialsOutputs,
   credentialsPurpose,
   isUnchanged,
-  missingField,
+  missingFields,
   normalize,
+  rejectedAttempt,
+  type CredentialAttempt,
   type CredentialField,
   type CredentialValues,
 } from './logic.js';
@@ -18,6 +24,8 @@ import { validateCredentials, type ValidationResult } from './validate.js';
 export type CredentialsResult = { skipped: false; credentials: CredentialValues } | { skipped: true };
 
 interface CredentialsScreenProps {
+  /** What the user chose to import at Preflight; it decides which steps run, so every log notes it. */
+  mode: ImportTarget;
   onDone: (result: CredentialsResult) => void;
   onBack: () => void;
   initial?: Partial<CredentialValues>;
@@ -41,7 +49,11 @@ const MENU: readonly { choice: MenuChoice; label: string; description: string }[
   { choice: 'edit', label: 'Edit', description: 'Change the credentials' },
 ];
 
+// A long session of wrong credentials must not make the log grow without bound.
+const MAX_LOGGED_ATTEMPTS = 10;
+
 export function CredentialsScreen({
+  mode,
   onDone,
   onBack,
   initial = {},
@@ -66,18 +78,71 @@ export function CredentialsScreen({
   const [focus, setFocus] = useState(0);
   const [active, setActive] = useState(0);
   const [beforeEdit, setBeforeEdit] = useState(initialValues);
+  // Every attempt that was turned down, already scrubbed of the token, so "I could not get past credentials" can be read
+  // from the log. `lastReason` is kept apart because the list stops growing at the cap.
+  const visit = useRef({ attempts: [] as CredentialAttempt[], lastReason: '' }).current;
+
+  useEffect(() => {
+    startDebugRun({
+      flow: 'import/credentials',
+      step: '04-credentials',
+      menuOption: 'Credentials',
+      inputs: { import_mode: mode, prefilled, ...credentialsLog(initialValues) },
+    });
+  }, []);
+
+  const reject = (attempt: CredentialAttempt, text: string): void => {
+    if (visit.attempts.length < MAX_LOGGED_ATTEMPTS) visit.attempts.push(attempt);
+    visit.lastReason = attempt.reason;
+    setNotice({ kind: 'error', text });
+  };
+
+  // Leaving with a rejection that was never fixed is the case worth flagging as an error.
+  const leave = (): void => {
+    void finishDebugRun({
+      outputs: {
+        ...credentialsOutputs({
+          outcome: 'back',
+          credentials: normalize(values),
+          initial: initialValues,
+          attempts: visit.attempts,
+        }),
+        ...(notice ? { error: visit.lastReason } : {}),
+      },
+      status: notice ? 'error' : 'success',
+      exitMethod: 'discarded',
+    });
+    onBack();
+  };
 
   const submit = async (): Promise<void> => {
     const credentials = normalize(values);
-    if (missingField(credentials)) {
-      setNotice({ kind: 'error', text: 'Space ID, environment and CMA token are all required.' });
+    const missing = missingFields(credentials);
+    if (missing.length > 0) {
+      reject(
+        rejectedAttempt(`Missing required fields: ${missing.join(', ')}`, credentials),
+        'Space ID, environment and CMA token are all required.',
+      );
       return;
     }
     setValidating(true);
     const result = await validate(credentials);
     setValidating(false);
-    if (result.ok) onDone({ skipped: false, credentials });
-    else setNotice({ kind: 'error', text: result.error });
+    if (!result.ok) {
+      reject(rejectedAttempt(result.error, credentials), result.error);
+      return;
+    }
+    void finishDebugRun({
+      outputs: credentialsOutputs({
+        outcome: 'validated',
+        credentials,
+        initial: initialValues,
+        attempts: visit.attempts,
+      }),
+      status: 'success',
+      exitMethod: 'saved',
+    });
+    onDone({ skipped: false, credentials });
   };
 
   const choose = (choice: MenuChoice): void => {
@@ -87,7 +152,7 @@ export function CredentialsScreen({
       setBeforeEdit(values);
       setActive(0);
       setEditing(true);
-    } else onBack();
+    } else leave();
   };
 
   // Saves what was typed and puts the cursor back on the first menu item.
@@ -101,7 +166,7 @@ export function CredentialsScreen({
     if (editing) {
       if (key.escape) {
         // With nothing pre-filled there is no menu view to return to, so Esc leaves the step.
-        if (!prefilled) onBack();
+        if (!prefilled) leave();
         else {
           setValues(beforeEdit);
           setNotice(null);
