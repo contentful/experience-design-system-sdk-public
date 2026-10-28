@@ -457,6 +457,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
         }
         return (
           <CredentialsScreen
+            mode={target}
             initial={importDefaults.credentials}
             tokensOnly={target === 'tokens'}
             onBack={() => goBackFrom('credentials')}
