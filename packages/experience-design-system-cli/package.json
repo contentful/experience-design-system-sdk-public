@@ -1,6 +1,6 @@
 {
   "name": "@contentful/experience-design-system-cli",
-  "version": "2.39.0",
+  "version": "2.39.1",
   "description": "Contentful Experiences design system import CLI",
   "license": "MIT",
   "type": "module",
@@ -38,7 +38,6 @@
     "dev": "node scripts/dev.mjs"
   },
   "dependencies": {
-    "@contentful/experience-design-system-backend-pipeline": "workspace:*",
     "@contentful/experience-design-system-types": "workspace:*",
     "@inkjs/ui": "^2.0.0",
     "@segment/analytics-node": "^3.0.0",
@@ -58,6 +57,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@contentful/experience-design-system-backend-pipeline": "workspace:*",
     "@tsconfig/node24": "^24.0.4",
     "@types/node": "^24.0.3",
     "@types/react": "^18.3.24",
