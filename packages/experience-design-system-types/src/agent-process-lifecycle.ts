@@ -21,6 +21,10 @@ export interface RunAgentProcessOptions {
   onOutput?: (chunk: string) => void;
   onStart?: () => void;
   onEnd?: (details: AgentProcessEndDetails) => void;
+  /** Delivers stop signals; defaults to `child.kill`. Detached spawns can signal their process group. */
+  kill?: (child: ChildProcess, signal: NodeJS.Signals) => void;
+  /** After a stop request, send SIGKILL and settle without waiting for stdio to close. */
+  forceKillAfterMs?: number;
 }
 
 export function createAgentCancellationResult(): AgentProcessResult {
@@ -61,6 +65,7 @@ export function runAgentProcess(options: RunAgentProcessOptions): Promise<AgentP
     let stderr = '';
     let stopReason: 'abort' | 'timeout' | undefined;
     let timer: NodeJS.Timeout | undefined;
+    let forceTimer: NodeJS.Timeout | undefined;
     let stdinEnded = false;
     let settled = false;
 
@@ -95,6 +100,7 @@ export function runAgentProcess(options: RunAgentProcessOptions): Promise<AgentP
 
     const cleanup = () => {
       if (timer) clearTimeout(timer);
+      if (forceTimer) clearTimeout(forceTimer);
       signal?.removeEventListener('abort', onAbort);
       child.removeListener('error', onChildError);
       child.removeListener('close', onClose);
@@ -113,15 +119,29 @@ export function runAgentProcess(options: RunAgentProcessOptions): Promise<AgentP
         timer = undefined;
       }
       endStdin();
+      sendSignal('SIGTERM');
+      if (options.forceKillAfterMs !== undefined)
+        forceTimer = setTimeout(() => {
+          sendSignal('SIGKILL');
+          child.stdout?.destroy();
+          child.stderr?.destroy();
+          child.stdin?.destroy();
+          settle(null, 'SIGKILL');
+        }, options.forceKillAfterMs);
+    };
+
+    const sendSignal = (stopSignal: NodeJS.Signals) => {
       try {
-        child.kill('SIGTERM');
+        if (options.kill) options.kill(child, stopSignal);
+        else child.kill(stopSignal);
       } catch (error) {
         appendError(error);
       }
     };
 
     const onAbort = () => requestStop('abort');
-    const onClose = (code: number | null, childSignal: NodeJS.Signals | null) => {
+    const onClose = (code: number | null, childSignal: NodeJS.Signals | null) => settle(code, childSignal);
+    const settle = (code: number | null, childSignal: NodeJS.Signals | null) => {
       if (settled) return;
       settled = true;
       endStdin();

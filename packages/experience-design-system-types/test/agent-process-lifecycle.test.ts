@@ -258,4 +258,69 @@ describe('shared agent process lifecycle', () => {
     expect(removeListener).toHaveBeenCalledWith('abort', expect.any(Function));
     expect(child.kill).not.toHaveBeenCalled();
   });
+
+  it('signals through a supplied kill hook instead of child.kill', async () => {
+    const child = createChild();
+    const kill = vi.fn();
+    const controller = new AbortController();
+    const promise = runAgentProcess({
+      spawn: () => child as never,
+      timeoutMs: 10_000,
+      signal: controller.signal,
+      kill,
+    });
+
+    controller.abort();
+    expect(kill).toHaveBeenCalledExactlyOnceWith(child, 'SIGTERM');
+    expect(child.kill).not.toHaveBeenCalled();
+    child.emit('close', null, 'SIGTERM');
+    await expect(promise).resolves.toMatchObject({ exitCode: 1, timedOut: false });
+  });
+
+  it('escalates to SIGKILL and settles when the child never closes after a timeout', async () => {
+    vi.useFakeTimers();
+    const child = createChild();
+    const kill = vi.fn();
+    const onEnd = vi.fn();
+    const promise = runAgentProcess({
+      spawn: () => child as never,
+      timeoutMs: 100,
+      forceKillAfterMs: 50,
+      kill,
+      onEnd,
+    });
+    child.stdout.write('partial');
+
+    await vi.advanceTimersByTimeAsync(100);
+    expect(kill).toHaveBeenCalledExactlyOnceWith(child, 'SIGTERM');
+    await vi.advanceTimersByTimeAsync(50);
+    expect(kill).toHaveBeenLastCalledWith(child, 'SIGKILL');
+
+    await expect(promise).resolves.toEqual({ exitCode: 1, stdout: 'partial', stderr: '', timedOut: true });
+    expect(child.stdout.destroyed).toBe(true);
+    expect(onEnd).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ signal: 'SIGKILL' }));
+    child.emit('close', 0, null);
+    expect(onEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancels the SIGKILL escalation when the child closes after SIGTERM', async () => {
+    vi.useFakeTimers();
+    const child = createChild();
+    const kill = vi.fn();
+    const controller = new AbortController();
+    const promise = runAgentProcess({
+      spawn: () => child as never,
+      timeoutMs: 10_000,
+      forceKillAfterMs: 50,
+      signal: controller.signal,
+      kill,
+    });
+
+    controller.abort();
+    child.emit('close', null, 'SIGTERM');
+    await expect(promise).resolves.toMatchObject({ exitCode: 1, timedOut: false });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(kill).toHaveBeenCalledExactlyOnceWith(child, 'SIGTERM');
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });
