@@ -9,7 +9,7 @@ import {
 } from './debug-mode-store.js';
 import { startDebugRun, finishDebugRun } from '../../debug-store.js';
 import { ControlHints } from '@tui/shared/components/ControlHints.js';
-import { createTrail, diffSnapshots, scrubError, type Snapshot } from '../shared/debug-trail.js';
+import { createTrail, diffSnapshots, scrubError, type Snapshot } from '@tui/shared/debug-trail.js';
 
 type Row = 'enabled' | 'retentionDays';
 const ROWS: readonly Row[] = ['enabled', 'retentionDays'];

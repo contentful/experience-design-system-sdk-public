@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { scrubError } from '../../../src/tui/settings/shared/debug-trail.js';
+import { scrubError } from '../../src/tui/shared/debug-trail.js';
 
 // A debug log is a file users send us, so the one thing that must hold is that no credential reaches it.
 describe('what a settings debug log is allowed to say', () => {
