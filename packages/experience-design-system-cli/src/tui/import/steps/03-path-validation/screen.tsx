@@ -1,14 +1,18 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Text } from 'ink';
 import { PALETTE } from '@tui/theme.js';
+import { startDebugRun, finishDebugRun } from '@tui/debug-store.js';
 import { resolveUserPath } from '../../resolve-user-path.js';
+import type { ImportTarget } from '../00-preflight/logic.js';
 import { controlsFor, usePathValidationControls } from './controls.js';
 import { scanFiles } from './helpers/scan-files.js';
-import { describeFailure, phaseOf, summarize, type ScanResult, type SummaryRow } from './logic.js';
+import { describeFailure, phaseOf, scanReport, summarize, type ScanResult, type SummaryRow } from './logic.js';
 import { ControlHints } from '@tui/shared/components/ControlHints.js';
 import { StepHeader } from '@tui/shared/components/StepHeader.js';
 
 interface PathValidationScreenProps {
+  /** What the user chose to import at Preflight; it decides which steps run, so every log notes it. */
+  mode: ImportTarget;
   projectPath: string;
   onConfirm: (result: { projectPath: string; filePaths: string[] }) => void;
   onChangePath: () => void;
@@ -68,6 +72,7 @@ function Summary({
 }
 
 export function PathValidationScreen({
+  mode,
   projectPath,
   onConfirm,
   onChangePath,
@@ -78,17 +83,43 @@ export function PathValidationScreen({
   const [scan, setScan] = useState<ScanResult>();
 
   useEffect(() => {
+    startDebugRun({
+      flow: 'import/path-validation',
+      step: '03-path-validation',
+      menuOption: 'Path validation',
+      inputs: { import_mode: mode, project_path: projectPath, resolved_path: resolvedPath },
+    });
+  }, []);
+
+  useEffect(() => {
     setScan(scanFiles(resolvedPath));
   }, [resolvedPath]);
 
   const phase = phaseOf(scan);
 
+  // A scan that failed is a failed step, whatever the user does next; the log says what they did about it.
+  const finish = (outcome: 'continued' | 'changed-path' | 'back', exitMethod: 'saved' | 'discarded') => {
+    void finishDebugRun({
+      outputs: { outcome, ...scanReport(scan, resolvedPath, { hasTokens }) },
+      status: scan?.ok === false ? 'error' : 'success',
+      exitMethod,
+    });
+  };
+
   usePathValidationControls(phase, {
     onConfirm: () => {
-      if (scan?.ok) onConfirm({ projectPath: resolvedPath, filePaths: scan.filePaths });
+      if (!scan?.ok) return;
+      finish('continued', 'saved');
+      onConfirm({ projectPath: resolvedPath, filePaths: scan.filePaths });
     },
-    onChangePath,
-    onBack,
+    onChangePath: () => {
+      finish('changed-path', 'discarded');
+      onChangePath();
+    },
+    onBack: () => {
+      finish('back', 'discarded');
+      onBack();
+    },
   });
 
   return (

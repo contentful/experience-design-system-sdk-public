@@ -101,6 +101,29 @@ export function summarize(counts: FileCounts, { hasTokens = true }: { hasTokens?
   };
 }
 
+/**
+ * What the debug log says about a scan: the counts and warnings when it worked, or the failure and the message the user
+ * saw when it did not. File paths are left out, since a project can have thousands; the counts are what show whether
+ * the scan found the components.
+ */
+export function scanReport(
+  scan: ScanResult | undefined,
+  path: string,
+  { hasTokens = true }: { hasTokens?: boolean } = {},
+): Record<string, unknown> {
+  if (scan === undefined) return { scan: 'unfinished' };
+  if (!scan.ok) return { scan: 'failed', failure: scan.failure, error: describeFailure(scan.failure, path).headline };
+  const { total, warning } = summarize(scan.counts, { hasTokens });
+  const { total: _total, ...byType } = scan.counts;
+  return {
+    scan: 'ok',
+    files_found: total,
+    counts: Object.fromEntries(Object.entries(byType).filter(([, count]) => count > 0)),
+    ...(warning ? { warning } : {}),
+    ...(scan.warnings.length > 0 ? { scan_warnings: scan.warnings } : {}),
+  };
+}
+
 export function phaseOf(scan: ScanResult | undefined): PathPhase {
   if (scan === undefined) return 'scanning';
   return scan.ok ? 'ready' : 'failed';

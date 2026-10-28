@@ -389,6 +389,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
             case 'path-validation':
               return (
                 <PathValidationScreen
+                  mode={target}
                   projectPath={answers.projectPath ?? ''}
                   hasTokens={target !== 'components'}
                   onConfirm={({ filePaths }) => answer({ scannedFiles: filePaths })}
