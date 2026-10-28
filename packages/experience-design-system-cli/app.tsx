@@ -380,6 +380,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
             case 'token-file':
               return (
                 <TokenInputScreen
+                  mode={target}
                   initialPath={importDefaults.tokenFile}
                   onConfirm={(tokensPath) => answer({ tokensPath })}
                   onBack={() => goBackFrom('token-file')}
