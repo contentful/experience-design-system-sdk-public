@@ -7,3 +7,4 @@ export * from './json-value.js';
 export * from './date-time-value.js';
 export * from './discriminated-union.js';
 export * from './target-definition.js';
+export * from './content-digest.js';

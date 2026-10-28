@@ -7,6 +7,7 @@ export {
   CDFSlotSchema,
   CDFTokenSchema,
   type CDFComponentEntry,
+  type CDFFieldDefinition,
   type CDFPropertyDefinition,
   type CDFSlotDefinition,
   type CDFTokenEntry,
@@ -20,3 +21,10 @@ export {
   validateSlotReferences,
   type CDFDocument,
 } from './build.js';
+export {
+  finiteValuesIssue,
+  isFinitePrimitiveType,
+  isFinitePrimitiveValue,
+  type FinitePrimitiveType,
+  type FinitePrimitiveValue,
+} from './finite-values.js';

@@ -31,7 +31,13 @@ export {
   buildFilteredCDF,
   stripUnsupportedSlotFields,
   validateSlotReferences,
+  finiteValuesIssue,
+  isFinitePrimitiveType,
+  isFinitePrimitiveValue,
+  type FinitePrimitiveType,
+  type FinitePrimitiveValue,
   type CDFComponentEntry,
+  type CDFFieldDefinition,
   type CDFPropertyDefinition,
   type CDFSlotDefinition,
   type CDFTokenEntry,
@@ -82,3 +88,13 @@ export type {
 // Dormant: no current consumer imports these. Available for forthcoming
 // evidence-aware extractors and generation. See INTEG-5147 / INTEG-4927.
 export * from './property-contract/index.js';
+
+// CDF property validation over the property contract. Dormant: the live
+// `validateCDF` path still uses `CDFPropertySchema`. See INTEG-4927.
+export {
+  validateCDFProperty,
+  cdfToTarget,
+  targetToCDF,
+  cdfDefinitionChildren,
+  containsCDFDefinitionType,
+} from './cdf/property-validation.js';
