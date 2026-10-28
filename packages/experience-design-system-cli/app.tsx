@@ -371,6 +371,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
             case 'project':
               return (
                 <WelcomeScreen
+                  mode={target}
                   onContinue={(projectPath) => answer({ projectPath })}
                   onQuit={() => goBackFrom('project')}
                   initialPath={importDefaults.componentDir}
