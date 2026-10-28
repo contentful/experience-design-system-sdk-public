@@ -101,9 +101,6 @@ importers:
 
   packages/experience-design-system-cli:
     dependencies:
-      '@contentful/experience-design-system-backend-pipeline':
-        specifier: workspace:*
-        version: link:../experience-design-system-backend-pipeline
       '@contentful/experience-design-system-types':
         specifier: workspace:*
         version: link:../experience-design-system-types
@@ -156,6 +153,9 @@ importers:
         specifier: ^4.6.5
         version: 4.6.5
     devDependencies:
+      '@contentful/experience-design-system-backend-pipeline':
+        specifier: workspace:*
+        version: link:../experience-design-system-backend-pipeline
       '@tsconfig/node24':
         specifier: ^24.0.4
         version: 24.0.4
