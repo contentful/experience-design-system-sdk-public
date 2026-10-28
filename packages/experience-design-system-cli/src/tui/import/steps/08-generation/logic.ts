@@ -20,8 +20,8 @@ export function describeGeneration(input: { acceptedCount: number; agent: string
   const agent = capitalize(input.agent);
   return (
     `${formatAcceptanceSummary({ accepted: input.acceptedCount, autoRejected: 0 })}\n` +
-    `${agent} is reading each selected component and writing a Contentful component definition for it` +
-    `${input.hasTokens ? ' Using your design tokens for prop resolution.' : ''}`
+    `${agent} is reading each selected component and writing a Contentful component definition for it.` +
+    `${input.hasTokens ? '\nUsing your design tokens for prop resolution.' : ''}`
   );
 }
 
