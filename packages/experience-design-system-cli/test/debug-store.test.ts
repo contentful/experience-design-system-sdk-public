@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -92,5 +92,37 @@ describe('the debug store', () => {
     await store.startDebugSessionIn(base);
 
     expect(existsSync(join(base, '.contentful'))).toBe(false);
+  });
+
+  // A step that ends in the same moment it starts (a fast failure) must be logged as itself. If its run were registered
+  // late, its finish would be dropped and the next step's finish would land on it, mixing two steps into one log.
+  it('keeps a step that finishes straight after it starts, and does not mix it into the next one', async () => {
+    const store = await load({ contentfulBaseDir: base });
+    await vi.waitFor(() => expect(store.currentDebugSessionDir()).toBeDefined());
+
+    store.startDebugRun({ flow: 'import/first', step: '01', menuOption: 'First', inputs: { marker: 'first-input' } });
+    await store.finishDebugRun({ outputs: { marker: 'first-output' }, status: 'success', exitMethod: 'saved' });
+    store.startDebugRun({
+      flow: 'import/second',
+      step: '02',
+      menuOption: 'Second',
+      inputs: { marker: 'second-input' },
+    });
+    await store.finishDebugRun({ outputs: { marker: 'second-output' }, status: 'success', exitMethod: 'saved' });
+
+    const dir = store.currentDebugSessionDir()!;
+    const read = async (flow: string): Promise<string> => {
+      const file = (await readdir(join(dir, flow), { recursive: true })).find((name) => name.endsWith('.md'))!;
+      return readFile(join(dir, flow, file), 'utf8');
+    };
+    const first = await read('import/first');
+    const second = await read('import/second');
+
+    expect(first).toContain('first-input');
+    expect(first).toContain('first-output');
+    expect(second).toContain('second-input');
+    expect(second).toContain('second-output');
+    expect(first).not.toContain('second-');
+    expect(second).not.toContain('first-');
   });
 });

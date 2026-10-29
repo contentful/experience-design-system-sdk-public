@@ -182,12 +182,14 @@ export function startDebugRun({
   const startedAt = Date.now();
   const redactedInputs = redact(inputs);
 
-  // isDebugModeEnabled() is async but this function's callers (screen mount
-  // effects) call it fire-and-forget. A screen that exits before this
-  // resolves just has no pending run, which finishDebugRun treats as a no-op.
-  isDebugModeEnabled().then((enabled) => {
-    if (!enabled) return;
-    pendingRun = { flow, step, runId, menuOption, inputs: redactedInputs, startedAt };
+  // The run is registered at once. Reading Debug Mode is async, and a step that ends before it has been read must still be
+  // logged as itself: if it were registered late, its finish would be dropped and the next step's finish would land on it,
+  // mixing the two logs. When Debug Mode turns out to be off the run is withdrawn here, and finishDebugRun checks again
+  // before it writes.
+  const run: PendingRun = { flow, step, runId, menuOption, inputs: redactedInputs, startedAt };
+  pendingRun = run;
+  void isDebugModeEnabled().then((enabled) => {
+    if (!enabled && pendingRun === run) pendingRun = undefined;
   });
 }
 
@@ -203,6 +205,7 @@ export async function finishDebugRun({
   const run = pendingRun;
   if (!run) return;
   pendingRun = undefined;
+  if (!(await isDebugModeEnabled())) return;
 
   const durationMs = Date.now() - run.startedAt;
   const log: FinishedLog = {
