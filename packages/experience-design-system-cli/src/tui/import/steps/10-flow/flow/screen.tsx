@@ -13,6 +13,7 @@ import { countedThings, fileSummaryLabel, producedOf } from '../support/produced
 import { buildRunTeaserLine } from '../support/run-teaser.js';
 import type { FlowController } from './controller.js';
 import type { FlowState } from './types.js';
+import { useFlowLog } from './use-flow-log.js';
 
 interface FlowScreenProps {
   state: FlowState;
@@ -36,6 +37,7 @@ export function FlowScreen({
   generatePromptPath,
   onExit,
 }: FlowScreenProps): React.ReactElement {
+  useFlowLog(state);
   const produced = producedOf(state);
   // How many of each the run writes, so the saving, diffing and pushing screens can say it.
   const counts = { components: state.generatedAcceptedCount, tokens: state.tokenCount };
