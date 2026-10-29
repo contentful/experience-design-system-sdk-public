@@ -8,9 +8,9 @@ Your codebase remains the single source of truth. The CLI analyzes your source f
 
 ## Prerequisites
 
-- **Node.js 24 or later** — check with `node -v`. If it's missing or older, install the LTS version from [nodejs.org](https://nodejs.org/en/download); this also installs `npm`.
-- **A coding agent** — Claude Code, Codex, OpenCode, Cursor, or GitHub Copilot, installed and signed in so its command runs in your terminal.
-- **Your Contentful space ID and a CMA token** — create a token under **Settings → CMA tokens** in Contentful. The import wizard asks for both. For EU spaces, set the API host to `api.eu.contentful.com` when prompted.
+- **Node.js 24 or later.** Node.js is the program that runs this tool. To see whether you already have it, open a terminal and type `node -v`. If you see an error, or a number lower than 24, download the "LTS" version from [nodejs.org](https://nodejs.org/en/download) and install it. That installer also gives you `npm`, which you will use in the next section.
+- **A coding agent.** The tool uses an AI coding agent to help describe your components. Install one of these: Claude Code, Codex, OpenCode, Cursor, or GitHub Copilot. Then sign in to it, and make sure you can start it by typing its command in your terminal.
+- **Your Contentful space ID and a CMA token.** The space ID identifies the Contentful space you are importing into. A CMA token is a secret key that lets this tool make changes in that space, and you can create one in Contentful under **Settings → CMA tokens**. The tool asks you for both while it runs. If your space is hosted in the EU, enter `api.eu.contentful.com` when it asks for the API host.
 
 ## Quick Start
 
@@ -20,21 +20,21 @@ Your codebase remains the single source of truth. The CLI analyzes your source f
 npm install -g @contentful/experience-design-system-cli
 ```
 
-Check that it worked with `experiences --version`.
+To confirm that the install worked, type `experiences --version`. It should print a version number.
 
-The package publishes three binaries — `experiences`, `exo`, and `experience-design-system-cli`. The docs below use `experiences` since that is the wizard-oriented entry point.
+The install adds three commands to your terminal: `experiences`, `exo`, and `experience-design-system-cli`. All three do the same thing. The rest of this guide uses `experiences`.
 
-To build the CLI from source instead, see [CONTRIBUTING.md](CONTRIBUTING.md).
+If you are a developer and want to build the tool from its source code instead, follow the steps in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Run
 
-The primary entry point is the import wizard:
+To start the import, open a terminal, move into the folder that contains your design system, and type:
 
 ```bash
 experiences import
 ```
 
-In an interactive terminal this launches a full-screen TUI that walks you through the project path, an optional token file, credentials, extraction and AI selection, a manual scope review, generation, final review, and push. Run it from your design system project in a full-screen terminal window.
+This opens a full-screen guided wizard, so make your terminal window as large as you can before you run it. The wizard walks you through these steps in order: choosing your project folder, adding an optional file of design tokens, entering your Contentful details, reading your components, choosing which components to import, generating the component definitions, reviewing them, and finally sending them to Contentful.
 
 ## How it works
 
