@@ -8,34 +8,23 @@ Your codebase remains the single source of truth. The CLI analyzes your source f
 
 ## Prerequisites
 
-- **Node.js 24**
-- **pnpm 10.27.0+**
-- **A coding agent** in `$PATH` — Claude Code, Codex, OpenCode, Cursor, or GitHub Copilot
-- **A Contentful CMA token** — set `CONTENTFUL_MANAGEMENT_TOKEN`
+- **Node.js 24 or later** — check with `node -v`. If it's missing or older, install the LTS version from [nodejs.org](https://nodejs.org/en/download); this also installs `npm`.
+- **A coding agent** — Claude Code, Codex, OpenCode, Cursor, or GitHub Copilot, installed and signed in so its command runs in your terminal.
+- **Your Contentful space ID and a CMA token** — create a token under **Settings → CMA tokens** in Contentful. The import wizard asks for both. For EU spaces, set the API host to `api.eu.contentful.com` when prompted.
 
 ## Quick Start
 
 ### Install
 
 ```bash
-git clone https://github.com/contentful/experience-design-system-sdk-public.git
-cd experience-design-system-sdk-public
-pnpm install
-pnpm build
-pnpm -F @contentful/experience-design-system-cli build
+npm install -g @contentful/experience-design-system-cli
 ```
 
-The final step builds the CLI package and symlinks the `experiences`, `exo`, and `experience-design-system-cli` commands alongside your `node` binary so they're available on your `$PATH`.
+Check that it worked with `experiences --version`.
 
 The package publishes three binaries — `experiences`, `exo`, and `experience-design-system-cli`. The docs below use `experiences` since that is the wizard-oriented entry point.
 
-### Setup
-
-```bash
-experiences setup
-```
-
-The interactive setup wizard installs Node 24 (if needed), verifies pnpm, checks for a coding agent, and persists credentials + agent preferences to `~/.contentful/experience-design-system-cli/config.json`. Later commands read those values automatically.
+To build the CLI from source instead, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Run
 
@@ -45,7 +34,7 @@ The primary entry point is the import wizard:
 experiences import
 ```
 
-In an interactive terminal this launches a full-screen TUI that walks you through the project path, an optional token file, credentials, extraction and AI selection, a manual scope review, generation, final review, and push. Credentials are pre-filled from `experiences setup`.
+In an interactive terminal this launches a full-screen TUI that walks you through the project path, an optional token file, credentials, extraction and AI selection, a manual scope review, generation, final review, and push. Run it from your design system project in a full-screen terminal window.
 
 ## How it works
 
