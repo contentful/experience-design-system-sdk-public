@@ -10,7 +10,7 @@ Your codebase remains the single source of truth. The CLI analyzes your source f
 
 - **Node.js 24 or later.** Node.js is the program that runs this tool. To see whether you already have it, open a terminal and type `node -v`. If you see an error, or a number lower than 24, download the "LTS" version from [nodejs.org](https://nodejs.org/en/download) and install it. That installer also gives you `npm`, which you will use in the next section.
 - **A coding agent.** The tool uses an AI coding agent to help describe your components. Install one of these: Claude Code, Codex, OpenCode, Cursor, or GitHub Copilot. Then sign in to it, and make sure you can start it by typing its command in your terminal.
-- **Your Contentful space ID and a CMA token.** The space ID identifies the Contentful space you are importing into. A CMA token is a secret key that lets this tool make changes in that space, and you can create one in Contentful under **Settings → CMA tokens**. The tool asks you for both while it runs. If your space is hosted in the EU, enter `api.eu.contentful.com` when it asks for the API host.
+- **Your Contentful space ID, environment ID, and a CMA token.** The space ID identifies the Contentful space you are importing into. The environment ID identifies which environment inside that space to use, and most spaces use `master`. A CMA token is a secret key that lets this tool make changes in that space, and you can create one in Contentful under **Settings → CMA tokens**. The tool asks you for all three while it runs. If your space is hosted in the EU, enter `api.eu.contentful.com` when it asks for the API host.
 
 ## Quick Start
 
@@ -22,13 +22,17 @@ npm install -g @contentful/experience-design-system-cli
 
 To confirm that the install worked, type `experiences --version`. It should print a version number.
 
-The install adds three commands to your terminal: `experiences`, `exo`, and `experience-design-system-cli`. All three do the same thing. The rest of this guide uses `experiences`.
-
-If you are a developer and want to build the tool from its source code instead, follow the steps in [CONTRIBUTING.md](CONTRIBUTING.md).
+If you are a developer and want to build the tool from its source code instead, follow the steps in the [contributing guide](https://github.com/contentful/experience-design-system-sdk-public/blob/development/CONTRIBUTING.md).
 
 ### Run
 
-To start the import, open a terminal, move into the folder that contains your design system, and type:
+First, move your terminal into the folder that contains your design system. In the terminal, type `cd` followed by a space, then drag that folder from your file manager (Finder on a Mac) into the terminal window so its path fills in, and press Enter. You can also type the path yourself, for example:
+
+```bash
+cd ~/Documents/my-design-system
+```
+
+Then start the import by typing:
 
 ```bash
 experiences import
