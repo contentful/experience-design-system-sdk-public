@@ -371,6 +371,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
             case 'project':
               return (
                 <WelcomeScreen
+                  mode={target}
                   onContinue={(projectPath) => answer({ projectPath })}
                   onQuit={() => goBackFrom('project')}
                   initialPath={importDefaults.componentDir}
@@ -379,6 +380,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
             case 'token-file':
               return (
                 <TokenInputScreen
+                  mode={target}
                   initialPath={importDefaults.tokenFile}
                   onConfirm={(tokensPath) => answer({ tokensPath })}
                   onBack={() => goBackFrom('token-file')}
@@ -387,6 +389,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
             case 'path-validation':
               return (
                 <PathValidationScreen
+                  mode={target}
                   projectPath={answers.projectPath ?? ''}
                   hasTokens={target !== 'components'}
                   onConfirm={({ filePaths }) => answer({ scannedFiles: filePaths })}
