@@ -22,6 +22,8 @@ npm install -g @contentful/experience-design-system-cli
 
 To confirm that the install worked, type `experiences --version`. It should print a version number.
 
+The install adds three commands to your terminal: `experiences`, `exo`, and `experience-design-system-cli`. All three do the same thing. The rest of this guide uses `experiences`.
+
 If you are a developer and want to build the tool from its source code instead, follow the steps in the [contributing guide](https://github.com/contentful/experience-design-system-sdk-public/blob/development/CONTRIBUTING.md).
 
 ### Run
