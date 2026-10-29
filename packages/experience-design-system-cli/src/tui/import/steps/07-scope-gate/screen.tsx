@@ -1,6 +1,8 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { Box, Text } from 'ink';
+import { startDebugRun, finishDebugRun } from '@tui/debug-store.js';
 import { StepHeader } from '@tui/shared/components/StepHeader.js';
+import { scopeGateLogInputs, scopeGateLogOutputs } from './log.js';
 import { TokensColumn } from './panels/tokens-column.js';
 import { loadTokenRows } from '../05-token-review/load.js';
 import { longestEntries } from '../05-token-review/logic.js';
@@ -66,14 +68,29 @@ const HELP_SECTIONS: HelpSection[] = [
 // column sizes in columns.ts and what a key means in keymap.ts.
 export function ScopeGateScreen(props: ScopeGateScreenProps): React.ReactElement {
   // Checked here, not in the hook, so an empty list never builds a graph or binds the keys.
-  if (props.components.length === 0) {
-    return (
-      <Box paddingX={2} paddingY={1}>
-        <Text color={PALETTE.error}>Error: no components found for this session — please re-run analyze extract.</Text>
-      </Box>
-    );
-  }
+  if (props.components.length === 0) return <NoComponents />;
   return <ScopeGateView {...props} />;
+}
+
+function NoComponents(): React.ReactElement {
+  useEffect(() => {
+    startDebugRun({
+      flow: 'import/scope-gate',
+      step: '07-scope-gate',
+      menuOption: 'Scope gate',
+      inputs: scopeGateLogInputs([], 0),
+    });
+    void finishDebugRun({
+      outputs: { outcome: 'nothing to decide', error: 'No components were found for this session.' },
+      status: 'error',
+      exitMethod: 'discarded',
+    });
+  }, []);
+  return (
+    <Box paddingX={2} paddingY={1}>
+      <Text color={PALETTE.error}>Error: no components found for this session — please re-run analyze extract.</Text>
+    </Box>
+  );
 }
 
 function ScopeGateView({ components, tokensPath, onConfirm, onQuit }: ScopeGateScreenProps): React.ReactElement {
@@ -82,12 +99,32 @@ function ScopeGateView({ components, tokensPath, onConfirm, onQuit }: ScopeGateS
     return loaded?.ok ? loaded.rows : [];
   }, [tokensPath]);
   const longest = useMemo(() => longestEntries(tokens), [tokens]);
+
+  useEffect(() => {
+    startDebugRun({
+      flow: 'import/scope-gate',
+      step: '07-scope-gate',
+      menuOption: 'Scope gate',
+      inputs: scopeGateLogInputs(components, tokens.length),
+    });
+  }, []);
+
   const gate = useScopeGate({
     components,
     tokenCount: tokens.length,
     tokensWidth: longest.path + longest.value + 10,
-    onConfirm,
-    onQuit,
+    onConfirm: (decisions) => {
+      void finishDebugRun({
+        outputs: scopeGateLogOutputs(components, decisions),
+        status: 'success',
+        exitMethod: 'saved',
+      });
+      onConfirm(decisions);
+    },
+    onQuit: () => {
+      void finishDebugRun({ outputs: { outcome: 'quit' }, status: 'success', exitMethod: 'discarded' });
+      onQuit();
+    },
   });
   const { search, graph, columnPlan, panelLayout, counters } = gate;
 
