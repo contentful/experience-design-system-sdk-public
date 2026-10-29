@@ -1,6 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { PALETTE } from '@tui/theme.js';
+import { startDebugRun, finishDebugRun } from '@tui/debug-store.js';
 import { ControlHints } from '@tui/shared/components/ControlHints.js';
 import { StepHeader } from '@tui/shared/components/StepHeader.js';
 import { useTerminalWidth } from '@tui/use-terminal-width.js';
@@ -23,13 +24,35 @@ export function TokenReviewScreen({ tokensPath, onContinue, onQuit }: TokenRevie
   const columns = useTerminalWidth();
   const [selected, setSelected] = useState(0);
 
+  // This screen only appears when the import generates tokens. A file that could not be read is logged as an error.
+  useEffect(() => {
+    startDebugRun({
+      flow: 'import/token-review',
+      step: '05-token-review',
+      menuOption: 'Token review',
+      inputs: { import_mode: 'tokens', tokens_path: tokensPath },
+    });
+  }, []);
+
+  const finish = (outcome: 'continued' | 'back'): void => {
+    void finishDebugRun({
+      outputs: { outcome, ...(loaded.ok ? { tokens: rows.length } : { load_error: loaded.message }) },
+      status: loaded.ok ? 'success' : 'error',
+      exitMethod: outcome === 'continued' ? 'saved' : 'discarded',
+    });
+  };
+
   const move = (to: number): void => setSelected(Math.max(0, Math.min(to, rows.length - 1)));
   const { start, end } = computeColumnWindow(rows.length, selected, VISIBLE_ROWS);
 
   useInput((_input, key) => {
-    if (key.return) onContinue();
-    else if (key.escape) onQuit();
-    else if (key.upArrow) move(selected - 1);
+    if (key.return) {
+      finish('continued');
+      onContinue();
+    } else if (key.escape) {
+      finish('back');
+      onQuit();
+    } else if (key.upArrow) move(selected - 1);
     else if (key.downArrow) move(selected + 1);
     else if (key.pageUp) move(selected - VISIBLE_ROWS);
     else if (key.pageDown) move(selected + VISIBLE_ROWS);

@@ -1,9 +1,65 @@
 import { parseAgentModel, resolveAgent, resolveModel } from '@contentful/experience-design-system-backend-pipeline';
 import type { ExtractAndComposeProgress } from '@contentful/experience-design-system-backend-pipeline';
-import type { ExtractionProgress } from './types.js';
+import { scrubError } from '@tui/shared/debug-trail.js';
+import type { ExtractionInput, ExtractionProgress, ExtractionResult } from './types.js';
 
 /** Structured progress events emitted by the orchestrator (extraction + composition). */
 export type ProgressEvent = ExtractAndComposeProgress;
+
+/**
+ * What the debug log says the stage started with. The credentials come with the input, so the CMA token is only ever put
+ * under `cma_token`, which the logger reduces to "present, N chars" (or "not set" when the credentials were skipped).
+ */
+export function extractionLogInputs(input: ExtractionInput): Record<string, unknown> {
+  const { credentials } = input;
+  return {
+    project_path: input.projectPath,
+    out_dir: input.outDir ?? '',
+    files_to_scan: input.filePaths.length,
+    raw_tokens_path: input.rawTokensPath,
+    agent: input.agent,
+    agent_model: input.agentModel ?? '',
+    prompt_overrides: input.promptOverrides,
+    cache: !input.noCache,
+    has_credentials: credentials !== null,
+    space_id: credentials?.spaceId ?? '',
+    environment_id: credentials?.environmentId ?? '',
+    host: credentials?.host ?? '',
+    cma_token: credentials?.cmaToken ?? '',
+  };
+}
+
+/**
+ * How the stage ended. A failure names the step that failed and its message, scrubbed of the CMA token; the last progress
+ * says which of the parallel jobs had finished, failed or was still running.
+ */
+export function extractionLogOutputs(
+  result: ExtractionResult,
+  progress: ExtractionProgress | undefined,
+  cmaToken: string,
+): { outputs: Record<string, unknown>; status: 'success' | 'error' } {
+  const last = progress ? { final_progress: progress } : {};
+  if (!result.ok) {
+    return {
+      outputs: { result: 'failed', failed_step: result.step, error: scrubError(result.message, [cmaToken]), ...last },
+      status: 'error',
+    };
+  }
+  const { extraction } = result;
+  return {
+    outputs: {
+      result: 'done',
+      session_id: extraction.sessionId,
+      out_dir: extraction.outDir,
+      tokens_path: extraction.tokensPath,
+      token_count: extraction.tokenCount,
+      existing_entities_status: extraction.existingEntitiesStatus,
+      composition_phase: extraction.compositionPhase,
+      ...last,
+    },
+    status: 'success',
+  };
+}
 
 /**
  * Every job the stage will run starts on the first frame, so no row appears later as a surprise. A job that does not
