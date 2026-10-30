@@ -1,5 +1,5 @@
 import { AGENT_NAMES, type AgentName } from '@contentful/experience-design-system-backend-pipeline';
-import type { Snapshot } from '../../shared/debug-trail.js';
+import type { Snapshot } from '@tui/shared/debug-trail.js';
 import { inspectAgent, type AgentCheck } from './agent-status.js';
 import type { AgentConfig } from './agent-store.js';
 
