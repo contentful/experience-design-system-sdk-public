@@ -8,44 +8,39 @@ Your codebase remains the single source of truth. The CLI analyzes your source f
 
 ## Prerequisites
 
-- **Node.js 24**
-- **pnpm 10.27.0+**
-- **A coding agent** in `$PATH` — Claude Code, Codex, OpenCode, Cursor, or GitHub Copilot
-- **A Contentful CMA token** — set `CONTENTFUL_MANAGEMENT_TOKEN`
+- **Node.js 24 or later.** Node.js is the program that runs this tool. To see whether you already have it, open a terminal and type `node -v`. If you see an error, or a number lower than 24, download the "LTS" version from [nodejs.org](https://nodejs.org/en/download) and install it. That installer also gives you `npm`, which you will use in the next section.
+- **A coding agent.** The tool uses an AI coding agent to help describe your components. Install one of these: Claude Code, Codex, OpenCode, Cursor, or GitHub Copilot. Then sign in to it, and make sure you can start it by typing its command in your terminal.
+- **Your Contentful space ID, environment ID, and a CMA token.** The space ID identifies the Contentful space you are importing into. The environment ID identifies which environment inside that space to use, and most spaces use `master`. A CMA token is a secret key that lets this tool make changes in that space, and you can create one in Contentful under **Settings → CMA tokens**. The tool asks you for all three while it runs. If your space is hosted in the EU, enter `api.eu.contentful.com` when it asks for the API host.
 
 ## Quick Start
 
 ### Install
 
 ```bash
-git clone https://github.com/contentful/experience-design-system-sdk-public.git
-cd experience-design-system-sdk-public
-pnpm install
-pnpm build
-pnpm -F @contentful/experience-design-system-cli build
+npm install -g @contentful/experience-design-system-cli
 ```
 
-The final step builds the CLI package and symlinks the `experiences`, `exo`, and `experience-design-system-cli` commands alongside your `node` binary so they're available on your `$PATH`.
+To confirm that the install worked, type `experiences --version`. It should print a version number.
 
-The package publishes three binaries — `experiences`, `exo`, and `experience-design-system-cli`. The docs below use `experiences` since that is the wizard-oriented entry point.
+The install adds three commands to your terminal: `experiences`, `exo`, and `experience-design-system-cli`. All three do the same thing. The rest of this guide uses `experiences`.
 
-### Setup
-
-```bash
-experiences setup
-```
-
-The interactive setup wizard installs Node 24 (if needed), verifies pnpm, checks for a coding agent, and persists credentials + agent preferences to `~/.contentful/experience-design-system-cli/config.json`. Later commands read those values automatically.
+If you are a developer and want to build the tool from its source code instead, follow the steps in the [contributing guide](https://github.com/contentful/experience-design-system-sdk-public/blob/development/CONTRIBUTING.md).
 
 ### Run
 
-The primary entry point is the import wizard:
+First, move your terminal into the folder that contains your design system. In the terminal, type `cd` followed by a space, then drag that folder from your file manager (Finder on a Mac) into the terminal window so its path fills in, and press Enter. You can also type the path yourself, for example:
+
+```bash
+cd ~/Documents/my-design-system
+```
+
+Then start the import by typing:
 
 ```bash
 experiences import
 ```
 
-In an interactive terminal this launches a full-screen TUI that walks you through the project path, an optional token file, credentials, extraction and AI selection, a manual scope review, generation, final review, and push. Credentials are pre-filled from `experiences setup`.
+This opens a full-screen guided wizard, so make your terminal window as large as you can before you run it. The wizard walks you through these steps in order: choosing your project folder, adding an optional file of design tokens, entering your Contentful details, reading your components, choosing which components to import, generating the component definitions, reviewing them, and finally sending them to Contentful.
 
 ## How it works
 
