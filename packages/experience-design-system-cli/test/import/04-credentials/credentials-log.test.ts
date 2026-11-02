@@ -21,7 +21,7 @@ describe('the Credentials debug log', () => {
 
   afterEach(async () => {
     // each fresh copy of the store registers its own crash handlers on the process
-    for (const event of ['uncaughtException', 'unhandledRejection', 'SIGINT'] as const)
+    for (const event of ['uncaughtException', 'unhandledRejection', 'SIGINT', 'SIGTERM', 'SIGHUP'] as const)
       process.removeAllListeners(event);
     delete process.env['EDS_HOME'];
     await rm(home, { recursive: true, force: true });

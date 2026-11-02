@@ -1,32 +1,61 @@
 import { useEffect, useRef } from 'react';
-import { startDebugRun, finishDebugRun } from '@tui/debug-store.js';
-import { flowStepInputs, flowStepOutputs, flowStepRun } from './flow-log.js';
+import { startDebugRun, finishDebugRun, setDebugRunProgress } from '@tui/debug-store.js';
+import {
+  FLOW_RUN,
+  advance,
+  flowContext,
+  flowFinish,
+  flowProgress,
+  isFlowFinished,
+  openTrail,
+  type FlowTrail,
+} from './flow-log.js';
 import type { FlowState } from './types.js';
 
-function end(from: FlowState, to: FlowState | undefined): void {
-  void finishDebugRun(flowStepOutputs(from, to));
-}
-
 /**
- * Writes a debug log for every step of the flow. When the step changes it finishes the log of the step that ended, with
- * where it went next, and starts the next one; leaving the import finishes whichever step was open. One hook covers every
- * screen after the review, so none of them has to log for itself.
+ * Writes one debug log for the flow after the review. The trail grows in memory as the step changes; the log is written
+ * when the flow reaches done or an error, or when the import is left. The trail is also handed to the logger as it grows,
+ * so a crash or Ctrl+C writes what happened so far. The final review is not part of it: it is its own step.
  */
 export function useFlowLog(state: FlowState): void {
-  // The state the open step started in. It is what the step's log is described from when it ends.
-  const open = useRef<FlowState | undefined>(undefined);
+  // The run that is open, if any, and the state before this one.
+  const trail = useRef<FlowTrail | undefined>(undefined);
+  const previous = useRef<FlowState | undefined>(undefined);
 
   useEffect(() => {
-    if (open.current?.step === state.step) return;
-    if (open.current) end(open.current, state);
-    startDebugRun({ ...flowStepRun(state.step), inputs: flowStepInputs(state) });
-    open.current = state;
+    const before = previous.current;
+    previous.current = state;
+    const moved = before !== undefined && before.step !== state.step;
+    const now = Date.now();
+
+    let open = trail.current;
+    if (!open) {
+      // A run starts when the flow leaves the review, and not again for updates inside a step that already ended it.
+      if (state.step === 'final-review' || (before && !moved)) return;
+      // Only the steps that do work add to the trail, and those always happen inside a run, so the step before the first
+      // one has nothing to record.
+      open = openTrail(state, now);
+      startDebugRun({ ...FLOW_RUN, inputs: flowContext(state) });
+    } else if (before && moved) {
+      open = advance(open, before, state, now);
+    } else {
+      return;
+    }
+
+    if (isFlowFinished(state.step)) {
+      trail.current = undefined;
+      void finishDebugRun(flowFinish(open, state, now));
+      return;
+    }
+    trail.current = open;
+    setDebugRunProgress(flowProgress(open, now));
   }, [state]);
 
   useEffect(
     () => () => {
-      if (open.current) end(open.current, undefined);
-      open.current = undefined;
+      const open = trail.current;
+      trail.current = undefined;
+      if (open) void finishDebugRun(flowFinish(open, undefined, Date.now()));
     },
     [],
   );

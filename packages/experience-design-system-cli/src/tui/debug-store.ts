@@ -13,6 +13,8 @@ type PendingRun = {
   menuOption: string;
   inputs: Record<string, unknown>;
   startedAt: number;
+  // What a long run has found so far. A crash or Ctrl+C writes this instead of an empty log.
+  progress?: Record<string, unknown>;
 };
 
 type Status = 'success' | 'error';
@@ -193,6 +195,11 @@ export function startDebugRun({
   });
 }
 
+/** Keeps what the open run has so far, in memory. It is only written if the run is cut short. */
+export function setDebugRunProgress(outputs: Record<string, unknown>): void {
+  if (pendingRun) pendingRun.progress = outputs;
+}
+
 export async function finishDebugRun({
   outputs,
   status,
@@ -306,7 +313,7 @@ ${JSON.stringify(finish.outputs, null, 2)}
 }
 
 function handleCrash(): Promise<void> {
-  return finishDebugRun({ outputs: {}, status: 'error', exitMethod: 'crashed' });
+  return finishDebugRun({ outputs: pendingRun?.progress ?? {}, status: 'error', exitMethod: 'crashed' });
 }
 
 process.once('uncaughtException', (err) => {
@@ -321,8 +328,15 @@ process.once('unhandledRejection', (reason) => {
   });
 });
 
-process.once('SIGINT', () => {
-  void handleCrash().finally(() => {
-    process.exit(130);
+// Ctrl+C, `kill` and closing the terminal window. Only a hard kill (SIGKILL) cannot be caught.
+for (const [signal, exitCode] of [
+  ['SIGINT', 130],
+  ['SIGTERM', 143],
+  ['SIGHUP', 129],
+] as const) {
+  process.once(signal, () => {
+    void handleCrash().finally(() => {
+      process.exit(exitCode);
+    });
   });
-});
+}

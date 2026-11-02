@@ -37,11 +37,33 @@ describe('the debug store', () => {
 
   afterEach(async () => {
     // each fresh copy of the store registers its own crash handlers on the process
-    for (const event of ['uncaughtException', 'unhandledRejection', 'SIGINT'] as const)
+    for (const event of ['uncaughtException', 'unhandledRejection', 'SIGINT', 'SIGTERM', 'SIGHUP'] as const)
       process.removeAllListeners(event);
     delete process.env['EDS_HOME'];
     await rm(home, { recursive: true, force: true });
     await rm(base, { recursive: true, force: true });
+  });
+
+  // A long run keeps what it has found in memory. If the process is told to stop (Ctrl+C, `kill`, the terminal closing)
+  // that is what gets written, and not an empty log.
+  it('writes the progress so far when the process is told to stop mid-run', async () => {
+    const store = await load({ contentfulBaseDir: base });
+    await vi.waitFor(() => expect(store.currentDebugSessionDir()).toBeDefined());
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
+
+    store.startDebugRun({ flow: 'import/publish', step: '10-publish', menuOption: 'Publish', inputs: {} });
+    store.setDebugRunProgress({ outcome: 'interrupted at Push', stages: ['Preview: ok (3s)'] });
+    process.emit('SIGTERM');
+    await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(143));
+    exit.mockRestore();
+
+    const [file] = await logFiles(join(base, '.contentful'));
+    // The folder carries the step number, so the steps sort in the order they run.
+    expect(file).toMatch(/debug\/import\/10-publish\//);
+    const text = await readFile(join(base, '.contentful', file!), 'utf8');
+    expect(text).toContain('interrupted at Push');
+    expect(text).toContain('Preview: ok (3s)');
+    expect(text).toContain('crashed');
   });
 
   it('starts a numbered session in the configured base directory at boot and logs there', async () => {
