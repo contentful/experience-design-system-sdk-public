@@ -14,8 +14,8 @@ import type { FlowState } from './types.js';
 
 /**
  * Writes one debug log for the flow after the review. The trail grows in memory as the step changes; the log is written
- * when the flow reaches done or an error, or when the import is left. The trail is also handed to the logger as it grows,
- * so a crash or Ctrl+C writes what happened so far. The final review is not part of it: it is its own step.
+ * when the flow reaches done or an error, goes back to the review, or when the import is left. The trail is also handed to
+ * the logger as it grows, so a crash or Ctrl+C writes what happened so far. The review is its own step with its own log.
  */
 export function useFlowLog(state: FlowState): void {
   // The run that is open, if any, and the state before this one.

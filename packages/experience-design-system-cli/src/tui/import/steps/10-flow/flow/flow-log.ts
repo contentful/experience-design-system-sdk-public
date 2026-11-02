@@ -29,7 +29,8 @@ const LABELS: Record<FlowStep, string> = {
 // The steps that do work. These are timed and listed; the others only wait for the user.
 const WORK: readonly FlowStep[] = ['printing', 'previewing', 'pushing'];
 
-const FINISHED: readonly FlowStep[] = ['done', 'error', 'preview-validation-error'];
+// Going back to the review ends the run too, so the review's log and this one are never open at the same time.
+const FINISHED: readonly FlowStep[] = ['done', 'error', 'preview-validation-error', 'final-review'];
 
 // A long list of failures must not make the log grow without bound.
 const MAX_LOGGED = 10;
@@ -43,8 +44,6 @@ export type FlowTrail = {
   /** The step the flow is in now. */
   at: FlowStep;
   stages: string[];
-  /** How many times the user went back from the preview to edit the definitions. */
-  edits: number;
   preview?: Record<string, unknown>;
   push?: Record<string, unknown>;
   pushFailed?: boolean;
@@ -133,7 +132,7 @@ function arrive(trail: FlowTrail, state: FlowState): FlowTrail {
 
 /** Starts the trail at the state the run began in. */
 export function openTrail(state: FlowState, now: number): FlowTrail {
-  return arrive({ startedAt: now, stageStartedAt: now, at: state.step, stages: [], edits: 0 }, state);
+  return arrive({ startedAt: now, stageStartedAt: now, at: state.step, stages: [] }, state);
 }
 
 /** Adds what happened when the flow moved from one step to the next. */
@@ -153,7 +152,6 @@ export function advance(trail: FlowTrail, from: FlowState, to: FlowState, now: n
     next.pushFailed = pushHasFailures(to.pushResult);
   }
   if (from.step === 'printing' && !failed) next.saved = { path: to.componentsPath, run_id: to.lastRunId };
-  if (from.step === 'preview-gate' && to.step === 'final-review') next.edits += 1;
   return arrive(next, to);
 }
 
@@ -165,7 +163,6 @@ function render(trail: FlowTrail, now: number, outcome: string): Record<string, 
     total_seconds: seconds(now - trail.startedAt),
     stages: trail.stages,
     ...(trail.preview ? { preview: trail.preview } : {}),
-    ...(trail.edits > 0 ? { edited_definitions_after_preview: trail.edits } : {}),
     ...(trail.push ? { push: trail.push } : {}),
     ...(trail.saved ? { saved: trail.saved } : {}),
     ...(trail.failure ? { error: trail.failure } : {}),
@@ -191,6 +188,14 @@ export function flowFinish(
     const midWork = WORK.includes(trail.at);
     const outcome = `left the import ${midWork ? 'while' : 'at'} ${LABELS[trail.at]}${midWork ? ' was running' : ''}`;
     return { outputs: render(trail, now, outcome), status: midWork ? 'error' : 'success', exitMethod: 'discarded' };
+  }
+
+  if (final.step === 'final-review') {
+    return {
+      outputs: render(trail, now, 'went back to edit the definitions'),
+      status: 'success',
+      exitMethod: 'discarded',
+    };
   }
 
   let outcome: string;
