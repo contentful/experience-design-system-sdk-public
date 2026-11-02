@@ -209,7 +209,7 @@ export async function finishDebugRun({
 
   const durationMs = Date.now() - run.startedAt;
   const log: FinishedLog = {
-    flow: run.flow,
+    flow: logFolder(run.flow, run.step),
     menuOption: run.menuOption,
     content: renderMarkdown(run, { outputs: redact(outputs), status, exitMethod, durationMs }),
   };
@@ -224,6 +224,12 @@ export async function finishDebugRun({
 }
 
 type FinishedLog = { flow: string; menuOption: string; content: string };
+
+// Import steps are numbered ("04-credentials"), so their folders carry the number and a file browser lists them in the
+// order the steps run. Other flows keep the folder named after the flow.
+function logFolder(flow: string, step: string): string {
+  return flow.startsWith('import/') && /^\d+-/.test(step) ? `import/${step}` : flow;
+}
 
 // The first import steps finish before the project, and so the session folder, is known. Their logs wait here and are
 // written, in order and once, when the folder is created. The limit keeps a long session with no folder from growing.
