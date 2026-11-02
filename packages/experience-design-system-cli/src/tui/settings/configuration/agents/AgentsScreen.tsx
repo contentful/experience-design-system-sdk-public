@@ -255,7 +255,7 @@ export function AgentsScreen({ onDone }: { onDone: () => void }): React.ReactEle
         hints={[
           { keys: '↑/↓', label: 'move' },
           { keys: '⏎', label: 'make default' },
-          { keys: '→', label: 'settings and test' },
+          { keys: '→', label: 'settings' },
           { keys: 'Esc/q', label: 'back' },
         ]}
       />
