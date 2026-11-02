@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { buildPrompt, createLocalCliAgentInvoker, parseToolCalls, type ToolCall } from '../../../../agents/index.js';
 import type { RawComponentDefinition } from '../../../extraction/src/types/component.js';
 import type { CDFComponentEntry, CDFPropertyDefinition, CDFSlotDefinition } from '../../../shared/index.js';
+import { repairTokenKinds } from '../helpers/token-kinds/repair-token-kinds.js';
 import type {
   CdfGenerationFailure,
   RunCdfGenerationServiceOptions,
@@ -69,6 +70,15 @@ async function generateOne(
 
   onProgress?.(component.name, index, total);
 
+  // A token property the agent left without a kind is repaired on the way out, for a cached definition as much as a new
+  // one. The cache keeps what the agent said, since the token file it is repaired from can change between runs.
+  const repair = (found: CDFComponentEntry): { entry: CDFComponentEntry; notes: string[] } => {
+    const notes: string[] = [];
+    const entry = repairTokenKinds(found, component.name, options.tokens, (note) => notes.push(note));
+    for (const note of notes) onWarning?.(note);
+    return { entry, notes };
+  };
+
   const inputHash = hashString(JSON.stringify(component));
 
   const prompt = await buildPrompt({
@@ -84,7 +94,10 @@ async function generateOne(
   const promptHash = hashString(prompt);
 
   const cached = onCacheLookup?.(inputHash, promptHash);
-  if (cached) return { entry: cached, warnings: [] };
+  if (cached) {
+    const { entry, notes } = repair(cached);
+    return { entry, warnings: notes };
+  }
 
   const invoker = createLocalCliAgentInvoker();
   let agentResult;
@@ -107,10 +120,11 @@ async function generateOne(
   const { calls, warnings } = parseToolCalls(agentResult.stdout);
   for (const w of warnings) onWarning?.(`${component.name}: ${w}`);
 
-  const entry = toolCallsToEntry(component, calls);
-  onCacheStore?.(inputHash, promptHash, entry);
+  const found = toolCallsToEntry(component, calls);
+  onCacheStore?.(inputHash, promptHash, found);
 
-  return { entry, warnings };
+  const { entry, notes } = repair(found);
+  return { entry, warnings: [...warnings, ...notes] };
 }
 
 export async function runCdfGenerationService(

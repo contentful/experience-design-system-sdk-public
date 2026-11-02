@@ -51,9 +51,12 @@ export const cdfJsonSchema = {
         $required: { type: 'boolean' },
         $default: {},
         $values: { type: 'array', items: { type: 'string' } },
-        '$token.kind': { type: 'string' },
+        '$token.kind': { type: 'string', minLength: 1 },
         '$token.allowed': { type: 'array', items: { type: 'string' } },
       },
+      // The API rejects a token property that does not say which kind of token it takes.
+      if: { type: 'object', properties: { $type: { const: 'token' } }, required: ['$type'] },
+      then: { type: 'object', required: ['$token.kind'] },
       additionalProperties: false,
     },
     slot: {

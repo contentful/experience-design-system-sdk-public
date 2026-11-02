@@ -23,6 +23,10 @@ import type { FlowPatch, FlowState } from './types.js';
 /** How long the confirmation of a written file stays up before the flow moves on to the preview. */
 const SAVE_CONFIRMATION_DELAY_MS = 1000;
 
+/** "/Button/$properties/color" becomes "Button.color", so an error says which component and property it is about. */
+const describeCdfError = (error: { path: string; message: string }): string =>
+  `${error.path.replace(/^\//, '').replace('/$properties/', '.').replaceAll('/', '.')}: ${error.message}`;
+
 /** The document written to `components.json`: the components and tokens as one schema-valid CDF. */
 function buildSavedCDF(
   components: Array<{ key: string; entry: CDFComponentEntry }>,
@@ -33,7 +37,9 @@ function buildSavedCDF(
   if (!cdf) throw new Error('nothing to save — no components or tokens resolved');
   const validation = validateCDF(cdf);
   if (!validation.valid) {
-    throw new Error(`generated CDF failed validation: ${validation.errors.map((error) => error.message).join(', ')}`);
+    // Ajv adds a second, vaguer error for a failed if/then rule; the first one already says what is wrong.
+    const errors = validation.errors.filter((error) => error.message !== 'must match "then" schema');
+    throw new Error(`generated CDF failed validation: ${errors.map(describeCdfError).join('; ')}`);
   }
   return cdf;
 }

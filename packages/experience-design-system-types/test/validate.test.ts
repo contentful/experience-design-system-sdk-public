@@ -50,6 +50,24 @@ describe('validateCDF', () => {
     expect(result.tokens).toHaveLength(1);
   });
 
+  // The API rejects a token property with no kind, so it must not get as far as the push: a definition that has one
+  // without a kind is invalid, and the error says which property it is.
+  it('rejects a token property without a $token.kind and says which property', () => {
+    const document = (prop: Record<string, unknown>) => ({
+      $schema: CDF_SCHEMA_URL,
+      Button: { $type: 'component', $properties: { color: prop } },
+    });
+
+    const missing = validateCDF(document({ $type: 'token', $category: 'design' }));
+    const empty = validateCDF(document({ $type: 'token', $category: 'design', '$token.kind': '' }));
+    const named = validateCDF(document({ $type: 'token', $category: 'design', '$token.kind': 'color' }));
+
+    expect(missing.valid).toBe(false);
+    expect(missing.errors.some((error) => error.path === '/Button/$properties/color')).toBe(true);
+    expect(empty.valid).toBe(false);
+    expect(named.valid).toBe(true);
+  });
+
   it('rejects a file without $schema', () => {
     const result = validateCDF({
       Button: { $type: 'component', $properties: {} },
