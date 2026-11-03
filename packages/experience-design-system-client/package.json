@@ -31,7 +31,7 @@
     "lint:fix": "nx lint:fix experience-design-system-client"
   },
   "dependencies": {
-    "@hey-api/client-fetch": "^0.9.0"
+    "@hey-api/client-fetch": "^0.13.1"
   },
   "devDependencies": {
     "@hey-api/openapi-ts": "^0.80.1",
