@@ -80,3 +80,10 @@ use the same projection. Ordinary component composition cycles remain refused.
 
 This admission preserves source definitions and reconstruction requirements; it
 does not establish publication readiness, editor behavior or rendering support.
+
+## Import-validity requirement — 2026-11-03
+
+[Complete CDF validity includes importability](cdf-import-validity.md). Shared
+physical validation and generation feedback still need alignment to enforce that
+requirement for every emitted native/model choice. Candidate derivation and
+retained source graphs must continue preserving shapes beyond native capabilities.
