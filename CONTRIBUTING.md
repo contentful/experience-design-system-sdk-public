@@ -205,6 +205,12 @@ The `release` job depends on `lint`, `test` and `quality`. Nx affected detection
 
 Releases follow [Conventional Commits](https://www.conventionalcommits.org/): `fix` → patch, `feat` → minor, `feat!` or `BREAKING CHANGE` → major.
 
+### Docs alignment
+
+A third workflow, `.github/workflows/docs-alignment.yml`, runs `scripts/docs-alignment/check.py` on PRs to `main` or `development`. It reads facts from the code (commands and options, supported agents and frameworks, import stages, the home menu, log retention, the Node version) and reports where the docs in this repo, and the public Contentful docs when `DOCS_REPO_TOKEN` is set, disagree. It also warns when a PR changes code that usually needs a doc update and changes no doc. Drift is a warning today; set the repository variable `DOCS_ALIGNMENT_STRICT` to `true` to make it fail the job.
+
+Run it locally with `pnpm docs:check` (needs Python 3). The `docs-alignment` skill in `.claude/skills/` describes how to update both sets of docs. The design is in `docs/decisions/0002-docs-alignment-check.md`.
+
 ## Release Process
 
 Releases are fully automated via `scripts/release.js` (invoked as `pnpm release` from the `release` job in CI). The script branches on which ref triggered it:
