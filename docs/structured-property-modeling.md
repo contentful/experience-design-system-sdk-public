@@ -63,3 +63,20 @@ Validated exploration reports are retained inside the signed representation plan
 Explicit debug resume from generation upgrades complete saved definitions that lack model exploration by running only those model passes, using their saved owner context. It preserves already explored models and other completed components. Rendering reconstruction, including intrinsic fixed fields, remains deferred; this pass does not implement the integration service or the rendering SDK.
 
 Verification scope for this change uses package builds, typechecks and lint; no tests or live agent evaluations are run under the current execution constraint.
+
+## Definition imports and composition cycles
+
+Source-owned model slot allowlists describe permitted data shapes; they do not
+instantiate a component tree. Complete recursive model families can therefore
+be sent through the definition-import boundary while reconstruction remains a
+separate runtime capability.
+
+The shared `componentCompositionDefinitions` projection removes model-bound
+slots from ordinary composition-cycle checks only after the selected families
+and every definition pass exact admission validation. Missing owners, modified
+models, unowned bindings and unsupported definitions retain their edges and
+cannot bypass the ordinary cycle guard. Review, finalization and backend apply
+use the same projection. Ordinary component composition cycles remain refused.
+
+This admission preserves source definitions and reconstruction requirements; it
+does not establish publication readiness, editor behavior or rendering support.

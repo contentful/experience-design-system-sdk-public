@@ -15,6 +15,7 @@ const DEFINITION_CAPABILITIES = new Set([
   'component-model-mapper',
   'singleton-slot-cardinality',
   'ordered-slot-cardinality',
+  'cyclic-model-dependencies',
 ]);
 const DEFERRED_RUNTIME_CAPABILITIES = new Set([
   'source-reconstruction',
@@ -154,4 +155,25 @@ export function componentModelFamilyIssues(
           message: 'Model slot has no exact source-plan owner',
         });
   return issues;
+}
+
+/** Data-model relationships do not instantiate a composition tree. Keep ordinary edges intact. */
+export function componentCompositionDefinitions<T extends { key: string; entry: CDFComponentEntry }>(
+  components: readonly T[],
+): T[] {
+  if (
+    !components.some(({ entry }) => Object.values(entry.$slots ?? {}).some((slot) => slot.$modelBinding)) ||
+    componentModelFamilyIssues(components).length ||
+    components.some(({ entry }) => componentDefinitionImportIssues(entry).length)
+  )
+    return [...components];
+  return components.map((component) => ({
+    ...component,
+    entry: {
+      ...component.entry,
+      $slots: Object.fromEntries(
+        Object.entries(component.entry.$slots ?? {}).filter(([, slot]) => !slot.$modelBinding),
+      ),
+    },
+  }));
 }

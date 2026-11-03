@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ImportHandoff } from '@contentful/experience-design-system-types/handoff';
+import { createRecursiveModelFamily } from '../../../../experience-design-system-backend-pipeline/test/support/recursive-model-family.js';
 
 const steps = vi.hoisted(() => ({
   runPreview: vi.fn(),
@@ -115,6 +116,14 @@ describe('the flow controller', () => {
   });
 
   describe('clearing the terminal between steps', () => {
+    it('finalizes a complete recursive data-model family without deleting its source relationships', () => {
+      const { components } = createRecursiveModelFamily();
+      loadAcceptedComponents.mockReturnValue(components);
+      const controller = createFlowController(start(), deps());
+      controller.finalize(components.length, 0, 0);
+      expect(controller.getState().step).toBe('path-prompt');
+      expect(rejectComponentsByName).not.toHaveBeenCalled();
+    });
     it('does so before listeners hear about the new step, so the clear cannot wipe what they draw', () => {
       const order: string[] = [];
       beforeStepChange.mockImplementation(() => order.push('clear'));

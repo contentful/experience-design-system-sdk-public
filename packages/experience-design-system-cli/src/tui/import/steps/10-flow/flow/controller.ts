@@ -13,7 +13,7 @@ import {
   type PreviewValidationError,
 } from '@contentful/experience-design-system-backend-pipeline';
 import type { ImportHandoff } from '@contentful/experience-design-system-types/handoff';
-import { buildComponentGraph } from '../../07-scope-gate/graph/slot-graph.js';
+import { buildVisualComponentGraph } from '../../09-review/graph/cycle-view.js';
 import { findSlotCycles } from '../../07-scope-gate/graph/cycle-detection.js';
 import { resolveCycleGateAction } from '../support/wizard-state-transitions.js';
 import { realPreviewDeps, runPreview, type PreviewDeps } from './preview.js';
@@ -298,7 +298,7 @@ export function createFlowController(start: FlowStart, deps: FlowDeps): FlowCont
   const detectAcceptedCycles = (): ReturnType<typeof findSlotCycles> => {
     if (!state.extractSessionId) return [];
     const accepted = deps.loadAcceptedComponents(state.extractSessionId);
-    return findSlotCycles(buildComponentGraph(accepted as Parameters<typeof buildComponentGraph>[0]));
+    return findSlotCycles(buildVisualComponentGraph(accepted as Parameters<typeof buildVisualComponentGraph>[0]));
   };
 
   // Begins the flow where the generation stage left off: the review, or straight on to saving and pushing.

@@ -4,6 +4,7 @@ import {
   buildCDF,
   cloneJson,
   componentDefinitionImportIssues,
+  componentCompositionDefinitions,
   componentModelFamilyIssues,
   definitionImportCapabilityStatus,
   deriveEditableRepresentationPlans,
@@ -15,7 +16,7 @@ import {
   type PropertyModel,
 } from '../src/index.js';
 
-function family(kind?: 'tuple') {
+function family(kind?: 'tuple' | 'recursive') {
   const node = (id: string, keyPath: string[], kind: string) => ({
     id,
     keyPath,
@@ -95,6 +96,30 @@ function family(kind?: 'tuple') {
     ];
     model.defaultIntent = { action: 'absent' };
   }
+  if (kind === 'recursive') {
+    model.source.shape = null;
+    model.source.typeText = 'Node';
+    model.source.graph!.nodes = [
+      {
+        ...node('root', ['settings'], 'record'),
+        fields: [
+          { key: 'label', nodeId: 'label', required: true },
+          { key: 'branch', nodeId: 'branch', required: true },
+        ],
+      },
+      node('label', ['settings', 'label'], 'string'),
+      {
+        ...node('branch', ['settings', 'branch'], 'record'),
+        fields: [
+          { key: 'rank', nodeId: 'rank', required: true },
+          { key: 'parent', nodeId: 'parent', required: false },
+        ],
+      },
+      node('rank', ['settings', 'branch', 'rank'], 'number'),
+      { ...node('parent', ['settings', 'branch', 'parent'], 'reference'), required: false, alternatives: ['root'] },
+    ];
+    model.defaultIntent = { action: 'absent' };
+  }
   const plan = cloneJson(
     deriveEditableRepresentationPlans(model).find((candidate) => candidate.kind === 'component-model')!,
   );
@@ -106,6 +131,34 @@ function family(kind?: 'tuple') {
 }
 
 describe('definition import capability boundary', () => {
+  it('admits complete recursive model definitions while leaving rendering deferred', () => {
+    const { plan, components } = family('recursive');
+    expect(plan.sdkValid).toBe(true);
+    expect(plan.requirements).toContainEqual(expect.objectContaining({ capability: 'cyclic-model-dependencies' }));
+    expect(componentModelFamilyIssues(components)).toEqual([]);
+    expect(components.flatMap(({ entry }) => componentDefinitionImportIssues(entry))).toEqual([]);
+    expect(definitionImportCapabilityStatus('cyclic-model-dependencies')).toBe('supported');
+    expect(
+      componentCompositionDefinitions(components).flatMap(({ entry }) => Object.values(entry.$slots ?? {})),
+    ).toEqual([]);
+    expect(evaluateRepresentationReadiness(plan).ready).toBe(false);
+  });
+
+  it('retains ordinary composition edges and refuses to hide incomplete model families', () => {
+    const { components } = family('recursive');
+    const ordinary = {
+      key: 'Ordinary',
+      entry: {
+        $type: 'component' as const,
+        $properties: {},
+        $slots: { children: { $allowedComponents: ['Ordinary'] } },
+      },
+    };
+    expect(componentCompositionDefinitions([...components, ordinary]).at(-1)).toEqual(ordinary);
+    components.shift();
+    expect(componentCompositionDefinitions(components)).toEqual(components);
+  });
+
   it('imports source-owned tuple positions and rest as separate typed model slots', () => {
     const { plan, components } = family('tuple');
     expect(plan.sdkValid).toBe(true);

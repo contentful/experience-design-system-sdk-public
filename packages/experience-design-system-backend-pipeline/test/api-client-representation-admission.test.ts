@@ -1,6 +1,13 @@
+import { createRecursiveModelFamily } from './support/recursive-model-family.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildCDF, validateCDF, type CDFSlotDefinition } from '@contentful/experience-design-system-types';
+import {
+  buildCDF,
+  parseCDFComponents,
+  validateCDF,
+  type CDFSlotDefinition,
+} from '@contentful/experience-design-system-types';
 import { ApiClient } from '../src/steps/apply/src/helpers/api-client/api-client.js';
+import { detectSlotCycles } from '../src/steps/apply/src/controller/validation/detect-slot-cycles.js';
 
 const mockFetch = vi.fn();
 beforeEach(() => {
@@ -40,6 +47,16 @@ describe.each(['preview', 'apply'] as const)('%s representation admission', (pha
       ? client.previewImport(cdf)
       : client.applyImport(cdf, { acknowledgeBreakingChanges: false });
   };
+
+  it('sends a complete compiler-derived recursive model family without treating it as composition', async () => {
+    const { plan, cdf } = createRecursiveModelFamily();
+    expect(plan.sdkValid, JSON.stringify(plan.issues)).toBe(true);
+    expect(detectSlotCycles({ components: parseCDFComponents(cdf).components })).toEqual([]);
+    await send(cdf);
+    expect(mockFetch).toHaveBeenCalledOnce();
+    const request = mockFetch.mock.calls[0]![0] as Request;
+    expect(await request.json()).toEqual(phase === 'preview' ? cdf : { ...cdf, acknowledgeBreakingChanges: false });
+  });
 
   it.each(supportedCardinalities)('sends supported cardinality %j without changing the source', async (cardinality) => {
     const cdf = buildCDF(
