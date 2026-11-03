@@ -47,10 +47,9 @@ See `src/tui/settings/README.md` for implementation details.
 2. Astro
 3. Vue
 4. Svelte
-
-## Unsupported Frameworks
-
-5. Angular (coming soon)
+5. Stencil
+6. Web Components
+7. Angular
 
 ---
 
