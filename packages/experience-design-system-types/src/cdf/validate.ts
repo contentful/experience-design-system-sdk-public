@@ -91,8 +91,7 @@ function entryErrors(node: Record<string, unknown>, prefix: string): CDFValidati
           ? validateTokenEntry
           : undefined;
     if (!check) {
-      // Groups carry no `$type`, so one that names a type the schema does not know is a mistake. Left out, it would
-      // go unreported as soon as another entry fails, because those errors replace the schema's own.
+      // Groups carry no `$type`, so a node that names one the schema does not know is a mistake.
       if (type !== undefined) {
         errors.push({
           path: `${path}/$type`,
