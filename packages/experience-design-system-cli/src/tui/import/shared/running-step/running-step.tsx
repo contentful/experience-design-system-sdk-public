@@ -2,7 +2,7 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import { ProgressBar, Spinner, ThemeProvider } from '@inkjs/ui';
 import { PALETTE } from '@tui/theme.js';
-import { formatDuration, lineState, progressPercent, type RunningLine } from './logic.js';
+import { formatDuration, lineState, progressPercent, type LineState, type RunningLine } from './logic.js';
 import { PROGRESS_THEME } from './theme.js';
 import { StepHeader } from '@tui/shared/components/StepHeader.js';
 import type { ImportStepId } from '@tui/shared/components/StepHeader.js';
@@ -18,6 +18,10 @@ interface RunningStepProps {
 const STATE_ICON = { done: '✓', warning: '!', failed: '✗' } as const;
 const STATE_COLOR = { done: PALETTE.success, warning: PALETTE.warning, failed: PALETTE.error } as const;
 
+/** A row that ended badly, or is going badly, says so in its colour. Otherwise the text stays quiet. */
+const textColor = (state: LineState): string =>
+  state === 'warning' || state === 'failed' ? STATE_COLOR[state] : PALETTE.muted;
+
 function Line({ line }: { line: RunningLine }): React.ReactElement {
   if (line.progress) {
     return (
@@ -32,7 +36,7 @@ function Line({ line }: { line: RunningLine }): React.ReactElement {
             {line.progress.done}/{line.progress.total}
           </Text>
         </Box>
-        <Text color={PALETTE.muted}>{line.text}</Text>
+        <Text color={textColor(lineState(line))}>{line.text}</Text>
       </Box>
     );
   }
@@ -40,7 +44,7 @@ function Line({ line }: { line: RunningLine }): React.ReactElement {
   return (
     <Box gap={1}>
       {state === 'running' ? <Spinner /> : <Text color={STATE_COLOR[state]}>{STATE_ICON[state]}</Text>}
-      <Text color={state === 'warning' || state === 'failed' ? STATE_COLOR[state] : PALETTE.muted}>{line.text}</Text>
+      <Text color={textColor(state)}>{line.text}</Text>
       {line.ms !== undefined && <Text color={PALETTE.muted}>{formatDuration(line.ms)}</Text>}
     </Box>
   );

@@ -1,3 +1,4 @@
+import { withTimes, type RunningLine } from '../../shared/running-step/logic.js';
 import type { GenerationInput, GenerationProgress, GenerationResult } from './types.js';
 
 /** What the debug log says the stage started with. The counts are logged, not the lists of names. */
@@ -70,24 +71,45 @@ export function describeGeneration(input: { acceptedCount: number; agent: string
   );
 }
 
+/**
+ * The components row: a progress bar while they are being generated, then a summary once every one has been tried. A
+ * component that fails does not stop the run, which only fails at the end, so failures are shown as they happen.
+ */
+function componentsRow(components: GenerationProgress['components'], name: string): RunningLine {
+  if (!components) return { text: `Starting up ${name}...`, complete: false };
+  const { done, total, current, failed } = components;
+
+  if (total > 0 && done >= total) {
+    return failed > 0
+      ? {
+          text: `Generated ${total - failed} of ${total} components, ${failed} failed`,
+          complete: false,
+          state: 'failed',
+        }
+      : { text: `Generated ${total} component${total === 1 ? '' : 's'}`, complete: true };
+  }
+  return {
+    text: failed > 0 ? `${current} (${failed} failed so far)` : current,
+    complete: false,
+    progress: { done, total },
+    ...(failed > 0 ? { state: 'warning' as const } : {}),
+  };
+}
+
+/** `rowMs` is how long each finished row took, by position (see `trackFinished`). */
 export function progressRows(
   progress: GenerationProgress,
   agent: string,
-): Array<{ text: string; complete: boolean; progress?: { done: number; total: number } }> {
+  rowMs: ReadonlyArray<number | undefined> = [],
+): RunningLine[] {
   const name = capitalize(agent);
   const { components, mapTokens } = progress;
-  const rows: Array<{ text: string; complete: boolean; progress?: { done: number; total: number } }> = [
-    {
-      text: components ? components.current : `Starting up ${name}...`,
-      complete: false,
-      ...(components ? { progress: { done: components.done, total: components.total } } : {}),
-    },
-  ];
+  const rows: RunningLine[] = [componentsRow(components, name)];
   if (mapTokens !== 'idle') {
     rows.push({
       text: mapTokens === 'running' ? `Mapping token restrictions via ${name}...` : 'Token restrictions ready',
       complete: mapTokens === 'complete',
     });
   }
-  return rows;
+  return withTimes(rows, rowMs);
 }

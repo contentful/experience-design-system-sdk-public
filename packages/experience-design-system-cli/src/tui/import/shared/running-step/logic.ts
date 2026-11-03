@@ -25,6 +25,24 @@ export function formatDuration(ms: number): string {
   return ms < 1000 ? '<1s' : formatElapsed(Math.round(ms / 1000));
 }
 
+/**
+ * How long each row took, by position, for the rows that have finished. A row's time is how long the run had been going
+ * when it was first seen finished, and it does not change after that. Rows keep their position for the whole run, so a row
+ * that appears later is added at the end.
+ */
+export function trackFinished(
+  previous: ReadonlyArray<number | undefined>,
+  rows: readonly RunningLine[],
+  elapsedMs: number,
+): Array<number | undefined> {
+  return rows.map((row, index) => previous[index] ?? (lineState(row) === 'running' ? undefined : elapsedMs));
+}
+
+/** The rows with the time each finished row took, by position. */
+export function withTimes(rows: RunningLine[], rowMs: ReadonlyArray<number | undefined>): RunningLine[] {
+  return rows.map((row, index) => (rowMs[index] === undefined ? row : { ...row, ms: rowMs[index] }));
+}
+
 export function progressPercent(progress: Progress): number {
   if (progress.total <= 0) return 0;
   return Math.min(100, Math.max(0, Math.round((progress.done / progress.total) * 100)));

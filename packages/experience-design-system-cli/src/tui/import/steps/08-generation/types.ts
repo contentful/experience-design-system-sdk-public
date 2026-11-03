@@ -29,8 +29,11 @@ export interface GenerationInput {
 
 /** One line per thing the screen shows, in the order it shows them. */
 export interface GenerationProgress {
-  /** Components finished, out of the total, and the one being worked on. Null until the first progress line. */
-  components: { done: number; total: number; current: string } | null;
+  /**
+   * Components finished, out of the total, and the one being worked on. `failed` counts the finished ones that failed: the
+   * run carries on through the rest and only fails at the end. Null until the first progress line.
+   */
+  components: { done: number; total: number; current: string; failed: number } | null;
   mapTokens: 'idle' | 'running' | 'complete';
   /** Whether token mapping will run at all; unknown until the generated components have been looked at. */
   mapTokensEligible: boolean | null;

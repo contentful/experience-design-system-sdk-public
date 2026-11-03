@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { startDebugRun, finishDebugRun } from '@tui/debug-store.js';
-import { extractionLogInputs, extractionLogOutputs, initialProgress, progressRows, trackFinished } from './logic.js';
+import { trackFinished } from '../../shared/running-step/logic.js';
+import { extractionLogInputs, extractionLogOutputs, initialProgress, progressRows } from './logic.js';
 import { runExtraction } from './run.js';
 import type { ExtractionInput, ExtractionProgress, ExtractionResult } from './types.js';
 

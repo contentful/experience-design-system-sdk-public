@@ -1,7 +1,7 @@
 import { parseAgentModel, resolveAgent, resolveModel } from '@contentful/experience-design-system-backend-pipeline';
 import type { ExtractAndComposeProgress } from '@contentful/experience-design-system-backend-pipeline';
 import { scrubError } from '@tui/shared/debug-trail.js';
-import { lineState, type RunningLine } from '../../shared/running-step/logic.js';
+import { withTimes, type RunningLine } from '../../shared/running-step/logic.js';
 import type { ExtractionInput, ExtractionProgress, ExtractionResult } from './types.js';
 
 /** Structured progress events emitted by the orchestrator (extraction + composition). */
@@ -154,20 +154,7 @@ export function progressRows(
     });
   }
 
-  return rows.map((row, index) => (rowMs[index] === undefined ? row : { ...row, ms: rowMs[index] }));
-}
-
-/**
- * How long each row took, by position, for the rows that have finished. The jobs all start together, so a row's time is how
- * long the run had been going when it was first seen finished, and it does not change after that. Rows keep their position
- * for the whole run, since every job that applies is started up front.
- */
-export function trackFinished(
-  previous: ReadonlyArray<number | undefined>,
-  rows: readonly RunningLine[],
-  elapsedMs: number,
-): Array<number | undefined> {
-  return rows.map((row, index) => previous[index] ?? (lineState(row) === 'running' ? undefined : elapsedMs));
+  return withTimes(rows, rowMs);
 }
 
 /** True when every job is already done, so the screen would only flash. The wizard shows nothing in this case. */

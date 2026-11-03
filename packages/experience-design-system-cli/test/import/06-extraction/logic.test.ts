@@ -7,7 +7,6 @@ import {
   noComponentsMessage,
   progressRows,
   resolveAgentChoice,
-  trackFinished,
 } from '../../../src/tui/import/steps/06-extraction/logic.js';
 import { lineState } from '../../../src/tui/import/shared/running-step/logic.js';
 import type { ExtractionProgress } from '../../../src/tui/import/steps/06-extraction/types.js';
@@ -144,23 +143,6 @@ describe('progressRows', () => {
 
     expect(rows[0]).toMatchObject({ text: 'Scanned 40 files', ms: 2000 });
     expect(rows[1]).not.toHaveProperty('ms');
-  });
-});
-
-describe('trackFinished', () => {
-  const running = { text: 'x', complete: false };
-  const done = { text: 'x', complete: true };
-
-  it('notes a row the first time it is seen finished, and never changes it after', () => {
-    const first = trackFinished([], [done, running], 2000);
-    const later = trackFinished(first, [done, done], 9000);
-
-    expect(first).toEqual([2000, undefined]);
-    expect(later).toEqual([2000, 9000]);
-  });
-
-  it('counts a failed row as finished, so its time stops', () => {
-    expect(trackFinished([], [{ text: 'x', complete: false, state: 'failed' }], 4000)).toEqual([4000]);
   });
 });
 

@@ -166,11 +166,17 @@ function applyProgressEvent(
   previous: GenerationProgress['components'],
   total: number,
 ): GenerationProgress['components'] {
+  const failed = previous?.failed ?? 0;
   if (event.kind === 'component:started') {
-    return { done: previous?.done ?? 0, total: event.total || total, current: event.name };
+    return { done: previous?.done ?? 0, total: event.total || total, current: event.name, failed };
   }
   if (event.kind === 'component:completed' || event.kind === 'component:failed' || event.kind === 'component:cached') {
-    return { done: (previous?.done ?? 0) + 1, total: event.total || total, current: event.name };
+    return {
+      done: (previous?.done ?? 0) + 1,
+      total: event.total || total,
+      current: event.name,
+      failed: failed + (event.kind === 'component:failed' ? 1 : 0),
+    };
   }
   return previous;
 }

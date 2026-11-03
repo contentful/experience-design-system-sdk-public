@@ -456,6 +456,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
                 agent={scopeRun.input.agent}
                 acceptedCount={scopeFlow.decisions.accepted.length}
                 hasTokens={scopeRun.extraction.tokensPath !== ''}
+                rowMs={generation.rowMs}
               />
             );
           }
