@@ -102,7 +102,7 @@ export function FieldForm<K extends string>({
   onSkip,
   skipLabel = 'skip',
   onQuit,
-  quitLabel = 'back without saving',
+  quitLabel = 'back (unsaved changes are lost)',
   actions = [],
   notice,
   busy = false,
@@ -166,7 +166,8 @@ export function FieldForm<K extends string>({
 
   const isLastField = active === fields.length - 1;
 
-  // Enter in an open field: close it, and with `enterAdvances` carry on to the next field or save from the last.
+  // Enter in an open field: close it, and with `enterAdvances` carry on to the next field. From the last one it closes
+  // the edit and wraps the cursor to the first field. Saving is only ever `s`.
   const submitField = (): void => {
     if (!enterAdvances) {
       setEditing(false);
@@ -174,7 +175,7 @@ export function FieldForm<K extends string>({
     }
     if (isLastField) {
       setEditing(false);
-      onSave();
+      setActive(0);
       return;
     }
     const next = fields[active + 1]!;
@@ -258,7 +259,7 @@ export function FieldForm<K extends string>({
               ? [
                   { keys: 'type', label: 'edit' },
                   { keys: '←/→', label: 'move cursor' },
-                  { keys: '⏎', label: enterAdvances ? (isLastField ? saveLabel : 'next') : 'done' },
+                  { keys: '⏎', label: enterAdvances && !isLastField ? 'next' : 'done' },
                   { keys: 'Ctrl+D', label: 'clear' },
                   { keys: 'Esc', label: 'cancel edit' },
                 ]

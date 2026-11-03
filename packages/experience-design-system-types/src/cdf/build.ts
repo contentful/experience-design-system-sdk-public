@@ -1,3 +1,4 @@
+import { repairTokenKinds } from './repair-token-kinds.js';
 import { CDF_SCHEMA_URL } from './schema.js';
 import type { CDFComponentEntry, CDFTokenEntry, CDFValidationError } from './types.js';
 
@@ -44,16 +45,20 @@ export interface CDFDocument {
   [key: string]: unknown;
 }
 
+/**
+ * Every document that is saved, previewed or pushed is built here, so this is where a token property that has no kind is
+ * given one: the API rejects it, and the preview does not notice. `onRepair` hears about each repair.
+ */
 export function buildCDF(
   components: Array<{ key: string; entry: CDFComponentEntry }>,
   tokens: Array<{ path: string; entry: CDFTokenEntry }>,
-  opts: { deleteAll?: boolean } = {},
+  opts: { deleteAll?: boolean; onRepair?: (message: string) => void } = {},
 ): CDFDocument | undefined {
   if (components.length === 0 && tokens.length === 0 && !opts.deleteAll) return undefined;
 
   const doc: CDFDocument = { $schema: CDF_SCHEMA_URL };
   for (const { key, entry } of components) {
-    setAtPath(doc, key, stripUnsupportedSlotFields(entry));
+    setAtPath(doc, key, stripUnsupportedSlotFields(repairTokenKinds(entry, key, tokens, opts.onRepair)));
   }
   for (const { path, entry } of resolveTokenPathCollisions(tokens)) {
     setAtPath(doc, path, entry);
