@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { startDebugRun, finishDebugRun } from '@tui/debug-store.js';
 import { checkGenerationCache, type CacheCheckInput } from './cache-check.js';
 import { loadScopeGate } from './load.js';
 import type { ScopeDecisions, ScopeGateLoad } from './types.js';
@@ -33,6 +34,22 @@ export function useScopeGateFlow(
   const loaded = useMemo(() => (sessionId ? deps.load(sessionId) : undefined), [sessionId]);
   const cacheCheck = useRef<Promise<string[]> | undefined>(undefined);
   const [confirmed, setConfirmed] = useState<ScopeDecisions>();
+
+  // Components that cannot be read never reach the screen, so the log for that is written here.
+  useEffect(() => {
+    if (!sessionId || !loaded || loaded.ok) return;
+    startDebugRun({
+      flow: 'import/scope-gate',
+      step: '07-scope-gate',
+      menuOption: 'Scope gate',
+      inputs: { session_id: sessionId },
+    });
+    void finishDebugRun({
+      outputs: { outcome: 'could not load the components', error: loaded.message },
+      status: 'error',
+      exitMethod: 'discarded',
+    });
+  }, [sessionId, loaded]);
 
   // Started once per session, as soon as the gate has components to show.
   useEffect(() => {

@@ -13,6 +13,8 @@ type PendingRun = {
   menuOption: string;
   inputs: Record<string, unknown>;
   startedAt: number;
+  // What a long run has found so far. A crash or Ctrl+C writes this instead of an empty log.
+  progress?: Record<string, unknown>;
 };
 
 type Status = 'success' | 'error';
@@ -182,13 +184,20 @@ export function startDebugRun({
   const startedAt = Date.now();
   const redactedInputs = redact(inputs);
 
-  // isDebugModeEnabled() is async but this function's callers (screen mount
-  // effects) call it fire-and-forget. A screen that exits before this
-  // resolves just has no pending run, which finishDebugRun treats as a no-op.
-  isDebugModeEnabled().then((enabled) => {
-    if (!enabled) return;
-    pendingRun = { flow, step, runId, menuOption, inputs: redactedInputs, startedAt };
+  // The run is registered at once. Reading Debug Mode is async, and a step that ends before it has been read must still be
+  // logged as itself: if it were registered late, its finish would be dropped and the next step's finish would land on it,
+  // mixing the two logs. When Debug Mode turns out to be off the run is withdrawn here, and finishDebugRun checks again
+  // before it writes.
+  const run: PendingRun = { flow, step, runId, menuOption, inputs: redactedInputs, startedAt };
+  pendingRun = run;
+  void isDebugModeEnabled().then((enabled) => {
+    if (!enabled && pendingRun === run) pendingRun = undefined;
   });
+}
+
+/** Keeps what the open run has so far, in memory. It is only written if the run is cut short. */
+export function setDebugRunProgress(outputs: Record<string, unknown>): void {
+  if (pendingRun) pendingRun.progress = outputs;
 }
 
 export async function finishDebugRun({
@@ -203,10 +212,11 @@ export async function finishDebugRun({
   const run = pendingRun;
   if (!run) return;
   pendingRun = undefined;
+  if (!(await isDebugModeEnabled())) return;
 
   const durationMs = Date.now() - run.startedAt;
   const log: FinishedLog = {
-    flow: run.flow,
+    flow: logFolder(run.flow, run.step),
     menuOption: run.menuOption,
     content: renderMarkdown(run, { outputs: redact(outputs), status, exitMethod, durationMs }),
   };
@@ -221,6 +231,12 @@ export async function finishDebugRun({
 }
 
 type FinishedLog = { flow: string; menuOption: string; content: string };
+
+// Import steps are numbered ("04-credentials"), so their folders carry the number and a file browser lists them in the
+// order the steps run. Other flows keep the folder named after the flow.
+function logFolder(flow: string, step: string): string {
+  return flow.startsWith('import/') && /^\d+-/.test(step) ? `import/${step}` : flow;
+}
 
 // The first import steps finish before the project, and so the session folder, is known. Their logs wait here and are
 // written, in order and once, when the folder is created. The limit keeps a long session with no folder from growing.
@@ -297,7 +313,7 @@ ${JSON.stringify(finish.outputs, null, 2)}
 }
 
 function handleCrash(): Promise<void> {
-  return finishDebugRun({ outputs: {}, status: 'error', exitMethod: 'crashed' });
+  return finishDebugRun({ outputs: pendingRun?.progress ?? {}, status: 'error', exitMethod: 'crashed' });
 }
 
 process.once('uncaughtException', (err) => {
@@ -312,8 +328,15 @@ process.once('unhandledRejection', (reason) => {
   });
 });
 
-process.once('SIGINT', () => {
-  void handleCrash().finally(() => {
-    process.exit(130);
+// Ctrl+C, `kill` and closing the terminal window. Only a hard kill (SIGKILL) cannot be caught.
+for (const [signal, exitCode] of [
+  ['SIGINT', 130],
+  ['SIGTERM', 143],
+  ['SIGHUP', 129],
+] as const) {
+  process.once(signal, () => {
+    void handleCrash().finally(() => {
+      process.exit(exitCode);
+    });
   });
-});
+}
