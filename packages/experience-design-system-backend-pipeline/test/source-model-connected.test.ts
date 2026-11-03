@@ -201,7 +201,7 @@ it('derives compiler-owned records, repeated and tuple models without names and 
   ).toBe(sourceBefore);
   db.close();
 });
-it('atomically selects, edits, reopens and exports only reachable desired models while preview remains held', async () => {
+it('atomically selects, edits, reopens and imports only reachable desired models with rendering deferred', async () => {
   const { db: initialDb, path, sessionId, fresh } = await fixture();
   let db = initialDb;
   const owner = fresh.find((row) => row.name === 'Example')!,
@@ -243,8 +243,8 @@ it('atomically selects, edits, reopens and exports only reachable desired models
   selectRepresentationPlan(db, sessionId, other.component_id, 'settings', 'component-model');
   const readiness = evaluateComponentReadiness(db, sessionId, owner.component_id);
   expect(readiness.definition.ready, JSON.stringify(readiness)).toBe(true);
-  expect(evaluateComponentReadiness(db, sessionId, owner.component_id).import.ready).toBe(false);
-  expect(() => loadSelectedCDFComponents(db, sessionId, new Set([owner.component_id]))).toThrow('not ready');
+  expect(evaluateComponentReadiness(db, sessionId, owner.component_id).import.ready).toBe(true);
+  expect(loadSelectedCDFComponents(db, sessionId, new Set([owner.component_id])).length).toBeGreaterThan(1);
   const model = currentRepresentationModel(db, sessionId, owner.component_id, 'settings');
   const proposal = {
     ...model.identity,
@@ -331,10 +331,20 @@ it('atomically selects, edits, reopens and exports only reachable desired models
     spaceId: 'example',
     environmentId: 'example',
   });
-  await expect(client.previewImport(full)).rejects.toThrow('positional model semantics');
-  await expect(client.applyImport(full, { acknowledgeBreakingChanges: true })).rejects.toThrow(
-    'positional model semantics',
+  const fetch = vi.fn(
+    async () =>
+      new Response(
+        JSON.stringify({
+          sys: { id: 'example-operation', status: 'pending' },
+          components: { created: [], updated: [], removed: [], unchanged: [] },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
   );
+  vi.stubGlobal('fetch', fetch);
+  await client.previewImport(full);
+  await client.applyImport(full, { acknowledgeBreakingChanges: true });
+  expect(fetch).toHaveBeenCalledTimes(2);
   expect(selected.length).toBe(
     1 +
       loadRepresentationPlans(db, sessionId, owner.component_id).reduce((sum, row) => sum + row.plan.models.length, 0),

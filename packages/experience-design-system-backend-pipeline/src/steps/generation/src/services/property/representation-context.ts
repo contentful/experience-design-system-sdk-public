@@ -3,6 +3,7 @@ import { sourcePropertyModel } from './source-property-model.js';
 import {
   prepareAnalysisRepresentationCandidates,
   nativeSourceRegion,
+  propertyDefinitionImportIssues,
 } from '@contentful/experience-design-system-types';
 import { definitionCall } from './definition-call.js';
 
@@ -41,9 +42,12 @@ export function buildRepresentationContext(evidence: RepresentationValidationEvi
             analysisRepresentationCandidates: candidates,
             sourceNodeIds: model.source.graph.nodes.map((node) => node.id),
             sourceUseEvidence: model.source.useEvidence ?? [],
+            nativeDefinitionImportIssues: native
+              ? propertyDefinitionImportIssues({ ...native, $category: 'content' })
+              : [],
             decisionSkeletons,
             skeletonInstructions:
-              'These are unselected structural drafts, not authorability or category decisions. Choose the source-supported category, description and reason. Copy exact structural metadata and identities; add evidence-backed null handling when required. Validate the complete resulting call before emitting it. Missing skeletons never justify exclusion or an invented type.',
+              'These are unselected structural drafts, not authorability or category decisions. Choose the source-supported category, description and reason. Native definition import issues require an admissible source-derived alternative; structural drafts do not prove importability. Copy exact structural metadata and identities; add evidence-backed null handling when required. Validate the complete resulting call before emitting it. Missing skeletons never justify exclusion or an invented type.',
           },
         ]
       : [];

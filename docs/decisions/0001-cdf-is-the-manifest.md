@@ -31,6 +31,6 @@ types package, the CLI, and the EDSI server.
 ## Import-validity amendment — 2026-11-03
 
 A valid CDF must be importable through the integration service into the destination
-management API. The accepted requirement and pending implementation are in
+management API. The accepted requirement and shared enforcement are in
 [the import-validity contract](../cdf-import-validity.md). Source evidence stays
 broader than physical export definitions; rendering readiness remains separate.

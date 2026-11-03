@@ -21,6 +21,7 @@ import {
   type LogicalSourceNode,
 } from './logical-source-graph.js';
 import { nativeSourceRegion, sourceRecordFields } from './native-source-region.js';
+import { propertyDefinitionImportIssues } from './physical-property-import.js';
 import { compactModelComponents } from './compact-model-components.js';
 import { applyModelComponentExploration, type ModelComponentExploration } from './model-exploration.js';
 import {
@@ -285,6 +286,7 @@ export function deriveEditableRepresentationPlans(
           for (const [key, child] of Object.entries(field.$fields)) applyDefaults(child, target.fields[key]!);
       };
       if (projection.target) applyDefaults(native, projection.target);
+      const importIssues = propertyDefinitionImportIssues(native);
       plans.push(
         finish({
           ...base,
@@ -305,8 +307,9 @@ export function deriveEditableRepresentationPlans(
             },
             ...(node.kind === 'reference' ? { targetNodeId: node.alternatives?.[0] } : {}),
           })),
-          issues: defaultIssues,
-          sdkValid: !defaultIssues.length && graph.coverage === 'complete-within-declared-bound',
+          issues: [...defaultIssues, ...importIssues],
+          sdkValid:
+            !defaultIssues.length && !importIssues.length && graph.coverage === 'complete-within-declared-bound',
           requirements: [
             ...valueStateRequirements,
             ...emptyValueRequirements,
@@ -401,7 +404,10 @@ export function deriveEditableRepresentationPlans(
   };
   const nativeProperty = (id: string): CDFPropertyDefinition | undefined => {
     const field = nativeSourceRegion(id, nodes);
-    return field ? { ...field, $category: category === 'unattached' ? 'content' : category } : undefined;
+    const definition = field
+      ? { ...field, $category: category === 'unattached' ? ('content' as const) : category }
+      : undefined;
+    return definition && !propertyDefinitionImportIssues(definition).length ? definition : undefined;
   };
   const modelFor = (id: string): string | undefined => {
     const node = nodes.get(id)!;

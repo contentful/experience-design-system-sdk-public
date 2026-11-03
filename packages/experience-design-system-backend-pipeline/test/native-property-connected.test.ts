@@ -41,7 +41,7 @@ it('connects actual producer to saved source, fresh session/direct generation, u
   const file = join(directory, 'Example.tsx');
   writeFileSync(
     file,
-    `type Values={ '__proto__'?:boolean; 'a.b/λ':0|1; constructor?:string }; type Props={rows:Array<Partial<Values>>;tags:string[];settings:Pick<Values,'a.b/λ'>}; export function Example({rows=[{['__proto__']:false,'a.b/λ':0}],tags=[],settings={'a.b/λ':0}}:Props){return <div>{rows.length}{tags.length}{settings['a.b/λ']}</div>;}`,
+    `type Values={ '__proto__'?:boolean; 'a.b/λ':0|1; constructor?:string }; type Props={rows:Array<Partial<Values>>;tags:string[];settings:Pick<Values,'a.b/λ'>}; export function Example({rows=[{'a.b/λ':0}],tags=[],settings={'a.b/λ':0}}:Props){return <div>{rows.length}{tags.length}{settings['a.b/λ']}</div>;}`,
   );
   const extracted = await extractReactComponents([file]);
   const component = extracted.components.find((c) => c.name === 'Example')!;
@@ -127,7 +127,7 @@ it('connects actual producer to saved source, fresh session/direct generation, u
   expect(prompts[0]).toContain('sourceGraph');
   expect(prompts[0]).toContain('a.b/λ');
   const first = loadCDFComponents(db, sessionId)[0]!;
-  expect(first.entry.$properties.rows?.$default).toEqual(JSON.parse('[{"__proto__":false,"a.b/λ":0}]'));
+  expect(first.entry.$properties.rows?.$default).toEqual([{ 'a.b/λ': 0 }]);
   expect(first.entry.$properties.tags?.$default).toEqual([]);
   expect(first.entry.$properties.settings?.$default).toEqual({ 'a.b/λ': 0 });
   const direct = await runCdfGenerationService({

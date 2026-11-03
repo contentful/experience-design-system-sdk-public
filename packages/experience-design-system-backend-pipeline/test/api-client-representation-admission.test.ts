@@ -2,6 +2,7 @@ import { createRecursiveModelFamily } from './support/recursive-model-family.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildCDF,
+  CDF_SCHEMA_URL,
   parseCDFComponents,
   validateCDF,
   type CDFSlotDefinition,
@@ -75,16 +76,11 @@ describe.each(['preview', 'apply'] as const)('%s representation admission', (pha
   });
 
   it.each(unsupportedCardinalities)('holds unsupported cardinality %j before HTTP', async (cardinality) => {
-    const cdf = buildCDF(
-      [
-        {
-          key: 'Example',
-          entry: { $type: 'component', $properties: {}, $slots: { items: { $cardinality: cardinality } } },
-        },
-      ],
-      [],
-    )!;
-    expect(validateCDF(cdf).valid).toBe(true);
+    const cdf: NonNullable<ReturnType<typeof buildCDF>> = {
+      $schema: CDF_SCHEMA_URL,
+      Example: { $type: 'component', $properties: {}, $slots: { items: { $cardinality: cardinality } } },
+    };
+    expect(validateCDF(cdf).valid).toBe(false);
     await expect(send(cdf)).rejects.toThrow();
     expect(mockFetch).not.toHaveBeenCalled();
   });

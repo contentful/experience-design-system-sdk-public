@@ -9,6 +9,7 @@ import { DESIGN_TOKEN_TYPES, type DesignTokenType } from '../dtcg/token-types.js
 import { contentDigest } from './content-digest.js';
 import { validateRepresentationClosure } from '../cdf/representation-validation.js';
 import { childPath, freezeJson, cloneJson, jsonValueIssue } from './json-value.js';
+import { componentDefinitionImportIssues } from './definition-import-rules.js';
 
 export type ResourceDependencyKey =
   | { kind: 'DesignToken'; namespace: 'dtcg-path'; value: string }
@@ -85,6 +86,8 @@ export function createImportPrerequisitePlan(input: ImportPrerequisiteManifest):
       issue('component-definition-invalid', `/components/${index}`, 'Invalid Component definition');
       continue;
     }
+    for (const finding of componentDefinitionImportIssues(component.entry))
+      issue('component-import-invalid', `/components/${index}${finding.path}`, finding.message);
     components.set(component.key, component.entry);
     nodes.add(importDependencyKey(componentKey(component.key)));
   }
@@ -153,10 +156,9 @@ export function createImportPrerequisitePlan(input: ImportPrerequisiteManifest):
     for (const [name, definition] of Object.entries(component.$properties))
       visit(owner, definition, childPath(`${childPath('', key)}/$properties`, name), definition.$category);
     for (const [name, slot] of Object.entries(component.$slots ?? {})) {
-      if (!slot.$modelBinding) continue;
       for (const allowed of slot.$allowedComponents ?? []) {
         if (components.has(allowed)) addEdge(owner, componentKey(allowed));
-        else
+        else if (slot.$modelBinding)
           issue(
             'prerequisite-node-missing',
             childPath(`${childPath('', key)}/$slots`, name),

@@ -1,7 +1,7 @@
 import { cloneJson, own } from '../property-contract/json-value.js';
 import { CDF_SCHEMA_URL } from './schema.js';
 import type { CDFComponentEntry, CDFTokenEntry, CDFValidationError } from './types.js';
-import { parseCDFComponents } from './validate.js';
+import { parseCDFComponents, validateCDF } from './validate.js';
 import { validateImportPrerequisites } from '../property-contract/import-prerequisites.js';
 
 /** Preserve the complete local slot contract, including explicit false requiredness. */
@@ -65,6 +65,7 @@ export function buildCDF(
   for (const { path, entry } of resolveTokenPathCollisions(tokens)) {
     setAtPath(doc, path, cloneJson(entry));
   }
+  assertValidDocument(doc);
   return doc;
 }
 
@@ -165,7 +166,15 @@ export function buildFilteredCDF(
         });
     }
   }
-  return Object.keys(filtered).length > 1 ? filtered : undefined;
+  if (Object.keys(filtered).length <= 1) return undefined;
+  assertValidDocument(filtered);
+  return filtered;
+}
+
+function assertValidDocument(document: CDFDocument): void {
+  const validation = validateCDF(document);
+  if (!validation.valid)
+    throw new Error(`Invalid CDF: ${validation.errors.map(({ path, message }) => `${path}: ${message}`).join('; ')}`);
 }
 
 /**

@@ -1,5 +1,7 @@
 import {
   cloneJson,
+  propertyDefinitionImportIssues,
+  representationDefinitionImportIssues,
   type ClassifiedPropertyCall,
   type PropertyIssue,
   type PropertyProjection,
@@ -54,25 +56,38 @@ export function validateGenerationPropertyDecision(
   let issues: PropertyIssue[];
   try {
     materialized = materializeProperty(component, call, componentId);
-    if (materialized.selectedRepresentationPlan) return { state: 'ready', retainedCall: cloneJson(call) };
+    const planIssues = materialized.selectedRepresentationPlan
+      ? representationDefinitionImportIssues(materialized.selectedRepresentationPlan).map((message) => ({
+          path: '/representation_selection',
+          message,
+        }))
+      : [];
+    const physicalIssues = materialized.definition ? propertyDefinitionImportIssues(materialized.definition) : [];
+    if (materialized.selectedRepresentationPlan && !planIssues.length)
+      return { state: 'ready', retainedCall: cloneJson(call) };
     if (
       materialized.definition &&
+      !physicalIssues.length &&
       (!materialized.projection || ['supported', 'lossy'].includes(materialized.projection.outcome))
     )
       return { state: 'ready', retainedCall: cloneJson(call) };
-    issues = call.representation_selection
-      ? (materialized.representationPlans?.find((plan) => plan.kind === 'component-model')?.issues ?? [
-          { path: '/representation_selection', message: 'No complete source-derived model plan' },
-        ])
-      : call.cdf_type
-        ? (materialized.projection?.issues ?? [{ path: '/representation', message: 'No representation decision' }])
-        : [
-            {
-              path: '/cdf_type',
-              message:
-                'Every retained property requires cdf_type or a source-bound model selection before generation completes',
-            },
-          ];
+    issues = physicalIssues.length
+      ? physicalIssues
+      : planIssues.length
+        ? planIssues
+        : call.representation_selection
+          ? (materialized.representationPlans?.find((plan) => plan.kind === 'component-model')?.issues ?? [
+              { path: '/representation_selection', message: 'No complete source-derived model plan' },
+            ])
+          : call.cdf_type
+            ? (materialized.projection?.issues ?? [{ path: '/representation', message: 'No representation decision' }])
+            : [
+                {
+                  path: '/cdf_type',
+                  message:
+                    'Every retained property requires cdf_type or a source-bound model selection before generation completes',
+                },
+              ];
   } catch (error) {
     issues = [{ path: '/representation', message: error instanceof Error ? error.message : 'Invalid representation' }];
   }

@@ -13,6 +13,8 @@ import {
   propertyDefinitionImportBlockers,
   representationDefinitionImportIssues,
   slotDefinitionImportIssues,
+  validateCDF,
+  CDF_SCHEMA_URL,
   type PropertyModel,
 } from '../src/index.js';
 
@@ -180,6 +182,10 @@ describe('definition import capability boundary', () => {
     if (change === 'changed-rest') entry.$slots!.position_2!.$cardinality!.rest = false;
     if (change === 'unowned-slot') entry.$slots!.rogue = cloneJson(entry.$slots!.position_0!);
     expect(componentModelFamilyIssues(components).length).toBeGreaterThan(0);
+    expect(
+      validateCDF({ $schema: CDF_SCHEMA_URL, ...Object.fromEntries(components.map(({ key, entry }) => [key, entry])) })
+        .valid,
+    ).toBe(false);
   });
 
   it('retains deferred runtime requirements without certifying rendering readiness', () => {
