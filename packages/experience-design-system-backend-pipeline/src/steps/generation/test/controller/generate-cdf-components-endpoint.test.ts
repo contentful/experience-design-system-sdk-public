@@ -31,21 +31,4 @@ describe('generateCdfComponents validation', () => {
     });
     expect(result).toMatchObject({ components: [cachedEntry], warnings: [], failures: [] });
   });
-
-  // A definition cached before the fix has a token property with no kind, which the API rejects. It must come out with one.
-  it('gives a token property that has no kind its kind from the token file, even from the cache', async () => {
-    const cached = {
-      $type: 'component' as const,
-      $properties: { color: { $type: 'token' as const, $category: 'design' as const } },
-    };
-
-    const result = await generateCdfComponents({
-      components: [{ name: 'Button', props: [], slots: [], framework: 'react' } as never],
-      tokens: [{ path: 'color.background', $type: 'color', $value: 'x' }],
-      onCacheLookup: () => cached,
-    });
-
-    expect(result.components[0]?.$properties['color']).toMatchObject({ $type: 'token', '$token.kind': 'color' });
-    expect(result.warnings).toEqual([expect.stringContaining('Button.color')]);
-  });
 });

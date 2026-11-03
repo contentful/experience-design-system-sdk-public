@@ -63,7 +63,11 @@ describe('validateCDF', () => {
     const named = validateCDF(document({ $type: 'token', $category: 'design', '$token.kind': 'color' }));
 
     expect(missing.valid).toBe(false);
-    expect(missing.errors.some((error) => error.path === '/Button/$properties/color')).toBe(true);
+    // One error, about that property. Ajv lists the errors of every branch of the schema's oneOf when an entry is
+    // invalid, which came to well over a hundred lines for this one missing field.
+    expect(missing.errors).toEqual([
+      expect.objectContaining({ path: '/Button/$properties/color', message: expect.stringContaining('$token.kind') }),
+    ]);
     expect(empty.valid).toBe(false);
     expect(named.valid).toBe(true);
   });

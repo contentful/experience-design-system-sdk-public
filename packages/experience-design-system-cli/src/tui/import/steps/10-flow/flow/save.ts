@@ -31,15 +31,13 @@ const describeCdfError = (error: { path: string; message: string }): string =>
 function buildSavedCDF(
   components: Array<{ key: string; entry: CDFComponentEntry }>,
   tokens: DTCGTokenEntry[],
-  opts: { deleteAll?: boolean } = {},
+  opts: { deleteAll?: boolean; onRepair?: (message: string) => void } = {},
 ): CDFDocument {
   const cdf = buildCDF(components, toCDFTokens(tokens), opts);
   if (!cdf) throw new Error('nothing to save — no components or tokens resolved');
   const validation = validateCDF(cdf);
   if (!validation.valid) {
-    // Ajv adds a second, vaguer error for a failed if/then rule; the first one already says what is wrong.
-    const errors = validation.errors.filter((error) => error.message !== 'must match "then" schema');
-    throw new Error(`generated CDF failed validation: ${errors.map(describeCdfError).join('; ')}`);
+    throw new Error(`generated CDF failed validation: ${validation.errors.map(describeCdfError).join('; ')}`);
   }
   return cdf;
 }
@@ -98,7 +96,10 @@ export async function runPrintFiles(
     }
     if (!input.tokenSessionId && input.tokensPath) tokens = await deps.readTokens(input.tokensPath);
 
-    const cdf = buildSavedCDF(components, tokens, { deleteAll: input.allowEmpty });
+    const cdf = buildSavedCDF(components, tokens, {
+      deleteAll: input.allowEmpty,
+      onRepair: (message) => deps.warn(`${message}\n`),
+    });
     await deps.writeFile(componentsPath, `${JSON.stringify(cdf, null, 2)}\n`);
     deps.warn(
       `wrote ${componentsPath} (${components.length} component${components.length === 1 ? '' : 's'}, ${tokens.length} token${tokens.length === 1 ? '' : 's'})\n`,

@@ -1,4 +1,4 @@
-import { Ajv, type ErrorObject } from 'ajv';
+import { Ajv, type ErrorObject, type ValidateFunction } from 'ajv';
 import { cdfJsonSchema, CDF_SCHEMA_URL } from './schema.js';
 import { DESIGN_TOKEN_TYPES } from '../dtcg/token-types.js';
 import type { CDFFile, CDFComponentEntry, CDFTokenEntry, CDFValidationError, CDFValidationResult } from './types.js';
@@ -53,14 +53,58 @@ export function parseCDFComponents(
   return { components, tokens };
 }
 
-export function validateCDF(input: unknown): CDFValidationResult {
-  const valid = validate(input);
-  if (!valid) {
-    const errors: CDFValidationError[] = (validate.errors ?? []).map((err: ErrorObject) => ({
-      path: err.instancePath || '/',
+function entryValidator(name: 'component' | 'token'): ValidateFunction {
+  const check = ajv.getSchema(`${CDF_SCHEMA_URL}#/definitions/${name}`);
+  if (!check) throw new Error(`the CDF schema has no "${name}" definition`);
+  return check;
+}
+
+const validateComponentEntry = entryValidator('component');
+const validateTokenEntry = entryValidator('token');
+
+// A failed if/then rule adds a second, vaguer error; the first one already says what is wrong.
+function toValidationErrors(errors: ErrorObject[] | null | undefined, prefix = ''): CDFValidationError[] {
+  return (errors ?? [])
+    .filter((err) => err.keyword !== 'if')
+    .map((err) => ({
+      path: `${prefix}${err.instancePath}` || '/',
       message: err.message ?? 'Unknown validation error',
       expected: err.params ? JSON.stringify(err.params) : undefined,
     }));
+}
+
+/**
+ * The schema's top level is a `oneOf` of component, token and group, and Ajv reports a failed `oneOf` by listing the errors
+ * of every branch, which buries the real one under errors from branches that never applied. This validates each entry
+ * against the one definition its `$type` names instead, so the errors are about the entry that is wrong.
+ */
+function entryErrors(node: Record<string, unknown>, prefix: string): CDFValidationError[] {
+  const errors: CDFValidationError[] = [];
+  for (const [key, value] of Object.entries(node)) {
+    if (key.startsWith('$') || typeof value !== 'object' || value === null) continue;
+    const path = `${prefix}/${key}`;
+    const type = (value as Record<string, unknown>)['$type'];
+    const check =
+      type === 'component'
+        ? validateComponentEntry
+        : TOKEN_TYPE_SET.has(type as string)
+          ? validateTokenEntry
+          : undefined;
+    if (!check) {
+      errors.push(...entryErrors(value as Record<string, unknown>, path));
+    } else if (!check(value)) {
+      errors.push(...toValidationErrors(check.errors, path));
+    }
+  }
+  return errors;
+}
+
+export function validateCDF(input: unknown): CDFValidationResult {
+  const valid = validate(input);
+  if (!valid) {
+    const focused =
+      typeof input === 'object' && input !== null ? entryErrors(input as Record<string, unknown>, '') : [];
+    const errors = focused.length > 0 ? focused : toValidationErrors(validate.errors);
     return { valid: false, errors, components: [], tokens: [] };
   }
 
