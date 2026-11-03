@@ -110,9 +110,12 @@ export function flowContext(state: FlowState): Record<string, unknown> {
   };
 }
 
-// What the flow found out by arriving in a step. Only the error screens carry anything.
+// What the flow found out by arriving in a step. Only the error screens carry anything, and only while the flow is on
+// them: leaving one clears it, so a retry or a skip that goes on to publish is not logged as failed or blocked.
 function arrive(trail: FlowTrail, state: FlowState): FlowTrail {
   const next = { ...trail, at: state.step };
+  delete next.failure;
+  delete next.validation;
   if (state.step === 'error') {
     next.failure = { step: state.errorStep, message: scrub(state.errorMessage, state) };
   }

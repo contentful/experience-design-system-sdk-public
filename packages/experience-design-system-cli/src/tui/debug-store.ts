@@ -216,7 +216,7 @@ export async function finishDebugRun({
 
   const durationMs = Date.now() - run.startedAt;
   const log: FinishedLog = {
-    flow: logFolder(run.flow, run.step),
+    folder: logFolder(run.flow, run.step),
     menuOption: run.menuOption,
     content: renderMarkdown(run, { outputs: redact(outputs), status, exitMethod, durationMs }),
   };
@@ -230,7 +230,7 @@ export async function finishDebugRun({
   await writeLog(root, log);
 }
 
-type FinishedLog = { flow: string; menuOption: string; content: string };
+type FinishedLog = { folder: string; menuOption: string; content: string };
 
 // Import steps are numbered ("04-credentials"), so their folders carry the number and a file browser lists them in the
 // order the steps run. Other flows keep the folder named after the flow.
@@ -244,7 +244,7 @@ const WAITING_LIMIT = 50;
 const waiting: FinishedLog[] = [];
 
 async function writeLog(root: string, log: FinishedLog): Promise<void> {
-  const dir = join(root, ...log.flow.split('/'));
+  const dir = join(root, ...log.folder.split('/'));
   await mkdir(dir, { recursive: true });
   const filename = nextAttemptFilename(dir, log.menuOption);
   await writeFile(join(dir, filename), log.content, { mode: 0o600 });
