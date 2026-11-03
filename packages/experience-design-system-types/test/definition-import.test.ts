@@ -15,7 +15,7 @@ import {
   type PropertyModel,
 } from '../src/index.js';
 
-function family() {
+function family(kind?: 'tuple') {
   const node = (id: string, keyPath: string[], kind: string) => ({
     id,
     keyPath,
@@ -76,6 +76,25 @@ function family() {
     category: 'content',
     defaultIntent: { action: 'set', value: { label: 'Example', detail: { flag: false, title: 'Detail' } } },
   };
+  if (kind === 'tuple') {
+    model.source.shape = null;
+    model.source.typeText = '[string, boolean?, ...number[]]';
+    model.source.graph!.nodes = [
+      {
+        ...node('root', ['settings'], 'tuple'),
+        items: ['title', 'enabled', 'counts'],
+        tupleElements: [
+          { nodeId: 'title', label: 'title', optional: false, rest: false },
+          { nodeId: 'enabled', label: 'enabled', optional: true, rest: false },
+          { nodeId: 'counts', label: 'counts', optional: false, rest: true },
+        ],
+      },
+      node('title', ['settings', '0'], 'string'),
+      { ...node('enabled', ['settings', '1'], 'boolean'), required: false },
+      node('counts', ['settings', '2'], 'number'),
+    ];
+    model.defaultIntent = { action: 'absent' };
+  }
   const plan = cloneJson(
     deriveEditableRepresentationPlans(model).find((candidate) => candidate.kind === 'component-model')!,
   );
@@ -87,6 +106,29 @@ function family() {
 }
 
 describe('definition import capability boundary', () => {
+  it('imports source-owned tuple positions and rest as separate typed model slots', () => {
+    const { plan, components } = family('tuple');
+    expect(plan.sdkValid).toBe(true);
+    const slots = Object.values(components.flatMap(({ entry }) => Object.values(entry.$slots ?? {})));
+    expect(slots.map((slot) => slot.$cardinality).filter((value) => value?.tuplePosition !== undefined)).toEqual([
+      { min: 1, max: 1, ordered: true, tuplePosition: 0, rest: false },
+      { min: 0, max: 1, ordered: true, tuplePosition: 1, rest: false },
+      { min: 0, max: null, ordered: true, tuplePosition: 2, rest: true },
+    ]);
+    expect(componentModelFamilyIssues(components)).toEqual([]);
+    expect(components.flatMap(({ entry }) => componentDefinitionImportIssues(entry))).toEqual([]);
+    expect(evaluateRepresentationReadiness(plan).ready).toBe(false);
+  });
+
+  it.each(['changed-position', 'changed-rest', 'unowned-slot'])('refuses forged tuple ownership: %s', (change) => {
+    const { components } = family('tuple');
+    const entry = components.find(({ entry }) => entry.$slots?.position_0)!.entry;
+    if (change === 'changed-position') entry.$slots!.position_0!.$cardinality!.tuplePosition = 2;
+    if (change === 'changed-rest') entry.$slots!.position_2!.$cardinality!.rest = false;
+    if (change === 'unowned-slot') entry.$slots!.rogue = cloneJson(entry.$slots!.position_0!);
+    expect(componentModelFamilyIssues(components).length).toBeGreaterThan(0);
+  });
+
   it('retains deferred runtime requirements without certifying rendering readiness', () => {
     const { plan, components } = family();
     expect(plan.sdkValid).toBe(true);

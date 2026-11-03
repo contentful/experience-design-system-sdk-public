@@ -8,7 +8,7 @@ import {
 } from '../cdf/types.js';
 import { cdfToTarget } from '../cdf/property-validation.js';
 import { childPath, jsonEqual, type PropertyIssue } from './json-value.js';
-import { validateRepresentationPlan, type RepresentationPlan } from './representation-plan.js';
+import { validateRepresentationPlan, type ModelBinding, type RepresentationPlan } from './representation-plan.js';
 
 const DEFINITION_CAPABILITIES = new Set([
   'deployed-mapper',
@@ -34,10 +34,18 @@ export function definitionImportCapabilityStatus(capability: string): 'supported
   return DEFERRED_RUNTIME_CAPABILITIES.has(capability) ? 'deferred' : 'unavailable';
 }
 
-export function slotDefinitionImportIssues(slot: CDFSlotDefinition): string[] {
+export function slotDefinitionImportIssues(slot: CDFSlotDefinition, modelOwner?: ModelBinding): string[] {
   const cardinality = slot.$cardinality;
   if (!cardinality) return [];
-  if (cardinality.tuplePosition !== undefined || cardinality.rest !== undefined)
+  const binding = slot.$modelBinding;
+  const ownedModelSlot =
+    modelOwner !== undefined &&
+    binding !== undefined &&
+    binding.planId === modelOwner.planId &&
+    binding.componentId === modelOwner.componentId &&
+    binding.propertyId === modelOwner.propertyId;
+  // A source-owned model uses one typed slot per position; its family is checked separately.
+  if ((cardinality.tuplePosition !== undefined || cardinality.rest !== undefined) && !ownedModelSlot)
     return ['Slot cardinality mapping is not available for positional model semantics'];
   if (cardinality.max === 0) return ['Slot cardinality mapping is not available for empty-only slots'];
   if (!Number.isSafeInteger(cardinality.min) || (cardinality.max !== null && !Number.isSafeInteger(cardinality.max)))
@@ -74,7 +82,7 @@ export function componentDefinitionImportIssues(component: CDFComponentEntry): P
   )
     issues.push({ path: '/$model', message: 'Invalid model component source binding' });
   for (const [id, slot] of Object.entries(component.$slots ?? {}))
-    for (const message of slotDefinitionImportIssues(slot))
+    for (const message of slotDefinitionImportIssues(slot, component.$model))
       issues.push({ path: childPath('/$slots', id) + '/$cardinality', message });
   for (const [id, definition] of Object.entries(component.$properties))
     for (const message of propertyDefinitionImportBlockers(definition))
