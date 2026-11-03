@@ -66,34 +66,12 @@ const HELP_SECTIONS: HelpSection[] = [
 
 // Layout and panels only. State and keys are in use-scope-gate.ts, the decisions in state.ts, the graph in graph/, the
 // column sizes in columns.ts and what a key means in keymap.ts.
-export function ScopeGateScreen(props: ScopeGateScreenProps): React.ReactElement {
-  // Checked here, not in the hook, so an empty list never builds a graph or binds the keys.
-  if (props.components.length === 0) return <NoComponents />;
-  return <ScopeGateView {...props} />;
-}
-
-function NoComponents(): React.ReactElement {
-  useEffect(() => {
-    startDebugRun({
-      flow: 'import/scope-gate',
-      step: '07-scope-gate',
-      menuOption: 'Scope gate',
-      inputs: scopeGateLogInputs([], 0),
-    });
-    void finishDebugRun({
-      outputs: { outcome: 'nothing to decide', error: 'No components were found for this session.' },
-      status: 'error',
-      exitMethod: 'discarded',
-    });
-  }, []);
-  return (
-    <Box paddingX={2} paddingY={1}>
-      <Text color={PALETTE.error}>Error: no components found for this session — please re-run analyze extract.</Text>
-    </Box>
-  );
-}
-
-function ScopeGateView({ components, tokensPath, onConfirm, onQuit }: ScopeGateScreenProps): React.ReactElement {
+export function ScopeGateScreen({
+  components,
+  tokensPath,
+  onConfirm,
+  onQuit,
+}: ScopeGateScreenProps): React.ReactElement {
   const tokens = useMemo(() => {
     const loaded = tokensPath ? loadTokenRows(tokensPath) : undefined;
     return loaded?.ok ? loaded.rows : [];
