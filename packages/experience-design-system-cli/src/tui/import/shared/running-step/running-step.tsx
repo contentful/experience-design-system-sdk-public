@@ -2,7 +2,7 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import { ProgressBar, Spinner, ThemeProvider } from '@inkjs/ui';
 import { PALETTE } from '@tui/theme.js';
-import { progressPercent, type RunningLine } from './logic.js';
+import { formatDuration, lineState, progressPercent, type RunningLine } from './logic.js';
 import { PROGRESS_THEME } from './theme.js';
 import { StepHeader } from '@tui/shared/components/StepHeader.js';
 import type { ImportStepId } from '@tui/shared/components/StepHeader.js';
@@ -13,6 +13,10 @@ interface RunningStepProps {
   description: string;
   lines?: readonly RunningLine[];
 }
+
+// Every icon is one column wide, so the text lines up. The warning sign is two columns in many terminals.
+const STATE_ICON = { done: '✓', warning: '!', failed: '✗' } as const;
+const STATE_COLOR = { done: PALETTE.success, warning: PALETTE.warning, failed: PALETTE.error } as const;
 
 function Line({ line }: { line: RunningLine }): React.ReactElement {
   if (line.progress) {
@@ -32,10 +36,12 @@ function Line({ line }: { line: RunningLine }): React.ReactElement {
       </Box>
     );
   }
+  const state = lineState(line);
   return (
     <Box gap={1}>
-      {line.complete ? <Text color={PALETTE.success}>✓</Text> : <Spinner />}
-      <Text color={PALETTE.muted}>{line.text}</Text>
+      {state === 'running' ? <Spinner /> : <Text color={STATE_COLOR[state]}>{STATE_ICON[state]}</Text>}
+      <Text color={state === 'warning' || state === 'failed' ? STATE_COLOR[state] : PALETTE.muted}>{line.text}</Text>
+      {line.ms !== undefined && <Text color={PALETTE.muted}>{formatDuration(line.ms)}</Text>}
     </Box>
   );
 }
