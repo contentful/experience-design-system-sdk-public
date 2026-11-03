@@ -7,6 +7,9 @@ import { extractVueTsxComponents } from '../../../framework-adapters/vue-tsx/ext
 import { extractVueComponents } from '../../../framework-adapters/vue/extractor.js';
 import { extractWebComponentDefinitions } from '../../../framework-adapters/web-components/extractor.js';
 
+import { extractAngularComponents } from '../../../framework-adapters/angular/extract-angular-components.js';
+import { isAngularSourceFile } from '../../../framework-adapters/angular/helpers/is-angular-source-file.js';
+
 export interface ExtractorFileGroup {
   extractor: ComponentExtractor;
   filePaths: string[];
@@ -38,6 +41,11 @@ export const extractorRegistry: readonly ComponentExtractor[] = [
     name: 'astro',
     fileFilter: (filePath) => filePath.endsWith('.astro'),
     extract: extractAstroComponents,
+  },
+  {
+    name: 'angular',
+    fileFilter: isAngularSourceFile,
+    extract: extractAngularComponents,
   },
   {
     name: 'web-components',

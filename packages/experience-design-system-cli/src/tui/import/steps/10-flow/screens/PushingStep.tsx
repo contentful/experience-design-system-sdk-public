@@ -1,19 +1,20 @@
 import React from 'react';
 import { RunningStep } from '../../../shared/index.js';
 import type { PushProgress } from '../support/push-progress.js';
-import { writtenThings, type Produced } from '../support/produced.js';
+import { countedThings, type Produced, type ProducedCounts } from '../support/produced.js';
 
 type PushingStepProps = {
   progress: PushProgress;
   produced: Produced;
+  counts: ProducedCounts;
 };
 
-export function PushingStep({ progress, produced }: PushingStepProps): React.ReactElement {
+export function PushingStep({ progress, produced, counts }: PushingStepProps): React.ReactElement {
   const counted = progress?.kind === 'progress' ? progress : undefined;
   return (
     <RunningStep
       step="push"
-      description={`Writing ${writtenThings(produced)} to your Contentful space...`}
+      description={`Writing ${countedThings(produced, counts)} to your Contentful space...`}
       lines={[
         {
           id: 'push',

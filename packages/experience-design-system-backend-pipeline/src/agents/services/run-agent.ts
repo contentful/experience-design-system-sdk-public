@@ -19,12 +19,10 @@ export interface RunAgentOptions {
   prompt: string;
   timeoutMs: number;
   model?: string;
-  /** Apply the selected agent's Bedrock-routing env vars when enabled. */
   bedrock?: boolean;
   onOutput?: (chunk: string) => void;
   /** Defaults to stdin for Claude/Codex; explicit choices override that default. */
   promptViaStdin?: boolean;
-  /** Optional debug-event sink; callers own how/where events get logged. */
   onDebugEvent?: AgentDebugEvent;
   signal?: AbortSignal;
   preserveConversation?: boolean;
@@ -59,6 +57,7 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentRunResult
 
     const result = await runAgentProcess({
       signal,
+      processGroup: true,
       timeoutMs: artifact ? Math.max(1, timeoutMs - (Date.now() - preparationStarted)) : timeoutMs,
       stdinText: useStdin ? deliveredPrompt : undefined,
       onOutput,
@@ -66,6 +65,7 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentRunResult
         const bedrockEnv = bedrock ? BEDROCK_ENV_BY_AGENT[agent] : undefined;
         return spawn(binary, args, {
           stdio: ['pipe', 'pipe', 'pipe'],
+          detached: true,
           ...(bedrockEnv ? { env: { ...process.env, ...bedrockEnv } } : {}),
         });
       },

@@ -9,10 +9,11 @@ import { DoneStep } from '../screens/DoneStep.js';
 import { PathPrompt } from '../screens/PathPrompt.js';
 import { PushingStep } from '../screens/PushingStep.js';
 import { WizardPreviewStep } from '../screens/WizardPreviewStep.js';
-import { fileSummaryLabel, producedOf } from '../support/produced.js';
+import { countedThings, fileSummaryLabel, producedOf } from '../support/produced.js';
 import { buildRunTeaserLine } from '../support/run-teaser.js';
 import type { FlowController } from './controller.js';
 import type { FlowState } from './types.js';
+import { useFlowLog } from './use-flow-log.js';
 
 interface FlowScreenProps {
   state: FlowState;
@@ -36,7 +37,11 @@ export function FlowScreen({
   generatePromptPath,
   onExit,
 }: FlowScreenProps): React.ReactElement {
+  useFlowLog(state);
   const produced = producedOf(state);
+  // How many of each the run writes, so the saving, diffing and pushing screens can say it.
+  const counts = { components: state.generatedAcceptedCount, tokens: state.tokenCount };
+  const things = countedThings(produced, counts);
   const quit = (): void => onExit(0);
 
   const content = ((): React.ReactElement | null => {
@@ -62,7 +67,7 @@ export function FlowScreen({
         return (
           <RunningStep
             step="push"
-            description="Computing diff against your Contentful space..."
+            description={`Computing diff for ${things} against your Contentful space...`}
             lines={[{ id: 'preview', text: 'Requesting the import preview and comparing definitions…' }]}
           />
         );
@@ -82,11 +87,12 @@ export function FlowScreen({
         );
 
       case 'pushing':
-        return <PushingStep progress={state.pushProgress} produced={produced} />;
+        return <PushingStep progress={state.pushProgress} produced={produced} counts={counts} />;
 
       case 'path-prompt':
         return (
           <PathPrompt
+            summary={`Saving ${things}${state.credentialsSkipped ? '' : ' and pushing them to your Contentful space'}.`}
             defaultPath={state.outDir}
             onSubmit={(submitted) => void controller.submitPath(submitted)}
             onCancel={quit}

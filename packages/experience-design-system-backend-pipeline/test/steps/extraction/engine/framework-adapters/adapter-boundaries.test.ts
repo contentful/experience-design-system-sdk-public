@@ -66,6 +66,7 @@ describe('framework adapter boundaries', () => {
       'vue-tsx',
       'vue',
       'astro',
+      'angular',
       'web-components',
       'svelte',
     ]);

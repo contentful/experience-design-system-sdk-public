@@ -5,6 +5,7 @@ import { PALETTE } from '@tui/theme.js';
 
 export type TokenPropSuggestion = {
   propName: string;
+  kinds: string[];
   paths: string[];
   suggested: string[];
   allowed: string[];
@@ -58,10 +59,10 @@ export function TokenReviewPanel({
         borderColor={active ? PALETTE.text : undefined}
       >
         <Text bold color={active ? undefined : PALETTE.muted} wrap="truncate">
-          {`TOKEN REVIEW — ${componentName} · ${current.propName} (edit allowed)`}
+          {`Review mapped tokens — ${componentName} · ${current.propName}${current.kinds.length > 0 ? ` (${current.kinds.join(', ')})` : ''}`}
         </Text>
         <Text color={PALETTE.muted} wrap="truncate">
-          {`select which tokens are allowed (${rangeLabel})`}
+          {`Tick the tokens this property may use (${rangeLabel}).`}
         </Text>
         <Text> </Text>
         {current.paths.length === 0 && (
@@ -102,7 +103,14 @@ export function TokenReviewPanel({
       borderStyle="single"
       borderColor={active ? PALETTE.text : undefined}
     >
-      <Text bold color={active ? undefined : PALETTE.muted}>{`TOKEN REVIEW — ${componentName}`}</Text>
+      <Text bold color={active ? undefined : PALETTE.muted}>{`Review mapped tokens — ${componentName}`}</Text>
+      <Text color={PALETTE.muted} wrap="truncate">
+        {`${componentName} has ${suggestions.length} design ${suggestions.length === 1 ? 'prop' : 'props'} of type token. Select which tokens are allowed for each property.`}
+      </Text>
+      <Text color={PALETTE.muted} wrap="truncate">
+        {'Suggested tokens come from the agent. Allowed tokens are what editors can pick in Contentful.'}
+      </Text>
+      <Text> </Text>
       {suggestions.length === 0 && <Text color={PALETTE.muted}>{'(no token suggestions for this component)'}</Text>}
       {suggestions.map((s, i) => {
         const focused = i === selectedRow;
@@ -110,16 +118,20 @@ export function TokenReviewPanel({
           <Box key={s.propName} flexDirection="column">
             <Box>
               <Text color={focused ? PALETTE.accent : active ? undefined : PALETTE.muted} bold={focused}>
-                {`${focused ? figures.pointer : ' '} ${s.propName}`}
+                {`${focused ? figures.pointer : ' '} ${s.propName}${s.kinds.length > 0 ? ` (${s.kinds.join(', ')})` : ''}`}
               </Text>
             </Box>
-            <Text color={PALETTE.muted}>{`  suggested: ${s.suggested.join(', ')}`}</Text>
-            <Text color={PALETTE.muted}>{`  allowed: ${s.allowed.join(', ')}`}</Text>
+            <Text
+              color={PALETTE.muted}
+            >{`  suggested: ${s.suggested.length > 0 ? s.suggested.join(', ') : 'none'}`}</Text>
+            <Text
+              color={PALETTE.muted}
+            >{`  allowed: ${s.allowed.length > 0 ? s.allowed.join(', ') : 'none (any token)'}`}</Text>
+            <Text> </Text>
           </Box>
         );
       })}
-      <Text> </Text>
-      <Text>{'[↑/↓] move  [Enter] edit allowed  [Esc] close'}</Text>
+      <Text color={PALETTE.muted}>{'[↑/↓] move  [Enter] edit allowed tokens  [Esc] close'}</Text>
     </Box>
   );
 }

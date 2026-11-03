@@ -22,20 +22,20 @@ Unless stated otherwise, `src/...` paths below are relative to `packages/experie
 ### Wizard step machine (`packages/experience-design-system-cli/src/tui/import/steps/`)
 
 ```
-extracting (selection agent runs here)
-        → scope-gate → generating → final-review → path-prompt
-        → previewing → preview-gate → pushing → done
+00-preflight → 01-welcome → 02-token-input → 03-path-validation → 04-credentials
+        → 05-token-review → 06-extraction (selection agent runs here)
+        → 07-scope-gate → 08-generation → 09-review → 10-flow (save → preview → push → done)
 ```
 
 The CLI owns the full wizard flow in one process, including extraction, the scope gate, generation, review, save, preview, and push. Choosing skip on the Credentials screen sets `credentialsSkipped` in the `ImportHandoff` and saves files without previewing or pushing.
 
-A single human review gate (`scope-gate`) precedes generation. The final-review step edits names, `$description`, `$default`, `$allowedComponents` and `$values` inline, with source and rationale panels. After final-review the flow always saves one combined `components.json` CDF and, unless credentials were skipped, previews and pushes it.
+A single human review gate (`07-scope-gate`) precedes generation. The `09-review` step edits names, `$description`, `$default`, `$allowedComponents` and `$values` inline, with source and rationale panels. After review, `10-flow` always saves one combined `components.json` CDF (`packages/experience-design-system-cli/src/tui/import/steps/10-flow/flow/save.ts`) and, unless credentials were skipped, previews and pushes it. Choosing skip on the `04-credentials` screen sets `credentialsSkipped` in the handoff: files are saved, the preview is bypassed and push is refused.
 
 The scope gate displays saved extracted source relationships separately from accepted slot restrictions. Source relationships participate in tree grouping, search and lineage navigation; confirmed slot decisions govern automatic selection cascades and slot-cycle warnings. Open slots remain open even when observed child relationships are shown. Scope decisions for completed exploration are read directly from SQLite; do not serialize full source evidence into duplicate legacy review proposals at the generation handoff.
 
 ### Run records
 
-Each successful wizard run appends a record to `~/.contentful/experience-design-system-cli/state/runs.json`. There is no command for listing them.
+Run records are appended to `~/.contentful/experience-design-system-cli/state/runs.json` by `packages/experience-design-system-backend-pipeline/src/persistence/src/runs/services/append-run.ts`. There is no command for listing them.
 
 ### Import options
 
@@ -82,7 +82,7 @@ The session stores the default projection in the `raw_token_name_paths` sidecar 
 
 **Do not write intermediary JSON files for extracted component data.** The handoff from extraction to generation flows through the session DB. The `tokens.json` file produced by token generation is an output artifact, separate from that component-data handoff.
 
-**`DatabaseSync` synchronous write invariant:** all multi-statement operations use explicit `BEGIN`/`COMMIT`/`ROLLBACK`. SIGINT and crash cannot produce partially-written state. Do not add async alternatives to this path.
+**`DatabaseSync` synchronous write invariant:** multi-statement operations use explicit `BEGIN`/`COMMIT`/`ROLLBACK` (see `packages/experience-design-system-backend-pipeline/src/persistence/src/session/repositories/shared/with-transaction.ts`). SIGINT and crash cannot produce partially-written state. Do not add async alternatives to this path.
 
 In tests, set `EDS_PIPELINE_DB_PATH` to a temp path to avoid polluting the developer's real DB.
 
@@ -93,15 +93,15 @@ In tests, set `EDS_PIPELINE_DB_PATH` to a temp path to avoid polluting the devel
 1. Understand the DOM attribute prop surfacing strategy — see "DOM attribute prop surfacing" in `ARCHITECTURE.md`
 2. Understand how SVGProps is handled — it is one of the curated DOM attribute wrapper types (`EXPANDABLE_DOM_ATTRIBUTE_TYPE_NAMES`)
 
-Key invariant: **never call `getType().getProperties()` on a type that extends a DOM attribute wrapper** — this produces hundreds of inflated props. Use `extractPropsFromInterfaceDeclaration` (which restricts to own-declared members) or `getSyntheticDomAttributeProps` (which uses the curated allowlist).
+Key invariant: **do not expand the full type of a component that extends a DOM attribute wrapper** (`type.getProperties()` on such a type produces hundreds of inflated props). Use `extractPropsFromInterfaceDeclaration` (which restricts to own-declared members) or `getSyntheticDomAttributeProps` (which uses the curated allowlist). Both live in the extractor file above.
 
 When adding a new DOM attribute wrapper type (e.g., `TableHTMLAttributes`):
 
-1. Add it to `EXPANDABLE_DOM_ATTRIBUTE_TYPE_NAMES` in `react.ts`
+1. Add it to `EXPANDABLE_DOM_ATTRIBUTE_TYPE_NAMES` in the extractor file
 2. Specify its curated prop list and optional parent type
 3. Write a test that verifies the prop count stays bounded
 
-## Import Generation Internals
+## Generation and Agent Internals
 
 The CLI owns wizard routing and calls the backend pipeline directly. The backend pipeline owns the prompt builder, agent invocation, generation, and persistence:
 
@@ -160,7 +160,7 @@ New model dependencies selected during generation run a single Component-scoped 
 
 `packages/experience-design-system-cli/src/tui/import/steps/06-extraction/selection.ts` runs during extraction after the backend pipeline creates a session. It makes one agent call for undecided components to decide whether each belongs in Contentful ExO as a Component Type. The decisions feed the scope gate (`steps/07-scope-gate`), where the operator confirms or changes them.
 
-- Skips components whose decision is cached (keyed on the component, the prompt and the CLI version); `--no-cache` asks again for everything
+- Skips components whose decision is cached (keyed on the component, the prompt, agent, model and CLI version; cache code in `packages/experience-design-system-backend-pipeline/src/persistence/src/session/cache/selection.ts`); the `noCache` option (threaded through `packages/experience-design-system-cli/app.tsx`; there is no CLI flag for it) asks again for everything
 - Times out after 5 minutes (`EDS_AGENT_TIMEOUT_MS`), and writes nothing if the call fails
 - Stores accept and reject decisions, with rationale, in the pipeline DB (`raw_components.reject_reason`)
 - `--prompt select=<file-or-text>` overrides its prompt
@@ -179,12 +179,12 @@ The CLI's `steps/10-flow/` owns saving, preview, confirmation, and push inside t
 
 ## TUI Components
 
-All TUI components are standard React functional components rendered by Ink. They live in:
+All TUI components are standard React functional components rendered by Ink. They live in `packages/experience-design-system-cli/src/tui/`; see `packages/experience-design-system-cli/DSI_TUI_ARCHITECTURE.md` for the engineering standard:
 
 - `packages/experience-design-system-cli/src/tui/import/steps/` — import, review, preview, and push screens
 - `packages/experience-design-system-cli/src/tui/` — CLI TUI components and shared terminal UI
 
-Colors come from the shared `PALETTE` in `packages/experience-design-system-cli/src/tui/theme.ts`, imported as `@tui/theme.js` (the `@tui/*` alias maps to `src/tui/*`; it is set in `tsconfig.json` and `vitest.config.ts`). Do not hardcode colours or define another palette. Control hints use `ControlHints` and the import's step tabs use `StepHeader`, both in `src/tui/shared/components/`.
+Colors come from the shared `PALETTE` in `packages/experience-design-system-cli/src/tui/theme.ts`, imported as `@tui/theme.js` (the `@tui/*` alias maps to `src/tui/*`; it is set in `tsconfig.json` and `vitest.config.ts`). Do not hardcode colours or define another palette. Control hints use `ControlHints` and the import's step tabs use `StepHeader`, both in `packages/experience-design-system-cli/src/tui/shared/components/`.
 
 When writing TUI tests, use `ink-testing-library`. Set `NO_COLOR=1` in the environment before running tests to suppress ANSI escape codes. Strip ANSI before snapshot assertions if the test renders raw strings.
 
@@ -192,7 +192,7 @@ The scope gate (`steps/07-scope-gate`) shows two columns at 100 or more terminal
 
 ## Session Persistence
 
-**Pipeline sessions** (extraction, internal generation, review) are in `pipeline.db` as described above. Override with `EDS_PIPELINE_DB_PATH`.
+**Pipeline sessions** (extraction, generation, review) are in `pipeline.db` as described above. Override with `EDS_PIPELINE_DB_PATH`. Per-session review state files are under `reviews/` (`packages/experience-design-system-backend-pipeline/src/persistence/src/review-session/`).
 
 ### Component exploration cache
 
@@ -210,11 +210,10 @@ Run records are appended to `~/.contentful/experience-design-system-cli/state/ru
 
 ## Testing
 
-- Tests live in `test/` mirroring `src/`
+- CLI tests live in `packages/experience-design-system-cli/test/`, mirroring `packages/experience-design-system-backend-pipeline/src/`
+- Backend-pipeline tests live next to each module (`src/steps/*/test/`, `packages/experience-design-system-backend-pipeline/src/persistence/test/`) and in `packages/experience-design-system-backend-pipeline/test/`
 - Vitest, no Jest
-- CLI integration tests require `dist/` to exist — the test setup compiles if missing
-- Snapshot files are committed; update with `--update-snapshots`
-- Tests that run extraction or internal generation must set `EDS_PIPELINE_DB_PATH` to an isolated temp path
+- Tests that run extraction or generation must set `EDS_PIPELINE_DB_PATH` to an isolated temp path
 
 ## Commit Convention
 
@@ -233,12 +232,12 @@ Valid types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `perf`, `ci`, `
 
 ## Sharp Edges
 
-- **DOM prop inflation**: The single most common source of bugs in the React extractor. Always verify extracted prop counts after changing extraction logic. `Button` should have ~32 props, `Input` ~28, SVG icon components ~11.
-- **No intermediary JSON files**: Extraction does not write `raw-components.json`. Internal generation reads from the session DB. If you see file-based handoffs, they are wrong.
+- **DOM prop inflation**: The single most common source of bugs in the React extractor. Always verify extracted prop counts after changing extraction logic; a component that extends a DOM attribute type should surface its own props plus the curated allowlist, not hundreds of DOM props.
+- **No intermediary JSON files**: Extraction does not write `raw-components.json`. Generation reads from the session DB. If you see file-based handoffs for component data, they are wrong.
 - **Stacked PRs and Nx affected**: When a base branch is merged to `development` before the stacked branch, `pnpm affected:*` may report "no packages changed" because `NX_BASE` points to the merged tip. This is expected — not a test failure.
 - **ESM import paths**: TypeScript source imports `.js` extensions. Do not change them to `.ts`. The TypeScript compiler resolves them correctly.
-- **Pre-commit hook failures**: If `lint-staged` or `commitlint` fails, fix the issue and re-commit. Never use `--no-verify`. The pre-commit hook runs `lint:fix` with `--skip-nx-cache` so formatting errors are always caught.
+- **Pre-commit hook failures**: If `lint-staged` or `commitlint` fails, fix the issue and re-commit. Never use `--no-verify`. The pre-commit hook runs `lint:staged` (`.husky/pre-commit`), so formatting errors are always caught.
 
 ## Architecture Decisions
 
-The one formal ADR, `docs/decisions/0001-cdf-is-the-manifest.md`, covers the CDF-as-manifest decision — read it before changing that boundary. Other technical constraints called out above (the runtime dependency on `typescript`, the DOM prop allowlist strategy, no-intermediary-JSON-files, the `apply` command shape) are firm constraints documented inline in the sections above, not in separate ADR files.
+The one formal ADR, `docs/decisions/0001-cdf-is-the-manifest.md`, covers the CDF-as-manifest decision — read it before changing that boundary. Other technical constraints called out above (the runtime dependency on `typescript`, the DOM prop allowlist strategy, no-intermediary-JSON-files, subprocess-only agent invocation) are firm constraints documented inline in the sections above, not in separate ADR files.

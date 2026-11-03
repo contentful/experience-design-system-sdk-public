@@ -4,48 +4,37 @@
 
 Contentful Experiences lets you compose pages and layouts from your own design system components. The `@contentful/experience-design-system-cli` imports your design system into Contentful. It extracts Component Type definitions from your local codebase, invokes an AI agent to generate Component Definition Format (CDF) definitions, and pushes them to your Contentful space.
 
-Your codebase remains the single source of truth. The CLI analyzes your source files (`.tsx`, `.ts`, `.jsx`, `.js`, `.vue`, `.astro`) using static analysis, then delegates property classification and CDF generation to a coding agent.
+Your codebase remains the single source of truth. The CLI analyzes your source files (`.tsx`, `.ts`, `.jsx`, `.js`, `.vue`, `.svelte`, `.astro`) using static analysis, then delegates property classification and CDF generation to a coding agent.
 
 ## Prerequisites
 
-- **Node.js 24**
-- **pnpm 10.27.0+**
-- **A coding agent** in `$PATH` — Claude Code, Codex, OpenCode, Cursor, or GitHub Copilot
-- **A Contentful CMA token** — set `CONTENTFUL_MANAGEMENT_TOKEN`
+- **Node.js 24 or later.** Node.js is the program that runs this tool. To see whether you already have it, open a terminal and type `node -v`. If you see an error, or a number lower than 24, download the "LTS" version from [nodejs.org](https://nodejs.org/en/download) and install it. That installer also gives you `npm`, which you will use in the next section.
+- **A coding agent.** The tool uses an AI coding agent to help describe your components. Install one of these: Claude Code, Codex, OpenCode, Cursor, or GitHub Copilot. Then sign in to it, and make sure you can start it by typing its command in your terminal.
+- **Your Contentful space ID, environment ID, and a CMA token.** The space ID identifies the Contentful space you are importing into. The environment ID identifies which environment inside that space to use, and most spaces use `master`. A CMA token is a secret key that lets this tool make changes in that space, and you can create one in Contentful under **Settings → CMA tokens**. The tool asks you for all three while it runs. If your space is hosted in the EU, enter `api.eu.contentful.com` when it asks for the API host.
 
 ## Quick Start
 
 ### Install
 
 ```bash
-git clone https://github.com/contentful/experience-design-system-sdk-public.git
-cd experience-design-system-sdk-public
-pnpm install
-pnpm build
-pnpm -F @contentful/experience-design-system-cli build
+npm install -g @contentful/experience-design-system-cli
 ```
 
-The final step builds the CLI package and symlinks the `experiences`, `exo`, and `experience-design-system-cli` commands alongside your `node` binary so they're available on your `$PATH`.
+To confirm that the install worked, type `experiences --version`. It should print a version number.
 
-The package publishes three binaries — `experiences`, `exo`, and `experience-design-system-cli`. The docs below use `experiences` since that is the wizard-oriented entry point.
+The install adds three commands to your terminal: `experiences`, `exo`, and `experience-design-system-cli`. All three do the same thing. The rest of this guide uses `experiences`.
 
-### Setup
-
-```bash
-experiences setup
-```
-
-The interactive setup wizard installs Node 24 (if needed), verifies pnpm, checks for a coding agent, and persists credentials + agent preferences to `~/.contentful/experience-design-system-cli/config.json`. Later commands read those values automatically.
+If you are a developer and want to build the tool from its source code instead, follow the steps in the [contributing guide](https://github.com/contentful/experience-design-system-sdk-public/blob/development/CONTRIBUTING.md).
 
 ### Run
 
-The primary entry point is the import wizard:
+Start the import by typing:
 
 ```bash
 experiences import
 ```
 
-In an interactive terminal this launches a full-screen TUI that walks you through the project path, an optional token file, credentials, extraction and AI selection, a manual scope review, generation, final review, and push. Credentials are pre-filled from `experiences setup`.
+This opens a full-screen guided wizard, so make your terminal window as large as you can before you run it. The wizard asks for everything it needs on its own screens. It walks you through these steps in order: choosing your project folder, adding an optional file of design tokens, entering your Contentful details, reading your components, choosing which components to import, generating the component definitions, reviewing them, and finally sending them to Contentful.
 
 ## How it works
 
@@ -59,8 +48,6 @@ The CLI runs your component library through four stages:
 
 **4. Apply** — Saves a combined `components.json` to disk for source control, shows a diff of what will change in your Contentful space, then pushes.
 
-To apply a checked-in CDF file without the wizard, use `experiences apply <file>`.
-
 ## Packages
 
 | Package                                                                                  | Description                                                                                       |
@@ -70,11 +57,4 @@ To apply a checked-in CDF file without the wizard, use `experiences apply <file>
 
 ## Command Reference
 
-Full documentation for every flag and every subcommand lives in [`packages/experience-design-system-cli/README.md`](packages/experience-design-system-cli/README.md).
-
-| Command                    | What it does                                                             |
-| -------------------------- | ------------------------------------------------------------------------ |
-| `experiences setup`        | Interactive setup — installs prerequisites and saves credentials + agent |
-| `experiences doctor`       | Health check — verify Node version, credentials, and agent binaries      |
-| `experiences import`       | Run the interactive wizard (extract → select → generate → review → push) |
-| `experiences apply <file>` | Write component types and design tokens from one CDF file to Contentful  |
+The CLI has one command, `experiences import`. It is also what runs when you start `experiences` with no command. It opens a full-screen home screen with three options: **Import**, **Settings**, and **Help**. Use **Settings** to save your Contentful credentials and choose your coding agent, and **Import** to start the wizard.

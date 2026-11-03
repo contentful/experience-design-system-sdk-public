@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { initialProgress } from './logic.js';
+import { startDebugRun, finishDebugRun } from '@tui/debug-store.js';
+import { generationLogInputs, generationLogOutputs, initialProgress } from './logic.js';
 import { runGeneration } from './run.js';
 import type { GenerationInput, GenerationProgress, GenerationResult } from './types.js';
 import { isAbortError, linkAbortSignal, trackImportWork } from '../../cancellation.js';
@@ -28,14 +29,27 @@ export function useGeneration(input: GenerationInput | undefined): GenerationSta
     current.current = run;
     const isCurrent = (): boolean => current.current === run && !run.controller.signal.aborted;
     setState({ status: 'running', progress: initialProgress() });
+    let lastProgress: GenerationProgress | undefined;
+    startDebugRun({
+      flow: 'import/generation',
+      step: '08-generation',
+      menuOption: 'Generation',
+      inputs: generationLogInputs(input),
+    });
     const work = trackImportWork(
       runGeneration({ ...input, signal: run.controller.signal }, (progress) => {
+        lastProgress = progress;
         if (isCurrent()) setState({ status: 'running', progress });
       }),
     );
     void work
       .then((result) => {
-        if (isCurrent()) setState({ status: 'done', result });
+        if (!isCurrent()) return;
+        void finishDebugRun({
+          ...generationLogOutputs(result, lastProgress),
+          exitMethod: result.ok ? 'saved' : 'discarded',
+        });
+        setState({ status: 'done', result });
       })
       .catch((error: unknown) => {
         if (!isCurrent() || isAbortError(error)) return;

@@ -14,6 +14,8 @@ type PendingRun = {
   menuOption: string;
   inputs: Record<string, unknown>;
   startedAt: number;
+  // What a long run has found so far. A crash or Ctrl+C writes this instead of an empty log.
+  progress?: Record<string, unknown>;
 };
 
 type Status = 'success' | 'error';
@@ -94,6 +96,7 @@ export async function startDebugSessionIn(base: string, { replace = false } = {}
   try {
     if (!(await isDebugModeEnabled())) return;
     await mkdir(join(startSession(resolve(base), { replace }), 'debug'), { recursive: true });
+    await writeWaitingLogs();
   } catch {
     // Debug logging must never get in the way of the user.
   }
@@ -135,6 +138,7 @@ void Promise.all([isDebugModeEnabled(), readBaseDir()])
     if (!enabled) return;
     const debugDir = join(startSession(base, { replace: false }), 'debug');
     await mkdir(debugDir, { recursive: true });
+    await writeWaitingLogs();
     // Say what was deleted, so "my logs are gone" can be answered from the log. Nothing is written when nothing expired.
     if (retention && pruned && pruned.logs + pruned.folders > 0) {
       await writeFile(
@@ -200,13 +204,20 @@ export function startDebugRun({
   const startedAt = Date.now();
   const redactedInputs = redact(inputs);
 
-  // isDebugModeEnabled() is async but this function's callers (screen mount
-  // effects) call it fire-and-forget. A screen that exits before this
-  // resolves just has no pending run, which finishDebugRun treats as a no-op.
-  isDebugModeEnabled().then((enabled) => {
-    if (!enabled) return;
-    pendingRun = { flow, step, runId, menuOption, inputs: redactedInputs, startedAt };
+  // The run is registered at once. Reading Debug Mode is async, and a step that ends before it has been read must still be
+  // logged as itself: if it were registered late, its finish would be dropped and the next step's finish would land on it,
+  // mixing the two logs. When Debug Mode turns out to be off the run is withdrawn here, and finishDebugRun checks again
+  // before it writes.
+  const run: PendingRun = { flow, step, runId, menuOption, inputs: redactedInputs, startedAt };
+  pendingRun = run;
+  void isDebugModeEnabled().then((enabled) => {
+    if (!enabled && pendingRun === run) pendingRun = undefined;
   });
+}
+
+/** Keeps what the open run has so far, in memory. It is only written if the run is cut short. */
+export function setDebugRunProgress(outputs: Record<string, unknown>): void {
+  if (pendingRun) pendingRun.progress = outputs;
 }
 
 export async function finishDebugRun({
@@ -221,19 +232,54 @@ export async function finishDebugRun({
   const run = pendingRun;
   if (!run) return;
   pendingRun = undefined;
+  if (!(await isDebugModeEnabled())) return;
 
   const durationMs = Date.now() - run.startedAt;
-  const content = renderMarkdown(run, { outputs: redact(outputs), status, exitMethod, durationMs });
+  const log: FinishedLog = {
+    folder: logFolder(run.flow, run.step),
+    menuOption: run.menuOption,
+    content: renderMarkdown(run, { outputs: redact(outputs), status, exitMethod, durationMs }),
+  };
 
-  // Without a configured base directory nothing is logged until the import has started the session.
+  // Without a session folder yet (no base directory is configured and the import has not started) the log waits.
+  const root = currentDebugSessionDir();
+  if (!root) {
+    if (waiting.length < WAITING_LIMIT) waiting.push(log);
+    return;
+  }
+  await writeLog(root, log);
+}
+
+type FinishedLog = { folder: string; menuOption: string; content: string };
+
+// Import steps are numbered ("04-credentials"), so their folders carry the number and a file browser lists them in the
+// order the steps run. Other flows keep the folder named after the flow.
+function logFolder(flow: string, step: string): string {
+  return flow.startsWith('import/') && /^\d+-/.test(step) ? `import/${step}` : flow;
+}
+
+// The first import steps finish before the project, and so the session folder, is known. Their logs wait here and are
+// written, in order and once, when the folder is created. The limit keeps a long session with no folder from growing.
+const WAITING_LIMIT = 50;
+const waiting: FinishedLog[] = [];
+
+async function writeLog(root: string, log: FinishedLog): Promise<void> {
+  const dir = join(root, ...log.folder.split('/'));
+  await mkdir(dir, { recursive: true });
+  const filename = nextAttemptFilename(dir, log.menuOption);
+  await writeFile(join(dir, filename), log.content, { mode: 0o600 });
+}
+
+async function writeWaitingLogs(): Promise<void> {
   const root = currentDebugSessionDir();
   if (!root) return;
-  const flowSegments = run.flow.split('/');
-  const dir = join(root, ...flowSegments);
-
-  await mkdir(dir, { recursive: true });
-  const filename = nextAttemptFilename(dir, run.menuOption);
-  await writeFile(join(dir, filename), content, { mode: 0o600 });
+  for (const log of waiting.splice(0)) {
+    try {
+      await writeLog(root, log);
+    } catch {
+      // Debug logging must never get in the way of the user.
+    }
+  }
 }
 
 // MM-DD-YYYY-<menu-option>-attempt-N.md: same date convention as the session directory,
@@ -287,7 +333,7 @@ ${JSON.stringify(finish.outputs, null, 2)}
 }
 
 function handleCrash(): Promise<void> {
-  return finishDebugRun({ outputs: {}, status: 'error', exitMethod: 'crashed' });
+  return finishDebugRun({ outputs: pendingRun?.progress ?? {}, status: 'error', exitMethod: 'crashed' });
 }
 
 process.once('uncaughtException', (err) => {
@@ -304,7 +350,7 @@ process.once('unhandledRejection', (reason) => {
 
 let shutdownStarted = false;
 
-function shutdownImport(exitCode: 130 | 143): void {
+function shutdownImport(exitCode: 129 | 130 | 143): void {
   if (shutdownStarted) return;
   shutdownStarted = true;
   void cancelAndDrainImportWork()
@@ -314,3 +360,4 @@ function shutdownImport(exitCode: 130 | 143): void {
 
 process.once('SIGINT', () => shutdownImport(130));
 process.once('SIGTERM', () => shutdownImport(143));
+process.once('SIGHUP', () => shutdownImport(129));

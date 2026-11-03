@@ -152,9 +152,17 @@ type UseReviewHistoryOptions = {
   components: CdfReviewEntry[];
   createSnapshot: (components: CdfReviewEntry[]) => HistorySnapshot;
   applySnapshot: (snapshot: HistorySnapshot) => void;
+  /** Told what each edit was called, and about each undo and redo, so the debug log can follow the session. */
+  onAction?: (label: string) => void;
 };
 
-export function useReviewHistory({ loading, components, createSnapshot, applySnapshot }: UseReviewHistoryOptions): {
+export function useReviewHistory({
+  loading,
+  components,
+  createSnapshot,
+  applySnapshot,
+  onAction,
+}: UseReviewHistoryOptions): {
   historySeededRef: { current: boolean };
   pushHistorySnapshot: (entries: CdfReviewEntry[], label: string) => void;
   handleUndo: () => void;
@@ -173,16 +181,21 @@ export function useReviewHistory({ loading, components, createSnapshot, applySna
   const pushHistorySnapshot = (entries: CdfReviewEntry[], label: string): void => {
     if (!historyRef.current) return;
     historyRef.current.push(createSnapshot(entries), label);
+    onAction?.(label);
   };
 
   const handleUndo = (): void => {
     const snapshot = historyRef.current?.undo();
-    if (snapshot) applySnapshot(snapshot);
+    if (!snapshot) return;
+    applySnapshot(snapshot);
+    onAction?.('undo');
   };
 
   const handleRedo = (): void => {
     const snapshot = historyRef.current?.redo();
-    if (snapshot) applySnapshot(snapshot);
+    if (!snapshot) return;
+    applySnapshot(snapshot);
+    onAction?.('redo');
   };
 
   const resetHistory = (snapshot: HistorySnapshot): void => {

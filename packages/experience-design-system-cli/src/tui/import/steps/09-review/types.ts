@@ -21,6 +21,7 @@ export type TokenReviewToken = { path: string; kind: string };
 
 export type TokenPropSuggestion = {
   propName: string;
+  kinds: string[];
   paths: string[];
   suggested: string[];
   allowed: string[];

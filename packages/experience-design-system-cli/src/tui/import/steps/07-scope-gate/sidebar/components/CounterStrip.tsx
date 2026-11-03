@@ -14,6 +14,7 @@ export function CounterStrip(props: { counters: CounterStripCounters; totalWidth
   const { counters, totalWidth } = props;
   const condensed = totalWidth < 60;
   const labelGrp = condensed ? 'Cmp' : 'Components with Slots';
+  const labelAcc = condensed ? 'Acc' : 'Accepted';
   const labelRej = condensed ? 'Rej' : 'Rejected';
   const labelUnd = condensed ? 'Und' : 'Undecided';
   const sep = condensed ? ' | ' : '    ';
@@ -22,6 +23,9 @@ export function CounterStrip(props: { counters: CounterStripCounters; totalWidth
       <Text>
         <Text color={PALETTE.muted}>{labelGrp} </Text>
         <Text bold>{counters.groups}</Text>
+        <Text color={PALETTE.muted}>{sep}</Text>
+        <Text color={PALETTE.muted}>{labelAcc} </Text>
+        <Text bold>{`${counters.accepted}/${counters.total}`}</Text>
         <Text color={PALETTE.muted}>{sep}</Text>
         <Text color={PALETTE.muted}>{labelRej} </Text>
         <Text bold>{counters.rejected}</Text>

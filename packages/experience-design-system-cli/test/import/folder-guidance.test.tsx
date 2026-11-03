@@ -22,7 +22,9 @@ const pause = () => new Promise((resolve) => setTimeout(resolve, 40));
 describe('source folder guidance', () => {
   it('supports application and component folders while preserving path submission', async () => {
     const onContinue = vi.fn();
-    const view = render(<WelcomeScreen initialPath="./example-app/src" onContinue={onContinue} onQuit={vi.fn()} />);
+    const view = render(
+      <WelcomeScreen mode="components" initialPath="./example-app/src" onContinue={onContinue} onQuit={vi.fn()} />,
+    );
     views.push(view);
     expect(view.lastFrame()).toContain('Which source folder');
     expect(view.lastFrame()).toContain('application root');
@@ -50,6 +52,7 @@ describe('source folder guidance', () => {
     const onConfirm = vi.fn();
     const view = render(
       <PathValidationScreen
+        mode="components"
         projectPath={directory}
         onConfirm={onConfirm}
         onChangePath={vi.fn()}

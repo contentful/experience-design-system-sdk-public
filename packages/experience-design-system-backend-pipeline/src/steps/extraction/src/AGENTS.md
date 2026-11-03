@@ -4,7 +4,7 @@ Parses source files and returns a structured inventory of UI components. First s
 
 ## What it does
 
-Walks a set of source file paths, routes each one to the correct framework extractor (React, Vue, Svelte, Astro, Stencil, web components), and emits a `RawComponentDefinition` per component — name, framework, file path, props, slots, and extractor warnings.
+Walks a set of source file paths, routes each one to the correct framework extractor (React, Vue, Svelte, Astro, Angular, Stencil, web components), and emits a `RawComponentDefinition` per component — name, framework, file path, props, slots, and extractor warnings.
 
 ## Input
 

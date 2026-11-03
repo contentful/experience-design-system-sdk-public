@@ -83,6 +83,7 @@ export function GotoBanner({
       borderStyle="single"
       borderColor={PALETTE.accent}
       paddingX={1}
+      paddingBottom={1}
       marginTop={width === undefined ? 1 : 0}
       width={width}
       flexShrink={0}
@@ -94,7 +95,11 @@ export function GotoBanner({
         return renderRow(row, i, i === highlightIndex);
       })}
       {moreBelow > 0 && <Text color={PALETTE.muted}>{`  ▼ ${moreBelow} more`}</Text>}
-      {footerHint !== undefined && <Text color={PALETTE.muted}>{footerHint}</Text>}
+      {footerHint !== undefined && (
+        <Box marginTop={1}>
+          <Text color={PALETTE.muted}>{footerHint}</Text>
+        </Box>
+      )}
     </Box>
   );
 }

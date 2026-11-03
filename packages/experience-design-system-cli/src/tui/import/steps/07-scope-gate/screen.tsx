@@ -1,7 +1,11 @@
-import React from 'react';
+import React, { useEffect, useMemo } from 'react';
+import { startDebugRun, finishDebugRun } from '@tui/debug-store.js';
+import { scopeGateLogInputs, scopeGateLogOutputs } from './log.js';
+import { loadTokenRows } from '../05-token-review/load.js';
+import { longestEntries } from '../05-token-review/logic.js';
 import { Box, Text } from 'ink';
 import { StepHeader } from '@tui/shared/components/StepHeader.js';
-import { AddedColumn } from './panels/added-column.js';
+import { TokensColumn } from './panels/tokens-column.js';
 import { CyclesPanel } from './panels/cycles-panel.js';
 import { RejectPrompt } from './panels/reject-prompt.js';
 import { CompactControlBar } from './sidebar/components/CompactControlBar.js';
@@ -18,6 +22,7 @@ import { useScopeGate } from './use-scope-gate.js';
 interface ScopeGateScreenProps {
   components: ScopeComponent[];
   savedDecisions?: ScopeDecisions;
+  tokensPath?: string;
   onConfirm: (decisions: ScopeDecisions) => void;
   onQuit: () => void;
 }
@@ -27,7 +32,7 @@ const HELP_SECTIONS: HelpSection[] = [
     title: 'Navigation',
     entries: [
       { keys: '↑ / ↓', label: 'Move cursor' },
-      { keys: 'Tab / Shift-Tab', label: 'Switch column' },
+      { keys: 'Tab / Shift-Tab', label: 'Switch column (components / tokens)' },
       { keys: 'Enter', label: 'Jump to row in main column' },
     ],
   },
@@ -74,8 +79,44 @@ export function ScopeGateScreen(props: ScopeGateScreenProps): React.ReactElement
   return <ScopeGateView {...props} />;
 }
 
-function ScopeGateView({ components, savedDecisions, onConfirm, onQuit }: ScopeGateScreenProps): React.ReactElement {
-  const gate = useScopeGate({ components, savedDecisions, onConfirm, onQuit });
+function ScopeGateView({
+  components,
+  savedDecisions,
+  tokensPath,
+  onConfirm,
+  onQuit,
+}: ScopeGateScreenProps): React.ReactElement {
+  const tokens = useMemo(() => {
+    const loaded = tokensPath ? loadTokenRows(tokensPath) : undefined;
+    return loaded?.ok ? loaded.rows : [];
+  }, [tokensPath]);
+  const longest = useMemo(() => longestEntries(tokens), [tokens]);
+  useEffect(() => {
+    startDebugRun({
+      flow: 'import/scope-gate',
+      step: '07-scope-gate',
+      menuOption: 'Scope gate',
+      inputs: scopeGateLogInputs(components, tokens.length),
+    });
+  }, []);
+  const gate = useScopeGate({
+    components,
+    savedDecisions,
+    tokenCount: tokens.length,
+    tokensWidth: longest.path + longest.value + 10,
+    onConfirm: (decisions) => {
+      void finishDebugRun({
+        outputs: scopeGateLogOutputs(components, decisions),
+        status: 'success',
+        exitMethod: 'saved',
+      });
+      onConfirm(decisions);
+    },
+    onQuit: () => {
+      void finishDebugRun({ outputs: { outcome: 'quit' }, status: 'success', exitMethod: 'discarded' });
+      onQuit();
+    },
+  });
   const { search, graph, columnPlan, panelLayout, counters } = gate;
 
   if (gate.showHelp) {
@@ -104,6 +145,11 @@ function ScopeGateView({ components, savedDecisions, onConfirm, onQuit }: ScopeG
           <Box>
             <Text dimColor>Source links show rendered composition; selection follows confirmed slots.</Text>
           </Box>
+        )}
+        {tokens.length > 0 && columnPlan.layout === 'single' && (
+          <Text
+            color={PALETTE.muted}
+          >{`${tokens.length} design token${tokens.length === 1 ? '' : 's'} will be imported. Widen the terminal to list them.`}</Text>
         )}
         {graph.cycles.length > 0 && (
           <Box marginTop={1}>
@@ -157,14 +203,13 @@ function ScopeGateView({ components, savedDecisions, onConfirm, onQuit }: ScopeG
           {columnPlan.layout === 'two-column' && (
             <>
               <Box width={2} flexShrink={0} />
-              <AddedColumn
-                width={columnPlan.added}
-                entries={gate.addedComponents}
-                cursor={gate.safeAddedComponentsCursor}
-                focused={gate.focusedColumn === 'added-components'}
+              <TokensColumn
+                width={columnPlan.tokens}
+                tokens={tokens}
+                cursor={gate.safeTokensCursor}
+                focused={gate.focusedColumn === 'tokens'}
                 height={panelLayout.height}
-                title={`Accepted Components (${counters.accepted}/${counters.total})`}
-                aiFlaggedByKey={gate.aiFlaggedByKey}
+                title={`Design tokens (${tokens.length}) · read only`}
                 visibleCount={panelLayout.sideVisibleCount}
               />
             </>

@@ -1236,6 +1236,7 @@ export function FieldEditor({
   const [rationaleScrollOffset, setRationaleScrollOffset] = useState(0);
 
   const [showHelp, setShowHelp] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<SelectableRow | null>(null);
 
   const props = editorState.props;
   const slots = editorState.slots;
@@ -1353,6 +1354,49 @@ export function FieldEditor({
     setValidationError(null);
     setEditorState(next);
     onChange(serialized);
+  };
+
+  const deleteRow = (row: SelectableRow) => {
+    if (row.kind === 'prop') {
+      const nextProps = removeAt(editorState.props, row.idx);
+      commit({ ...editorState, props: nextProps });
+      setPropIdx(Math.max(0, Math.min(row.idx, nextProps.length - 1)));
+      const rowsAfter = selectableRows.filter((r) => !(r.kind === 'prop' && r.idx === row.idx));
+      const neighbour =
+        rowsAfter[Math.max(0, selectableRows.findIndex((r) => r.kind === row.kind && r.idx === row.idx) - 1)];
+      if (!neighbour) {
+        setInSlots(false);
+        setInComponentDesc(true);
+        setFocusLevel('componentDescription');
+      } else if (neighbour.kind === 'prop') {
+        setInSlots(false);
+        setPropIdx(neighbour.idx > row.idx ? neighbour.idx - 1 : neighbour.idx);
+        setFocusLevel('prop');
+      } else {
+        setInSlots(true);
+        setSlotIdx(neighbour.idx);
+        setFocusLevel('slot');
+      }
+      return;
+    }
+    const nextSlots = removeAt(editorState.slots, row.idx);
+    commit({ ...editorState, slots: nextSlots });
+    const rowsAfter = selectableRows.filter((r) => !(r.kind === 'slot' && r.idx === row.idx));
+    const neighbour =
+      rowsAfter[Math.max(0, selectableRows.findIndex((r) => r.kind === row.kind && r.idx === row.idx) - 1)];
+    if (!neighbour) {
+      setInSlots(false);
+      setInComponentDesc(true);
+      setFocusLevel('componentDescription');
+    } else if (neighbour.kind === 'slot') {
+      setInSlots(true);
+      setSlotIdx(neighbour.idx > row.idx ? neighbour.idx - 1 : neighbour.idx);
+      setFocusLevel('slot');
+    } else {
+      setInSlots(false);
+      setPropIdx(neighbour.idx);
+      setFocusLevel('prop');
+    }
   };
 
   const canonicalize = React.useCallback((json: string): string => {
@@ -1475,6 +1519,11 @@ export function FieldEditor({
     }
     if (key.ctrl && input === 's') {
       saveAcknowledged();
+      return;
+    }
+    if (pendingDelete) {
+      if (input === 'y') deleteRow(pendingDelete);
+      setPendingDelete(null);
       return;
     }
     const inDescriptionTextEntryForHelp = focusLevel === 'field' && editingField && activeField === 'description';
@@ -1728,6 +1777,11 @@ export function FieldEditor({
         if (selectedSelectableIndex >= 0 && selectedSelectableIndex < selectableRows.length - 1) {
           focusSelectableRow(selectableRows[selectedSelectableIndex + 1]!);
         }
+        return;
+      }
+      if (input === 'd' && !key.ctrl && !key.meta) {
+        if (focusLevel === 'prop' && currentProp) setPendingDelete({ kind: 'prop', idx: propIdx });
+        if (focusLevel === 'slot' && currentSlot) setPendingDelete({ kind: 'slot', idx: slotIdx });
         return;
       }
       if (focusLevel === 'slot' && key.return && currentSlot) {
@@ -2173,6 +2227,10 @@ export function FieldEditor({
   const hasEmptyProperties = props.length === 0 && slots.length === 0;
 
   const modeLabel = (() => {
+    if (pendingDelete) {
+      const name = pendingDelete.kind === 'prop' ? props[pendingDelete.idx]?.name : slots[pendingDelete.idx]?.name;
+      return `Delete ${pendingDelete.kind} "${name}"? [y] delete · any other key cancels`;
+    }
     if (editingValue) {
       return editingValue.mode === 'add' ? 'Enter to add · [Esc] to cancel' : 'Enter to save edit · [Esc] to cancel';
     }
@@ -2194,7 +2252,7 @@ export function FieldEditor({
     if (rationaleOpen) {
       return '[↑↓] scroll  [i/Esc] close rationale panel';
     }
-    return `[↑↓] navigate rows  [Enter] edit fields  [s] source  [${propRationaleKey}] prop rationale  [${componentRationaleKey}] component rationale  [Ctrl+j] edit component JSON  [h] help  [Esc] exit panel`;
+    return `[↑↓] navigate rows  [Enter] edit fields  [d] delete property  [s] source  [${propRationaleKey}] prop rationale  [${componentRationaleKey}] component rationale  [Ctrl+j] edit component JSON  [h] help  [Esc] exit panel`;
   })();
 
   type Row =
@@ -2629,6 +2687,7 @@ export function FieldEditor({
           <Text bold>Row navigation</Text>
           <Text>{'  ↑/↓               move between rows'}</Text>
           <Text>{'  Enter            edit fields on the current row'}</Text>
+          <Text>{'  d                delete the current prop or slot (asks to confirm)'}</Text>
           <Text>{'  Esc              exit the panel'}</Text>
           <Text> </Text>
           <Text bold>Field editing</Text>
@@ -2654,7 +2713,7 @@ export function FieldEditor({
       )}
       {validationError && <Text color={PALETTE.error}>{'✗ ' + validationError}</Text>}
       <Box paddingTop={1}>
-        <Text color={PALETTE.muted}>{modeLabel}</Text>
+        <Text color={pendingDelete ? PALETTE.text : PALETTE.muted}>{modeLabel}</Text>
       </Box>
     </FixedPanel>
   );

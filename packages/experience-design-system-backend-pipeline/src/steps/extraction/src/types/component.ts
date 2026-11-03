@@ -60,7 +60,7 @@ export interface RawComponentDefinition {
   componentEvidenceReadStatus?: ComponentEvidenceReadStatus;
   name: string;
   source: string;
-  framework: 'react' | 'next' | 'vue' | 'astro' | 'web-component' | 'stencil' | 'svelte'; // BOI type this
+  framework: 'react' | 'next' | 'vue' | 'astro' | 'web-component' | 'stencil' | 'svelte' | 'angular';
   props: RawPropDefinition[];
   slots: RawSlotDefinition[];
   /**

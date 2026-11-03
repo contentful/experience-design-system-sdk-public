@@ -55,7 +55,7 @@ The shared extraction service preserves candidates returned by its framework rea
 
 ```
 Design system codebase
-  (React / Vue / Astro / Stencil / Web Components)
+  (React / Vue / Astro / Stencil / Web Components / Svelte / Angular)
         │
         ▼
   experiences import (CLI TUI)
@@ -106,7 +106,7 @@ CDF and DTCG type definitions, JSON schemas, and validation utilities. Published
 
 ### RawComponentDefinition (extraction output)
 
-Produced by extraction, stored in the pipeline session database, consumed by the wizard's scope-gate and internal generation:
+Defined in `packages/experience-design-system-backend-pipeline/src/steps/extraction/src/types/component.ts`. Produced by extraction, stored in `pipeline.db`, consumed by selection and generation. Abridged:
 
 ```typescript
 interface RawComponentDefinition {
@@ -141,11 +141,6 @@ interface RawSlotDefinition {
 The finalized format for Contentful ExO import. Produced by backend generation and reviewed and saved by the import wizard:
 
 ```typescript
-interface CDFFile {
-  $schema: string;
-  [key: string]: CDFGroupOrComponent | string | undefined;
-}
-
 interface CDFComponentEntry {
   $type: 'component';
   $description?: string;
@@ -165,7 +160,7 @@ interface CDFPropertyDefinition {
 }
 ```
 
-For design-category token properties, extraction stores the raw default in `raw_props.default_value` and does not rewrite it during mapping. `map tokens` resolves `tokenReference` when present, otherwise the raw default, to a canonical DTCG path when it is exact or has one token-kind-compatible normalized terminal-member match. It persists that source-reference-to-path association in `raw_token_name_paths`. When CDF is projected, that compatible path becomes `$default`; otherwise the raw extracted default is retained. The agentic part of the stage is separate: it may write reviewed-compatible DTCG paths to `$token.allowed`, while an empty or absent restriction leaves the property unrestricted.
+For design-category token properties, extraction stores the raw default in `raw_props.default_value` and token mapping does not rewrite it. Mapping resolves `tokenReference` when present, otherwise the raw default, to a canonical DTCG path when it is exact or has one token-kind-compatible normalized terminal-member match, and persists that in `raw_token_name_paths`. When CDF is projected, that path becomes `$default`; otherwise the raw extracted default is retained. The agentic part of the stage may write reviewed-compatible DTCG paths to `$token.allowed`; an empty or absent restriction leaves the property unrestricted.
 
 ### DTCG (W3C Design Token Format)
 
@@ -369,51 +364,26 @@ sequenceDiagram
 
 ---
 
-## React Extractor Architecture
+## Agents and Prompts
 
 The React extractor (`packages/experience-design-system-backend-pipeline/src/steps/extraction/src/framework-adapters/react/extractor.ts`) is the most complex component (~2500 lines). It uses ts-morph to walk the TypeScript AST of each `.tsx`/`.jsx` file.
 
-### Extraction pipeline per file
+- **Agent choice**: `claude`, `codex`, `opencode`, `cursor` or `copilot` (`agents/types/agent-name.ts`), optionally with a model (`--agent claude:sonnet`). Resolution order is flag, then the agent preferences in `config.json`, then the built-in default; `EDS_AGENT_MODEL_<AGENT>` sets a per-agent model.
+- **Skill files**: markdown instructions in `agents/skills/selection/select-components.md` and `agents/skills/generation/` (`generate-components.md`, `generate-tokens.md`, `map-tokens.md`); the composition prompt is `prompts/composition-edges.md` at the package root. `--prompt <stage=value>` overrides a stage prompt with a file or literal text.
+- **Prompt building**: `agents/prompts/build-prompt.ts` combines a skill file with a runtime preamble (mode, inline JSON of the component data, optional file paths, the output protocol). Raw components are passed inline, not as a file path.
+- **Output protocol**: the agent emits one JSON tool-call object per line on stdout. The parsers are in `agents/parsers/`.
 
-```
-Source file
-  ↓
-Find exported PascalCase declarations
-  ↓
-resolvePropsType()
-  → unwraps FC<P>, forwardRef<Ref, P>, PropsWithChildren<P>
-  → follows type aliases to their declaration
-  ↓
-extractPropsFromType()
-  ├── isPureExpandableDomAttributeWrapperType?
-  │     → getSyntheticDomAttributeProps() (curated list)
-  ├── shouldMergeDomSyntaxExtraction?
-  │     → syntax path only (intersection with DOM wrapper)
-  ├── extractPropsFromInterfaceDeclaration()
-  │     ├── hasExpandableDomHeritage?
-  │     │     → own-declared members only + curated DOM surface
-  │     └── else: symbol extraction
-  └── extractPropsFromTypeSymbols()
-        → TypeScript symbol enumeration
-  ↓
-classifyProps() — assigns content / design / state categories
-  ↓
-detectSlots() — children, render props (renderHeader etc.)
-  ↓
-RawComponentDefinition
-```
+---
+
+## Extraction
+
+Each framework has an adapter in `packages/experience-design-system-backend-pipeline/src/steps/extraction/src/framework-adapters/` that walks source files and produces `RawComponentDefinition`s. `shared/` holds helpers reused across adapters, including worker-based per-file extraction. `helpers/pre-classify.ts` assigns provisional content/design/state categories; `helpers/evidence/` and `helpers/quality/` support composition and review.
+
+React path (`react/extract-react-components.ts`, with shared TSX logic in `shared/extract-tsx-components.ts`): find exported PascalCase declarations, unwrap `FC<P>`, `forwardRef` and `PropsWithChildren<P>` to the props type, enumerate props, pre-classify them, and detect slots (`children`, render props).
 
 ### DOM attribute prop surfacing
 
-React components commonly extend `HTMLAttributes<T>`, `ButtonHTMLAttributes<T>`, `SVGProps<T>`, etc. Full TypeScript expansion produces hundreds of props. The extractor uses a curated allowlist (`EXPANDABLE_DOM_ATTRIBUTE_TYPE_NAMES`) to restrict which props are surfaced.
-
-### Deduplication
-
-`pipeline.ts` (in the same directory) runs all extractors in parallel, then deduplicates. When the same logical component is found by multiple extractors (e.g., a Vue component also has a `.tsx` wrapper), it picks the preferred source using path heuristics:
-
-1. Index files (`Button/index.tsx`) preferred over named files
-2. Shorter paths preferred
-3. Canonical `src/components/X/` structure preferred
+React components commonly extend `HTMLAttributes<T>`, `ButtonHTMLAttributes<T>`, `SVGProps<T>` and similar. Full TypeScript expansion produces hundreds of props, so the extractor uses a curated allowlist of DOM attribute wrapper types (`EXPANDABLE_DOM_ATTRIBUTE_TYPE_NAMES`) to restrict which props are surfaced. Find it with `grep -rn EXPANDABLE_DOM_ATTRIBUTE_TYPE_NAMES packages/experience-design-system-backend-pipeline/src/steps/extraction/src`.
 
 ---
 

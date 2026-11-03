@@ -1,4 +1,5 @@
 import { cloneJson, own } from '../property-contract/json-value.js';
+import { repairTokenKinds } from './repair-token-kinds.js';
 import { CDF_SCHEMA_URL } from './schema.js';
 import type { CDFComponentEntry, CDFTokenEntry, CDFValidationError } from './types.js';
 import { parseCDFComponents, validateCDF } from './validate.js';
@@ -40,14 +41,21 @@ export interface CDFDocument {
   [key: string]: unknown;
 }
 
+/**
+ * Every document that is saved, previewed or pushed is built here, so this is where a token property that has no kind is
+ * given one: the API rejects it, and the preview does not notice. `onRepair` hears about each repair.
+ */
 export function buildCDF(
   components: Array<{ key: string; entry: CDFComponentEntry }>,
   tokens: Array<{ path: string; entry: CDFTokenEntry }>,
-  opts: { deleteAll?: boolean } = {},
+  opts: { deleteAll?: boolean; onRepair?: (message: string) => void } = {},
 ): CDFDocument | undefined {
   if (components.length === 0 && tokens.length === 0 && !opts.deleteAll) return undefined;
 
-  components = expandCDFModelDependencies(components);
+  components = expandCDFModelDependencies(components).map(({ key, entry }) => ({
+    key,
+    entry: repairTokenKinds(entry, key, tokens, opts.onRepair),
+  }));
   const prerequisites = validateImportPrerequisites({ components, tokens });
   if (!prerequisites.valid)
     throw new Error(

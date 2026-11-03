@@ -25,17 +25,21 @@ import type { FlowPatch, FlowState } from './types.js';
 /** How long the confirmation of a written file stays up before the flow moves on to the preview. */
 const SAVE_CONFIRMATION_DELAY_MS = 1000;
 
+/** "/Button/$properties/color" becomes "Button.color", so an error says which component and property it is about. */
+const describeCdfError = (error: { path: string; message: string }): string =>
+  `${error.path.replace(/^\//, '').replace('/$properties/', '.').replaceAll('/', '.')}: ${error.message}`;
+
 /** The document written to `components.json`: the components and tokens as one schema-valid CDF. */
 function buildSavedCDF(
   components: Array<{ key: string; entry: CDFComponentEntry }>,
   tokens: DTCGTokenEntry[],
-  opts: { deleteAll?: boolean } = {},
+  opts: { deleteAll?: boolean; onRepair?: (message: string) => void } = {},
 ): CDFDocument {
   const cdf = buildCDF(components, toCDFTokens(tokens), opts);
   if (!cdf) throw new Error('nothing to save — no components or tokens resolved');
   const validation = validateCDF(cdf);
   if (!validation.valid) {
-    throw new Error(`generated CDF failed validation: ${validation.errors.map((error) => error.message).join(', ')}`);
+    throw new Error(`generated CDF failed validation: ${validation.errors.map(describeCdfError).join('; ')}`);
   }
   return cdf;
 }
@@ -103,7 +107,10 @@ export async function runPrintFiles(
     }
     if (!input.tokenSessionId && input.tokensPath) tokens = await deps.readTokens(input.tokensPath);
 
-    const cdf = buildSavedCDF(components, tokens, { deleteAll: input.allowEmpty });
+    const cdf = buildSavedCDF(components, tokens, {
+      deleteAll: input.allowEmpty,
+      onRepair: (message) => deps.warn(`${message}\n`),
+    });
     if (input.extractSessionId) {
       const db = deps.openDb();
       try {

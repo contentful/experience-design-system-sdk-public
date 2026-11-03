@@ -15,6 +15,7 @@ function createChild() {
 
 describe('shared agent process lifecycle', () => {
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.useRealTimers();
   });
 
@@ -232,7 +233,7 @@ describe('shared agent process lifecycle', () => {
     controller.abort();
     expect(child.kill).toHaveBeenCalledExactlyOnceWith('SIGTERM');
     expect(settled).toBe(false);
-    expect(vi.getTimerCount()).toBe(0);
+    expect(vi.getTimerCount()).toBe(1);
     await vi.advanceTimersByTimeAsync(25);
     expect(settled).toBe(false);
     child.emit('close', 0, null);
@@ -257,5 +258,51 @@ describe('shared agent process lifecycle', () => {
 
     expect(removeListener).toHaveBeenCalledWith('abort', expect.any(Function));
     expect(child.kill).not.toHaveBeenCalled();
+  });
+  it.each(['timeout', 'abort'] as const)('hard-kills and settles a child that ignores %s', async (reason) => {
+    vi.useFakeTimers();
+    const child = createChild();
+    const controller = new AbortController();
+    const onEnd = vi.fn();
+    const promise = runAgentProcess({
+      spawn: () => child as never,
+      timeoutMs: 25,
+      signal: controller.signal,
+      onEnd,
+    });
+    child.stdout.write('partial output');
+    if (reason === 'abort') controller.abort();
+    else await vi.advanceTimersByTimeAsync(25);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await expect(promise).resolves.toMatchObject({
+      exitCode: 1,
+      stdout: 'partial output',
+      timedOut: reason === 'timeout',
+    });
+    expect(child.kill.mock.calls).toEqual([['SIGTERM'], ['SIGKILL']]);
+    expect(child.stdout.destroyed).toBe(true);
+    expect(onEnd).toHaveBeenCalledOnce();
+    child.emit('close', 0, null);
+    expect(onEnd).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('signals the detached process group and falls back to the direct child', async () => {
+    const child = Object.assign(createChild(), { pid: 12345 });
+    const kill = vi.spyOn(process, 'kill').mockImplementation(() => {
+      throw new Error('group unavailable');
+    });
+    const controller = new AbortController();
+    const promise = runAgentProcess({
+      spawn: () => child as never,
+      timeoutMs: 1000,
+      signal: controller.signal,
+      processGroup: true,
+    });
+    controller.abort();
+    expect(kill).toHaveBeenCalledWith(-12345, 'SIGTERM');
+    expect(child.kill).toHaveBeenCalledWith('SIGTERM');
+    child.emit('close', null, 'SIGTERM');
+    await expect(promise).resolves.toMatchObject({ exitCode: 1, timedOut: false });
   });
 });

@@ -34,6 +34,6 @@ export function collectTokenSuggestions(
       const allowed =
         availableTokens.length > 0 ? persistedAllowed.filter((path) => compatiblePaths.has(path)) : persistedAllowed;
       const paths = availableTokens.length > 0 ? compatible : allowed;
-      return { propName, paths, suggested: [...allowed], allowed };
+      return { propName, kinds, paths, suggested: [...allowed], allowed };
     });
 }

@@ -16,6 +16,8 @@ export interface AgentProcessEndDetails {
 export interface RunAgentProcessOptions {
   spawn: () => ChildProcess;
   timeoutMs: number;
+  /** The spawned child leads a detached process group. */
+  processGroup?: boolean;
   signal?: AbortSignal;
   stdinText?: string;
   onOutput?: (chunk: string) => void;
@@ -61,6 +63,7 @@ export function runAgentProcess(options: RunAgentProcessOptions): Promise<AgentP
     let stderr = '';
     let stopReason: 'abort' | 'timeout' | undefined;
     let timer: NodeJS.Timeout | undefined;
+    let watchdog: NodeJS.Timeout | undefined;
     let stdinEnded = false;
     let settled = false;
 
@@ -95,6 +98,7 @@ export function runAgentProcess(options: RunAgentProcessOptions): Promise<AgentP
 
     const cleanup = () => {
       if (timer) clearTimeout(timer);
+      if (watchdog) clearTimeout(watchdog);
       signal?.removeEventListener('abort', onAbort);
       child.removeListener('error', onChildError);
       child.removeListener('close', onClose);
@@ -105,6 +109,22 @@ export function runAgentProcess(options: RunAgentProcessOptions): Promise<AgentP
       child.stderr?.removeListener('data', onStderrData);
     };
 
+    const terminate = (childSignal: NodeJS.Signals) => {
+      if (options.processGroup && child.pid && process.platform !== 'win32') {
+        try {
+          process.kill(-child.pid, childSignal);
+          return;
+        } catch {
+          // Fall back when the process group has already exited or is unavailable.
+        }
+      }
+      try {
+        child.kill(childSignal);
+      } catch (error) {
+        appendError(error);
+      }
+    };
+
     const requestStop = (reason: 'abort' | 'timeout') => {
       if (settled || stopReason) return;
       stopReason = reason;
@@ -113,11 +133,15 @@ export function runAgentProcess(options: RunAgentProcessOptions): Promise<AgentP
         timer = undefined;
       }
       endStdin();
-      try {
-        child.kill('SIGTERM');
-      } catch (error) {
-        appendError(error);
-      }
+      terminate('SIGTERM');
+      watchdog = setTimeout(() => {
+        if (settled) return;
+        terminate('SIGKILL');
+        child.stdin?.destroy();
+        child.stdout?.destroy();
+        child.stderr?.destroy();
+        onClose(null, 'SIGKILL');
+      }, 10_000);
     };
 
     const onAbort = () => requestStop('abort');

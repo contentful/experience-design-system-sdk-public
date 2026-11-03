@@ -100,6 +100,7 @@ import {
   handleReviewViewToggleInput,
 } from './review-input.js';
 import { useReviewPreview } from './use-review-preview.js';
+import { useReviewLog } from './use-review-log.js';
 import { LivePreviewSummary } from './components/LivePreviewSummary.js';
 
 type GenerateReviewStepProps = {
@@ -339,7 +340,7 @@ const HELP_SECTIONS: HelpSection[] = [
       { keys: 'P', label: 'Component rationale' },
       { keys: 's', label: 'Source code snippet' },
       { keys: 'J', label: 'Toggle JSON' },
-      { keys: 't', label: 'Token review' },
+      { keys: 't', label: 'Review mapped tokens' },
     ],
   },
   {
@@ -486,6 +487,7 @@ function GenerateReviewStepView({
     tokensPath,
     onExtraLoaded: setLoadedSlotCycles,
   });
+  const reviewLog = useReviewLog({ loading, loadError, components });
 
   const [nav, setNav] = useState<{ cursorRowIdx: number; sidebarScrollOffset: number }>({
     cursorRowIdx: 0,
@@ -586,7 +588,10 @@ function GenerateReviewStepView({
     cmaToken,
     host,
     components,
-    onFinalize,
+    onFinalize: (accepted, rejected, unresolved) => {
+      reviewLog.finish({ accepted, rejected, unresolved });
+      onFinalize(accepted, rejected, unresolved);
+    },
   });
 
   const recomputeCycles = (currentComponents: CdfReviewEntry[]): void => {
@@ -702,6 +707,7 @@ function GenerateReviewStepView({
         undoSnapshot,
       }),
     applySnapshot: applyHistorySnapshot,
+    onAction: reviewLog.record,
   });
 
   const autoRejectPushedRef = useRef(false);
@@ -1658,8 +1664,6 @@ function GenerateReviewStepView({
                 },
               )}
               saveError={reviewEditor.saveError}
-              livePreview={livePreviewHook}
-              livePreviewSpinner={livePreviewSpinner}
             />
           ) : (
             <ReviewNoSelection />
@@ -1694,7 +1698,7 @@ function GenerateReviewStepView({
         autocompleteCandidates={autocompleteCandidates}
         hidden={dialogOpen}
       />
-      {!dialogOpen && sidebarFocused && (
+      {!dialogOpen && sidebarFocused && reviewEditor.panelOpen !== 'token-review' && (
         <CompactControlBar hasGroupRoots={hasGroupRoots} searchActive={searchOpen || searchQuery.length > 0} />
       )}
     </Box>
