@@ -9,13 +9,8 @@ import {
 import { eligibleScopes } from '../helpers/eligible-scopes.js';
 import { EXPLORE_SCOPES } from '@contentful/experience-design-system-types';
 import { explorationDisagreementId, explorationFieldPath } from './diff-exploration.js';
-export { SLOT_THRESHOLD };
-export type {
-  DerivedSlots,
-  DerivedSlot,
-  DerivedComponentSlots,
-  SlotDispute,
-} from '@contentful/experience-design-system-types';
+
+export type { DerivedSlots } from '@contentful/experience-design-system-types';
 export function deriveSlotsFromExploration(
   scopes: ExploreScopeResult[],
   known: KnownComponent[],

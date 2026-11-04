@@ -44,7 +44,7 @@ export function virtualScriptPath(filePath: string): string {
 }
 
 /** Preserve every source line and UTF-16 offset while exposing both SFC script blocks. */
-export function vueScriptSource(source: string): string {
+function vueScriptSource(source: string): string {
   const { descriptor } = parseSFC(source);
   const chunks = source.split('');
   for (let index = 0; index < chunks.length; index++) {

@@ -146,14 +146,15 @@ describe('assigned exploration report coverage', () => {
   });
 });
 
+function isolateStagePromptPreparation(): void {
+  vi.spyOn(indexedPrompt, 'prepareIndexedExplorationPrompt').mockImplementation(async (options) => ({
+    text: `Task: ${options.skill}\nAssignment:\n${options.stageAssignmentInline}\nInput data:\n{}`,
+    dispose: async () => {},
+  }));
+}
+
 describe('bounded verify/check execution', () => {
-  beforeEach(() => {
-    // Isolate work scheduling from filesystem preparation, covered by the evidence-reader integration tests.
-    vi.spyOn(indexedPrompt, 'prepareIndexedExplorationPrompt').mockImplementation(async (options) => ({
-      text: `Task: ${options.skill}\nAssignment:\n${options.stageAssignmentInline}\nInput data:\n{}`,
-      dispose: async () => {},
-    }));
-  });
+  beforeEach(isolateStagePromptPreparation);
   it.each(['verify', 'check'] as const)('honors %s concurrency and retains input ordering', async (stage) => {
     let active = 0,
       peak = 0;
@@ -322,6 +323,7 @@ describe('complete stage failure budgets', () => {
     expect(invoke.mock.calls[0]?.[0]?.prompt).toContain(text);
   });
   it('retains concurrent check attempts after a failed sibling and dispatches no queued work', async () => {
+    isolateStagePromptPreparation();
     const called: string[] = [];
     let drained = false;
     const result = await api.runCheckStage({
@@ -357,6 +359,7 @@ describe('complete stage failure budgets', () => {
     expect(result.attempts).toHaveLength(2);
   });
   it('drains started work and stops queued verification on abort', async () => {
+    isolateStagePromptPreparation();
     const controller = new AbortController();
     const called: string[] = [];
     let drained = false;

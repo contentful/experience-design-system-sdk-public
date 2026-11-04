@@ -8,7 +8,7 @@ import {
 } from './helpers/collect-astro-props-bindings.js';
 
 /** Returns the string literals from a union type like `'a' | 'b' | 'c'`, or undefined if fewer than two are found. */
-export function extractAllowedValues(typeText: string): string[] | undefined {
+function extractAllowedValues(typeText: string): string[] | undefined {
   const parts = typeText.split('|').map((p) => p.trim());
   const literals = parts.filter((p) => /^['"]/.test(p)).map((p) => p.replace(/^['"]|['"]$/g, ''));
   return literals.length >= 2 ? literals.sort() : undefined;

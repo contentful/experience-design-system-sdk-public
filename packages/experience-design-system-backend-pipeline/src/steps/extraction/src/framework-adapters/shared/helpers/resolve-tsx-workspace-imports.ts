@@ -3,7 +3,6 @@ import { Node, type Project, type SourceFile } from 'ts-morph';
 import {
   matchTsConfigPathPattern,
   substituteTsConfigPathTarget,
-  resolveImportSourcePath,
   resolveRepoLocalAliasImportPath,
 } from './resolve-tsx-tsconfig-path.js';
 import { findWorkspacePackageEntrySourceFile } from './find-tsx-workspace-package.js';
@@ -60,5 +59,3 @@ export function resolveWorkspaceImportSpecifierDeclarations(importSpecifier: Nod
   if (!aliasedSourceFile) return [];
   return getExportedDeclarationsForImportSpecifier(importSpecifier, aliasedSourceFile);
 }
-
-export { resolveImportSourcePath };

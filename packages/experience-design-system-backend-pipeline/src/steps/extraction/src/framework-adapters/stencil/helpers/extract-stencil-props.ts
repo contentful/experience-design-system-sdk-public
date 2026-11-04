@@ -3,7 +3,7 @@ import type { RawPropDefinition } from '../../../types/component.js';
 import { hasPropertyDecorator } from './detect-stencil-class.js';
 import { parseAllowedValues, collectDomAttributePropNames } from './stencil-prop-helpers.js';
 
-export { parseAllowedValues, collectDomAttributePropNames } from './stencil-prop-helpers.js';
+export { parseAllowedValues } from './stencil-prop-helpers.js';
 
 /** Extracts all @Prop-decorated properties from a Stencil class as RawPropDefinitions. */
 export function extractStencilProps(classDecl: ClassDeclaration): RawPropDefinition[] {

@@ -123,12 +123,7 @@ export interface BoundSourceFile {
   ranges: Array<{ startLine: number; endLine: number; text: string }>;
   coverage: SourceCompleteness;
   roles?: string[];
-  componentRefs?: Array<{
-    componentId: string;
-    name: string;
-    roles: string[];
-    observations?: Array<{ role: string; startLine: number; endLine: number }>;
-  }>;
+  componentRefs?: import('../shared-source.js').SharedSourceFile['componentRefs'];
 }
 export interface ExplorationSourceInput {
   inventory?: unknown;

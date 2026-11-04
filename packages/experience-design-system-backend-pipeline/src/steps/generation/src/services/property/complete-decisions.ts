@@ -17,7 +17,7 @@ import { summarizeGenerationComponent } from './build-generation-prompt.js';
 
 export const GENERATION_MAX_ATTEMPTS = 5;
 
-export interface GenerationAttemptMetrics {
+interface GenerationAttemptMetrics {
   attempt: number;
   strategy: 'initial' | 'targeted-repair' | 'evidence-investigation' | 'alternative-representation';
   repeatedFailureCount: number;

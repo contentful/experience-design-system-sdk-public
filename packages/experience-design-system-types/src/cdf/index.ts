@@ -22,5 +22,4 @@ export {
   type CDFDocument,
 } from './build.js';
 
-export { expandCDFModelDependencies } from './build.js';
 export * from './finite-values.js';

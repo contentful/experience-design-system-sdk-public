@@ -45,7 +45,7 @@ function filterExcludedSyntaxProps(
   };
 }
 
-export function extractPropsFromTypeSymbols(
+function extractPropsFromTypeSymbols(
   type: Type,
   slotNames: Set<string>,
   suppressNeverChildrenSlot = false,

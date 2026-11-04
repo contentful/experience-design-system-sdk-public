@@ -1,13 +1,13 @@
 import type { ClassifiedPropertyCall } from '@contentful/experience-design-system-types';
-export type ClassifyPropCall = ClassifiedPropertyCall;
+type ClassifyPropCall = ClassifiedPropertyCall;
 
-export interface ExcludePropCall {
+interface ExcludePropCall {
   tool: 'exclude_prop';
   prop: string;
   reason: string;
 }
 
-export interface ClassifyComponentCall {
+interface ClassifyComponentCall {
   tool: 'classify_component';
   description?: string;
   /**
@@ -22,7 +22,7 @@ export interface ClassifyComponentCall {
   };
 }
 
-export interface ClassifySlotCall {
+interface ClassifySlotCall {
   tool: 'classify_slot';
   slot: string;
   required?: boolean;
@@ -75,11 +75,6 @@ export type TokenToolCall = SetTokenCall | SetGroupCall;
 
 export interface ParsedTokenToolCalls {
   calls: TokenToolCall[];
-  warnings: string[];
-}
-
-export interface ParsedToolCalls {
-  calls: ToolCall[];
   warnings: string[];
 }
 

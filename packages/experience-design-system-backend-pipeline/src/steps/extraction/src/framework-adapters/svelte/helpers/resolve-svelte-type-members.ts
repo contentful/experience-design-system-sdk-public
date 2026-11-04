@@ -14,11 +14,7 @@ import { resolveViaTypeChecker } from './resolve-svelte-type-checker.js';
 import { resolveImportedTypeMembers } from './resolve-svelte-external-type-readers.js';
 
 export type { ResolvedTypeMember };
-export {
-  readPropertySignature,
-  readMembersFromTypeLiteral,
-  readMembersFromInterfaceOrAlias,
-} from './extract-svelte-ast-type-members.js';
+
 export { resolveViaTypeChecker } from './resolve-svelte-type-checker.js';
 
 export async function resolveTypeMembers(

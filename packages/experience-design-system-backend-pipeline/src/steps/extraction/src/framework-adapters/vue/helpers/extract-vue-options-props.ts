@@ -6,9 +6,9 @@ import type { RawPropDefinition } from '../../../types/component.js';
 import { resolveWorkspaceVueImport } from './resolve-workspace-module.js';
 import { parseVueObjectProps } from './extract-vue-object-props.js';
 
-export { isPublicVuePropName, parseVueObjectProps } from './extract-vue-object-props.js';
+export { isPublicVuePropName } from './extract-vue-object-props.js';
 
-export async function extractVueOptionsProps(
+async function extractVueOptionsProps(
   filePath: string,
   scriptContent: string,
   visited: Set<string> = new Set(),

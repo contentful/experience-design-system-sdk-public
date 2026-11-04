@@ -148,7 +148,7 @@ export function isVueImport(node: Node, name: string): boolean {
   return false;
 }
 
-export function vueValueDeclarations(node: Node): Node[] {
+function vueValueDeclarations(node: Node): Node[] {
   if (Node.isIdentifier(node)) {
     const parent = node.getParent();
     if (Node.isShorthandPropertyAssignment(parent) && parent.getNameNode() === node)

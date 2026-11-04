@@ -7,7 +7,6 @@ import {
 } from '@contentful/experience-design-system-types';
 
 import { SUPERMAJORITY } from '@contentful/experience-design-system-types';
-export { SUPERMAJORITY };
 
 /**
  * The scopes that were asked about a field. Silence from one of them is a vote that the field does not

@@ -17,7 +17,7 @@ export {
   getTypeReferenceName,
 } from './tsx-node-utils.js';
 
-export { resolveDefaultExportName, getRenderableExports } from './tsx-renderable-exports.js';
+export { getRenderableExports } from './tsx-renderable-exports.js';
 
 export function getTsxExtractionContext(
   filePaths: string[],

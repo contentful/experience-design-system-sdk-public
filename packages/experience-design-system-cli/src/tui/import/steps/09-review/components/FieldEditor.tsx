@@ -145,7 +145,7 @@ function swapValues<T>(values: T[], firstIndex: number, secondIndex: number): T[
   return next;
 }
 
-export function parseTypedDefault(text: string, type: string): { value: JsonValue } | { error: string } {
+function parseTypedDefault(text: string, type: string): { value: JsonValue } | { error: string } {
   try {
     if (['number', 'Integer'].includes(type) && !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(text))
       throw new Error('Enter a complete finite number');

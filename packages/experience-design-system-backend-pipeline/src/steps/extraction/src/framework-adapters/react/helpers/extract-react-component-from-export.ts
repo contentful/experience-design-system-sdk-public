@@ -34,7 +34,7 @@ import { SOURCE_FACT_SCHEMA_VERSION } from '../../../candidates/types.js';
 
 const REACT_ELEMENT_GENERIC_TEST = /(?:React\.)?ReactElement\s*<\s*[A-Za-z_$][\w$.]*/;
 
-export type RawSlotDefinitionInternal = RawSlotDefinition & {
+type RawSlotDefinitionInternal = RawSlotDefinition & {
   _rawTypeText?: string;
   _rawJsdoc?: string;
 };

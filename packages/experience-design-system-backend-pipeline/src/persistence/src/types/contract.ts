@@ -1,11 +1,5 @@
 import type { CDFComponentEntry } from '../../../steps/shared/index.js';
 
-export interface WriteResult {
-  createdCount: number;
-  updatedCount: number;
-  failedCount: number;
-}
-
 export interface SelectionDecision {
   decision: 'accepted' | 'rejected';
   reason: string | null;

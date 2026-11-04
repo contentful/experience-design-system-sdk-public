@@ -1,5 +1,4 @@
 const DEFAULT_API_HOST = 'https://api.contentful.com';
-export const DEFAULT_CONFIGURED_HOST = 'api.contentful.com';
 
 function trimTrailingSlashes(value: string): string {
   return value.replace(/\/+$/, '');

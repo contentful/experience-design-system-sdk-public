@@ -1,7 +1,7 @@
 export type SourceEvidenceKind = 'declaration' | 'runtime-object' | 'implementation' | 'binding';
 export type SourceFactOrigin = 'own' | 'imported' | 'inherited-dom' | 'inherited-library' | 'mixed' | 'unknown';
 export type SourceFactCertainty = 'certain' | 'ambiguous' | 'unknown';
-export type SourceDomainOpenness = 'closed' | 'open' | 'unknown';
+type SourceDomainOpenness = 'closed' | 'open' | 'unknown';
 export type SourceFactBinding = 'verified' | 'changed' | 'unverified' | 'unavailable';
 export const SOURCE_FACT_SCHEMA_VERSION = 4;
 export const SUPPORTED_SOURCE_FACT_SCHEMA_VERSIONS = [3, 4] as const;

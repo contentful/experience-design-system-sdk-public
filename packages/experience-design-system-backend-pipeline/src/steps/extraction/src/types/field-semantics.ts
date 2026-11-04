@@ -16,7 +16,7 @@ export interface ConditionalFieldClaim {
   premises: string[];
   reasons: string[];
 }
-export interface SourceFieldSemanticProof {
+interface SourceFieldSemanticProof {
   inputName: string;
   path: Array<{ kind: 'field'; key: string }>;
   valueIndependence: ConditionalFieldClaim;

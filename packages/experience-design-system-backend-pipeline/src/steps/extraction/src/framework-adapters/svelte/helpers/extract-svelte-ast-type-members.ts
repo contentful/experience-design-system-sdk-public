@@ -18,7 +18,7 @@ interface Comment {
   value: string;
 }
 
-export function readPropertySignature(member: AstNode, snippetLocals: Set<string>): ResolvedTypeMember | null {
+function readPropertySignature(member: AstNode, snippetLocals: Set<string>): ResolvedTypeMember | null {
   if (member.type !== 'TSPropertySignature') return null;
   const key = member['key'] as AstNode | undefined;
   const name = (key?.['name'] as string | undefined) ?? null;

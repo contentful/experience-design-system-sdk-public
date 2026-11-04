@@ -1,11 +1,11 @@
-export type ApplyOperationStatus = 'queued' | 'running' | 'succeeded' | 'partial' | 'failed';
+type ApplyOperationStatus = 'queued' | 'running' | 'succeeded' | 'partial' | 'failed';
 
-export interface ApplyOperationItemError {
+interface ApplyOperationItemError {
   code: string;
   message: string;
 }
 
-export interface ApplyOperationItem {
+interface ApplyOperationItem {
   entityType: 'ComponentType' | 'DesignToken';
   id: string;
   action: 'create' | 'update' | 'delete';
@@ -28,14 +28,4 @@ export interface ApplyOperationResponse {
     failed: number;
   };
   items?: ApplyOperationItem[];
-}
-
-export interface ApplyGateError {
-  sys: { type: 'Error'; id: string };
-  message: string;
-  details?: {
-    breakingComponentIds?: string[];
-    affectedEntities?: number;
-    errors?: Array<{ path: string; message: string }>;
-  };
 }

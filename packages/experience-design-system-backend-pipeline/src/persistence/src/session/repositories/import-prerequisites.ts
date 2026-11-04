@@ -70,7 +70,7 @@ function sourceIdentity(db: DatabaseSync, sessionId: string): string {
 function profileIdentity(): string {
   return contentDigest(LOCAL_NATIVE_PROPERTY_PROFILE);
 }
-export function prerequisiteTargetIdentity(target: PrerequisiteTarget): string {
+function prerequisiteTargetIdentity(target: PrerequisiteTarget): string {
   return contentDigest({
     host: (target.host ?? 'api.contentful.com')
       .trim()

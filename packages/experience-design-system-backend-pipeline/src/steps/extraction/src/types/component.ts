@@ -108,4 +108,3 @@ export type ExtractorProgress = {
 };
 
 export type { ExtractorOptions } from './options.js';
-export type { ComponentExtractor } from './component-extractor.js';

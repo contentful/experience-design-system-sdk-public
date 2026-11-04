@@ -114,15 +114,14 @@ export { hashComponentShape as computeComponentInputHash } from '../helpers/comp
 export { hashTokenContent as computeTokenInputHash } from '../helpers/tokens/hash-token-content.js';
 
 // Tokens — repositories/tokens/{read,write}.ts and services/tokens/*
+// Tokens — repositories/tokens/{read,write}.ts and services/tokens/*
 export {
   getDtcgTokensForSession as loadDTCGTokens,
-  getRawTokenNamePaths as loadRawTokenNamePaths,
   getRawTokenNamePathRows as loadRawTokenNamePathRows,
 } from './tokens/read.js';
-export { storeDtcgTokens as storeDTCGTokens } from '../services/tokens/store-dtcg-tokens.js';
+
 export { applyTokenToolCalls } from '../services/tokens/apply-tool-calls.js';
 export { replaceRawTokenNamePaths } from '../services/tokens/replace-raw-token-name-paths.js';
-export { replaceRawPropTokenPaths } from '../services/tokens/replace-raw-prop-token-paths.js';
 
 export type CommandName =
   | 'analyze extract'
@@ -4252,7 +4251,7 @@ export function filterUnknownSlotAllowedComponents(
   return unknown;
 }
 
-export interface CopyComponentFromCacheOptions {
+interface CopyComponentFromCacheOptions {
   allowedComponentNames?: ReadonlySet<string>;
 }
 

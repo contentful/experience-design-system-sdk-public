@@ -11,7 +11,7 @@
 const ELLIPSIS_MARKER = '/* … */';
 const TRUNCATED_MARKER = '/* truncated */';
 
-export interface SourceExcerpt {
+interface SourceExcerpt {
   content: string;
   /**
    * Names with at least one occurrence that did not fit in `content`. The

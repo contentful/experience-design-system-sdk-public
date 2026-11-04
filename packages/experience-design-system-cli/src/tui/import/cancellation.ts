@@ -1,4 +1,4 @@
-export function createAbortError(reason?: unknown): Error {
+function createAbortError(reason?: unknown): Error {
   const error = new Error('The operation was aborted.', reason === undefined ? undefined : { cause: reason });
   error.name = 'AbortError';
   return error;
@@ -17,7 +17,7 @@ export interface ImportAttempt {
   controller: AbortController;
 }
 
-export function isCurrentImportAttempt(current: ImportAttempt | undefined, candidate: ImportAttempt): boolean {
+function isCurrentImportAttempt(current: ImportAttempt | undefined, candidate: ImportAttempt): boolean {
   return current === candidate && !candidate.controller.signal.aborted;
 }
 

@@ -5,7 +5,6 @@ import type {
   KnownComponent,
   ExploreScope,
   ExploreScopeResult,
-  ExploreAttempt,
   ExploreSourceRef,
   ExplorationIdentity,
   ExplorationSourceInput,
@@ -88,4 +87,3 @@ export interface VerifyStageRequest extends Omit<StageOptions, 'onAttempt'> {
 export interface CheckStageRequest extends VerifyStageRequest {
   verified: VerifiedItem[];
 }
-export type { ExploreAttempt };

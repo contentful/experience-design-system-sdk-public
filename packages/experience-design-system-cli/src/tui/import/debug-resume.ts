@@ -32,7 +32,7 @@ const CheckpointSchema = z.object({
       parseHandoff(JSON.stringify({ credentialsSkipped: true, tokens: { strategy: 'reuse' }, extraction: value })).ok,
   ),
 });
-export type DebugImportCheckpoint = z.infer<typeof CheckpointSchema>;
+type DebugImportCheckpoint = z.infer<typeof CheckpointSchema>;
 
 export interface DebugResumeState {
   checkpoint: DebugImportCheckpoint;

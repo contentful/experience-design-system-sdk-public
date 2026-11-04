@@ -1,5 +1,5 @@
 /** One line per candidate, e.g. `colors.brand.primary · color` — legible and countable, unlike nested JSON. */
-export function formatTokenCandidateLines(entries: Array<{ path: string; $type?: unknown }>): string {
+function formatTokenCandidateLines(entries: Array<{ path: string; $type?: unknown }>): string {
   return entries.map((entry) => `${entry.path} · ${entry.$type}`).join('\n');
 }
 

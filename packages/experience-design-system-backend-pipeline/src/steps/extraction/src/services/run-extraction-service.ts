@@ -1,8 +1,6 @@
 import { extractComponents } from './extraction/extract-components.js';
 import type { ExtractComponentsRequest, ExtractComponentsResponse } from '../types/contract.js';
 
-export { extractComponents } from './extraction/extract-components.js';
-
 export async function runExtractionService(request: ExtractComponentsRequest): Promise<ExtractComponentsResponse> {
   return extractComponents(
     request.filePaths,

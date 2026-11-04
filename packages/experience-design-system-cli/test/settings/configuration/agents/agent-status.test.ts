@@ -63,7 +63,10 @@ describe('checking an agent', () => {
   });
 
   it('reports a failing agent as a failed test, with its own message', async () => {
-    const path = await script('codex', 'case "$1" in --version) echo v;; *) echo "boom" >&2; exit 2;; esac');
+    const path = await script(
+      'codex',
+      'case "$1" in --version) echo v;; *) cat >/dev/null; echo "boom" >&2; exit 2;; esac',
+    );
 
     const checks = await testAgent('codex', path, '');
 

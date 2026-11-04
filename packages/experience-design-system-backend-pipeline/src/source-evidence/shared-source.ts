@@ -25,7 +25,7 @@ export function findSourceOwnerFile(
   );
 }
 
-export function capturedRanges(
+function capturedRanges(
   file: SourceCapture['files'][number],
 ): Array<{ startLine: number; endLine: number; text: string }> {
   if (file.captured.kind === 'full')
@@ -227,7 +227,7 @@ export function projectExplorationSource(
 }
 
 /** Preserve captured ranges and report their original coverage without prompt pruning. */
-export function projectExplorationSourceInput(source: ExplorationSourceInput): ExplorationSourceInput {
+function projectExplorationSourceInput(source: ExplorationSourceInput): ExplorationSourceInput {
   const result = structuredClone(source);
   delete result.projectionBounds;
   if (result.files.some((file) => file.coverage !== 'complete-within-declared-bound'))

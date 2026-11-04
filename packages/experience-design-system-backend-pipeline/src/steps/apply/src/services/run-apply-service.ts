@@ -5,7 +5,6 @@ import { hasBreakingChangesWithImpact } from '../helpers/has-breaking-changes.js
 import { isEmptyPreview } from '../helpers/is-empty-preview.js';
 import { parseComponentWriteResult, parseTokenWriteResult } from '../helpers/parse-write-result.js';
 import { toCdfTokens } from '../helpers/token-utils.js';
-import { ApiError } from '../types/api-error.js';
 import type {
   ApplyEndpointRequest,
   ApplyEndpointResponse,
@@ -72,5 +71,3 @@ export async function runApplyService(request: ApplyEndpointRequest): Promise<Ap
   };
   return result;
 }
-
-export { ApiError };

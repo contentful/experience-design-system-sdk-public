@@ -1,7 +1,7 @@
 import { Node, SyntaxKind, type Project, type SourceFile } from 'ts-morph';
 import { loadSourceFile, resolveImportSourcePath, resolveImportSpecifierSource } from './resolve-wc-import-source.js';
 
-export { loadSourceFile, resolveImportSourcePath, resolveImportSpecifierSource };
+export { loadSourceFile, resolveImportSourcePath };
 
 export function resolveStaticStringExpression(
   node: Node | undefined,

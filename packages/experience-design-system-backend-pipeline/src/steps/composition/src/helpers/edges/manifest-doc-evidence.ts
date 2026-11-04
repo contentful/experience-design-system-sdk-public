@@ -4,7 +4,7 @@ import type { CompositionEdge } from './interchange-schema.js';
 
 type ComponentRef = { name: string; sourcePath?: string };
 
-export function kebabToPascal(name: string): string {
+function kebabToPascal(name: string): string {
   return name
     .split('-')
     .filter(Boolean)
@@ -12,7 +12,7 @@ export function kebabToPascal(name: string): string {
     .join('');
 }
 
-export function collectManifestEdges(files: CandidateFile[], componentNames: ReadonlySet<string>): CompositionEdge[] {
+function collectManifestEdges(files: CandidateFile[], componentNames: ReadonlySet<string>): CompositionEdge[] {
   const edges: CompositionEdge[] = [];
   const seen = new Set<string>();
 
@@ -68,7 +68,7 @@ export function collectManifestEdges(files: CandidateFile[], componentNames: Rea
 const DOC_COMPOSITION_KEYWORDS = ['slot', 'child', 'children', 'compose', 'nested', 'contains', 'wraps'];
 const BOLD_BACKTICK = /\*\*`([^`]+)`\*\*/g;
 
-export function collectAgentsDocEdges(
+function collectAgentsDocEdges(
   files: CandidateFile[],
   components: ComponentRef[],
   componentNames: ReadonlySet<string>,

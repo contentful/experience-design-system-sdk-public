@@ -1,12 +1,5 @@
 // --- File collection (source-tree walker) ---
 export { collectFiles } from './helpers/collect-files/index.js';
-export type {
-  CollectFilesOptions,
-  CollectFilesOutcome,
-  CollectFilesResult,
-  CollectFilesFailure,
-  FileCounts,
-} from './types/collect-files-result.js';
 
 // --- Runs ledger (runs.json) ---
 export {
@@ -27,10 +20,6 @@ export type {
   RunsFile,
   AppendInput,
   ListOptions,
-  RunRecordV1,
-  RunRecordV2,
-  RunsFileV1,
-  RunsFileV2,
   SourceFingerprint,
   SourceFileEntry,
   RawComponentsDb,
@@ -53,7 +42,6 @@ export {
 } from './review-session/index.js';
 export type {
   LoadReviewInputOptions,
-  PreviewAnnotation,
   ReviewComponentStatus,
   ReviewComponentRecord,
   ReviewComponentDetail,
@@ -67,7 +55,7 @@ export type {
 
 // --- Session (SessionHandle + openSession for cache callbacks) ---
 export { generateSessionId, openSession } from './session/index.js';
-export type { OpenSessionOptions, SelectionDecision, SessionHandle, WriteResult } from './types/contract.js';
+export type { OpenSessionOptions, SelectionDecision, SessionHandle } from './types/contract.js';
 
 // --- DB infra + schema + migrations ---
 export { openPipelineDb, getPipelineDbPath } from './session/repositories/db.js';
@@ -92,12 +80,11 @@ export type { Settings } from './session/helpers/config-root.js';
 export { resolveExtractSessionId } from './session/services/resolve-session-id.js';
 
 // --- Credentials store (per-user config.json settings) ---
+// --- Credentials store (per-user config.json settings) ---
 export {
   readExperiencesCredentials,
   writeExperiencesCredentials,
   experiencesCredentialsPath,
-  toApiHost,
-  toConfiguredHost,
   DEFAULT_CONFIGURED_HOST,
 } from './credentials/index.js';
 export type { ExperiencesCredentials } from './credentials/index.js';
@@ -216,11 +203,3 @@ export { hashComponentShape } from './session/helpers/components/hash-component-
 export { hashTokenContent } from './session/helpers/tokens/hash-token-content.js';
 export { buildDtcgGroups } from './session/helpers/tokens/build-dtcg-groups.js';
 export { buildDtcgTokens } from './session/helpers/tokens/build-dtcg-tokens.js';
-
-export type { CompletedSharedSourceEvidence } from './session/repositories/db.js';
-
-export {
-  analyzePropertyRepresentations,
-  loadRepresentationPlans,
-  selectRepresentationPlan,
-} from './session/repositories/representation-plans.js';

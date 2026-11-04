@@ -269,4 +269,5 @@ export function createImportPrerequisitePlan(input: ImportPrerequisiteManifest):
   };
 }
 
+/** @alias Validation and planning use the same prerequisite checks. */
 export const validateImportPrerequisites = createImportPrerequisitePlan;

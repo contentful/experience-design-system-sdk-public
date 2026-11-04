@@ -1,4 +1,8 @@
-import { TARGET_PROPERTY_TYPES, SAME_SPACE_RESOURCE_SOURCE } from '../property-contract/target-definition.js';
+import {
+  allowedResourcesJsonSchema,
+  targetDefinitionMetadataJsonProperties,
+} from '../property-contract/resource-link-schema.js';
+import { TARGET_PROPERTY_TYPES } from '../property-contract/target-definition.js';
 import { CDF_PROPERTY_TYPES, CDF_PROPERTY_CATEGORIES } from './vocabularies.js';
 import { DESIGN_TOKEN_TYPES } from '../dtcg/token-types.js';
 import { modelComponentExplorationJsonSchema } from '../property-contract/model-exploration.js';
@@ -23,6 +27,24 @@ const finiteValuesSchema = {
     })),
   },
 };
+
+const fieldMetadataJsonProperties = {
+  $description: { type: 'string' },
+  $required: { type: 'boolean' },
+  $default: {},
+  $values: { type: 'array', minItems: 1 },
+  $items: { $ref: '#/definitions/field' },
+  $fields: { type: 'object', minProperties: 1, additionalProperties: { $ref: '#/definitions/field' } },
+} as const;
+
+const fieldStructureJsonProperties = {
+  '$token.allowed': { type: 'array', items: { type: 'string' } },
+  value: {},
+  valueType: { $ref: '#/definitions/field' },
+  discriminator: { type: 'string', minLength: 1 },
+  members: { type: 'array', minItems: 2, items: { $ref: '#/definitions/field' } },
+  allowedResources: { $ref: '#/definitions/allowedResources' },
+} as const;
 
 export const cdfJsonSchema = {
   $schema: 'http://json-schema.org/draft-07/schema#',
@@ -64,20 +86,10 @@ export const cdfJsonSchema = {
       properties: {
         $type: { type: 'string', enum: [...CDF_PROPERTY_TYPES] },
         $category: { type: 'string', enum: [...CDF_PROPERTY_CATEGORIES] },
-        $description: { type: 'string' },
-        $required: { type: 'boolean' },
-        $default: {},
-        $values: { type: 'array', minItems: 1 },
-        $items: { $ref: '#/definitions/field' },
-        $fields: { type: 'object', minProperties: 1, additionalProperties: { $ref: '#/definitions/field' } },
+        ...fieldMetadataJsonProperties,
         $sourceInput: { $ref: '#/definitions/sourceInput' },
         '$token.kind': { type: 'string', minLength: 1 },
-        '$token.allowed': { type: 'array', items: { type: 'string' } },
-        value: {},
-        valueType: { $ref: '#/definitions/field' },
-        discriminator: { type: 'string', minLength: 1 },
-        members: { type: 'array', minItems: 2, items: { $ref: '#/definitions/field' } },
-        allowedResources: { $ref: '#/definitions/allowedResources' },
+        ...fieldStructureJsonProperties,
       },
       // The API rejects a token property that does not say which kind of token it takes.
       if: { type: 'object', properties: { $type: { const: 'token' } }, required: ['$type'] },
@@ -91,43 +103,13 @@ export const cdfJsonSchema = {
       properties: {
         $type: { enum: [...CDF_PROPERTY_TYPES] },
         $category: { enum: [...CDF_PROPERTY_CATEGORIES] },
-        $description: { type: 'string' },
-        $required: { type: 'boolean' },
-        $default: {},
-        $values: { type: 'array', minItems: 1 },
-        $items: { $ref: '#/definitions/field' },
-        $fields: { type: 'object', minProperties: 1, additionalProperties: { $ref: '#/definitions/field' } },
+        ...fieldMetadataJsonProperties,
         '$token.kind': { type: 'string' },
-        '$token.allowed': { type: 'array', items: { type: 'string' } },
-        value: {},
-        valueType: { $ref: '#/definitions/field' },
-        discriminator: { type: 'string', minLength: 1 },
-        members: { type: 'array', minItems: 2, items: { $ref: '#/definitions/field' } },
-        allowedResources: { $ref: '#/definitions/allowedResources' },
+        ...fieldStructureJsonProperties,
       },
       additionalProperties: false,
     },
-    allowedResources: {
-      type: 'array',
-      minItems: 1,
-      items: {
-        type: 'object',
-        required: ['type', 'source'],
-        properties: {
-          type: { enum: ['Contentful:Entry', 'Contentful:Asset'] },
-          source: { const: SAME_SPACE_RESOURCE_SOURCE },
-          allowedTypes: { type: 'array', items: { type: 'string' } },
-        },
-        allOf: [
-          {
-            if: { properties: { type: { const: 'Contentful:Entry' } } },
-            then: { required: ['allowedTypes'] },
-            else: { not: { required: ['allowedTypes'] } },
-          },
-        ],
-        additionalProperties: false,
-      },
-    },
+    allowedResources: allowedResourcesJsonSchema,
     sourceInput: {
       type: 'object',
       required: ['schemaVersion', 'componentId', 'componentDeclarationId', 'rootSymbolId', 'inputName', 'inputPath'],
@@ -170,10 +152,7 @@ export const cdfJsonSchema = {
       required: ['type'],
       properties: {
         type: { enum: [...TARGET_PROPERTY_TYPES] },
-        id: { type: 'string' },
-        name: { type: 'string' },
-        description: { type: 'string' },
-        required: { type: 'boolean' },
+        ...targetDefinitionMetadataJsonProperties,
         values: { type: 'array', items: {} },
         defaultValue: {},
         items: { $ref: '#/definitions/targetDefinition' },

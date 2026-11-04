@@ -1,14 +1,4 @@
-import * as z from 'zod/mini';
-import { DESIGN_TOKEN_TYPES } from '../constants/token-types.js';
-
-export const DTCGTokenSchema = z.strictObject({
-  path: z.string(),
-  $type: z.enum(DESIGN_TOKEN_TYPES),
-  $value: z.unknown(),
-  $description: z.optional(z.string()),
-});
-
-export type DTCGTokenEntry = z.infer<typeof DTCGTokenSchema>;
+export type { DTCGTokenEntry } from '@contentful/experience-design-system-types';
 
 export interface DTCGTokenGroup {
   path: string;
@@ -16,7 +6,7 @@ export interface DTCGTokenGroup {
   tokenIds: string[];
 }
 
-export type DTCGTokenNode = DTCGTokenLeaf | DTCGTokenGroupNode;
+type DTCGTokenNode = DTCGTokenLeaf | DTCGTokenGroupNode;
 
 interface DTCGTokenLeaf {
   $type: string;

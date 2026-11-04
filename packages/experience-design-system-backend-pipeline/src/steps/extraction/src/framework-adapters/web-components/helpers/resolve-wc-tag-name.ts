@@ -8,12 +8,7 @@ import {
   getElementTagNameFromFastDefinition,
 } from './resolve-wc-sibling-definition.js';
 
-export {
-  buildTagNameMap,
-  getElementTagNameFromDecorator,
-  getElementTagNameFromSiblingDefine,
-  getElementTagNameFromFastDefinition,
-};
+export { buildTagNameMap };
 
 function normalizeComponentName(input: string): string {
   return input.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();

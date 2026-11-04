@@ -64,7 +64,7 @@ function containsPickType(typeNode: Node, seen: Set<Node>, mode: 'supported' | '
   return false;
 }
 
-export function containsSupportedDomPickType(typeNode: Node, seen = new Set<Node>()): boolean {
+function containsSupportedDomPickType(typeNode: Node, seen = new Set<Node>()): boolean {
   return containsPickType(typeNode, seen, 'supported');
 }
 

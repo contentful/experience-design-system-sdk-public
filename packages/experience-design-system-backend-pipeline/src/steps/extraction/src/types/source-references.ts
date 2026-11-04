@@ -1,7 +1,7 @@
 import type { CompilerCoverage, SourceFactLocation } from '../candidates/types.js';
 import type { SourceObservationContext } from './component-source-observations.js';
 
-export type SourceReferenceCondition = Omit<SourceObservationContext['conditions'][number], 'branch'> & {
+type SourceReferenceCondition = Omit<SourceObservationContext['conditions'][number], 'branch'> & {
   branch: SourceObservationContext['conditions'][number]['branch'] | 'non-nullish';
 };
 

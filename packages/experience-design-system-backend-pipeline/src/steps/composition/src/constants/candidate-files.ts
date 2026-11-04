@@ -24,4 +24,3 @@ export const CANDIDATE_CONTENT_MARKERS: string[] = [
   '@NgModule',
   'standalone: true',
 ];
-export const CANDIDATE_TOKEN_BUDGET = 6000;

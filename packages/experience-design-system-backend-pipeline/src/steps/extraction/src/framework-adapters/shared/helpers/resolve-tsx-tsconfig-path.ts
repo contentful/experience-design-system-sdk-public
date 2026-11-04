@@ -60,7 +60,7 @@ function getTsConfigPaths(
   return result;
 }
 
-export function resolveImportSourcePath(basePath: string): string | undefined {
+function resolveImportSourcePath(basePath: string): string | undefined {
   const candidates = [
     basePath,
     `${basePath}.ts`,

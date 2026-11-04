@@ -5,11 +5,7 @@ import { collectExpandableDomAttributeWrapperContexts } from './collect-dom-wrap
 
 export { isPureExpandableDomAttributeWrapperType } from './detect-dom-is-pure-wrapper.js';
 export { containsImportedOmitWrappedCustomProps } from './detect-omit-wrapped-custom-props.js';
-export {
-  containsSupportedDomPickType,
-  containsAnyPickType,
-  shouldMergeDomSyntaxExtraction,
-} from './detect-pick-type-patterns.js';
+export { containsAnyPickType, shouldMergeDomSyntaxExtraction } from './detect-pick-type-patterns.js';
 export {
   collectExpandableDomAttributeWrapperContexts,
   getStringLiteralTypeValues,

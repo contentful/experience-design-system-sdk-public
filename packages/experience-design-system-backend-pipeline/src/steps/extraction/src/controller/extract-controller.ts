@@ -2,11 +2,7 @@ import type { ExtractionEndpointRequest, ExtractionEndpointResponse } from '../t
 import { executeExtractionOrchestrator } from '../orchestrator/execute-extraction-orchestrator.js';
 import { validateRequest } from './helpers/validate-endpoint-request.js';
 
-export type {
-  ExtractionEndpointProgress,
-  ExtractionEndpointRequest,
-  ExtractionEndpointResponse,
-} from '../types/contract.js';
+export type { ExtractionEndpointRequest, ExtractionEndpointResponse } from '../types/contract.js';
 
 /**
  * Stable in-process extraction contract.

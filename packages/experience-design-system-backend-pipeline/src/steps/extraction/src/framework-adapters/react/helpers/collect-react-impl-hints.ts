@@ -6,7 +6,7 @@ import {
   inferPrimitiveDomPropsFromImplementation,
 } from './infer-primitive-dom-props.js';
 
-export { collectRestBindingNames, isComponentSpreadAttribute, inferPrimitiveDomPropsFromImplementation };
+export { inferPrimitiveDomPropsFromImplementation };
 
 export function hasImplementationChildrenHint(funcNode: FunctionLike, param: ParameterDeclaration): boolean {
   const nameNode = param.getNameNode();

@@ -8,7 +8,7 @@ import { parseClassificationToolLines, type ClassificationToolCall } from '@cont
 import { generationDraftDigest } from './generation-decision-repair.js';
 import { shellArgument } from '../../../../../helpers/shell-argument.js';
 
-export interface GenerationAttemptValidator {
+interface GenerationAttemptValidator {
   instructions: string;
   hasReceipt: (draft: string) => Promise<boolean>;
 }

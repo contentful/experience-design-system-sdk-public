@@ -21,4 +21,3 @@ export const ansi = {
 };
 
 // Backwards-compat alias — remove once callers migrate to `ansi`.
-export const c = ansi;

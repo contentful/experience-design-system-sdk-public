@@ -5,7 +5,7 @@ import {
 } from '../../../../steps/extraction/index.js';
 
 /** Index the accepted capture once; resolve each observed path once instead of during every comparison. */
-export function createCapturedFileLookup(
+function createCapturedFileLookup(
   files: SourceCapture['files'],
 ): (path: string | null) => SourceCapture['files'][number] | undefined {
   const byPath = new Map<string, SourceCapture['files'][number]>();

@@ -1,7 +1,7 @@
 import { Node, type SourceFile } from 'ts-morph';
 import type { ExtractionExclusion } from '../../../types/component.js';
 
-export function resolveDefaultExportName(
+function resolveDefaultExportName(
   declarations: Node[],
   exported: { has(name: string): boolean },
   allowVariableDeclaration = false,
