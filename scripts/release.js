@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { releaseVersion, releasePublish } from 'nx/release/index.js'
+import { ReleaseClient, releaseVersion, releasePublish } from 'nx/release/index.js'
 import { execSync } from 'node:child_process'
 
 const branch = process.env.GITHUB_REF?.replace('refs/heads/', '') ?? ''
@@ -15,8 +15,11 @@ if (isCanary) {
   // release is a real, traceable tag in the repo.
   console.log('Running canary release...')
 
+  // Branch refreshes can leave published prerelease tags outside the current ancestry.
+  const canaryClient = new ReleaseClient({ releaseTag: { checkAllBranchesWhen: true } })
+
   try {
-    const { releaseGraph, projectsVersionData } = await releaseVersion({
+    const { releaseGraph, projectsVersionData } = await canaryClient.releaseVersion({
       preid: 'alpha',
       dryRun: false,
       verbose: true,
@@ -37,7 +40,7 @@ if (isCanary) {
       console.log(`  ${project}: ${currentVersion} → ${newVersion}`)
     }
 
-    const publishResults = await releasePublish({
+    const publishResults = await canaryClient.releasePublish({
       releaseGraph,
       tag: 'canary',
       dryRun: false,
