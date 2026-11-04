@@ -16,6 +16,7 @@ By default drift is reported as warnings and the exit code is 0. Use --strict to
     python3 scripts/docs-alignment/check.py
     python3 scripts/docs-alignment/check.py --changed-files changed.txt --strict
     python3 scripts/docs-alignment/check.py --public-docs-dir /path/to/import-design-system
+    python3 check.py --repo-root /path/to/experience-design-system-sdk-public --public-docs-from-gh
 """
 from __future__ import annotations
 
@@ -23,6 +24,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -195,7 +197,7 @@ def load_local_docs() -> dict[str, str]:
     return docs
 
 
-def load_public_docs(directory: str | None) -> tuple[dict[str, str], str]:
+def load_public_docs(directory: str | None, from_gh: bool = False) -> tuple[dict[str, str], str]:
     """Return the public docs and a note about where they came from."""
     docs: dict[str, str] = {}
     if directory:
@@ -204,6 +206,16 @@ def load_public_docs(directory: str | None) -> tuple[dict[str, str], str]:
             if path.exists():
                 docs[name] = read(path)
         return docs, f"local copy at {directory}"
+    if from_gh:
+        for name in PUBLIC_DOCS:
+            result = subprocess.run(
+                ["gh", "api", "-H", "Accept: application/vnd.github.raw+json",
+                 f"repos/{PUBLIC_DOCS_REPO}/contents/{PUBLIC_DOCS_PATH}/{name}?ref=main"],
+                capture_output=True, text=True, timeout=60)
+            if result.returncode != 0:
+                return {}, f"skipped: could not read {name} with the gh CLI ({result.stderr.strip() or 'is gh signed in?'})"
+            docs[name] = result.stdout
+        return docs, f"{PUBLIC_DOCS_REPO}@main, read with the gh CLI"
     token = os.environ.get("DOCS_REPO_TOKEN", "").strip()
     if not token:
         return docs, "skipped: set DOCS_REPO_TOKEN (read access to contentful/contentful-docs) to check the public docs"
@@ -432,12 +444,24 @@ def summary_markdown(findings: list[Finding], notes: list[str], facts: Facts) ->
 
 
 def main() -> int:
+    global ROOT, CLI, PIPELINE
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--repo-root", help="the SDK repo to check (default: the repo this script is in)")
+    parser.add_argument("--public-docs-from-gh", action="store_true",
+                        help="read the public docs with the gh CLI, using your own sign-in")
     parser.add_argument("--changed-files", help="a file with the changed paths, one per line")
     parser.add_argument("--public-docs-dir", help="a local copy of the public docs folder (otherwise read via DOCS_REPO_TOKEN)")
     parser.add_argument("--strict", action="store_true", help="exit 1 when any drift is found")
     parser.add_argument("--json", action="store_true", help="print findings as JSON")
     args = parser.parse_args()
+
+    if args.repo_root:
+        ROOT = Path(args.repo_root).resolve()
+        CLI = ROOT / "packages" / "experience-design-system-cli"
+        PIPELINE = ROOT / "packages" / "experience-design-system-backend-pipeline"
+    if not CLI.is_dir() or not PIPELINE.is_dir():
+        print(f"error: {ROOT} does not look like the experience-design-system-sdk-public repo", file=sys.stderr)
+        return 2
 
     facts, problems = extract_facts()
     if problems:
@@ -447,7 +471,7 @@ def main() -> int:
 
     findings = check_local(load_local_docs(), facts)
     notes: list[str] = []
-    public_docs, source = load_public_docs(args.public_docs_dir)
+    public_docs, source = load_public_docs(args.public_docs_dir, args.public_docs_from_gh)
     notes.append(f"Public docs: {source}.")
     if public_docs:
         findings += check_public(public_docs, facts)
