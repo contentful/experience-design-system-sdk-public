@@ -71,7 +71,7 @@ export const cdfJsonSchema = {
         $items: { $ref: '#/definitions/field' },
         $fields: { type: 'object', minProperties: 1, additionalProperties: { $ref: '#/definitions/field' } },
         $sourceInput: { $ref: '#/definitions/sourceInput' },
-        '$token.kind': { type: 'string' },
+        '$token.kind': { type: 'string', minLength: 1 },
         '$token.allowed': { type: 'array', items: { type: 'string' } },
         value: {},
         valueType: { $ref: '#/definitions/field' },
@@ -79,6 +79,9 @@ export const cdfJsonSchema = {
         members: { type: 'array', minItems: 2, items: { $ref: '#/definitions/field' } },
         allowedResources: { $ref: '#/definitions/allowedResources' },
       },
+      // The API rejects a token property that does not say which kind of token it takes.
+      if: { type: 'object', properties: { $type: { const: 'token' } }, required: ['$type'] },
+      then: { type: 'object', required: ['$token.kind'] },
       additionalProperties: false,
     },
     field: {
@@ -435,9 +438,6 @@ export const cdfJsonSchema = {
           },
         },
       },
-      // The API rejects a token property that does not say which kind of token it takes.
-      if: { type: 'object', properties: { $type: { const: 'token' } }, required: ['$type'] },
-      then: { type: 'object', required: ['$token.kind'] },
       additionalProperties: false,
     },
     slot: {

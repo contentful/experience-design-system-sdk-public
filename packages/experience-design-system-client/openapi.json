@@ -30567,7 +30567,8 @@
             "$ref": "#/components/schemas/CDFSourceInput"
           },
           "$token.kind": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "$token.allowed": {
             "type": "array",
@@ -30593,6 +30594,25 @@
           "allowedResources": {
             "$ref": "#/components/schemas/CDFAllowedResources"
           }
+        },
+        "if": {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "enum": [
+                "token"
+              ]
+            }
+          },
+          "required": [
+            "$type"
+          ]
+        },
+        "then": {
+          "type": "object",
+          "required": [
+            "$token.kind"
+          ]
         },
         "additionalProperties": false
       },
@@ -32262,7 +32282,8 @@
             "$ref": "#/components/schemas/CDFSourceInput_2"
           },
           "$token.kind": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "$token.allowed": {
             "type": "array",
@@ -32288,6 +32309,25 @@
           "allowedResources": {
             "$ref": "#/components/schemas/CDFAllowedResources_2"
           }
+        },
+        "if": {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "enum": [
+                "token"
+              ]
+            }
+          },
+          "required": [
+            "$type"
+          ]
+        },
+        "then": {
+          "type": "object",
+          "required": [
+            "$token.kind"
+          ]
         },
         "additionalProperties": false
       },
@@ -34137,7 +34177,8 @@
             "$ref": "#/components/schemas/CDFSourceInput_3"
           },
           "$token.kind": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "$token.allowed": {
             "type": "array",
@@ -34163,6 +34204,25 @@
           "allowedResources": {
             "$ref": "#/components/schemas/CDFAllowedResources_3"
           }
+        },
+        "if": {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "enum": [
+                "token"
+              ]
+            }
+          },
+          "required": [
+            "$type"
+          ]
+        },
+        "then": {
+          "type": "object",
+          "required": [
+            "$token.kind"
+          ]
         },
         "additionalProperties": false
       },
@@ -35883,7 +35943,8 @@
             "$ref": "#/components/schemas/CDFSourceInput_4"
           },
           "$token.kind": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "$token.allowed": {
             "type": "array",
@@ -35909,6 +35970,25 @@
           "allowedResources": {
             "$ref": "#/components/schemas/CDFAllowedResources_4"
           }
+        },
+        "if": {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "enum": [
+                "token"
+              ]
+            }
+          },
+          "required": [
+            "$type"
+          ]
+        },
+        "then": {
+          "type": "object",
+          "required": [
+            "$token.kind"
+          ]
         },
         "additionalProperties": false
       },
