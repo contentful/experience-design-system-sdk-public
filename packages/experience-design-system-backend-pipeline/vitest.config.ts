@@ -8,6 +8,7 @@ export default defineConfig({
     testTimeout: 30000,
     pool: 'forks',
     maxWorkers: 4,
+    reporters: process.env.CI ? ['dot'] : ['default'],
     retry: 1,
     passWithNoTests: true,
   },

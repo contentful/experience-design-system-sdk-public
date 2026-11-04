@@ -155,6 +155,8 @@ The CLI's `test` target depends on its `build` target, so `pnpm -F @contentful/e
 
 The backend-pipeline package uses forked workers, at most four at once, and retries an individual failing test once. The CLI uses at most two workers; both packages allow 30 seconds per test so source analysis and mounted wizard tests can finish on CI runners. Explicit operation-deadline tests retain their own smaller budgets.
 
+The full source-input and model-selection integration tests have explicit 90-second test budgets because they exercise multiple extraction, validation, persistence, reopen and export/import stages. Their operation deadlines and behavioral assertions remain independent of this test-runner allowance. Backend CI uses the compact dot reporter so Nx output limits do not truncate the final failure diagnostics.
+
 Exploration invoker fixtures use `test/exploration-fixture.ts` in the backend package to execute the exact immutable reader supplied in each prompt while its artifacts are available. Assertions check the retrieved evidence, not whether the initial task index contains every source record inline. Candidate-free scopes must still withhold extracted hints. Scheduling tests isolate prompt preparation so filesystem latency does not decide whether agent invocations overlap.
 
 Client tests cover source and transport fixtures without collecting compiled copies from `dist`; their shared workspace dependency is transformed by Vitest for consistent ESM imports.

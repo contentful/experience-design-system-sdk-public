@@ -275,7 +275,7 @@ it('publishes exact associations from mounted default extraction and exploration
   } finally {
     db.close();
   }
-});
+}, 90000);
 it('stateless generation rejects nonexistent accepted owners before producing a successful definition', async () => {
   const f = await fixture();
   const invalid = { ...f.decision, sourceInput: { ...f.association, rootSymbolId: 'different' } };

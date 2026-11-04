@@ -352,7 +352,7 @@ it('atomically selects, edits, reopens and imports only reachable desired models
   const decisions = loadPropertyDecisions(db, sessionId);
   expect(decisions.filter((row) => row.componentId === owner.component_id)).toHaveLength(3);
   db.close();
-});
+}, 90000);
 
 it('holds only token-context owners until explicit readoption after value, kind and default-name changes', async () => {
   const { db, sessionId, fresh } = await fixture();
