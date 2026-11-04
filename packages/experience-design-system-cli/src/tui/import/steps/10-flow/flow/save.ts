@@ -5,8 +5,10 @@ import {
   appendRun,
   buildSourceFingerprint,
   loadCDFComponents,
+  loadSelectedCDFComponents,
   loadDTCGTokens,
   openPipelineDb,
+  createSessionPrerequisiteSaveReceipt,
   readTokensFromPath,
   toCDFTokens,
 } from '@contentful/experience-design-system-backend-pipeline';
@@ -70,6 +72,8 @@ export interface WriteFilesInput {
   tokensPath?: string;
   skipGate?: boolean;
   allowEmpty?: boolean;
+  selectedComponentIds?: ReadonlySet<string>;
+  acceptedKeys?: ReadonlySet<string>;
 }
 
 /**
@@ -89,7 +93,14 @@ export async function runPrintFiles(
     let components: ReturnType<typeof loadCDFComponents> = [];
     let tokens: DTCGTokenEntry[] = [];
     try {
-      if (input.extractSessionId) components = loadCDFComponents(db, input.extractSessionId);
+      if (input.extractSessionId)
+        components = loadSelectedCDFComponents(
+          db,
+          input.extractSessionId,
+          input.selectedComponentIds,
+          input.acceptedKeys,
+          'definition',
+        );
       if (input.tokenSessionId) tokens = loadDTCGTokens(db, input.tokenSessionId).tokens;
     } finally {
       db.close();
@@ -100,6 +111,14 @@ export async function runPrintFiles(
       deleteAll: input.allowEmpty,
       onRepair: (message) => deps.warn(`${message}\n`),
     });
+    if (input.extractSessionId) {
+      const db = deps.openDb();
+      try {
+        createSessionPrerequisiteSaveReceipt(db, input.extractSessionId, cdf);
+      } finally {
+        db.close();
+      }
+    }
     await deps.writeFile(componentsPath, `${JSON.stringify(cdf, null, 2)}\n`);
     deps.warn(
       `wrote ${componentsPath} (${components.length} component${components.length === 1 ? '' : 's'}, ${tokens.length} token${tokens.length === 1 ? '' : 's'})\n`,

@@ -5,10 +5,12 @@ import {
 } from '@contentful/experience-design-system-backend-pipeline';
 import { findSkillPath } from './find-skill-path.js';
 import { agentAuthMessage } from './logic.js';
+import { awaitWithSignal, throwIfAborted } from '../../cancellation.js';
 
 const TOKENS_SKILL_PATH = findSkillPath('generate-tokens.md');
 
 export interface TokensOnlyInput {
+  signal?: AbortSignal;
   rawTokensPath: string;
   /** Where tokens.json is written: this import run's folder. */
   outDir: string;
@@ -39,7 +41,8 @@ export async function runTokensOnly(
   input: TokensOnlyInput,
   deps: TokensOnlyDeps = realDeps,
 ): Promise<TokensOnlyResult> {
-  const auth = await deps.checkAgentAuth(input.agent as AgentName);
+  const auth = await awaitWithSignal(deps.checkAgentAuth(input.agent as AgentName), input.signal);
+  throwIfAborted(input.signal);
   if (auth === 'not-found' || auth === 'unauthenticated') {
     return { ok: false, step: `${input.agent} auth check`, message: agentAuthMessage(input.agent, auth) };
   }
@@ -52,7 +55,9 @@ export async function runTokensOnly(
       promptOverrides: input.promptOverrides,
       skillPath: TOKENS_SKILL_PATH,
       noCache: input.noCache,
+      signal: input.signal,
     });
+    throwIfAborted(input.signal);
     return {
       ok: true,
       tokensPath: result.tokensPath,

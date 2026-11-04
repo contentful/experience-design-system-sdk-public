@@ -1,11 +1,10 @@
-import { access, readFile } from 'node:fs/promises';
+import { readReviewState } from '../../../../../persistence/src/review-session/repositories/read-review-state.js';
 import type { ExtractionValidationIssue } from '../../../../../steps/extraction/src/types/component.js';
 import type { PreviewValidationError } from '../../../../apply/src/types/contract.js';
 import { ensureRefineSession } from '../../../../../persistence/src/review-session/repositories/ensure-review-session.js';
 import { getRefineArtifactsRoot } from '../../../../../persistence/src/review-session/repositories/review-artifacts-root.js';
 import { getRefineSessionPaths } from '../../../../../persistence/src/review-session/repositories/review-session-paths.js';
 import { saveReviewState } from '../../../../../persistence/src/review-session/repositories/save-review-state.js';
-import type { ReviewSessionSnapshot } from '../../../../../persistence/src/review-session/types/review-session.js';
 import { loadAndValidateForReview } from './load-and-validate-for-review.js';
 
 /**
@@ -20,11 +19,8 @@ export async function mergePreviewValidationErrorsIntoReviewSession(
   const artifactsRoot = opts.artifactsRoot ?? getRefineArtifactsRoot();
   const paths = await getRefineSessionPaths(sessionId, artifactsRoot);
 
-  let snapshot: ReviewSessionSnapshot;
-  try {
-    await access(paths.statePath);
-    snapshot = JSON.parse(await readFile(paths.statePath, 'utf8')) as ReviewSessionSnapshot;
-  } catch {
+  let snapshot = await readReviewState(paths.statePath);
+  if (snapshot === undefined) {
     snapshot = await loadAndValidateForReview(sessionId, undefined);
     snapshot = await ensureRefineSession(sessionId, artifactsRoot, snapshot);
   }

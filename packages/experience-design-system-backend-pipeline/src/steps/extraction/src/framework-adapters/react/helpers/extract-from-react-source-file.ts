@@ -1,0 +1,49 @@
+import type { ComponentSourceObservationOptions } from '../../../component-facts/collect-component-source-observations.js';
+import type { ComponentFactCollectors } from '../../../types/component-facts.js';
+import type { ExtractionDiagnostics } from '../../../candidates/types.js';
+import { SyntaxKind, type SourceFile } from 'ts-morph';
+import type { ExtractionExclusion } from '../../../types/component.js';
+import { getRenderableExports } from '../../shared/helpers/tsx-shared.js';
+import {
+  extractReactComponentFromExport,
+  type RawComponentDefinitionInternal,
+} from './extract-react-component-from-export.js';
+
+function sourceFileUsesCreateContext(sourceFile: SourceFile): boolean {
+  return sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression).some((call) => {
+    const expr = call.getExpression();
+    const text = expr.getText();
+    return text === 'createContext' || text === 'React.createContext';
+  });
+}
+
+export function extractFromReactSourceFile(
+  sourceFile: SourceFile,
+  isNext: boolean,
+  exclusions: ExtractionExclusion[],
+  diagnostics?: ExtractionDiagnostics,
+  collectors?: ComponentFactCollectors,
+  observationOptions?: ComponentSourceObservationOptions,
+): RawComponentDefinitionInternal[] {
+  const components: RawComponentDefinitionInternal[] = [];
+  const usesCreateContext = sourceFileUsesCreateContext(sourceFile);
+
+  for (const { name, declarations } of getRenderableExports(sourceFile, exclusions, {
+    allowVariableDeclaration: true,
+    hookReason: 'React hook names are not renderable components',
+  })) {
+    const component = extractReactComponentFromExport(
+      name,
+      declarations,
+      sourceFile,
+      isNext,
+      usesCreateContext,
+      diagnostics,
+      collectors,
+      observationOptions,
+    );
+    if (component) components.push(component);
+  }
+
+  return components;
+}

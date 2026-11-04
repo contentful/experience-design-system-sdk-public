@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import { useInput } from 'ink';
+import React, { useEffect, useRef, useState } from 'react';
 import { HomeScreen } from './src/tui/home/home.js';
 import { ImportScreen } from './src/tui/import/PageContainer.js';
 import {
@@ -19,7 +20,7 @@ import {
   type InputAnswers,
 } from './src/tui/import/steps/00-preflight/logic.js';
 import { ErrorStep, RunningStep } from './src/tui/import/shared/index.js';
-import { resolveAgentChoice } from './src/tui/import/steps/06-extraction/logic.js';
+import { initialProgress, resolveAgentChoice } from './src/tui/import/steps/06-extraction/logic.js';
 import { readSettings } from '@contentful/experience-design-system-types/config';
 import { useExtraction } from './src/tui/import/steps/06-extraction/use-extraction.js';
 import type { TokensOnlyInput } from './src/tui/import/steps/06-extraction/run-tokens-only.js';
@@ -34,6 +35,14 @@ import type { ExtractionInput } from './src/tui/import/steps/06-extraction/types
 import { resolveUserPath } from './src/tui/import/resolve-user-path.js';
 import type { CredentialsResult } from './src/tui/import/steps/04-credentials/screen.js';
 import type { ImportOptions } from './src/commands/import-options.js';
+import {
+  assertDebugResumeStep,
+  DEBUG_RESUME_STEPS,
+  loadDebugResume,
+  type DebugResumeState,
+  type DebugResumeStep,
+} from './src/tui/import/debug-resume.js';
+import { DebugResumeScreen } from './src/tui/import/debug-resume-screen.js';
 import { buildFlowStart } from './src/tui/import/steps/10-flow/flow/build-flow-start.js';
 import type { FlowStart } from './src/tui/import/steps/10-flow/flow/controller.js';
 import { FlowScreen } from './src/tui/import/steps/10-flow/flow/screen.js';
@@ -50,6 +59,15 @@ import {
   type V1Credentials,
 } from './src/tui/settings/configuration/project/project-store.js';
 
+import {
+  awaitForCurrentImportAttempt,
+  createImportAttemptOwner,
+  isAbortError,
+  trackImportWork,
+  type ImportAttempt,
+  type ImportAttemptOwner,
+} from './src/tui/import/cancellation.js';
+
 export type Screen =
   | 'start'
   | 'import'
@@ -64,9 +82,11 @@ interface ImportLaunch extends Partial<ImportOptions> {
   projectPath?: string;
   tokens?: string;
   filePaths?: string[];
+  sourceInventory?: ExtractionInput['sourceInventory'];
 }
 
 interface ExtractionRun {
+  attempt: ImportAttempt;
   launch: ImportLaunch;
   credentialsSkipped: boolean;
   input: ExtractionInput;
@@ -77,6 +97,7 @@ interface ExtractionRun {
 // Set when the import only generates tokens. There is no extraction, scope gate or generation: once the tokens exist the
 // flow starts at saving.
 interface TokensOnlyRun {
+  attempt: ImportAttempt;
   credentialsSkipped: boolean;
   /** What the flow builds its start from (agent, credentials, project). It names no files: nothing is scanned. */
   input: ExtractionInput;
@@ -85,6 +106,7 @@ interface TokensOnlyRun {
 
 // Set once extraction has produced a session; the scope gate runs for it before the review starts.
 interface ScopeRun {
+  attempt: ImportAttempt;
   launch: ImportLaunch;
   credentialsSkipped: boolean;
   input: ExtractionInput;
@@ -100,7 +122,20 @@ interface AppProps {
 }
 
 function App({ importOptions, inkClear }: AppProps): React.ReactElement {
-  const [screen, setScreen] = useState<Screen>('start');
+  const attemptOwnerRef = useRef<ImportAttemptOwner>();
+  if (!attemptOwnerRef.current) attemptOwnerRef.current = createImportAttemptOwner();
+  const attemptOwner = attemptOwnerRef.current;
+  const beginAttempt = (): ImportAttempt => attemptOwner.begin();
+  const cancelAttempt = (): void => attemptOwner.cancel();
+  const isActiveAttempt = (attempt: ImportAttempt): boolean => attemptOwner.isCurrent(attempt);
+  useEffect(() => () => cancelAttempt(), []);
+  const [launchError, setLaunchError] = useState<{ stepName: string; message: string }>();
+  const [preparing, setPreparing] = useState(false);
+  const [sourceInventory, setSourceInventory] = useState<ExtractionInput['sourceInventory']>();
+  const [screen, setScreen] = useState<Screen>(importOptions.debugResume ? 'import' : 'start');
+  const [debugResumeState, setDebugResumeState] = useState<DebugResumeState>();
+  const [debugResumeStep, setDebugResumeStep] = useState<DebugResumeStep>();
+  const debugResumeStarted = useRef(false);
   // Set when the import has ended, with the exit code the result screen shows.
   const [importExitCode, setImportExitCode] = useState<number>();
   const showImportResult = importExitCode !== undefined;
@@ -118,7 +153,10 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
   const [scopeRun, setScopeRun] = useState<ScopeRun>();
   const scopeFlow = useScopeGateFlow(
     scopeRun && {
+      attemptId: scopeRun.attempt.id,
+      signal: scopeRun.attempt.controller.signal,
       sessionId: scopeRun.extraction.sessionId,
+      initialDecisions: debugResumeStep && debugResumeStep !== 'scope' ? debugResumeState?.decisions : undefined,
       cache: {
         sessionId: scopeRun.extraction.sessionId,
         tokensPath: scopeRun.extraction.tokensPath,
@@ -142,6 +180,98 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
     credentials: V1Credentials;
   }>();
 
+  const startDebugResume = (state: DebugResumeState, step: DebugResumeStep): void => {
+    assertDebugResumeStep(state, step);
+    const attempt = beginAttempt();
+    const { checkpoint } = state;
+    const { agent, agentModel } = resolveAgentChoice(importOptions.agent, {
+      agent: checkpoint.agent,
+      agentModel: checkpoint.agentModel,
+    });
+    const input: ExtractionInput = {
+      signal: attempt.controller.signal,
+      projectPath: checkpoint.projectPath,
+      outDir: checkpoint.extraction.outDir,
+      filePaths: [],
+      rawTokensPath: checkpoint.rawTokensPath,
+      credentials: null,
+      agent,
+      ...(agentModel ? { agentModel } : {}),
+      promptOverrides: importOptions.prompt.length ? importOptions.prompt : checkpoint.promptOverrides,
+      noCache: true,
+    };
+    setDebugResumeStep(step);
+    setTarget('components');
+    if (step === 'review') {
+      const generation = {
+        route: 'review' as const,
+        sessionId: checkpoint.extraction.sessionId,
+        acceptedCount: state.decisions!.accepted.length,
+        generatedCount: state.decisions!.accepted.length,
+        mapTokensEligible: checkpoint.extraction.tokensPath !== '',
+      };
+      setFlowStart(
+        buildFlowStart({
+          extraction: input,
+          handoff: {
+            credentialsSkipped: true,
+            tokens: { strategy: 'reuse' },
+            extraction: checkpoint.extraction,
+            generation,
+          },
+        }),
+      );
+    } else {
+      setScopeRun({ attempt, launch: {}, credentialsSkipped: true, input, extraction: checkpoint.extraction });
+    }
+  };
+
+  useEffect(() => {
+    if (!importOptions.debugResume || !importDefaults || debugResumeStarted.current) return;
+    debugResumeStarted.current = true;
+    setPreparing(true);
+    let disposed = false;
+    void trackImportWork(
+      (async () => {
+        try {
+          if (importOptions.debugFrom && !(DEBUG_RESUME_STEPS as readonly string[]).includes(importOptions.debugFrom))
+            throw new Error(`Unknown debug step; choose ${DEBUG_RESUME_STEPS.join(', ')}.`);
+          const settings = await readSettings();
+          if (disposed) return;
+          const { agent, agentModel } = resolveAgentChoice(importOptions.agent, settings);
+          const state = await loadDebugResume(
+            importOptions.debugResume!,
+            importOptions.debugOutput
+              ? {
+                  outDir: resolveUserPath(importOptions.debugOutput),
+                  agent,
+                  agentModel,
+                  promptOverrides: importOptions.prompt,
+                }
+              : undefined,
+          );
+          if (disposed) return;
+          setDebugResumeState(state);
+          if (importOptions.debugFrom) startDebugResume(state, importOptions.debugFrom as DebugResumeStep);
+        } catch (error) {
+          if (!disposed)
+            setLaunchError({
+              stepName: 'debug resume',
+              message: error instanceof Error ? error.message : String(error),
+            });
+        } finally {
+          if (!disposed) setPreparing(false);
+        }
+      })(),
+    );
+    return () => {
+      disposed = true;
+    };
+  }, [importDefaults]);
+
+  // Keep terminal input active when a running screen has no interactive controls.
+  useInput(() => {});
+
   // Read the saved defaults each time the import flow opens, so a change in Settings shows up right away.
   // The screens only read their initial value on mount, so they wait for this to resolve.
   useEffect(() => {
@@ -149,99 +279,136 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
       setImportDefaults(undefined);
       return;
     }
-    void readCredentials().then((saved) =>
-      setImportDefaults({
-        componentDir: saved.defaultComponentDir ?? '',
-        tokenFile: saved.defaultTokenFile ?? '',
-        credentials: saved,
-      }),
-    );
+    let disposed = false;
+    setLaunchError(undefined);
+    void readCredentials()
+      .then((saved) => {
+        if (disposed) return;
+        setImportDefaults({
+          componentDir: saved.defaultComponentDir ?? '',
+          tokenFile: saved.defaultTokenFile ?? '',
+          credentials: saved,
+        });
+      })
+      .catch((error: unknown) => {
+        if (!disposed)
+          setLaunchError({
+            stepName: 'load import settings',
+            message: error instanceof Error ? error.message : String(error),
+          });
+      });
+    return () => {
+      disposed = true;
+    };
   }, [screen]);
 
   const finishCredentials = async (result: CredentialsResult, collected: InputAnswers): Promise<void> => {
-    if (!result.skipped) await writeCredentials({ ...result.credentials });
-    const launch: ImportLaunch = {
-      // a tokens-only import has no project, so its files go where runBaseDir says
-      projectPath: runBaseDir({ ...collected, configuredBaseDir: importDefaults?.credentials.contentfulBaseDir }),
-      tokens: collected.tokensPath ?? '',
-      filePaths: collected.scannedFiles ?? [],
-      ...importOptions,
-    };
-    // Every run generates new files; reusing an earlier tokens.json is not offered.
-    if (target === 'tokens') await startTokensOnly(launch, result);
-    else await startExtraction(launch, result);
-  };
-
-  // What both kinds of run start from: the agent, this run's folder and the input every stage reads.
-  const prepareRun = async (
-    launch: ImportLaunch,
-    credentials: CredentialsResult,
-  ): Promise<{ input: ExtractionInput; outDir: string; launch: ImportLaunch; generatePromptPath?: string }> => {
-    const settings = await readSettings();
-    const { agent, agentModel } = resolveAgentChoice(launch.agent, settings);
-    const generatePromptPath =
-      typeof settings.generatePromptPath === 'string' ? settings.generatePromptPath : undefined;
-    // Loaded on first use because the debug store reads the settings as soon as it is imported.
-    const outDir = await (
-      await import('./src/tui/debug-store.js')
-    ).startImportRun(resolveUserPath(launch.projectPath ?? ''));
-    return {
-      ...(generatePromptPath ? { generatePromptPath } : {}),
-      outDir,
-      // the later steps get the same agent, so they use what the stage used
-      launch: { ...launch, agent: agentModel ? `${agent}:${agentModel}` : agent },
-      input: {
+    const attempt = beginAttempt();
+    setLaunchError(undefined);
+    setPreparing(true);
+    try {
+      if (!result.skipped) {
+        const saved = await awaitForCurrentImportAttempt(attempt, attemptOwner.isCurrent, () =>
+          writeCredentials({ ...result.credentials }),
+        );
+        if (!saved.current) return;
+      }
+      const launch: ImportLaunch = {
+        projectPath: runBaseDir({ ...collected, configuredBaseDir: importDefaults?.credentials.contentfulBaseDir }),
+        tokens: collected.tokensPath ?? '',
+        filePaths: collected.scannedFiles ?? [],
+        sourceInventory,
+        ...importOptions,
+      };
+      const settingsResult = await awaitForCurrentImportAttempt(attempt, attemptOwner.isCurrent, readSettings);
+      if (!settingsResult.current) return;
+      const settings = settingsResult.value;
+      const { agent, agentModel } = resolveAgentChoice(launch.agent, settings);
+      const generatePromptPath =
+        typeof settings.generatePromptPath === 'string' ? settings.generatePromptPath : undefined;
+      const debugResult = await awaitForCurrentImportAttempt(
+        attempt,
+        attemptOwner.isCurrent,
+        () => import('./src/tui/debug-store.js'),
+      );
+      if (!debugResult.current) return;
+      const directoryResult = await awaitForCurrentImportAttempt(attempt, attemptOwner.isCurrent, () =>
+        debugResult.value.startImportRun(resolveUserPath(launch.projectPath ?? '')),
+      );
+      if (!directoryResult.current) return;
+      const outDir = directoryResult.value;
+      await debugResult.value.recordDebugEvent('import.prepare.completed', {
+        attemptId: attempt.id,
+        agent,
+        target,
+        fileCount: launch.filePaths?.length ?? 0,
+      });
+      if (!isActiveAttempt(attempt)) return;
+      const input: ExtractionInput = {
+        signal: attempt.controller.signal,
         projectPath: resolveUserPath(launch.projectPath ?? ''),
         outDir,
         filePaths: launch.filePaths ?? [],
+        sourceInventory: launch.sourceInventory,
         rawTokensPath: launch.tokens ?? '',
-        credentials: credentials.skipped ? null : credentials.credentials,
+        credentials: result.skipped ? null : result.credentials,
         agent,
         ...(agentModel ? { agentModel } : {}),
         promptOverrides: launch.prompt ?? [],
-        // Every import generates new results: no stage restores an earlier run's output from the cache.
         noCache: true,
-      },
-    };
-  };
-
-  const startExtraction = async (launch: ImportLaunch, credentials: CredentialsResult): Promise<void> => {
-    const run = await prepareRun(launch, credentials);
-    setExtractionRun({
-      ...(run.generatePromptPath ? { generatePromptPath: run.generatePromptPath } : {}),
-      launch: run.launch,
-      credentialsSkipped: credentials.skipped,
-      input: run.input,
-    });
-  };
-
-  const startTokensOnly = async (launch: ImportLaunch, credentials: CredentialsResult): Promise<void> => {
-    const { input, outDir } = await prepareRun(launch, credentials);
-    setTokensOnlyRun({
-      credentialsSkipped: credentials.skipped,
-      input,
-      tokens: {
-        rawTokensPath: input.rawTokensPath,
-        outDir,
-        agent: input.agent,
-        ...(input.agentModel ? { agentModel: input.agentModel } : {}),
-        promptOverrides: input.promptOverrides,
-        noCache: input.noCache,
-      },
-    });
+      };
+      if (target === 'tokens') {
+        setTokensOnlyRun({
+          attempt,
+          credentialsSkipped: result.skipped,
+          input,
+          tokens: {
+            signal: attempt.controller.signal,
+            rawTokensPath: input.rawTokensPath,
+            outDir,
+            agent,
+            ...(agentModel ? { agentModel } : {}),
+            promptOverrides: input.promptOverrides,
+            noCache: input.noCache,
+          },
+        });
+      } else {
+        setExtractionRun({
+          attempt,
+          ...(generatePromptPath ? { generatePromptPath } : {}),
+          launch: { ...launch, agent: agentModel ? `${agent}:${agentModel}` : agent },
+          credentialsSkipped: result.skipped,
+          input,
+        });
+      }
+    } catch (error) {
+      if (!isActiveAttempt(attempt)) return;
+      cancelAttempt();
+      if (!isAbortError(error))
+        setLaunchError({ stepName: 'prepare import', message: error instanceof Error ? error.message : String(error) });
+    } finally {
+      if (attemptOwner.current() === attempt || attemptOwner.current() === undefined) setPreparing(false);
+    }
   };
 
   // Finished tokens start the flow at saving, once. There is no review: no components were generated.
   useEffect(() => {
-    if (!tokensOnlyRun || tokensOnly?.status !== 'done' || !tokensOnly.result.ok) return;
+    if (
+      !tokensOnlyRun ||
+      !isActiveAttempt(tokensOnlyRun.attempt) ||
+      tokensOnly?.status !== 'done' ||
+      !tokensOnly.result.ok
+    )
+      return;
     const { credentialsSkipped, input, tokens } = tokensOnlyRun;
     const { tokensPath, tokenSessionId, tokenCount } = tokensOnly.result;
     inkClear();
     setTokenReview({
       tokensPath,
       onContinue: () => {
-        inkClear();
+        if (!isActiveAttempt(tokensOnlyRun.attempt)) return;
         setTokenReview(undefined);
+        inkClear();
         setTokensOnlyRun(undefined);
         setFlowStart(
           buildFlowStart({
@@ -257,7 +424,13 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
 
   // A finished extraction opens the scope gate, once, with what the stage produced.
   useEffect(() => {
-    if (!extractionRun || extraction?.status !== 'done' || !extraction.result.ok) return;
+    if (
+      !extractionRun ||
+      !isActiveAttempt(extractionRun.attempt) ||
+      extraction?.status !== 'done' ||
+      !extraction.result.ok
+    )
+      return;
     setExtractionRun(undefined);
     setScopeRun({ ...extractionRun, extraction: extraction.result.extraction });
   }, [extraction, extractionRun]);
@@ -265,9 +438,10 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
   // A confirmed scope starts generation, once. The cache check that ran at the gate is handed over so generation can
   // wait for it before it saves the decisions.
   useEffect(() => {
-    if (!scopeRun || scopeFlow?.status !== 'confirmed' || generationInput) return;
+    if (!scopeRun || !isActiveAttempt(scopeRun.attempt) || scopeFlow?.status !== 'confirmed' || generationInput) return;
     const { extraction: produced, input, generatePromptPath } = scopeRun;
     setGenerationInput({
+      signal: scopeRun.attempt.controller.signal,
       sessionId: produced.sessionId,
       decisions: scopeFlow.decisions,
       cachedNames: scopeFlow.cachedNames,
@@ -280,12 +454,19 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
       noCache: input.noCache,
       hasTokens: produced.tokensPath !== '',
       ...(generatePromptPath ? { generatePromptPath } : {}),
+      ...(debugResumeStep
+        ? {
+            debugResumeFrom:
+              debugResumeStep === 'scope' ? 'details' : (debugResumeStep as 'details' | 'generation' | 'tokens'),
+          }
+        : {}),
     });
   }, [scopeFlow, scopeRun, generationInput]);
 
   // Finished generation starts the review and everything after it, exactly once, with everything the stages did.
   useEffect(() => {
-    if (!scopeRun || generation?.status !== 'done' || !generation.result.ok) return;
+    if (!scopeRun || !isActiveAttempt(scopeRun.attempt) || generation?.status !== 'done' || !generation.result.ok)
+      return;
     const { credentialsSkipped, extraction: produced, input, generatePromptPath } = scopeRun;
     inkClear();
     setScopeRun(undefined);
@@ -309,6 +490,10 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
   const goToSettings = (): void => setScreen('settings');
 
   const resetImport = (keepTarget = false): void => {
+    cancelAttempt();
+    setLaunchError(undefined);
+    setPreparing(false);
+    setSourceInventory(undefined);
     if (!keepTarget) setTarget(undefined);
     setAnswers({});
     setExtractionRun(undefined);
@@ -317,6 +502,8 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
     setScopeRun(undefined);
     setGenerationInput(undefined);
     setFlowStart(undefined);
+    setDebugResumeState(undefined);
+    setDebugResumeStep(undefined);
   };
 
   const finishImportResult = (): void => {
@@ -333,6 +520,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
   // Back from a screen goes to the one before it in the chosen mode, which skips the screens the mode does not have.
   const goBackFrom = (current: ImportStepId): void => {
     if (!target) return;
+    setSourceInventory(undefined);
     const back = goBack(target, current, answers);
     if (back.to === 'preflight') setTarget(undefined);
     else setAnswers(back.answers);
@@ -342,6 +530,10 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
     switch (screen) {
       case 'import':
         if (showImportResult) return <ImportScreen exitCode={importExitCode} onDone={finishImportResult} />;
+        if (launchError)
+          return <ErrorStep stepName={launchError.stepName} message={launchError.message} onExit={leaveImport} />;
+        if (preparing)
+          return <RunningStep step="extraction" description="Preparing settings and the import output folder." />;
         if (flow && flowStart) {
           return (
             <FlowScreen
@@ -352,7 +544,15 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
             />
           );
         }
-        if (tokenReview) {
+        if (debugResumeState && !debugResumeStep)
+          return (
+            <DebugResumeScreen
+              state={debugResumeState}
+              onChoose={(step) => startDebugResume(debugResumeState, step)}
+              onQuit={leaveImport}
+            />
+          );
+        if (tokenReview)
           return (
             <TokenReviewScreen
               tokensPath={tokenReview.tokensPath}
@@ -360,13 +560,12 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
               onQuit={leaveImport}
             />
           );
-        }
         if (importDefaults === undefined) return <></>;
         if (target === undefined) {
           return <PreflightScreen onChoose={setTarget} onQuit={leaveImport} />;
         }
         const inputStep = currentInputStep(target, answers);
-        if (!extractionRun && !tokensOnlyRun && inputStep !== 'credentials') {
+        if (!scopeRun && !extractionRun && !tokensOnlyRun && inputStep !== 'credentials') {
           switch (inputStep) {
             case 'project':
               return (
@@ -392,7 +591,10 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
                   mode={target}
                   projectPath={answers.projectPath ?? ''}
                   hasTokens={target !== 'components'}
-                  onConfirm={({ filePaths }) => answer({ scannedFiles: filePaths })}
+                  onConfirm={({ filePaths, sourceInventory }) => {
+                    answer({ scannedFiles: filePaths });
+                    setSourceInventory(sourceInventory);
+                  }}
                   onChangePath={() => resetImport(true)}
                   onBack={() => goBackFrom('path-validation')}
                 />
@@ -419,10 +621,19 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
               <ErrorStep stepName={extraction.result.step} message={extraction.result.message} onExit={leaveImport} />
             );
           }
-          if (extraction?.status === 'running') {
-            return <ExtractionScreen progress={extraction.progress} agent={extractionRun.input.agent} />;
-          }
-          return <></>;
+          return (
+            <ExtractionScreen
+              progress={
+                extraction?.status === 'running'
+                  ? extraction.progress
+                  : initialProgress({
+                      hasCredentials: extractionRun.input.credentials !== null,
+                      hasRawTokens: extractionRun.input.rawTokensPath !== '',
+                    })
+              }
+              agent={extractionRun.input.agent}
+            />
+          );
         }
         if (scopeRun && scopeFlow) {
           if (scopeFlow.status === 'failed') {
@@ -461,7 +672,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
             initial={importDefaults.credentials}
             tokensOnly={target === 'tokens'}
             onBack={() => goBackFrom('credentials')}
-            onDone={(result) => void finishCredentials(result, answers)}
+            onDone={(result) => void trackImportWork(finishCredentials(result, answers))}
           />
         );
       case 'help':

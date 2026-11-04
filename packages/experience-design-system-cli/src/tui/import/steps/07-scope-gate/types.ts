@@ -1,4 +1,10 @@
-import type { ScopeComponentRow } from '@contentful/experience-design-system-backend-pipeline';
+import type {
+  ScopeComponentRow,
+  ScopeDecisions,
+  ScopeDecisionProvenance,
+} from '@contentful/experience-design-system-backend-pipeline';
+
+export type { ScopeDecisions };
 
 /**
  * One row of the gate. The loader always fills in the slots, but the screen is handed whatever the caller has, and
@@ -13,10 +19,8 @@ export type ScopeComponent = Omit<ScopeComponentRow, 'aiDecision' | 'aiReason' |
 
 export type Decision = 'accepted' | 'rejected' | 'undecided';
 
-/** What the user confirmed. Becomes `ImportHandoff.scope`; the legacy wizard saves it and starts generation. */
-export interface ScopeDecisions {
-  accepted: string[];
-  rejected: string[];
-}
+export type ScopeProvenance = ScopeDecisionProvenance;
 
-export type ScopeGateLoad = { ok: true; components: ScopeComponent[] } | { ok: false; message: string };
+export type ScopeGateLoad =
+  | { ok: true; components: ScopeComponent[]; savedDecisions?: ScopeDecisions }
+  | { ok: false; message: string };

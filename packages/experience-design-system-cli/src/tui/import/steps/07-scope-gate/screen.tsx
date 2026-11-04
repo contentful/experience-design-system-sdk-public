@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo } from 'react';
-import { Box, Text } from 'ink';
 import { startDebugRun, finishDebugRun } from '@tui/debug-store.js';
-import { StepHeader } from '@tui/shared/components/StepHeader.js';
 import { scopeGateLogInputs, scopeGateLogOutputs } from './log.js';
-import { TokensColumn } from './panels/tokens-column.js';
 import { loadTokenRows } from '../05-token-review/load.js';
 import { longestEntries } from '../05-token-review/logic.js';
+import { Box, Text } from 'ink';
+import { StepHeader } from '@tui/shared/components/StepHeader.js';
+import { TokensColumn } from './panels/tokens-column.js';
 import { CyclesPanel } from './panels/cycles-panel.js';
 import { RejectPrompt } from './panels/reject-prompt.js';
 import { CompactControlBar } from './sidebar/components/CompactControlBar.js';
@@ -21,6 +21,7 @@ import { useScopeGate } from './use-scope-gate.js';
 
 interface ScopeGateScreenProps {
   components: ScopeComponent[];
+  savedDecisions?: ScopeDecisions;
   tokensPath?: string;
   onConfirm: (decisions: ScopeDecisions) => void;
   onQuit: () => void;
@@ -49,8 +50,8 @@ const HELP_SECTIONS: HelpSection[] = [
     title: 'Panels',
     entries: [
       { keys: 'c', label: 'Cycle list' },
-      { keys: 'd', label: 'Show slot dependenciess' },
-      { keys: 'x', label: 'Review flags' },
+      { keys: 'd', label: 'Show confirmed slot dependencies' },
+      { keys: 'x', label: 'Review flags and source notes' },
     ],
   },
   { title: 'Search', entries: [{ keys: '/', label: 'Search' }] },
@@ -66,8 +67,21 @@ const HELP_SECTIONS: HelpSection[] = [
 
 // Layout and panels only. State and keys are in use-scope-gate.ts, the decisions in state.ts, the graph in graph/, the
 // column sizes in columns.ts and what a key means in keymap.ts.
-export function ScopeGateScreen({
+export function ScopeGateScreen(props: ScopeGateScreenProps): React.ReactElement {
+  // Checked here, not in the hook, so an empty list never builds a graph or binds the keys.
+  if (props.components.length === 0) {
+    return (
+      <Box paddingX={2} paddingY={1}>
+        <Text color={PALETTE.error}>Error: no components found for this session — please re-run analyze extract.</Text>
+      </Box>
+    );
+  }
+  return <ScopeGateView {...props} />;
+}
+
+function ScopeGateView({
   components,
+  savedDecisions,
   tokensPath,
   onConfirm,
   onQuit,
@@ -77,7 +91,6 @@ export function ScopeGateScreen({
     return loaded?.ok ? loaded.rows : [];
   }, [tokensPath]);
   const longest = useMemo(() => longestEntries(tokens), [tokens]);
-
   useEffect(() => {
     startDebugRun({
       flow: 'import/scope-gate',
@@ -86,9 +99,9 @@ export function ScopeGateScreen({
       inputs: scopeGateLogInputs(components, tokens.length),
     });
   }, []);
-
   const gate = useScopeGate({
     components,
+    savedDecisions,
     tokenCount: tokens.length,
     tokensWidth: longest.path + longest.value + 10,
     onConfirm: (decisions) => {
@@ -123,10 +136,20 @@ export function ScopeGateScreen({
             </Text>
           )}
         </Box>
+        {gate.hasAdvisoryNotes && (
+          <Box>
+            <Text dimColor>Source guidance is advisory — press [x] to review notes before selecting components.</Text>
+          </Box>
+        )}
+        {gate.hasSourceRelationships && (
+          <Box>
+            <Text dimColor>Source links show rendered composition; selection follows confirmed slots.</Text>
+          </Box>
+        )}
         {tokens.length > 0 && columnPlan.layout === 'single' && (
-          <Text color={PALETTE.muted}>
-            {`${tokens.length} design token${tokens.length === 1 ? '' : 's'} will be imported. Widen the terminal to list them.`}
-          </Text>
+          <Text
+            color={PALETTE.muted}
+          >{`${tokens.length} design token${tokens.length === 1 ? '' : 's'} will be imported. Widen the terminal to list them.`}</Text>
         )}
         {graph.cycles.length > 0 && (
           <Box marginTop={1}>
@@ -140,7 +163,11 @@ export function ScopeGateScreen({
         <Box flexDirection="row" alignItems="stretch">
           {gate.aiRationalePanelOpen ? (
             <GotoBanner
-              title={`Review flags (${gate.aiExcludedCount})`}
+              title={
+                gate.hasAdvisoryNotes
+                  ? `Review notes (${gate.aiRows.length})`
+                  : `Review flags (${gate.aiExcludedCount})`
+              }
               rows={gate.aiRows}
               cursor={gate.aiCursor}
               maxRows={gate.panelMaxRows}
@@ -158,7 +185,7 @@ export function ScopeGateScreen({
               onToggleExpanded={gate.toggleExpanded}
               width={columnPlan.main}
               height={panelLayout.height}
-              title="Components"
+              title="All components"
               wrapLabels
               focused={gate.focusedColumn === 'main'}
               scrollOffset={gate.scrollOffset}
@@ -170,7 +197,7 @@ export function ScopeGateScreen({
               visibleRows={gate.visibleRows}
               emptyMessage={gate.emptyMessage}
               viewMode={gate.columnOneView}
-              graph={graph.nodes}
+              graph={gate.displayNodes}
             />
           )}
           {columnPlan.layout === 'two-column' && (

@@ -14,7 +14,11 @@ interface PathValidationScreenProps {
   /** What the user chose to import at Preflight; it decides which steps run, so every log notes it. */
   mode: ImportTarget;
   projectPath: string;
-  onConfirm: (result: { projectPath: string; filePaths: string[] }) => void;
+  onConfirm: (result: {
+    projectPath: string;
+    filePaths: string[];
+    sourceInventory?: import('@contentful/experience-design-system-backend-pipeline').SourceEvidenceInventory;
+  }) => void;
   onChangePath: () => void;
   onBack: () => void;
   /** False when the import does not generate tokens, so `.json` files are not described as design tokens. */
@@ -66,6 +70,20 @@ function Summary({
         ))}
       </Box>
       {warning && <Text color={PALETTE.warning}>⚠ {warning}</Text>}
+      <Box flexDirection="column">
+        <Text dimColor>File counts do not establish which components are useful on a page.</Text>
+        <Text dimColor>
+          Application chrome may depend on providers, runtime or environment; review the source notes.
+        </Text>
+        <Text dimColor>
+          Missing imports or declarations leave evidence gaps: check project configuration and dependency setup, or
+          choose a relevant source folder.
+        </Text>
+        <Text dimColor>
+          Little directly authored content can still offer useful design, placement or composition; review before
+          choosing.
+        </Text>
+      </Box>
       <Text>Does this look right?</Text>
     </Box>
   );
@@ -110,7 +128,7 @@ export function PathValidationScreen({
     onConfirm: () => {
       if (!scan?.ok) return;
       finish('continued', 'saved');
-      onConfirm({ projectPath: resolvedPath, filePaths: scan.filePaths });
+      onConfirm({ projectPath: resolvedPath, filePaths: scan.filePaths, sourceInventory: scan.sourceInventory });
     },
     onChangePath: () => {
       finish('changed-path', 'discarded');

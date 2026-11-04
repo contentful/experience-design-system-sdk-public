@@ -1,17 +1,22 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   getOrCreateSession,
+  getRefineSessionPaths,
+  loadAcceptedNames,
+  loadComponentReviewMetadata,
   loadDTCGTokens,
   openPipelineDb,
-  storeCDFComponents,
   storeDTCGTokens,
   storeRawComponents,
+  writeScopeDecisionsSnapshot,
 } from '@contentful/experience-design-system-backend-pipeline';
+import { seedCompleteDefinitions } from '../source-session-fixture.js';
 import { prepareMapTokens } from '../../../src/tui/import/steps/08-generation/map-tokens.js';
 import { saveDecisions } from '../../../src/tui/import/steps/08-generation/save-decisions.js';
+import { runGeneration, type GenerationDeps } from '../../../src/tui/import/steps/08-generation/run.js';
 
 const raw = (name: string) => ({
   name,
@@ -26,6 +31,7 @@ const designProp = { $type: 'token' as const, $category: 'design' as const, '$to
 describe('the generation stage and the pipeline database', () => {
   let dir: string;
   let previousDbPath: string | undefined;
+  let previousArtifactsDir: string | undefined;
 
   const newSession = (): string => {
     const db = openPipelineDb();
@@ -51,25 +57,127 @@ describe('the generation stage and the pipeline database', () => {
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'generation-db-'));
     previousDbPath = process.env.EDS_PIPELINE_DB_PATH;
+    previousArtifactsDir = process.env.EDS_REVIEW_ARTIFACTS_DIR;
     process.env.EDS_PIPELINE_DB_PATH = join(dir, 'pipeline.db');
+    process.env.EDS_REVIEW_ARTIFACTS_DIR = join(dir, 'reviews');
   });
 
   afterEach(async () => {
     if (previousDbPath === undefined) delete process.env.EDS_PIPELINE_DB_PATH;
     else process.env.EDS_PIPELINE_DB_PATH = previousDbPath;
+    if (previousArtifactsDir === undefined) delete process.env.EDS_REVIEW_ARTIFACTS_DIR;
+    else process.env.EDS_REVIEW_ARTIFACTS_DIR = previousArtifactsDir;
     await rm(dir, { recursive: true, force: true });
   });
 
   describe('saveDecisions', () => {
-    it('marks the accepted components generated and the rejected ones rejected', async () => {
+    it.each([true, false])(
+      'stops generation when the real snapshot filesystem write fails, accepted=%s',
+      async (accepted) => {
+        const sessionId = newSession();
+        const db = openPipelineDb();
+        storeRawComponents(db, sessionId, [raw('Card')]);
+        db.close();
+        const blockedPath = join(dir, 'blocked-artifacts');
+        await writeFile(blockedPath, 'not a directory');
+        process.env.EDS_REVIEW_ARTIFACTS_DIR = blockedPath;
+        const auth = vi.fn();
+        const generate = vi.fn();
+        const deps: GenerationDeps = {
+          saveDecisions,
+          checkAgentAuth: auth,
+          runGenerate: generate,
+          prepareMapTokens: vi.fn(),
+          prepareMapOptions: vi.fn(),
+          runMapTokens: vi.fn(),
+        };
+        const result = await runGeneration(
+          {
+            sessionId,
+            decisions: { accepted: accepted ? ['Card'] : [], rejected: accepted ? [] : ['Card'] },
+            cachedNames: Promise.resolve([]),
+            tokensPath: '',
+            tokenSessionId: null,
+            existingEntitiesPath: null,
+            agent: 'claude',
+            promptOverrides: [],
+            noCache: true,
+            hasTokens: false,
+          },
+          () => {},
+          deps,
+        );
+        expect(result).toMatchObject({ ok: false, step: 'save decisions' });
+        expect(auth).not.toHaveBeenCalled();
+        expect(generate).not.toHaveBeenCalled();
+        expect(statuses(sessionId)).toEqual({ Card: accepted ? 'generated' : 'rejected' });
+      },
+    );
+
+    it('marks the partition, writes authoritative provenance, and reads it through review consumers', async () => {
       const sessionId = newSession();
       const db = openPipelineDb();
-      storeRawComponents(db, sessionId, [raw('Button'), raw('Card'), raw('Helper')]);
+      const button = {
+        ...raw('Button'),
+        factSchemaVersion: 3,
+        sourceCandidates: [
+          {
+            name: '__proto__',
+            keyPath: ['__proto__'],
+            evidenceKinds: ['declaration'],
+            type: "'on' | string",
+            declaredRequired: false,
+            sourceDefault: null,
+            facts: null,
+            observations: [],
+            projection: { kind: 'excluded', reason: 'source-candidate-only' },
+          },
+        ],
+      };
+      storeRawComponents(db, sessionId, [button, raw('Card'), raw('Helper')]);
       db.close();
 
-      await saveDecisions({ sessionId, decisions: { accepted: ['Button', 'Card'], rejected: ['Helper'] } });
+      const decisions = {
+        accepted: ['Button', 'Card'],
+        rejected: ['Helper'],
+        acceptedProvenance: {
+          Button: { kind: 'direct' as const, roots: ['Button'] },
+          Card: { kind: 'closure' as const, roots: ['Button'] },
+        },
+      };
+      await saveDecisions({ sessionId, decisions });
 
       expect(statuses(sessionId)).toEqual({ Button: 'generated', Card: 'generated', Helper: 'rejected' });
+
+      const check = openPipelineDb();
+      try {
+        expect(loadComponentReviewMetadata(check, sessionId, 'Card')?.scopeProvenance).toEqual({
+          kind: 'closure',
+          roots: ['Button'],
+        });
+        check
+          .prepare("UPDATE raw_components SET status = 'rejected' WHERE session_id = ? AND name = 'Button'")
+          .run(sessionId);
+        await writeScopeDecisionsSnapshot(check, sessionId);
+      } finally {
+        check.close();
+      }
+
+      const paths = await getRefineSessionPaths(sessionId, join(dir, 'reviews'));
+      const snapshot = JSON.parse(await readFile(paths.statePath, 'utf8')) as {
+        components: Array<{
+          name: string;
+          status: string;
+          scopeProvenance?: unknown;
+          originalProposal?: { sourceCandidates?: Array<{ name: string; keyPath: string[] }> };
+        }>;
+      };
+      expect(snapshot.components.find((item) => item.name === 'Button')).toMatchObject({
+        status: 'accepted',
+        scopeProvenance: { kind: 'direct', roots: ['Button'] },
+        originalProposal: { sourceCandidates: [{ name: '__proto__', keyPath: ['__proto__'] }] },
+      });
+      expect(await loadAcceptedNames(sessionId)).toEqual(new Set(['Button', 'Card']));
     });
 
     it('does not reject something that is also accepted', async () => {
@@ -96,19 +204,30 @@ describe('the generation stage and the pipeline database', () => {
       expect(statuses(second).Button).not.toBe('generated');
     });
 
-    it('closes the database even when saving fails', async () => {
-      // a session with no components still saves; a database that cannot be written would throw, and the next open must work
+    it('closes the database when an incomplete partition is rejected', async () => {
       const sessionId = newSession();
-      await saveDecisions({ sessionId, decisions: { accepted: [], rejected: [] } });
-      expect(() => openPipelineDb().close()).not.toThrow();
+      const db = openPipelineDb();
+      storeRawComponents(db, sessionId, [raw('Button')]);
+      db.close();
+
+      await expect(saveDecisions({ sessionId, decisions: { accepted: [], rejected: [] } })).rejects.toThrow(
+        'omit component',
+      );
+      const reopened = openPipelineDb();
+      expect(
+        reopened.prepare('SELECT COUNT(*) AS count FROM raw_components WHERE session_id = ?').get(sessionId),
+      ).toEqual({
+        count: 1,
+      });
+      reopened.close();
     });
   });
 
   describe('prepareMapTokens', () => {
-    const seedGenerated = (sessionId: string, withDesignProp: boolean): void => {
+    const seedGenerated = async (sessionId: string, withDesignProp: boolean): Promise<void> => {
       const db = openPipelineDb();
       try {
-        storeCDFComponents(db, sessionId, [
+        await seedCompleteDefinitions(db, sessionId, dir, [
           {
             key: 'Card',
             entry: {
@@ -130,7 +249,7 @@ describe('the generation stage and the pipeline database', () => {
       const db = openPipelineDb();
       storeDTCGTokens(db, tokenSession, [], [token('colors.primary'), token('colors.secondary')]);
       db.close();
-      seedGenerated(generated, true);
+      await seedGenerated(generated, true);
 
       const plan = await prepareMapTokens({ tokenSessionId: tokenSession, tokensPath: '' }, generated);
 
@@ -146,7 +265,7 @@ describe('the generation stage and the pipeline database', () => {
       const db = openPipelineDb();
       storeDTCGTokens(db, tokenSession, [], [token('colors.primary')]);
       db.close();
-      seedGenerated(generated, true);
+      await seedGenerated(generated, true);
 
       await prepareMapTokens({ tokenSessionId: tokenSession, tokensPath: '' }, generated);
 
@@ -157,7 +276,7 @@ describe('the generation stage and the pipeline database', () => {
 
     it('restores a reused tokens.json into the generated session when there is no token session', async () => {
       const generated = newSession();
-      seedGenerated(generated, true);
+      await seedGenerated(generated, true);
       const tokensPath = join(dir, 'tokens.json');
       await writeFile(tokensPath, JSON.stringify({ colors: { primary: { $type: 'color', $value: '#06f' } } }));
 
@@ -172,7 +291,7 @@ describe('the generation stage and the pipeline database', () => {
       const db = openPipelineDb();
       storeDTCGTokens(db, tokenSession, [], [token('colors.primary')]);
       db.close();
-      seedGenerated(generated, false);
+      await seedGenerated(generated, false);
 
       const plan = await prepareMapTokens({ tokenSessionId: tokenSession, tokensPath: '' }, generated);
 
@@ -181,7 +300,7 @@ describe('the generation stage and the pipeline database', () => {
 
     it('is not worth running when there are no tokens', async () => {
       const generated = newSession();
-      seedGenerated(generated, true);
+      await seedGenerated(generated, true);
 
       const plan = await prepareMapTokens({ tokenSessionId: null, tokensPath: '' }, generated);
 
@@ -190,7 +309,7 @@ describe('the generation stage and the pipeline database', () => {
 
     it('fails with a readable message when a reused tokens.json is missing, instead of exiting the process', async () => {
       const generated = newSession();
-      seedGenerated(generated, true);
+      await seedGenerated(generated, true);
 
       await expect(
         prepareMapTokens({ tokenSessionId: null, tokensPath: join(dir, 'nope.json') }, generated),

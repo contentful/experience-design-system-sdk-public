@@ -53,6 +53,8 @@ const valuesOf = (config: V1Credentials): Record<Field, string> =>
 
 /** The Contentful project settings: the space, credentials, defaults and where `.contentful` goes. */
 export function ProjectScreen({ onDone }: { onDone: () => void }): React.ReactElement {
+  const active = useRef(true);
+  const pendingSave = useRef(false);
   const [config, setConfig] = useState<V1Credentials | null>(null);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<FormNotice | null>(null);
@@ -70,8 +72,10 @@ export function ProjectScreen({ onDone }: { onDone: () => void }): React.ReactEl
   const scrub = (err: unknown): string => scrubError(err, [config?.cmaToken ?? '']);
 
   useEffect(() => {
-    readCredentials()
+    active.current = true;
+    void readCredentials()
       .then((cfg) => {
+        if (!active.current) return;
         setConfig(cfg);
         visit.before = snapshotOf(cfg);
         visit.persisted = visit.before;
@@ -83,6 +87,7 @@ export function ProjectScreen({ onDone }: { onDone: () => void }): React.ReactEl
         });
       })
       .catch((err: unknown) => {
+        if (!active.current) return;
         // Start a run anyway: a settings file that cannot be read is what someone would send us a log about.
         visit.error = scrubError(err, []);
         startDebugRun({
@@ -93,6 +98,9 @@ export function ProjectScreen({ onDone }: { onDone: () => void }): React.ReactEl
         });
         setLoadError(visit.error);
       });
+    return () => {
+      active.current = false;
+    };
   }, []);
 
   // Finishes the log. `changed` is about the settings file, so an edit that was never saved does not count as a change;
@@ -113,14 +121,16 @@ export function ProjectScreen({ onDone }: { onDone: () => void }): React.ReactEl
         actions: visit.trail.entries(),
         ...(visit.error ? { error: visit.error } : {}),
       },
-      status: visit.error ? 'error' : 'success',
-      exitMethod: change.changed ? 'saved' : 'discarded',
-    });
+      status: visit.error || pendingSave.current ? 'error' : 'success',
+      exitMethod: change.changed && !pendingSave.current ? 'saved' : 'discarded',
+    }).catch(() => {});
   };
 
   // With the settings unreadable there is nothing to show, so the only thing left to do is go back.
   useInput((input, key) => {
-    if (!config && loadError && (key.escape || input === 'q')) {
+    if (!active.current) return;
+    if (!config && (key.escape || input === 'q')) {
+      active.current = false;
       endVisit(null);
       onDone();
     }
@@ -145,26 +155,36 @@ export function ProjectScreen({ onDone }: { onDone: () => void }): React.ReactEl
   }
 
   const save = (): void => {
+    if (!active.current || pendingSave.current) return;
+    pendingSave.current = true;
     setSaving(true);
     setNotice(null);
-    writeCredentials(config)
+    void writeCredentials(config)
       .then(() => {
+        if (!active.current) return;
         visit.persisted = snapshotOf(config);
+        visit.error = '';
         visit.trail.record('saved');
         // Start the session folder now rather than at the next launch.
-        if (config.contentfulBaseDir) void startDebugSessionIn(config.contentfulBaseDir, { replace: true });
+        if (config.contentfulBaseDir)
+          void startDebugSessionIn(config.contentfulBaseDir, { replace: true }).catch(() => {});
         setNotice({ kind: 'success', text: 'Project settings saved' });
       })
       .catch((err: unknown) => {
+        if (!active.current) return;
         visit.error = scrub(err);
         visit.trail.record('save failed');
         setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'Failed to save' });
       })
-      .finally(() => setSaving(false));
+      .finally(() => {
+        pendingSave.current = false;
+        if (active.current) setSaving(false);
+      });
   };
 
   // Leaves without writing anything. Changes since the last save are dropped, and the log says so.
   const quit = (): void => {
+    active.current = false;
     endVisit(config);
     onDone();
   };
@@ -185,6 +205,8 @@ export function ProjectScreen({ onDone }: { onDone: () => void }): React.ReactEl
       onQuit={quit}
       notice={notice}
       busy={saving}
-    />
+    >
+      {saving && <Text color={PALETTE.muted}>Saving; the submitted save may still finish after leaving.</Text>}
+    </FieldForm>
   );
 }

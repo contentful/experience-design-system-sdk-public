@@ -23,7 +23,7 @@ export const state: {
   sessionStartedEmitted: false,
 };
 
-export function isPipelineStep(): boolean {
+function isPipelineStep(): boolean {
   return process.env[IMPORT_PIPELINE_ENV] === '1';
 }
 
@@ -35,7 +35,7 @@ export function buildBaseProps(command: DsiCliCommand): Record<string, unknown> 
   };
 }
 
-export function mergeContext(target: CommandContext, source: CommandContext): void {
+function mergeContext(target: CommandContext, source: CommandContext): void {
   if (source.space_key !== undefined) target.space_key = source.space_key;
   if (source.environment_key !== undefined) target.environment_key = source.environment_key;
   if (source.x_contentful_request_id !== undefined) {

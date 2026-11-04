@@ -1,0 +1,1409 @@
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, expect, it, vi } from 'vitest';
+import { extractReactComponents } from '../../../../../src/steps/extraction/index.js';
+import { captureSourceEvidence } from '../../../../../src/steps/extraction/index.js';
+import { bindSourceCandidatesToCapture } from '../../../../../src/steps/extraction/index.js';
+import {
+  openPipelineDb,
+  getOrCreateSession,
+  createStep,
+  completeExtractionWithSourceEvidence,
+  loadRawComponents,
+} from '../../../../../src/persistence/src/session/repositories/db.js';
+import { fieldReplayIdentity } from '../../../../../src/steps/extraction/src/types/field-replay.js';
+import { readComponentFacts } from '../../../../../src/persistence/src/session/repositories/component-facts-validation.js';
+import { buildCompilerEvidenceInline } from '../../../../../src/agents/prompts/helpers/build-compiler-evidence-inline.js';
+import { validateSavedFieldReplay } from '../../../../../src/persistence/src/session/repositories/field-replay-binding.js';
+import { collectFieldReplay } from '../../../../../src/steps/extraction/src/component-facts/collect-field-replay.js';
+import ts from 'typescript';
+
+const directories: string[] = [];
+afterEach(() => directories.splice(0).forEach((directory) => rmSync(directory, { recursive: true, force: true })));
+
+async function extract(body: string, key = 'alpha', maxNodes = 1000, includeGuard = false, rootBinding = 'props') {
+  const root = mkdtempSync(join(tmpdir(), 'paired-field-'));
+  directories.push(root);
+  const path = join(root, 'Surface.tsx');
+  writeFileSync(
+    path,
+    `export function Surface(${rootBinding}: { data: { ${JSON.stringify(key)}: string; beta: string }${includeGuard ? '; gate: boolean' : ''} }) { ${body} }`,
+  );
+  const component = (
+    await extractReactComponents([path], undefined, { projectRoot: root, componentObservationLimits: { maxNodes } })
+  ).components[0]!;
+  const semantics = component.componentFacts!.sourceObservations!.fieldSemantics!;
+  const replay = semantics.relationalReplay!;
+  expect(replay).toBeDefined();
+  const result = replay.results.find(
+    (item) => item.inputName === 'data' && item.path.length === 1 && item.path[0]!.key === key,
+  )!;
+  expect(result).toBeDefined();
+  return { root, path, component, semantics, replay, result };
+}
+const branched = (body: string) => extract(body, 'alpha', 1000, true);
+
+it.each([
+  'function make(value) { return { ...value, alpha: "fixed" }; } return make(props.data).alpha;',
+  'const make = value => ({ ...value, alpha: "fixed" }); return make(props.data).alpha;',
+  'function make(value) { return { ...value, alpha: "fixed" }; } const { alpha } = make(props.data); return alpha;',
+  'function make(value) { return { ...value }; } const next = { ...make(props.data), alpha: "fixed" }; return next.alpha;',
+  'function identity(value) { return value; } return identity(props.data).beta;',
+  'function make(value) { return { nested: value }; } return make(props.data).nested.beta;',
+  'function make(value) { return { nested: value, alias: value }; } const { alias } = make(props.data); return alias.beta;',
+  'function make(value) { return [value.alpha, "fixed"]; } return make(props.data)[1];',
+  'const make = value => [value.alpha, "fixed"]; return [...make(props.data)][1];',
+  'function make(value) { return [value]; } return make(props.data).map(value => value.beta)[0];',
+  'function make(value) { return [value.alpha]; } for (const value of make(props.data)) return "fixed"; return "empty";',
+  'return [props.data].map(value => ({ ...value, alpha: "fixed" }))[0].alpha;',
+  'return [props.data].map(value => ({ nested: value })).map(({ nested }) => nested.beta)[0];',
+  'function make(value) { const next = { ...value, alpha: "fixed" }; next.alpha = "after"; return next; } return make(props.data).alpha;',
+  'function make(value) { return { alpha: "fixed" }; } make(props.data); return "fixed";',
+])('transfers local helper results before observing an atomic root value: %s', async (body) => {
+  const { result, component, semantics } = await extract(body);
+  expect(semantics.omissions).toEqual([]);
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('conditional');
+  expect(readComponentFacts(component.componentFacts).status).toBe('available');
+  const execute = new Function('props', body);
+  const baseline = execute({ data: { alpha: 'original', beta: 'sibling' } });
+  expect(execute({ data: { alpha: 'changed', beta: 'sibling' } })).toEqual(baseline);
+  expect(execute({ data: { beta: 'sibling' } })).toEqual(baseline);
+});
+
+it.each([
+  'function make(value) { return { ...value }; } return make(props.data).alpha;',
+  'const make = value => ({ nested: value }); return make(props.data).nested.alpha;',
+  'function identity(value) { return value; } const { alpha } = identity(props.data); return alpha;',
+  'function make(value) { return [value.alpha]; } return make(props.data)[0];',
+  'return [props.data].map(value => ({ alpha: value.alpha }))[0].alpha;',
+])('preserves dependence through transferred helper results: %s', async (body) => {
+  const { result } = await extract(body);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.valueIndependence.reasons).toContain('paired-results-differ');
+});
+
+it.each([
+  'function make(value) { return { ...value, alpha: "fixed" }; } return make(props.data);',
+  'function make(value) { return [value.alpha, "fixed"]; } return make(props.data);',
+  'function make(value) { return () => "fixed"; } make(props.data); return "fixed";',
+  'function make(value) { return () => "fixed"; } return make(props.data)();',
+  'function make(value) { return { read: () => value.beta }; } const { read } = make(props.data); return read();',
+  'function make(value) { return { nested: [() => value.beta] }; } return make(props.data).nested[0]();',
+  'function make(value) { return { alpha: value.alpha }; } const next = make(props.data); next.alpha = "fixed"; return next.alpha;',
+  'function make(value) { return { child: { alpha: value.alpha } }; } const next = make(props.data); next.child.alpha = "fixed"; return next.child.alpha;',
+  'function make(value) { if (props.gate) return { alpha: "fixed" }; return { alpha: "fixed" }; } return make(props.data).alpha;',
+  'function make(value) { return props.gate ? { alpha: "fixed" } : { alpha: "fixed" }; } return make(props.data).alpha;',
+  'async function make(value) { return { alpha: "fixed" }; } return make(props.data).alpha;',
+  'function make(value) { return make(value); } return make(props.data).alpha;',
+  'function make(value) { unknown(value); return { alpha: "fixed" }; } return make(props.data).alpha;',
+  'function make(value) { return { get alpha() { return "fixed"; } }; } return make(props.data).alpha;',
+  'function make(value) { return [value.alpha]; } const next = make(props.data); next[0] = "fixed"; return next[0];',
+  'const next = { alpha: props.data.alpha }; function identity(value) { return value; } const alias = identity(next); next.alpha = "fixed"; return alias.alpha;',
+  'const next = { alpha: props.data.alpha }; function identity(value) { return value; } const alias = identity(next); const saved = alias.alpha; next.alpha = "fixed"; return saved;',
+])('keeps unsupported helper-result observations and effects uncertain: %s', async (body) => {
+  const { result } = await branched(body);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.reasons.length).toBeGreaterThan(0);
+});
+
+it.each(['label', 'arbitraryField'])('transfers renamed fields using local key evidence: %s', async (key) => {
+  const body = `const key = ${JSON.stringify(key)}; function transform(input) { return { ...input, [key]: "fixed" }; } return transform(props.data)[key];`;
+  const { result } = await extract(body, key);
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('conditional');
+});
+
+it('keeps helper-return provenance ordered before caller reads and callback frames', async () => {
+  const { replay, result } = await extract(
+    'function make(input) { return [input]; } return make(props.data).map(value => ({ ...value, alpha: "fixed" }))[0].alpha;',
+  );
+  expect(result.omissionSafety.status).toBe('conditional');
+  expect(replay.frames.map((frame) => frame.parentFrame)).toEqual([0, 0]);
+  const call = replay.operations.findIndex((operation) => operation.operation === 'call' && operation.frame === 1);
+  const returned = replay.operations.findIndex(
+    (operation) => operation.operation === 'return' && operation.frame === 1,
+  );
+  const callback = replay.operations.findIndex((operation) => operation.operation === 'call' && operation.frame === 2);
+  const callerRead = replay.operations.findLastIndex(
+    (operation) => operation.operation === 'read' && operation.frame === 0,
+  );
+  expect(returned).toBeGreaterThan(call);
+  expect(callback).toBeGreaterThan(returned);
+  expect(callerRead).toBeGreaterThan(callback);
+  expect(
+    replay.operations.filter((operation) => operation.frame === 2).every((operation) => operation.iterations[0] === 0),
+  ).toBe(true);
+});
+
+it('charges returned compound values to the shared replay bounds', async () => {
+  const { replay, result } = await extract(
+    'function make(input) { return { nested: { alias: input }, values: [input] }; } return make(props.data).nested.alias.beta;',
+    'alpha',
+    150,
+  );
+  expect(replay.used.nodes).toBeLessThanOrEqual(150);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.reasons.length).toBeGreaterThan(0);
+});
+
+it.each([
+  ['{ data }', 'const next = { ...data, alpha: "fixed" }; return next.alpha;'],
+  ['{ data: arbitrary }', 'const next = { ...arbitrary, alpha: "fixed" }; return next.alpha;'],
+  ['{ data: { alpha } }', 'const next = { alpha }; next.alpha = "fixed"; return next.alpha;'],
+  ['{ data: { alpha: ignored, beta: kept } }', 'return kept;'],
+])('replays source-root object bindings: %s', async (rootBinding, body) => {
+  const execute = new Function(rootBinding, body);
+  const baseline = execute({ data: { alpha: 'original', beta: 'sibling' } });
+  expect(execute({ data: { alpha: 'changed', beta: 'sibling' } })).toEqual(baseline);
+  expect(execute({ data: { beta: 'sibling' } })).toEqual(baseline);
+  const { result, component } = await extract(body, 'alpha', 1000, false, rootBinding);
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('conditional');
+  expect(readComponentFacts(component.componentFacts).status).toBe('available');
+});
+
+it.each([
+  'const { alpha, beta } = props.data; return beta;',
+  'const { data: { alpha, beta: kept } } = props; return kept;',
+  'const next = { alpha: props.data.alpha }; const { alpha: ignored } = next; next.alpha = "fixed"; return next.alpha;',
+  'function read({ alpha, beta }: { alpha: string; beta: string }) { return beta; } return read(props.data);',
+  'const { data } = props; return [data].map(({ alpha, beta }) => beta)[0];',
+  'const next = { child: { alpha: props.data.alpha } }; const { child: alias } = next; alias.alpha = "fixed"; return next.child.alpha;',
+])('replays default-free local/helper object bindings: %s', async (body) => {
+  const { result } = await extract(body);
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('conditional');
+});
+
+it.each([
+  ['{ data: { alpha } }', 'return alpha;'],
+  ['{ data: { alpha: saved } }', 'const next = { alpha: "fixed" }; return saved;'],
+  ['props', 'const { alpha } = props.data; return alpha;'],
+])('preserves object-binding source dependence: %s', async (rootBinding, body) => {
+  const { result } = await extract(body, 'alpha', 1000, false, rootBinding);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.valueIndependence.reasons).toContain('paired-results-differ');
+});
+
+it.each([
+  'const { alpha = "fixed" } = props.data; return "fixed";',
+  'const { alpha, ...rest } = props.data; return "fixed";',
+  'const { [unknown]: value } = props.data; return "fixed";',
+  'const [value] = [props.data.alpha]; return "fixed";',
+  'const { alpha: { nested } } = props.data; return "fixed";',
+])('retains unresolved binding effects and unsupported forms: %s', async (body) => {
+  const { result } = await extract(body);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.reasons.length).toBeGreaterThan(0);
+});
+
+it.each([
+  'const { data: alias } = props; const next = { alpha: alias.alpha }; const { alpha: saved } = next; if (props.gate) { const { beta: saved } = alias; } next.alpha = "fixed"; return saved;',
+  'const { data } = props; const saved = data.alpha; const read = () => saved; const next = { ...data, alpha: "fixed" }; return read();',
+])('retains destructured snapshots through branch scopes and captures: %s', async (body) => {
+  const { result } = await branched(body);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.valueIndependence.reasons).toContain('paired-results-differ');
+});
+
+it.each([
+  'const next = { child: { alpha: props.data.alpha } }; const { child: alias } = next; if (props.gate) alias.alpha = "fixed"; else next.child.alpha = "fixed"; return next.child.alpha;',
+  'const next = { child: { alpha: props.data.alpha } }; const { child: alias } = next; const read = () => alias.alpha; if (props.gate) next.child.alpha = "fixed"; else alias.alpha = "fixed"; return read();',
+  'const { data } = props; const saved = "fixed"; const read = () => saved; if (props.gate) { const { alpha: saved } = data; } return read();',
+])('preserves destructured aliases and lexical scopes against ordinary execution: %s', async (body) => {
+  const execute = new Function('props', body);
+  for (const gate of [false, true]) {
+    const baseline = execute({ data: { alpha: 'original', beta: 'sibling' }, gate });
+    expect(execute({ data: { alpha: 'changed', beta: 'sibling' }, gate })).toEqual(baseline);
+    expect(execute({ data: { beta: 'sibling' }, gate })).toEqual(baseline);
+  }
+  const { result } = await branched(body);
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('conditional');
+});
+
+it.each([
+  'const key = "beta"; const { [key]: kept } = props.data; return kept;',
+  'const { "alpha": ignored, beta: kept } = props.data; return kept;',
+])('resolves object-binding keys from exact local evidence: %s', async (body) => {
+  const { result } = await extract(body);
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('conditional');
+});
+
+it.each([
+  'const { missing } = { alpha: props.data.alpha }; return "fixed";',
+  'let { alpha } = props.data; return "fixed";',
+  'function read({ alpha = "fixed" }) { return "fixed"; } return read(props.data);',
+  'function read({ ...rest }) { return "fixed"; } return read(props.data);',
+  'const { data } = props; const write = () => { data.alpha = "fixed"; return "fixed"; }; return write();',
+])('keeps inherited, mutable, default/rest and captured-write binding effects open: %s', async (body) => {
+  const { result } = await extract(body);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.reasons.length).toBeGreaterThan(0);
+});
+
+it('charges nested object bindings to the shared finite budget', async () => {
+  const { replay, result } = await extract(
+    'const next = { child: { alpha: props.data.alpha } }; const { child: { alpha } } = next; return "fixed";',
+    'alpha',
+    130,
+  );
+  expect(replay.used.nodes).toBeLessThanOrEqual(130);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.reasons.length).toBeGreaterThan(0);
+});
+
+it.each([
+  'return [props.data.alpha, "last"].map(() => "fixed")[0];',
+  'const saved = "fixed"; const read = () => saved; return [props.data.alpha].map(read)[0];',
+  'return [props.data].map(value => { const next = { ...value, alpha: "fixed" }; return next.alpha; })[0];',
+  'return [props.data.alpha, "last"].map((value, index) => index)[1];',
+  'return [props.data.alpha].map((value, index, values) => values.length)[0];',
+  'return [props.data.alpha].map(() => "fixed").map(value => value)[0];',
+  'const values = [props.data.alpha]; const alias = values; return [...alias]["map"](() => "fixed")[0];',
+  'const values = [props.data.alpha].map(() => "fixed"); for (const value of values) return value; return "empty";',
+])('replays finite local-array mapping: %s', async (body) => {
+  const { result, semantics, component } = await extract(body);
+  expect(semantics.coverage).toBe('complete-within-declared-bound');
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('conditional');
+  expect(result.valueIndependence.premises).toContain('standard-local-array-map');
+  expect(readComponentFacts(component.componentFacts).status).toBe('available');
+  const run = new Function('props', body);
+  const baseline = run({ data: { alpha: 'original', beta: 'sibling' } });
+  expect(run({ data: { alpha: 'changed', beta: 'sibling' } })).toEqual(baseline);
+  expect(run({ data: { beta: 'sibling' } })).toEqual(baseline);
+});
+
+it.each([
+  'return [props.data.alpha].map(value => value)[0];',
+  'const saved = props.data.alpha; return ["fixed"].map(() => saved)[0];',
+  'return [props.data.alpha].map((value, index, values) => values[index])[0];',
+  'return ["fixed", props.data.alpha].map(value => value)[1];',
+])('preserves mapping callback and receiver dependence: %s', async (body) => {
+  const { result } = await extract(body);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.valueIndependence.reasons).toContain('paired-results-differ');
+});
+
+it.each([
+  'return [, props.data.alpha].map(() => "fixed")[1];',
+  'return props.data.alpha.map(() => "fixed")[0];',
+  'return [props.data.alpha].map(unknown)[0];',
+  'return [props.data.alpha].map(async () => "fixed")[0];',
+  'return [props.data.alpha].map(() => "fixed", props.data)[0];',
+  'const values = [props.data.alpha]; values[0] = "fixed"; return values.map(value => value)[0];',
+  'const next = { alpha: props.data.alpha }; ["fixed"].map(value => { next.alpha = value; return value; }); return next.alpha;',
+  'return [props.data.alpha].map((value, index, values) => { values[0] = "fixed"; return value; })[0];',
+  'return [props.data.alpha].map(() => ({ alpha: "fixed" }))[0];',
+  'return [props.data.alpha].map(...[() => "fixed"])[0];',
+  'return [props.data.alpha].map(() => { unknown(); return "fixed"; })[0];',
+  'const values = [props.data.alpha]; values.map = () => ["fixed"]; return values.map(() => "fixed")[0];',
+])('retains unresolved mapping behavior and effects: %s', async (body) => {
+  const { result } = await extract(body);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.reasons.length).toBeGreaterThan(0);
+});
+
+it('records distinct mapping callback frames and ordered indices', async () => {
+  const { replay, semantics } = await extract('return [props.data.alpha, "last"].map(() => "fixed")[1];');
+  expect(replay.frames).toHaveLength(2);
+  expect(replay.operations.filter((item) => item.operation === 'iterate').map((item) => item.iterations)).toEqual([
+    [0],
+    [1],
+  ]);
+  expect(semantics.steps.filter((item) => item.operation === 'iterate').map((item) => item.iterations)).toEqual([
+    [0],
+    [1],
+  ]);
+});
+
+it('skips empty mapping callbacks while preserving their argument evaluation', async () => {
+  const { result, replay } = await extract(
+    'return [].map(() => { unknown(props.data.alpha); return "unused"; }).length;',
+  );
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(replay.frames).toHaveLength(0);
+  const invalid = await extract('return [].map(null).length;');
+  expect(invalid.result.valueIndependence.status).toBe('unknown');
+});
+
+it('tracks callbacks inside mapping and mapping inside callbacks', async () => {
+  const { result, replay } = await extract(
+    'const read = () => "fixed"; return [props.data.alpha].map(() => ["nested"].map(() => read())[0])[0];',
+  );
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(replay.operations.filter((item) => item.operation === 'iterate').map((item) => item.iterations)).toEqual([
+    [0],
+    [0, 0],
+  ]);
+});
+
+it('preserves captured record aliases through mapping callback branches', async () => {
+  const { result } = await branched(
+    'const next = { alpha: props.data.alpha }; const read = () => next.alpha; if (props.gate) next.alpha = "fixed"; else next.alpha = "fixed"; return ["item"].map(() => read())[0];',
+  );
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('conditional');
+});
+
+it('records mapping branches without suppressing source dependence', async () => {
+  const { result } = await branched(
+    'return [props.data.alpha].map(value => { if (props.gate) return value; return "fixed"; })[0];',
+  );
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.valueIndependence.reasons).toContain('paired-results-differ');
+});
+
+it.each(['source', 'paired'] as const)('rejects a mapping claim missing its intrinsic premise: %s', async (owner) => {
+  const { component, semantics, result, replay } = await extract('return [props.data.alpha].map(() => "fixed")[0];');
+  const proof =
+    owner === 'paired'
+      ? result
+      : semantics.proofs.find((item) => item.inputName === 'data' && item.path[0]?.key === 'alpha')!;
+  proof.valueIndependence.premises = proof.valueIndependence.premises.filter(
+    (premise) => premise !== 'standard-local-array-map',
+  );
+  replay.identity = fieldReplayIdentity(replay);
+  expect(readComponentFacts(component.componentFacts).status).toBe('corrupt');
+});
+
+it('rejects fabricated mapping iteration positions against captured source', async () => {
+  const { root, path, component, replay } = await extract('return [props.data.alpha].map(() => "fixed")[0];');
+  replay.operations.find((item) => item.operation === 'iterate')!.iterations[0] = 1;
+  replay.identity = fieldReplayIdentity(replay);
+  const capture = await captureSourceEvidence({ projectRoot: root, filePaths: [path] });
+  const bound = bindSourceCandidatesToCapture([component], capture.files)[0]!;
+  expect(
+    validateSavedFieldReplay(bound.componentFacts!.sourceObservations!.fieldSemantics!, capture.files).relationalReplay!
+      .status,
+  ).toBe('mismatch');
+});
+
+it('keeps mapping callback construction within the shared finite budget', async () => {
+  const { replay, result } = await extract('return [props.data.alpha, "last"].map(() => "fixed")[0];', 'alpha', 80);
+  expect(replay.used.nodes).toBeLessThanOrEqual(80);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.reasons.length).toBeGreaterThan(0);
+});
+
+it.each([
+  'const read = () => { const next = { ...props.data, alpha: "fixed" }; return next.alpha; }; return read();',
+  'function apply(read: () => string) { return read(); } return apply(() => { const next = { ...props.data, alpha: "fixed" }; return next.alpha; });',
+  'const next = { alpha: props.data.alpha }; const read = () => next.alpha; next.alpha = "fixed"; return read();',
+  'function apply(read: () => string) { const saved = props.data.alpha; return read(); } const saved = "fixed"; return apply(() => saved);',
+  'for (const value of ["fixed", props.data.alpha]) { const read = () => value; return read(); } return "empty";',
+  'function read() { const next = { ...props.data, alpha: "fixed" }; return next.alpha; } return read();',
+  'const saved = "fixed"; const read = () => { const next = { saved }; return next.saved; }; return read();',
+  'function invoke(read: () => string, unrelated: string) { return read(); } const saved = "fixed"; return invoke(() => saved, props.data.alpha);',
+])('replays executed lexical callback captures: %s', async (body) => {
+  const { result, component } = await extract(body);
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('conditional');
+  expect(readComponentFacts(component.componentFacts).status).toBe('available');
+});
+
+it('copies callback captures and outer record aliases as one branch graph', async () => {
+  const { result } = await branched(
+    'const next = { alpha: props.data.alpha }; const read = () => next.alpha; if (props.gate) next.alpha = "fixed"; else next.alpha = "fixed"; return read();',
+  );
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('conditional');
+});
+
+it('preserves callback captures and loop aliases across repeated body branches', async () => {
+  const { result } = await branched(
+    'const next = { alpha: props.data.alpha }; const read = () => next.alpha; for (const value of ["first", "last"]) { if (props.gate) next.alpha = value; else next.alpha = value; } return read();',
+  );
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('conditional');
+});
+
+it('bounds capture construction and branch copying with the shared node budget', async () => {
+  const { replay, result } = await extract(
+    'const next = { alpha: props.data.alpha }; const read = () => next.alpha; if (true) next.alpha = "fixed"; return read();',
+    'alpha',
+    150,
+  );
+  expect(replay.used.nodes).toBeLessThanOrEqual(150);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.reasons.length).toBeGreaterThan(0);
+});
+
+it.each([
+  'const next = { alpha: props.data.alpha }; const read = () => next.alpha; next.alpha = "fixed"; return read();',
+  'const next = { alpha: props.data.alpha }; const read = () => next.alpha; if (props.gate) next.alpha = "fixed"; else next.alpha = "fixed"; return read();',
+])('checks executed capture comparisons against ordinary JavaScript: %s', async (body) => {
+  const run = new Function('props', body);
+  for (const gate of [false, true]) {
+    const baseline = run({ data: { alpha: 'original', beta: 'sibling' }, gate });
+    expect(run({ data: { alpha: 'changed', beta: 'sibling' }, gate })).toEqual(baseline);
+    expect(run({ data: { beta: 'sibling' }, gate })).toEqual(baseline);
+  }
+  const { result } = await branched(body);
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('conditional');
+});
+
+it.each([
+  'const read = () => props.data.alpha; return read();',
+  'function apply(read: () => string) { return read(); } const saved = props.data.alpha; return apply(() => saved);',
+  'const saved = props.data.alpha; const read = () => saved; const next = { ...props.data, alpha: "fixed" }; return read();',
+])('preserves executed lexical capture dependence: %s', async (body) => {
+  const { result } = await extract(body);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.valueIndependence.reasons).toContain('paired-results-differ');
+});
+
+it.each([
+  'const next = { alpha: props.data.alpha }; const write = () => { next.alpha = "fixed"; return next.alpha; }; return write();',
+  'let saved = props.data.alpha; const read = () => saved; saved = "fixed"; return read();',
+  'const read = () => later; const later = "fixed"; return read();',
+  'const read = () => props.data.alpha; return read;',
+  'const read = async () => "fixed"; return read();',
+  'const read = () => props.data.alpha; unknown(read); return "fixed";',
+  'function identity(value: () => string) { return value; } const read = () => "fixed"; return identity(read)();',
+])('retains captured writes, unavailable bindings and escaping/asynchronous callbacks: %s', async (body) => {
+  const { result } = await extract(body);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.reasons.length).toBeGreaterThan(0);
+});
+
+it.each([
+  'const next = { alpha: props.data.alpha }; for (const value of ["first", "last"]) next.alpha = value; return next.alpha;',
+  'const next = { ...props.data, alpha: "fixed" }; for (const value of [next]) value.alpha = "last"; return next.alpha;',
+  'for (const value of [props.data]) { const next = { ...value, alpha: "fixed" }; return next.alpha; } return "empty";',
+  'const next = { alpha: "fixed" }; for (const value of []) next.alpha = props.data.alpha; return next.alpha;',
+  'const next = { alpha: props.data.alpha }; for (const values of [["first"], ["last"]]) { for (const value of values) next.alpha = value; } return next.alpha;',
+  'function read(value: string) { return "fixed"; } for (const value of [props.data.alpha, "last"]) { return read(value); } return "empty";',
+  'for (const value of ["fixed", props.data.alpha]) return value; return "empty";',
+  'const next = { alpha: "fixed" }; for (const value of ["first", "last"]) { const inner = [value]; for (const value of inner) next.alpha = value; } return next.alpha;',
+  'const next = { alpha: props.data.alpha }; const values = ["fixed"]; for (const value of [...values]) next.alpha = value; return next.alpha;',
+])('replays bounded own-array iteration: %s', async (body) => {
+  const { component, result, semantics } = await extract(body);
+  expect(semantics.coverage).toBe('complete-within-declared-bound');
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('conditional');
+  expect(result.valueIndependence.premises).toContain('standard-local-array-iteration');
+  expect(readComponentFacts(component.componentFacts).status).toBe('available');
+});
+
+it('preserves loop-owner and element aliases across every branch and iteration', async () => {
+  const { result } = await branched(
+    'const first = { alpha: props.data.alpha }; const last = { alpha: props.data.alpha }; const values = [first, last]; for (const value of values) { if (props.gate) value.alpha = "fixed"; else value.alpha = "fixed"; } return last.alpha;',
+  );
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('conditional');
+});
+
+it.each([
+  'for (const value of [props.data.alpha]) return value; return "empty";',
+  'const next = { alpha: "fixed" }; for (const value of ["fixed", props.data.alpha]) next.alpha = value; return next.alpha;',
+])('preserves observable own-array iteration dependence: %s', async (body) => {
+  const { result } = await extract(body);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.valueIndependence.reasons).toContain('paired-results-differ');
+});
+
+it.each([
+  'for (const value of props.data) {} return "fixed";',
+  'for (const value of [, "fixed"]) {} return "fixed";',
+  'for (let value of ["fixed"]) {} return "fixed";',
+  'for (const { alpha } of [props.data]) {} return "fixed";',
+  'const value = "fixed"; for (value of ["fixed"]) {} return "fixed";',
+  'for await (const value of ["fixed"]) {} return "fixed";',
+  'for (const value of ["fixed"]) break; return "fixed";',
+  'for (const value of ["fixed"]) continue; return "fixed";',
+  'for (const value of ["fixed"]) unknown(value); return "fixed";',
+])('retains unresolved iteration semantics: %s', async (body) => {
+  const { result } = await extract(body);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.omissionSafety.status).toBe('unknown');
+  expect(result.reasons.length).toBeGreaterThan(0);
+});
+
+it('records exact iteration paths and repeated helper invocations', async () => {
+  const { replay, semantics } = await extract(
+    'function read(value: string) { return "fixed"; } for (const value of [props.data.alpha, "last"]) read(value); return "fixed";',
+  );
+  expect(
+    replay.operations.filter((operation) => operation.operation === 'iterate').map((operation) => operation.iterations),
+  ).toEqual([[0], [1]]);
+  expect(replay.frames).toHaveLength(2);
+  expect(
+    semantics.steps.filter((operation) => operation.operation === 'iterate').map((operation) => operation.iterations),
+  ).toEqual([[0], [1]]);
+});
+
+it('records nested iteration positions without conflating repeated body operations', async () => {
+  const { replay } = await extract(
+    'const next = { alpha: props.data.alpha }; for (const values of [["first"], ["last"]]) { for (const value of values) next.alpha = value; } return next.alpha;',
+  );
+  expect(
+    replay.operations.filter((operation) => operation.operation === 'iterate').map((operation) => operation.iterations),
+  ).toEqual([[0], [0, 0], [1], [1, 0]]);
+});
+
+it('rejects a rehashed fabricated iteration position against captured source', async () => {
+  const { root, path, component, replay } = await extract(
+    'for (const value of ["fixed"]) return value; return "empty";',
+  );
+  const operation = replay.operations.find((entry) => entry.operation === 'iterate')!;
+  operation.iterations[0] = 1;
+  replay.identity = fieldReplayIdentity(replay);
+  const capture = await captureSourceEvidence({ projectRoot: root, filePaths: [path] });
+  const bound = bindSourceCandidatesToCapture([component], capture.files)[0]!;
+  expect(
+    validateSavedFieldReplay(bound.componentFacts!.sourceObservations!.fieldSemantics!, capture.files).relationalReplay!
+      .status,
+  ).toBe('mismatch');
+});
+
+it('shares the finite node budget across loop iterations and paired alternatives', async () => {
+  const { replay, result } = await extract(
+    'const next = { alpha: props.data.alpha }; for (const value of ["first", "last"]) next.alpha = value; return next.alpha;',
+    'alpha',
+    170,
+  );
+  expect(replay.used.nodes).toBeLessThanOrEqual(170);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(replay.results.some((entry) => entry.reasons.includes('paired-flow-bound'))).toBe(true);
+});
+
+it.each([
+  'const next = { alpha: "fixed" }; for (const value of [props.data.alpha, "last"]) next.alpha = "fixed"; return next.alpha;',
+  'const next = { alpha: props.data.alpha }; for (const value of ["first", "last"]) next.alpha = value; return next.alpha;',
+  'for (const value of ["fixed", props.data.alpha]) return value; return "empty";',
+])('checks finite iteration comparisons against ordinary execution: %s', async (body) => {
+  const run = new Function('props', body);
+  const baseline = run({ data: { alpha: 'original', beta: 'sibling' } });
+  expect(run({ data: { alpha: 'changed', beta: 'sibling' } })).toEqual(baseline);
+  expect(run({ data: { beta: 'sibling' } })).toEqual(baseline);
+  const { result } = await extract(body);
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('conditional');
+});
+
+it.each([
+  'const values = [props.data.alpha, "fixed"]; return values[1];',
+  'const values = [{ ...props.data, alpha: "fixed" }]; return values[0].alpha;',
+  'const original = [props.data]; const values = [...original]; const next = { ...values[0], alpha: "fixed" }; return next.alpha;',
+  'const original = [props.data.alpha]; const values = [...original, "fixed"]; return values[1];',
+  'const values = [props.data.alpha]; const next = { ...values, 0: "fixed" }; return next[0];',
+  'const values = [props.data.alpha, "fixed"]; return values.length;',
+  'const values = []; return values.length;',
+  'const index = 1; const values = [props.data.alpha, "fixed"]; return values[index];',
+  'function read(values: { alpha: string; beta: string }[]) { return values[0].alpha; } const values = [{ ...props.data, alpha: "fixed" }]; return read(values);',
+])('compares exact local collection construction and reads: %s', async (body) => {
+  const { result, root, path, component, replay } = await extract(body);
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('conditional');
+  expect(result.valueIndependence.premises).toContain('standard-local-array-iteration');
+  expect(replay.used.nodes).toBeLessThanOrEqual(replay.limits.maxNodes);
+  const capture = await captureSourceEvidence({ projectRoot: root, filePaths: [path] });
+  const bound = bindSourceCandidatesToCapture([component], capture.files)[0]!;
+  expect(
+    validateSavedFieldReplay(bound.componentFacts!.sourceObservations!.fieldSemantics!, capture.files).relationalReplay!
+      .status,
+  ).toBe('matched');
+});
+
+it('preserves collection-to-record aliases when branching', async () => {
+  const { result } = await branched(
+    'const next = { ...props.data, alpha: "fixed" }; const values = [next]; if (props.gate) { values[0].alpha = "after"; } else { next.alpha = "after"; } return next.alpha;',
+  );
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('conditional');
+  expect(result.valueComparison.left).toBe(result.valueComparison.right);
+});
+
+it('keeps an aliased branch overwrite independent without admitting absent-property creation', async () => {
+  const { result } = await branched(
+    'const next = { ...props.data }; const values = [next]; if (props.gate) { values[0].alpha = "fixed"; } else { next.alpha = "fixed"; } return next.alpha;',
+  );
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('unknown');
+  expect(result.omissionSafety.reasons).toContain('paired-property-creation-open');
+});
+
+it.each([
+  'const values = [props.data.alpha, "fixed"]; return values[1];',
+  'const original = [props.data]; const values = [...original]; const next = { ...values[0], alpha: "fixed" }; return next.alpha;',
+  'const values = [props.data.alpha]; const next = { 0: "fixed", ...values }; return next[0];',
+])('checks collection comparisons against ordinary JavaScript execution: %s', async (body) => {
+  const { result } = await extract(body);
+  const execute = new Function('props', body) as (props: { data: { alpha?: string; beta: string } }) => unknown;
+  const baseline = execute({ data: { alpha: 'first', beta: 'second' } });
+  const variation = execute({ data: { alpha: 'changed', beta: 'second' } });
+  const omission = execute({ data: { beta: 'second' } });
+  const equal = baseline === variation;
+  expect(result.valueIndependence.status).toBe(equal ? 'conditional' : 'unknown');
+  expect(result.omissionSafety.status).toBe(baseline === omission ? 'conditional' : 'unknown');
+});
+
+it.each([
+  'const values = [props.data.alpha]; return values[0];',
+  'const values = [props.data]; return values[0].alpha;',
+  'const values = [props.data.alpha]; const next = { 0: "fixed", ...values }; return next[0];',
+])('preserves actual collection dependence: %s', async (body) => {
+  const { result } = await extract(body);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.omissionSafety.status).toBe('unknown');
+  expect(result.valueIndependence.reasons).toContain('paired-results-differ');
+});
+
+it.each([
+  'const values = [, "fixed"]; return values[1];',
+  'const values = [props.data.alpha]; return values[2];',
+  'const values = [props.data.alpha]; return values["01"];',
+  'const values = [props.data.alpha]; return values[-1];',
+  'const values = [props.data.alpha]; return values["__proto__"];',
+  'const values = [...props.data]; return "fixed";',
+  'const values = [unknown(), "fixed"]; return values[1];',
+  'const values = [props.data.alpha]; values[0] = "fixed"; return values[0];',
+  'const values = [props.data.alpha]; values.length = 0; return "fixed";',
+  'const values = [props.data.alpha]; return values.map(() => "fixed");',
+  'const values = [props.data.alpha]; return values;',
+])('retains unestablished collection behavior: %s', async (body) => {
+  const { result } = await extract(body);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.omissionSafety.status).toBe('unknown');
+  expect(result.reasons.length).toBeGreaterThan(0);
+});
+
+it('rejects collection replay that omits its iterator premise', async () => {
+  const { component, result, replay } = await extract('const values = [props.data.alpha, "fixed"]; return values[1];');
+  result.valueIndependence.premises = result.valueIndependence.premises.filter(
+    (premise) => premise !== 'standard-local-array-iteration',
+  );
+  replay.identity = fieldReplayIdentity(replay);
+  expect(readComponentFacts(component.componentFacts).status).toBe('corrupt');
+});
+
+it('requires local iteration applicability in the source derivation as well as paired replay', async () => {
+  const { component, semantics } = await extract('const values = [props.data.alpha, "fixed"]; return values[1];');
+  const proof = semantics.proofs.find((item) => item.inputName === 'data' && item.path[0]?.key === 'alpha')!;
+  expect(proof.valueIndependence.status).toBe('conditional');
+  expect(proof.valueIndependence.premises).toContain('standard-local-array-iteration');
+  proof.valueIndependence.premises = proof.valueIndependence.premises.filter(
+    (premise) => premise !== 'standard-local-array-iteration',
+  );
+  expect(readComponentFacts(component.componentFacts).status).toBe('corrupt');
+});
+
+it('rejects old interpreter versions without repairing historical evidence', async () => {
+  const { component, replay } = await extract('return "fixed";');
+  Object.assign(replay, { schemaVersion: 8 });
+  replay.identity = fieldReplayIdentity(replay);
+  expect(readComponentFacts(component.componentFacts).status).toBe('unsupported');
+});
+
+it('exposes a component-specific retention preview with separate unestablished applicability', async () => {
+  const { component, semantics, replay } = await extract(
+    'const next = { ...props.data, alpha: "fixed" }; return next.alpha;',
+  );
+  const before = JSON.stringify(component);
+  const channel = JSON.parse(buildCompilerEvidenceInline([component], { readiness: 'caller-provided' }));
+  const preview = channel.componentFacts[0].fieldProjectionPreview;
+  expect(preview).toMatchObject({
+    componentDeclarationId: semantics.componentDeclarationId,
+    replayIdentity: replay.identity,
+    replayStatus: 'unverified',
+    mode: 'retention-only',
+    uncoveredFields: 'retain',
+  });
+  const field = preview.fields.find(
+    (field: { inputName: string; path: { key: string }[] }) =>
+      field.inputName === 'data' && field.path[0]?.key === 'alpha',
+  );
+  expect(field).toMatchObject({
+    valueIndependence: { status: 'conditional', applicability: 'unestablished' },
+    omissionSafety: { status: 'conditional', applicability: 'unestablished' },
+    disposition: 'retained-uncertainty',
+  });
+  expect(field.valueIndependence.unestablishedPremises).toContain('declared-own-input-tree');
+  expect(field.omissionSafety.unestablishedPremises).toContain('entry-delivery-admits-omission');
+  expect(field.valueIndependence.unestablishedPremises).not.toContain('entry-delivery-admits-omission');
+  expect(JSON.stringify(component)).toBe(before);
+});
+
+it('retains matched conditional fields in the actual saved-source reasoning preview', async () => {
+  const { root, path, component } = await extract('const next = { ...props.data, alpha: "fixed" }; return next.alpha;');
+  const capture = await captureSourceEvidence({ projectRoot: root, filePaths: [path] });
+  const bound = bindSourceCandidatesToCapture([component], capture.files)[0]!;
+  const facts = bound.componentFacts!;
+  facts.sourceObservations!.fieldSemantics = validateSavedFieldReplay(
+    facts.sourceObservations!.fieldSemantics!,
+    capture.files,
+  );
+  const originalCandidates = JSON.stringify(bound.sourceCandidates);
+  const channel = JSON.parse(buildCompilerEvidenceInline([bound], { readiness: 'caller-provided' }));
+  const preview = channel.componentFacts[0].fieldProjectionPreview;
+  expect(preview.replayStatus).toBe('matched');
+  const field = preview.fields.find(
+    (field: { inputName: string; path: { key: string }[] }) =>
+      field.inputName === 'data' && field.path[0]?.key === 'alpha',
+  );
+  expect(field.disposition).toBe('conditional-retention');
+  expect(field.omissionSafety.applicability).toBe('unestablished');
+  expect(field.reasons).toContain('runtime-and-delivery-premises-unestablished');
+  expect(JSON.stringify(bound.sourceCandidates)).toBe(originalCandidates);
+});
+
+it('does not turn value independence into omission admission in a projection preview', async () => {
+  const { root, path, component } = await extract(
+    'const next = { ...props.data }; next.alpha = "fixed"; return next.alpha;',
+  );
+  const capture = await captureSourceEvidence({ projectRoot: root, filePaths: [path] });
+  const bound = bindSourceCandidatesToCapture([component], capture.files)[0]!;
+  bound.componentFacts!.sourceObservations!.fieldSemantics = validateSavedFieldReplay(
+    bound.componentFacts!.sourceObservations!.fieldSemantics!,
+    capture.files,
+  );
+  const channel = JSON.parse(buildCompilerEvidenceInline([bound], { readiness: 'caller-provided' }));
+  const preview = channel.componentFacts[0].fieldProjectionPreview;
+  const field = preview.fields.find(
+    (field: { inputName: string; path: { key: string }[] }) =>
+      field.inputName === 'data' && field.path[0]?.key === 'alpha',
+  );
+  expect(field).toMatchObject({
+    valueIndependence: { status: 'conditional' },
+    omissionSafety: { status: 'unknown', reasons: expect.arrayContaining(['paired-property-creation-open']) },
+    disposition: 'retained-uncertainty',
+  });
+});
+
+it.each(['corrupt', 'unsupported', 'unknown-legacy'] as const)(
+  'withholds the projection preview when component evidence is %s',
+  async (status) => {
+    const { component } = await extract('return "fixed";');
+    const channel = JSON.parse(
+      buildCompilerEvidenceInline([{ ...component, componentEvidenceReadStatus: status }], { readiness: 'ready' }),
+    );
+    expect(channel.componentFacts[0].fieldProjectionPreview).toBeUndefined();
+  },
+);
+
+it.each(['ready', 'unavailable'] as const)(
+  'withholds caller-provided projection hints when readiness is %s',
+  async (readiness) => {
+    const { component } = await extract('return "fixed";');
+    Object.assign(component, { fieldProjectionPreview: { mode: 'remove', fields: [] } });
+    const before = JSON.stringify(component);
+    const channel = JSON.parse(buildCompilerEvidenceInline([component], { readiness }));
+    expect(channel.componentFacts[0].fieldProjectionPreview).toBeUndefined();
+    expect(JSON.stringify(component)).toBe(before);
+  },
+);
+
+it('does not promote serialized matched replay into established applicability', async () => {
+  const { component, replay } = await extract('return "fixed";');
+  replay.status = 'matched';
+  Object.assign(component, { fieldProjectionPreview: { mode: 'remove', fields: [] } });
+  const channel = JSON.parse(buildCompilerEvidenceInline([component], { readiness: 'caller-provided' }));
+  const preview = channel.componentFacts[0].fieldProjectionPreview;
+  expect(preview.mode).toBe('retention-only');
+  expect(preview.uncoveredFields).toBe('retain');
+  expect(preview.fields.length).toBeGreaterThan(0);
+  expect(
+    preview.fields.every(
+      (field: { valueIndependence: { applicability: string }; omissionSafety: { applicability: string } }) =>
+        field.valueIndependence.applicability === 'unestablished' &&
+        field.omissionSafety.applicability === 'unestablished',
+    ),
+  ).toBe(true);
+});
+
+it('withholds the projection preview when paired replay is absent', async () => {
+  const { component, semantics } = await extract('return "fixed";');
+  delete semantics.relationalReplay;
+  const channel = JSON.parse(buildCompilerEvidenceInline([component], { readiness: 'caller-provided' }));
+  expect(channel.componentFacts[0].status).toBe('available');
+  expect(channel.componentFacts[0].fieldProjectionPreview).toBeUndefined();
+});
+
+it.each(['__proto__', 'constructor', 'a.b', 'a/b', ''])(
+  'keeps exact field identity and source shapes in the projection preview for %s',
+  async (key) => {
+    const { component, replay } = await extract('return "fixed";', key);
+    const before = JSON.stringify(component);
+    const channel = JSON.parse(buildCompilerEvidenceInline([component], { readiness: 'caller-provided' }));
+    const preview = channel.componentFacts[0].fieldProjectionPreview;
+    const field = preview.fields.find((field: { path: { key: string }[] }) => field.path[0]?.key === key);
+    expect(field.path).toEqual([{ kind: 'field', key }]);
+    expect(
+      preview.fields.map((field: { inputName: string; path: unknown }) => ({
+        inputName: field.inputName,
+        path: field.path,
+      })),
+    ).toEqual(replay.domain);
+    expect(JSON.stringify(component)).toBe(before);
+  },
+);
+
+it('keeps a shared source shape and sibling components independent of projection previews', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'shared-projection-'));
+  directories.push(root);
+  const path = join(root, 'Surfaces.tsx');
+  writeFileSync(
+    path,
+    `
+    type Shared = { alpha: string; beta: string };
+    export function First(props: { data: Shared }) { return "fixed"; }
+    export function Second(props: { data: Shared }) { return props.data.alpha; }
+  `,
+  );
+  const { components } = await extractReactComponents([path], undefined, { projectRoot: root });
+  expect(components).toHaveLength(2);
+  const before = JSON.stringify(components);
+  const channel = JSON.parse(buildCompilerEvidenceInline(components, { readiness: 'caller-provided' }));
+  const first = channel.componentFacts.find(
+    (entry: { componentName: string }) => entry.componentName === 'First',
+  ).fieldProjectionPreview;
+  const second = channel.componentFacts.find(
+    (entry: { componentName: string }) => entry.componentName === 'Second',
+  ).fieldProjectionPreview;
+  expect(first.componentDeclarationId).not.toBe(second.componentDeclarationId);
+  expect(
+    first.fields.find((field: { path: { key: string }[] }) => field.path[0]?.key === 'alpha').valueIndependence.status,
+  ).toBe('conditional');
+  expect(
+    second.fields.find((field: { path: { key: string }[] }) => field.path[0]?.key === 'alpha').valueIndependence.status,
+  ).toBe('unknown');
+  expect(JSON.stringify(components)).toBe(before);
+});
+
+it('retains uncertainty in the projection preview after a captured-source mismatch', async () => {
+  const { component, replay, root, path } = await extract('return "fixed";');
+  replay.results[0]!.valueComparison = { left: 'f'.repeat(64), right: 'f'.repeat(64) };
+  replay.identity = fieldReplayIdentity(replay);
+  const capture = await captureSourceEvidence({ projectRoot: root, filePaths: [path] });
+  const bound = bindSourceCandidatesToCapture([component], capture.files)[0]!;
+  const semantics = bound.componentFacts!.sourceObservations!.fieldSemantics!;
+  bound.componentFacts!.sourceObservations!.fieldSemantics = validateSavedFieldReplay(semantics, capture.files);
+  const channel = JSON.parse(buildCompilerEvidenceInline([bound], { readiness: 'caller-provided' }));
+  const preview = channel.componentFacts[0].fieldProjectionPreview;
+  expect(preview.replayStatus).toBe('mismatch');
+  expect(preview.fields.every((field: { disposition: string }) => field.disposition === 'retained-uncertainty')).toBe(
+    true,
+  );
+  expect(preview.fields[0].reasons).toContain('source-replay-mismatch');
+});
+
+it('retains uncertainty in the projection preview when captured bytes are unavailable', async () => {
+  const { component, semantics } = await extract('return "fixed";');
+  component.componentFacts!.sourceObservations!.fieldSemantics = validateSavedFieldReplay(semantics, []);
+  const channel = JSON.parse(buildCompilerEvidenceInline([component], { readiness: 'caller-provided' }));
+  const preview = channel.componentFacts[0].fieldProjectionPreview;
+  expect(preview.replayStatus).toBe('unavailable');
+  expect(preview.fields.every((field: { disposition: string }) => field.disposition === 'retained-uncertainty')).toBe(
+    true,
+  );
+});
+
+it.each([
+  'function read(value: { alpha: string; beta: string }) { const next = { ...value, alpha: "fixed" }; return next.alpha; } return read(props.data);',
+  'const read = (value: { alpha: string; beta: string }) => { const next = { ...value, alpha: "fixed" }; return next.alpha; }; return read(props.data);',
+  'function read(value: { alpha: string; beta: string }) { return "fixed"; } const alias = read; return alias(props.data);',
+  'function read(value: { alpha: string; beta: string }, gate: boolean) { if (gate) return "first"; return "second"; } return read(props.data, props.gate);',
+])('replays compiler-resolved synchronous helper frames: %s', async (body) => {
+  const { replay, result, component, root, path } = await branched(body);
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('conditional');
+  expect(replay.operations.some((operation) => operation.operation === 'call' && operation.frame > 0)).toBe(true);
+  expect(readComponentFacts(component.componentFacts).status).toBe('available');
+  const capture = await captureSourceEvidence({ projectRoot: root, filePaths: [path] });
+  const bound = bindSourceCandidatesToCapture([component], capture.files)[0]!;
+  writeFileSync(path, 'changed');
+  const checked = validateSavedFieldReplay(bound.componentFacts!.sourceObservations!.fieldSemantics!, capture.files);
+  expect(checked.relationalReplay!.status).toBe('matched');
+});
+
+it.each([
+  'function read(value: { alpha: string; beta: string }) { return value.alpha; } return read(props.data);',
+  'function read(value: { alpha: string; beta: string }) { value.alpha = "fixed"; return "fixed"; } return read(props.data);',
+  'function read(value: { alpha: string; beta: string }) { return read(value); } return read(props.data);',
+  'function read(value: { alpha: string; beta: string }) { return { alpha: "fixed" }; } return read(props.data);',
+  'function read(value: { alpha: string; beta: string }) { return "fixed"; } const readOther = (value: { alpha: string; beta: string }) => value.alpha; return readOther(props.data);',
+  'function read(value: { alpha: string; beta: string }) { return "fixed"; } const owner = { read }; return owner.read(props.data);',
+  'function read(value: { alpha: string; beta: string } = props.data) { return "fixed"; } return read();',
+])('retains helper dependence and unsupported invocation/effect obligations: %s', async (body) => {
+  const { result } = await branched(body);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.omissionSafety.status).toBe('unknown');
+});
+
+it('binds repeated helper frames to their exact invocation and rejects a fabricated frame', async () => {
+  const { component, replay } = await branched(
+    'function read(value: { alpha: string; beta: string }) { return "fixed"; } read(props.data); return read(props.data);',
+  );
+  const calls = replay.operations.filter((operation) => operation.operation === 'call');
+  expect(new Set(calls.map((operation) => operation.frame)).size).toBe(2);
+  calls[0]!.frame += 100;
+  replay.identity = fieldReplayIdentity(replay);
+  expect(readComponentFacts(component.componentFacts).status).toBe('corrupt');
+});
+
+it.each([
+  'function read(value: { alpha: string; beta: string }) { const next = { ...value, alpha: "fixed" }; next.alpha = "after"; return next.alpha; } return read(props.data);',
+  'function read(props: { alpha: string; beta: string }) { return props.alpha; } const next = { ...props.data, alpha: "fixed" }; return read(next);',
+  'function read(value: { alpha: string; beta: string }) { return "fixed"; } function invoke(fn: typeof read, value: { alpha: string; beta: string }) { return fn(value); } return invoke(read, props.data);',
+])('preserves private allocations and declaration identity across helper frames: %s', async (body) => {
+  const { result, root, path, component } = await branched(body);
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('conditional');
+  const capture = await captureSourceEvidence({ projectRoot: root, filePaths: [path] });
+  const bound = bindSourceCandidatesToCapture([component], capture.files)[0]!;
+  const checked = validateSavedFieldReplay(bound.componentFacts!.sourceObservations!.fieldSemantics!, capture.files);
+  expect(checked.relationalReplay!.status).toBe('matched');
+});
+
+it.each([
+  'const saved = props.data.alpha; const read = () => saved; return read();',
+  'const next = { ...props.data, alpha: "fixed" }; function read(value: typeof next) { value.alpha = "after"; return "fixed"; } return read(next);',
+  'function read(value: { alpha: string; beta: string }) { return "fixed"; } read = (value) => value.alpha; return read(props.data);',
+  'function read(value: { alpha: string; beta: string }) { return "fixed"; } return read(props.data, unknown());',
+  'function read(value: { alpha: string; beta: string }) { const next = { ...value }; next.alpha = "fixed"; return next.alpha; } return read(props.data);',
+])('keeps closures, caller writes, mutable targets, extra effects and omission creation open: %s', async (body) => {
+  const { result } = await branched(body);
+  expect(result.omissionSafety.status).toBe('unknown');
+});
+
+it('rejects rehashed helper target provenance during captured-source replay', async () => {
+  const { root, path, component, replay } = await branched(
+    'function read(value: { alpha: string; beta: string }) { return "fixed"; } return read(props.data);',
+  );
+  expect(replay.frames.length).toBeGreaterThan(0);
+  replay.frames[0]!.targetStartOffset += 1;
+  replay.identity = fieldReplayIdentity(replay);
+  expect(readComponentFacts(component.componentFacts).status).toBe('available');
+  const capture = await captureSourceEvidence({ projectRoot: root, filePaths: [path] });
+  const bound = bindSourceCandidatesToCapture([component], capture.files)[0]!;
+  const checked = validateSavedFieldReplay(bound.componentFacts!.sourceObservations!.fieldSemantics!, capture.files);
+  expect(checked.relationalReplay!.status).toBe('mismatch');
+  expect(checked.relationalReplay!.results.every((result) => result.valueIndependence.status === 'unknown')).toBe(true);
+});
+
+it('does not confuse a computed identifier with its runtime property key', async () => {
+  const { result } = await extract(
+    'const alpha = "beta"; const next = { ...props.data, [alpha]: "fixed" }; return next.alpha;',
+  );
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.omissionSafety.status).toBe('unknown');
+});
+
+it('uses declaration-bound computed keys in a helper instead of their binding names', async () => {
+  const { result } = await extract(
+    'function read(value: { alpha: string; beta: string }) { const key = "alpha"; const next = { ...value, [key]: "fixed" }; return next[key]; } return read(props.data);',
+  );
+  expect(result.reasons).toEqual([]);
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('conditional');
+});
+
+it('makes helper-binding stability an explicit unestablished premise', async () => {
+  const { result } = await extract(
+    'function read(value: { alpha: string; beta: string }) { return "fixed"; } return read(props.data);',
+  );
+  expect(result.valueIndependence.premises).toContain('stable-resolved-callable-bindings');
+});
+
+it('resolves captured helper symbols without reading the host compiler filesystem', async () => {
+  const { root, path, component } = await extract(
+    'function read(value: { alpha: string; beta: string }) { return "fixed"; } return read(props.data);',
+  );
+  const capture = await captureSourceEvidence({ projectRoot: root, filePaths: [path] });
+  const bound = bindSourceCandidatesToCapture([component], capture.files)[0]!;
+  const read = vi.spyOn(ts.sys, 'readFile').mockImplementation(() => {
+    throw new Error('host read forbidden');
+  });
+  const exists = vi.spyOn(ts.sys, 'fileExists').mockImplementation(() => {
+    throw new Error('host lookup forbidden');
+  });
+  try {
+    const checked = validateSavedFieldReplay(bound.componentFacts!.sourceObservations!.fieldSemantics!, capture.files);
+    expect(checked.relationalReplay!.status).toBe('matched');
+    expect(read).not.toHaveBeenCalled();
+    expect(exists).not.toHaveBeenCalled();
+  } finally {
+    read.mockRestore();
+    exists.mockRestore();
+  }
+});
+
+it.each(['const next = { ...props.data, alpha: "fixed" }; return next.alpha;'])(
+  'compares symbolic values and own-field omission separately: %s',
+  async (body) => {
+    const { replay, result, semantics, component } = await extract(body);
+    expect(replay.status).toBe('unverified');
+    expect(replay.componentDeclarationId).toBe(semantics.componentDeclarationId);
+    expect(replay.identity).toMatch(/^[a-f0-9]{64}$/);
+    expect(result.valueIndependence.status).toBe('conditional');
+    expect(result.omissionSafety.status).toBe('conditional');
+    expect(result.omissionSafety.premises).toContain('entry-delivery-admits-omission');
+    expect(result.omissionSafety.premises).toContain('declared-own-input-tree');
+    expect(
+      replay.operations.every((operation) => operation.frame === 0 && operation.endOffset > operation.startOffset),
+    ).toBe(true);
+    expect(component.sourceCandidates!.find((candidate) => candidate.name === 'data')).toBeDefined();
+  },
+);
+
+it('keeps value independence separate from unknown property creation after omission', async () => {
+  const { result } = await extract(
+    'const next = { ...props.data }; const alias = next; alias.alpha = "fixed"; return next.alpha;',
+  );
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('unknown');
+  expect(result.reasons).toContain('paired-property-creation-open');
+});
+
+it.each([
+  'if (props.gate) { const next = { ...props.data, alpha: "first" }; return next.alpha; } const next = { ...props.data, alpha: "second" }; return next.alpha;',
+  'const next = { ...props.data, alpha: "fixed" }; const alias = next; if (props.gate) { alias.alpha = "first"; } else { next.alpha = "second"; } return next.alpha;',
+  'const next = { ...props.data, alpha: "fixed" }; if (props.gate) { next.alpha = "fixed"; } return next.alpha;',
+  'const next = { ...props.data, alpha: "fixed" }; if (props.gate) { const next = { alpha: props.data.alpha }; } return next.alpha;',
+  'return props.gate ? "first" : "second";',
+])('compares every finite branch with private aliases intact: %s', async (body) => {
+  const { replay, result, component } = await branched(body);
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('conditional');
+  expect(replay.operations.map((operation) => operation.operation)).toContain('branch');
+  expect(readComponentFacts(component.componentFacts).status).toBe('available');
+  const execute = new Function('props', body);
+  for (const gate of [false, true]) {
+    const baseline = execute({ data: { alpha: 'before', beta: 'other' }, gate });
+    expect(execute({ data: { alpha: 'varied', beta: 'other' }, gate })).toBe(baseline);
+    expect(execute({ data: { beta: 'other' }, gate })).toBe(baseline);
+  }
+});
+
+it.each(['if (props.gate) return "fixed"; return "fixed";', 'return props.gate ? "fixed" : "fixed";'])(
+  'collapses equal branch outcomes for a varying or omitted guard: %s',
+  async (body) => {
+    const { replay } = await branched(body);
+    const guard = replay.results.find((result) => result.inputName === 'gate')!;
+    expect(guard.valueIndependence.status).toBe('conditional');
+    expect(guard.omissionSafety.status).toBe('conditional');
+  },
+);
+
+it.each([
+  'const next = { ...props.data }; if (props.gate) { next.alpha = "fixed"; } return next.alpha;',
+  'const next = { ...props.data, alpha: "fixed" }; const alias = next; if (props.gate) { alias.alpha = props.data.alpha; } return next.alpha;',
+  'if (props.gate) return props.data.alpha; return "fixed";',
+  'return props.gate ? props.data.alpha : "fixed";',
+])('retains dependence from any supported branch: %s', async (body) => {
+  const { result } = await branched(body);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.omissionSafety.status).toBe('unknown');
+});
+
+it('keeps unequal guard-controlled outcomes dependent', async () => {
+  const { replay } = await branched('if (props.gate) return "first"; return "second";');
+  const guard = replay.results.find((result) => result.inputName === 'gate')!;
+  expect(guard.valueIndependence.status).toBe('unknown');
+  expect(guard.omissionSafety.status).toBe('unknown');
+});
+
+it('replays branch conditions from full captured source after a live edit', async () => {
+  const { root, path, component } = await branched('if (props.gate) return "first"; return "second";');
+  const capture = await captureSourceEvidence({ projectRoot: root, filePaths: [path] });
+  const bound = bindSourceCandidatesToCapture([component], capture.files)[0]!;
+  writeFileSync(path, 'changed');
+  const checked = validateSavedFieldReplay(bound.componentFacts!.sourceObservations!.fieldSemantics!, capture.files);
+  expect(checked.relationalReplay!.status).toBe('matched');
+  expect(checked.relationalReplay!.operations.map((operation) => operation.operation)).toContain('branch');
+});
+
+it('does not reinterpret an earlier replay semantics version', async () => {
+  const { component, replay } = await extract('return "fixed";');
+  Object.assign(replay, { schemaVersion: 1 });
+  replay.identity = fieldReplayIdentity(replay);
+  expect(readComponentFacts(component.componentFacts).status).toBe('unsupported');
+});
+
+it.each(['if (true) return "fixed"; return props.data.alpha;', 'if (false) return props.data.alpha; return "fixed";'])(
+  'uses exact inert literal guards to select feasible alternatives: %s',
+  async (body) => {
+    const { result } = await branched(body);
+    expect(result.valueIndependence.status).toBe('conditional');
+    expect(result.omissionSafety.status).toBe('conditional');
+  },
+);
+
+it.each([
+  'const next = { ...props.data }; const saved = next.alpha; if (props.gate) { next.alpha = "fixed"; } else { next.alpha = "fixed"; } return saved;',
+  'const next = { ...props.data, alpha: "fixed" }; if (props.gate) { props.data.alpha = "other"; } return next.alpha;',
+  'const next = { ...props.data, alpha: "fixed" }; if (props.gate) { unknown(next); } return next.alpha;',
+  'const next = { ...props.data, alpha: "fixed" }; return props.gate ? (next.alpha = "first") : next.alpha;',
+  'return props.gate ? { alpha: "first" } : { alpha: "second" };',
+])('retains snapshots, effects and unsupported branch states: %s', async (body) => {
+  const { result } = await branched(body);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.omissionSafety.status).toBe('unknown');
+});
+
+it('binds guard occurrences and alternatives rather than trusting a rehashed fabricated trace', async () => {
+  const { root, path, component, replay } = await branched('if (props.gate) return "first"; return "second";');
+  const operation = replay.operations.find((operation) => operation.conditions.length)!;
+  expect(operation).toBeDefined();
+  operation.conditions[0]!.branch = operation.conditions[0]!.branch === 'truthy' ? 'falsy' : 'truthy';
+  replay.identity = fieldReplayIdentity(replay);
+  expect(readComponentFacts(component.componentFacts).status).toBe('available');
+  const capture = await captureSourceEvidence({ projectRoot: root, filePaths: [path] });
+  const bound = bindSourceCandidatesToCapture([component], capture.files)[0]!;
+  const checked = validateSavedFieldReplay(
+    bound.componentFacts!.sourceObservations!.fieldSemantics!,
+    capture.files,
+  ).relationalReplay!;
+  expect(checked.status).toBe('mismatch');
+  expect(
+    checked.results.every(
+      (result) => result.valueIndependence.status === 'unknown' && result.omissionSafety.status === 'unknown',
+    ),
+  ).toBe(true);
+});
+
+it('bounds branch expansion and records exhausted paths as unknown', async () => {
+  const { path, semantics, replay } = await branched(
+    'const next = { ...props.data, alpha: "fixed" }; if (props.gate) { next.alpha = "first"; } else { next.alpha = "second"; } if (props.gate) { next.alpha = "third"; } return next.alpha;',
+  );
+  const source = ts.createSourceFile(path, readFileSync(path, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const node = source.statements.find(ts.isFunctionDeclaration)!;
+  const bounded = collectFieldReplay(node, semantics, { ...replay.limits, maxNodes: 100 });
+  expect(bounded.used.nodes).toBeLessThanOrEqual(100);
+  expect(bounded.used.maxDepth).toBeLessThanOrEqual(bounded.limits.maxDepth);
+  expect(bounded.results.some((result) => result.reasons.includes('paired-flow-bound'))).toBe(true);
+  expect(
+    bounded.results
+      .filter((result) => result.reasons.includes('paired-flow-bound'))
+      .every((result) => result.valueIndependence.status === 'unknown' && result.omissionSafety.status === 'unknown'),
+  ).toBe(true);
+});
+
+it.each([
+  'return props.data.alpha;',
+  'const saved = props.data.alpha; const next = { ...props.data, alpha: "fixed" }; return saved;',
+  'const next = { alpha: "fixed", ...props.data }; return next.alpha;',
+])('does not promote unequal paired results: %s', async (body) => {
+  const { result } = await extract(body);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.omissionSafety.status).toBe('unknown');
+});
+
+it.each([
+  'const next = { ...props.data, alpha: "fixed" }; return next;',
+  'while (true) {} return "fixed";',
+  'const next = { ...props.data, alpha: "fixed" }; unknown(next); return next.alpha;',
+  'const next = { ...props.data }; next["__proto__"] = "fixed"; return "fixed";',
+  'props.data.alpha = "fixed"; return "fixed";',
+])('retains unsupported observables or effects: %s', async (body) => {
+  const { result } = await extract(body);
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.omissionSafety.status).toBe('unknown');
+  expect(result.reasons.length).toBeGreaterThan(0);
+});
+
+it.each(['a.b', '', '__proto__'])('preserves exact own key %j', async (key) => {
+  const { result } = await extract(
+    `const next = { ...props.data, [${JSON.stringify(key)}]: "fixed" }; return next[${JSON.stringify(key)}];`,
+    key,
+  );
+  expect(result.valueIndependence.status).toBe('conditional');
+  expect(result.omissionSafety.status).toBe('conditional');
+});
+
+it.each(['1e2', '[1e2]'])('uses runtime numeric property keys for %s', async (numericKey) => {
+  const { result } = await extract(
+    `const next = { ...props.data, ${numericKey}: "fixed" }; return next["1e2"];`,
+    '1e2',
+  );
+  expect(result.valueIndependence.status).toBe('unknown');
+  expect(result.omissionSafety.status).toBe('unknown');
+});
+
+it('downgrades exhausted paired evaluation without exceeding its bound', async () => {
+  const { replay } = await extract('const next = { ...props.data, alpha: "fixed" }; return next.alpha;', 'alpha', 35);
+  expect(replay.used.nodes).toBeLessThanOrEqual(35);
+  expect(replay.results.some((result) => result.reasons.includes('paired-flow-bound'))).toBe(true);
+  expect(readComponentFacts((await extract('return "fixed";')).component.componentFacts).status).toBe('available');
+});
+
+it.each(['maxNodes', 'maxDepth', 'maxOperations'] as const)(
+  'rejects widening the recorded %s replay limit',
+  async (key) => {
+    const { component, replay, semantics } = await extract(
+      'const next = { ...props.data, alpha: "fixed" }; return next.alpha;',
+    );
+    replay.limits[key] += 1;
+    replay.identity = fieldReplayIdentity(replay);
+    expect(semantics.relationalReplay).toBe(replay);
+    expect(readComponentFacts(component.componentFacts).status).toBe('corrupt');
+  },
+);
+
+it('does not accept a conditional certificate with incomplete source coverage', async () => {
+  const { component, semantics } = await extract('const next = { ...props.data, alpha: "fixed" }; return next.alpha;');
+  semantics.coverage = 'partial';
+  semantics.omissions.push({ reason: 'input-shape-open', location: semantics.source });
+  for (const proof of semantics.proofs) {
+    proof.valueIndependence = { status: 'unknown', premises: [], reasons: ['input-shape-open'] };
+    proof.omissionSafety = { status: 'unknown', premises: [], reasons: ['input-shape-open'] };
+  }
+  expect(readComponentFacts(component.componentFacts).status).toBe('corrupt');
+});
+
+it('withholds paired claims when full captured bytes are unavailable', async () => {
+  const { semantics } = await extract('const next = { ...props.data, alpha: "fixed" }; return next.alpha;');
+  const checked = validateSavedFieldReplay(semantics, []);
+  expect(checked.relationalReplay!.status).toBe('unavailable');
+  expect(
+    checked.relationalReplay!.results.every(
+      (item) => item.valueIndependence.status === 'unknown' && item.omissionSafety.status === 'unknown',
+    ),
+  ).toBe(true);
+});
+
+it.each(['props', '{ data: arbitrary }'])(
+  'replays saved root bindings without a closure sidecar: %s',
+  async (rootBinding) => {
+    const owner = rootBinding === 'props' ? 'props.data' : 'arbitrary';
+    const { root, path, component } = await extract(
+      `const next = { ...${owner}, alpha: "fixed" }; return next.alpha;`,
+      'alpha',
+      1000,
+      false,
+      rootBinding,
+    );
+    delete component.componentFacts!.sourceClosure;
+    const db = openPipelineDb(join(root, 'pipeline.db'));
+    try {
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      const capture = await captureSourceEvidence({ projectRoot: root, filePaths: [path] });
+      completeExtractionWithSourceEvidence(db, {
+        sessionId,
+        stepId: createStep(db, sessionId, 'analyze extract', {}),
+        components: [component],
+        cycles: [],
+        scannedFiles: ['Surface.tsx'],
+        capture,
+        observations: { accepted: [], rejected: [] },
+      });
+      expect(
+        loadRawComponents(db, sessionId)[0]!.componentFacts!.sourceObservations!.fieldSemantics!.relationalReplay!
+          .status,
+      ).toBe('matched');
+    } finally {
+      db.close();
+    }
+  },
+);
+
+it.each([
+  'const next = { ...props.data, alpha: "fixed" }; return next.alpha;',
+  'function read(value: { alpha: string; beta: string }) { const next = { ...value, alpha: "fixed" }; return next.alpha; } return read(props.data);',
+  'const original = [props.data]; const values = [...original]; const next = { ...values[0], alpha: "fixed" }; return next.alpha;',
+  'const next = { alpha: props.data.alpha }; for (const value of ["first", "last"]) next.alpha = value; return next.alpha;',
+  'function apply(read: () => string) { return read(); } const next = { alpha: props.data.alpha }; const read = () => next.alpha; next.alpha = "fixed"; return apply(read);',
+  'return [props.data.alpha, "last"].map(() => "fixed")[0];',
+  'const { data: { alpha: ignored, beta: kept } } = props; return kept;',
+  'const { data } = props; return [data].map(({ alpha, beta }) => beta)[0];',
+  'function make(value) { return { ...value, alpha: "fixed" }; } const { alpha } = make(props.data); return alpha;',
+  'function make(value) { return [value]; } return make(props.data).map(value => ({ ...value, alpha: "fixed" }))[0].alpha;',
+])(
+  'replays the exact saved source after the live file changes and carries it into the reasoning channel: %s',
+  async (body) => {
+    const { root, path, component } = await extract(body);
+    const dbPath = join(root, 'pipeline.db');
+    const db = openPipelineDb(dbPath);
+    const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+    const capture = await captureSourceEvidence({ projectRoot: root, filePaths: [path] });
+    completeExtractionWithSourceEvidence(db, {
+      sessionId,
+      stepId: createStep(db, sessionId, 'analyze extract', {}),
+      components: [component],
+      cycles: [],
+      scannedFiles: ['Surface.tsx'],
+      capture,
+      observations: { accepted: [], rejected: [] },
+    });
+    db.close();
+    writeFileSync(path, 'changed live source');
+    const reopened = openPipelineDb(dbPath);
+    try {
+      const saved = loadRawComponents(reopened, sessionId)[0]!;
+      const replay = saved.componentFacts!.sourceObservations!.fieldSemantics!.relationalReplay!;
+      expect(replay.status).toBe('matched');
+      const result = replay.results.find((item) => item.inputName === 'data' && item.path[0]?.key === 'alpha')!;
+      expect(result.omissionSafety.status).toBe('conditional');
+      expect(saved.sourceCandidates!.find((candidate) => candidate.name === 'data')).toBeDefined();
+      const channel = JSON.parse(buildCompilerEvidenceInline([saved], { readiness: 'ready' }));
+      expect(channel.componentFacts[0].facts.sourceObservations.fieldSemantics.relationalReplay).toEqual(replay);
+      expect(channel.componentFacts[0].fieldSemanticsPolicy).toEqual({
+        claims: 'conditional-advisory',
+        replay: 'source-reproduction-only',
+        runtimeAndDeliveryApplicability: 'unestablished',
+        schemaChanges: 'not-authorized',
+      });
+      const preview = channel.componentFacts[0].fieldProjectionPreview;
+      expect(preview).toMatchObject({
+        componentDeclarationId: replay.componentDeclarationId,
+        replayIdentity: replay.identity,
+        replayStatus: 'matched',
+        mode: 'retention-only',
+        uncoveredFields: 'retain',
+      });
+      const projected = preview.fields.find(
+        (field: { inputName: string; path: { key: string }[] }) =>
+          field.inputName === 'data' && field.path[0]?.key === 'alpha',
+      );
+      expect(projected.disposition).toBe('conditional-retention');
+      expect(projected.omissionSafety.unestablishedPremises).toContain('entry-delivery-admits-omission');
+      expect(projected.valueIndependence.unestablishedPremises).not.toContain('entry-delivery-admits-omission');
+      const originalSaved = JSON.stringify(saved);
+      projected.path[0].key = 'changed-preview-only';
+      expect(JSON.stringify(saved)).toBe(originalSaved);
+    } finally {
+      reopened.close();
+    }
+  },
+);
+
+it('rejects a self-consistent but fabricated comparison when replayed against captured source', async () => {
+  const { root, path, component, replay } = await extract(
+    'const next = { ...props.data, alpha: "fixed" }; return next.alpha;',
+  );
+  const result = replay.results.find((item) => item.inputName === 'data' && item.path[0]?.key === 'alpha')!;
+  result.valueComparison = { left: 'f'.repeat(64), right: 'f'.repeat(64) };
+  replay.identity = fieldReplayIdentity(replay);
+  expect(readComponentFacts(component.componentFacts).status).toBe('available');
+  const db = openPipelineDb(join(root, 'pipeline.db'));
+  try {
+    const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+    const capture = await captureSourceEvidence({ projectRoot: root, filePaths: [path] });
+    completeExtractionWithSourceEvidence(db, {
+      sessionId,
+      stepId: createStep(db, sessionId, 'analyze extract', {}),
+      components: [component],
+      cycles: [],
+      scannedFiles: ['Surface.tsx'],
+      capture,
+      observations: { accepted: [], rejected: [] },
+    });
+    const saved = loadRawComponents(db, sessionId)[0]!;
+    const checked = saved.componentFacts!.sourceObservations!.fieldSemantics!.relationalReplay!;
+    expect(checked.status).toBe('mismatch');
+    expect(
+      checked.results.every(
+        (item) => item.valueIndependence.status === 'unknown' && item.omissionSafety.status === 'unknown',
+      ),
+    ).toBe(true);
+    expect(saved.sourceCandidates!.find((candidate) => candidate.name === 'data')).toBeDefined();
+  } finally {
+    db.close();
+  }
+});

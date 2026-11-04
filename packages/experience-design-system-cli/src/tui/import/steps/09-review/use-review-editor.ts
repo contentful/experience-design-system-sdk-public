@@ -1,6 +1,16 @@
+import {
+  openPipelineDb,
+  loadRawComponents,
+  analyzePropertyRepresentations,
+  selectRepresentationPlan,
+  loadReviewCDFComponents,
+} from '@contentful/experience-design-system-backend-pipeline';
+import type { RepresentationPlan } from '@contentful/experience-design-system-types';
+import { parseStrictJson } from '@contentful/experience-design-system-types';
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
-import { openPipelineDb, storeCDFComponents } from '@contentful/experience-design-system-backend-pipeline';
+import { CDFComponentSchema, type CDFComponentEntry } from '@contentful/experience-design-system-types';
+import { persistReviewEntry } from './persist-review-entry.js';
+import { refreshReviewComponents } from './review-models.js';
 import { collectTokenSuggestions } from './token-suggestions.js';
 import type {
   CdfReviewEntry,
@@ -47,21 +57,25 @@ export type UseReviewEditorResult = {
   setTokenReviewEditSelection: Dispatch<SetStateAction<Set<string>>>;
   pendingGRef: { current: boolean };
   currentTokenSuggestions: () => TokenPropSuggestion[];
-  handleEditSave: () => void;
+  handleEditSave: (value?: string) => boolean;
+  setDraftValid: Dispatch<SetStateAction<boolean>>;
   handleEditDiscard: () => void;
-  handleTokenEditSave: (suggestion: TokenPropSuggestion) => void;
+  handleTokenEditSave: (suggestion: TokenPropSuggestion) => boolean;
+  closeRepresentations?: () => void;
+  representationChoices?: () => RepresentationPlan[];
+  chooseRepresentation?: (propertyName: string, kind: RepresentationPlan['kind'], candidateId?: string) => boolean;
 };
 
 function parseReviewEntry(draftValue: string): CDFComponentEntry {
-  const parsed = JSON.parse(draftValue) as Record<string, unknown>;
+  const parsed = parseStrictJson(draftValue) as Record<string, unknown>;
   const keys = Object.keys(parsed);
   const entry =
     keys.length === 1 && typeof parsed[keys[0]] === 'object' && parsed[keys[0]] !== null
       ? (parsed[keys[0]] as CDFComponentEntry)
       : (parsed as unknown as CDFComponentEntry);
-  if (entry.$type !== 'component' || typeof entry.$properties !== 'object' || entry.$properties === null) {
-    throw new Error('Invalid CDF entry: must have $type: "component" and $properties object');
-  }
+  const validation = CDFComponentSchema.safeParse(entry);
+  if (!validation.success)
+    throw new Error(`Invalid complete CDF entry: ${validation.error.issues.map((issue) => issue.message).join('; ')}`);
   return entry;
 }
 
@@ -82,6 +96,7 @@ export function useReviewEditor({
   const [showJson, setShowJson] = useState(false);
   const [showHiddenProps, setShowHiddenProps] = useState(false);
   const [draftValue, setDraftValue] = useState('');
+  const [draftValid, setDraftValid] = useState(true);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [tokenReviewRow, setTokenReviewRow] = useState(0);
   const [tokenReviewEditing, setTokenReviewEditing] = useState(false);
@@ -109,46 +124,63 @@ export function useReviewEditor({
     });
   };
 
-  const handleEditSave = (): void => {
+  const handleEditSave = (value?: string): boolean => {
     const current = components[selectedIdx];
-    if (!current) return;
-    if (draftValue.trim() === '') return;
+    if (!current) return false;
+    if (!draftValid) {
+      setSaveError('Correct the visible draft before saving');
+      return false;
+    }
+    const draft = value ?? draftValue;
+    if (draft.trim() === '') return true;
     try {
-      const entry = parseReviewEntry(draftValue);
-      const next = components.map((component, index) =>
+      const entry = parseReviewEntry(draft);
+      let next = components.map((component, index) =>
         index === selectedIdx
           ? {
               ...component,
               entry,
-              status: component.status === 'needs-review' ? ('accepted' as ReviewComponentStatus) : component.status,
+              status:
+                component.status === 'needs-review' &&
+                !component.entry.$model &&
+                !Object.values(entry.$representationPlans ?? {}).some((plan) => plan.models.length)
+                  ? ('accepted' as ReviewComponentStatus)
+                  : component.status,
             }
           : component,
       );
+      const persisted = persistReviewEntry(extractSessionId, current, entry);
+      if (!persisted.ok) throw new Error(persisted.error);
+      if (persisted.entry) next[selectedIdx] = { ...next[selectedIdx]!, entry: persisted.entry };
+      if (persisted.components) next = refreshReviewComponents(next, persisted.components);
       setComponents(next);
       setDraftValue('');
       setSaveError(null);
-      const db = openPipelineDb();
+      const warnings = [...persisted.warnings];
       try {
-        storeCDFComponents(db, extractSessionId, [{ key: current.key, entry }]);
-      } finally {
-        db.close();
+        onEditSaved(next);
+      } catch (error) {
+        warnings.push(error instanceof Error ? error.message : 'Saved callback failed');
       }
-      onEditSaved(next);
+      if (warnings.length) setSaveError(`Saved; warning: ${warnings.join('; ')}`);
+      return true;
     } catch (error: unknown) {
-      setSaveError(String(error));
+      setSaveError(error instanceof Error ? error.message : 'Save failed');
+      return false;
     }
   };
 
   const handleEditDiscard = (): void => {
     setDraftValue('');
+    setDraftValid(true);
     setSaveError(null);
   };
 
-  const persistTokenFields = (propName: string, allowed: string[]): void => {
+  const persistTokenFields = (propName: string, allowed: string[]): string[] => {
     const current = components[selectedIdx];
-    if (!current) return;
+    if (!current) throw new Error('No selected component');
     const prop = current.entry.$properties[propName];
-    if (!prop) return;
+    if (!prop) throw new Error('No selected property');
     const nextEntry: CDFComponentEntry = {
       ...current.entry,
       $properties: {
@@ -156,25 +188,96 @@ export function useReviewEditor({
         [propName]: { ...prop, '$token.allowed': allowed },
       },
     };
-    const next = components.map((component, index) =>
+    let next = components.map((component, index) =>
       index === selectedIdx ? { ...component, entry: nextEntry } : component,
     );
+    const persisted = persistReviewEntry(extractSessionId, current, nextEntry);
+    if (!persisted.ok) throw new Error(persisted.error);
+    if (persisted.components) next = refreshReviewComponents(next, persisted.components);
     setComponents(next);
+    const warnings = [...persisted.warnings];
+    try {
+      pushHistorySnapshot(next, `token-review:${propName}`);
+      onTokenSaved(next);
+    } catch (error) {
+      warnings.push(error instanceof Error ? error.message : 'Saved callback failed');
+    }
+    return warnings;
+  };
+
+  const handleTokenEditSave = (suggestion: TokenPropSuggestion): boolean => {
+    const allowed = suggestion.paths.filter((path) => tokenReviewEditSelection.has(path));
+    if (allowed.length === 0) return false;
+    try {
+      const warnings = persistTokenFields(suggestion.propName, allowed);
+      setTokenReviewEditing(false);
+      setSaveError(warnings.length ? `Saved; warning: ${warnings.join('; ')}` : null);
+      return true;
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Save failed');
+      return false;
+    }
+  };
+
+  const representationChoices = (): RepresentationPlan[] => {
+    const current = components[selectedIdx];
+    if (!current || current.entry.$model) return [];
     const db = openPipelineDb();
     try {
-      storeCDFComponents(db, extractSessionId, [{ key: current.key, entry: nextEntry }]);
+      const source = loadRawComponents(db, extractSessionId).find((row) =>
+        current.componentId ? row.component_id === current.componentId : row.name === current.key,
+      );
+      if (!source) throw new Error('Representation source unavailable');
+      return (source.sourceCandidates ?? []).flatMap((candidate) => {
+        try {
+          return analyzePropertyRepresentations(db, extractSessionId, source.component_id, candidate.name);
+        } catch {
+          return [];
+        }
+      });
     } finally {
       db.close();
     }
-    pushHistorySnapshot(next, `token-review:${propName}`);
-    onTokenSaved(next);
   };
-
-  const handleTokenEditSave = (suggestion: TokenPropSuggestion): void => {
-    const allowed = suggestion.paths.filter((path) => tokenReviewEditSelection.has(path));
-    if (allowed.length === 0) return;
-    persistTokenFields(suggestion.propName, allowed);
-    setTokenReviewEditing(false);
+  const chooseRepresentation = (
+    propertyName: string,
+    kind: RepresentationPlan['kind'],
+    candidateId?: string,
+  ): boolean => {
+    if (!handleEditSave()) return false;
+    const current = components[selectedIdx];
+    if (!current || current.entry.$model) return false;
+    let db: ReturnType<typeof openPipelineDb> | undefined;
+    let committed = false;
+    const warnings: string[] = [];
+    try {
+      db = openPipelineDb();
+      const source = loadRawComponents(db, extractSessionId).find((row) =>
+        current.componentId ? row.component_id === current.componentId : row.name === current.key,
+      );
+      if (!source) throw new Error('Representation source unavailable');
+      selectRepresentationPlan(db, extractSessionId, source.component_id, propertyName, kind, undefined, candidateId);
+      committed = true;
+      const next = refreshReviewComponents(components, loadReviewCDFComponents(db, extractSessionId));
+      setComponents(next);
+      setSaveError(null);
+      try {
+        onEditSaved(next);
+      } catch (error) {
+        warnings.push(error instanceof Error ? error.message : 'Saved callback failed');
+      }
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Representation save failed');
+    } finally {
+      try {
+        db?.close();
+      } catch (error) {
+        if (committed) warnings.push(error instanceof Error ? error.message : 'Database cleanup failed');
+        else setSaveError(error instanceof Error ? error.message : 'Database cleanup failed');
+      }
+    }
+    if (committed && warnings.length) setSaveError(`Saved; warning: ${warnings.join('; ')}`);
+    return committed;
   };
 
   return {
@@ -205,7 +308,11 @@ export function useReviewEditor({
     pendingGRef,
     currentTokenSuggestions,
     handleEditSave,
+    setDraftValid,
     handleEditDiscard,
     handleTokenEditSave,
+    closeRepresentations: () => setPanelOpen('none'),
+    representationChoices,
+    chooseRepresentation,
   };
 }

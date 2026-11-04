@@ -1,9 +1,10 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, writeFile } from 'node:fs/promises';
 import { existsSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { readSettings } from '@contentful/experience-design-system-types/config';
 import { readPackageVersion } from './home/version.js';
 import { readDebugModeSetting } from './settings/debug-mode/debug-mode-store.js';
+import { cancelAndDrainImportWork } from './import/cancellation.js';
 import { pruneExpiredLogs } from './debug-prune.js';
 
 type PendingRun = {
@@ -46,7 +47,8 @@ async function readBaseDir(): Promise<string | undefined> {
   try {
     const dir = (await readSettings())['contentfulBaseDir'];
     return typeof dir === 'string' && dir !== '' ? resolve(dir) : undefined;
-  } catch {
+  } catch (error) {
+    console.warn(`Debug base directory unavailable: ${String(error)}`);
     return undefined;
   }
 }
@@ -127,36 +129,41 @@ export async function startImportRun(projectPath: string): Promise<string> {
 
 // Fire-and-forget so a user who never visits a wired flow still sees an (empty)
 // session directory the moment they boot — matches startDebugRun's fail-open style.
-void Promise.all([isDebugModeEnabled(), readBaseDir()]).then(async ([enabled, base]) => {
-  if (!base) return;
-  // Expired logs go whether or not logging is on now, so turning it off does not keep old ones around.
-  const retention = await readDebugModeSetting().catch(() => undefined);
-  const pruned = retention ? await pruneExpiredLogs(base, retention.retentionDays).catch(() => undefined) : undefined;
-  if (!enabled) return;
-  const debugDir = join(startSession(base, { replace: false }), 'debug');
-  await mkdir(debugDir, { recursive: true });
-  await writeWaitingLogs();
-  // Say what was deleted, so "my logs are gone" can be answered from the log. Nothing is written when nothing expired.
-  if (retention && pruned && pruned.logs + pruned.folders > 0) {
-    await writeFile(
-      join(debugDir, `${datePrefix()}-cleanup-${generateRunId()}.md`),
-      `# Debug Log Cleanup
+void Promise.all([isDebugModeEnabled(), readBaseDir()])
+  .then(async ([enabled, base]) => {
+    if (!base) return;
+    // Expired logs go whether or not logging is on now, so turning it off does not keep old ones around.
+    const retention = await readDebugModeSetting().catch(() => undefined);
+    const pruned = retention ? await pruneExpiredLogs(base, retention.retentionDays).catch(() => undefined) : undefined;
+    if (!enabled) return;
+    const debugDir = join(startSession(base, { replace: false }), 'debug');
+    await mkdir(debugDir, { recursive: true });
+    await writeWaitingLogs();
+    // Say what was deleted, so "my logs are gone" can be answered from the log. Nothing is written when nothing expired.
+    if (retention && pruned && pruned.logs + pruned.folders > 0) {
+      await writeFile(
+        join(debugDir, `${datePrefix()}-cleanup-${generateRunId()}.md`),
+        `# Debug Log Cleanup
 
 - Date: ${new Date().toISOString()}
 - Retention: ${retention.retentionDays} days
 - Logs deleted: ${pruned.logs}
 - Empty folders removed: ${pruned.folders}
 `,
-      { mode: 0o600 },
-    );
-  }
-});
+        { mode: 0o600 },
+      );
+    }
+  })
+  .catch((error: unknown) => {
+    console.warn(`Debug session unavailable: ${String(error)}`);
+  });
 
 async function isDebugModeEnabled(): Promise<boolean> {
   try {
     return (await readDebugModeSetting()).enabled;
-  } catch {
-    return true;
+  } catch (error) {
+    console.warn(`Debug logging disabled because settings could not be read: ${String(error)}`);
+    return false;
   }
 }
 
@@ -167,6 +174,19 @@ function redact(value: Record<string, unknown>): Record<string, unknown> {
     clone.cma_token = typeof raw === 'string' && raw.length > 0 ? `[present, ${raw.length} chars]` : '[not set]';
   }
   return clone;
+}
+
+/** Append an event to the current debug session; disabled or failed logging must not stop the import. */
+export async function recordDebugEvent(event: string, payload?: Record<string, unknown>): Promise<void> {
+  try {
+    const root = currentDebugSessionDir();
+    if (!root || !(await isDebugModeEnabled())) return;
+    const content = JSON.stringify({ timestamp: new Date().toISOString(), event, payload: redact(payload ?? {}) });
+    await mkdir(root, { recursive: true });
+    await appendFile(join(root, 'events.jsonl'), `${content}\n`, { mode: 0o600 });
+  } catch {
+    // Debug logging must never get in the way of the user.
+  }
 }
 
 export function startDebugRun({
@@ -328,15 +348,16 @@ process.once('unhandledRejection', (reason) => {
   });
 });
 
-// Ctrl+C, `kill` and closing the terminal window. Only a hard kill (SIGKILL) cannot be caught.
-for (const [signal, exitCode] of [
-  ['SIGINT', 130],
-  ['SIGTERM', 143],
-  ['SIGHUP', 129],
-] as const) {
-  process.once(signal, () => {
-    void handleCrash().finally(() => {
-      process.exit(exitCode);
-    });
-  });
+let shutdownStarted = false;
+
+function shutdownImport(exitCode: 129 | 130 | 143): void {
+  if (shutdownStarted) return;
+  shutdownStarted = true;
+  void cancelAndDrainImportWork()
+    .then(handleCrash)
+    .finally(() => process.exit(exitCode));
 }
+
+process.once('SIGINT', () => shutdownImport(130));
+process.once('SIGTERM', () => shutdownImport(143));
+process.once('SIGHUP', () => shutdownImport(129));

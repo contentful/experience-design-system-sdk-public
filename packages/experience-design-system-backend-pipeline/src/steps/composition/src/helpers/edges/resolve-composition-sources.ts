@@ -1,16 +1,17 @@
 export type CompositionCliOptions = {
-  /** `--composition-refresh` — force edge emission to run even over resolved residue. */
+  /** @deprecated Composition always collects fresh deterministic evidence. */
   compositionRefresh?: boolean;
-  /** `--no-cache` — force the composition agent to rerun with the rest of the pipeline. */
+  /** @deprecated Composition does not read agent results. */
   noCache?: boolean;
 };
 
 export type ResolvedCompositionSources = {
-  forceAgent: boolean;
+  forceAgent: false;
 };
 
-export function resolveCompositionSources(opts: CompositionCliOptions): ResolvedCompositionSources {
+/** @deprecated Composition no longer invokes an agent. */
+export function resolveCompositionSources(_opts: CompositionCliOptions): ResolvedCompositionSources {
   return {
-    forceAgent: opts.compositionRefresh === true || opts.noCache === true,
+    forceAgent: false,
   };
 }

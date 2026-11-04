@@ -23,11 +23,18 @@ export function registerImportCommand(program: Command, openTui: (options: Impor
       (value: string, previous: string[]) => [...previous, value],
       [] as string[],
     )
-    .action(async (_args: string[], raw: { agent?: string; prompt?: string[] }) => {
+    .option('--no-cache', 'Re-run every step even if its output already exists')
+    .option('--debug-resume [session]', 'Debug only: reopen a saved import session (default: latest)')
+    .option('--debug-from <step>', 'Debug restart step: scope, details, generation, tokens, or review')
+    .option('--debug-output <path>', 'Original output folder when reopening a session predating debug checkpoints')
+    .action(async (_args: string[], raw: Parameters<typeof toImportOptions>[0]) => {
       const { watch, rest: forwarded } = extractWatchFlag(stripImportArg(process.argv.slice(2)));
       if (watch) {
         process.exit(await runDevWatch(forwarded));
       }
-      await openTui(toImportOptions(raw));
+      const options = toImportOptions(raw);
+      if ((options.debugFrom || options.debugOutput) && !options.debugResume)
+        throw new Error('--debug-from and --debug-output require --debug-resume.');
+      await openTui(options);
     });
 }

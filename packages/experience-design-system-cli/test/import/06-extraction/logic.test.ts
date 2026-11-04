@@ -42,13 +42,13 @@ describe('initialProgress', () => {
 describe('applyProgressEvent', () => {
   it('tracks the extract progress with done, total, and components-so-far', () => {
     const after = applyProgressEvent(base(), { kind: 'extract', done: 3, total: 40, componentsSoFar: 7 });
-    expect(after.scan).toEqual({ scanned: 3, total: 40 });
+    expect(after.scan).toEqual({ scanned: 3, total: 40, componentsFound: 7 });
   });
 
   it('advances the scan as more extract events arrive', () => {
     const first = applyProgressEvent(base(), { kind: 'extract', done: 1, total: 40, componentsSoFar: 0 });
     const next = applyProgressEvent(first, { kind: 'extract', done: 40, total: 40, componentsSoFar: 12 });
-    expect(next.scan).toEqual({ scanned: 40, total: 40 });
+    expect(next.scan).toEqual({ scanned: 40, total: 40, componentsFound: 12 });
   });
 
   it('records the composition phase and leaves the other rows alone', () => {
@@ -68,38 +68,62 @@ describe('progressRows', () => {
   it('shows the first frame of a fresh run', () => {
     const rows = progressRows(initialProgress({ hasCredentials: true, hasRawTokens: true }), 'claude');
     expect(rows).toEqual([
-      { text: 'Scanning files...', complete: false },
-      { text: 'Mapping composition via claude...', complete: false },
-      { text: 'Filtering component selection via claude...', complete: false },
-      { text: 'Fetching existing components and tokens...', complete: false },
-      { text: 'Generating token definitions via claude...', complete: false },
+      { id: 'source-analysis', text: 'Analyzing source files...', complete: false, pending: false },
+      {
+        id: 'relationships',
+        text: 'Source relationship evidence waiting for analysis…',
+        complete: false,
+        pending: true,
+      },
+      {
+        id: 'exploration',
+        text: 'Component exploration waiting for source evidence...',
+        complete: false,
+        pending: true,
+      },
+      { id: 'existing-entities', text: 'Fetching existing components and tokens...', complete: false, failed: false },
+      {
+        id: 'tokens',
+        text: 'Generating token definitions via claude...',
+        complete: false,
+        failed: false,
+        detail: 'Reading token source and preparing generation…',
+      },
     ]);
   });
 
-  it('counts the files while scanning and marks the row done once the total is known', () => {
-    expect(progressRows(base({ scan: { scanned: 1, total: null } }), 'claude')[0]).toEqual({
-      text: 'Scanning 1 file',
+  it('counts analyzed files and marks the row done only once every file is processed', () => {
+    expect(progressRows(base({ scan: { scanned: 1, total: 40 } }), 'claude')[0]).toEqual({
+      id: 'source-analysis',
+      text: 'Analyzing source files — 1/40',
       complete: false,
+      pending: false,
+      progress: { done: 1, total: 40, label: 'source files considered' },
     });
     expect(progressRows(base({ scan: { scanned: 40, total: 40 } }), 'claude')[0]).toEqual({
-      text: 'Scanned 40 files',
+      id: 'source-analysis',
+      text: 'Analyzed 40 source files',
       complete: true,
+      pending: false,
+      progress: { done: 40, total: 40, label: 'source files considered' },
     });
   });
 
-  it('names the agent that is mapping composition', () => {
+  it('describes source evidence collection without claiming an agent is mapping composition', () => {
     expect(progressRows(base({ composition: 'agent:codex' }), 'claude')[1]?.text).toBe(
-      'Mapping composition via codex...',
+      'Collecting source relationship evidence…',
     );
   });
 
   it('says when composition came from the cache', () => {
     expect(progressRows(base({ composition: 'cache-hit' }), 'claude')[1]).toEqual({
-      text: 'Composition mapping (cached)',
+      id: 'relationships',
+      text: 'Component relationships (cached)',
       complete: true,
     });
     expect(progressRows(base({ composition: 'done' }), 'claude')[1]).toEqual({
-      text: 'Composition mapping complete',
+      id: 'relationships',
+      text: 'Component relationships collected',
       complete: true,
     });
   });
@@ -113,7 +137,12 @@ describe('progressRows', () => {
     ['complete', 'Existing components and tokens ready', true],
     ['failed', 'Existing entities unavailable; continuing without them', true],
   ] as const)('shows the entities row when it is %s', (existingEntities, text, complete) => {
-    expect(progressRows(base({ existingEntities }), 'claude')[3]).toEqual({ text, complete });
+    expect(progressRows(base({ existingEntities }), 'claude')[3]).toEqual({
+      id: 'existing-entities',
+      text,
+      complete,
+      failed: existingEntities === 'failed',
+    });
   });
 
   it.each([
@@ -121,7 +150,13 @@ describe('progressRows', () => {
     ['complete', 'Token definitions ready', true],
     ['failed', 'Token definition generation failed', false],
   ] as const)('shows the token row when it is %s', (tokens, text, complete) => {
-    expect(progressRows(base({ tokens }), 'claude')[3]).toEqual({ text, complete });
+    expect(progressRows(base({ tokens }), 'claude')[3]).toEqual({
+      id: 'tokens',
+      text,
+      complete,
+      failed: tokens === 'failed',
+      detail: tokens === 'running' ? 'Reading token source and preparing generation…' : undefined,
+    });
   });
 });
 
@@ -213,5 +248,38 @@ describe('resolveAgentChoice', () => {
 
   it('ignores saved values that are not strings', () => {
     expect(resolveAgentChoice(undefined, { agent: 7, agentModel: null })).toEqual({ agent: 'claude' });
+  });
+});
+
+describe('exploration progress rows', () => {
+  it('distinguishes saved-evidence loading from agent work', () => {
+    const row = progressRows(
+      base({ exploration: { phase: 'components', stage: 'loading', done: 0, total: 7 } }),
+      'codex',
+    )[2];
+    expect(row?.text).toBe('Reading and validating extracted component evidence...');
+    expect(row?.progress).toBeUndefined();
+  });
+  it('shows the active explorer and counts only completed scopes', () => {
+    const row = progressRows(
+      base({ exploration: { phase: 'components', stage: 'exploring', scope: 'components-3', done: 2, total: 7 } }),
+      'codex',
+    )[2];
+    expect(row).toMatchObject({
+      text: 'Exploring components via codex — components-3',
+      complete: false,
+      progress: { done: 2, total: 7 },
+    });
+  });
+  it('keeps finalization visible after every report has completed', () => {
+    const row = progressRows(
+      base({ exploration: { phase: 'components', stage: 'finalizing', done: 7, total: 7 } }),
+      'codex',
+    )[2];
+    expect(row).toMatchObject({
+      text: 'Saving component exploration results...',
+      complete: false,
+    });
+    expect(row?.progress).toBeUndefined();
   });
 });

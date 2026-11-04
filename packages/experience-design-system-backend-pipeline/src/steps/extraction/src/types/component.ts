@@ -1,3 +1,4 @@
+import type { ComponentFacts, ComponentEvidenceReadStatus } from './component-facts.js';
 export type ExtractionValidationIssueCode =
   | 'EMPTY_COMPONENT_NAME'
   | 'EMPTY_PROP_NAME'
@@ -14,6 +15,8 @@ export type ExtractionValidationIssue = {
   field?: string;
 };
 
+import type { SourceCandidate, SourceCandidateSource } from '../candidates/types.js';
+
 export interface RawPropDefinition {
   name: string;
   type: string;
@@ -25,7 +28,7 @@ export interface RawPropDefinition {
    * that select visible content (for example an icon or flag name).
    */
   domAttribute?: boolean;
-  category?: 'content' | 'design' | 'state';
+  category?: 'content' | 'design' | 'state'; //BOI type this
   defaultValue?: string;
   allowedValues?: string[];
   description?: string;
@@ -52,6 +55,9 @@ export interface RawSlotDefinition {
 }
 
 export interface RawComponentDefinition {
+  /** Optional component observations; this sidecar has an independent schema and read status. */
+  componentFacts?: ComponentFacts;
+  componentEvidenceReadStatus?: ComponentEvidenceReadStatus;
   name: string;
   source: string;
   framework: 'react' | 'next' | 'vue' | 'astro' | 'web-component' | 'stencil' | 'svelte' | 'angular';
@@ -63,18 +69,27 @@ export interface RawComponentDefinition {
    * non-authorable context-provider components.
    */
   usesCreateContext?: boolean;
-  extractionConfidence?: number | null; // 1–5 scale; null = not yet scored
   reviewReasons?: string[];
   needsReview?: boolean;
   validationIssues?: ExtractionValidationIssue[];
   /** Absolute path to the source file this component was extracted from. Null for synthesized / multi-file. */
   sourcePath?: string;
+  /** Immutable, plain source observations kept separate from current authoring props and slots. */
+  sourceCandidates?: SourceCandidate[];
+  /** Candidate evidence from duplicate declarations; never merged into this winner's facts. */
+  sourceCandidateSources?: SourceCandidateSource[];
+  sourceEvidenceReadStatus?: 'available' | 'unknown-legacy' | 'corrupt' | 'unsupported';
+  /** Identifies the source-fact schema; absent legacy data is unknown. */
+  factSchemaVersion?: number;
 }
 
 export interface ComponentExtractionResult {
+  compilerSources?: import('../compiler/context.js').CompilerLoadedSource[];
+  sourceInventory?: import('../../source-evidence/discovery.js').SourceEvidenceInventory;
   components: RawComponentDefinition[];
   warnings: string[];
   exclusions?: ExtractionExclusion[];
+  extractionDiagnostics?: import('../candidates/types.js').ExtractionDiagnostics;
 }
 
 /** A deterministic item removed before the interactive scope gate. */
@@ -87,42 +102,9 @@ export interface ExtractionExclusion {
 }
 
 export type ExtractorProgress = {
+  activity?: string;
   filesProcessed: number;
   componentsFound: number;
 };
 
-/**
- * Optional extraction-time settings forwarded from the CLI through the
- * pipeline to each extractor. Only the Svelte extractor currently consumes
- * any of these; other extractors ignore the value.
- */
-export interface ExtractorOptions {
-  /**
-   * Whether the Svelte extractor should run a retry pass for components whose
-   * declared Props type couldn't be resolved on the first pass (cross-package
-   * extends, path-alias-only types, etc.). See svelte.ts for the policy.
-   */
-  resolveUnreachable?: 'auto' | 'always' | 'never';
-  /** Absolute project root — used by the retry pass to locate tsconfig.json and node_modules. */
-  projectRoot?: string;
-}
-
-export interface ComponentExtractor {
-  name: string;
-  fileFilter: (filePath: string) => boolean;
-  extract(
-    filePaths: string[],
-    onProgress?: (p: ExtractorProgress) => void,
-    opts?: ExtractorOptions,
-  ): Promise<ComponentExtractionResult>;
-}
-
-/** Strip internal scoring fields before serialising a RawComponentDefinition for display or editing. */
-export function stripScoringFields({
-  extractionConfidence: _c,
-  reviewReasons: _r,
-  needsReview: _n,
-  ...rest
-}: RawComponentDefinition): Omit<RawComponentDefinition, 'extractionConfidence' | 'reviewReasons' | 'needsReview'> {
-  return rest;
-}
+export type { ExtractorOptions } from './options.js';

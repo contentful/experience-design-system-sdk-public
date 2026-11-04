@@ -185,10 +185,4 @@ Before emitting any tool calls, verify:
 6. No duplicate paths.
 7. `set_group` calls precede the `set_token` calls under them.
 
-After the run, the developer can validate with:
-
-```
-experience-design-system-cli print validate --tokens <out-path>
-```
-
-Re-run or iterate on any tokens flagged by warnings until validation passes.
+Before finishing, review the token output against this checklist and iterate on any warning the supplied input can resolve. Preserve unresolved warnings in the token `description`; do not guess values.

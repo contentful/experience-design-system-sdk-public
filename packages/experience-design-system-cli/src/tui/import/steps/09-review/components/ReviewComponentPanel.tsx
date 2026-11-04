@@ -1,3 +1,4 @@
+import { RepresentationEditor } from './RepresentationEditor.js';
 import React from 'react';
 import { Box, Text } from 'ink';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
@@ -21,7 +22,8 @@ type ReviewDetailsEditorConfig = Pick<
   | 'fieldEditor'
 >;
 
-export type ReviewComponentPanelProps = ReviewDetailsEditorConfig & {
+export type ReviewComponentPanelProps = Omit<ReviewDetailsEditorConfig, 'reviewEditor'> & {
+  reviewEditor: ReviewDetailsEditorConfig['reviewEditor'] & { closeRepresentations?: () => void };
   selectedKey: string;
   selectedEntry: CDFComponentEntry;
   saveError: string | null;
@@ -41,6 +43,7 @@ export function buildReviewFieldEditor(
     showHiddenProps: reviewEditor.showHiddenProps,
     onChange: reviewEditor.setDraftValue,
     onSave: reviewEditor.handleEditSave,
+    onDraftValidityChange: reviewEditor.setDraftValid,
     onDiscard: reviewEditor.handleEditDiscard,
     onExit,
     onTogglePropRationale: () => {
@@ -130,8 +133,8 @@ function ReviewPanelFooter({
           ? sidebarFooter
           : reviewEditor.showJson
             ? '  [↑↓] scroll  [Ctrl+u/d] half-page  [gg/G] top/bottom  [Tab] focus list'
-            : '  [Tab] focus list  [Enter] edit fields' +
-              (reviewEditor.currentTokenSuggestions().length > 0 ? '  [t] review mapped tokens' : '')}
+            : '  [Tab] focus list  [m] representations  (edit fields)' +
+              (reviewEditor.currentTokenSuggestions().length > 0 ? '  [t] token review' : '')}
     </>
   );
 }
@@ -187,26 +190,40 @@ export function ReviewComponentPanel({
     <FixedPanel width={width} height={height} borderStyle={undefined} paddingLeft={1}>
       <Box flexDirection="column" width={contentWidth} height={height} flexShrink={0} overflowY="hidden">
         <Box width={contentWidth} height={contentHeight} flexShrink={0} overflowY="hidden">
-          <ReviewDetailsEditor
-            selectedKey={selectedKey}
-            componentRationale={componentRationale}
-            reviewMetadata={reviewMetadata}
-            reviewEditor={reviewEditor}
-            width={contentWidth}
-            height={contentHeight}
-            sourceBorderColor={sourceBorderColor}
-            jsonValue={jsonValue}
-            sidebarFocused={sidebarFocused}
-            fieldEditor={fieldEditor}
-            header={
-              <ReviewComponentTitle
-                selectedKey={selectedKey}
-                propCount={propCount}
-                slotCount={slotCount}
-                sidebarFocused={sidebarFocused}
-              />
-            }
-          />
+          {reviewEditor.panelOpen === 'representations' ? (
+            <RepresentationEditor
+              entry={selectedEntry}
+              width={contentWidth}
+              height={contentHeight}
+              choices={reviewEditor.representationChoices}
+              choose={reviewEditor.chooseRepresentation}
+              save={fieldEditor.onSave}
+              close={() => {
+                reviewEditor.closeRepresentations?.();
+              }}
+            />
+          ) : (
+            <ReviewDetailsEditor
+              selectedKey={selectedKey}
+              componentRationale={componentRationale}
+              reviewMetadata={reviewMetadata}
+              reviewEditor={reviewEditor}
+              width={contentWidth}
+              height={contentHeight}
+              sourceBorderColor={sourceBorderColor}
+              jsonValue={jsonValue}
+              sidebarFocused={sidebarFocused}
+              fieldEditor={fieldEditor}
+              header={
+                <ReviewComponentTitle
+                  selectedKey={selectedKey}
+                  propCount={propCount}
+                  slotCount={slotCount}
+                  sidebarFocused={sidebarFocused}
+                />
+              }
+            />
+          )}
         </Box>
         <Box width={contentWidth} height={1} flexShrink={0}>
           <Text color={saveError ? PALETTE.error : undefined} wrap="truncate-end">

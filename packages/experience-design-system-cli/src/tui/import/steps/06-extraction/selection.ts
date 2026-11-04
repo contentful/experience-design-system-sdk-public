@@ -2,19 +2,34 @@ import { resolve } from 'node:path';
 import {
   type AgentName,
   buildPrompt,
+  buildCompilerEvidenceInline,
+  buildSelectionEvidenceInline,
+  bucketComponentsProps,
   computeComponentInputHash,
   createLocalCliAgentInvoker,
   getCliCacheVersion,
   hashContent,
   hashFile,
   invokeAgentWithOutput,
+  loadCompletedSourceEvidence,
+  loadExtractionSourceDiagnostics,
   loadRawComponents,
   lookupSelectCache,
   openPipelineDb,
   parseSelectToolCalls,
+  readExistingContentfulEntitiesFromSession,
   storeSelectCache,
+  stripPropProvenance,
+  summarizeForSelect,
+  loadExistingExplorationContext,
+  type SourceEvidenceHandle,
+  type RendererReferenceInput,
+  type ExplorationProgressEvent,
+  runExplorationComponentsSession,
 } from '@contentful/experience-design-system-backend-pipeline';
+import { recordDebugEvent } from '../../../debug-store.js';
 import { findSkillPath } from './find-skill-path.js';
+import { throwIfAborted } from '../../cancellation.js';
 
 const SELECT_SKILL_PATH = findSkillPath('select-components.md');
 
@@ -40,12 +55,18 @@ async function hashSelectPrompt(
 }
 
 export interface SelectionOptions {
+  rendererReference?: RendererReferenceInput;
+  onActivity?: (event: ExplorationProgressEvent) => void;
+  signal?: AbortSignal;
   sessionId: string;
   agent: AgentName;
   model?: string;
   promptText?: string;
   promptPath?: string;
   noCache: boolean;
+  sourceEvidenceHandle?: SourceEvidenceHandle;
+  promptOverrides?: string[];
+  existingEntitiesPath?: string | null;
 }
 
 /**
@@ -57,15 +78,86 @@ export interface SelectionOptions {
  * or a database error.
  */
 export async function runSelection(options: SelectionOptions): Promise<void> {
+  throwIfAborted(options.signal);
+  if (options.sourceEvidenceHandle) {
+    const existingContext = await loadExistingExplorationContext(options.existingEntitiesPath, {
+      signal: options.signal,
+    });
+    const { existingComponentsInline, existingTokensInline } = existingContext;
+    const debugWrites: Promise<void>[] = [];
+    try {
+      const result = await runExplorationComponentsSession({
+        cache: !options.noCache,
+        sessionId: options.sessionId,
+        sourceEvidenceHandle: options.sourceEvidenceHandle,
+        agent: options.agent,
+        model: options.model,
+        signal: options.signal,
+        promptText: options.promptText,
+        promptPath: options.promptPath,
+        promptOverrides: options.promptOverrides,
+        invoker: createLocalCliAgentInvoker({
+          onDebugEvent: (event, payload) => {
+            debugWrites.push(
+              recordDebugEvent(event, { ...payload, sessionId: options.sessionId, phase: 'components' }),
+            );
+          },
+        }),
+        existingComponentsInline,
+        existingTokensInline,
+        existingContextStatus: {
+          status: existingContext.status,
+          ...(existingContext.reason ? { reason: existingContext.reason } : {}),
+        },
+        rendererReference: options.rendererReference,
+        onActivity: (event) => {
+          if (event.stage === 'cached')
+            debugWrites.push(
+              recordDebugEvent('import.exploration.cache.hit', {
+                sessionId: options.sessionId,
+                phase: 'components',
+                scope: event.scope,
+              }),
+            );
+          options.onActivity?.(event);
+        },
+      });
+      throwIfAborted(options.signal);
+      if (!result.ok) throw new Error(result.error);
+      return;
+    } finally {
+      await Promise.allSettled(debugWrites);
+    }
+  }
   const db = openPipelineDb();
   let components: ReturnType<typeof loadRawComponents>;
   const cachedDecisions = new Map<string, Decision>();
-  const cliVersion = await getCliCacheVersion();
-  const promptHash = await hashSelectPrompt(options);
+  let cliVersion: string;
+  let promptHash: string;
+  let selectionEvidenceInline: string;
+  let savedEvidenceReady = false;
+  let savedEvidenceReason: string | undefined;
+  let compilerDiagnosticsRead: ReturnType<typeof loadExtractionSourceDiagnostics> = { status: 'absent' };
   try {
+    cliVersion = await getCliCacheVersion();
+    throwIfAborted(options.signal);
+    promptHash = await hashSelectPrompt(options);
+    throwIfAborted(options.signal);
+    const savedEvidence = loadCompletedSourceEvidence(db, options.sessionId, options.sourceEvidenceHandle);
+    savedEvidenceReady = savedEvidence.readiness === 'ready';
+    if (savedEvidence.readiness === 'unavailable') savedEvidenceReason = savedEvidence.reason;
+    if (savedEvidenceReady) compilerDiagnosticsRead = loadExtractionSourceDiagnostics(db, options.sessionId);
+    if (options.sourceEvidenceHandle && savedEvidence.readiness !== 'ready') {
+      throw new Error(`Completed source evidence is unavailable: ${savedEvidence.reason}`);
+    }
+    selectionEvidenceInline =
+      savedEvidence.readiness === 'ready'
+        ? buildSelectionEvidenceInline(savedEvidence.envelope)
+        : JSON.stringify({ readiness: 'unavailable', reason: savedEvidence.reason });
     components = loadRawComponents(db, options.sessionId);
     if (!options.noCache) {
       for (const component of components) {
+        throwIfAborted(options.signal);
         const cached = lookupSelectCache(db, computeComponentInputHash(component), promptHash, cliVersion);
         if (cached) cachedDecisions.set(component.name, { decision: cached.decision, reason: cached.reason });
       }
@@ -81,21 +173,69 @@ export async function runSelection(options: SelectionOptions): Promise<void> {
 
   if (componentsToRun.length > 0) {
     const invoker = createLocalCliAgentInvoker({});
+    let existingComponentsInline: string | undefined;
+    let existingTokensInline: string | undefined;
+    if (options.existingEntitiesPath) {
+      const entities = await readExistingContentfulEntitiesFromSession({ path: options.existingEntitiesPath });
+      throwIfAborted(options.signal);
+      if (entities) {
+        try {
+          const summary = summarizeForSelect({ entities });
+          existingComponentsInline = JSON.stringify(summary.components);
+          existingTokensInline = JSON.stringify(summary.tokens);
+        } catch {
+          // Optional alignment context remains unavailable when its model data cannot be summarized.
+        }
+      }
+    }
 
+    const selectBuckets = bucketComponentsProps(componentsToRun);
+    await Promise.all(
+      selectBuckets.map((assignment) =>
+        recordDebugEvent('prop-buckets.select', { sessionId: options.sessionId, ...assignment }),
+      ),
+    );
+    throwIfAborted(options.signal);
     const prompt = await buildPrompt({
       skill: 'select',
       mode: 'autonomous',
-      rawComponentsInline: JSON.stringify(componentsToRun, null, 2),
+      rawComponentsInline: JSON.stringify(
+        componentsToRun.map(
+          ({
+            sourceCandidates: _candidates,
+            sourceCandidateSources: _sources,
+            componentFacts: _facts,
+            ...component
+          }) => ({
+            ...component,
+            props: component.props.map(stripPropProvenance),
+          }),
+        ),
+        null,
+        2,
+      ),
+      compilerEvidenceInline: buildCompilerEvidenceInline(componentsToRun, {
+        readiness: savedEvidenceReady ? 'ready' : 'unavailable',
+        ...(compilerDiagnosticsRead.status === 'available' ? { diagnostics: compilerDiagnosticsRead.diagnostics } : {}),
+        diagnosticsStatus: compilerDiagnosticsRead.status,
+        ...(savedEvidenceReason ? { reason: savedEvidenceReason } : {}),
+      }),
+      propBucketsInline: JSON.stringify(selectBuckets),
+      selectionEvidenceInline,
+      existingComponentsInline,
+      existingTokensInline,
       outDir: process.cwd(),
       ...(options.promptText !== undefined
         ? { skillContentOverride: options.promptText }
         : { skillPathOverride: options.promptPath ?? SELECT_SKILL_PATH }),
     });
+    throwIfAborted(options.signal);
     const { result } = await invokeAgentWithOutput(
       invoker,
-      { agent: options.agent, model: options.model, prompt, timeoutMs: DEFAULT_TIMEOUT_MS },
+      { agent: options.agent, model: options.model, prompt, timeoutMs: DEFAULT_TIMEOUT_MS, signal: options.signal },
       false,
     );
+    throwIfAborted(options.signal);
     if (result.timedOut) throw new Error('selection agent timed out');
     if (result.exitCode !== 0) throw new Error(`selection agent exited with code ${result.exitCode}`);
 
@@ -105,13 +245,16 @@ export async function runSelection(options: SelectionOptions): Promise<void> {
   }
   const byName = new Map(calls.map((call) => [call.name, call]));
 
+  throwIfAborted(options.signal);
   const writeDb = openPipelineDb();
   try {
     writeDb.exec('BEGIN');
     const update = writeDb.prepare(
       `UPDATE raw_components SET status = ?, reject_reason = ? WHERE session_id = ? AND component_id = ?`,
     );
+    throwIfAborted(options.signal);
     for (const component of components) {
+      throwIfAborted(options.signal);
       const cached = cachedDecisions.get(component.name);
       const call = byName.get(component.name);
       if (!cached && !call) continue;

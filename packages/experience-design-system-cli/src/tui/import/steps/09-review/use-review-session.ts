@@ -11,6 +11,7 @@ import { createHistoryStack, type HistorySnapshot, type HistoryStack } from './h
 import { finalizeReviewSession, type ReviewSessionLoadResult } from './session.js';
 import { useReviewFinalizePreview } from './use-finalize-preview.js';
 import type { CdfReviewEntry, TokenReviewToken } from './types.js';
+import { reviewSourceOwner } from './review-models.js';
 
 type UseReviewSessionOptions<TExtra> = {
   loadSession: () => ReviewSessionLoadResult<TExtra>;
@@ -114,7 +115,8 @@ export function useReviewMetadata({ components, selectedIdx, extractSessionId }:
   const [componentRationale, setComponentRationale] = useState<ComponentRationale | null>(null);
 
   useEffect(() => {
-    const current = components[selectedIdx];
+    const selected = components[selectedIdx];
+    const current = selected ? reviewSourceOwner(components, selected) : undefined;
     if (!current) {
       setReviewMetadata(null);
       setComponentRationale(null);
@@ -126,12 +128,12 @@ export function useReviewMetadata({ components, selectedIdx, extractSessionId }:
     const db = openPipelineDb();
     try {
       try {
-        metadata = loadComponentReviewMetadata(db, extractSessionId, current.key);
+        metadata = loadComponentReviewMetadata(db, extractSessionId, current.key, current.componentId);
       } catch {
         metadata = null;
       }
       try {
-        rationale = loadComponentRationale(db, extractSessionId, current.key);
+        rationale = loadComponentRationale(db, extractSessionId, current.key, current.componentId);
       } catch {
         rationale = null;
       }

@@ -3,6 +3,12 @@ import type {
   AgentAuthStatus,
   RunGenerateComponentsSessionResponse,
 } from '@contentful/experience-design-system-backend-pipeline';
+const debug = vi.hoisted(() => ({ record: vi.fn(async (_event: string, _payload?: Record<string, unknown>) => {}) }));
+vi.mock('../../../src/tui/debug-store.js', () => ({ recordDebugEvent: debug.record }));
+vi.mock('../../../src/tui/import/steps/06-extraction/find-skill-path.js', () => ({
+  findSkillPath: (fileName: string) => `/test-skills/${fileName}`,
+}));
+
 import { runGeneration, type GenerationDeps } from '../../../src/tui/import/steps/08-generation/run.js';
 import type { GenerationInput, GenerationProgress } from '../../../src/tui/import/steps/08-generation/types.js';
 
@@ -72,6 +78,7 @@ function fakes(overrides: Partial<GenerationDeps> = {}) {
       calls.push('prepare-map');
       return { eligible: true, mappablePropCount: 2, rawTokenCount: 3 };
     }),
+    prepareMapOptions: vi.fn(async () => ({})),
     runMapTokens: vi.fn(async () => {
       calls.push('map');
       return {
@@ -88,7 +95,115 @@ function fakes(overrides: Partial<GenerationDeps> = {}) {
 }
 
 describe('runGeneration', () => {
+  it('does not save decisions after cancellation while awaiting cache restoration', async () => {
+    let resolveCachedNames!: (names: string[]) => void;
+    const cachedNames = new Promise<string[]>((resolve) => {
+      resolveCachedNames = resolve;
+    });
+    const controller = new AbortController();
+    const generationInput = input({ cachedNames }) as GenerationInput & { signal?: AbortSignal };
+    generationInput.signal = controller.signal;
+    const { deps } = fakes();
+
+    const running = runGeneration(generationInput, () => {}, deps);
+    controller.abort();
+    resolveCachedNames([]);
+    const result = await running;
+
+    expect(result).toMatchObject({ ok: false });
+    expect(deps.saveDecisions).not.toHaveBeenCalled();
+  });
+
+  it('does not generate after cancellation while awaiting agent authentication', async () => {
+    let finishAuth!: (status: AgentAuthStatus) => void;
+    const controller = new AbortController();
+    const { deps } = fakes({
+      checkAgentAuth: vi.fn(() => new Promise<AgentAuthStatus>((resolve) => (finishAuth = resolve))),
+    });
+    const running = runGeneration(input({ signal: controller.signal }), () => {}, deps);
+    await vi.waitFor(() => expect(deps.checkAgentAuth).toHaveBeenCalledOnce());
+
+    controller.abort();
+    finishAuth('ok');
+    expect(await running).toMatchObject({ ok: false });
+    expect(deps.runGenerate).not.toHaveBeenCalled();
+  });
+
+  it('drains outstanding debug writes before returning cancellation and starting no map work', async () => {
+    let finishWrite!: () => void;
+    debug.record.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishWrite = resolve;
+        }),
+    );
+    const controller = new AbortController();
+    const { deps } = fakes({
+      runGenerate: vi.fn(async (request) => {
+        request.onDebugEvent?.('generation.event', {});
+        return generatedResponse();
+      }) as GenerationDeps['runGenerate'],
+    });
+    const running = runGeneration(input({ signal: controller.signal }), () => {}, deps);
+    await vi.waitFor(() => expect(debug.record).toHaveBeenCalledOnce());
+
+    controller.abort();
+    finishWrite();
+    expect(await running).toMatchObject({ ok: false });
+    expect(deps.prepareMapTokens).not.toHaveBeenCalled();
+    expect(deps.prepareMapOptions).not.toHaveBeenCalled();
+    expect(deps.runMapTokens).not.toHaveBeenCalled();
+  });
+
+  it('does not invoke mapping after cancellation while awaiting map options', async () => {
+    type MapOptions = Awaited<ReturnType<GenerationDeps['prepareMapOptions']>>;
+    let finishOptions!: (options: MapOptions) => void;
+    const controller = new AbortController();
+    const { deps } = fakes({
+      prepareMapOptions: vi.fn(() => new Promise<MapOptions>((resolve) => (finishOptions = resolve))),
+    });
+    const running = runGeneration(input({ signal: controller.signal }), () => {}, deps);
+    await vi.waitFor(() => expect(deps.prepareMapOptions).toHaveBeenCalledOnce());
+
+    controller.abort();
+    finishOptions({});
+    expect(await running).toMatchObject({ ok: false });
+    expect(deps.runMapTokens).not.toHaveBeenCalled();
+  });
+
   describe('a normal run', () => {
+    it('keeps the attempt signal live and forwards it through save, generation, map prep and mapping', async () => {
+      const controller = new AbortController();
+      const generationInput = input() as GenerationInput & { signal?: AbortSignal };
+      generationInput.signal = controller.signal;
+      const signals: Array<AbortSignal | undefined> = [];
+      const { deps } = fakes({
+        saveDecisions: vi.fn(async (req) => {
+          signals.push((req as typeof req & { signal?: AbortSignal }).signal);
+        }),
+        runGenerate: vi.fn(async (req) => {
+          signals.push((req as typeof req & { signal?: AbortSignal }).signal);
+          return generatedResponse();
+        }) as GenerationDeps['runGenerate'],
+        prepareMapTokens: vi.fn(async (req) => {
+          signals.push((req as typeof req & { signal?: AbortSignal }).signal);
+          return { eligible: true, mappablePropCount: 2, rawTokenCount: 3 };
+        }),
+        runMapTokens: vi.fn(async (req) => {
+          signals.push((req as typeof req & { signal?: AbortSignal }).signal);
+          return { type: 'applied', sessionId: 'extract-1', applied: 2, warnings: [], stepId: 1 } as never;
+        }) as GenerationDeps['runMapTokens'],
+      });
+
+      const result = await runGeneration(generationInput, () => {}, deps);
+
+      expect(result).toMatchObject({ ok: true });
+      expect(signals).toHaveLength(4);
+      expect(signals[0]).toBeInstanceOf(AbortSignal);
+      expect(signals.every((signal) => signal === signals[0] && signal?.aborted === false)).toBe(true);
+      expect(controller.signal.aborted).toBe(false);
+    });
+
     it('saves, auths, generates, prepares then maps tokens, in that order', async () => {
       const { deps, calls } = fakes();
       const result = await runGeneration(input(), () => {}, deps);
@@ -277,7 +392,7 @@ describe('runGeneration', () => {
       expect(await runGeneration(input(), () => {}, deps)).toEqual({
         ok: false,
         step: 'generate components',
-        message: 'agent timed out',
+        message: 'Button: agent timed out',
       });
       expect(deps.prepareMapTokens).not.toHaveBeenCalled();
     });
@@ -294,6 +409,39 @@ describe('runGeneration', () => {
         message: 'db locked',
       });
     });
+  });
+
+  it('persists generation events before reporting a failed generation', async () => {
+    let finishWrite!: () => void;
+    debug.record.mockClear().mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finishWrite = resolve;
+      }),
+    );
+    const { deps } = fakes({
+      runGenerate: vi.fn(async (request) => {
+        request.onDebugEvent?.('prop-buckets.generate', { component: 'Button', customPropNames: ['label'] });
+        throw new Error('agent exited');
+      }) as GenerationDeps['runGenerate'],
+    });
+    let settled = false;
+    const run = runGeneration(input(), () => {}, deps).then((result) => {
+      settled = true;
+      return result;
+    });
+    try {
+      await vi.waitFor(() =>
+        expect(debug.record).toHaveBeenCalledWith('prop-buckets.generate', {
+          sessionId: 'extract-1',
+          component: 'Button',
+          customPropNames: ['label'],
+        }),
+      );
+      expect(settled).toBe(false);
+    } finally {
+      finishWrite();
+    }
+    expect(await run).toEqual({ ok: false, step: 'generate components', message: 'agent exited' });
   });
 
   describe('progress', () => {
@@ -345,5 +493,78 @@ describe('runGeneration', () => {
       expect(seen.map((p) => p.mapTokens)).toContain('running');
       expect(seen[seen.length - 1]?.mapTokens).toBe('complete');
     });
+  });
+});
+
+describe('selected detail caller', () => {
+  it('runs selected detail after save/auth and before generation', async () => {
+    const { deps, calls } = fakes();
+    const detail = vi.fn(async () => {
+      calls.push('detail');
+      return { ok: true as const };
+    });
+    const result = await runGeneration(input(), () => {}, { ...deps, runDetail: detail } as GenerationDeps);
+    expect(result.ok).toBe(true);
+    expect(calls.slice(0, 4)).toEqual(['save', 'auth', 'detail', 'generate']);
+    expect(detail).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: 'extract-1', selectedNames: ['Button', 'Card'], agent: 'claude' }),
+    );
+  });
+  it('does not generate when selected detail fails', async () => {
+    const { deps } = fakes();
+    const result = await runGeneration(input(), () => {}, {
+      ...deps,
+      runDetail: async () => ({ ok: false, error: 'unresolved invocation' }),
+    } as GenerationDeps);
+    expect(result).toMatchObject({ ok: false, step: 'explore selected components' });
+    expect(deps.runGenerate).not.toHaveBeenCalled();
+  });
+  it('preserves zero-selection and missing-credential short circuits', async () => {
+    const { deps } = fakes({ checkAgentAuth: vi.fn(async () => 'not-found' as const) });
+    const detail = vi.fn(async () => ({ ok: true as const }));
+    await runGeneration(input({ decisions: { accepted: [], rejected: [] } }), () => {}, {
+      ...deps,
+      runDetail: detail,
+    } as GenerationDeps);
+    await runGeneration(input(), () => {}, { ...deps, runDetail: detail } as GenerationDeps);
+    expect(detail).not.toHaveBeenCalled();
+  });
+});
+
+describe('selected detail options', () => {
+  it('forwards independent detail and consensus overrides with optional context to the actual caller', async () => {
+    const { deps } = fakes();
+    const detail = vi.fn(async () => ({ ok: true as const }));
+    const promptOverrides = [
+      'detail=Inspect selected source.',
+      'tier=Tier claims.',
+      'verify=Read declarations.',
+      'check=Check exact evidence.',
+    ];
+    const result = await runGeneration(
+      input({ promptOverrides, existingEntitiesPath: '/example/existing.json', agentModel: 'example-model' }),
+      () => {},
+      { ...deps, runDetail: detail },
+    );
+    expect(result.ok).toBe(true);
+    expect(detail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        promptOverrides,
+        existingEntitiesPath: '/example/existing.json',
+        model: 'example-model',
+      }),
+    );
+    expect(deps.runGenerate).toHaveBeenCalledWith(expect.objectContaining({ promptOverrides }));
+  });
+  it('rejects malformed detail override syntax before detail or generation dispatch', async () => {
+    const { deps } = fakes();
+    const detail = vi.fn(async () => ({ ok: true as const }));
+    const result = await runGeneration(input({ promptOverrides: ['detail='] }), () => {}, {
+      ...deps,
+      runDetail: detail,
+    });
+    expect(result).toMatchObject({ ok: false, step: 'explore selected components' });
+    expect(detail).not.toHaveBeenCalled();
+    expect(deps.runGenerate).not.toHaveBeenCalled();
   });
 });

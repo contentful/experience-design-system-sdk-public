@@ -1,5 +1,5 @@
 import type { AgentName } from './agent-name.js';
-import type { AgentAuthStatus, AgentDebugEvent, AgentRunResult } from './agent-run.js';
+import type { AgentAuthStatus, AgentConversation, AgentDebugEvent, AgentRunResult } from './agent-run.js';
 
 export interface InvokeAgentOptions {
   agent: AgentName;
@@ -8,6 +8,10 @@ export interface InvokeAgentOptions {
   prompt: string;
   timeoutMs: number;
   onOutput?: (chunk: string) => void;
+  signal?: AbortSignal;
+  /** Ask capable transports to return the exact conversation created for this invocation. */
+  preserveConversation?: boolean;
+  conversation?: AgentConversation;
 }
 
 /**

@@ -15,6 +15,8 @@ type ReviewEditorPanelState = Pick<
   | 'showJson'
   | 'jsonScrollOffset'
   | 'currentTokenSuggestions'
+  | 'representationChoices'
+  | 'chooseRepresentation'
 >;
 
 export type ReviewDetailsEditorProps = Omit<
@@ -43,6 +45,10 @@ function toFieldEditorMetadata(reviewMetadata: ComponentReviewMetadata | null): 
   return {
     sourcePath: reviewMetadata.sourcePath,
     componentSource: reviewMetadata.componentSource,
+    sourceLineRanges: reviewMetadata.sourceLineRanges,
+    sourceCoverage: reviewMetadata.sourceCoverage,
+    extractionByteBinding: reviewMetadata.extractionByteBinding,
+    scopeProvenance: reviewMetadata.scopeProvenance,
     props: reviewMetadata.props,
   };
 }

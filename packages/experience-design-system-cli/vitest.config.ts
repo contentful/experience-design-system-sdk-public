@@ -10,6 +10,8 @@ export default defineConfig({
     globals: false,
     include: ['test/**/*.test.{ts,tsx}'],
     passWithNoTests: true,
+    testTimeout: 30000,
+    maxWorkers: 2,
     env: { FORCE_COLOR: '3' },
   },
 });

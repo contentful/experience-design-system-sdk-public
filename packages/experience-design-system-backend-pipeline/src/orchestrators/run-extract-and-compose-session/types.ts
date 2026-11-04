@@ -1,6 +1,8 @@
 import type { RawComponentDefinition } from '../../steps/extraction/src/types/component.js';
 import type { EdgeConflict } from '../../steps/composition/src/helpers/edges/merge-edges.js';
 import type { AgentDebugEvent } from '../../agents/types/agent-run.js';
+import type { ResolveCompositionServiceResult } from '../../steps/composition/src/types/contract.js';
+import type { SourceEvidenceHandle } from '../../persistence/src/session/repositories/db.js';
 
 /**
  * Structured progress events emitted during extraction and composition.
@@ -9,29 +11,33 @@ import type { AgentDebugEvent } from '../../agents/types/agent-run.js';
  * handing `filePaths` to the orchestrator.
  */
 export type ExtractAndComposeProgress =
-  | { kind: 'extract'; done: number; total: number; componentsSoFar: number }
-  | { kind: 'composition'; phase: 'resolving' | 'cache-hit' | `agent:${string}` | 'done' };
+  | { kind: 'extract'; done: number; total: number; componentsSoFar: number; activity?: string }
+  | { kind: 'source'; phase: 'validating' | 'capturing' | 'captured' | 'publishing' | 'complete'; activity: string }
+  | { kind: 'composition'; phase: 'resolving' | 'cache-hit' | `agent:${string}` | 'done'; activity?: string };
 
 export interface RunExtractAndComposeSessionRequest {
+  evidenceFilePaths?: readonly string[];
+  sourceInventory?: import('../../steps/extraction/index.js').SourceEvidenceInventory;
+  signal?: AbortSignal;
   /** Absolute project root. Used as the session's inputPath and for relative file-path storage. */
   projectPath: string;
   /** Absolute path to the session's output directory (typically `<projectPath>/.contentful`). */
   outDir: string;
   /** Source files (absolute paths) to extract from. Caller walks + filters (via `collectFiles`). */
   filePaths: string[];
-  /** Coding agent used for composition mapping resolution (claude|codex|opencode|cursor). */
-  agent: string;
-  /** Optional explicit model for the agent. Not used by composition today but accepted for future use. */
+  /** @deprecated Extraction and composition do not invoke a coding agent. */
+  agent?: string;
+  /** @deprecated Extraction and composition do not invoke a coding agent. */
   agentModel?: string;
   /** `--prompt stage=value` overrides, repeatable, as passed through from CLI/TUI. */
   promptOverrides: string[];
-  /** When true: skip extract/composition caches, re-run everything. */
+  /** Controls extraction result saves; source analysis always runs fresh. */
   noCache: boolean;
   /** How aggressively to retry extraction for unresolved Svelte Props types. Defaults to 'auto'. */
   resolveUnreachable?: 'auto' | 'always' | 'never';
-  /** When true: force the composition agent to run even where deterministic sources answered. */
+  /** @deprecated Composition always collects fresh deterministic evidence. */
   compositionRefresh?: boolean;
-  /** When true: enable Bedrock env for the composition agent (gated on agentSupportsBedrock). */
+  /** @deprecated Composition does not invoke a coding agent. */
   bedrock?: boolean;
   /** Fires when a structured progress event occurs. */
   onProgress?: (event: ExtractAndComposeProgress) => void;
@@ -43,7 +49,10 @@ export interface RunExtractAndComposeSessionRequest {
   onExclusion?: (exclusion: Record<string, unknown>) => void;
 }
 
-export interface RunExtractAndComposeSessionResponse {
+export interface RunExtractAndComposeSessionResponse extends Pick<
+  ResolveCompositionServiceResult,
+  'sourceCallSiteEvidence' | 'sourceCallSiteRejections' | 'sourceCallSiteCoverage'
+> {
   /** Pipeline session id. Downstream commands (select, generate, apply) read the session by this id. */
   sessionId: string;
   /** Which path composition resolution took. Carried into the handoff to v1's scope gate. */
@@ -54,8 +63,10 @@ export interface RunExtractAndComposeSessionResponse {
   warnings: string[];
   /** Composition edge conflicts, if any. */
   conflicts: EdgeConflict[];
-  /** Composition warnings (dropped candidates, agent exit non-zero, etc.). */
+  /** Deterministic composition warnings and edge conflicts. */
   compositionWarnings: string[];
   /** Count of source files scanned (equal to `request.filePaths.length`). */
   scannedFileCount: number;
+  /** Identity of the immutable source envelope committed with the completed extraction step. */
+  sourceEvidenceHandle: SourceEvidenceHandle;
 }

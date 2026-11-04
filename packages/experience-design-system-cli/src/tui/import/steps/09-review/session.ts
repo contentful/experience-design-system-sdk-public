@@ -1,7 +1,8 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 import {
-  loadCDFComponents,
+  loadReviewCDFComponents,
+  loadSelectedCDFComponents,
   loadDTCGTokens,
   openPipelineDb,
 } from '@contentful/experience-design-system-backend-pipeline';
@@ -30,11 +31,11 @@ export function loadReviewSessionState<TExtra = undefined>({
   sortEntries,
 }: ReviewSessionLoaderOptions<TExtra>): ReviewSessionLoadResult<TExtra> {
   const db = openPipelineDb();
-  let cdfComponents: Array<{ key: string; entry: CDFComponentEntry }> = [];
+  let cdfComponents: Array<{ key: string; componentId: string; entry: CDFComponentEntry }> = [];
   let tokens: TokenReviewToken[] = [];
   let extra: TExtra | undefined;
   try {
-    cdfComponents = loadCDFComponents(db, extractSessionId);
+    cdfComponents = loadReviewCDFComponents(db, extractSessionId);
     tokens = loadDTCGTokens(db, tokenSessionId ?? extractSessionId).tokens.map((token) => ({
       path: token.path,
       kind: token.$type,
@@ -53,8 +54,9 @@ export function loadReviewSessionState<TExtra = undefined>({
     };
   }
 
-  const entries = cdfComponents.map(({ key, entry }) => ({
+  const entries = cdfComponents.map(({ key, componentId, entry }) => ({
     key,
+    componentId,
     entry,
     status: 'needs-review' as const,
   }));
@@ -77,6 +79,7 @@ export function createReviewHistorySnapshot(
   return {
     components: components.map((component) => ({
       key: component.key,
+      componentId: component.componentId,
       entry: component.entry,
       status: component.status,
     })),
@@ -100,25 +103,49 @@ export function finalizeReviewSession(extractSessionId: string, components: CdfR
   const unresolvedKeys = components
     .filter((component) => component.status === 'needs-review')
     .map((component) => component.key);
-  const toReject = [...rejectedKeys, ...unresolvedKeys];
 
-  if (toReject.length > 0) {
-    const db = openPipelineDb();
-    try {
-      const statement = db.prepare(
-        `UPDATE raw_components SET status = 'generate-rejected' WHERE session_id = ? AND name = ?`,
+  const db = openPipelineDb();
+  try {
+    const rows = loadReviewCDFComponents(db, extractSessionId);
+    const identities = new Set<string>();
+    const resolved = components.map((component) => {
+      const matches = rows.filter((row) =>
+        component.componentId ? row.componentId === component.componentId : row.key === component.key,
       );
-      db.exec('BEGIN');
-      try {
-        for (const name of toReject) statement.run(extractSessionId, name);
-        db.exec('COMMIT');
-      } catch (error) {
-        db.exec('ROLLBACK');
-        throw error;
-      }
-    } finally {
-      db.close();
+      if (matches.length !== 1 || matches[0]!.key !== component.key || identities.has(matches[0]!.componentId))
+        throw new Error('Unknown, ambiguous or duplicate review component identity');
+      identities.add(matches[0]!.componentId);
+      return { ...component, componentId: matches[0]!.componentId, entry: matches[0]!.entry };
+    });
+    const selected = loadSelectedCDFComponents(
+      db,
+      extractSessionId,
+      new Set(
+        resolved.filter((component) => component.status === 'accepted').map((component) => component.componentId),
+      ),
+      undefined,
+      'definition',
+    );
+    const acceptedIds = new Set(resolved.filter((row) => row.status === 'accepted').map((row) => row.componentId));
+    for (const row of selected)
+      if (!acceptedIds.has(row.componentId))
+        throw new Error(`Accepted component requires review and acceptance of ${row.key}`);
+    db.exec('BEGIN');
+    try {
+      const statement = db.prepare('UPDATE raw_components SET status=? WHERE session_id=? AND component_id=?');
+      for (const component of resolved.filter((row) => !row.entry.$model))
+        statement.run(
+          component.status === 'accepted' ? 'generated' : 'generate-rejected',
+          extractSessionId,
+          component.componentId,
+        );
+      db.exec('COMMIT');
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
     }
+  } finally {
+    db.close();
   }
 
   return {

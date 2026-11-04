@@ -1,9 +1,23 @@
-// Pillar #4 foundation — property-contract target types + validators.
-// Dormant on `development` until downstream consumers (new extractors,
-// generation, review UI) activate them. Shape is deliberately verbatim
-// with the upstream work on feat/import-pipeline-evidence-and-reasoning
-// so the two merge without drift. See INTEG-5147 (spike) / INTEG-4927.
 export * from './json-value.js';
-export * from './date-time-value.js';
-export * from './discriminated-union.js';
 export * from './target-definition.js';
+export * from './date-time-value.js';
+export * from './source-representation.js';
+export * from './mapper-readiness.js';
+export * from './definition-import.js';
+export * from './property-model.js';
+export * from './representation-proposal.js';
+export * from './classification.js';
+export * from './null-handling.js';
+export * from './decision-protocol.js';
+export * from './property-decision.js';
+
+export * from './representation-plan.js';
+export * from './model-exploration.js';
+export { contentDigest } from './content-digest.js';
+export * from './import-prerequisites.js';
+
+export * from './logical-source-graph.js';
+export * from './analysis-representation-candidates.js';
+export { nativeSourceRegion } from './native-source-region.js';
+export * from './discriminated-union.js';
+export * from './discriminated-union-source.js';

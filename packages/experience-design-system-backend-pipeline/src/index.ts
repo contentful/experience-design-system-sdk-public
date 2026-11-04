@@ -41,15 +41,19 @@ export type { ComposeComponentsRequest, ComposeComponentsResponse } from './step
 export type { CompositionEdge, EdgeProvenance } from './steps/composition/src/helpers/edges/interchange-schema.js';
 export type { MergeResult, EdgeConflict } from './steps/composition/src/helpers/edges/merge-edges.js';
 export type { SelectedCandidate } from './steps/composition/src/types/contract.js';
-export {
-  selectCandidateFiles,
-  capCandidatesToPromptBudget,
-} from './steps/composition/src/helpers/candidates/candidate-files.js';
+export { selectCandidateFiles } from './steps/composition/src/helpers/candidates/candidate-files.js';
 export { collectManifestDocEdges } from './steps/composition/src/helpers/edges/manifest-doc-evidence.js';
 export { mergeEdges } from './steps/composition/src/helpers/edges/merge-edges.js';
 export { parseMapEdges } from './steps/composition/src/helpers/edges/parse-map-edges.js';
 export { applyCompositionEdges, applyMapping } from './steps/composition/src/helpers/edges/apply-mapping.js';
 export { resolveMapping } from './steps/composition/src/helpers/edges/resolve-mapping.js';
+export { collectSourceCallSiteEvidence } from './steps/composition/src/helpers/edges/source-call-site-evidence.js';
+export type {
+  SourceCallSiteEvidence,
+  SourceCallSiteRejection,
+  SourceCallSiteEvidenceResult,
+  SourceCallerInput,
+} from './steps/composition/src/helpers/edges/source-call-site-evidence.js';
 export { loadPrompt } from './steps/composition/src/helpers/prompt/prompt-loader.js';
 export { buildCompositionInputHash } from './steps/composition/src/helpers/candidates/composition-cache-key.js';
 export { resolveCompositionSources } from './steps/composition/src/helpers/edges/resolve-composition-sources.js';
@@ -197,8 +201,22 @@ export { AGENT_BINARIES } from './agents/constants/binaries.js';
 export { isAgentName } from './agents/helpers/resolution/is-agent-name.js';
 export { agentSupportsBedrock } from './agents/helpers/bedrock/agent-supports-bedrock.js';
 export { checkAgentAuth } from './agents/services/check-agent-auth.js';
-export type { AgentAuthStatus } from './agents/types/agent-run.js';
+export type { AgentAuthStatus, AgentInvocationActivity } from './agents/types/agent-run.js';
 export { buildPrompt } from './agents/prompts/build-prompt.js';
+export { buildCompilerEvidenceInline } from './agents/prompts/helpers/build-compiler-evidence-inline.js';
+export type { CompilerEvidenceReadiness } from './agents/prompts/helpers/build-compiler-evidence-inline.js';
+export { buildSelectionEvidenceInline } from './agents/prompts/helpers/build-selection-evidence-inline.js';
+export type {
+  ComponentSourceRef,
+  CapturedSourceRefMetadata,
+  DebateRole,
+  GeneratedCdf,
+  Mode,
+  PromptOptions,
+  Skill,
+} from './agents/types/prompts.js';
+export { stripPropProvenance } from './agents/prompts/helpers/strip-prop-provenance.js';
+export { bucketComponentsProps } from './steps/extraction/index.js';
 export { resolveSkillPath } from './agents/prompts/resolve-skill-path.js';
 export { createLocalCliAgentInvoker } from './agents/invoker/create-local-cli-agent-invoker.js';
 export { parseSelectToolCalls } from './agents/parsers/parse-select-tool-calls.js';
@@ -220,6 +238,18 @@ export {
 } from './steps/generation/src/controller/existing-entities/summarize-for-generate.js';
 export { summarizeForMapTokens } from './steps/generation/src/controller/existing-entities/summarize-for-map-tokens.js';
 export type { ExistingContentfulEntities } from './steps/generation/src/types/existing-entities.js';
+export {
+  bindCatalogueCaptureToSession,
+  loadBoundSessionPrerequisiteSnapshot,
+  setSessionTokenReferenceMapping,
+  createSessionPrerequisiteSaveReceipt,
+  verifyLocalSavedPrerequisiteReceipt,
+} from './persistence/src/session/repositories/import-prerequisites.js';
+export type {
+  SessionPrerequisiteSaveReceipt,
+  SessionPrerequisiteSnapshot,
+  PrerequisiteTarget,
+} from './persistence/src/session/repositories/import-prerequisites.js';
 export type {
   SelectAgentSummary,
   GenerateAgentSummary,
@@ -260,6 +290,8 @@ export {
   runMigrationIfNeeded,
   resolveExtractSessionId,
 } from './persistence/src/index.js';
+export { completeExtractionWithSourceEvidence, loadCompletedSourceEvidence } from './persistence/src/index.js';
+export type { CompletedSourceEvidence, SessionSourceEnvelope, SourceEvidenceHandle } from './persistence/src/index.js';
 export {
   configRoot,
   configFilePath,
@@ -285,11 +317,21 @@ export {
   loadRawComponents,
   loadComponentSourceRef,
   loadComponentSourceRefs,
+  loadSavedComponentSourceRef,
+  loadSavedSharedSource,
+  loadExtractionSourceDiagnostics,
   renameEmptySlots,
 } from './persistence/src/index.js';
 export type { RawComponentWithId } from './persistence/src/index.js';
-export { storeCDFComponents, loadCDFComponents, loadScopeComponents } from './persistence/src/index.js';
-export type { ScopeComponentRow } from './persistence/src/index.js';
+export {
+  storeCDFComponents,
+  loadCDFComponents,
+  loadSelectedCDFComponents,
+  evaluateComponentReadiness,
+  loadScopeComponents,
+  loadScopeDecisions,
+} from './persistence/src/index.js';
+export type { ScopeComponentRow, ScopeDecisions, ScopeDecisionProvenance } from './persistence/src/index.js';
 export {
   loadComponentReviewMetadata,
   loadComponentRationale,
@@ -303,6 +345,7 @@ export type {
   ApplyToolCallsResult,
   ApplyToolCallsOptions,
 } from './persistence/src/index.js';
+export type { ExtractionSourceDiagnosticsRead } from './persistence/src/index.js';
 export {
   seedCDFFromPriorSession,
   seedCDFFromPreviewResponse,
@@ -400,7 +443,6 @@ export type {
   ExtractionExclusion,
   ExtractorProgress,
 } from './steps/extraction/src/types/component.js';
-export { stripScoringFields } from './steps/extraction/src/types/component.js';
 export { runExtractAndComposeSession } from './orchestrators/run-extract-and-compose-session/run-extract-and-compose-session.js';
 export type {
   RunExtractAndComposeSessionRequest,
@@ -456,3 +498,48 @@ export type {
   OsName,
   AnalyticsWriteResult,
 } from './analytics/index.js';
+
+export * from './steps/exploration/src/index.js';
+
+export {
+  loadExplorationRun,
+  loadExplorationReports,
+  loadExplorationAttempts,
+  loadAcceptedSlotDecisions,
+  loadExplorationRecord,
+} from './persistence/src/session/repositories/exploration/records.js';
+export {
+  projectAcceptedSlots,
+  projectAcceptedRawSlots,
+} from './steps/exploration/src/services/project-accepted-slots.js';
+
+export * from './orchestrators/run-exploration-session/index.js';
+
+export type { CompletedSharedSourceEvidence } from './persistence/src/session/repositories/db.js';
+
+export { buildSharedSource, projectSharedSource, renderSharedSource } from './source-evidence/shared-source.js';
+export type {
+  SharedSource,
+  SharedSourceFile,
+  SharedSourceReference,
+  SharedSourceRange,
+  SharedSourceCallerCoverage,
+} from '@contentful/experience-design-system-types';
+
+export { loadPropertyDecisions } from './persistence/src/session/repositories/db.js';
+
+export {
+  loadExistingExplorationContext,
+  type ExistingExplorationContext,
+} from './orchestrators/run-exploration-session/helpers/load-existing-context.js';
+export { discoverSourceEvidence } from './steps/extraction/index.js';
+export type { SourceEvidenceInventory } from './steps/extraction/index.js';
+
+export {
+  analyzePropertyRepresentations,
+  analyzePropertyRepresentationCandidates,
+  loadRepresentationPlans,
+  loadReviewCDFComponents,
+  storeReviewCDFComponent,
+  selectRepresentationPlan,
+} from './persistence/src/session/repositories/representation-plans.js';

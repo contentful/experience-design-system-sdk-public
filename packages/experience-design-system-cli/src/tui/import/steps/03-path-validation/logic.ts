@@ -5,7 +5,13 @@ export type FileCounts = Record<FileCategory, number> & { total: number };
 export type ScanFailureCode = 'not-found' | 'permission-denied' | 'is-file' | 'not-directory' | 'unreadable';
 
 export type ScanResult =
-  | { ok: true; counts: FileCounts; filePaths: string[]; warnings: string[] }
+  | {
+      ok: true;
+      counts: FileCounts;
+      filePaths: string[];
+      warnings: string[];
+      sourceInventory?: import('@contentful/experience-design-system-backend-pipeline').SourceEvidenceInventory;
+    }
   | { ok: false; failure: ScanFailureCode };
 
 export type PathPhase = 'scanning' | 'ready' | 'failed';
@@ -55,8 +61,8 @@ export function describeFailure(failure: ScanFailureCode, path: string): Failure
       return {
         headline: "That's a file, not a directory.",
         hints: [
-          "Provide the path to your component library's root folder, not a specific file.",
-          'Example: ~/projects/my-design-system',
+          'Choose an application root, a folder of components, or a folder containing a single component.',
+          'Example: ~/projects/my-app/src',
         ],
       };
     case 'not-found':

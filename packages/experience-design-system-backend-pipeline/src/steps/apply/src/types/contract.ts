@@ -44,6 +44,7 @@ export interface WriteResult {
 }
 
 export interface ApiClientOptions {
+  prerequisiteSessionId?: string;
   host?: string;
   cmaToken: string;
   spaceId: string;

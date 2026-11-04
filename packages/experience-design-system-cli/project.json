@@ -108,10 +108,10 @@
           "rm -rf packages/experience-design-system-cli/skills",
           "rm -rf packages/experience-design-system-cli/prompts",
           "mkdir -p packages/experience-design-system-cli/skills",
-          "cp packages/experience-design-system-backend-pipeline/src/agents/skills/generation/generate-components.md packages/experience-design-system-cli/skills/",
-          "cp packages/experience-design-system-backend-pipeline/src/agents/skills/generation/generate-tokens.md packages/experience-design-system-cli/skills/",
-          "cp packages/experience-design-system-backend-pipeline/src/agents/skills/generation/map-tokens.md packages/experience-design-system-cli/skills/",
-          "cp packages/experience-design-system-backend-pipeline/src/agents/skills/selection/select-components.md packages/experience-design-system-cli/skills/",
+          "cp -r packages/experience-design-system-backend-pipeline/src/agents/skills/explore packages/experience-design-system-cli/skills/",
+          "cp -r packages/experience-design-system-backend-pipeline/src/agents/skills/consensus packages/experience-design-system-cli/skills/",
+          "cp packages/experience-design-system-backend-pipeline/src/agents/skills/generation/*.md packages/experience-design-system-cli/skills/",
+          "cp packages/experience-design-system-backend-pipeline/src/agents/skills/selection/*.md packages/experience-design-system-cli/skills/",
           "cp -r packages/experience-design-system-backend-pipeline/prompts packages/experience-design-system-cli/prompts"
         ]
       }

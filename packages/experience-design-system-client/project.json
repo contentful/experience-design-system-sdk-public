@@ -11,19 +11,31 @@
         "command": "tsx bin/generate.ts",
         "cwd": "packages/experience-design-system-client"
       },
-      "inputs": ["{projectRoot}/openapi.json"],
-      "outputs": ["{projectRoot}/src/generated"]
+      "inputs": [
+        "{projectRoot}/openapi.json"
+      ],
+      "outputs": [
+        "{projectRoot}/src/generated"
+      ],
+      "dependsOn": [
+        "^build"
+      ]
     },
     "build": {
       "executor": "@nx/js:tsc",
-      "outputs": ["{options.outputPath}"],
+      "outputs": [
+        "{options.outputPath}"
+      ],
       "options": {
         "outputPath": "packages/experience-design-system-client/dist",
         "main": "packages/experience-design-system-client/src/index.ts",
         "tsConfig": "packages/experience-design-system-client/tsconfig.build.json",
         "assets": []
       },
-      "dependsOn": ["codegen", "^clean"]
+      "dependsOn": [
+        "codegen",
+        "^build"
+      ]
     },
     "test": {
       "executor": "nx:run-commands",
@@ -31,7 +43,9 @@
         "command": "vitest run",
         "cwd": "packages/experience-design-system-client"
       },
-      "dependsOn": ["build"]
+      "dependsOn": [
+        "build"
+      ]
     },
     "test:watch": {
       "executor": "nx:run-commands",
@@ -39,7 +53,9 @@
         "command": "vitest",
         "cwd": "packages/experience-design-system-client"
       },
-      "dependsOn": ["build"]
+      "dependsOn": [
+        "build"
+      ]
     },
     "lint": {
       "executor": "nx:run-commands",
@@ -47,7 +63,9 @@
         "command": "eslint",
         "cwd": "packages/experience-design-system-client"
       },
-      "dependsOn": ["build"]
+      "dependsOn": [
+        "build"
+      ]
     },
     "lint:fix": {
       "executor": "nx:run-commands",
@@ -55,7 +73,9 @@
         "command": "eslint --fix",
         "cwd": "packages/experience-design-system-client"
       },
-      "dependsOn": ["build"]
+      "dependsOn": [
+        "build"
+      ]
     },
     "typecheck": {
       "executor": "nx:run-commands",
@@ -63,7 +83,9 @@
         "command": "tsc --noEmit",
         "cwd": "packages/experience-design-system-client"
       },
-      "dependsOn": ["build"]
+      "dependsOn": [
+        "build"
+      ]
     },
     "clean": {
       "executor": "nx:run-commands",
@@ -77,7 +99,9 @@
       "options": {
         "packageRoot": "packages/experience-design-system-client"
       },
-      "dependsOn": ["build"]
+      "dependsOn": [
+        "build"
+      ]
     }
   }
 }

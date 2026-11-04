@@ -31,6 +31,7 @@ import { rebuildDTCGTree } from '../../../../shared/dtcg/helpers/rebuild-dtcg-tr
 import { resolveTokenDefaults } from '../../helpers/token-defaults/resolve-token-defaults.js';
 import { bindAnalyticsSessionId } from '../../../../../analytics/index.js';
 import type { MapTokensRunRequest, MapTokensRunResult } from '../../types/map-tokens-run.js';
+import { throwIfAborted } from '../../../../../helpers/abort.js';
 
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -71,16 +72,19 @@ export class MapTokensRunFailure extends Error {
  * (prompt file reading, stderr, exit codes).
  */
 export async function runMapTokens(request: MapTokensRunRequest): Promise<MapTokensRunResult> {
+  throwIfAborted(request.signal);
   const timeoutMs = request.agentTimeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   const db = openPipelineDb();
   try {
     const sessionId = request.sessionId ?? findLatestSessionForCommand(db, 'generate components');
+    throwIfAborted(request.signal);
     if (!sessionId) {
       throw new MapTokensRunFailure({ type: 'no-session' });
     }
 
     await bindAnalyticsSessionId(sessionId);
+    throwIfAborted(request.signal);
 
     const tokenLeaves = loadTokenLeaves(db, sessionId);
     const knownTokenPaths = new Set(tokenLeaves.map((t) => t.path));
@@ -90,6 +94,7 @@ export async function runMapTokens(request: MapTokensRunRequest): Promise<MapTok
       for (const [rawName, path] of Object.entries(request.tokenMapInline)) {
         if (knownTokenPaths.has(path)) validMappings[rawName] = path;
       }
+      throwIfAborted(request.signal);
       replaceRawTokenNamePaths(db, sessionId, validMappings, 'manual');
     }
 
@@ -108,8 +113,10 @@ export async function runMapTokens(request: MapTokensRunRequest): Promise<MapTok
     for (const [rawName, path] of Object.entries(defaultResolution.mappings)) {
       if (manualMappings.get(rawName) === undefined) automaticMappings[rawName] = path;
     }
+    throwIfAborted(request.signal);
     replaceRawTokenNamePaths(db, sessionId, automaticMappings, 'automatic');
 
+    throwIfAborted(request.signal);
     const cdfEntries = loadCDFComponents(db, sessionId);
     if (cdfEntries.length === 0) {
       throw new MapTokensRunFailure({ type: 'no-components', sessionId });
@@ -125,6 +132,7 @@ export async function runMapTokens(request: MapTokensRunRequest): Promise<MapTok
     const generatedCdf = Object.fromEntries(cdfEntries.map((c) => [c.key, c.entry]));
     const tokenTree = rebuildDTCGTree(groups, tokens);
     const componentSourceRefs = await loadComponentSourceRefs(db, sessionId);
+    throwIfAborted(request.signal);
 
     const buildMapPrompt = (): Promise<string> =>
       buildPrompt({
@@ -143,15 +151,18 @@ export async function runMapTokens(request: MapTokensRunRequest): Promise<MapTok
 
     if (request.printPrompt) {
       const prompt = await buildMapPrompt();
+      throwIfAborted(request.signal);
       return { type: 'printed-prompt', sessionId, prompt };
     }
 
     if (request.skipAgent) {
+      throwIfAborted(request.signal);
       const stepId = createStep(db, sessionId, 'map tokens', {
         agent: request.agent,
         model: request.model ?? '',
         skipAgent: 'true',
       });
+      throwIfAborted(request.signal);
       updateStep(db, stepId, 'complete', { applied: '0', skipAgent: 'true' });
       return { type: 'skipped', sessionId, stepId };
     }
@@ -166,12 +177,15 @@ export async function runMapTokens(request: MapTokensRunRequest): Promise<MapTok
       request.existingEntitiesInline ? [hashContent(request.existingEntitiesInline)] : [],
       request.skillContentOverride,
     );
+    throwIfAborted(request.signal);
     const inputHash = computeMapTokensInputHash(db, sessionId, componentSourceRefs);
 
     if (!noCache) {
       const cached = lookupCache(db, inputHash, 'token_mapping', '__map_tokens__', promptHash);
+      throwIfAborted(request.signal);
       if (cached) {
         const applied = copyMapTokensFromCache(db, cached.sourceSessionId, sessionId);
+        throwIfAborted(request.signal);
         const stepId = createStep(db, sessionId, 'map tokens', { agent, model: request.model ?? '' });
         updateStep(db, stepId, 'complete', { cached: 'true', applied: String(applied) });
         return { type: 'cached', sessionId, applied, stepId };
@@ -179,7 +193,9 @@ export async function runMapTokens(request: MapTokensRunRequest): Promise<MapTok
     }
 
     const binary = resolveBinary(agent);
-    if (!(await binaryExists(binary))) {
+    const exists = await binaryExists(binary);
+    throwIfAborted(request.signal);
+    if (!exists) {
       throw new MapTokensRunFailure({
         type: 'binary-not-found',
         agent,
@@ -190,8 +206,10 @@ export async function runMapTokens(request: MapTokensRunRequest): Promise<MapTok
 
     const stepId = createStep(db, sessionId, 'map tokens', { agent, model: request.model ?? '' });
     const prompt = await buildMapPrompt();
+    throwIfAborted(request.signal);
     const invoker = createLocalCliAgentInvoker();
-    const result = await invoker.invoke({ agent, model: request.model, prompt, timeoutMs });
+    const result = await invoker.invoke({ agent, model: request.model, prompt, timeoutMs, signal: request.signal });
+    throwIfAborted(request.signal);
 
     if (result.timedOut || result.exitCode !== 0) {
       const error = result.timedOut ? `timed out after ${timeoutMs / 60000} minutes` : describeAgentFailure(result);
@@ -200,11 +218,14 @@ export async function runMapTokens(request: MapTokensRunRequest): Promise<MapTok
     }
 
     const { calls, warnings: parseWarnings } = parseMapTokenPropToolCalls(result.stdout);
+    throwIfAborted(request.signal);
     const { applied, warnings } = applyMapTokenPropCalls(db, sessionId, calls, parseWarnings);
 
     if (!noCache) {
+      throwIfAborted(request.signal);
       storeCache(db, inputHash, 'token_mapping', '__map_tokens__', sessionId, false, promptHash);
     }
+    throwIfAborted(request.signal);
     updateStep(db, stepId, 'complete', { applied: String(applied), warnings: String(warnings.length) });
 
     return { type: 'applied', sessionId, applied, warnings, stepId };

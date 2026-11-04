@@ -1,4 +1,8 @@
-import { loadScopeComponents, openPipelineDb } from '@contentful/experience-design-system-backend-pipeline';
+import {
+  loadScopeComponents,
+  loadScopeDecisions,
+  openPipelineDb,
+} from '@contentful/experience-design-system-backend-pipeline';
 import type { ScopeGateLoad } from './types.js';
 
 /**
@@ -15,7 +19,8 @@ export function loadScopeGate(sessionId: string): ScopeGateLoad {
       if (components.length === 0) {
         return { ok: false, message: 'No components found for this session. Please run the import again.' };
       }
-      return { ok: true, components };
+      const savedDecisions = loadScopeDecisions(db, sessionId);
+      return { ok: true, components, ...(savedDecisions ? { savedDecisions } : {}) };
     } finally {
       db.close();
     }

@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { readFile, writeFile } from 'node:fs/promises';
+import { access, readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -14,13 +14,29 @@ type Scope = 'legacy' | 'cli';
 type KnipBudgets = Record<Scope, number>;
 
 const NON_ISSUE_FIELDS = new Set(['file', 'owners']);
+const packageDirectories = await readdir(path.join(repoRoot, 'packages'), { withFileTypes: true });
+const liveWorkspaces = (
+  await Promise.all(
+    packageDirectories
+      .filter((entry) => entry.isDirectory())
+      .map(async (entry) => {
+        const workspace = `packages/${entry.name}`;
+        try {
+          await access(path.join(repoRoot, workspace, 'package.json'));
+          return workspace;
+        } catch (error) {
+          if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return null;
+          throw error;
+        }
+      }),
+  )
+)
+  .filter((workspace): workspace is string => workspace !== null)
+  .sort();
 const SCOPE_OPTIONS: Record<Scope, string[]> = {
-  legacy: [
-    '--workspace',
-    'packages/*',
-    '--workspace',
-    '!packages/experience-design-system-cli',
-  ],
+  legacy: liveWorkspaces
+    .filter((workspace) => workspace !== 'packages/experience-design-system-cli')
+    .flatMap((workspace) => ['--workspace', workspace]),
   cli: ['--workspace', 'packages/experience-design-system-cli'],
 };
 

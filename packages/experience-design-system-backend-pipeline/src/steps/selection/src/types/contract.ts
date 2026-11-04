@@ -1,5 +1,7 @@
+import type { AgentDebugEvent } from '../../../../agents/types/agent-run.js';
 import type { RawComponentDefinition } from '../../../extraction/src/types/component.js';
 import type { AgentName } from '../../../../agents/index.js';
+import type { ExistingContentfulEntities } from '../../../generation/src/types/existing-entities.js';
 
 export interface ComponentSelection {
   name: string;
@@ -19,6 +21,13 @@ export interface RunSelectionServiceOptions {
   model?: string;
   promptText?: string;
   promptPath?: string;
+  /** Caller-supplied, bounded source evidence for this selection prompt; absent means unknown. */
+  selectionEvidenceInline?: string;
+  /** Pre-scoped shared compiler/source-candidate block from the saved extraction session. */
+  compilerEvidenceInline?: string;
+  existingContentfulEntities?: ExistingContentfulEntities | null;
+  existingComponentsInline?: string;
+  existingTokensInline?: string;
   onCacheLookup?: (
     componentHash: string,
     promptHash: string,
@@ -30,6 +39,7 @@ export interface RunSelectionServiceOptions {
     reason: string | null,
   ) => void;
   onWarning?: (message: string) => void;
+  onDebugEvent?: AgentDebugEvent;
 }
 
 export interface SelectComponentsEndpointRequest extends Omit<RunSelectionServiceOptions, 'agent'> {

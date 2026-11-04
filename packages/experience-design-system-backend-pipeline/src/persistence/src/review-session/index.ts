@@ -12,7 +12,6 @@ export { writeScopeDecisionsSnapshot } from './services/write-scope-decisions-sn
 export { loadAcceptedNames } from './repositories/load-accepted-names.js';
 export { parsePrecomputedCachedNames } from './helpers/parse-precomputed-cached-names.js';
 export type {
-  PreviewAnnotation,
   ReviewComponentStatus,
   ReviewComponentRecord,
   ReviewComponentDetail,

@@ -1,4 +1,5 @@
 import type { CDFComponentEntry } from '../../../shared/index.js';
+import { componentCompositionDefinitions } from '@contentful/experience-design-system-types';
 import type { SlotCycle } from '../../../composition/src/types/graph.js';
 import { findSlotCycles } from '../../../composition/src/helpers/cycles/find-slot-cycles.js';
 
@@ -8,7 +9,7 @@ import { findSlotCycles } from '../../../composition/src/helpers/cycles/find-slo
  * composition cycle detector.
  */
 export function detectSlotCycles(components: Array<{ key: string; entry: CDFComponentEntry }>): SlotCycle[] {
-  const cycleInput = components.map(({ key, entry }) => ({
+  const cycleInput = componentCompositionDefinitions(components).map(({ key, entry }) => ({
     name: key,
     slots: Object.entries(entry.$slots ?? {}).map(([slotName, slotDef]) => ({
       name: slotName,

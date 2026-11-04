@@ -6,21 +6,33 @@ import {
   CDF_PROPERTY_TYPES,
   CDF_PROPERTY_CATEGORIES,
   DESIGN_TOKEN_TYPES,
+  validateCDFProperty,
+  cloneJson,
+  own,
+  jsonValueIssue,
+  parseStrictJson,
+  isDateTimeValue,
+  isFinitePrimitiveType,
+  isFinitePrimitiveValue,
+  finiteValuesIssue,
 } from '@contentful/experience-design-system-types';
 import type {
   CDFComponentEntry,
   CDFPropertyDefinition,
   CDFSlotDefinition,
+  JsonValue,
 } from '@contentful/experience-design-system-types';
 import { useImmediateInput } from '../../07-scope-gate/sidebar/hooks/useImmediateInput.js';
 import { computeNextScrollOffset } from '../scroll-offset.js';
 import { findSlotCycles, type ComponentSlotInfo } from '../../07-scope-gate/graph/cycle-detection.js';
+import { sourceObservationRows, type ReviewSourceCandidate } from './source-observation-rows.js';
 import { FixedPanel } from '../../07-scope-gate/sidebar/components/windowed-panel.js';
 
 type PropMetadata = {
   rationale?: string | null;
   sourceStartLine?: number | null;
   sourceEndLine?: number | null;
+  sourceCandidate?: ReviewSourceCandidate | null;
 };
 
 export type FieldEditorMetadata = {
@@ -28,6 +40,10 @@ export type FieldEditorMetadata = {
   sourcePath?: string | null;
   /** Full source text of the component (used by the source-view panel). */
   componentSource?: string | null;
+  sourceLineRanges?: Array<{ sourceStartLine: number; sourceEndLine: number; displayStartLine: number }>;
+  sourceCoverage?: 'complete-within-declared-bound' | 'partial' | 'unavailable';
+  extractionByteBinding?: 'verified-same' | 'changed' | 'unverified';
+  scopeProvenance?: { kind: 'direct' | 'closure' | 'unknown'; roots: string[] } | null;
   /** Per-prop metadata keyed by prop name. */
   props?: Record<string, PropMetadata>;
 };
@@ -39,7 +55,8 @@ export type FieldEditorProps = {
   fixedHeight?: boolean;
   active?: boolean;
   onChange: (value: string) => void;
-  onSave: () => void;
+  onSave: (value?: string) => boolean | void;
+  onDraftValidityChange?: (valid: boolean) => void;
   onDiscard: () => void;
   onExit?: () => void;
   metadata?: FieldEditorMetadata;
@@ -72,10 +89,15 @@ type PropState = {
   values: string[];
   tokenKind: string;
   allowed: string[];
-  default: string | boolean | null;
+  default: JsonValue | undefined;
+  defaultDraft?: string;
+  defaultError?: string;
+  original?: CDFPropertyDefinition;
+  defaultTouched?: boolean;
 };
 
 type SlotState = {
+  original?: CDFSlotDefinition;
   name: string;
   description: string;
   required: boolean;
@@ -123,13 +145,40 @@ function swapValues<T>(values: T[], firstIndex: number, secondIndex: number): T[
   return next;
 }
 
-function parseToState(json: string): {
+function parseTypedDefault(text: string, type: string): { value: JsonValue } | { error: string } {
+  try {
+    if (['number', 'Integer'].includes(type) && !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(text))
+      throw new Error('Enter a complete finite number');
+    const value: unknown = ['number', 'Integer'].includes(type)
+      ? Number(text)
+      : type === 'DateTime'
+        ? text
+        : parseStrictJson(text);
+    if (type === 'Integer' && !Number.isSafeInteger(value)) throw new Error('Enter a safe integer');
+    if (type === 'DateTime' && !isDateTimeValue(value)) throw new Error('Enter a timezone-qualified ISO datetime');
+    const issue = jsonValueIssue(value);
+    if (issue) throw new Error(issue.message);
+    return { value: value as JsonValue };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Invalid typed default' };
+  }
+}
+
+function finiteChoiceValue(text: string, type: string): string | number | boolean {
+  if (type === 'string') return text;
+  const parsed = parseTypedDefault(text, type);
+  if ('error' in parsed) throw new Error(parsed.error);
+  if (!isFinitePrimitiveValue(parsed.value) || typeof parsed.value !== type) throw new Error(`Enter a ${type} choice`);
+  return parsed.value;
+}
+
+export function parseToState(json: string): {
   state: EditorState;
   error: string | null;
 } {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(json);
+    parsed = parseStrictJson(json);
   } catch (e) {
     return {
       state: { componentDescription: '', props: [], slots: [] },
@@ -159,17 +208,13 @@ function parseToState(json: string): {
   const componentDescription = typeof component.$description === 'string' ? component.$description : '';
 
   const rawProps = (component.$properties ?? {}) as Record<string, unknown>;
+  const unsupported = Object.entries(rawProps).flatMap(([name, definition]) =>
+    validateCDFProperty(definition).issues.map((issue) => `${name}${issue.path}: ${issue.message}`),
+  );
   const props: PropState[] = Object.entries(rawProps).map(([name, raw]) => {
     const p = (raw ?? {}) as Record<string, unknown>;
     const type = CDF_PROPERTY_TYPES.includes(p.$type as never) ? (p.$type as PropState['type']) : 'string';
-    let defaultValue: string | boolean | null = null;
-    if (p.$default !== undefined && p.$default !== null) {
-      if (type === 'boolean') {
-        defaultValue = typeof p.$default === 'boolean' ? p.$default : null;
-      } else {
-        defaultValue = typeof p.$default === 'string' ? p.$default : String(p.$default);
-      }
-    }
+    const defaultValue = own(p, '$default') ? cloneJson(p.$default as JsonValue) : undefined;
     return {
       name,
       type,
@@ -178,12 +223,14 @@ function parseToState(json: string): {
         : 'content',
       required: p.$required === true,
       description: typeof p.$description === 'string' ? p.$description : '',
-      values: Array.isArray(p.$values) ? (p.$values as string[]).filter((v) => typeof v === 'string') : [],
+      values: Array.isArray(p.$values) ? p.$values.filter(isFinitePrimitiveValue).map(String) : [],
       tokenKind: typeof p['$token.kind'] === 'string' ? p['$token.kind'] : '',
       allowed: Array.isArray(p['$token.allowed'])
         ? (p['$token.allowed'] as unknown[]).filter((v): v is string => typeof v === 'string')
         : [],
       default: defaultValue,
+      original: cloneJson(p as unknown as CDFPropertyDefinition),
+      defaultTouched: false,
     };
   });
 
@@ -194,66 +241,97 @@ function parseToState(json: string): {
       name,
       description: typeof s.$description === 'string' ? s.$description : '',
       required: s.$required === true,
+      original: cloneJson(s as CDFSlotDefinition),
       allowedComponents: Array.isArray(s.$allowedComponents)
         ? (s.$allowedComponents as unknown[]).filter((v): v is string => typeof v === 'string')
         : [],
     };
   });
 
-  return { state: { componentDescription, props, slots }, error: null };
+  return {
+    state: { componentDescription, props, slots },
+    error: unsupported.length ? `Definition cannot be edited safely: ${unsupported.join('; ')}` : null,
+  };
 }
 
-function serializeState(state: EditorState, originalJson: string): string {
+export function serializeState(state: EditorState, originalJson: string): string {
   let wrapperKey: string | null = null;
+  let originalEntry: CDFComponentEntry | undefined;
   try {
     const orig = JSON.parse(originalJson) as Record<string, unknown>;
     const keys = Object.keys(orig);
+    if (orig.$type === 'component') originalEntry = orig as unknown as CDFComponentEntry;
     if (keys.length === 1 && orig[keys[0]] !== null && typeof orig[keys[0]] === 'object') {
       const inner = orig[keys[0]] as Record<string, unknown>;
       if (inner.$type === 'component' || inner.$properties !== undefined) {
         wrapperKey = keys[0];
+        originalEntry = inner as unknown as CDFComponentEntry;
       }
     }
   } catch {}
 
-  const $properties: Record<string, CDFPropertyDefinition> = {};
+  const $properties: Record<string, CDFPropertyDefinition> = Object.create(null);
   for (const p of state.props) {
-    const def: CDFPropertyDefinition = {
-      $type: p.type,
-      $category: p.category,
-    };
-    if (p.required) def.$required = true;
-    if (p.description) def.$description = p.description;
-    if (p.type === 'enum' && p.values.length > 0) def.$values = p.values;
-    if (p.type === 'token' && p.tokenKind) def['$token.kind'] = p.tokenKind;
-    if (p.type === 'token' && p.allowed.length > 0) def['$token.allowed'] = p.allowed;
-    if (p.default !== null) {
-      if (p.type === 'boolean' && typeof p.default === 'boolean') {
-        def.$default = p.default;
-      } else if (
-        (p.type === 'string' || p.type === 'token' || p.type === 'enum') &&
-        typeof p.default === 'string' &&
-        p.default !== ''
-      ) {
-        def.$default = p.default;
+    const sameType = p.original?.$type === p.type;
+    const def: CDFPropertyDefinition = p.original ? cloneJson(p.original) : { $type: p.type, $category: p.category };
+    def.$type = p.type;
+    def.$category = p.category;
+    if (!sameType) {
+      if (p.type !== 'array') delete def.$items;
+      if (p.type !== 'record') delete def.$fields;
+      if (p.type !== 'Literal') {
+        delete def.value;
+        delete def.valueType;
       }
+      if (p.type !== 'ResourceLink') delete def.allowedResources;
+      if (p.type !== 'DiscriminatedUnion') {
+        delete def.discriminator;
+        delete def.members;
+      }
+      delete def.$values;
+      delete def['$token.kind'];
+      delete def['$token.allowed'];
+      if (!validateCDFProperty(def).valid) delete def.$default;
+    }
+    if (p.required || own(def, '$required')) def.$required = p.required;
+    if (p.description) def.$description = p.description;
+    else delete def.$description;
+    if (isFinitePrimitiveType(p.type)) {
+      if (p.values.length) def.$values = p.values.map((text) => finiteChoiceValue(text, p.type));
+      else delete def.$values;
+    }
+    if (p.type === 'token') {
+      if (p.tokenKind) def['$token.kind'] = p.tokenKind;
+      else delete def['$token.kind'];
+      if (p.allowed.length) def['$token.allowed'] = [...p.allowed];
+      else delete def['$token.allowed'];
+    }
+    if (p.defaultTouched) {
+      if (p.default === undefined) delete def.$default;
+      else def.$default = p.default;
     }
     $properties[p.name] = def;
   }
 
   const entry: CDFComponentEntry = {
+    ...(originalEntry ? cloneJson(originalEntry) : {}),
     $type: 'component',
     $properties,
   };
+  delete entry.$slots;
+  delete entry.$description;
   if (state.componentDescription) entry.$description = state.componentDescription;
   if (state.slots.length > 0) {
-    entry.$slots = {};
+    const slots: Record<string, CDFSlotDefinition> = Object.create(null);
+    entry.$slots = slots;
     for (const s of state.slots) {
-      const slotDef: CDFSlotDefinition = {};
+      const slotDef: CDFSlotDefinition = s.original ? cloneJson(s.original) : {};
       if (s.description) slotDef.$description = s.description;
-      if (s.required) slotDef.$required = true;
-      if (s.allowedComponents.length > 0) slotDef.$allowedComponents = s.allowedComponents;
-      entry.$slots[s.name] = slotDef;
+      else delete slotDef.$description;
+      if (s.required || own(slotDef, '$required')) slotDef.$required = s.required;
+      if (s.allowedComponents.length > 0) slotDef.$allowedComponents = [...s.allowedComponents];
+      else delete slotDef.$allowedComponents;
+      slots[s.name] = slotDef;
     }
   }
 
@@ -475,7 +553,7 @@ function DefaultSubRow({
   cursorVisible: boolean;
 }): React.ReactElement {
   const cursor = cursorVisible ? '█' : ' ';
-  if (prop.type === 'richtext' || prop.type === 'media' || prop.type === 'link') {
+  if (['richtext', 'media', 'link', 'RichText', 'JSON', 'ResourceLink'].includes(prop.type)) {
     return (
       <Box gap={1} flexShrink={0}>
         <Text color={focused ? PALETTE.warning : PALETTE.muted} bold={focused}>
@@ -486,12 +564,28 @@ function DefaultSubRow({
     );
   }
 
+  if (['array', 'record', 'number', 'Integer', 'Literal', 'DateTime', 'DiscriminatedUnion'].includes(prop.type)) {
+    const display =
+      prop.defaultDraft ??
+      (prop.default === undefined
+        ? '(unset)'
+        : prop.type === 'DateTime'
+          ? String(prop.default)
+          : JSON.stringify(prop.default));
+    return (
+      <DefaultValueRow
+        display={display.length > 72 ? `${display.slice(0, 69)}...` : display}
+        active={active}
+        focused={focused}
+      />
+    );
+  }
   if (prop.type === 'boolean') {
     const display = prop.default === true ? 'true' : prop.default === false ? 'false' : '(unset)';
     return <DefaultValueRow display={display} active={active} focused={focused} />;
   }
 
-  if (prop.type === 'enum') {
+  if (isFinitePrimitiveType(prop.type) && prop.values.length > 0) {
     if (prop.values.length === 0) {
       return (
         <Box gap={1} flexShrink={0}>
@@ -502,7 +596,7 @@ function DefaultSubRow({
         </Box>
       );
     }
-    const display = typeof prop.default === 'string' && prop.default !== '' ? prop.default : '(unset)';
+    const display = typeof prop.default === 'string' ? JSON.stringify(prop.default) : '(unset)';
     return <DefaultValueRow display={display} active={active} focused={focused} />;
   }
 
@@ -674,7 +768,7 @@ function PropRow({
         </InlinePropField>
       )}
 
-      {prop.type === 'enum' && (
+      {isFinitePrimitiveType(prop.type) && (
         <Box gap={1} flexWrap="wrap" width={width} flexShrink={0}>
           <Text color={activeField === 'values' ? PALETTE.warning : PALETTE.muted} bold={activeField === 'values'}>
             {activeField === 'values' ? '› ' : '  '}values:
@@ -723,7 +817,7 @@ function PropRow({
         </Box>
       )}
 
-      {selected && prop.type === 'enum' && activeField === 'values' && (
+      {selected && isFinitePrimitiveType(prop.type) && activeField === 'values' && (
         <Box paddingLeft={2} flexDirection="column">
           <Box>
             <Text color={PALETTE.muted}>values:</Text>
@@ -897,8 +991,8 @@ function propFields(prop: PropState): PropField[] {
   if (prop.type === 'token') {
     fields.push('tokenKind');
   }
-  if (prop.type === 'enum') fields.push('values');
-  if (prop.type !== 'richtext' && prop.type !== 'media' && prop.type !== 'link') {
+  if (isFinitePrimitiveType(prop.type)) fields.push('values');
+  if (!['richtext', 'media', 'link', 'RichText', 'JSON', 'ResourceLink'].includes(prop.type)) {
     fields.push('default');
   }
   if (prop.type === 'token' && prop.category === 'design') fields.push('allowed');
@@ -1021,6 +1115,7 @@ export function FieldEditor({
   active = true,
   onChange,
   onSave,
+  onDraftValidityChange,
   onDiscard,
   onExit,
   metadata,
@@ -1130,6 +1225,9 @@ export function FieldEditor({
   const [pickerCursor, setPickerCursor] = useState(0);
 
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [jsonDraft, setJsonDraft] = useState<string | null>(null);
+  const [jsonCursor, setJsonCursor] = useState(0);
+  const [jsonSelectAll, setJsonSelectAll] = useState(false);
   const [cursorVisible] = useState(true);
 
   const [sourceOpen, setSourceOpen] = useState(false);
@@ -1214,11 +1312,12 @@ export function FieldEditor({
   };
 
   const textEntryActive =
+    jsonDraft !== null ||
     (focusLevel === 'field' && editingField && activeField === 'description') ||
     (focusLevel === 'field' &&
       editingField &&
       activeField === 'default' &&
-      (editorState.props[propIdx]?.type === 'string' || editorState.props[propIdx]?.type === 'token')) ||
+      ['string', 'token', 'number', 'array', 'record'].includes(editorState.props[propIdx]?.type ?? '')) ||
     editingValue != null;
   React.useEffect(() => {
     onTextEntryActiveChange?.(textEntryActive);
@@ -1245,8 +1344,16 @@ export function FieldEditor({
   }, [inComponentDesc, inSlots, showHiddenProps, slots.length, visiblePropIndexes, visiblePropPosition]);
 
   const commit = (next: EditorState) => {
+    const serialized = serializeState(next, value);
+    const parsed = parseToState(serialized);
+    if (parsed.error) {
+      setValidationError(parsed.error);
+      setEditorState(next);
+      return;
+    }
+    setValidationError(null);
     setEditorState(next);
-    onChange(serializeState(next, value));
+    onChange(serialized);
   };
 
   const deleteRow = (row: SelectableRow) => {
@@ -1302,7 +1409,21 @@ export function FieldEditor({
   const initialStateRef = React.useRef<EditorState>(initialState);
   const baselineCanonical = canonicalize(serializeState(initialStateRef.current, value));
   const currentCanonical = canonicalize(serializeState(editorState, value));
-  const isDirty = currentCanonical !== baselineCanonical;
+  const invalidDefault = editorState.props.some((prop) => Boolean(prop.defaultError));
+  const isDirty =
+    jsonDraft !== null
+      ? canonicalize(jsonDraft) !== baselineCanonical
+      : currentCanonical !== baselineCanonical || invalidDefault;
+  React.useEffect(() => {
+    onDraftValidityChange?.(jsonDraft !== null || (!invalidDefault && !validationError));
+  }, [invalidDefault, validationError, jsonDraft, onDraftValidityChange]);
+  const saveAcknowledged = (): boolean => {
+    if (invalidDefault || validationError) return false;
+    if (onSave(serializeState(editorState, value)) !== true) return false;
+    initialStateRef.current = editorState;
+    onDirtyChange?.(false);
+    return true;
+  };
   React.useEffect(() => {
     onDirtyChange?.(isDirty);
   }, [isDirty, onDirtyChange]);
@@ -1318,6 +1439,77 @@ export function FieldEditor({
 
   useImmediateInput((input, key) => {
     if (!active) return;
+    if (key.ctrl && input === 'j' && jsonDraft === null) {
+      const next = serializeState(editorState, value);
+      setJsonDraft(next);
+      setJsonCursor(next.length);
+      setValidationError(null);
+      onTextEntryActiveChange?.(true);
+      return;
+    }
+    if (jsonDraft !== null) {
+      if ((key.ctrl && input === 's') || key.escape) {
+        try {
+          parseStrictJson(jsonDraft);
+          const parsed = parseToState(jsonDraft);
+          if (parsed.error) throw new Error(parsed.error);
+          if (onSave(jsonDraft) !== true) {
+            setValidationError('Save failed; JSON draft retained');
+            return;
+          }
+          setEditorState(parsed.state);
+          initialStateRef.current = parsed.state;
+          setJsonDraft(null);
+          setValidationError(null);
+          onDirtyChange?.(false);
+          onTextEntryActiveChange?.(false);
+        } catch (error) {
+          setValidationError(error instanceof Error ? error.message : 'Invalid JSON');
+        }
+        return;
+      }
+      if (key.ctrl && input === 'x') {
+        setJsonDraft(null);
+        setValidationError(null);
+        setEditorState(initialStateRef.current);
+        onChange(serializeState(initialStateRef.current, value));
+        onTextEntryActiveChange?.(false);
+        return;
+      }
+      if (key.ctrl && input === 'a') {
+        setJsonSelectAll(true);
+        return;
+      }
+      if (key.leftArrow) {
+        setJsonCursor(Math.max(0, jsonCursor - 1));
+        return;
+      }
+      if (key.rightArrow) {
+        setJsonCursor(Math.min(jsonDraft.length, jsonCursor + 1));
+        return;
+      }
+      let next = jsonSelectAll ? '' : jsonDraft,
+        position = jsonSelectAll ? 0 : jsonCursor;
+      setJsonSelectAll(false);
+      if (key.backspace || key.delete) {
+        if (position > 0) {
+          next = next.slice(0, position - 1) + next.slice(position);
+          position--;
+        }
+      } else if (key.return) {
+        next = next.slice(0, position) + '\n' + next.slice(position);
+        position++;
+      } else if (!key.ctrl && !key.meta && input) {
+        next = next.slice(0, position) + input + next.slice(position);
+        position += input.length;
+      } else return;
+      setJsonDraft(next);
+      setJsonCursor(position);
+      setValidationError(null);
+      onChange(next);
+      return;
+    }
+    if (parseErr) return;
 
     if (showHelp) {
       if (input === 'h' || key.escape) {
@@ -1326,9 +1518,7 @@ export function FieldEditor({
       return;
     }
     if (key.ctrl && input === 's') {
-      initialStateRef.current = editorState;
-      onDirtyChange?.(false);
-      onSave();
+      saveAcknowledged();
       return;
     }
     if (pendingDelete) {
@@ -1342,7 +1532,7 @@ export function FieldEditor({
       editingField &&
       activeField === 'default' &&
       currentProp != null &&
-      (currentProp.type === 'string' || currentProp.type === 'token');
+      ['string', 'token', 'number', 'array', 'record'].includes(currentProp.type);
     const inValueListTextEntry = editingValue != null;
     if (
       input === 'h' &&
@@ -1387,8 +1577,8 @@ export function FieldEditor({
             if (exact) chosen = exact;
           }
         }
-        const trimmed = chosen ?? valueText.trim();
-        if (trimmed) {
+        const trimmed = chosen ?? (isPropValuesEntry && currentProp!.type === 'string' ? valueText : valueText.trim());
+        if (trimmed || (isPropValuesEntry && currentProp!.type === 'string')) {
           if (
             isSlotAllowedEntry &&
             editingValue?.mode === 'add' &&
@@ -1425,6 +1615,14 @@ export function FieldEditor({
             cursorAfter = idx;
           }
           if (isPropValuesEntry) {
+            try {
+              const typed = nextVals.map((text) => finiteChoiceValue(text, currentProp!.type));
+              const issue = finiteValuesIssue(currentProp!.type, typed);
+              if (issue) throw new Error(issue.message);
+            } catch (error) {
+              setValidationError(error instanceof Error ? error.message : 'Invalid finite choice');
+              return;
+            }
             const nextProps = props.map((p, i) => (i === propIdx ? { ...p, values: nextVals } : p));
             commit({ ...editorState, props: nextProps });
           } else {
@@ -1493,7 +1691,7 @@ export function FieldEditor({
       editingField &&
       activeField === 'default' &&
       currentProp != null &&
-      (currentProp.type === 'string' || currentProp.type === 'token');
+      ['string', 'token', 'number', 'array', 'record'].includes(currentProp.type);
     const rationaleKeyAllowed =
       !key.ctrl &&
       !key.meta &&
@@ -1526,10 +1724,7 @@ export function FieldEditor({
         if (editingField) {
           // Leaving a text field is an edit exit, not a cancellation. Persist
           // the current draft before returning to field navigation.
-          initialStateRef.current = editorState;
-          onDirtyChange?.(false);
-          onSave();
-          setEditingField(false);
+          if (saveAcknowledged()) setEditingField(false);
         } else {
           if (inComponentDesc) setFocusLevel('componentDescription');
           else setFocusLevel(inSlots ? 'slot' : 'prop');
@@ -1537,6 +1732,7 @@ export function FieldEditor({
         }
         return;
       }
+      if (invalidDefault || validationError) return;
       if (onExit) {
         onExit();
       } else {
@@ -1637,7 +1833,13 @@ export function FieldEditor({
             const desc = inSlots ? (currentSlot?.description ?? '') : (currentProp?.description ?? '');
             setTextCursor(desc.length);
           } else if (next === 'default' && currentProp) {
-            const cur = typeof currentProp.default === 'string' ? currentProp.default : '';
+            const cur =
+              currentProp.defaultDraft ??
+              (typeof currentProp.default === 'string'
+                ? currentProp.default
+                : currentProp.default === undefined
+                  ? ''
+                  : JSON.stringify(currentProp.default));
             setTextCursor(cur.length);
           } else if (next === 'values' || next === 'allowedComponents') {
             const nextVals =
@@ -1653,6 +1855,7 @@ export function FieldEditor({
       }
 
       if (key.return) {
+        if (invalidDefault || validationError) return;
         setEditingField(false);
         return;
       }
@@ -1688,16 +1891,36 @@ export function FieldEditor({
         const next = key.leftArrow
           ? options[(idx - 1 + options.length) % options.length]
           : options[(idx + 1) % options.length];
-        const updated = { ...currentProp, type: next as PropState['type'] };
+        if (next !== currentProp.type && currentProp.values.length > 0) {
+          setValidationError('Clear the established finite choices before changing the property type');
+          return;
+        }
+        if (
+          ['array', 'record', 'Literal', 'RichText', 'JSON', 'ResourceLink', 'DiscriminatedUnion'].includes(next) &&
+          next !== currentProp.type
+        ) {
+          setValidationError('Press Ctrl+J to edit the recursive definition in component JSON');
+          return;
+        }
+        const updated = {
+          ...currentProp,
+          type: next as PropState['type'],
+          defaultDraft: undefined,
+          defaultError: undefined,
+          defaultTouched: true,
+        };
         if (next === 'token') {
           updated.category = 'design';
           updated.tokenKind ||= DESIGN_TOKEN_TYPES[0] ?? '';
         } else {
           updated.tokenKind = '';
+          if (['Integer', 'DateTime'].includes(next)) updated.category = 'content';
         }
-        if (next !== 'enum') updated.values = [];
         const nextProps = props.map((p, i) => (i === propIdx ? updated : p));
-        commit({ ...editorState, props: nextProps });
+        const nextState = { ...editorState, props: nextProps };
+        const nextDefinition = parseToState(serializeState(nextState, value)).state.props[propIdx]?.original;
+        if (nextDefinition && !validateCDFProperty(nextDefinition).valid) updated.default = undefined;
+        commit(nextState);
         return;
       }
 
@@ -1726,12 +1949,66 @@ export function FieldEditor({
 
       if (activeField === 'default' && currentProp) {
         const setProp = (next: PropState) => {
+          next = { ...next, defaultTouched: true };
           const nextProps = props.map((p, i) => (i === propIdx ? next : p));
           commit({ ...editorState, props: nextProps });
         };
 
+        if (key.ctrl && input === 'x') {
+          setProp({ ...currentProp, default: undefined, defaultDraft: undefined, defaultError: undefined });
+          return;
+        }
+        if (
+          ['number', 'array', 'record', 'Integer', 'Literal', 'DateTime', 'DiscriminatedUnion'].includes(
+            currentProp.type,
+          )
+        ) {
+          const cur =
+            currentProp.defaultDraft ??
+            (currentProp.default === undefined
+              ? ''
+              : currentProp.type === 'DateTime'
+                ? String(currentProp.default)
+                : JSON.stringify(currentProp.default));
+          if (key.leftArrow) {
+            setTextCursor((cursor) => Math.max(0, cursor - 1));
+            return;
+          }
+          if (key.rightArrow) {
+            setTextCursor((cursor) => Math.min(cur.length, cursor + 1));
+            return;
+          }
+          let draft = cur;
+          let cursor = textCursor;
+          if (key.backspace && cursor > 0) {
+            draft = cur.slice(0, cursor - 1) + cur.slice(cursor);
+            cursor--;
+          } else if (key.delete) draft = cur.slice(0, cursor) + cur.slice(cursor + 1);
+          else if (input && !key.ctrl && !key.meta && !key.return) {
+            draft = cur.slice(0, cursor) + input + cur.slice(cursor);
+            cursor += input.length;
+          } else return;
+          const parsed = parseTypedDefault(draft, currentProp.type);
+          const updated = {
+            ...currentProp,
+            defaultDraft: draft,
+            defaultTouched: true,
+            ...('error' in parsed
+              ? { defaultError: parsed.error }
+              : { default: parsed.value, defaultError: undefined }),
+          };
+          const next = { ...editorState, props: props.map((prop, index) => (index === propIdx ? updated : prop)) };
+          setTextCursor(cursor);
+          if ('error' in parsed) {
+            setEditorState(next);
+            setValidationError(parsed.error);
+          } else {
+            commit(next);
+          }
+          return;
+        }
         if (currentProp.type === 'boolean' && (key.leftArrow || key.rightArrow)) {
-          const cycle: (boolean | null)[] = [null, true, false];
+          const cycle: (boolean | undefined)[] = [undefined, true, false];
           const curIdx = cycle.findIndex((v) => v === currentProp.default);
           const idx = curIdx < 0 ? 0 : curIdx;
           const nextIdx = key.rightArrow ? (idx + 1) % cycle.length : (idx - 1 + cycle.length) % cycle.length;
@@ -1739,9 +2016,9 @@ export function FieldEditor({
           return;
         }
 
-        if (currentProp.type === 'enum' && (key.leftArrow || key.rightArrow)) {
-          const opts: (string | null)[] = [null, ...currentProp.values];
-          const cur = typeof currentProp.default === 'string' ? currentProp.default : null;
+        if (currentProp.type === 'string' && currentProp.values.length > 0 && (key.leftArrow || key.rightArrow)) {
+          const opts: (string | undefined)[] = [undefined, ...currentProp.values];
+          const cur = typeof currentProp.default === 'string' ? currentProp.default : undefined;
           const curIdx = opts.findIndex((v) => v === cur);
           const idx = curIdx < 0 ? 0 : curIdx;
           const nextIdx = key.rightArrow ? (idx + 1) % opts.length : (idx - 1 + opts.length) % opts.length;
@@ -1750,8 +2027,14 @@ export function FieldEditor({
         }
 
         if (currentProp.type === 'string' || currentProp.type === 'token') {
-          const cur = typeof currentProp.default === 'string' ? currentProp.default : '';
-          const setVal = (next: string) => setProp({ ...currentProp, default: next === '' ? null : next });
+          const cur =
+            currentProp.defaultDraft ??
+            (typeof currentProp.default === 'string'
+              ? currentProp.default
+              : currentProp.default === undefined
+                ? ''
+                : JSON.stringify(currentProp.default));
+          const setVal = (next: string) => setProp({ ...currentProp, default: next });
           if (key.leftArrow) {
             setTextCursor((c) => Math.max(0, c - 1));
             return;
@@ -1941,33 +2224,6 @@ export function FieldEditor({
 
   const innerWidth = Math.max(1, width - 2);
 
-  if (parseErr) {
-    return (
-      <Box flexDirection="column" width={width} borderStyle="single" borderColor={PALETTE.error}>
-        <Text bold color={PALETTE.error}>
-          FIELD EDITOR — parse error
-        </Text>
-        <Text color={PALETTE.error}>{parseErr}</Text>
-        <Text color={PALETTE.muted}>Cannot display structured editor. Fix the JSON first.</Text>
-      </Box>
-    );
-  }
-
-  if (props.length === 0 && slots.length === 0) {
-    return (
-      <Box flexDirection="column" width={width} borderStyle="single" borderColor={PALETTE.warning}>
-        <Text bold color={PALETTE.warning}>
-          FIELD EDITOR — no fields
-        </Text>
-        <Text color={PALETTE.warning}>
-          {"⚠ No properties classified for this component. The LLM didn't find anything to classify."}
-        </Text>
-        <Text color={PALETTE.muted}>You can add fields manually below or reject this component.</Text>
-        <Text color={PALETTE.muted}>Enter to save · Esc to discard</Text>
-      </Box>
-    );
-  }
-
   const hasEmptyProperties = props.length === 0 && slots.length === 0;
 
   const modeLabel = (() => {
@@ -1996,7 +2252,7 @@ export function FieldEditor({
     if (rationaleOpen) {
       return '[↑↓] scroll  [i/Esc] close rationale panel';
     }
-    return `[↑↓] navigate  [Enter] edit fields  [d] delete property  [h] help  [s] source  [Esc] exit panel`;
+    return `[↑↓] navigate rows  [Enter] edit fields  [d] delete property  [s] source  [${propRationaleKey}] prop rationale  [${componentRationaleKey}] component rationale  [Ctrl+j] edit component JSON  [h] help  [Esc] exit panel`;
   })();
 
   type Row =
@@ -2113,6 +2369,48 @@ export function FieldEditor({
       return changed ? next : previous;
     });
   });
+
+  if (jsonDraft !== null) {
+    const before = jsonDraft.slice(0, jsonCursor),
+      after = jsonDraft.slice(jsonCursor);
+    const lines = (before + '▌' + after).split('\n');
+    const currentLine = before.split('\n').length - 1;
+    const visibleHeight = Math.max(1, height - 5);
+    const start = Math.max(0, currentLine - visibleHeight + 1);
+    return (
+      <Box flexDirection="column" width={width} height={height} borderStyle="single" borderColor={PALETTE.accent}>
+        <Text bold>Component JSON · Ctrl+S/Esc save · Ctrl+A select all · Ctrl+X discard</Text>
+        <Text>{lines.slice(start, start + visibleHeight).join('\n')}</Text>
+        {validationError && <Text color={PALETTE.error}>{validationError}</Text>}
+      </Box>
+    );
+  }
+  if (parseErr) {
+    return (
+      <Box flexDirection="column" width={width} borderStyle="single" borderColor={PALETTE.error}>
+        <Text bold color={PALETTE.error}>
+          FIELD EDITOR — parse error
+        </Text>
+        <Text color={PALETTE.error}>{parseErr}</Text>
+        <Text color={PALETTE.muted}>Cannot display structured editor. Fix the JSON first.</Text>
+      </Box>
+    );
+  }
+
+  if (props.length === 0 && slots.length === 0) {
+    return (
+      <Box flexDirection="column" width={width} borderStyle="single" borderColor={PALETTE.warning}>
+        <Text bold color={PALETTE.warning}>
+          FIELD EDITOR — no fields
+        </Text>
+        <Text color={PALETTE.warning}>
+          {"⚠ No properties classified for this component. The LLM didn't find anything to classify."}
+        </Text>
+        <Text color={PALETTE.muted}>You can add fields manually below or reject this component.</Text>
+        <Text color={PALETTE.muted}>Enter to save · Esc to discard</Text>
+      </Box>
+    );
+  }
 
   const focusedSlotPickerCandidates =
     focusLevel === 'field' &&
@@ -2295,19 +2593,81 @@ export function FieldEditor({
           const path = metadata?.sourcePath ?? null;
           const src = metadata?.componentSource ?? null;
           const headerPath = path ?? '<unknown source path>';
-          if (!start || !end || !src) {
+          const candidate = propMeta?.sourceCandidate;
+          const fact = candidate?.facts;
+          const syntaxRows = candidate ? sourceObservationRows(candidate) : [];
+          const declarationLocations = fact?.declarations
+            .map(
+              (location) =>
+                `${location.canonicalPath ?? '<unknown>'}:${location.startLine ?? '?'}-${location.endLine ?? '?'} (${location.binding})`,
+            )
+            .join(', ');
+          const lineRange = metadata?.sourceLineRanges?.find(
+            (range) => start !== null && end !== null && start >= range.sourceStartLine && end <= range.sourceEndLine,
+          );
+          if (!start || !end || !src || (metadata?.sourceLineRanges && !lineRange)) {
             return (
               <Box flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1}>
                 <Text color={PALETTE.muted} bold>{`source: ${headerPath}`}</Text>
+                {candidate && (
+                  <Text color={PALETTE.muted} wrap="truncate-end">
+                    {`source fact: ${fact?.sourceTypeText ?? candidate.type} · origin ${fact?.origin ?? 'unknown'} · certainty ${fact?.certainty ?? 'unknown'} · declared required ${fact?.declaredRequired === null || fact?.declaredRequired === undefined ? 'unknown' : String(fact.declaredRequired)} · domain ${fact?.domain.openness ?? 'unknown'}`}
+                  </Text>
+                )}
+                {fact?.sourceDefault && (
+                  <Text
+                    color={PALETTE.muted}
+                    wrap="truncate-end"
+                  >{`source default: ${fact.sourceDefault.expression}`}</Text>
+                )}
+                {declarationLocations && (
+                  <Text color={PALETTE.muted} wrap="truncate-end">{`declarations: ${declarationLocations}`}</Text>
+                )}
+                {syntaxRows.map((row, index) => (
+                  <Text key={`syntax-${index}`} color={PALETTE.muted}>
+                    {row}
+                  </Text>
+                ))}
                 <Text color={PALETTE.muted}>(no source location captured for this prop)</Text>
                 <Text>[s] close</Text>
               </Box>
             );
           }
-          const lines = src.split('\n').slice(Math.max(0, start - 1), end);
+          const displayStart = lineRange ? lineRange.displayStartLine + start - lineRange.sourceStartLine : start;
+          const displayEnd = displayStart + end - start;
+          const lines = src.split('\n').slice(Math.max(0, displayStart - 1), displayEnd);
           return (
             <Box flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1}>
               <Text color={PALETTE.muted} bold>{`${headerPath}: lines ${start}–${end}`}</Text>
+              <Text color={PALETTE.muted}>
+                {`evidence: ${metadata?.sourceCoverage ?? 'unavailable'} · extraction bytes: ${metadata?.extractionByteBinding ?? 'unverified'}`}
+              </Text>
+              {candidate && (
+                <Text color={PALETTE.muted} wrap="truncate-end">
+                  {`source fact: ${fact?.sourceTypeText ?? candidate.type} · origin ${fact?.origin ?? 'unknown'} · certainty ${fact?.certainty ?? 'unknown'} · declared required ${fact?.declaredRequired === null || fact?.declaredRequired === undefined ? 'unknown' : String(fact.declaredRequired)} · domain ${fact?.domain.openness ?? 'unknown'}`}
+                </Text>
+              )}
+              {fact?.sourceDefault && (
+                <Text
+                  color={PALETTE.muted}
+                  wrap="truncate-end"
+                >{`source default: ${fact.sourceDefault.expression}`}</Text>
+              )}
+              {declarationLocations && (
+                <Text color={PALETTE.muted} wrap="truncate-end">{`declarations: ${declarationLocations}`}</Text>
+              )}
+              {syntaxRows.map((row, index) => (
+                <Text key={`syntax-${index}`} color={PALETTE.muted}>
+                  {row}
+                </Text>
+              ))}
+              {metadata?.scopeProvenance && (
+                <Text color={PALETTE.muted}>
+                  {metadata.scopeProvenance.kind === 'closure'
+                    ? `scope: included by ${metadata.scopeProvenance.roots.join(', ')}`
+                    : `scope: ${metadata.scopeProvenance.kind}`}
+                </Text>
+              )}
               {lines.map((ln, i) => (
                 <Text key={`source-line-${i}`} color={PALETTE.muted}>
                   {ln}

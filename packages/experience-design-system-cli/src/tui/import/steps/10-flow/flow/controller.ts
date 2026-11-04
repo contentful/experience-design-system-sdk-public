@@ -7,13 +7,13 @@ import {
   detectSaveConflict,
   formatSlotCycleReport,
   hasBreakingChangesWithImpact,
-  loadCDFComponents,
+  loadSelectedCDFComponents,
   openPipelineDb,
   rejectComponentsByName,
   type PreviewValidationError,
 } from '@contentful/experience-design-system-backend-pipeline';
 import type { ImportHandoff } from '@contentful/experience-design-system-types/handoff';
-import { buildComponentGraph } from '../../07-scope-gate/graph/slot-graph.js';
+import { buildVisualComponentGraph } from '../../09-review/graph/cycle-view.js';
 import { findSlotCycles } from '../../07-scope-gate/graph/cycle-detection.js';
 import { resolveCycleGateAction } from '../support/wizard-state-transitions.js';
 import { realPreviewDeps, runPreview, type PreviewDeps } from './preview.js';
@@ -77,7 +77,7 @@ export function realFlowDeps(): FlowDeps {
     loadAcceptedComponents: (sessionId) => {
       const db = openPipelineDb();
       try {
-        return loadCDFComponents(db, sessionId);
+        return loadSelectedCDFComponents(db, sessionId, undefined, undefined, 'definition');
       } finally {
         db.close();
       }
@@ -244,12 +244,17 @@ export function createFlowController(start: FlowStart, deps: FlowDeps): FlowCont
   };
 
   const push = async (acknowledgeBreakingChanges: boolean): Promise<void> => {
-    if (!state.cdf) return;
+    if (
+      !state.cdf ||
+      !(state.step === 'preview-gate' || (state.step === 'error' && state.errorAllowBreakingChangeAcknowledgment))
+    )
+      return;
     update(
       await runPush(
         {
           state,
           cdf: state.cdf,
+          extractSessionId: state.extractSessionId,
           spaceId: state.spaceId,
           environmentId: state.environmentId,
           cmaToken: state.cmaToken,
@@ -292,12 +297,8 @@ export function createFlowController(start: FlowStart, deps: FlowDeps): FlowCont
 
   const detectAcceptedCycles = (): ReturnType<typeof findSlotCycles> => {
     if (!state.extractSessionId) return [];
-    try {
-      const accepted = deps.loadAcceptedComponents(state.extractSessionId);
-      return findSlotCycles(buildComponentGraph(accepted as Parameters<typeof buildComponentGraph>[0]));
-    } catch {
-      return [];
-    }
+    const accepted = deps.loadAcceptedComponents(state.extractSessionId);
+    return findSlotCycles(buildVisualComponentGraph(accepted as Parameters<typeof buildVisualComponentGraph>[0]));
   };
 
   // Begins the flow where the generation stage left off: the review, or straight on to saving and pushing.
@@ -336,11 +337,24 @@ export function createFlowController(start: FlowStart, deps: FlowDeps): FlowCont
 
     finalize(accepted, rejected, unresolved) {
       deps.stderr(`Accepted: ${accepted}  Rejected: ${rejected}  Unresolved: ${unresolved}\n`);
-      const cycles = detectAcceptedCycles();
+      let cycles: ReturnType<typeof findSlotCycles>;
+      try {
+        cycles = detectAcceptedCycles();
+      } catch (error) {
+        update({
+          step: 'error',
+          finalReviewPassed: false,
+          errorStep: 'final review',
+          errorMessage: `Cannot verify accepted component cycles: ${String(error)}. Return to review and retry before saving.`,
+          errorAllowCredentialRetry: false,
+        });
+        return;
+      }
       if (resolveCycleGateAction({ hasCycles: cycles.length > 0 }) === 'block') {
         update({
           step: 'error',
           errorStep: 'final review',
+          finalReviewPassed: false,
           errorMessage: formatSlotCycleReport({ cycles }).join('\n'),
           errorAllowCredentialRetry: false,
         });
@@ -351,6 +365,7 @@ export function createFlowController(start: FlowStart, deps: FlowDeps): FlowCont
     },
 
     async submitPath(submitted) {
+      if (state.step !== 'path-prompt') return;
       await deps.mkdir(submitted);
       // This run's own folder already holds its tokens.json, so only a folder the user picked can conflict.
       if (resolve(submitted) !== resolve(state.outDir) && (await deps.detectSaveConflict(submitted))) {
@@ -364,9 +379,10 @@ export function createFlowController(start: FlowStart, deps: FlowDeps): FlowCont
 
     confirmPreview: (acknowledge) => void push(acknowledge),
     acknowledgeBreakingChanges: () => void push(true),
-    editDefinitions: () => update({ step: 'final-review' }),
+    editDefinitions: () => update({ step: 'final-review', finalReviewPassed: false }),
 
     async skipValidationErrors() {
+      if (state.step !== 'preview-validation-error') return;
       if (state.extractSessionId) {
         const names = namesToSkip(state.previewValidationErrors);
         if (names.length > 0) await deps.rejectComponentsByName(state.extractSessionId, names);

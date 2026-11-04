@@ -1,6 +1,9 @@
+import type { AgentDebugEvent } from '../../agents/types/agent-run.js';
 import type { ExistingContentfulEntities } from '../../steps/generation/src/types/existing-entities.js';
 
 export type GenerateComponentsProgress =
+  | { kind: 'component:model-exploring'; index: number; total: number; name: string; modelKey: string }
+  | { kind: 'component:resumed'; index: number; total: number; name: string }
   | {
       kind: 'component:started';
       index: number;
@@ -53,7 +56,13 @@ export interface GeneratedComponentResult {
 }
 
 export interface RunGenerateComponentsSessionRequest {
+  /** Explicit debug restart in the same saved session; not cross-session caching. */
+  debugResume?: boolean;
+  debugRequireComplete?: boolean;
+  debugArtifactDir?: string;
   sessionId: string;
+
+  signal?: AbortSignal;
 
   agent: string;
 
@@ -76,6 +85,8 @@ export interface RunGenerateComponentsSessionRequest {
   precomputedCachedNames?: ReadonlySet<string>;
 
   onProgress?: (event: GenerateComponentsProgress) => void;
+
+  onDebugEvent?: AgentDebugEvent;
 }
 
 export interface RunGenerateComponentsSessionResponse {

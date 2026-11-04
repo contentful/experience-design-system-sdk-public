@@ -1,7 +1,11 @@
+import { saveDebugImportCheckpoint } from '../../debug-resume.js';
 import { mkdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import {
   checkAgentAuth,
+  openPipelineDb,
+  bindCatalogueCaptureToSession,
+  type ExistingContentfulEntities,
   fetchAndPersistExistingContentfulEntities,
   parsePromptOverrides,
   resolvePromptOverride,
@@ -14,6 +18,8 @@ import { agentAuthMessage, applyProgressEvent, initialProgress, noComponentsMess
 import { runSelection } from './selection.js';
 import type { ExtractionHandoff } from '@contentful/experience-design-system-types/handoff';
 import type { ExtractionInput, ExtractionProgress, ExtractionResult } from './types.js';
+import { awaitWithSignal, linkAbortSignal, throwIfAborted } from '../../cancellation.js';
+import { recordDebugEvent } from '../../../debug-store.js';
 
 const TOKENS_SKILL_PATH = findSkillPath('generate-tokens.md');
 
@@ -26,7 +32,12 @@ type TokenGenerationResult =
 /** The outside world the stage talks to, so the order of events can be tested without a network, an agent or a CLI. */
 export interface ExtractionDeps {
   checkAgentAuth: typeof checkAgentAuth;
-  fetchEntities: (credentials: NonNullable<ExtractionInput['credentials']>, outDir: string) => Promise<string | null>;
+  fetchEntities: (
+    credentials: NonNullable<ExtractionInput['credentials']>,
+    outDir: string,
+    onCapture?: (entities: ExistingContentfulEntities) => void,
+    onActivity?: (activity: string) => void,
+  ) => Promise<string | null>;
   runExtractAndComposeSession: typeof runExtractAndComposeSession;
   runGenerateTokensSession: typeof runGenerateTokensSession;
   runSelection: typeof runSelection;
@@ -48,151 +59,253 @@ const errorMessage = (error: unknown): string => (error instanceof Error ? error
  * subprocess:
  *
  *   entities fetch ───────────────────┐
- *   extract + compose (in-process)    │
- *     └─ onSessionCreated(id) ────────┴─ selection agent (waits for fetch) ──┐
- *     └──────────────────────── returns (composition done) ─────────────────┴─ result
- *   token generation            (only when the tokens are not being reused)
+ *   extract + compose (in-process) ── returns complete source evidence ──┐
+ *   token generation            (only when the tokens are not being reused)│
+ *   entities fetch ──────────────────────────────────────────────────────┤
+ *   selection (after extraction returns; waits for entities) ────────────┴─ result
  *
- * Selection starts the moment the orchestrator mints the sessionId, so it
- * overlaps with composition. When more than one job fails, the error reported
- * is the first of: extract, no components, selection, token generation.
+ * Selection consumes the completed saved source envelope, so it starts only
+ * after extraction and composition return. When multiple jobs fail, the
+ * reported error priority is: extract, no components, selection, token generation.
  */
 export async function runExtraction(
   input: ExtractionInput,
   onProgress: (progress: ExtractionProgress) => void,
   deps: ExtractionDeps = realDeps,
 ): Promise<ExtractionResult> {
+  const linked = linkAbortSignal(input.signal);
+  const { controller } = linked;
+  const signal = controller.signal;
   const outDir = input.outDir ?? join(resolve(input.projectPath), '.contentful');
   let progress = initialProgress({
     hasCredentials: input.credentials !== null,
     hasRawTokens: input.rawTokensPath !== '',
   });
   const update = (change: Partial<ExtractionProgress>): void => {
+    if (signal.aborted) return;
     progress = { ...progress, ...change };
     onProgress(progress);
   };
-  onProgress(progress);
-
-  const auth = await deps.checkAgentAuth(input.agent as AgentName);
-  if (auth === 'not-found' || auth === 'unauthenticated') {
-    return fail(`${input.agent} auth check`, agentAuthMessage(input.agent, auth));
-  }
-
-  let selectionPrompt: { promptText?: string; promptPath?: string };
-  try {
-    selectionPrompt = await resolveSelectionPrompt(input.promptOverrides);
-  } catch (error) {
-    return fail('selection agent', errorMessage(error));
-  }
-
-  // Token generation runs at the same time as everything else, when there is a raw tokens file to generate from.
-  const tokenGeneration: Promise<TokenGenerationResult | null> =
-    input.rawTokensPath !== ''
-      ? deps
-          .runGenerateTokensSession({
-            rawTokensPath: input.rawTokensPath,
-            outDir,
-            agent: input.agent as AgentName,
-            ...(input.agentModel ? { agentModel: input.agentModel } : {}),
-            promptOverrides: input.promptOverrides,
-            skillPath: TOKENS_SKILL_PATH,
-            noCache: input.noCache,
-          })
-          .then((result): TokenGenerationResult => {
-            update({ tokens: 'complete' });
-            return {
-              ok: true,
-              tokensPath: result.tokensPath,
-              tokenSessionId: result.tokenSessionId,
-              tokenCount: result.tokenCount,
-            };
-          })
-          .catch((error: unknown): TokenGenerationResult => {
-            update({ tokens: 'failed' });
-            return {
-              ok: false,
-              step: 'generate tokens',
-              message: error instanceof Error ? error.message : String(error),
-            };
-          })
-      : Promise.resolve(null);
-
-  // The entities fetch starts before extraction, and selection waits for it.
-  let existingEntitiesPath: string | null = null;
-  const entities: Promise<boolean> | null = input.credentials
-    ? deps.fetchEntities(input.credentials, outDir).then((path) => {
-        existingEntitiesPath = path;
-        update({ existingEntities: path ? 'complete' : 'failed' });
-        return path !== null;
-      })
-    : null;
-
-  let selection: Promise<void> | null = null;
+  let selection: Promise<void> | undefined;
   let selectionError: unknown;
-  const startSelection = (sessionId: string): void => {
-    if (selection) return;
-    selection = (async () => {
-      if (entities) await entities;
-      await deps.runSelection({
-        sessionId,
-        agent: input.agent as AgentName,
-        model: input.agentModel,
-        ...selectionPrompt,
-        noCache: input.noCache,
-      });
-    })()
-      .catch((error: unknown) => {
-        selectionError = error;
-      })
-      .finally(() => update({ selection: 'complete' }));
+  let createdSessionId: string | undefined;
+  let entities: Promise<boolean> | null = null;
+  let tokenGeneration: Promise<TokenGenerationResult | null> = Promise.resolve(null);
+
+  const drainSiblings = async (): Promise<void> => {
+    await Promise.allSettled([tokenGeneration, ...(selection ? [selection] : []), ...(entities ? [entities] : [])]);
+  };
+  const cancelAndDrain = async (): Promise<void> => {
+    controller.abort();
+    await drainSiblings();
   };
 
-  let extracted: Awaited<ReturnType<typeof runExtractAndComposeSession>>;
   try {
-    extracted = await deps.runExtractAndComposeSession({
-      projectPath: input.projectPath,
-      outDir,
-      filePaths: input.filePaths,
+    throwIfAborted(signal);
+    onProgress(progress);
+    await recordDebugEvent('import.extraction.started', {
       agent: input.agent,
-      ...(input.agentModel ? { agentModel: input.agentModel } : {}),
-      promptOverrides: input.promptOverrides,
-      noCache: input.noCache,
-      onProgress: (event) => update(applyProgressEvent(progress, event)),
-      onSessionCreated: (sessionId) => startSelection(sessionId),
+      fileCount: input.filePaths.length,
+      hasRawTokens: input.rawTokensPath !== '',
+      hasCredentials: input.credentials !== null,
     });
+    throwIfAborted(signal);
+
+    const auth = await awaitWithSignal(deps.checkAgentAuth(input.agent as AgentName), signal);
+    throwIfAborted(signal);
+    await recordDebugEvent('import.extraction.auth', { agent: input.agent, status: auth });
+    throwIfAborted(signal);
+    if (auth === 'not-found' || auth === 'unauthenticated') {
+      return fail(`${input.agent} auth check`, agentAuthMessage(input.agent, auth));
+    }
+
+    const selectionPrompt = await awaitWithSignal(resolveSelectionPrompt(input.promptOverrides), signal);
+    throwIfAborted(signal);
+
+    // Token generation runs at the same time as extraction and selection.
+    tokenGeneration =
+      input.rawTokensPath !== ''
+        ? deps
+            .runGenerateTokensSession({
+              rawTokensPath: input.rawTokensPath,
+              outDir,
+              agent: input.agent as AgentName,
+              ...(input.agentModel ? { agentModel: input.agentModel } : {}),
+              promptOverrides: input.promptOverrides,
+              skillPath: TOKENS_SKILL_PATH,
+              noCache: input.noCache,
+              signal,
+              onProgress: (tokenActivity) => update({ tokenActivity }),
+            })
+            .then((result): TokenGenerationResult => {
+              update({ tokens: 'complete', tokenCount: result.tokenCount });
+              return {
+                ok: true,
+                tokensPath: result.tokensPath,
+                tokenSessionId: result.tokenSessionId,
+                tokenCount: result.tokenCount,
+              };
+            })
+            .catch((error: unknown): TokenGenerationResult => {
+              update({ tokens: 'failed' });
+              return {
+                ok: false,
+                step: 'generate tokens',
+                message: errorMessage(error),
+              };
+            })
+        : Promise.resolve(null);
+
+    let existingEntitiesPath: string | null = null;
+    let capturedEntities: ExistingContentfulEntities | undefined;
+    entities = input.credentials
+      ? deps
+          .fetchEntities(
+            input.credentials,
+            outDir,
+            (capture) => {
+              capturedEntities = capture;
+            },
+            (existingEntitiesActivity) => update({ existingEntitiesActivity }),
+          )
+          .then((path) => {
+            existingEntitiesPath = path;
+            update({ existingEntities: path ? 'complete' : 'failed' });
+            return path !== null;
+          })
+          .catch(() => {
+            update({ existingEntities: 'failed' });
+            return false;
+          })
+      : null;
+
+    const startSelection = (
+      sessionId: string,
+      sourceEvidenceHandle: Awaited<ReturnType<typeof runExtractAndComposeSession>>['sourceEvidenceHandle'],
+    ): void => {
+      if (selection || signal.aborted) return;
+      selection = (async () => {
+        if (entities) await awaitWithSignal(entities, signal);
+        throwIfAborted(signal);
+        await deps.runSelection({
+          promptOverrides: input.promptOverrides,
+          sessionId,
+          sourceEvidenceHandle,
+          existingEntitiesPath,
+          agent: input.agent as AgentName,
+          model: input.agentModel,
+          ...selectionPrompt,
+          noCache: input.noCache,
+          signal,
+          onActivity: (event) => update({ exploration: event }),
+        });
+        throwIfAborted(signal);
+      })()
+        .catch((error: unknown) => {
+          selectionError = error;
+        })
+        .finally(() => update({ selection: 'complete' }));
+    };
+
+    let extracted: Awaited<ReturnType<typeof runExtractAndComposeSession>>;
+    try {
+      await recordDebugEvent('import.extraction.source.started', { fileCount: input.filePaths.length });
+      throwIfAborted(signal);
+      extracted = await deps.runExtractAndComposeSession({
+        projectPath: input.projectPath,
+        outDir,
+        filePaths: input.filePaths,
+        sourceInventory: input.sourceInventory,
+        evidenceFilePaths: input.evidenceFilePaths,
+        agent: input.agent,
+        ...(input.agentModel ? { agentModel: input.agentModel } : {}),
+        promptOverrides: input.promptOverrides,
+        noCache: true,
+        signal,
+        onProgress: (event) => update(applyProgressEvent(progress, event)),
+        onSessionCreated: (sessionId) => {
+          createdSessionId = sessionId;
+        },
+      });
+      await recordDebugEvent('import.extraction.source.completed', { componentCount: extracted.components.length });
+    } catch (error) {
+      await recordDebugEvent('import.extraction.source.failed', {
+        errorName: error instanceof Error ? error.name : 'Error',
+      });
+      await cancelAndDrain();
+      return fail('analyze extract', errorMessage(error));
+    }
+    throwIfAborted(signal);
+
+    if (createdSessionId !== undefined && createdSessionId !== extracted.sessionId) {
+      await cancelAndDrain();
+      return fail('analyze extract', 'extraction returned a different session than the session-created notification');
+    }
+
+    if (extracted.components.length === 0) {
+      await cancelAndDrain();
+      return fail('analyze extract', noComponentsMessage(input.projectPath));
+    }
+
+    await recordDebugEvent('import.exploration.components.started', { componentCount: extracted.components.length });
+    throwIfAborted(signal);
+    startSelection(extracted.sessionId, extracted.sourceEvidenceHandle);
+
+    if (selection) await selection;
+    else if (entities) await awaitWithSignal(entities, signal);
+    if (selectionError) {
+      await recordDebugEvent('import.exploration.components.failed', {
+        errorName: selectionError instanceof Error ? selectionError.name : 'Error',
+      });
+      await cancelAndDrain();
+      return fail('selection agent', errorMessage(selectionError));
+    }
+    await recordDebugEvent('import.exploration.components.completed');
+
+    const tokens = await tokenGeneration;
+    throwIfAborted(signal);
+    if (tokens && !tokens.ok) {
+      await cancelAndDrain();
+      return fail(tokens.step, tokens.message);
+    }
+
+    if (capturedEntities && input.credentials) {
+      const db = openPipelineDb();
+      try {
+        bindCatalogueCaptureToSession(db, extracted.sessionId, input.credentials, capturedEntities);
+      } finally {
+        db.close();
+      }
+    }
+    const extraction: ExtractionHandoff = {
+      sessionId: extracted.sessionId,
+      outDir,
+      tokensPath: tokens?.ok ? tokens.tokensPath : '',
+      tokenSessionId: tokens?.ok ? tokens.tokenSessionId : null,
+      tokenCount: tokens?.ok ? tokens.tokenCount : 0,
+      existingEntitiesPath,
+      existingEntitiesStatus:
+        progress.existingEntities === 'complete' || progress.existingEntities === 'failed'
+          ? progress.existingEntities
+          : 'idle',
+      compositionPhase: extracted.compositionPhase,
+    };
+    await saveDebugImportCheckpoint(input, extraction);
+    return { ok: true, extraction };
   } catch (error) {
+    await cancelAndDrain();
     return fail('analyze extract', errorMessage(error));
+  } finally {
+    await recordDebugEvent('import.extraction.finished', { aborted: signal.aborted });
+    linked.dispose();
   }
-
-  if (selection) await selection;
-  if (!selection && entities) await entities;
-
-  if (extracted.components.length === 0) return fail('analyze extract', noComponentsMessage(input.projectPath));
-  if (selectionError) return fail('selection agent', errorMessage(selectionError));
-
-  const tokens = await tokenGeneration;
-  if (tokens && !tokens.ok) return fail(tokens.step, tokens.message);
-
-  const extraction: ExtractionHandoff = {
-    sessionId: extracted.sessionId,
-    outDir,
-    // With no raw tokens file nothing is generated, and the later steps read an empty path as "no tokens".
-    tokensPath: tokens?.ok ? tokens.tokensPath : '',
-    tokenSessionId: tokens?.ok ? tokens.tokenSessionId : null,
-    tokenCount: tokens?.ok ? tokens.tokenCount : 0,
-    existingEntitiesPath,
-    existingEntitiesStatus:
-      progress.existingEntities === 'complete' || progress.existingEntities === 'failed'
-        ? progress.existingEntities
-        : 'idle',
-    compositionPhase: extracted.compositionPhase,
-  };
-  return { ok: true, extraction };
 }
 
 async function fetchEntities(
   credentials: NonNullable<ExtractionInput['credentials']>,
   outDir: string,
+  onCapture?: (entities: ExistingContentfulEntities) => void,
+  onActivity?: (activity: string) => void,
 ): Promise<string | null> {
   try {
     await mkdir(outDir, { recursive: true });
@@ -202,8 +315,11 @@ async function fetchEntities(
       cmaToken: credentials.cmaToken,
       ...(credentials.host ? { host: credentials.host } : {}),
       outDir,
+      onProgress: onActivity,
     });
-    return result.ok ? result.path : null;
+    if (!result.ok) return null;
+    onCapture?.(result.entities);
+    return result.path;
   } catch {
     return null;
   }

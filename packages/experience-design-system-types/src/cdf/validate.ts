@@ -3,6 +3,13 @@ import { cdfJsonSchema, CDF_SCHEMA_URL } from './schema.js';
 import { DESIGN_TOKEN_TYPES } from '../dtcg/token-types.js';
 import type { CDFFile, CDFComponentEntry, CDFTokenEntry, CDFValidationError, CDFValidationResult } from './types.js';
 
+import { CDFComponentSchema } from './types.js';
+import { validateCDFProperty } from './property-validation.js';
+import { validateRepresentationClosure } from './representation-validation.js';
+import { jsonValueIssue } from '../property-contract/json-value.js';
+import { componentDefinitionImportIssues } from '../property-contract/definition-import-rules.js';
+import { validateImportPrerequisites } from '../property-contract/import-prerequisites.js';
+
 const ajv = new Ajv({ allErrors: true });
 const validate = ajv.compile(cdfJsonSchema);
 
@@ -109,6 +116,8 @@ function entryErrors(node: Record<string, unknown>, prefix: string): CDFValidati
 }
 
 export function validateCDF(input: unknown): CDFValidationResult {
+  const unsafe = jsonValueIssue(input);
+  if (unsafe) return { valid: false, errors: [unsafe], components: [], tokens: [] };
   const valid = validate(input);
   if (!valid) {
     const focused =
@@ -135,5 +144,27 @@ export function validateCDF(input: unknown): CDFValidationResult {
   }
 
   const { components, tokens } = parseCDFComponents(file as Record<string, unknown>);
-  return { valid: true, errors: [], components, tokens };
+  const errors: CDFValidationError[] = [];
+  for (const component of components) {
+    if (!CDFComponentSchema.safeParse(component.entry).success) {
+      errors.push({ path: '/' + component.key, message: 'Invalid complete component metadata or source ownership' });
+      continue;
+    }
+    for (const [key, property] of Object.entries(component.entry.$properties)) {
+      for (const issue of validateCDFProperty(property).issues)
+        errors.push({ path: `/${component.key}/$properties/${key}${issue.path}`, message: issue.message });
+    }
+    errors.push(
+      ...componentDefinitionImportIssues(component.entry).map(({ path, message }) => ({
+        path: `/${component.key}${path}`,
+        message,
+      })),
+    );
+  }
+  errors.push(...validateRepresentationClosure(components));
+  if (!errors.length) {
+    const prerequisites = validateImportPrerequisites({ components, tokens });
+    if (!prerequisites.valid) errors.push(...prerequisites.errors);
+  }
+  return { valid: !errors.length, errors, components, tokens };
 }

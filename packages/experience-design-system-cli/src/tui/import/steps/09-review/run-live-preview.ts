@@ -2,11 +2,7 @@ import type { ServerPreviewResponse } from '@contentful/experience-design-system
 import { buildCDF } from '@contentful/experience-design-system-types';
 import { ImportApiClient } from '@contentful/experience-design-system-backend-pipeline';
 import { readTokensFromPath, toCDFTokens } from '@contentful/experience-design-system-backend-pipeline';
-import {
-  backfillUnclassifiedProps,
-  loadCDFComponents,
-  openPipelineDb,
-} from '@contentful/experience-design-system-backend-pipeline';
+import { loadSelectedCDFComponents, openPipelineDb } from '@contentful/experience-design-system-backend-pipeline';
 import { cliUserAgent } from '../../../user-agent.js';
 
 class TimeoutError extends Error {
@@ -41,6 +37,7 @@ export type RunLivePreviewOptions = {
    *  full delete. Lets the Finalize dialog show exactly what the accepted push
    *  would delete, independent of the session's on-disk generated rows. */
   acceptedKeys?: ReadonlySet<string>;
+  selectedComponentIds?: ReadonlySet<string>;
 };
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -75,18 +72,10 @@ export async function runLivePreview(opts: RunLivePreviewOptions): Promise<LiveP
   if (sessionId) {
     const db = openPipelineDb();
     try {
-      backfillUnclassifiedProps(db, sessionId);
-      components = loadCDFComponents(db, sessionId);
+      components = loadSelectedCDFComponents(db, sessionId, opts.selectedComponentIds, opts.acceptedKeys);
     } finally {
       db.close();
     }
-  }
-
-  // Narrow to the accepted set when provided, so the preview reflects exactly
-  // what a push of those components would create/update/remove — the session's
-  // generated rows still include not-yet-reclassified rejects at this point.
-  if (opts.acceptedKeys) {
-    components = components.filter((c) => opts.acceptedKeys!.has(c.key));
   }
 
   let tokens: import('@contentful/experience-design-system-types').DTCGTokenEntry[] = [];
@@ -96,7 +85,14 @@ export async function runLivePreview(opts: RunLivePreviewOptions): Promise<LiveP
 
   const cdf = buildCDF(components, toCDFTokens(tokens), { deleteAll: opts.deleteAllComponents === true })!;
 
-  const client = new ImportApiClient({ host, cmaToken, spaceId, environmentId, userAgent: cliUserAgent() });
+  const client = new ImportApiClient({
+    host,
+    cmaToken,
+    spaceId,
+    environmentId,
+    userAgent: cliUserAgent(),
+    prerequisiteSessionId: sessionId,
+  });
   const startedAt = Date.now();
 
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;

@@ -3,7 +3,8 @@ import { computeColumnWidths, computeCounters, computePanelLayout } from './colu
 import { findAllAncestors } from './graph/search-neighborhood.js';
 import { computeDirectNeighborhood } from './graph/search-neighborhood.js';
 import { fuzzyMatches } from './graph/fuzzy-search.js';
-import { buildScopeGraph, rejectCascade, sidebarItems } from './graph/index.js';
+import { buildRelationshipNodes, buildScopeGraph, rejectCascade, sidebarItems } from './graph/index.js';
+import { computeClosure } from './graph/composite-closure.js';
 import { resolveKey, type GateAction, type GateContext, type GateMode } from './keymap.js';
 import { isAiFlagged } from './sidebar/ai-flag.js';
 import { buildVisibleRows } from './sidebar/components/GroupedSidebar.js';
@@ -21,7 +22,13 @@ import {
   describeEmptyFilter,
   intersectFilterKeys,
 } from './sidebar/step-filters.js';
-import { partitionDecisions, rejectNeedsConfirmation, reduceDecisions, type DecisionState } from './state.js';
+import {
+  createDecisionState,
+  partitionDecisions,
+  rejectNeedsConfirmation,
+  reduceDecisions,
+  type DecisionState,
+} from './state.js';
 import type { ScopeComponent, ScopeDecisions } from './types.js';
 
 // The state and the key handling of the gate. Everything legacy kept in one 1,064-line component, except what is drawn:
@@ -30,8 +37,9 @@ import type { ScopeComponent, ScopeDecisions } from './types.js';
 
 interface UseScopeGateOptions {
   components: ScopeComponent[];
-  tokenCount: number;
-  tokensWidth: number;
+  savedDecisions?: ScopeDecisions;
+  tokenCount?: number;
+  tokensWidth?: number;
   onConfirm: (decisions: ScopeDecisions) => void;
   onQuit: () => void;
 }
@@ -44,14 +52,21 @@ export interface PendingRejectCascade {
   descendants: string[];
 }
 
-export function useScopeGate({ components, tokenCount, tokensWidth, onConfirm, onQuit }: UseScopeGateOptions) {
+export function useScopeGate({
+  components,
+  savedDecisions,
+  tokenCount = 0,
+  tokensWidth = 0,
+  onConfirm,
+  onQuit,
+}: UseScopeGateOptions) {
   const { columns: totalWidth, rows: terminalRows } = useTerminalSize();
   const columnPlan = useMemo(
     () => computeColumnWidths(totalWidth, tokenCount > 0, tokensWidth),
     [totalWidth, tokenCount, tokensWidth],
   );
 
-  const [decisions, setDecisions] = useState<DecisionState>(new Map());
+  const [decisions, setDecisions] = useState<DecisionState>(() => createDecisionState(components, savedDecisions));
   const [nav, setNav] = useState<{ cursor: number; scrollOffset: number }>({ cursor: 0, scrollOffset: 0 });
   const [focusedColumn, setFocusedColumn] = useState<FocusedColumn>('main');
   const [tokensCursor, setTokensCursor] = useState(0);
@@ -78,9 +93,19 @@ export function useScopeGate({ components, tokenCount, tokensWidth, onConfirm, o
     setShowHelp,
   } = search;
 
-  const groupedItems = useMemo(() => sidebarItems(components), [components]);
+  const displayNodes = useMemo(() => buildRelationshipNodes(components), [components]);
+  const groupedItems = useMemo(() => sidebarItems(components, displayNodes), [components, displayNodes]);
   const graph = useMemo(() => buildScopeGraph(components), [components]);
-  const { cycles: slotCycles, cycleParticipants, cycleUnits, closures } = graph;
+  const { cycles: slotCycles, cycleParticipants, cycleUnits } = graph;
+  const closures = useMemo(
+    () =>
+      new Map(
+        displayNodes
+          .filter((node) => node.slots.some((slot) => slot.allowedComponents?.some((target) => target !== node.name)))
+          .map((node) => [node.name, computeClosure(node.name, displayNodes)]),
+      ),
+    [displayNodes],
+  );
   const hasCycles = slotCycles.length > 0;
   const cyclesJumpables = useMemo(
     () => slotCycles.map((c, i) => ({ cycleIndex: i, jumpTarget: c.path[0] })),
@@ -122,7 +147,7 @@ export function useScopeGate({ components, tokenCount, tokensWidth, onConfirm, o
   const dependencyFilterKeys = useMemo<Set<string> | undefined>(() => {
     if (!showDependencies) return undefined;
     const keys = new Set<string>();
-    for (const [root, closure] of closures) {
+    for (const [root, closure] of graph.closures) {
       if (closure.nodes.length <= 1 || decisions.get(root) !== 'accepted') continue;
       for (const node of closure.nodes) keys.add(node.name);
     }
@@ -131,10 +156,10 @@ export function useScopeGate({ components, tokenCount, tokensWidth, onConfirm, o
       for (const name of unit) keys.add(name);
     }
     return keys;
-  }, [closures, cycleUnits, showDependencies, decisions]);
+  }, [graph, cycleUnits, showDependencies, decisions]);
 
   const filterVisibleKeys = useMemo<Set<string> | undefined>(() => {
-    if (jumpFilterTarget) return findAllAncestors(jumpFilterTarget, graph.nodes);
+    if (jumpFilterTarget) return findAllAncestors(jumpFilterTarget, displayNodes);
     const categoryKeys = computeFilterKeys({
       filters: activeFilters,
       data: { cycles: cycleParticipants, broken: brokenKeys },
@@ -143,7 +168,7 @@ export function useScopeGate({ components, tokenCount, tokensWidth, onConfirm, o
       if (!searchQuery) return undefined;
       const matches = groupedItems.map((it) => it.key).filter((k) => fuzzyMatches(searchQuery, k));
       if (matches.length === 0) return undefined;
-      return computeDirectNeighborhood(matches, graph.nodes);
+      return computeDirectNeighborhood(matches, displayNodes);
     })();
     return intersectFilterKeys(intersectFilterKeys(categoryKeys, searchKeys), dependencyFilterKeys);
   }, [
@@ -153,7 +178,7 @@ export function useScopeGate({ components, tokenCount, tokensWidth, onConfirm, o
     brokenKeys,
     searchQuery,
     groupedItems,
-    graph,
+    displayNodes,
     dependencyFilterKeys,
   ]);
 
@@ -165,10 +190,11 @@ export function useScopeGate({ components, tokenCount, tokensWidth, onConfirm, o
         expandedGroups,
         showFlatTier: false,
         viewMode: columnOneView,
-        graph: graph.nodes,
+        graph: displayNodes,
+        edgeLabel: 'relationship',
         filterVisibleKeys,
       }),
-    [groupedItems, cycleParticipants, expandedGroups, columnOneView, graph, filterVisibleKeys],
+    [groupedItems, cycleParticipants, expandedGroups, columnOneView, displayNodes, filterVisibleKeys],
   );
 
   const emptyMessage =
@@ -219,10 +245,16 @@ export function useScopeGate({ components, tokenCount, tokensWidth, onConfirm, o
   const aiExcluded = components.filter(isAiFlagged);
   const aiRows = useMemo(
     () =>
-      aiExcluded
-        .filter((c) => c.aiReason !== null && c.aiReason !== undefined && c.aiReason !== '')
-        .map((c) => ({ label: `${c.name} — ${c.aiReason}`, jumpTarget: c.name })),
-    [aiExcluded],
+      components.flatMap((component) => {
+        const reasons = [
+          ...(isAiFlagged(component) && component.aiReason ? [component.aiReason] : []),
+          ...(component.modelingNotes ?? []),
+        ];
+        return reasons.length > 0
+          ? [{ label: `${component.name} — ${reasons.join(' ')}`, jumpTarget: component.name }]
+          : [];
+      }),
+    [components],
   );
 
   const counters = useMemo(
@@ -480,7 +512,7 @@ export function useScopeGate({ components, tokenCount, tokensWidth, onConfirm, o
           items: groupedItems,
           cycleParticipants,
           expandedGroups,
-          graph: graph.nodes,
+          graph: displayNodes,
         });
         setColumnOneView(next.view);
         setNav({ cursor: next.cursor, scrollOffset: next.scroll });
@@ -519,7 +551,9 @@ export function useScopeGate({ components, tokenCount, tokensWidth, onConfirm, o
     // sidebar
     groupedItems,
     graph,
+    displayNodes,
     hasGroupRoots,
+    hasSourceRelationships: components.some((component) => (component.sourceRelationships?.length ?? 0) > 0),
     expandedGroups,
     toggleExpanded,
     visibleRows,
@@ -541,6 +575,7 @@ export function useScopeGate({ components, tokenCount, tokensWidth, onConfirm, o
     aiCursor,
     aiRows,
     aiExcludedCount: aiExcluded.length,
+    hasAdvisoryNotes: components.some((component) => (component.modelingNotes?.length ?? 0) > 0),
     pendingRejectCascade,
     // token column
     safeTokensCursor,

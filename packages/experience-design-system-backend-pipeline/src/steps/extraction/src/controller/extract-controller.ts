@@ -1,0 +1,41 @@
+import type { ExtractionEndpointRequest, ExtractionEndpointResponse } from '../types/contract.js';
+import { executeExtractionOrchestrator } from '../orchestrator/execute-extraction-orchestrator.js';
+import { validateRequest } from './helpers/validate-endpoint-request.js';
+
+export type { ExtractionEndpointRequest, ExtractionEndpointResponse } from '../types/contract.js';
+
+/**
+ * Stable in-process extraction contract.
+ *
+ * The controller owns public request validation and progress translation. The
+ * extraction service owns source analysis and quality policy; neither layer
+ * scans directories, invokes agents, or persists sessions.
+ */
+export async function extractEndpoint(request: ExtractionEndpointRequest): Promise<ExtractionEndpointResponse> {
+  validateRequest(request);
+  const filePaths = [...request.filePaths];
+  const result = await executeExtractionOrchestrator({
+    filePaths,
+    ...(request.signal !== undefined ? { signal: request.signal } : {}),
+    ...(request.resolveUnreachable !== undefined ? { resolveUnreachable: request.resolveUnreachable } : {}),
+    ...(request.projectRoot !== undefined ? { projectRoot: request.projectRoot } : {}),
+    onProgress: ({ filesProcessed, componentsFound, activity }) => {
+      request.onProgress?.({
+        phase: 'extract',
+        filesProcessed,
+        totalFiles: filePaths.length,
+        componentsFound,
+        ...(activity ? { activity } : {}),
+      });
+    },
+  });
+
+  request.onProgress?.({
+    phase: 'extract',
+    filesProcessed: filePaths.length,
+    totalFiles: filePaths.length,
+    componentsFound: result.components.length,
+  });
+
+  return result;
+}

@@ -19,7 +19,7 @@ The single settings file, read and written through `@contentful/experience-desig
 One folder per terminal session, numbered per day. `<root>` is the "Root Project Directory" setting (Settings > Configuration > Project). When it is empty, the session is created once the import starts, in the project being imported.
 
 - `debug/` holds the per-screen debug logs (markdown run snapshots), written only while Debug Mode is on.
-- `dsi-import-N/` holds one import run's output: `tokens.json`, `.existing-entities.json` and `components.json`. Each import in the session gets the next number, so a second import never overwrites the first. Token reuse offers the newest `tokens.json` found across all sessions.
+- `dsi-import-N/` holds one import run's output: `tokens.json`, `.existing-entities.json` and `components.json`. Each import in the session gets the next number, so a second import never overwrites the first. Each run generates its own tokens when a token source is selected.
 
 ## Project Architecture
 
@@ -80,7 +80,7 @@ Components used by more than one flow live in `src/tui/shared/components/`. Flow
 
 ### The Import flow
 
-`src/tui/import/` is the Import menu item. The Import menu item shows the Welcome step (`steps/01-welcome`) and collects the project path, then the Token input step (`steps/02-token-input`) and collects the token file, then the Path validation step (`steps/03-path-validation`), which scans the project folder and asks the user to confirm it. `app.tsx` then runs the rest of the import in the same process: credentials (`steps/04-credentials`), token reuse, extraction, the scope gate, generation, the review (`steps/09-review`) and the save, preview, push and done screens (`steps/10-flow`). The flow's state machine is `steps/10-flow/flow/controller.ts`, kept free of React so it can be tested; `flow/use-flow.ts` and `flow/screen.tsx` connect it to the terminal. When the flow ends it reports an exit code and `PageContainer.tsx` shows the result, then resumes the menu.
+`src/tui/import/` is the Import menu item. The Import menu item shows the Welcome step (`steps/01-welcome`) and collects the project path, then the Token input step (`steps/02-token-input`) and collects the token file, then the Path validation step (`steps/03-path-validation`), which scans the project folder and asks the user to confirm it. `app.tsx` then runs the rest of the import in the same process: credentials (`steps/04-credentials`), extraction, the scope gate, generation, the review (`steps/09-review`) and the save, preview, push and done screens (`steps/10-flow`). The flow's state machine is `steps/10-flow/flow/controller.ts`, kept free of React so it can be tested; `flow/use-flow.ts` and `flow/screen.tsx` connect it to the terminal. When the flow ends it reports an exit code and `PageContainer.tsx` shows the result, then resumes the menu.
 
 ### Multi-step flows
 
@@ -113,18 +113,12 @@ The TUI needs an interactive terminal. `app.tsx` exports `runApp`, which `progra
 ### Example Screen
 
 ```tsx
-import { Box, Text, useInput } from "ink";
+import { Box, Text, useInput } from 'ink';
 
-export function ConfirmScreen({
-  onDone,
-  onBack,
-}: {
-  onDone: () => void;
-  onBack: () => void;
-}) {
+export function ConfirmScreen({ onDone, onBack }: { onDone: () => void; onBack: () => void }) {
   useInput((input, key) => {
     if (key.return) onDone();
-    if (key.escape || input === "q") onBack();
+    if (key.escape || input === 'q') onBack();
   });
 
   return (

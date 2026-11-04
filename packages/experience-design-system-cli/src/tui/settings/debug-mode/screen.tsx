@@ -27,6 +27,9 @@ type Notice = { kind: 'success' | 'error'; text: string };
  * nothing is saved until Enter, and then the screen says so.
  */
 export function DebugModeScreen({ onDone }: { onDone: () => void }): React.ReactElement {
+  const active = useRef(true);
+  const saving = useRef(false);
+  const [loadingError, setLoadingError] = useState<string | null>(null);
   const [setting, setSetting] = useState<DebugModeSetting | null>(null);
   const [focus, setFocus] = useState<Row>('enabled');
   // The retention under the highlight. It differs from the saved one until the user confirms it.
@@ -38,32 +41,47 @@ export function DebugModeScreen({ onDone }: { onDone: () => void }): React.React
   const visit = useRef({ trail: createTrail(), before: undefined as Snapshot | undefined, error: '' }).current;
 
   useEffect(() => {
-    readDebugModeSetting().then((loaded) => {
-      setSetting(loaded);
-      setPending(loaded.retentionDays);
-      visit.before = snapshotOf(loaded);
-      startDebugRun({
-        flow: 'settings/debug-mode',
-        step: '01-debug-mode',
-        menuOption: 'Debug Mode',
-        inputs: { ...loaded },
+    active.current = true;
+    void readDebugModeSetting()
+      .then((loaded) => {
+        if (!active.current) return;
+        setSetting(loaded);
+        setPending(loaded.retentionDays);
+        visit.before = snapshotOf(loaded);
+        startDebugRun({
+          flow: 'settings/debug-mode',
+          step: '01-debug-mode',
+          menuOption: 'Debug Mode',
+          inputs: { ...loaded },
+        });
+      })
+      .catch((error: unknown) => {
+        if (active.current) setLoadingError(error instanceof Error ? error.message : String(error));
       });
-    });
+    return () => {
+      active.current = false;
+    };
   }, []);
 
   const save = (patch: Partial<DebugModeSetting>, saved: string): void => {
-    if (!setting) return;
+    if (!setting || saving.current) return;
+    saving.current = true;
     const fields = Object.keys(patch).join(', ');
-    writeDebugModeSetting(patch)
+    void writeDebugModeSetting(patch)
       .then(() => {
+        if (!active.current) return;
         setSetting({ ...setting, ...patch });
         visit.trail.record(`saved ${fields}`);
         setNotice({ kind: 'success', text: `Saved: ${saved}` });
       })
       .catch((err: unknown) => {
+        if (!active.current) return;
         visit.error = scrubError(err, []);
         visit.trail.record(`saving ${fields} failed`);
         setNotice({ kind: 'error', text: `Not saved: ${err instanceof Error ? err.message : String(err)}` });
+      })
+      .finally(() => {
+        saving.current = false;
       });
   };
 
@@ -79,13 +97,20 @@ export function DebugModeScreen({ onDone }: { onDone: () => void }): React.React
         actions: visit.trail.entries(),
         ...(visit.error ? { error: visit.error } : {}),
       },
-      status: visit.error ? 'error' : 'success',
-      exitMethod: change.changed ? 'saved' : 'discarded',
-    });
+      status: visit.error || saving.current ? 'error' : 'success',
+      exitMethod: change.changed && !saving.current ? 'saved' : 'discarded',
+    }).catch(() => {});
   };
 
   useInput((input, key) => {
-    if (!setting) return;
+    if (!active.current) return;
+    if (key.escape || input === 'q') {
+      active.current = false;
+      if (setting) endVisit(setting);
+      onDone();
+      return;
+    }
+    if (!setting || saving.current) return;
 
     if (key.upArrow || key.downArrow) {
       setFocus((current) => ROWS[(ROWS.indexOf(current) + (key.downArrow ? 1 : ROWS.length - 1)) % ROWS.length]!);
@@ -106,10 +131,6 @@ export function DebugModeScreen({ onDone }: { onDone: () => void }): React.React
     if (focus === 'retentionDays' && key.return) {
       save({ retentionDays: pending }, `logs are deleted after ${pending} days`);
       return;
-    }
-    if (key.escape || input === 'q') {
-      endVisit(setting);
-      onDone();
     }
   });
 
@@ -166,18 +187,22 @@ export function DebugModeScreen({ onDone }: { onDone: () => void }): React.React
           )}
         </>
       ) : (
-        <Text color={PALETTE.muted}>Loading…</Text>
+        <Text color={loadingError ? PALETTE.error : PALETTE.muted}>{loadingError ?? 'Loading…'}</Text>
       )}
       <Text> </Text>
       <ControlHints
         hints={[
-          { keys: '↑/↓', label: 'move' },
-          ...(focus === 'retentionDays'
+          ...(setting
             ? [
-                { keys: '←/→', label: 'choose' },
-                { keys: '⏎', label: 'save' },
+                { keys: '↑/↓', label: 'move' },
+                ...(focus === 'retentionDays'
+                  ? [
+                      { keys: '←/→', label: 'choose' },
+                      { keys: '⏎', label: 'save' },
+                    ]
+                  : [{ keys: '⏎/Space', label: 'toggle' }]),
               ]
-            : [{ keys: '⏎/Space', label: 'toggle' }]),
+            : []),
           { keys: 'Esc/q', label: 'back' },
         ]}
       />

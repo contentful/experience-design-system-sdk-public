@@ -1,12 +1,5 @@
 // --- File collection (source-tree walker) ---
 export { collectFiles } from './helpers/collect-files/index.js';
-export type {
-  CollectFilesOptions,
-  CollectFilesOutcome,
-  CollectFilesResult,
-  CollectFilesFailure,
-  FileCounts,
-} from './types/collect-files-result.js';
 
 // --- Runs ledger (runs.json) ---
 export {
@@ -27,10 +20,6 @@ export type {
   RunsFile,
   AppendInput,
   ListOptions,
-  RunRecordV1,
-  RunRecordV2,
-  RunsFileV1,
-  RunsFileV2,
   SourceFingerprint,
   SourceFileEntry,
   RawComponentsDb,
@@ -53,7 +42,6 @@ export {
 } from './review-session/index.js';
 export type {
   LoadReviewInputOptions,
-  PreviewAnnotation,
   ReviewComponentStatus,
   ReviewComponentRecord,
   ReviewComponentDetail,
@@ -67,10 +55,16 @@ export type {
 
 // --- Session (SessionHandle + openSession for cache callbacks) ---
 export { generateSessionId, openSession } from './session/index.js';
-export type { OpenSessionOptions, SelectionDecision, SessionHandle, WriteResult } from './types/contract.js';
+export type { OpenSessionOptions, SelectionDecision, SessionHandle } from './types/contract.js';
 
 // --- DB infra + schema + migrations ---
 export { openPipelineDb, getPipelineDbPath } from './session/repositories/db.js';
+export { completeExtractionWithSourceEvidence, loadCompletedSourceEvidence } from './session/repositories/db.js';
+export type {
+  CompletedSourceEvidence,
+  SessionSourceEnvelope,
+  SourceEvidenceHandle,
+} from './session/repositories/db.js';
 export { runMigrationIfNeeded } from './session/repositories/migration.js';
 export {
   configRoot,
@@ -86,12 +80,11 @@ export type { Settings } from './session/helpers/config-root.js';
 export { resolveExtractSessionId } from './session/services/resolve-session-id.js';
 
 // --- Credentials store (per-user config.json settings) ---
+// --- Credentials store (per-user config.json settings) ---
 export {
   readExperiencesCredentials,
   writeExperiencesCredentials,
   experiencesCredentialsPath,
-  toApiHost,
-  toConfiguredHost,
   DEFAULT_CONFIGURED_HOST,
 } from './credentials/index.js';
 export type { ExperiencesCredentials } from './credentials/index.js';
@@ -106,13 +99,23 @@ export {
   loadRawComponents,
   loadComponentSourceRef,
   loadComponentSourceRefs,
+  loadSavedComponentSourceRef,
+  loadSavedSharedSource,
+  loadExtractionSourceDiagnostics,
   renameEmptySlots,
 } from './session/repositories/db.js';
-export type { RawComponentWithId } from './session/repositories/db.js';
+export type { RawComponentWithId, ExtractionSourceDiagnosticsRead } from './session/repositories/db.js';
 
 // --- CDF component storage ---
-export { storeCDFComponents, loadCDFComponents, loadScopeComponents } from './session/repositories/db.js';
-export type { ScopeComponentRow } from './session/repositories/db.js';
+export {
+  storeCDFComponents,
+  loadCDFComponents,
+  loadSelectedCDFComponents,
+  evaluateComponentReadiness,
+  loadScopeComponents,
+  loadScopeDecisions,
+} from './session/repositories/db.js';
+export type { ScopeComponentRow, ScopeDecisions, ScopeDecisionProvenance } from './session/repositories/db.js';
 
 // --- DTCG token storage (read side) ---
 export { loadDTCGTokens, loadRawTokenNamePathRows } from './session/repositories/db.js';

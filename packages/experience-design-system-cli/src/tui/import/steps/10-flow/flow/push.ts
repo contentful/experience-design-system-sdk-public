@@ -32,7 +32,13 @@ type PushClient = {
 
 /** The outside world `runPush` talks to, so each branch can be tested without a network or a run history. */
 export interface PushDeps {
-  createClient: (options: { cmaToken: string; spaceId: string; environmentId: string; host: string }) => PushClient;
+  createClient: (options: {
+    prerequisiteSessionId?: string;
+    cmaToken: string;
+    spaceId: string;
+    environmentId: string;
+    host: string;
+  }) => PushClient;
   updateRun: typeof updateRun;
   /** Where the wizard's step log goes. A log that cannot be written is reported on stderr and never stops the push. */
   log: (entry: Record<string, unknown>) => void;
@@ -49,6 +55,7 @@ export const realPushDeps = (log: PushDeps['log']): PushDeps => ({
 });
 
 export interface RunPushInput {
+  extractSessionId?: string | null;
   state: Pick<FlowState, 'credentialsSkipped' | 'lastRunId'>;
   cdf: CDFDocument;
   spaceId: string;
@@ -116,6 +123,7 @@ export async function runPush(
       spaceId: input.spaceId,
       environmentId: input.environmentId,
       host: input.host,
+      ...(input.extractSessionId ? { prerequisiteSessionId: input.extractSessionId } : {}),
     });
     let operation = await client.applyImport(input.cdf, {
       acknowledgeBreakingChanges: input.acknowledgeBreakingChanges,

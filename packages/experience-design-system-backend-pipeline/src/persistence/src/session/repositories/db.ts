@@ -1,10 +1,78 @@
+import {
+  initializeRepresentationSchema,
+  prepareEntryRepresentationPlans,
+  saveEntryRepresentationPlans,
+  overlayRepresentationPlans,
+  selectedRepresentationValidity,
+  assertPreservedRepresentationSelections,
+  expandRepresentationClosure,
+  loadReviewCDFComponents,
+  loadRepresentationPlans,
+  representationContext,
+  saveGeneratedRepresentationPlan,
+} from './representation-plans.js';
+import {
+  definitionCall,
+  reviewRepresentationProposal,
+} from '../../../../steps/generation/src/services/property/definition-call.js';
+import { validateSavedSourceClosure } from './source-closure-binding.js';
+import { validateSavedFieldReplay } from './field-replay-binding.js';
+import {
+  validateCDFProperty,
+  validateSourceGraph,
+  normalizeClassificationCalls,
+  accountClassificationCalls,
+  jsonEqual,
+  jsonValueIssue,
+  cloneJson,
+  own,
+  propertyDefinitionImportBlockers,
+  validateRepresentationPlan,
+  modelExplorationComplete,
+  type RepresentationPlan,
+  type RepresentationProposalDraft,
+  type CDFPropertyDefinition,
+  type ClassifiedPropertyCall,
+} from '@contentful/experience-design-system-types';
+import { componentDecisionInventory } from '../../../../steps/generation/src/services/property/decision-inventory.js';
+import { materializeProperty } from '../../../../steps/generation/src/services/property/materialize-property.js';
+import {
+  buildSharedSource,
+  projectSharedSource,
+  projectCapturedFile,
+  findSourceOwnerFile,
+} from '../../../../source-evidence/shared-source.js';
+import type { SharedSource } from '@contentful/experience-design-system-types';
+import { initializeExplorationSchema } from './exploration/schema.js';
+import { withTransaction } from './shared/with-transaction.js';
+import {
+  loadAcceptedSlotDecisions,
+  loadExplorationRun,
+  loadExplorationReports,
+  loadExplorationRecord,
+  saveReviewedSlots,
+} from './exploration/records.js';
+import type {
+  DerivedSelection,
+  SlotDecision,
+  ExplorationDetailRecord,
+} from '@contentful/experience-design-system-types';
+import { projectAcceptedSlots } from '../../../../steps/exploration/src/services/project-accepted-slots.js';
+import { validateCDFSourceOwners } from '../../../../steps/exploration/src/services/source-input-ownership.js';
+import { validateSavedInputOutput } from './input-output-binding.js';
+import { createCapturedLocationBinder } from './captured-file-lookup.js';
+import { mapSourceObservationLocations } from '../../../../steps/extraction/src/component-facts/map-source-observation-locations.js';
+import { hasBoundComponentDeclaration } from '../../../../steps/extraction/src/component-facts/component-declaration-binding.js';
+import { bindSavedSourceReferences } from './source-reference-binding.js';
+import { readSourceInventory, readSourceReferences } from '../../../../steps/extraction/index.js';
+import { CDFComponentSchema } from '@contentful/experience-design-system-types';
+import { readComponentFacts, readComponentFactsJson, type ComponentFactsRead } from './component-facts-validation.js';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { configRoot } from '../helpers/config-root.js';
 import { dirname, resolve } from 'node:path';
-import { escapeForRegExp, excerptAroundNames } from '../helpers/source-excerpt.js';
 import type {
   RawComponentDefinition,
   RawPropDefinition,
@@ -22,22 +90,38 @@ import { updateSessionTimestamp } from './sessions/write.js';
 import { getSessionIdForStep } from './steps/read.js';
 import { createPendingStep, updatePendingStepsToInterrupted, updateStepStatus } from './steps/write.js';
 import { getOrCreateSessionForCommand, type SessionResolution } from '../services/session-resolver.js';
+import { pruneObsoleteIncompleteStepsIfNeeded } from './step-history-migration.js';
 import { getRawTokenNamePaths, type RawTokenNamePathSource } from './tokens/read.js';
 import { type RawPropTokenPathSource } from './tokens/write.js';
+import {
+  isSourceCandidatePayload,
+  isAlternateSourcePayload,
+  isExtractionDiagnosticsPayload,
+} from './source-evidence-validation.js';
+import type { SourceCapture } from '../../../../steps/extraction/index.js';
+import {
+  bindSourceCandidatesToCapture,
+  bindCompilerReadsToCapture,
+  SUPPORTED_SOURCE_FACT_SCHEMA_VERSIONS,
+} from '../../../../steps/extraction/index.js';
+import type {
+  ExtractionDiagnostics,
+  SourceCandidate,
+  SourceCandidateSource,
+} from '../../../../steps/extraction/index.js';
 
 export { hashComponentShape as computeComponentInputHash } from '../helpers/components/hash-component-shape.js';
 export { hashTokenContent as computeTokenInputHash } from '../helpers/tokens/hash-token-content.js';
 
 // Tokens — repositories/tokens/{read,write}.ts and services/tokens/*
+// Tokens — repositories/tokens/{read,write}.ts and services/tokens/*
 export {
   getDtcgTokensForSession as loadDTCGTokens,
-  getRawTokenNamePaths as loadRawTokenNamePaths,
   getRawTokenNamePathRows as loadRawTokenNamePathRows,
 } from './tokens/read.js';
-export { storeDtcgTokens as storeDTCGTokens } from '../services/tokens/store-dtcg-tokens.js';
+
 export { applyTokenToolCalls } from '../services/tokens/apply-tool-calls.js';
 export { replaceRawTokenNamePaths } from '../services/tokens/replace-raw-token-name-paths.js';
-export { replaceRawPropTokenPaths } from '../services/tokens/replace-raw-prop-token-paths.js';
 
 export type CommandName =
   | 'analyze extract'
@@ -98,6 +182,22 @@ CREATE TABLE IF NOT EXISTS raw_components (
   PRIMARY KEY (session_id, component_id)
 );
 
+CREATE TABLE IF NOT EXISTS raw_component_source_evidence (
+  session_id          TEXT NOT NULL,
+  component_id        TEXT NOT NULL,
+  fact_schema_version INTEGER,
+  candidates_json     TEXT,
+  alternate_sources_json TEXT,
+  component_facts_json TEXT,
+  PRIMARY KEY (session_id, component_id),
+  FOREIGN KEY (session_id, component_id) REFERENCES raw_components(session_id, component_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS extraction_source_diagnostics (
+  session_id  TEXT NOT NULL PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+  payload_json TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS raw_props (
   session_id        TEXT NOT NULL,
   component_id      TEXT NOT NULL,
@@ -115,7 +215,27 @@ CREATE TABLE IF NOT EXISTS raw_props (
   rationale         TEXT,
   source_start_line INTEGER,
   source_end_line   INTEGER,
+  dom_attribute     INTEGER CHECK (dom_attribute IN (0, 1)),
   PRIMARY KEY (session_id, component_id, name),
+  FOREIGN KEY (session_id, component_id) REFERENCES raw_components(session_id, component_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS raw_component_decisions (
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  component_id TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  PRIMARY KEY (session_id, component_id),
+  FOREIGN KEY (session_id, component_id) REFERENCES raw_components(session_id, component_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS raw_property_decisions (
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  component_id TEXT NOT NULL,
+  prop_name TEXT NOT NULL,
+  revision INTEGER NOT NULL,
+  definition_json TEXT NOT NULL,
+  decision_json TEXT NOT NULL,
+  PRIMARY KEY (session_id, component_id, prop_name),
   FOREIGN KEY (session_id, component_id) REFERENCES raw_components(session_id, component_id) ON DELETE CASCADE
 );
 
@@ -194,6 +314,34 @@ CREATE TABLE IF NOT EXISTS slot_cycles (
   PRIMARY KEY (session_id, cycle_index)
 );
 
+CREATE TABLE IF NOT EXISTS session_source_envelopes (
+  envelope_id  TEXT NOT NULL PRIMARY KEY,
+  session_id   TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  step_id      INTEGER NOT NULL REFERENCES steps(id) ON DELETE CASCADE,
+  digest       TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at   TEXT NOT NULL,
+  UNIQUE (session_id, step_id)
+);
+
+CREATE TRIGGER IF NOT EXISTS session_source_envelopes_immutable
+BEFORE UPDATE ON session_source_envelopes
+BEGIN
+  SELECT RAISE(ABORT, 'source envelopes are immutable');
+END;
+
+CREATE TABLE IF NOT EXISTS scope_decisions (
+  session_id      TEXT NOT NULL,
+  component_id    TEXT NOT NULL,
+  component_name  TEXT NOT NULL,
+  decision        TEXT NOT NULL CHECK (decision IN ('accepted', 'rejected')),
+  provenance_json TEXT,
+  updated_at      TEXT NOT NULL,
+  PRIMARY KEY (session_id, component_id),
+  FOREIGN KEY (session_id, component_id)
+    REFERENCES raw_components(session_id, component_id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS raw_prop_token_paths (
   session_id   TEXT NOT NULL,
   component_id TEXT NOT NULL,
@@ -245,7 +393,10 @@ export function openPipelineDb(dbPath?: string): DatabaseSync {
     db.exec('PRAGMA journal_mode = WAL');
     db.exec('PRAGMA synchronous = NORMAL');
     db.exec(SCHEMA);
+    initializeExplorationSchema(db);
+    initializeRepresentationSchema(db);
     applyDbMigrations(db);
+    pruneObsoleteIncompleteStepsIfNeeded(db);
     return db;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -257,6 +408,10 @@ export function openPipelineDb(dbPath?: string): DatabaseSync {
 }
 
 function applyDbMigrations(db: DatabaseSync): void {
+  const evidenceCols = db.prepare('PRAGMA table_info(raw_component_source_evidence)').all() as Array<{ name: string }>;
+  if (!evidenceCols.some((column) => column.name === 'component_facts_json')) {
+    db.exec('ALTER TABLE raw_component_source_evidence ADD COLUMN component_facts_json TEXT');
+  }
   const cols = db.prepare('PRAGMA table_info(raw_slots)').all() as Array<{
     name: string;
   }>;
@@ -290,6 +445,9 @@ function applyDbMigrations(db: DatabaseSync): void {
   if (!rawPropColNames.has('source_end_line')) {
     db.exec('ALTER TABLE raw_props ADD COLUMN source_end_line INTEGER');
   }
+  if (!rawPropColNames.has('dom_attribute')) {
+    db.exec('ALTER TABLE raw_props ADD COLUMN dom_attribute INTEGER CHECK (dom_attribute IN (0, 1))');
+  }
 
   const rawPropsDdl = db.prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'raw_props'`).get() as
     | { sql: string }
@@ -317,6 +475,7 @@ function applyDbMigrations(db: DatabaseSync): void {
           rationale         TEXT,
           source_start_line INTEGER,
           source_end_line   INTEGER,
+          dom_attribute     INTEGER CHECK (dom_attribute IN (0, 1)),
           PRIMARY KEY (session_id, component_id, name),
           FOREIGN KEY (session_id, component_id) REFERENCES raw_components(session_id, component_id) ON DELETE CASCADE
         );
@@ -324,11 +483,11 @@ function applyDbMigrations(db: DatabaseSync): void {
         INSERT INTO raw_props__new
           (session_id, component_id, name, type, required, category, default_value,
            description, token_reference, position, cdf_type, cdf_category, cdf_token_kind,
-           rationale, source_start_line, source_end_line)
+           rationale, source_start_line, source_end_line, dom_attribute)
         SELECT
           session_id, component_id, name, type, required, category, default_value,
           description, token_reference, position, cdf_type, cdf_category, cdf_token_kind,
-          rationale, source_start_line, source_end_line
+          rationale, source_start_line, source_end_line, dom_attribute
         FROM raw_props;
 
         DROP TABLE raw_props;
@@ -529,34 +688,54 @@ export interface ApplyToolCallsResult {
   excluded: number;
   slots: number;
   warnings: string[];
+  projectionBlocked?: boolean;
 }
 
 export interface ApplyToolCallsOptions {
   /** Component names that may appear in generated slot allowed-components lists. */
   allowedComponentNames?: ReadonlySet<string>;
+  representationPlans?: ReadonlyMap<string, RepresentationPlan>;
 }
 
 export interface ComponentReviewMetadata {
+  exploration?: { inclusion?: DerivedSelection; slots: SlotDecision[]; detail?: ExplorationDetailRecord };
   sourcePath: string | null;
   componentSource: string | null;
+  sourceCoverage: SourceCapture['coverage'];
+  extractionByteBinding: SourceCapture['extractionByteBinding'];
+  sourceTextHash: string | null;
+  sourceCompilerContext?: NonNullable<SharedSource['compilerContexts']>[number];
+  sourceLineRanges: Array<{ sourceStartLine: number; sourceEndLine: number; displayStartLine: number }>;
+  scopeProvenance: ScopeDecisionProvenance | null;
   props: Record<
     string,
     {
       rationale: string | null;
       sourceStartLine: number | null;
       sourceEndLine: number | null;
+      sourceCandidate: SourceCandidate | null;
     }
   >;
+  componentEvidenceReadStatus?: NonNullable<RawComponentDefinition['componentEvidenceReadStatus']>;
+  componentFacts?: RawComponentDefinition['componentFacts'] | null;
+  sourceEvidenceReadStatus: NonNullable<RawComponentDefinition['sourceEvidenceReadStatus']>;
+  sourceCandidates: SourceCandidate[] | null;
+  sourceCandidateSources: SourceCandidateSource[] | null;
+  extractionDiagnostics: ExtractionSourceDiagnosticsRead;
 }
 
 export function loadComponentReviewMetadata(
   db: DatabaseSync,
   sessionId: string,
   componentName: string,
+  componentId?: string,
 ): ComponentReviewMetadata | null {
-  const compRow = db
-    .prepare(`SELECT component_id, source, source_path FROM raw_components WHERE session_id = ? AND name = ?`)
-    .get(sessionId, componentName) as { component_id: string; source: string; source_path: string | null } | undefined;
+  const rows = db
+    .prepare('SELECT component_id,source,source_path FROM raw_components WHERE session_id=? AND name=?')
+    .all(sessionId, componentName) as Array<{ component_id: string; source: string; source_path: string | null }>;
+  const matches = componentId ? rows.filter((row) => row.component_id === componentId) : rows;
+  if (matches.length > 1) throw new Error('Ambiguous review metadata component');
+  const compRow = matches[0];
   if (!compRow) return null;
 
   const propRows = db
@@ -570,32 +749,94 @@ export function loadComponentReviewMetadata(
     source_end_line: number | null;
   }>;
 
-  const props: ComponentReviewMetadata['props'] = {};
+  const rawComponent = loadRawComponents(db, sessionId, new Set([componentName])).find(
+    (component) => component.component_id === compRow.component_id,
+  );
+  const candidatesByName = new Map(
+    (rawComponent?.sourceCandidates ?? []).map((candidate) => [candidate.name, candidate]),
+  );
+  const props: ComponentReviewMetadata['props'] = Object.create(null) as ComponentReviewMetadata['props'];
   for (const r of propRows) {
     props[r.name] = {
       rationale: r.rationale,
       sourceStartLine: r.source_start_line,
       sourceEndLine: r.source_end_line,
+      sourceCandidate: candidatesByName.get(r.name) ?? null,
     };
   }
 
-  // raw_components.source historically stores the file path, not the file
-  // text. For the source-view panel to render real lines, prefer reading
-  // the file from disk via source_path. Fall back to whatever's in `source`
-  // (handles in-memory fixtures and tests).
-  let componentSource: string | null = compRow.source ?? null;
-  if (compRow.source_path) {
-    try {
-      componentSource = readFileSync(compRow.source_path, 'utf8');
-    } catch {
-      // File no longer exists or unreadable — leave fallback.
+  let sourcePath: string | null = compRow.source_path;
+  let componentSource: string | null = null;
+  let sourceCoverage: SourceCapture['coverage'] = 'unavailable';
+  let extractionByteBinding: SourceCapture['extractionByteBinding'] = 'unverified';
+  let sourceTextHash: string | null = null;
+  let sourceCompilerContext: ComponentReviewMetadata['sourceCompilerContext'];
+  let sourceLineRanges: ComponentReviewMetadata['sourceLineRanges'] = [];
+  const scopeProvenance = loadScopeDecisions(db, sessionId)?.acceptedProvenance?.[componentName] ?? null;
+  const saved = loadCompletedSourceEvidence(db, sessionId);
+  if (saved.readiness === 'ready') {
+    const file = findSourceOwnerFile(
+      saved.envelope.capture,
+      compRow.component_id,
+      compRow.source_path ?? rawComponent?.source,
+    );
+    if (file) {
+      const shared = loadSavedSharedSource(db, sessionId, { componentIds: [compRow.component_id] });
+      const projected =
+        shared.readiness === 'ready' ? shared.source.files.find((entry) => entry.fileId === file.fileId) : undefined;
+      const projection = {
+        text: projected?.coverage === 'unavailable' ? null : (projected?.content ?? null),
+        ranges: (projected?.ranges ?? []).map((range) => ({
+          sourceStartLine: range.startLine,
+          sourceEndLine: range.endLine,
+          displayStartLine: range.displayStartLine,
+        })),
+      };
+      sourcePath = file.displayPath;
+      componentSource = projection.text;
+      sourceCoverage = shared.readiness === 'ready' ? (shared.source.promptCoverage ?? 'partial') : 'unavailable';
+      extractionByteBinding = saved.envelope.extractionByteBinding;
+      sourceTextHash = file.textHash;
+      sourceLineRanges = projection.ranges;
+      sourceCompilerContext =
+        shared.readiness === 'ready'
+          ? shared.source.compilerContexts?.find((context) => context.contextId === file.compilerContextId)
+          : undefined;
     }
   }
 
   return {
-    sourcePath: compRow.source_path,
+    ...(loadExplorationRun(db, sessionId, 'components')
+      ? {
+          exploration: {
+            inclusion: loadExplorationRecord<DerivedSelection[]>(db, sessionId, 'components', 'inclusion')?.find(
+              (decision) => decision.componentId === compRow.component_id,
+            ),
+            slots: (loadAcceptedSlotDecisions(db, sessionId) ?? []).filter(
+              (slot) => slot.componentId === compRow.component_id,
+            ),
+            detail: loadExplorationRecord<ExplorationDetailRecord>(db, sessionId, 'detail', 'detail'),
+          },
+        }
+      : {}),
+    sourcePath,
     componentSource,
+    sourceCoverage,
+    extractionByteBinding,
+    sourceTextHash,
+    ...(sourceCompilerContext ? { sourceCompilerContext } : {}),
+    sourceLineRanges,
+    scopeProvenance,
     props,
+    componentEvidenceReadStatus: rawComponent?.componentEvidenceReadStatus ?? 'unknown-legacy',
+    componentFacts:
+      rawComponent?.componentEvidenceReadStatus === 'available' ? (rawComponent.componentFacts ?? null) : null,
+    sourceEvidenceReadStatus: rawComponent?.sourceEvidenceReadStatus ?? 'unknown-legacy',
+    sourceCandidates:
+      rawComponent?.sourceEvidenceReadStatus === 'available' ? (rawComponent.sourceCandidates ?? []) : null,
+    sourceCandidateSources:
+      rawComponent?.sourceEvidenceReadStatus === 'available' ? (rawComponent.sourceCandidateSources ?? []) : null,
+    extractionDiagnostics: loadExtractionSourceDiagnostics(db, sessionId),
   };
 }
 
@@ -622,22 +863,23 @@ export function loadComponentRationale(
   db: DatabaseSync,
   sessionId: string,
   componentName: string,
+  componentId?: string,
 ): ComponentRationale | null {
-  const compRow = db
+  const matches = db
     .prepare(
       `SELECT component_id, name, description, component_description_rationale, props_rationale, slots_rationale
-       FROM raw_components WHERE session_id = ? AND name = ?`,
+       FROM raw_components WHERE session_id = ? AND name = ? AND (? IS NULL OR component_id = ?)`,
     )
-    .get(sessionId, componentName) as
-    | {
-        component_id: string;
-        name: string;
-        description: string | null;
-        component_description_rationale: string | null;
-        props_rationale: string | null;
-        slots_rationale: string | null;
-      }
-    | undefined;
+    .all(sessionId, componentName, componentId ?? null, componentId ?? null) as Array<{
+    component_id: string;
+    name: string;
+    description: string | null;
+    component_description_rationale: string | null;
+    props_rationale: string | null;
+    slots_rationale: string | null;
+  }>;
+  if (matches.length > 1) throw new Error('Ambiguous component rationale');
+  const compRow = matches[0];
   if (!compRow) return null;
 
   const propRows = db
@@ -684,6 +926,325 @@ export function loadComponentRationale(
   };
 }
 
+function savePropertyDecision(
+  db: DatabaseSync,
+  sessionId: string,
+  componentId: string,
+  propName: string,
+  definition: CDFPropertyDefinition | null,
+  decision: unknown,
+): void {
+  const validation = definition === null ? { valid: true, issues: [] } : validateCDFProperty(definition);
+  if (!validation.valid)
+    throw new Error(validation.issues.map((issue) => `${issue.path}: ${issue.message}`).join('; '));
+  const unsafe = jsonValueIssue(decision);
+  if (unsafe) throw new Error(`${unsafe.path}: ${unsafe.message}`);
+  const previous = db
+    .prepare(
+      'SELECT definition_json,decision_json FROM raw_property_decisions WHERE session_id=? AND component_id=? AND prop_name=?',
+    )
+    .get(sessionId, componentId, propName) as { definition_json: string; decision_json: string } | undefined;
+  let retained = decision;
+  if (previous && decision && typeof decision === 'object' && 'kind' in decision && decision.kind === 'review') {
+    const prior = JSON.parse(previous.decision_json) as Record<string, unknown>;
+    const priorDefinition = JSON.parse(previous.definition_json) as CDFPropertyDefinition | null;
+    if (jsonEqual(priorDefinition, definition)) return;
+    if (
+      definition &&
+      priorDefinition &&
+      definition.$type === priorDefinition.$type &&
+      own(prior, 'defaultIntent') &&
+      own(definition, '$default') === own(priorDefinition, '$default') &&
+      jsonEqual(definition.$default, priorDefinition.$default)
+    )
+      decision = { ...decision, defaultIntent: prior.defaultIntent };
+    const analysis =
+      prior.analysis ??
+      Object.fromEntries(
+        ['model', 'projection', 'alternatives'].filter((key) => own(prior, key)).map((key) => [key, prior[key]]),
+      );
+    retained = { ...(decision as Record<string, unknown>), analysis };
+  }
+  db.prepare(
+    `INSERT INTO raw_property_decisions (session_id,component_id,prop_name,revision,definition_json,decision_json)
+    VALUES (?,?,?,1,?,?) ON CONFLICT(session_id,component_id,prop_name) DO UPDATE SET revision=revision+1,definition_json=excluded.definition_json,decision_json=excluded.decision_json`,
+  ).run(sessionId, componentId, propName, JSON.stringify(definition), JSON.stringify(retained));
+}
+export function loadPropertyDecisions(
+  db: DatabaseSync,
+  sessionId: string,
+): Array<{
+  componentId: string;
+  propertyName: string;
+  revision: number;
+  definition: CDFPropertyDefinition | null;
+  decision: unknown;
+}> {
+  const rows = db
+    .prepare(
+      'SELECT component_id,prop_name,revision,definition_json,decision_json FROM raw_property_decisions WHERE session_id=? ORDER BY component_id,prop_name',
+    )
+    .all(sessionId) as Array<{
+    component_id: string;
+    prop_name: string;
+    revision: number;
+    definition_json: string;
+    decision_json: string;
+  }>;
+  return rows.map((row) => {
+    const definition: unknown = JSON.parse(row.definition_json);
+    if (definition !== null && !validateCDFProperty(definition).valid)
+      throw new Error('Corrupt saved property definition');
+    return {
+      componentId: row.component_id,
+      propertyName: row.prop_name,
+      revision: row.revision,
+      definition: definition as CDFPropertyDefinition | null,
+      decision: JSON.parse(row.decision_json) as unknown,
+    };
+  });
+}
+
+export interface ComponentDecisionReadiness {
+  componentId: string;
+  accounting: { complete: boolean; missing: string[]; issues: string[] };
+  source: { adequate: boolean; issues: string[] };
+  definition: { ready: boolean; issues: string[] };
+  import: { ready: boolean; issues: string[] };
+}
+
+export function evaluateComponentReadiness(
+  db: DatabaseSync,
+  sessionId: string,
+  componentId: string,
+): ComponentDecisionReadiness {
+  const components = loadRawComponents(db, sessionId).filter((component) => component.component_id === componentId);
+  if (components.length !== 1) throw new Error('Unknown or ambiguous selected component ID');
+  const component = components[0]!;
+  let slotIssue: string | undefined;
+  let acceptedSlots: SlotDecision[] | undefined;
+  try {
+    acceptedSlots = loadAcceptedSlotDecisions(db, sessionId);
+  } catch (error) {
+    slotIssue = error instanceof Error ? error.message : 'Slot source unavailable';
+  }
+  const inventory = componentDecisionInventory(component, acceptedSlots);
+  const row = db
+    .prepare('SELECT payload_json FROM raw_component_decisions WHERE session_id=? AND component_id=?')
+    .get(sessionId, componentId) as { payload_json: string } | undefined;
+  let calls: ToolCall[] = [];
+  const protocolIssues: string[] = [];
+  let savedSource: unknown;
+  let savedInventory: unknown;
+  if (row) {
+    const payload = JSON.parse(row.payload_json) as { calls?: unknown[]; source?: unknown; inventory?: unknown };
+    savedSource = payload.source;
+    savedInventory = payload.inventory;
+    const normalized = normalizeClassificationCalls(payload.calls ?? []);
+    calls = normalized.calls;
+    protocolIssues.push(...normalized.warnings);
+  }
+  const decisions = loadPropertyDecisions(db, sessionId).filter((decision) => decision.componentId === componentId);
+  const effective = calls.map((call) => {
+    if (call.tool !== 'classify_prop') return call;
+    const saved = decisions.find((decision) => decision.propertyName === call.prop);
+    if (!saved?.definition) return call;
+    const definition = saved.definition;
+    const record = saved.decision as {
+      defaultIntent?: ClassifiedPropertyCall['default_intent'];
+      call?: ClassifiedPropertyCall;
+    };
+    return definitionCall(
+      call.prop,
+      definition,
+      record.defaultIntent,
+      record.call?.representation_proposal,
+      record.call,
+    );
+  });
+  const accounting = accountClassificationCalls(inventory, effective);
+  const sourceIssues: string[] = slotIssue ? [slotIssue] : [];
+  const importIssues: string[] = [];
+  const representations = selectedRepresentationValidity(db, sessionId, componentId);
+  const selectedPlans = loadRepresentationPlans(db, sessionId, componentId);
+  const definitionIssues: string[] = [...representations.issues];
+  if (!jsonEqual(savedSource, component.sourceCandidates ?? null))
+    sourceIssues.push('Stale component source decision snapshot');
+  if (!jsonEqual(savedInventory, inventory)) sourceIssues.push('Stale component subject inventory');
+  const completed = loadCompletedSourceEvidence(db, sessionId);
+  if (completed.readiness !== 'ready') sourceIssues.push('Completed bound source unavailable');
+  else if (!completed.envelope.candidateDigests?.[componentId])
+    sourceIssues.push('Completed candidate source binding unavailable');
+  if (component.sourceEvidenceReadStatus !== 'available') sourceIssues.push('Candidate source evidence unavailable');
+  for (const name of inventory.properties) {
+    const excluded = effective.some((call) => call.tool === 'exclude_prop' && call.prop === name);
+    const candidate = component.sourceCandidates?.find((item) => item.name === name);
+    const fact = candidate?.facts;
+    const locations = fact
+      ? excluded
+        ? fact.declarations
+        : [
+            ...fact.declarations,
+            ...(fact.sourceGraph?.nodes.flatMap((node) => [
+              ...node.declarations,
+              ...(node.fields?.flatMap((field) => field.declarations ?? []) ?? []),
+            ]) ?? []),
+            ...(fact.sourceDefault?.location ? [fact.sourceDefault.location] : []),
+            ...(fact.sourceDefault?.dependencies ?? []),
+          ]
+      : [];
+    if (
+      (!excluded &&
+        (!fact?.sourceGraph ||
+          validateSourceGraph(fact.sourceGraph).length ||
+          fact.sourceGraph.coverage !== 'complete-within-declared-bound')) ||
+      !locations.length ||
+      locations.some((location) => location.binding !== 'verified')
+    )
+      sourceIssues.push(`Source inadequate for ${name}`);
+    if (completed.readiness === 'ready')
+      for (const location of locations) {
+        const file = completed.envelope.capture.files.find(
+          (item) => item.canonicalPath === location.canonicalPath && item.textHash === location.textHash,
+        );
+        if (
+          !file ||
+          !location.startLine ||
+          !location.endLine ||
+          location.endLine < location.startLine ||
+          (file.captured.kind === 'full' &&
+            (location.endLine > file.captured.text.split('\n').length ||
+              (location.startOffset !== undefined &&
+                location.startOffset !== null &&
+                (location.startOffset < 0 ||
+                  location.endOffset === null ||
+                  location.endOffset === undefined ||
+                  location.endOffset < location.startOffset ||
+                  location.endOffset > file.captured.text.length))))
+        )
+          sourceIssues.push(`Source range unavailable for ${name}`);
+      }
+  }
+  for (const call of effective) {
+    if (call.tool !== 'classify_prop') continue;
+    const saved = decisions.find((decision) => decision.propertyName === call.prop);
+    if (!saved) {
+      importIssues.push(`Missing durable property decision ${call.prop}`);
+      definitionIssues.push(`Missing durable property decision ${call.prop}`);
+      continue;
+    }
+    if (selectedPlans.some((row) => row.propertyName === call.prop)) {
+      if (representations.heldProperties.has(call.prop))
+        importIssues.push(`Representation prerequisites unavailable ${call.prop}`);
+      continue;
+    }
+    if (saved.definition?.$type === 'token') {
+      const paths = db
+        .prepare(
+          'SELECT path FROM raw_prop_token_paths WHERE session_id=? AND component_id=? AND prop_name=? ORDER BY position',
+        )
+        .all(sessionId, componentId, call.prop) as Array<{ path: string }>;
+      if (new Set(paths.map((item) => item.path)).size !== paths.length)
+        importIssues.push(`Duplicate token mapping ${call.prop}`);
+      for (const item of paths) {
+        const token = db
+          .prepare('SELECT type FROM raw_tokens WHERE session_id=? AND path=?')
+          .get(sessionId, item.path) as { type: string } | undefined;
+        if (token && token.type !== saved.definition['$token.kind'])
+          importIssues.push(`Changed token mapping ${call.prop}`);
+      }
+    }
+    try {
+      const record = saved.decision as {
+        reviewAuthority?: unknown;
+        model?: { identity?: unknown; source?: { originalFacts?: unknown } };
+      };
+      const authority = record.reviewAuthority;
+      const current = materializeProperty(component, call, componentId, {
+        defaultAuthority: authority ? 'review' : 'generation',
+      });
+      if (
+        record.model &&
+        (!jsonEqual(record.model.identity, current.model?.identity) ||
+          !jsonEqual(record.model.source?.originalFacts, current.model?.source.originalFacts))
+      )
+        throw new Error('Stale saved property source model');
+      if (authority && !jsonEqual(authority, current.model?.identity))
+        throw new Error('Stale review default authority');
+      if (!current.definition || !current.projection || !['supported', 'lossy'].includes(current.projection.outcome)) {
+        importIssues.push(`Property held ${call.prop}`);
+        definitionIssues.push(`Property held ${call.prop}`);
+      }
+      if (current.definition) importIssues.push(...propertyDefinitionImportBlockers(current.definition, call.prop));
+    } catch (error) {
+      const issue = error instanceof Error ? error.message : 'Invalid current property decision';
+      importIssues.push(issue);
+      definitionIssues.push(issue);
+    }
+  }
+  const accountingIssues = [...protocolIssues, ...accounting.issues];
+  const complete = accounting.complete && !protocolIssues.length;
+  return {
+    componentId,
+    accounting: { complete, missing: accounting.missing, issues: accountingIssues },
+    source: { adequate: !sourceIssues.length, issues: sourceIssues },
+    definition: { ready: complete && !sourceIssues.length && !definitionIssues.length, issues: definitionIssues },
+    import: {
+      ready: complete && !sourceIssues.length && !definitionIssues.length && !importIssues.length,
+      issues: [...definitionIssues, ...importIssues],
+    },
+  };
+}
+
+export function loadSelectedCDFComponents(
+  db: DatabaseSync,
+  sessionId: string,
+  selectedIds?: ReadonlySet<string>,
+  selectedKeys?: ReadonlySet<string>,
+  purpose: 'import' | 'definition' = 'import',
+): Array<{ key: string; componentId: string; entry: CDFComponentEntry }> {
+  const rows = db
+    .prepare('SELECT component_id,name,status FROM raw_components WHERE session_id=? ORDER BY rowid')
+    .all(sessionId) as Array<{ component_id: string; name: string; status: string }>;
+  const reviewRows = loadReviewCDFComponents(db, sessionId);
+  if (selectedKeys) {
+    const resolved = new Set<string>();
+    for (const key of selectedKeys) {
+      const matches = reviewRows.filter((row) => row.key === key);
+      if (matches.length !== 1) throw new Error('Unknown or ambiguous selected component key');
+      resolved.add(matches[0]!.componentId);
+    }
+    if (selectedIds && !jsonEqual([...selectedIds].sort(), [...resolved].sort()))
+      throw new Error('Selected component keys and IDs disagree');
+    selectedIds = resolved;
+  }
+  const scope = loadScopeDecisions(db, sessionId);
+  const ids =
+    selectedIds ??
+    new Set(
+      rows
+        .filter((row) => row.status !== 'generate-rejected' && (!scope || scope.accepted.includes(row.name)))
+        .map((row) => row.component_id),
+    );
+  for (const id of ids) {
+    const selected = reviewRows.find((row) => row.componentId === id);
+    if (!selected) throw new Error('Unknown selected component identity');
+    if (selected.entry.$model && !ids.has(selected.entry.$model.componentId))
+      throw new Error(`Selected model ${selected.key} requires its owning component`);
+  }
+  const rootIds = new Set([...ids].filter((id) => !reviewRows.find((row) => row.componentId === id)!.entry.$model));
+  for (const id of rootIds) {
+    const readiness = evaluateComponentReadiness(db, sessionId, id);
+    if (!readiness[purpose].ready)
+      throw new Error(
+        `Selected component ${id} is not ready: ${[...readiness.accounting.issues, ...readiness.accounting.missing, ...readiness.source.issues, ...readiness.import.issues].join('; ')}`,
+      );
+  }
+  const components = loadCDFComponents(db, sessionId).filter((component) => rootIds.has(component.componentId));
+  if (components.length !== rootIds.size) throw new Error('Selected component output missing');
+  return expandRepresentationClosure(components);
+}
+
 export function applyToolCalls(
   db: DatabaseSync,
   sessionId: string,
@@ -698,6 +1259,55 @@ export function applyToolCalls(
   let classified = 0;
   let excluded = 0;
   let slots = 0;
+  let projectionBlocked = false;
+  const matches = loadRawComponents(db, sessionId).filter((component) => component.component_id === componentId);
+  if (matches.length !== 1 || matches[0]!.name !== componentName)
+    throw new Error('Unknown or ambiguous component identity');
+  const rawComponent = matches[0]!;
+  const normalized = normalizeClassificationCalls(calls);
+  if (incomingWarnings.length || normalized.warnings.length)
+    throw new Error([...incomingWarnings, ...normalized.warnings].join('; '));
+  const inventory = componentDecisionInventory(rawComponent, loadAcceptedSlotDecisions(db, sessionId));
+  const accounting = accountClassificationCalls(inventory, normalized.calls);
+  if (!accounting.complete)
+    throw new Error([...accounting.issues, ...accounting.missing.map((key) => `Missing decision ${key}`)].join('; '));
+  calls = normalized.calls;
+  const reviewed = loadPropertyDecisions(db, sessionId).filter(
+    (decision) => decision.componentId === componentId && (decision.decision as { kind?: string }).kind === 'review',
+  );
+  const retainedHuman = reviewed.filter((decision) => {
+    if ((decision.decision as { transfer?: { state?: string } }).transfer?.state === 'stale')
+      throw new Error('Source-changed human decision requires review');
+    const incoming = calls.find((call) => call.tool === 'classify_prop' && call.prop === decision.propertyName);
+    if (incoming?.tool === 'classify_prop' && incoming.representation_selection && decision.definition) {
+      if (!materializeProperty(rawComponent, incoming, componentId).selectedRepresentationPlan)
+        throw new Error('Replacement model representation is incomplete');
+      return false;
+    }
+    if (incoming?.tool !== 'classify_prop' || !incoming.cdf_type || !decision.definition) return true;
+    if (incoming.cdf_type === decision.definition.$type) return true;
+    materializeProperty(rawComponent, incoming, componentId);
+    return false;
+  });
+  calls = calls.map((call) => {
+    if (call.tool !== 'classify_prop' && call.tool !== 'exclude_prop') return call;
+    const human = retainedHuman.find((decision) => decision.propertyName === call.prop);
+    if (!human) return call;
+    if ((human.decision as { transfer?: { state?: string } }).transfer?.state === 'stale')
+      throw new Error('Source-changed human decision requires review');
+    if (!human.definition) return (human.decision as { call?: ToolCall }).call ?? call;
+    const retained = definitionCall(
+      call.prop,
+      human.definition,
+      (human.decision as { defaultIntent?: ClassifiedPropertyCall['default_intent'] }).defaultIntent,
+      (human.decision as { call?: ClassifiedPropertyCall }).call?.representation_proposal,
+      (human.decision as { call?: ClassifiedPropertyCall }).call,
+    );
+    materializeProperty(rawComponent, retained, componentId, { defaultAuthority: 'review' });
+    return retained;
+  });
+  const sourceSnapshot = cloneJson(rawComponent.sourceCandidates ?? null);
+  const producer = { kind: 'generation' as const, id: randomUUID(), sessionId, componentId };
 
   const updateProp = db.prepare(
     `UPDATE raw_props SET cdf_type = ?, cdf_category = ?, cdf_token_kind = ?, required = ?, description = ?, rationale = ?
@@ -705,22 +1315,14 @@ export function applyToolCalls(
   );
   const clearProp = db.prepare(
     `UPDATE raw_props
-     SET cdf_type = CASE WHEN type = 'boolean' THEN 'boolean' ELSE 'string' END,
-         cdf_category = 'unattached',
+     SET cdf_type = NULL,
+         cdf_category = NULL,
          cdf_token_kind = NULL,
-         required = 0,
          rationale = ?
      WHERE session_id = ? AND component_id = ? AND name = ?`,
   );
-  const deleteAllowedValues = db.prepare(
-    `DELETE FROM raw_prop_allowed_values WHERE session_id = ? AND component_id = ? AND prop_name = ?`,
-  );
   const deleteTokenPaths = db.prepare(
     `DELETE FROM raw_prop_token_paths WHERE session_id = ? AND component_id = ? AND prop_name = ?`,
-  );
-  const insertAllowedValue = db.prepare(
-    `INSERT OR IGNORE INTO raw_prop_allowed_values (session_id, component_id, prop_name, value, position)
-     VALUES (?, ?, ?, ?, ?)`,
   );
   const deleteAllowedComponents = db.prepare(
     `DELETE FROM raw_slot_allowed_components WHERE session_id = ? AND component_id = ? AND slot_name = ?`,
@@ -766,12 +1368,81 @@ export function applyToolCalls(
           }
         }
       } else if (call.tool === 'classify_prop') {
+        if (!inventory.properties.includes(call.prop)) {
+          warnings.push(`${componentName}: classify_prop '${call.prop}' — prop not found, skipped`);
+          continue;
+        }
+        const human = retainedHuman.find((decision) => decision.propertyName === call.prop);
+        if (call.representation_selection) deleteTokenPaths.run(sessionId, componentId, call.prop);
+        const materialized = materializeProperty(rawComponent, call, componentId, {
+          defaultAuthority: human ? 'review' : 'generation',
+          ...(call.representation_selection
+            ? { representationContext: representationContext(db, sessionId, componentId, call.prop) }
+            : {}),
+        });
+        if (materialized.selectedRepresentationPlan) {
+          const plan = options.representationPlans?.get(call.prop) ?? materialized.selectedRepresentationPlan;
+          if (options.representationPlans) {
+            if (!options.representationPlans.has(call.prop) || !modelExplorationComplete(plan))
+              throw new Error('Generated model exploration is incomplete');
+            const issues = validateRepresentationPlan(
+              plan,
+              materialized.model!,
+              representationContext(db, sessionId, componentId, call.prop),
+            );
+            if (issues.length) throw new Error(issues.map((issue) => issue.message).join('; '));
+            materialized.selectedRepresentationPlan = plan;
+            materialized.representationPlans = materialized.representationPlans?.map((candidate) =>
+              candidate.kind === 'component-model' ? plan : candidate,
+            );
+          }
+          if (inventory.slots.some((slot) => slot.name === plan.attachment?.slot))
+            throw new Error('Source slot and generated model attachment collide');
+          clearProp.run(call.reason ?? null, sessionId, componentId, call.prop);
+          savePropertyDecision(db, sessionId, componentId, call.prop, null, {
+            kind: 'generation',
+            producer,
+            admission: 'component-model',
+            defaultIntent: materialized.model!.defaultIntent,
+            ...materialized,
+          });
+          saveGeneratedRepresentationPlan(db, sessionId, componentId, plan, producer);
+          classified++;
+          continue;
+        }
+        const definition = materialized.definition;
+        if (
+          !definition ||
+          (materialized.projection && !['supported', 'lossy'].includes(materialized.projection.outcome))
+        ) {
+          projectionBlocked = true;
+          clearProp.run(call.reason ?? 'Representation held', sessionId, componentId, call.prop);
+          savePropertyDecision(db, sessionId, componentId, call.prop, definition, {
+            kind: 'generation',
+            producer,
+            admission: 'unsupported',
+            defaultIntent:
+              call.default_intent ??
+              (own(call, 'default') ? { action: 'set', value: call.default } : { action: 'absent' }),
+            source: sourceSnapshot,
+            ...materialized,
+          });
+          warnings.push(
+            ...(materialized.projection?.issues ?? []).map((issue) => `${call.prop}${issue.path}: ${issue.message}`),
+          );
+          classified++;
+          continue;
+        }
+        if (materialized.projection)
+          warnings.push(
+            ...(materialized.projection?.issues ?? []).map((issue) => `${call.prop}${issue.path}: ${issue.message}`),
+          );
         const changes = updateProp.run(
-          call.cdf_type,
-          call.cdf_category,
-          call.token_kind ?? null,
-          call.required !== undefined ? (call.required ? 1 : 0) : 0,
-          call.description ?? null,
+          definition.$type,
+          definition.$category,
+          definition['$token.kind'] ?? null,
+          definition.$required ? 1 : 0,
+          definition.$description ?? null,
           call.reason ?? null,
           sessionId,
           componentId,
@@ -781,37 +1452,41 @@ export function applyToolCalls(
           warnings.push(`${componentName}: classify_prop '${call.prop}' — prop not found, skipped`);
           continue;
         }
-        if (call.cdf_type === 'token') {
-          // A token property's options list is design token paths, written by
-          // map tokens. An enum vocabulary is not part of that definition,
-          // whether it is left over from a prior classification or supplied on
-          // this very call against the tool contract — so it is dropped either
-          // way, and the caller is told when it was asked for explicitly.
-          deleteAllowedValues.run(sessionId, componentId, call.prop);
-          if (call.values && call.values.length > 0) {
-            const count = call.values.length;
-            warnings.push(
-              `${componentName}: classify_prop '${call.prop}' — dropped ${count} value${count === 1 ? '' : 's'} on a token property; its options list is $token.allowed, not $values`,
-            );
-          }
-        } else {
-          deleteTokenPaths.run(sessionId, componentId, call.prop);
-          if (call.values && call.values.length > 0) {
-            deleteAllowedValues.run(sessionId, componentId, call.prop);
-            call.values.forEach((v, i) => insertAllowedValue.run(sessionId, componentId, call.prop, v, i));
-          }
-        }
-        if (call.default !== undefined) {
-          const storedDefault = typeof call.default === 'boolean' ? String(call.default) : call.default;
-          db.prepare(
-            `UPDATE raw_props SET default_value = ? WHERE session_id = ? AND component_id = ? AND name = ?`,
-          ).run(storedDefault, sessionId, componentId, call.prop);
-        }
+        if (call.cdf_type !== 'token') deleteTokenPaths.run(sessionId, componentId, call.prop);
+        if (!human)
+          savePropertyDecision(db, sessionId, componentId, call.prop, definition, {
+            kind: 'generation',
+            producer,
+            defaultIntent:
+              call.default_intent ??
+              (own(call, 'default') ? { action: 'set', value: call.default } : { action: 'absent' }),
+            ...materialized,
+          });
         classified++;
       } else if (call.tool === 'exclude_prop') {
         clearProp.run(call.reason || null, sessionId, componentId, call.prop);
+        const excludedSource = materializeProperty(
+          rawComponent,
+          { tool: 'classify_prop', prop: call.prop, cdf_category: 'content', reason: call.reason },
+          componentId,
+        );
+        savePropertyDecision(db, sessionId, componentId, call.prop, null, {
+          kind: 'generation',
+          producer,
+          disposition: 'exclude',
+          reason: call.reason,
+          call,
+          source: sourceSnapshot,
+          identity: excludedSource.model?.identity ?? null,
+          model: excludedSource.model ?? null,
+          defaultIntent: { action: 'absent' },
+        });
         excluded++;
       } else if (call.tool === 'classify_slot') {
+        if (loadAcceptedSlotDecisions(db, sessionId) !== undefined) {
+          slots++;
+          continue;
+        }
         const slotRequired = call.required !== undefined ? (call.required ? 1 : 0) : 1;
         const slotChanges = updateSlot.run(
           slotRequired,
@@ -854,8 +1529,24 @@ export function applyToolCalls(
     }
 
     db.prepare(
-      `UPDATE raw_components SET status = 'generated', extracted_at = ? WHERE session_id = ? AND component_id = ?`,
-    ).run(now, sessionId, componentId);
+      'INSERT INTO raw_component_decisions(session_id,component_id,payload_json) VALUES (?,?,?) ON CONFLICT(session_id,component_id) DO UPDATE SET payload_json=excluded.payload_json',
+    ).run(
+      sessionId,
+      componentId,
+      JSON.stringify({ schemaVersion: 1, calls, inventory, source: sourceSnapshot, accountingComplete: true }),
+    );
+    assertPreservedRepresentationSelections(db, sessionId, componentId);
+    const currentReadiness = evaluateComponentReadiness(db, sessionId, componentId);
+    if (!currentReadiness.source.adequate) {
+      projectionBlocked = true;
+      warnings.push(...currentReadiness.source.issues);
+    }
+    db.prepare(`UPDATE raw_components SET status = ?, extracted_at = ? WHERE session_id = ? AND component_id = ?`).run(
+      projectionBlocked ? 'held' : 'generated',
+      now,
+      sessionId,
+      componentId,
+    );
     db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
     db.exec('COMMIT');
   } catch (e) {
@@ -863,7 +1554,7 @@ export function applyToolCalls(
     throw e;
   }
 
-  return { classified, excluded, slots, warnings };
+  return { classified, excluded, slots, warnings, ...(projectionBlocked ? { projectionBlocked: true } : {}) };
 }
 
 export type MatchHints = SessionMatchHints;
@@ -905,18 +1596,20 @@ export function updateStep(
   status: 'complete' | 'failed',
   outputs: Record<string, string>,
   error?: string,
+  options?: { withinTransaction?: boolean },
 ): void {
   const now = new Date().toISOString();
-  db.exec('BEGIN');
+  const ownsTransaction = !options?.withinTransaction;
+  if (ownsTransaction) db.exec('BEGIN');
   try {
     const stepSessionId = getSessionIdForStep(db, stepId);
     updateStepStatus(db, stepId, status, outputs, error ?? null, now);
     if (stepSessionId) {
       updateSessionTimestamp(db, stepSessionId, now);
     }
-    db.exec('COMMIT');
+    if (ownsTransaction) db.exec('COMMIT');
   } catch (e) {
-    db.exec('ROLLBACK');
+    if (ownsTransaction) db.exec('ROLLBACK');
     throw e;
   }
 }
@@ -929,18 +1622,25 @@ export function storeRawComponents(
     status?: string;
     preserveCDF?: boolean;
     preserveStatus?: boolean;
+    withinTransaction?: boolean;
+    extractionDiagnostics?: ExtractionDiagnostics;
   },
 ): void {
   const now = new Date().toISOString();
 
   const insertComp = db.prepare(
-    `INSERT INTO raw_components (session_id, component_id, name, source, framework, extracted_at, extraction_confidence, review_reasons, needs_review, source_path)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO raw_components (session_id, component_id, name, source, framework, extracted_at, review_reasons, needs_review, source_path)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+  const insertSourceEvidence = db.prepare(
+    `INSERT INTO raw_component_source_evidence
+       (session_id, component_id, fact_schema_version, candidates_json, alternate_sources_json, component_facts_json)
+     VALUES (?, ?, ?, ?, ?, ?)`,
   );
   const insertProp = db.prepare(
     `INSERT INTO raw_props
-       (session_id, component_id, name, type, required, category, default_value, description, token_reference, position, source_start_line, source_end_line)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (session_id, component_id, name, type, required, category, default_value, description, token_reference, position, source_start_line, source_end_line, dom_attribute)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const insertAllowedValue = db.prepare(
     `INSERT INTO raw_prop_allowed_values (session_id, component_id, prop_name, position, value)
@@ -955,59 +1655,46 @@ export function storeRawComponents(
      VALUES (?, ?, ?, ?, ?)`,
   );
 
-  db.exec('BEGIN');
+  const ownsTransaction = !options?.withinTransaction;
+  if (ownsTransaction) db.exec('BEGIN');
   try {
-    type CDFSnapshot = {
-      component_id: string;
-      name: string;
-      position: number;
-      cdf_type: string;
-      cdf_category: string;
-      cdf_token_kind: string | null;
-    };
-    type DescSnapshot = { component_id: string; description: string };
-    type AVSnapshot = {
-      component_id: string;
-      prop_name: string;
-      position: number;
-      value: string;
-    };
-    type StatusSnapshot = {
-      component_id: string;
-      status: string;
-      reject_reason: string | null;
-    };
-
-    let cdfSnapshot: CDFSnapshot[] = [];
-    let descSnapshot: DescSnapshot[] = [];
-    let avSnapshot: AVSnapshot[] = [];
-    let statusSnapshot: StatusSnapshot[] = [];
-
-    if (options?.preserveCDF) {
-      cdfSnapshot = db
-        .prepare(
-          `SELECT component_id, name, position, cdf_type, cdf_category, cdf_token_kind
-           FROM raw_props WHERE session_id = ? AND cdf_type IS NOT NULL`,
-        )
-        .all(sessionId) as CDFSnapshot[];
-
-      descSnapshot = db
-        .prepare(
-          `SELECT component_id, description
-           FROM raw_components WHERE session_id = ? AND description IS NOT NULL`,
-        )
-        .all(sessionId) as DescSnapshot[];
-
-      if (cdfSnapshot.length > 0) {
-        avSnapshot = db
+    const nativeSnapshot = options?.preserveCDF
+      ? (db
           .prepare(
-            `SELECT component_id, prop_name, position, value
-             FROM raw_prop_allowed_values WHERE session_id = ?`,
+            'SELECT component_id,prop_name,revision,definition_json,decision_json FROM raw_property_decisions WHERE session_id=?',
           )
-          .all(sessionId) as AVSnapshot[];
-      }
-    }
-
+          .all(sessionId) as Array<{
+          component_id: string;
+          prop_name: string;
+          revision: number;
+          definition_json: string;
+          decision_json: string;
+        }>)
+      : [];
+    const ledgerSnapshot = options?.preserveCDF
+      ? (db
+          .prepare('SELECT component_id,payload_json FROM raw_component_decisions WHERE session_id=?')
+          .all(sessionId) as Array<{ component_id: string; payload_json: string }>)
+      : [];
+    const tokenSnapshot = options?.preserveCDF
+      ? (db
+          .prepare('SELECT component_id,prop_name,source,position,path FROM raw_prop_token_paths WHERE session_id=?')
+          .all(sessionId) as Array<{
+          component_id: string;
+          prop_name: string;
+          source: string;
+          position: number;
+          path: string;
+        }>)
+      : [];
+    const descriptionSnapshot = options?.preserveCDF
+      ? (db.prepare('SELECT component_id,description FROM raw_components WHERE session_id=?').all(sessionId) as Array<{
+          component_id: string;
+          description: string | null;
+        }>)
+      : [];
+    type StatusSnapshot = { component_id: string; status: string; reject_reason: string | null };
+    let statusSnapshot: StatusSnapshot[] = [];
     if (options?.preserveStatus) {
       statusSnapshot = db
         .prepare(
@@ -1017,6 +1704,8 @@ export function storeRawComponents(
         .all(sessionId) as StatusSnapshot[];
     }
 
+    if (!options?.preserveCDF)
+      db.prepare('DELETE FROM selected_representation_plans WHERE session_id = ?').run(sessionId);
     db.prepare('DELETE FROM raw_components WHERE session_id = ?').run(sessionId);
 
     for (const comp of components) {
@@ -1028,11 +1717,30 @@ export function storeRawComponents(
         comp.source,
         comp.framework,
         now,
-        comp.extractionConfidence ?? null,
         JSON.stringify(comp.reviewReasons ?? []),
         comp.needsReview ? 1 : 0,
         comp.sourcePath ?? null,
       );
+
+      if (
+        comp.factSchemaVersion !== undefined ||
+        comp.sourceCandidates !== undefined ||
+        comp.sourceCandidateSources !== undefined ||
+        comp.componentFacts !== undefined
+      ) {
+        insertSourceEvidence.run(
+          sessionId,
+          componentId,
+          comp.factSchemaVersion ?? null,
+          comp.sourceCandidates === undefined ? null : JSON.stringify(comp.sourceCandidates),
+          comp.sourceCandidateSources === undefined ? null : JSON.stringify(comp.sourceCandidateSources),
+          comp.componentFacts === undefined
+            ? null
+            : jsonValueIssue(comp.componentFacts)
+              ? 'null'
+              : JSON.stringify(comp.componentFacts),
+        );
+      }
 
       for (let i = 0; i < comp.props.length; i++) {
         const prop = comp.props[i]!;
@@ -1049,6 +1757,7 @@ export function storeRawComponents(
           i,
           prop.sourceStartLine ?? null,
           prop.sourceEndLine ?? null,
+          prop.domAttribute === undefined ? null : prop.domAttribute ? 1 : 0,
         );
         if (prop.allowedValues) {
           prop.allowedValues.forEach((v, j) => insertAllowedValue.run(sessionId, componentId, prop.name, j, v));
@@ -1066,78 +1775,148 @@ export function storeRawComponents(
       }
     }
 
-    if (options?.preserveCDF && cdfSnapshot.length > 0) {
-      const updateCDFByName = db.prepare(
-        `UPDATE raw_props SET cdf_type = ?, cdf_category = ?, cdf_token_kind = ?
-         WHERE session_id = ? AND component_id = ? AND name = ?`,
-      );
-      const updateCDFByPosition = db.prepare(
-        `UPDATE raw_props SET cdf_type = ?, cdf_category = ?, cdf_token_kind = ?
-         WHERE session_id = ? AND component_id = ? AND position = ? AND cdf_type IS NULL`,
-      );
-      const restoredPropKeys = new Set<string>();
-      const unmatchedSnaps: CDFSnapshot[] = [];
-      for (const snap of cdfSnapshot) {
-        const result = updateCDFByName.run(
-          snap.cdf_type,
-          snap.cdf_category,
-          snap.cdf_token_kind,
-          sessionId,
-          snap.component_id,
-          snap.name,
-        );
-        if (Number(result.changes) > 0) {
-          restoredPropKeys.add(`${snap.component_id}::${snap.name}`);
+    const transferred = new Map<string, ToolCall[]>();
+    for (const snapshot of nativeSnapshot) {
+      const component = components.find((item) => deriveComponentId(item.name, item.source) === snapshot.component_id);
+      if (!component || !componentDecisionInventory(component).properties.includes(snapshot.prop_name)) continue;
+      const previous = JSON.parse(snapshot.decision_json) as Record<string, unknown>;
+      const definition = JSON.parse(snapshot.definition_json) as CDFPropertyDefinition | null;
+      const intent = previous.defaultIntent as ClassifiedPropertyCall['default_intent'];
+      let retained = previous;
+      let active: CDFPropertyDefinition | null = null;
+      let call: ToolCall | undefined;
+      try {
+        if (definition) {
+          const sourceDecision = previous.call as ClassifiedPropertyCall | undefined;
+          call = definitionCall(snapshot.prop_name, definition, intent, undefined, sourceDecision);
+          const current = materializeProperty(component, call, snapshot.component_id, {
+            defaultAuthority: previous.kind === 'review' ? 'review' : 'generation',
+          });
+          if (
+            !current.definition ||
+            (current.projection && !['supported', 'lossy'].includes(current.projection.outcome))
+          )
+            throw new Error('Transferred representation requires review');
+          active = current.definition;
+          retained = {
+            ...previous,
+            ...current,
+            transfer: { state: 'compatible' },
+            ...(previous.kind === 'review' ? { reviewAuthority: current.model?.identity ?? null } : {}),
+          };
         } else {
-          unmatchedSnaps.push(snap);
+          const ledger = ledgerSnapshot.find((item) => item.component_id === snapshot.component_id);
+          const priorCalls = ledger ? (JSON.parse(ledger.payload_json) as { calls: ToolCall[] }).calls : [];
+          call = priorCalls.find(
+            (item) =>
+              (item.tool === 'exclude_prop' || item.tool === 'classify_prop') && item.prop === snapshot.prop_name,
+          );
+          if (call?.tool === 'classify_prop')
+            retained = {
+              ...previous,
+              ...materializeProperty(component, call, snapshot.component_id),
+              transfer: { state: 'compatible' },
+            };
+          else if (call?.tool === 'exclude_prop')
+            retained = { ...previous, source: component.sourceCandidates ?? null, transfer: { state: 'compatible' } };
+          else throw new Error('Transferred disposition unavailable');
         }
+      } catch (error) {
+        retained = {
+          ...previous,
+          transfer: { state: 'stale', reason: error instanceof Error ? error.message : 'Source changed' },
+        };
+        call = undefined;
       }
-      for (const snap of unmatchedSnaps) {
-        const result = updateCDFByPosition.run(
-          snap.cdf_type,
-          snap.cdf_category,
-          snap.cdf_token_kind,
-          sessionId,
-          snap.component_id,
-          snap.position,
-        );
-        if (Number(result.changes) > 0) {
-          const matched = db
-            .prepare(`SELECT name FROM raw_props WHERE session_id = ? AND component_id = ? AND position = ?`)
-            .get(sessionId, snap.component_id, snap.position) as { name: string } | undefined;
-          if (matched) {
-            restoredPropKeys.add(`${snap.component_id}::${matched.name}`);
-          }
-        }
-      }
-
-      const updateDesc = db.prepare(
-        `UPDATE raw_components SET description = ? WHERE session_id = ? AND component_id = ?`,
+      db.prepare(
+        'INSERT INTO raw_property_decisions(session_id,component_id,prop_name,revision,definition_json,decision_json) VALUES (?,?,?,?,?,?)',
+      ).run(
+        sessionId,
+        snapshot.component_id,
+        snapshot.prop_name,
+        snapshot.revision,
+        JSON.stringify(active ?? definition),
+        JSON.stringify(retained),
       );
-      for (const snap of descSnapshot) {
-        updateDesc.run(snap.description, sessionId, snap.component_id);
-      }
-
-      const relevantAV = avSnapshot.filter((av) => restoredPropKeys.has(`${av.component_id}::${av.prop_name}`));
-      if (relevantAV.length > 0) {
-        const deleteAV = db.prepare(
-          `DELETE FROM raw_prop_allowed_values WHERE session_id = ? AND component_id = ? AND prop_name = ?`,
+      if (active)
+        db.prepare(
+          'UPDATE raw_props SET cdf_type=?,cdf_category=?,cdf_token_kind=?,required=?,description=? WHERE session_id=? AND component_id=? AND name=?',
+        ).run(
+          active.$type,
+          active.$category,
+          active['$token.kind'] ?? null,
+          active.$required ? 1 : 0,
+          active.$description ?? null,
+          sessionId,
+          snapshot.component_id,
+          snapshot.prop_name,
         );
-        const insertAV = db.prepare(
-          `INSERT OR IGNORE INTO raw_prop_allowed_values (session_id, component_id, prop_name, position, value)
-           VALUES (?, ?, ?, ?, ?)`,
-        );
-        const deletedKeys = new Set<string>();
-        for (const av of relevantAV) {
-          const key = `${av.component_id}::${av.prop_name}`;
-          if (!deletedKeys.has(key)) {
-            deleteAV.run(sessionId, av.component_id, av.prop_name);
-            deletedKeys.add(key);
-          }
-          insertAV.run(sessionId, av.component_id, av.prop_name, av.position, av.value);
-        }
-      }
+      if (call) transferred.set(snapshot.component_id, [...(transferred.get(snapshot.component_id) ?? []), call]);
+      if (active?.$type === 'token')
+        for (const token of tokenSnapshot.filter(
+          (item) => item.component_id === snapshot.component_id && item.prop_name === snapshot.prop_name,
+        ))
+          db.prepare(
+            'INSERT INTO raw_prop_token_paths(session_id,component_id,prop_name,source,position,path) VALUES (?,?,?,?,?,?)',
+          ).run(sessionId, token.component_id, token.prop_name, token.source, token.position, token.path);
     }
+    for (const snapshot of ledgerSnapshot) {
+      const component = components.find((item) => deriveComponentId(item.name, item.source) === snapshot.component_id);
+      if (!component) continue;
+      const previous = JSON.parse(snapshot.payload_json) as { calls: ToolCall[] };
+      let slots: SlotDecision[] | undefined;
+      let slotSourceCurrent = true;
+      try {
+        slots = loadAcceptedSlotDecisions(db, sessionId);
+      } catch {
+        slotSourceCurrent = false;
+      }
+      const inventory = componentDecisionInventory(component, slots);
+      const calls = [
+        ...previous.calls.filter(
+          (call) =>
+            call.tool === 'classify_component' ||
+            (call.tool === 'classify_slot' && inventory.slots.some((slot) => slot.name === call.slot)),
+        ),
+        ...(transferred.get(snapshot.component_id) ?? []),
+      ];
+      const normalized = normalizeClassificationCalls(calls);
+      const accounting = accountClassificationCalls(inventory, normalized.calls);
+      if (!slotSourceCurrent) accounting.complete = false;
+      db.prepare('INSERT INTO raw_component_decisions(session_id,component_id,payload_json) VALUES (?,?,?)').run(
+        sessionId,
+        snapshot.component_id,
+        JSON.stringify({
+          schemaVersion: 1,
+          calls: normalized.calls,
+          inventory,
+          source: component.sourceCandidates ?? null,
+          accountingComplete: accounting.complete,
+          transfer: { state: accounting.complete ? 'compatible' : 'needs-review' },
+        }),
+      );
+      const importComplete =
+        accounting.complete &&
+        normalized.calls
+          .filter((call) => call.tool === 'classify_prop')
+          .every(
+            (call) =>
+              !!db
+                .prepare('SELECT cdf_type FROM raw_props WHERE session_id=? AND component_id=? AND name=?')
+                .get(sessionId, snapshot.component_id, call.prop)?.['cdf_type'],
+          );
+      db.prepare('UPDATE raw_components SET status=? WHERE session_id=? AND component_id=?').run(
+        importComplete ? 'generated' : 'held',
+        sessionId,
+        snapshot.component_id,
+      );
+    }
+    for (const snapshot of descriptionSnapshot)
+      db.prepare('UPDATE raw_components SET description=? WHERE session_id=? AND component_id=?').run(
+        snapshot.description,
+        sessionId,
+        snapshot.component_id,
+      );
 
     if (options?.preserveStatus && statusSnapshot.length > 0) {
       const restoreStatus = db.prepare(
@@ -1145,17 +1924,31 @@ export function storeRawComponents(
          WHERE session_id = ? AND component_id = ?`,
       );
       for (const snapshot of statusSnapshot) {
-        restoreStatus.run(snapshot.status, snapshot.reject_reason, sessionId, snapshot.component_id);
+        const current = db
+          .prepare('SELECT status FROM raw_components WHERE session_id=? AND component_id=?')
+          .get(sessionId, snapshot.component_id) as { status: string } | undefined;
+        const status =
+          options?.preserveCDF && snapshot.status === 'generated' && current?.status === 'held'
+            ? 'held'
+            : snapshot.status;
+        restoreStatus.run(status, snapshot.reject_reason, sessionId, snapshot.component_id);
       }
     }
 
     if (options?.status) {
       db.prepare('UPDATE raw_components SET status = ? WHERE session_id = ?').run(options.status, sessionId);
     }
+    if (options?.preserveCDF) assertPreservedRepresentationSelections(db, sessionId);
+    if (options?.extractionDiagnostics !== undefined) {
+      db.prepare(
+        `INSERT INTO extraction_source_diagnostics (session_id, payload_json) VALUES (?, ?)
+         ON CONFLICT(session_id) DO UPDATE SET payload_json = excluded.payload_json`,
+      ).run(sessionId, JSON.stringify(options.extractionDiagnostics));
+    }
     db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
-    db.exec('COMMIT');
+    if (ownsTransaction) db.exec('COMMIT');
   } catch (e) {
-    db.exec('ROLLBACK');
+    if (ownsTransaction) db.exec('ROLLBACK');
     throw e;
   }
 }
@@ -1171,14 +1964,13 @@ export function loadRawComponents(
 ): RawComponentWithId[] {
   const all = db
     .prepare(
-      'SELECT component_id, name, source, framework, extraction_confidence, review_reasons, needs_review, source_path FROM raw_components WHERE session_id = ? ORDER BY rowid',
+      'SELECT component_id, name, source, framework, review_reasons, needs_review, source_path FROM raw_components WHERE session_id = ? ORDER BY rowid',
     )
     .all(sessionId) as Array<{
     component_id: string;
     name: string;
     source: string;
     framework: string;
-    extraction_confidence: number | null;
     review_reasons: string;
     needs_review: number;
     source_path: string | null;
@@ -1191,7 +1983,7 @@ export function loadRawComponents(
   const props = db
     .prepare(
       `SELECT component_id, name, type, required, category, default_value, description, token_reference, position,
-              rationale, source_start_line, source_end_line
+              rationale, source_start_line, source_end_line, dom_attribute
        FROM raw_props WHERE session_id = ? ORDER BY component_id, position`,
     )
     .all(sessionId) as Array<{
@@ -1207,6 +1999,7 @@ export function loadRawComponents(
     rationale: string | null;
     source_start_line: number | null;
     source_end_line: number | null;
+    dom_attribute: number | null;
   }>;
 
   const allowedValues = db
@@ -1246,6 +2039,137 @@ export function loadRawComponents(
     allowed_component: string;
   }>;
 
+  const sourceEvidenceRows = db
+    .prepare(
+      `SELECT component_id, fact_schema_version, candidates_json, alternate_sources_json, component_facts_json
+       FROM raw_component_source_evidence WHERE session_id = ?`,
+    )
+    .all(sessionId) as Array<{
+    component_id: string;
+    fact_schema_version: number | null;
+    candidates_json: string | null;
+    alternate_sources_json: string | null;
+    component_facts_json: string | null;
+  }>;
+  const componentFactsByComponent = new Map<string, ComponentFactsRead>(
+    sourceEvidenceRows.map((row) => [row.component_id, readComponentFactsJson(row.component_facts_json)]),
+  );
+  if (
+    [...componentFactsByComponent.values()].some((read) => read.facts?.sourceClosure || read.facts?.sourceObservations)
+  ) {
+    const source = loadCompletedSourceEvidence(db, sessionId);
+    for (const [id, read] of componentFactsByComponent) {
+      if (read.facts && (read.facts.sourceClosure || read.facts.sourceObservations)) {
+        const sourceClosure = read.facts.sourceClosure
+          ? validateSavedSourceClosure(read.facts.sourceClosure, source)
+          : undefined;
+        const observations = read.facts.sourceObservations
+          ? mapSourceObservationLocations(
+              read.facts.sourceObservations,
+              createCapturedLocationBinder(source.readiness === 'ready' ? source.envelope.capture.files : []),
+            )
+          : undefined;
+        componentFactsByComponent.set(id, {
+          ...read,
+          facts: {
+            ...read.facts,
+            ...(sourceClosure ? { sourceClosure } : {}),
+            ...(observations
+              ? {
+                  sourceObservations: {
+                    ...observations,
+                    ...(observations.fieldSemantics
+                      ? {
+                          fieldSemantics: validateSavedFieldReplay(
+                            observations.fieldSemantics,
+                            source.readiness === 'ready' ? source.envelope.capture.files : [],
+                          ),
+                        }
+                      : {}),
+                    ...(observations.inputOutput
+                      ? {
+                          inputOutput: validateSavedInputOutput(
+                            observations.inputOutput,
+                            source,
+                            hasBoundComponentDeclaration(observations),
+                          ),
+                        }
+                      : {}),
+                    ...(observations.referenceIndex
+                      ? {
+                          referenceIndex: bindSavedSourceReferences(
+                            observations.referenceIndex,
+                            source.readiness === 'ready' ? source.envelope.capture.files : [],
+                          ),
+                        }
+                      : {}),
+                  },
+                }
+              : {}),
+          },
+        });
+      }
+    }
+  }
+  const completedCandidates = loadCompletedSourceEvidence(db, sessionId);
+  const sourceEvidenceByComponent = new Map<
+    string,
+    {
+      status: NonNullable<RawComponentDefinition['sourceEvidenceReadStatus']>;
+      factSchemaVersion?: number;
+      candidates?: SourceCandidate[];
+      alternates?: SourceCandidateSource[];
+    }
+  >();
+  for (const row of sourceEvidenceRows) {
+    if (row.fact_schema_version === null && row.candidates_json === null && row.alternate_sources_json === null) {
+      sourceEvidenceByComponent.set(row.component_id, { status: 'unknown-legacy' });
+      continue;
+    }
+    if (
+      row.fact_schema_version === null ||
+      !SUPPORTED_SOURCE_FACT_SCHEMA_VERSIONS.includes(row.fact_schema_version as 3 | 4)
+    ) {
+      sourceEvidenceByComponent.set(row.component_id, { status: 'unsupported' });
+      continue;
+    }
+    try {
+      if (row.candidates_json === null) throw new Error('candidate-payload-missing');
+      const candidates = JSON.parse(row.candidates_json) as unknown;
+      const alternates = row.alternate_sources_json === null ? [] : (JSON.parse(row.alternate_sources_json) as unknown);
+      if (!isSourceCandidatePayload(candidates) || !isAlternateSourcePayload(alternates))
+        throw new Error('candidate-payload-invalid');
+      const candidateComponent: RawComponentDefinition = {
+        name: '',
+        source: '',
+        framework: 'react',
+        props: [],
+        slots: [],
+        factSchemaVersion: row.fact_schema_version,
+        sourceCandidates: candidates,
+        sourceCandidateSources: alternates,
+      };
+      const expectedDigest =
+        completedCandidates.readiness === 'ready'
+          ? completedCandidates.envelope.candidateDigests?.[row.component_id]
+          : undefined;
+      if (expectedDigest && expectedDigest !== candidateEvidenceDigest(candidateComponent))
+        throw new Error('candidate-source-digest-mismatch');
+      const rebound = bindSourceCandidatesToCapture(
+        [candidateComponent],
+        completedCandidates.readiness === 'ready' ? completedCandidates.envelope.capture.files : [],
+      )[0]!;
+      sourceEvidenceByComponent.set(row.component_id, {
+        status: 'available',
+        factSchemaVersion: row.fact_schema_version,
+        candidates: rebound.sourceCandidates,
+        alternates: rebound.sourceCandidateSources,
+      });
+    } catch {
+      sourceEvidenceByComponent.set(row.component_id, { status: 'corrupt' });
+    }
+  }
+
   const propsByComponent = indexRowsByKey(props, (p) => p.component_id);
   const allowedValuesByProp = indexRowsByKey(allowedValues, (av) => `${av.component_id}::${av.prop_name}`);
   const slotsByComponent = indexRowsByKey(slots, (s) => s.component_id);
@@ -1257,10 +2181,23 @@ export function loadRawComponents(
       name: c.name,
       source: c.source,
       framework: c.framework as RawComponentDefinition['framework'],
-      extractionConfidence: c.extraction_confidence ?? null,
       reviewReasons: parseReviewReasons(c.review_reasons),
       needsReview: Boolean(c.needs_review),
       sourcePath: c.source_path ?? undefined,
+      componentEvidenceReadStatus: componentFactsByComponent.get(c.component_id)?.status ?? 'unknown-legacy',
+      ...(componentFactsByComponent.get(c.component_id)?.status === 'available'
+        ? { componentFacts: componentFactsByComponent.get(c.component_id)!.facts! }
+        : {}),
+      sourceEvidenceReadStatus: sourceEvidenceByComponent.get(c.component_id)?.status ?? 'unknown-legacy',
+      ...(sourceEvidenceByComponent.get(c.component_id)?.factSchemaVersion !== undefined
+        ? { factSchemaVersion: sourceEvidenceByComponent.get(c.component_id)!.factSchemaVersion! }
+        : {}),
+      ...(sourceEvidenceByComponent.get(c.component_id)?.status === 'available'
+        ? {
+            sourceCandidates: sourceEvidenceByComponent.get(c.component_id)!.candidates!,
+            sourceCandidateSources: sourceEvidenceByComponent.get(c.component_id)!.alternates!,
+          }
+        : {}),
       props: (propsByComponent.get(c.component_id) ?? []).map((p): RawPropDefinition => {
         const av = allowedValuesByProp.get(`${c.component_id}::${p.name}`);
         const prop: RawPropDefinition = {
@@ -1275,6 +2212,7 @@ export function loadRawComponents(
         if (av && av.length > 0) prop.allowedValues = av.map((v) => v.value);
         if (p.source_start_line !== null) prop.sourceStartLine = p.source_start_line;
         if (p.source_end_line !== null) prop.sourceEndLine = p.source_end_line;
+        if (p.dom_attribute !== null) prop.domAttribute = Boolean(p.dom_attribute);
         return prop;
       }),
       slots: (slotsByComponent.get(c.component_id) ?? []).map((s): RawSlotDefinition => {
@@ -1291,30 +2229,39 @@ export function loadRawComponents(
   );
 }
 
-// Maximum source excerpt size used when building persisted agent context.
-// convention for bounding inlined source in an agent prompt.
-const MAX_COMPONENT_SOURCE_CHARS = 8_000;
-// Maximum sibling-file count used when building persisted agent context.
-// MAX_SIBLING_SNIPPET_CHARS conventions — small, purpose-built duplicate
-// rather than importing that module's SelectionContext machinery, which is
-// built for the internal generation context.
-const MAX_SIBLING_FILES = 5;
-const MAX_SIBLING_SNIPPET_CHARS = 1_200;
-// A type-declaring sibling (e.g. `*.types.ts`) needs a bigger budget than a
-// styles module — the styles-module budget can cut mid-array.
-const MAX_TYPE_DECLARING_SIBLING_CHARS = 4_000;
-// Caps how many siblings get the enlarged budget, since a type is usually
-// declared in only one or two files.
-const MAX_ENLARGED_SIBLINGS = 2;
+export type ExtractionSourceDiagnosticsRead =
+  | { status: 'available'; diagnostics: ExtractionDiagnostics }
+  | { status: 'absent' | 'corrupt' | 'unsupported' };
+
+export function loadExtractionSourceDiagnostics(db: DatabaseSync, sessionId: string): ExtractionSourceDiagnosticsRead {
+  const row = db
+    .prepare('SELECT payload_json FROM extraction_source_diagnostics WHERE session_id = ?')
+    .get(sessionId) as { payload_json: string } | undefined;
+  if (!row) return { status: 'absent' };
+  try {
+    const diagnostics = JSON.parse(row.payload_json) as unknown;
+    if (
+      diagnostics !== null &&
+      typeof diagnostics === 'object' &&
+      'schemaVersion' in diagnostics &&
+      diagnostics.schemaVersion !== 1
+    ) {
+      return { status: 'unsupported' };
+    }
+    if (!isExtractionDiagnosticsPayload(diagnostics)) return { status: 'corrupt' };
+    return { status: 'available', diagnostics };
+  } catch {
+    return { status: 'corrupt' };
+  }
+}
+
 // A token-resolution map sometimes lives behind a component that itself
 // re-exports another component's prop (A imports B, B imports B's own
 // styles module) rather than beside the component being classified. Two hops
 // covers "the component's own imports" plus "those imports' own imports"
 // without walking the whole dependency graph.
 const MAX_SIBLING_DEPTH = 2;
-// Caps total files read while *discovering* candidates (before the
-// MAX_SIBLING_FILES inlining cap applies), independent of how many end up
-// inlined — bounds cost when a hop-1 import is a barrel file with many
+// Caps total files read during discovery when a hop-1 import is a barrel with many
 // re-exports, each of which would otherwise be walked for a second hop.
 const MAX_SIBLING_CANDIDATES_EXPLORED = 25;
 const RELATIVE_IMPORT_PATTERN = /from\s+['"](\.[^'"]+)['"]/g;
@@ -1338,24 +2285,12 @@ function rewrittenSourcePaths(basePath: string): string[] {
   return [];
 }
 
-// A prop typed as a named alias (`variant: BadgeVariantS1`) carries none of
-// its own members — the type name is a search name too, so we can window on it.
 const IDENTIFIER_PATTERN = /[A-Za-z_$][A-Za-z0-9_$]*/g;
 
 function identifiersIn(propTypes: string[]): string[] {
   const names = new Set<string>();
-  for (const propType of propTypes) {
-    for (const match of propType.matchAll(IDENTIFIER_PATTERN)) names.add(match[0]);
-  }
+  for (const propType of propTypes) for (const match of propType.matchAll(IDENTIFIER_PATTERN)) names.add(match[0]);
   return [...names];
-}
-
-// Whether this file is where one of these names is declared, as opposed to a
-// file that merely mentions it in a signature.
-function declaresAnyType(text: string, typeNames: string[]): boolean {
-  return typeNames.some((name) =>
-    new RegExp(`\\b(?:type|interface|enum|const|class)\\s+${escapeForRegExp(name)}\\b`).test(text),
-  );
 }
 
 function extractRelativeImportPaths(sourceText: string): string[] {
@@ -1402,30 +2337,11 @@ async function resolveImportSpecifiers(sourceText: string, fromDir: string): Pro
   return resolvedPaths;
 }
 
-// Loads the content of files the component's source file relatively imports
-// — either directly (e.g. a co-located `.styles.ts`), or transitively through
-// a sibling that is itself imported (bounded by MAX_SIBLING_DEPTH). Token
-// resolution logic (e.g. a variant-to-token map)
-// sometimes lives behind a component that re-exports another component's
-// prop rather than beside the component being classified, so a single hop
-// of resolution can miss it. Breadth-first with a visited-set: a component
-// that imports another which imports it back (or any other cycle) is
-// walked exactly once. Returns the count of resolved candidates dropped
-// once the inlining cap was hit, so callers can surface that truncation to
-// the classifier instead of silently dropping evidence.
+// Discover relative imports within the traversal bounds, then inline each file in full.
 async function loadSiblingFiles(
   sourceText: string,
   sourcePath: string,
-  propNames: string[],
-  candidateTypeNames: string[] = [],
-): Promise<{
-  siblings: Array<{ path: string; content: string }>;
-  truncatedCount: number;
-  /** Prop names with at least one use that fell outside a sibling's excerpt budget. */
-  usesNotShown: string[];
-  /** The candidate type names that the component's own source or a discovered sibling declares. */
-  declaredTypeNames: string[];
-}> {
+): Promise<Array<{ path: string; content: string }>> {
   const visited = new Set<string>([resolve(sourcePath)]);
   const discovered: Array<{ path: string; content: string }> = [];
 
@@ -1458,33 +2374,7 @@ async function loadSiblingFiles(
     frontier = nextFrontier;
   }
 
-  // Only the type names some file in hand declares are worth windowing on;
-  // the rest have no declaration to find (see IDENTIFIER_PATTERN above).
-  const inHand = [sourceText, ...discovered.map((d) => d.content)];
-  const declaredTypeNames = candidateTypeNames.filter((name) => inHand.some((text) => declaresAnyType(text, [name])));
-
-  // Excerpts are windowed around the prop names rather than cut from the
-  // head: a styles module's first lines are imports, and the line that decides
-  // a prop's classification is wherever that prop is interpolated.
-  const usesNotShown = new Set<string>();
-  const searchNames = [...new Set([...propNames, ...declaredTypeNames])];
-  let enlarged = 0;
-  const siblings = discovered.slice(0, MAX_SIBLING_FILES).map((d) => {
-    const enlarge = enlarged < MAX_ENLARGED_SIBLINGS && declaresAnyType(d.content, declaredTypeNames);
-    if (enlarge) enlarged++;
-    const budget = enlarge ? MAX_TYPE_DECLARING_SIBLING_CHARS : MAX_SIBLING_SNIPPET_CHARS;
-    const excerpt = excerptAroundNames(d.content, searchNames, budget);
-    for (const name of excerpt.usesNotShown) usesNotShown.add(name);
-    return { path: d.path, content: excerpt.content };
-  });
-  const truncatedCount = Math.max(0, discovered.length - MAX_SIBLING_FILES);
-
-  return {
-    siblings,
-    truncatedCount,
-    usesNotShown: propNames.filter((name) => usesNotShown.has(name)),
-    declaredTypeNames,
-  };
+  return discovered;
 }
 
 // Reads and inlines real file content here, at the last point this pipeline
@@ -1496,44 +2386,18 @@ async function loadSiblingFiles(
 export async function loadComponentSourceRef(
   name: string,
   sourcePath: string,
-  propNames: string[] = [],
-  propTypes: string[] = [],
+  _propNames: string[] = [],
+  _propTypes: string[] = [],
 ): Promise<ComponentSourceRef> {
   let content: string | null = null;
   let siblingFiles: Array<{ path: string; content: string }> = [];
-  let truncatedSiblingCount = 0;
-  const usesNotShown = new Set<string>();
   try {
-    const rawText = await readFile(sourcePath, 'utf8');
-    // Siblings first: the component's own excerpt is keyed on the same
-    // declared-type-name set.
-    let siblingUsesNotShown: string[];
-    let declaredTypeNames: string[];
-    ({
-      siblings: siblingFiles,
-      truncatedCount: truncatedSiblingCount,
-      usesNotShown: siblingUsesNotShown,
-      declaredTypeNames,
-    } = await loadSiblingFiles(rawText, sourcePath, propNames, identifiersIn(propTypes)));
-    // Prop names locate the *use* of a prop; the declared type names locate
-    // the *members* the classifier has to emit. Both are needed.
-    const mainExcerpt = excerptAroundNames(
-      rawText,
-      [...new Set([...propNames, ...declaredTypeNames])],
-      MAX_COMPONENT_SOURCE_CHARS,
-    );
-    content = mainExcerpt.content;
-    for (const name of mainExcerpt.usesNotShown) usesNotShown.add(name);
-    for (const name of siblingUsesNotShown) usesNotShown.add(name);
+    content = await readFile(sourcePath, 'utf8');
+    siblingFiles = await loadSiblingFiles(content, sourcePath);
   } catch {
     // File no longer exists or unreadable — leave content null.
   }
-  const ref: ComponentSourceRef = { component: name, sourcePath, content };
-  if (siblingFiles.length > 0) ref.siblingFiles = siblingFiles;
-  if (truncatedSiblingCount > 0) ref.truncatedSiblingCount = truncatedSiblingCount;
-  const notShown = propNames.filter((name) => usesNotShown.has(name));
-  if (notShown.length > 0) ref.usesNotShown = notShown;
-  return ref;
+  return { component: name, sourcePath, content, ...(siblingFiles.length ? { siblingFiles } : {}) };
 }
 
 export async function loadComponentSourceRefs(db: DatabaseSync, sessionId: string): Promise<ComponentSourceRef[]> {
@@ -1557,7 +2421,10 @@ export async function loadComponentSourceRefs(db: DatabaseSync, sessionId: strin
         name: string;
         type: string;
       }>;
-      return loadComponentSourceRef(
+      return loadSavedComponentSourceRef(
+        db,
+        sessionId,
+        r.component_id,
         r.name,
         r.source_path ?? r.source,
         props.map((p) => p.name),
@@ -1565,6 +2432,77 @@ export async function loadComponentSourceRefs(db: DatabaseSync, sessionId: strin
       );
     }),
   );
+}
+
+export type CompletedSharedSourceEvidence =
+  | { readiness: 'ready'; handle: SourceEvidenceHandle; source: SharedSource }
+  | { readiness: 'unavailable'; reason: string };
+
+export function loadSavedSharedSource(
+  db: DatabaseSync,
+  sessionId: string,
+  options: { componentIds?: readonly string[]; handle?: SourceEvidenceHandle } = {},
+): CompletedSharedSourceEvidence {
+  const saved = loadCompletedSourceEvidence(db, sessionId, options.handle);
+  if (saved.readiness !== 'ready') return saved;
+  return {
+    readiness: 'ready',
+    handle: saved.handle,
+    source: projectSharedSource(buildSharedSource(saved.envelope, options.componentIds)),
+  };
+}
+
+export function loadSavedComponentSourceRef(
+  db: DatabaseSync,
+  sessionId: string,
+  componentId: string,
+  name: string,
+  sourcePath: string,
+  propNames: string[] = [],
+  propTypes: string[] = [],
+): ComponentSourceRef {
+  // Preserve the callable compatibility adapter; saved projections never consult disk.
+  const saved = loadCompletedSourceEvidence(db, sessionId);
+  const unavailable: ComponentSourceRef = { component: name, sourcePath, content: null };
+  if (saved.readiness !== 'ready') return unavailable;
+  const root = findSourceOwnerFile(saved.envelope.capture, componentId, sourcePath);
+  if (!root) return unavailable;
+  const source = buildSharedSource(saved.envelope, [componentId]);
+  if (!source.files.some((file) => file.fileId === root.fileId)) source.files.unshift(projectCapturedFile(root));
+  // Keep the definition first while preserving all saved source files.
+  source.files.sort((a, b) => Number(b.fileId === root.fileId) - Number(a.fileId === root.fileId));
+  const projected = projectSharedSource(source);
+  const main = projected.files.find((file) => file.fileId === root.fileId);
+  if (!main || main.coverage === 'unavailable') return unavailable;
+  const metadata = (file: SharedSource['files'][number]) => ({
+    captureId: saved.envelope.capture.captureId,
+    captureDigest: saved.envelope.digest,
+    textHash: file.textHash ?? null,
+    coverage: projected.promptCoverage ?? 'partial',
+    extractionByteBinding: saved.envelope.extractionByteBinding,
+    lineRanges: (file.ranges ?? []).map(({ startLine, endLine }) => ({ startLine, endLine })),
+    ...(file.compilerContextId ? { compilerContextId: file.compilerContextId } : {}),
+  });
+  const siblings = projected.files.filter((file) => file.fileId !== root.fileId && file.coverage !== 'unavailable');
+  const partial = main.partial || (projected.omittedFiles ?? 0) > 0 || siblings.some((file) => file.partial);
+  return {
+    component: name,
+    sourcePath: main.path,
+    content: main.content,
+    sourceEvidence: metadata(main),
+    ...(projected.compilerContexts ? { compilerContexts: projected.compilerContexts } : {}),
+    ...(siblings.length
+      ? {
+          siblingFiles: siblings.map((file) => ({
+            path: file.path,
+            content: file.content,
+            sourceEvidence: metadata(file),
+          })),
+        }
+      : {}),
+    ...(projected.omittedFiles ? { truncatedSiblingCount: projected.omittedFiles } : {}),
+    ...(partial ? { usesNotShown: [...new Set([...propNames, ...identifiersIn(propTypes)])] } : {}),
+  };
 }
 
 export function renameEmptySlots(
@@ -1626,22 +2564,131 @@ function parseReviewReasons(raw: string | null | undefined): string[] {
 export function storeCDFComponents(
   db: DatabaseSync,
   sessionId: string,
-  components: Array<{ key: string; entry: CDFComponentEntry }>,
+  components: Array<{ key: string; componentId?: string; entry: CDFComponentEntry }>,
 ): void {
+  const keys = components.map((component) => component.componentId ?? component.key);
+  if (new Set(keys).size !== keys.length) throw new Error('Duplicate review component identity');
+  const sources = loadRawComponents(db, sessionId);
+  const priorDecisions = loadPropertyDecisions(db, sessionId);
+  const effectiveBaselines = loadCDFComponents(db, sessionId);
+  const prepared = new Map<string, ReturnType<typeof materializeProperty>>();
+  components = components.map((component) => {
+    const matches = sources.filter((source) =>
+      component.componentId
+        ? source.component_id === component.componentId && source.name === component.key
+        : source.name === component.key,
+    );
+    if (matches.length !== 1) throw new Error('Unknown or ambiguous review component identity');
+    return {
+      ...component,
+      entry: prepareEntryRepresentationPlans(db, sessionId, matches[0]!.component_id, component.entry),
+    };
+  });
+  for (const { key, componentId, entry } of components) {
+    const matches = sources.filter((component) =>
+      componentId ? component.component_id === componentId && component.name === key : component.name === key,
+    );
+    if (matches.length !== 1) throw new Error('Unknown or ambiguous review component identity');
+    const source = matches[0]!;
+    const inventory = componentDecisionInventory(source, loadAcceptedSlotDecisions(db, sessionId));
+    for (const name of Object.keys(entry.$properties))
+      if (!inventory.properties.includes(name)) throw new Error('Review property has no exact retained source owner');
+    for (const name of inventory.properties) {
+      const previous = priorDecisions.find(
+        (decision) => decision.componentId === source.component_id && decision.propertyName === name,
+      );
+      if (!own(entry.$properties, name) && !own(entry.$representationPlans ?? {}, name) && previous?.definition)
+        throw new Error('Imported source property removed without an accounting decision');
+    }
+    const completeValidation = CDFComponentSchema.safeParse(entry);
+    if (!completeValidation.success)
+      throw new Error(
+        `Invalid complete CDF entry: ${completeValidation.error.issues.map((issue) => `${issue.path.join('.') || 'component'}: ${issue.message}`).join('; ')}`,
+      );
+    if (source) validateCDFSourceOwners(source, entry);
+    else if (
+      Object.values(entry.$slots ?? {}).some((slot) => slot.$sourceInput) ||
+      Object.values(entry.$properties).some((property) => property.$sourceInput)
+    )
+      throw new Error('CDF source input component unavailable');
+    const unsafe = jsonValueIssue(entry);
+    if (unsafe) throw new Error(`${unsafe.path}: ${unsafe.message}`);
+    for (const [name, property] of Object.entries(entry.$properties)) {
+      if (property.$type === 'token' && property['$token.allowed']) {
+        const paths = property['$token.allowed'];
+        if (new Set(paths).size !== paths.length) throw new Error('Duplicate reviewed token mapping');
+        for (const path of paths) {
+          const token = db.prepare('SELECT type FROM raw_tokens WHERE session_id=? AND path=?').get(sessionId, path) as
+            | { type: string }
+            | undefined;
+          if (token && token.type !== property['$token.kind']) throw new Error('Reviewed token mapping kind changed');
+        }
+      }
+      const validation = validateCDFProperty(property);
+      if (!validation.valid) throw new Error(validation.issues.map((i) => `${i.path}: ${i.message}`).join('; '));
+      if (
+        property.$values &&
+        !source.sourceCandidates?.find((candidate) => candidate.name === name)?.facts?.sourceGraph
+      )
+        throw new Error('Finite constraints require current complete compiler source evidence');
+      if (source.sourceCandidates?.find((candidate) => candidate.name === name)?.facts?.sourceGraph) {
+        const previous = priorDecisions.find(
+          (decision) => decision.componentId === source.component_id && decision.propertyName === name,
+        );
+        const priorIntent = (
+          previous?.decision as { defaultIntent?: ClassifiedPropertyCall['default_intent'] } | undefined
+        )?.defaultIntent;
+        const baseline =
+          effectiveBaselines.find((entry) => entry.componentId === source.component_id)?.entry.$properties[name] ??
+          previous?.definition;
+        const unchangedDefault =
+          baseline &&
+          baseline.$type === property.$type &&
+          own(baseline, '$default') === own(property, '$default') &&
+          jsonEqual(baseline.$default, property.$default);
+        const materialized = materializeProperty(
+          source,
+          definitionCall(
+            name,
+            property,
+            unchangedDefault && priorIntent
+              ? priorIntent
+              : own(property, '$default')
+                ? { action: 'set', value: property.$default! }
+                : { action: 'clear' },
+            reviewRepresentationProposal(
+              property,
+              (previous?.decision as { call?: { representation_proposal?: RepresentationProposalDraft } } | undefined)
+                ?.call?.representation_proposal,
+            ),
+            (previous?.decision as { call?: ClassifiedPropertyCall } | undefined)?.call,
+          ),
+          source.component_id,
+          { defaultAuthority: 'review' },
+        );
+        prepared.set(JSON.stringify([source.component_id, name]), materialized);
+        if (
+          !entry.$representationPlans?.[name] &&
+          materialized.projection &&
+          !['supported', 'lossy'].includes(materialized.projection.outcome)
+        )
+          throw new Error('Native position unavailable; source and saved decisions retained');
+        if (
+          materialized.projection?.issues.some(
+            (issue) => issue.message === 'Source mapper and mapped target must both support default',
+          )
+        )
+          throw new Error('Default unavailable for this mapper; source and saved decisions retained');
+      }
+    }
+  }
   const now = new Date().toISOString();
 
   const updateComp = db.prepare(
-    `UPDATE raw_components SET status = 'generated', description = ? WHERE session_id = ? AND name = ?`,
+    `UPDATE raw_components SET status = 'generated', description = ? WHERE session_id = ? AND component_id = ?`,
   );
   const updateProp = db.prepare(
     `UPDATE raw_props SET cdf_type = ?, cdf_category = ?, cdf_token_kind = ?, required = ? WHERE session_id = ? AND component_id = ? AND name = ?`,
-  );
-  const deleteAllowedValues = db.prepare(
-    `DELETE FROM raw_prop_allowed_values WHERE session_id = ? AND component_id = ? AND prop_name = ?`,
-  );
-  const insertAllowedValue = db.prepare(
-    `INSERT INTO raw_prop_allowed_values (session_id, component_id, prop_name, value, position)
-     VALUES (?, ?, ?, ?, ?)`,
   );
   const insertAllowedComponent = db.prepare(
     `INSERT INTO raw_slot_allowed_components (session_id, component_id, slot_name, allowed_component, position)
@@ -1657,6 +2704,18 @@ export function storeCDFComponents(
   // storeCDFComponents is only reached from the review editor, so a list written
   // here is a person's decision and is recorded as such.
   const writeTokenPaths = (componentId: string, propName: string, paths: string[]) => {
+    const previous = db
+      .prepare(
+        'SELECT path FROM raw_prop_token_paths WHERE session_id=? AND component_id=? AND prop_name=? ORDER BY position',
+      )
+      .all(sessionId, componentId, propName) as Array<{ path: string }>;
+    if (
+      jsonEqual(
+        previous.map((entry) => entry.path),
+        paths,
+      )
+    )
+      return;
     deleteTokenPaths.run(sessionId, componentId, propName);
     paths.forEach((path, position) => insertTokenPath.run(sessionId, componentId, propName, 'review', position, path));
   };
@@ -1674,16 +2733,26 @@ export function storeCDFComponents(
 
   db.exec('BEGIN');
   try {
-    for (const { key, entry } of components) {
-      const row = db
-        .prepare('SELECT component_id FROM raw_components WHERE session_id = ? AND name = ?')
-        .get(sessionId, key) as { component_id: string } | undefined;
+    for (const { key, componentId: requestedId, entry } of components) {
+      const matched = sources.find((component) =>
+        requestedId ? component.component_id === requestedId : component.name === key,
+      )!;
+      const row = { component_id: matched.component_id };
 
       if (row) {
         const { component_id: componentId } = row;
-        updateComp.run(entry.$description ?? null, sessionId, key);
+        updateComp.run(entry.$description ?? null, sessionId, componentId);
+        const names = new Set(Object.keys(entry.$properties));
+        const existingProps = db
+          .prepare('SELECT name FROM raw_props WHERE session_id=? AND component_id=?')
+          .all(sessionId, componentId) as Array<{ name: string }>;
+        for (const existing of existingProps)
+          if (!names.has(existing.name))
+            db.prepare(
+              'UPDATE raw_props SET cdf_type=NULL,cdf_category=NULL,cdf_token_kind=NULL WHERE session_id=? AND component_id=? AND name=?',
+            ).run(sessionId, componentId, existing.name);
         for (const [propName, prop] of Object.entries(entry.$properties)) {
-          updateProp.run(
+          const updated = updateProp.run(
             prop.$type,
             prop.$category,
             prop['$token.kind'] ?? null,
@@ -1692,10 +2761,44 @@ export function storeCDFComponents(
             componentId,
             propName,
           );
-          if (prop.$values && prop.$values.length > 0) {
-            deleteAllowedValues.run(sessionId, componentId, propName);
-            prop.$values.forEach((v, i) => insertAllowedValue.run(sessionId, componentId, propName, v, i));
-          }
+          if (!Number(updated.changes))
+            db.prepare(
+              `INSERT INTO raw_props (session_id,component_id,name,type,required,category,default_value,description,token_reference,position,cdf_type,cdf_category,cdf_token_kind)
+            VALUES (?,?,?,'',?,NULL,NULL,?,NULL,(SELECT COALESCE(MAX(position),-1)+1 FROM raw_props WHERE session_id=? AND component_id=?),?,?,?)`,
+            ).run(
+              sessionId,
+              componentId,
+              propName,
+              prop.$required ? 1 : 0,
+              prop.$description ?? null,
+              sessionId,
+              componentId,
+              prop.$type,
+              prop.$category,
+              prop['$token.kind'] ?? null,
+            );
+          const baseline = effectiveBaselines.find((entry) => entry.componentId === componentId)?.entry.$properties[
+            propName
+          ];
+          const prior = priorDecisions.find(
+            (decision) => decision.componentId === componentId && decision.propertyName === propName,
+          );
+          if (!prior || !jsonEqual(baseline, prop))
+            savePropertyDecision(db, sessionId, componentId, propName, prop, {
+              kind: 'review',
+              producer: { kind: 'review', id: randomUUID(), sessionId, componentId },
+              ...(prepared.get(JSON.stringify([componentId, propName])) ?? {}),
+              reviewAuthority: prepared.get(JSON.stringify([componentId, propName]))?.model?.identity ?? null,
+              defaultIntent:
+                prepared.get(JSON.stringify([componentId, propName]))?.model?.defaultIntent ??
+                (own(prop, '$default') ? { action: 'set', value: prop.$default } : { action: 'clear' }),
+            });
+          db.prepare('UPDATE raw_props SET description=? WHERE session_id=? AND component_id=? AND name=?').run(
+            prop.$description ?? null,
+            sessionId,
+            componentId,
+            propName,
+          );
           if (prop.$type === 'token' && prop.$category === 'design') {
             // Reconcile the persisted mapping even when the property omits
             // the field: omission is the dismiss/unrestricted state.
@@ -1703,34 +2806,112 @@ export function storeCDFComponents(
           }
         }
 
-        const existingDefaults = new Map<string, number>(
-          (
-            readExistingSlotDefaults.all(sessionId, componentId) as Array<{
-              name: string;
-              is_default: number;
-            }>
-          ).map((r) => [r.name, r.is_default]),
-        );
-        deleteSlotAllowedComponents.run(sessionId, componentId);
-        deleteSlots.run(sessionId, componentId);
-        let slotPos = 0;
-        for (const [slotName, slot] of Object.entries(entry.$slots ?? {})) {
-          const isDefault = existingDefaults.get(slotName) ?? 0;
-          insertSlotOnUpdate.run(
-            sessionId,
-            componentId,
-            slotName,
-            isDefault,
-            slot.$required ? 1 : 0,
-            slot.$description ?? null,
-            slotPos++,
+        const sourceEntry = cloneJson(entry);
+        for (const plan of Object.values(entry.$representationPlans ?? {}))
+          if (plan.attachment) delete sourceEntry.$slots?.[plan.attachment.slot];
+        if (loadAcceptedSlotDecisions(db, sessionId) !== undefined) {
+          saveReviewedSlots(db, sessionId, componentId, sourceEntry);
+        } else {
+          const existingDefaults = new Map<string, number>(
+            (
+              readExistingSlotDefaults.all(sessionId, componentId) as Array<{
+                name: string;
+                is_default: number;
+              }>
+            ).map((r) => [r.name, r.is_default]),
           );
-          if (slot.$allowedComponents && slot.$allowedComponents.length > 0) {
-            slot.$allowedComponents.forEach((ac, i) =>
-              insertAllowedComponent.run(sessionId, componentId, slotName, ac, i),
+          deleteSlotAllowedComponents.run(sessionId, componentId);
+          deleteSlots.run(sessionId, componentId);
+          let slotPos = 0;
+          for (const [slotName, slot] of Object.entries(sourceEntry.$slots ?? {})) {
+            const isDefault = existingDefaults.get(slotName) ?? 0;
+            insertSlotOnUpdate.run(
+              sessionId,
+              componentId,
+              slotName,
+              isDefault,
+              slot.$required ? 1 : 0,
+              slot.$description ?? null,
+              slotPos++,
             );
+            if (slot.$allowedComponents && slot.$allowedComponents.length > 0) {
+              slot.$allowedComponents.forEach((ac, i) =>
+                insertAllowedComponent.run(sessionId, componentId, slotName, ac, i),
+              );
+            }
           }
         }
+        saveEntryRepresentationPlans(db, sessionId, componentId, entry);
+        const currentSource = sources.find((source) => source.component_id === componentId)!;
+        const currentInventory = componentDecisionInventory(currentSource, loadAcceptedSlotDecisions(db, sessionId));
+        const ledgerRow = db
+          .prepare('SELECT payload_json FROM raw_component_decisions WHERE session_id=? AND component_id=?')
+          .get(sessionId, componentId) as { payload_json: string } | undefined;
+        const priorCalls = ledgerRow ? (JSON.parse(ledgerRow.payload_json) as { calls: ToolCall[] }).calls : [];
+        const decisions = loadPropertyDecisions(db, sessionId).filter(
+          (decision) => decision.componentId === componentId,
+        );
+        const currentCalls: ToolCall[] = [
+          {
+            tool: 'classify_component',
+            ...(entry.$description === undefined ? {} : { description: entry.$description }),
+          },
+        ];
+        for (const name of currentInventory.properties) {
+          const saved = decisions.find((decision) => decision.propertyName === name);
+          const definition = entry.$properties[name];
+          if (definition)
+            currentCalls.push(
+              definitionCall(
+                name,
+                definition,
+                (saved?.decision as { defaultIntent?: ClassifiedPropertyCall['default_intent'] } | undefined)
+                  ?.defaultIntent,
+                (saved?.decision as { call?: ClassifiedPropertyCall } | undefined)?.call?.representation_proposal,
+                (saved?.decision as { call?: ClassifiedPropertyCall } | undefined)?.call,
+              ),
+            );
+          else {
+            const retained = priorCalls.find(
+              (call) => (call.tool === 'classify_prop' || call.tool === 'exclude_prop') && call.prop === name,
+            );
+            if (
+              retained &&
+              (own(entry.$representationPlans ?? {}, name) ||
+                retained.tool === 'exclude_prop' ||
+                (retained.tool === 'classify_prop' && !retained.cdf_type))
+            )
+              currentCalls.push(retained);
+          }
+        }
+        for (const slot of currentInventory.slots) {
+          const definition = entry.$slots?.[slot.name];
+          if (definition)
+            currentCalls.push({
+              tool: 'classify_slot',
+              slot: slot.name,
+              ...(definition.$required === undefined ? {} : { required: definition.$required }),
+              ...(definition.$description === undefined ? {} : { description: definition.$description }),
+              ...(definition.$allowedComponents ? { allowed_components: definition.$allowedComponents } : {}),
+            });
+        }
+        const normalized = normalizeClassificationCalls(currentCalls);
+        const accounting = accountClassificationCalls(currentInventory, normalized.calls);
+        if (normalized.warnings.length || !accounting.complete)
+          throw new Error([...normalized.warnings, ...accounting.issues, ...accounting.missing].join('; '));
+        db.prepare(
+          'INSERT INTO raw_component_decisions(session_id,component_id,payload_json) VALUES (?,?,?) ON CONFLICT(session_id,component_id) DO UPDATE SET payload_json=excluded.payload_json',
+        ).run(
+          sessionId,
+          componentId,
+          JSON.stringify({
+            schemaVersion: 1,
+            calls: normalized.calls,
+            inventory: currentInventory,
+            source: currentSource.sourceCandidates ?? null,
+            accountingComplete: true,
+          }),
+        );
       } else {
         const componentId = deriveComponentId(key, 'generated');
         db.prepare(
@@ -1754,9 +2935,15 @@ export function storeCDFComponents(
             prop.$category,
             prop['$token.kind'] ?? null,
           );
-          if (prop.$values && prop.$values.length > 0) {
-            prop.$values.forEach((v, i) => insertAllowedValue.run(sessionId, componentId, propName, v, i));
-          }
+          savePropertyDecision(db, sessionId, componentId, propName, prop, {
+            kind: 'review',
+            producer: { kind: 'review', id: randomUUID(), sessionId, componentId },
+            ...(prepared.get(JSON.stringify([componentId, propName])) ?? {}),
+            reviewAuthority: prepared.get(JSON.stringify([componentId, propName]))?.model?.identity ?? null,
+            defaultIntent:
+              prepared.get(JSON.stringify([componentId, propName]))?.model?.defaultIntent ??
+              (own(prop, '$default') ? { action: 'set', value: prop.$default } : { action: 'clear' }),
+          });
           if (prop.$type === 'token' && prop.$category === 'design') {
             writeTokenPaths(componentId, propName, prop['$token.allowed'] ?? []);
           }
@@ -1778,6 +2965,12 @@ export function storeCDFComponents(
       }
     }
 
+    for (const component of components) {
+      const owner = sources.find((source) =>
+        component.componentId ? source.component_id === component.componentId : source.name === component.key,
+      )!;
+      assertPreservedRepresentationSelections(db, sessionId, owner.component_id);
+    }
     db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
     db.exec('COMMIT');
   } catch (e) {
@@ -1789,11 +2982,11 @@ export function storeCDFComponents(
 export function loadCDFComponents(
   db: DatabaseSync,
   sessionId: string,
-): Array<{ key: string; entry: CDFComponentEntry }> {
+): Array<{ key: string; componentId: string; entry: CDFComponentEntry }> {
   const components = db
     .prepare(
       `SELECT component_id, name, description FROM raw_components
-       WHERE session_id = ? AND status = 'generated' ORDER BY rowid`,
+       WHERE session_id = ? AND status IN ('generated','held') ORDER BY rowid`,
     )
     .all(sessionId) as Array<{
     component_id: string;
@@ -1803,6 +2996,12 @@ export function loadCDFComponents(
 
   if (components.length === 0) return [];
 
+  const propertyDefinitions = new Map(
+    loadPropertyDecisions(db, sessionId).map((decision) => [
+      `${decision.componentId}::${decision.propertyName}`,
+      decision,
+    ]),
+  );
   const props = db
     .prepare(
       `SELECT component_id, name, required, default_value, description,
@@ -1890,64 +3089,88 @@ export function loadCDFComponents(
   const toTokenPaths = (rows: typeof tokenPaths | undefined): string[] | undefined =>
     rows === undefined ? undefined : rows.map((r) => r.path);
 
-  return components.map(({ component_id, name, description }) => {
-    const compProps = propsByComponent.get(component_id) ?? [];
+  return overlayRepresentationPlans(
+    db,
+    sessionId,
+    components.map(({ component_id, name, description }) => {
+      const compProps = propsByComponent.get(component_id) ?? [];
 
-    const $properties: CDFComponentEntry['$properties'] = {};
-    for (const p of compProps) {
-      if (!p.name.trim()) continue;
-      const av = allowedValuesByProp.get(`${component_id}::${p.name}`);
-      const propDef: CDFComponentEntry['$properties'][string] = {
-        $type: p.cdf_type as CDFComponentEntry['$properties'][string]['$type'],
-        $category: p.cdf_category as CDFComponentEntry['$properties'][string]['$category'],
-      };
-      if (p.required) propDef.$required = true;
-      const isTokenProp = p.cdf_type === 'token' && p.cdf_category === 'design';
-      const defaultReference = p.default_value;
-      const resolvedDefault =
-        isTokenProp && p.cdf_token_kind !== null && defaultReference !== null
-          ? resolvedDefaultPaths[defaultReference]
-          : undefined;
-      const compatibleResolvedDefault =
-        resolvedDefault !== undefined && tokenTypeByPath.get(resolvedDefault) === p.cdf_token_kind
-          ? resolvedDefault
-          : undefined;
-      if (p.default_value !== null) {
-        if (p.cdf_type === 'boolean') {
-          propDef.$default = p.default_value === 'true';
-        } else {
-          propDef.$default = compatibleResolvedDefault ?? p.default_value;
+      const $properties: CDFComponentEntry['$properties'] = Object.create(null);
+      for (const p of compProps) {
+        const av = allowedValuesByProp.get(`${component_id}::${p.name}`);
+        const propDef: CDFComponentEntry['$properties'][string] = {
+          $type: p.cdf_type as CDFComponentEntry['$properties'][string]['$type'],
+          $category: p.cdf_category as CDFComponentEntry['$properties'][string]['$category'],
+        };
+        if (p.required) propDef.$required = true;
+        const isTokenProp = p.cdf_type === 'token' && p.cdf_category === 'design';
+        const defaultReference = p.default_value;
+        const resolvedDefault =
+          isTokenProp && p.cdf_token_kind !== null && defaultReference !== null
+            ? resolvedDefaultPaths[defaultReference]
+            : undefined;
+        const compatibleResolvedDefault =
+          resolvedDefault !== undefined && tokenTypeByPath.get(resolvedDefault) === p.cdf_token_kind
+            ? resolvedDefault
+            : undefined;
+        if (p.default_value !== null) {
+          if (p.cdf_type === 'boolean') {
+            propDef.$default = p.default_value === 'true';
+          } else {
+            propDef.$default = compatibleResolvedDefault ?? p.default_value;
+          }
         }
+        if (p.description !== null) propDef.$description = p.description;
+        // A token prop's options list is design token paths, written below. Its
+        // extracted variant names stay in the session as scoping input only.
+        if (!isTokenProp && av && av.length > 0) propDef.$values = av.map((v) => v.value);
+        if (p.cdf_token_kind !== null) propDef['$token.kind'] = p.cdf_token_kind;
+        if (isTokenProp) {
+          const allowed = toTokenPaths(tokenPathsByProp.get(`${component_id}::${p.name}`));
+          if (allowed !== undefined && allowed.length > 0) propDef['$token.allowed'] = allowed;
+        }
+        const saved = propertyDefinitions.get(`${component_id}::${p.name}`);
+        if (saved && saved.definition) {
+          const exact = cloneJson(saved.definition);
+          if (isTokenProp) {
+            const inheritedDefault =
+              (saved.decision as { defaultIntent?: { action?: string } } | null)?.defaultIntent?.action === 'absent';
+            if (inheritedDefault && exact.$default === defaultReference && compatibleResolvedDefault !== undefined)
+              exact.$default = compatibleResolvedDefault;
+            const allowed = toTokenPaths(tokenPathsByProp.get(`${component_id}::${p.name}`));
+            delete exact['$token.allowed'];
+            if (allowed?.length) exact['$token.allowed'] = allowed;
+          }
+          $properties[p.name] = exact;
+        } else $properties[p.name] = propDef;
       }
-      if (p.description !== null) propDef.$description = p.description;
-      // A token prop's options list is design token paths, written below. Its
-      // extracted variant names stay in the session as scoping input only.
-      if (!isTokenProp && av && av.length > 0) propDef.$values = av.map((v) => v.value);
-      if (p.cdf_token_kind !== null) propDef['$token.kind'] = p.cdf_token_kind;
-      if (isTokenProp) {
-        const allowed = toTokenPaths(tokenPathsByProp.get(`${component_id}::${p.name}`));
-        if (allowed !== undefined && allowed.length > 0) propDef['$token.allowed'] = allowed;
+
+      const compSlots = slotsByComponent.get(component_id) ?? [];
+      const $slots: NonNullable<CDFComponentEntry['$slots']> = Object.create(null);
+      for (const s of compSlots) {
+        if (!s.name.trim()) continue;
+        const ac = allowedComponentsBySlot.get(`${component_id}::${s.name}`);
+        const slotDef: NonNullable<CDFComponentEntry['$slots']>[string] = {};
+        if (s.description !== null) slotDef.$description = s.description;
+        if (s.required) slotDef.$required = true;
+        if (ac && ac.length > 0) slotDef.$allowedComponents = ac.map((v) => v.allowed_component);
+        $slots[s.name] = slotDef;
       }
-      $properties[p.name] = propDef;
-    }
 
-    const compSlots = slotsByComponent.get(component_id) ?? [];
-    const $slots: CDFComponentEntry['$slots'] = {};
-    for (const s of compSlots) {
-      if (!s.name.trim()) continue;
-      const ac = allowedComponentsBySlot.get(`${component_id}::${s.name}`);
-      const slotDef: NonNullable<CDFComponentEntry['$slots']>[string] = {};
-      if (s.description !== null) slotDef.$description = s.description;
-      if (s.required) slotDef.$required = true;
-      if (ac && ac.length > 0) slotDef.$allowedComponents = ac.map((v) => v.allowed_component);
-      $slots[s.name] = slotDef;
-    }
-
-    const entry: CDFComponentEntry = { $type: 'component', $properties };
-    if (description !== null) entry.$description = description;
-    if (Object.keys($slots).length > 0) entry.$slots = $slots;
-    return { key: name, entry };
-  });
+      const entry: CDFComponentEntry = { $type: 'component', $properties };
+      if (description !== null) entry.$description = description;
+      if (Object.keys($slots).length > 0) entry.$slots = $slots;
+      const decisions = loadAcceptedSlotDecisions(db, sessionId);
+      return {
+        key: name,
+        componentId: component_id,
+        entry: projectAcceptedSlots(
+          entry,
+          decisions?.filter((slot) => slot.componentId === component_id),
+        ),
+      };
+    }),
+  );
 }
 
 export type ScopeComponentRow = {
@@ -1955,20 +3178,132 @@ export type ScopeComponentRow = {
   componentId: string;
   aiDecision: 'accepted' | 'rejected' | null;
   aiReason: string | null;
+  modelingNotes?: string[];
   needsReview: boolean;
   slots: Array<{ name: string; allowedComponents: string[] }>;
+  /** Extracted relationships for navigation, independent of accepted slot restrictions. */
+  sourceRelationships?: Array<{ slot: string; components: string[] }>;
 };
 
-export function loadScopeComponents(db: DatabaseSync, sessionId: string): ScopeComponentRow[] {
+export interface ScopeDecisionProvenance {
+  kind: 'direct' | 'closure' | 'unknown';
+  roots: string[];
+}
+
+export interface ScopeDecisions {
+  accepted: string[];
+  rejected: string[];
+  acceptedProvenance?: Record<string, ScopeDecisionProvenance>;
+}
+
+const unknownScopeProvenance: ScopeDecisionProvenance = { kind: 'unknown', roots: [] };
+
+function validateScopeProvenance(
+  name: string,
+  value: ScopeDecisionProvenance | undefined,
+  acceptedNames: Set<string>,
+): ScopeDecisionProvenance {
+  if (value === undefined) return unknownScopeProvenance;
+  if (!value || !['direct', 'closure', 'unknown'].includes(value.kind) || !Array.isArray(value.roots)) {
+    throw new Error(`Invalid saved scope provenance for ${name}`);
+  }
+
+  const roots = [...value.roots];
+  if (roots.some((root) => typeof root !== 'string')) throw new Error(`Invalid saved scope roots for ${name}`);
+  if (new Set(roots).size !== roots.length) throw new Error(`Duplicate saved scope roots for ${name}`);
+  const sortedRoots = [...roots].sort((left, right) => left.localeCompare(right));
+  if (roots.some((root, index) => root !== sortedRoots[index])) {
+    throw new Error(`Saved scope roots for ${name} must be sorted`);
+  }
+  if (roots.some((root) => !acceptedNames.has(root))) {
+    throw new Error(`Saved scope provenance for ${name} refers to a non-accepted root`);
+  }
+
+  if (value.kind === 'direct' && !roots.includes(name)) {
+    throw new Error(`Direct scope provenance for ${name} must include itself as a root`);
+  }
+  if (value.kind === 'closure' && (roots.length === 0 || roots.includes(name))) {
+    throw new Error(`Closure scope provenance for ${name} must refer to other accepted roots`);
+  }
+  if (value.kind === 'unknown' && roots.length !== 0) {
+    throw new Error(`Unknown scope provenance for ${name} cannot have roots`);
+  }
+  return { kind: value.kind, roots };
+}
+
+/** Read only explicitly saved human choices; AI selection statuses are not scope choices. */
+export function loadScopeDecisions(db: DatabaseSync, sessionId: string): ScopeDecisions | undefined {
   const rows = db
     .prepare(
-      `SELECT name, component_id, status, reject_reason, review_reasons, needs_review FROM raw_components
-       WHERE session_id = ? AND status IN ('extracted', 'accepted', 'rejected')
-       ORDER BY name`,
+      `SELECT sd.component_id, sd.component_name, sd.decision, sd.provenance_json, rc.name AS current_name
+       FROM scope_decisions sd
+       JOIN raw_components rc ON rc.session_id = sd.session_id AND rc.component_id = sd.component_id
+       WHERE sd.session_id = ?
+       ORDER BY sd.component_name, sd.component_id`,
     )
     .all(sessionId) as Array<{
+    component_id: string;
+    component_name: string;
+    decision: 'accepted' | 'rejected';
+    provenance_json: string | null;
+    current_name: string;
+  }>;
+
+  if (rows.length === 0) return undefined;
+  const accepted = rows.filter((row) => row.decision === 'accepted').map((row) => row.component_name);
+  const rejected = rows.filter((row) => row.decision === 'rejected').map((row) => row.component_name);
+  const acceptedNames = new Set(accepted);
+  const acceptedProvenance = Object.create(null) as Record<string, ScopeDecisionProvenance>;
+
+  for (const row of rows) {
+    if (row.current_name !== row.component_name) {
+      throw new Error(`Saved scope choice no longer matches component ${row.component_id}`);
+    }
+    if (row.decision === 'rejected') {
+      if (row.provenance_json !== null) throw new Error(`Rejected scope choice ${row.component_name} has provenance`);
+      continue;
+    }
+    let provenance: ScopeDecisionProvenance | undefined;
+    if (row.provenance_json !== null) {
+      try {
+        provenance = JSON.parse(row.provenance_json) as ScopeDecisionProvenance;
+      } catch {
+        throw new Error(`Saved scope provenance for ${row.component_name} is corrupt`);
+      }
+    }
+    acceptedProvenance[row.component_name] = validateScopeProvenance(row.component_name, provenance, acceptedNames);
+  }
+
+  return { accepted, rejected, acceptedProvenance };
+}
+
+export function loadScopeComponents(db: DatabaseSync, sessionId: string): ScopeComponentRow[] {
+  const exploration = loadExplorationRun(db, sessionId, 'components');
+  if (exploration && exploration.status !== 'complete') return [];
+  const acceptedSlots = loadAcceptedSlotDecisions(db, sessionId);
+  const reports = exploration ? loadExplorationReports(db, sessionId, 'components') : [];
+  const notesByComponent = new Map<string, Array<{ name: string; source: string; notes: string[] }>>();
+  for (const report of reports) {
+    for (const component of report.companion.components) {
+      if (!component.componentId || !component.modelingNotes?.length) continue;
+      const notes = notesByComponent.get(component.componentId) ?? [];
+      notes.push({ name: component.name, source: component.source, notes: component.modelingNotes });
+      notesByComponent.set(component.componentId, notes);
+    }
+  }
+  const rows = db
+    .prepare(
+      `SELECT name, component_id, source, status, reject_reason, review_reasons, needs_review FROM raw_components
+       WHERE session_id = ? AND (
+         status IN ('extracted', 'accepted', 'rejected') OR
+         component_id IN (SELECT component_id FROM scope_decisions WHERE session_id = ?)
+       )
+       ORDER BY name, component_id`,
+    )
+    .all(sessionId, sessionId) as Array<{
     name: string;
     component_id: string;
+    source: string;
     status: string;
     reject_reason: string | null;
     review_reasons: string;
@@ -2005,45 +3340,125 @@ export function loadScopeComponents(db: DatabaseSync, sessionId: string): ScopeC
   return rows.map((r) => {
     const reviewReasons = parseReviewReasons(r.review_reasons);
     const nonAuthorableReason = reviewReasons.find((reason) => reason.startsWith('non-authorable:'));
+    const modelingNotes = [
+      ...new Set(
+        (notesByComponent.get(r.component_id) ?? [])
+          .filter((component) => component.name === r.name && component.source === r.source)
+          .flatMap((component) => component.notes),
+      ),
+    ];
 
     return {
       name: r.name,
       componentId: r.component_id,
       aiDecision: r.status === 'accepted' ? 'accepted' : r.status === 'rejected' ? 'rejected' : null,
       aiReason: r.reject_reason ?? nonAuthorableReason?.slice('non-authorable:'.length) ?? null,
+      ...(modelingNotes.length > 0 ? { modelingNotes } : {}),
       needsReview: Boolean(r.needs_review),
-      slots: (slotsByComponent.get(r.component_id) ?? []).map((s) => ({
-        name: s.name,
-        allowedComponents: (allowedBySlot.get(`${r.component_id}::${s.name}`) ?? []).map((a) => a.allowed_component),
-      })),
+      sourceRelationships: (slotsByComponent.get(r.component_id) ?? []).flatMap((slot) => {
+        const components = (allowedBySlot.get(`${r.component_id}::${slot.name}`) ?? []).map(
+          (allowed) => allowed.allowed_component,
+        );
+        return components.length > 0 ? [{ slot: slot.name, components }] : [];
+      }),
+      slots:
+        acceptedSlots !== undefined
+          ? acceptedSlots
+              .filter(
+                (slot) => slot.componentId === r.component_id && (slot.state === 'open' || slot.state === 'finite'),
+              )
+              .map((slot) => ({
+                name: slot.slot,
+                allowedComponents: slot.state === 'finite' ? slot.allowedComponents : [],
+              }))
+          : (slotsByComponent.get(r.component_id) ?? []).map((s) => ({
+              name: s.name,
+              allowedComponents: (allowedBySlot.get(`${r.component_id}::${s.name}`) ?? []).map(
+                (a) => a.allowed_component,
+              ),
+            })),
     };
   });
 }
 
-export function applyScopeDecisions(
-  db: DatabaseSync,
-  sessionId: string,
-  decisions: { accepted: string[]; rejected: string[] },
-): void {
+export function applyScopeDecisions(db: DatabaseSync, sessionId: string, decisions: ScopeDecisions): ScopeDecisions {
   const now = new Date().toISOString();
+  if (!Array.isArray(decisions.accepted) || !Array.isArray(decisions.rejected)) {
+    throw new Error('Scope decisions must contain accepted and rejected name arrays');
+  }
   const acceptedSet = new Set(decisions.accepted);
   const accepted = [...acceptedSet];
   const rejected = [...new Set(decisions.rejected)].filter((n) => !acceptedSet.has(n));
-  if (rejected.length > 0) {
-    const placeholders = rejected.map(() => '?').join(',');
-    db.prepare(`UPDATE raw_components SET status = 'rejected' WHERE session_id = ? AND name IN (${placeholders})`).run(
-      sessionId,
-      ...rejected,
+
+  const components = db
+    .prepare('SELECT component_id, name FROM raw_components WHERE session_id = ? ORDER BY name, component_id')
+    .all(sessionId) as Array<{ component_id: string; name: string }>;
+  if (components.length === 0) throw new Error(`No components found for scope session ${sessionId}`);
+  const componentByName = new Map<string, { component_id: string; name: string }>();
+  for (const component of components) {
+    if (componentByName.has(component.name))
+      throw new Error(`Duplicate component name in scope session: ${component.name}`);
+    componentByName.set(component.name, component);
+  }
+
+  const rejectedSet = new Set(rejected);
+  const unknownNames = [...accepted, ...rejected].filter((name) => !componentByName.has(name));
+  if (unknownNames.length > 0) throw new Error(`Unknown scope component name(s): ${unknownNames.join(', ')}`);
+  const missingNames = components
+    .map((component) => component.name)
+    .filter((name) => !acceptedSet.has(name) && !rejectedSet.has(name));
+  if (missingNames.length > 0) throw new Error(`Scope decisions omit component name(s): ${missingNames.join(', ')}`);
+
+  const provenanceInput = decisions.acceptedProvenance ?? {};
+  if (!provenanceInput || typeof provenanceInput !== 'object' || Array.isArray(provenanceInput)) {
+    throw new Error('Scope provenance must be an object keyed by accepted component name');
+  }
+  const allDecisions = new Set([...accepted, ...rejected]);
+  const provenanceNames = Object.keys(provenanceInput);
+  const invalidProvenanceNames = provenanceNames.filter((name) => !acceptedSet.has(name));
+  if (invalidProvenanceNames.length > 0) {
+    throw new Error(
+      `Scope provenance may only be supplied for accepted component(s): ${invalidProvenanceNames.join(', ')}`,
     );
   }
-  if (accepted.length > 0) {
-    const placeholders = accepted.map(() => '?').join(',');
-    db.prepare(`UPDATE raw_components SET status = 'generated' WHERE session_id = ? AND name IN (${placeholders})`).run(
-      sessionId,
-      ...accepted,
+  if (allDecisions.size !== components.length)
+    throw new Error('Scope decisions must partition every component exactly once');
+  const acceptedProvenance = Object.fromEntries(
+    accepted.map((name) => [
+      name,
+      validateScopeProvenance(
+        name,
+        Object.hasOwn(provenanceInput, name) ? provenanceInput[name] : undefined,
+        acceptedSet,
+      ),
+    ]),
+  );
+
+  let transactionStarted = false;
+  try {
+    db.exec('BEGIN IMMEDIATE');
+    transactionStarted = true;
+    db.prepare('DELETE FROM scope_decisions WHERE session_id = ?').run(sessionId);
+    const insert = db.prepare(
+      `INSERT INTO scope_decisions (session_id, component_id, component_name, decision, provenance_json, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
     );
+    const update = db.prepare('UPDATE raw_components SET status = ? WHERE session_id = ? AND component_id = ?');
+    for (const component of components) {
+      const decision = acceptedSet.has(component.name) ? 'accepted' : 'rejected';
+      const provenance = decision === 'accepted' ? JSON.stringify(acceptedProvenance[component.name]) : null;
+      insert.run(sessionId, component.component_id, component.name, decision, provenance, now);
+      update.run(decision === 'accepted' ? 'generated' : 'rejected', sessionId, component.component_id);
+    }
+    db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
+    db.exec('COMMIT');
+    transactionStarted = false;
+  } catch (error) {
+    if (transactionStarted) db.exec('ROLLBACK');
+    throw error;
   }
-  db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
+
+  return { accepted, rejected, acceptedProvenance };
 }
 
 export function findLatestSessionForCommand(db: DatabaseSync, command: CommandName): string | null {
@@ -2123,35 +3538,37 @@ export function seedCDFFromPreviewResponse(
 ): number {
   if (removedItems.length === 0) return 0;
 
-  let totalSeeded = 0;
+  return withTransaction(db, () => {
+    let totalSeeded = 0;
 
-  const updateStmt = db.prepare(
-    `UPDATE raw_props
-     SET cdf_type = ?, cdf_category = ?
-     WHERE session_id = ? AND component_id = ? AND name = ? AND cdf_type IS NULL`,
-  );
+    const updateStmt = db.prepare(
+      `UPDATE raw_props
+       SET cdf_type = ?, cdf_category = ?
+       WHERE session_id = ? AND component_id = ? AND name = ? AND cdf_type IS NULL`,
+    );
 
-  for (const item of removedItems) {
-    if (!item.fullProperties) continue;
+    for (const item of removedItems) {
+      if (!item.fullProperties) continue;
 
-    const localComponent = db
-      .prepare(`SELECT component_id FROM raw_components WHERE session_id = ? AND name = ?`)
-      .get(sessionId, item.name) as { component_id: string } | undefined;
+      const localComponent = db
+        .prepare(`SELECT component_id FROM raw_components WHERE session_id = ? AND name = ?`)
+        .get(sessionId, item.name) as { component_id: string } | undefined;
 
-    if (!localComponent) continue;
+      if (!localComponent) continue;
 
-    const contentProps = new Set(item.contentProperties);
-    const designProps = new Set(item.designProperties);
+      const contentProps = new Set(item.contentProperties);
+      const designProps = new Set(item.designProperties);
 
-    for (const [propName, propSummary] of Object.entries(item.fullProperties)) {
-      const cdfType = mapContentfulTypeToCdfType(propSummary.type);
-      const cdfCategory = resolveCdfCategory(propSummary.category, propName, contentProps, designProps);
-      const result = updateStmt.run(cdfType, cdfCategory, sessionId, localComponent.component_id, propName);
-      totalSeeded += Number(result.changes);
+      for (const [propName, propSummary] of Object.entries(item.fullProperties)) {
+        const cdfType = mapContentfulTypeToCdfType(propSummary.type);
+        const cdfCategory = resolveCdfCategory(propSummary.category, propName, contentProps, designProps);
+        const result = updateStmt.run(cdfType, cdfCategory, sessionId, localComponent.component_id, propName);
+        totalSeeded += Number(result.changes);
+      }
     }
-  }
 
-  return totalSeeded;
+    return totalSeeded;
+  });
 }
 
 export function seedDefaultsFromChangedItems(
@@ -2161,53 +3578,57 @@ export function seedDefaultsFromChangedItems(
 ): number {
   if (changedItems.length === 0) return 0;
 
-  let totalSeeded = 0;
+  return withTransaction(db, () => {
+    let totalSeeded = 0;
 
-  const updateDefaultStmt = db.prepare(
-    `UPDATE raw_props SET default_value = ?
-     WHERE session_id = ? AND component_id = ? AND name = ? AND default_value IS NULL`,
-  );
+    const updateDefaultStmt = db.prepare(
+      `UPDATE raw_props SET default_value = ?
+       WHERE session_id = ? AND component_id = ? AND name = ? AND default_value IS NULL`,
+    );
 
-  const updateCDFStmt = db.prepare(
-    `UPDATE raw_props SET cdf_type = ?, cdf_category = ?
-     WHERE session_id = ? AND component_id = ? AND name = ? AND cdf_type IS NULL`,
-  );
+    const updateCDFStmt = db.prepare(
+      `UPDATE raw_props SET cdf_type = ?, cdf_category = ?
+       WHERE session_id = ? AND component_id = ? AND name = ? AND cdf_type IS NULL`,
+    );
 
-  for (const { current } of changedItems) {
-    if (!current.fullProperties) continue;
+    for (const { current } of changedItems) {
+      if (!current.fullProperties) continue;
 
-    const localComponent = db
-      .prepare(`SELECT component_id FROM raw_components WHERE session_id = ? AND name = ?`)
-      .get(sessionId, current.name) as { component_id: string } | undefined;
+      const localComponent = db
+        .prepare(`SELECT component_id FROM raw_components WHERE session_id = ? AND name = ?`)
+        .get(sessionId, current.name) as { component_id: string } | undefined;
 
-    if (!localComponent) continue;
+      if (!localComponent) continue;
 
-    const contentProps = new Set(current.contentProperties);
-    const designProps = new Set(current.designProperties);
+      const contentProps = new Set(current.contentProperties);
+      const designProps = new Set(current.designProperties);
 
-    for (const [propName, propSummary] of Object.entries(current.fullProperties)) {
-      if (propSummary.default !== undefined && propSummary.default !== null) {
-        const defaultStr =
-          typeof propSummary.default === 'string' ? propSummary.default : JSON.stringify(propSummary.default);
-        const result = updateDefaultStmt.run(defaultStr, sessionId, localComponent.component_id, propName);
+      for (const [propName, propSummary] of Object.entries(current.fullProperties)) {
+        if (propSummary.default !== undefined && propSummary.default !== null) {
+          const defaultStr =
+            typeof propSummary.default === 'string' ? propSummary.default : JSON.stringify(propSummary.default);
+          const result = updateDefaultStmt.run(defaultStr, sessionId, localComponent.component_id, propName);
+          totalSeeded += Number(result.changes);
+        }
+
+        const cdfType = mapContentfulTypeToCdfType(propSummary.type);
+        const cdfCategory = resolveCdfCategory(propSummary.category, propName, contentProps, designProps);
+        const result = updateCDFStmt.run(cdfType, cdfCategory, sessionId, localComponent.component_id, propName);
         totalSeeded += Number(result.changes);
       }
-
-      const cdfType = mapContentfulTypeToCdfType(propSummary.type);
-      const cdfCategory = resolveCdfCategory(propSummary.category, propName, contentProps, designProps);
-      const result = updateCDFStmt.run(cdfType, cdfCategory, sessionId, localComponent.component_id, propName);
-      totalSeeded += Number(result.changes);
     }
-  }
 
-  return totalSeeded;
+    return totalSeeded;
+  });
 }
 
 export function backfillUnclassifiedProps(db: DatabaseSync, sessionId: string): number {
   const withCategory = db
     .prepare(
       `UPDATE raw_props SET cdf_type = 'string', cdf_category = category
-     WHERE session_id = ? AND cdf_type IS NULL AND category IS NOT NULL
+     WHERE session_id = ? AND cdf_type IS NULL
+       AND NOT EXISTS (SELECT 1 FROM raw_property_decisions decision WHERE decision.session_id=raw_props.session_id AND decision.component_id=raw_props.component_id AND decision.prop_name=raw_props.name AND 1=1)
+       AND category IS NOT NULL
        AND component_id IN (
          SELECT component_id FROM raw_components WHERE session_id = ? AND status = 'generated'
        )`,
@@ -2217,7 +3638,9 @@ export function backfillUnclassifiedProps(db: DatabaseSync, sessionId: string): 
   const withoutCategory = db
     .prepare(
       `UPDATE raw_props SET cdf_type = 'string', cdf_category = 'content'
-     WHERE session_id = ? AND cdf_type IS NULL AND category IS NULL
+     WHERE session_id = ? AND cdf_type IS NULL
+       AND NOT EXISTS (SELECT 1 FROM raw_property_decisions decision WHERE decision.session_id=raw_props.session_id AND decision.component_id=raw_props.component_id AND decision.prop_name=raw_props.name AND 1=1)
+       AND category IS NULL
        AND component_id IN (
          SELECT component_id FROM raw_components WHERE session_id = ? AND status = 'generated'
        )`,
@@ -2427,17 +3850,23 @@ export function storeCaches(
   }
 }
 
-export function storeScannedFiles(db: DatabaseSync, sessionId: string, filePaths: string[]): void {
-  db.exec('BEGIN');
+export function storeScannedFiles(
+  db: DatabaseSync,
+  sessionId: string,
+  filePaths: string[],
+  options?: { withinTransaction?: boolean },
+): void {
+  const ownsTransaction = !options?.withinTransaction;
+  if (ownsTransaction) db.exec('BEGIN');
   try {
     db.prepare('DELETE FROM scanned_files WHERE session_id = ?').run(sessionId);
     const insert = db.prepare('INSERT INTO scanned_files (session_id, path) VALUES (?, ?)');
     for (const path of filePaths) {
       insert.run(sessionId, path);
     }
-    db.exec('COMMIT');
+    if (ownsTransaction) db.exec('COMMIT');
   } catch (e) {
-    db.exec('ROLLBACK');
+    if (ownsTransaction) db.exec('ROLLBACK');
     throw e;
   }
 }
@@ -2453,8 +3882,10 @@ export function storeSlotCycles(
   db: DatabaseSync,
   sessionId: string,
   cycles: Array<SlotCycle & { suggestedBreak?: SlotEdge | null }>,
+  options?: { withinTransaction?: boolean },
 ): void {
-  db.exec('BEGIN');
+  const ownsTransaction = !options?.withinTransaction;
+  if (ownsTransaction) db.exec('BEGIN');
   try {
     db.prepare('DELETE FROM slot_cycles WHERE session_id = ?').run(sessionId);
     const insert = db.prepare(
@@ -2471,10 +3902,255 @@ export function storeSlotCycles(
         cycle.suggestedBreak ? JSON.stringify(cycle.suggestedBreak) : null,
       );
     }
-    db.exec('COMMIT');
+    if (ownsTransaction) db.exec('COMMIT');
   } catch (e) {
-    db.exec('ROLLBACK');
+    if (ownsTransaction) db.exec('ROLLBACK');
     throw e;
+  }
+}
+
+export interface SessionSourceEnvelope {
+  schemaVersion: 1;
+  envelopeId: string;
+  digest: string;
+  sessionId: string;
+  extractionStepId: number;
+  revision: 'source-evidence-v1';
+  candidateDigests?: Record<string, string>;
+  readiness: 'ready';
+  extractionByteBinding: SourceCapture['extractionByteBinding'];
+  capture: SourceCapture;
+  observations: NonNullable<import('@contentful/experience-design-system-types').SharedSource['observations']>;
+}
+
+export interface SourceEvidenceHandle {
+  envelopeId: string;
+  digest: string;
+  extractionStepId: number;
+  coverage: SourceCapture['coverage'];
+  readiness: 'ready';
+}
+
+export type CompletedSourceEvidence =
+  | { readiness: 'ready'; handle: SourceEvidenceHandle; envelope: SessionSourceEnvelope }
+  | { readiness: 'unavailable'; reason: string };
+
+function candidateEvidenceDigest(
+  component: Pick<RawComponentDefinition, 'factSchemaVersion' | 'sourceCandidates' | 'sourceCandidateSources'>,
+): string {
+  return createHash('sha256')
+    .update(
+      JSON.stringify([
+        component.factSchemaVersion ?? null,
+        component.sourceCandidates ?? null,
+        component.sourceCandidateSources ?? [],
+      ]),
+    )
+    .digest('hex');
+}
+
+function sourceEnvelopeDigest(payload: Omit<SessionSourceEnvelope, 'digest'>): string {
+  return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+}
+
+export function completeExtractionWithSourceEvidence(
+  db: DatabaseSync,
+  input: {
+    sessionId: string;
+    stepId: number;
+    components: RawComponentDefinition[];
+    cycles: Array<SlotCycle & { suggestedBreak?: SlotEdge | null }>;
+    scannedFiles: string[];
+    capture: SourceCapture;
+    observations: NonNullable<import('@contentful/experience-design-system-types').SharedSource['observations']>;
+    extractionDiagnostics?: ExtractionDiagnostics;
+  },
+): SourceEvidenceHandle {
+  const step = db.prepare('SELECT session_id, status, command FROM steps WHERE id = ?').get(input.stepId) as
+    | { session_id: string; status: string; command: string }
+    | undefined;
+  if (!step || step.session_id !== input.sessionId || step.status !== 'pending' || step.command !== 'analyze extract') {
+    throw new Error('Extraction step is missing, belongs to another session, or is not pending');
+  }
+  const unavailableComponentFacts = new Map<number, RawComponentDefinition['componentFacts']>();
+  const bindingComponents = input.components.map((component, index) => {
+    const read = readComponentFacts(component.componentFacts);
+    if (read.status === 'available') return { ...component, componentFacts: read.facts! };
+    if (component.componentFacts === undefined) return component;
+    unavailableComponentFacts.set(index, component.componentFacts);
+    const { componentFacts: _facts, ...raw } = component;
+    return raw;
+  });
+  const envelopeId = `source-${randomUUID()}`;
+  if (input.capture.inventory && readSourceInventory(input.capture.inventory).status !== 'available')
+    throw new Error('Invalid completed source inventory');
+  const referenceIndexes = input.components.flatMap((component) => {
+    const index = component.componentFacts?.sourceObservations?.referenceIndex;
+    if (!index) return [];
+    if (
+      readSourceReferences(index).status !== 'available' ||
+      index.componentDeclarationId !== component.componentFacts?.sourceObservations?.componentDeclarationId
+    )
+      throw new Error('Invalid completed source reference index');
+    return [bindSavedSourceReferences(index, input.capture.files)];
+  });
+  const createdAt = new Date().toISOString();
+  const payload: Omit<SessionSourceEnvelope, 'digest'> = {
+    schemaVersion: 1,
+    envelopeId,
+    sessionId: input.sessionId,
+    extractionStepId: input.stepId,
+    revision: 'source-evidence-v1',
+    candidateDigests: Object.fromEntries(
+      bindSourceCandidatesToCapture(bindingComponents, input.capture.files).map((component) => [
+        deriveComponentId(component.name, component.source),
+        candidateEvidenceDigest(component),
+      ]),
+    ),
+    readiness: 'ready',
+    extractionByteBinding: input.capture.extractionByteBinding,
+    capture: input.capture,
+    observations: { ...input.observations, ...(referenceIndexes.length ? { referenceIndexes } : {}) },
+  };
+  const digest = sourceEnvelopeDigest(payload);
+  const envelope: SessionSourceEnvelope = { ...payload, digest };
+  const outputs = {
+    sessionId: input.sessionId,
+    compositionEvidence: JSON.stringify(input.observations.accepted),
+    compositionRejections: JSON.stringify(input.observations.rejected),
+    ...(input.observations.callerCoverage
+      ? { compositionCallerCoverage: JSON.stringify(input.observations.callerCoverage) }
+      : {}),
+    sourceEnvelopeId: envelope.envelopeId,
+    sourceEnvelopeDigest: envelope.digest,
+    sourceExtractionStepId: String(input.stepId),
+  };
+  // Unavailable sidecars retain their read status without preventing valid candidate binding and final save.
+  const boundComponents = bindSourceCandidatesToCapture(bindingComponents, input.capture.files, {
+    captureId: envelope.capture.captureId,
+    captureDigest: envelope.capture.digest,
+    envelopeId: envelope.envelopeId,
+    envelopeDigest: envelope.digest,
+    sessionId: envelope.sessionId,
+    extractionStepId: envelope.extractionStepId,
+  }).map((component, index) =>
+    unavailableComponentFacts.has(index)
+      ? { ...component, componentFacts: unavailableComponentFacts.get(index) }
+      : component,
+  );
+
+  db.exec('BEGIN');
+  try {
+    storeRawComponents(db, input.sessionId, boundComponents, {
+      preserveStatus: true,
+      preserveCDF: true,
+      withinTransaction: true,
+      extractionDiagnostics: bindCompilerReadsToCapture(input.extractionDiagnostics, input.capture.files),
+    });
+    storeSlotCycles(db, input.sessionId, input.cycles, { withinTransaction: true });
+    storeScannedFiles(db, input.sessionId, input.scannedFiles, { withinTransaction: true });
+    db.prepare(
+      `INSERT INTO session_source_envelopes (envelope_id, session_id, step_id, digest, payload_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run(envelope.envelopeId, input.sessionId, input.stepId, envelope.digest, JSON.stringify(envelope), createdAt);
+    updateStep(db, input.stepId, 'complete', outputs, undefined, { withinTransaction: true });
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+
+  return {
+    envelopeId: envelope.envelopeId,
+    digest: envelope.digest,
+    extractionStepId: input.stepId,
+    coverage: envelope.capture.coverage,
+    readiness: 'ready',
+  };
+}
+
+export function loadCompletedSourceEvidence(
+  db: DatabaseSync,
+  sessionId: string,
+  expected?: Pick<SourceEvidenceHandle, 'envelopeId' | 'digest' | 'extractionStepId'>,
+): CompletedSourceEvidence {
+  const step = expected
+    ? (db
+        .prepare(
+          `SELECT id, status, outputs FROM steps WHERE id = ? AND session_id = ? AND command = 'analyze extract'`,
+        )
+        .get(expected.extractionStepId, sessionId) as { id: number; status: string; outputs: string } | undefined)
+    : (db
+        .prepare(
+          `SELECT id, status, outputs FROM steps WHERE session_id = ? AND command = 'analyze extract'
+           ORDER BY id DESC LIMIT 1`,
+        )
+        .get(sessionId) as { id: number; status: string; outputs: string } | undefined);
+  if (!step || step.status !== 'complete')
+    return { readiness: 'unavailable', reason: 'completed-extraction-step-unavailable' };
+  let outputs: Record<string, string>;
+  try {
+    outputs = JSON.parse(step.outputs) as Record<string, string>;
+  } catch {
+    return { readiness: 'unavailable', reason: 'completed-step-outputs-corrupt' };
+  }
+  if (
+    outputs.sourceExtractionStepId !== String(step.id) ||
+    !outputs.sourceEnvelopeId ||
+    !outputs.sourceEnvelopeDigest ||
+    (expected && (outputs.sourceEnvelopeId !== expected.envelopeId || outputs.sourceEnvelopeDigest !== expected.digest))
+  ) {
+    return { readiness: 'unavailable', reason: 'completed-step-source-identity-mismatch' };
+  }
+  const row = db
+    .prepare(
+      `SELECT envelope_id, session_id, step_id, digest, payload_json FROM session_source_envelopes WHERE envelope_id = ?`,
+    )
+    .get(outputs.sourceEnvelopeId) as
+    | { envelope_id: string; session_id: string; step_id: number; digest: string; payload_json: string }
+    | undefined;
+  if (
+    !row ||
+    row.session_id !== sessionId ||
+    row.step_id !== step.id ||
+    row.envelope_id !== outputs.sourceEnvelopeId ||
+    row.digest !== outputs.sourceEnvelopeDigest
+  ) {
+    return { readiness: 'unavailable', reason: 'saved-source-envelope-unavailable' };
+  }
+  try {
+    const envelope = JSON.parse(row.payload_json) as SessionSourceEnvelope;
+    const { digest, ...payload } = envelope;
+    if (
+      envelope.schemaVersion !== 1 ||
+      envelope.sessionId !== sessionId ||
+      envelope.extractionStepId !== step.id ||
+      envelope.envelopeId !== row.envelope_id ||
+      digest !== row.digest ||
+      (envelope.capture.inventory !== undefined &&
+        readSourceInventory(envelope.capture.inventory).status !== 'available') ||
+      (envelope.observations.referenceIndexes !== undefined &&
+        (!Array.isArray(envelope.observations.referenceIndexes) ||
+          envelope.observations.referenceIndexes.some(
+            (index) => readSourceReferences(index).status !== 'available',
+          ))) ||
+      digest !== sourceEnvelopeDigest(payload)
+    ) {
+      return { readiness: 'unavailable', reason: 'saved-source-envelope-corrupt' };
+    }
+    return {
+      readiness: 'ready',
+      envelope,
+      handle: {
+        envelopeId: envelope.envelopeId,
+        digest: envelope.digest,
+        extractionStepId: envelope.extractionStepId,
+        coverage: envelope.capture.coverage,
+        readiness: 'ready',
+      },
+    };
+  } catch {
+    return { readiness: 'unavailable', reason: 'saved-source-envelope-corrupt' };
   }
 }
 
@@ -2575,7 +4251,7 @@ export function filterUnknownSlotAllowedComponents(
   return unknown;
 }
 
-export interface CopyComponentFromCacheOptions {
+interface CopyComponentFromCacheOptions {
   allowedComponentNames?: ReadonlySet<string>;
 }
 

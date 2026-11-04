@@ -1,6 +1,7 @@
 export interface ExportCdfDocumentRequest {
   sessionId?: string;
   allowEmpty?: boolean;
+  componentIds?: ReadonlySet<string>;
 }
 
 export interface ExportCdfDocumentResult {

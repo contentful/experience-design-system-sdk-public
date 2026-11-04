@@ -1,0 +1,51 @@
+import { readFile } from 'node:fs/promises';
+
+type FileExtractionOutcome<T, M = undefined> = {
+  item: T | null;
+  warnings?: string[];
+  metadata?: M;
+};
+
+type FileExtractionProgress = {
+  filesProcessed: number;
+  componentsFound: number;
+};
+
+export async function runFileExtractionWorkers<T, M = undefined>(
+  filePaths: string[],
+  concurrency: number,
+  extractFile: (filePath: string, source: string) => Promise<FileExtractionOutcome<T, M>>,
+  formatError: (filePath: string, error: unknown) => string,
+  onProgress?: (progress: FileExtractionProgress) => void,
+  onResult?: (filePath: string, outcome: FileExtractionOutcome<T, M>) => void,
+  loadSource: (path: string) => Promise<string> = (path) => readFile(path, 'utf-8'),
+): Promise<{ items: T[]; warnings: string[] }> {
+  const warnings: string[] = [];
+  const items: T[] = [];
+  let filesProcessed = 0;
+
+  const queue = [...filePaths];
+  async function worker() {
+    while (queue.length > 0) {
+      const filePath = queue.shift();
+      if (!filePath) break;
+
+      try {
+        const source = await loadSource(filePath);
+        const outcome = await extractFile(filePath, source);
+        warnings.push(...(outcome.warnings ?? []));
+        if (outcome.item) items.push(outcome.item);
+        onResult?.(filePath, outcome);
+      } catch (error) {
+        warnings.push(formatError(filePath, error));
+      }
+
+      filesProcessed++;
+      onProgress?.({ filesProcessed, componentsFound: items.length });
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, filePaths.length) }, worker));
+
+  return { items, warnings };
+}

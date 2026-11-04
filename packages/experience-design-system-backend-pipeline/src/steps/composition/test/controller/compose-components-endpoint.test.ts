@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { composeComponents } from '../../src/controller/endpoint/compose-components-endpoint.js';
 
 describe('composeComponents validation', () => {
-  it('throws for an unknown agent name', async () => {
-    await expect(composeComponents({ components: [], allFiles: [], agent: 'not-a-real-agent' })).rejects.toThrow(
-      'Unknown agent: "not-a-real-agent"',
+  it('ignores an obsolete agent option', async () => {
+    await expect(composeComponents({ components: [], allFiles: [], agent: 'not-a-real-agent' })).resolves.toMatchObject(
+      {
+        components: [],
+        warnings: [],
+      },
     );
   });
 
@@ -15,15 +18,15 @@ describe('composeComponents validation', () => {
     });
   });
 
-  it('uses claude as default when agent is omitted', async () => {
+  it('does not require an agent', async () => {
     await expect(composeComponents({ components: [], allFiles: [] })).resolves.toMatchObject({
       components: [],
       warnings: [],
     });
   });
 
-  it('passes forceAgent=false by default', async () => {
-    const result = await composeComponents({ components: [], allFiles: [] });
+  it('ignores the obsolete forceAgent option', async () => {
+    const result = await composeComponents({ components: [], allFiles: [], forceAgent: true });
     expect(result.components).toHaveLength(0);
   });
 });

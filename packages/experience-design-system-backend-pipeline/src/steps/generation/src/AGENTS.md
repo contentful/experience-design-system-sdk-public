@@ -44,7 +44,7 @@ Timeouts and non-zero exit codes become per-component `CdfGenerationFailure` ent
 
 ## External calls
 
-AI agent via `createLocalCliAgentInvoker` from `@contentful/experience-design-system-generation`. Timeout: 120 s per component. No HTTP calls.
+AI agent via the backend's shared `createLocalCliAgentInvoker`. Timeout: 120 s per component. Claude and Codex prompts default to stdin; other agents retain argv delivery. The application does not impose a prompt-size limit. No HTTP calls.
 
 ## DSI contribution
 

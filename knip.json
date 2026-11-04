@@ -1,6 +1,9 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "ignoreFiles": ["**/fixtures/**", "**/vitest.e2e.config.ts"],
+  "ignoreFiles": [
+    "**/fixtures/**",
+    "**/vitest.e2e.config.ts"
+  ],
   "ignoreDependencies": [
     "@hey-api/client-fetch",
     "@vue/compiler-sfc",
@@ -8,9 +11,26 @@
     "ts-morph"
   ],
   "ignoreIssues": {
-    "packages/experience-design-system-cli/**": ["files"]
+    "packages/experience-design-system-cli/**": [
+      "files"
+    ]
   },
   "workspaces": {
+    "packages/experience-design-system-backend-pipeline": {
+      "entry": [
+        "src/index.ts",
+        "src/source-evidence/indexed-evidence/read.ts",
+        "src/steps/exploration/src/services/validate-exploration-draft.ts",
+        "src/steps/extraction/index.ts"
+      ]
+    },
+    "packages/experience-design-system-types": {
+      "entry": [
+        "src/index.ts",
+        "src/config/index.ts",
+        "src/handoff/index.ts"
+      ]
+    },
     "packages/experience-design-system-cli": {
       "ignoreDependencies": [
         "@contentful/experience-design-system-types",
@@ -18,6 +38,7 @@
         "ajv",
         "contentful-management",
         "figures",
+        "parse5",
         "zod"
       ]
     }

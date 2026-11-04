@@ -41,6 +41,7 @@ export interface GroupedSidebarProps {
   alwaysExpanded?: boolean;
   showFlatTier?: boolean;
   selectionStateByKey?: Map<string, 'accepted' | 'rejected' | 'undecided'>;
+  displayLabelByKey?: Map<string, string>;
   aiFlaggedByKey?: Map<string, boolean>;
   dimPredicate?: (componentKey: string) => boolean;
   viewMode?: 'grouped' | 'flat';
@@ -79,13 +80,28 @@ function isEmpty(entry: CDFComponentEntry): boolean {
   return Object.keys(entry.$properties ?? {}).length === 0 && Object.keys(entry.$slots ?? {}).length === 0;
 }
 
-function allowedComponentNames(entry: CDFComponentEntry): string[] {
-  const names: string[] = [];
-  for (const slot of Object.values(entry.$slots ?? {})) {
+function sidebarRowKey(kind: string, ...parts: Array<string | number>): string {
+  return JSON.stringify([kind, ...parts]);
+}
+
+function allowedComponentOccurrences(entry: CDFComponentEntry): Array<{
+  target: string;
+  slotName: string;
+  targetIndex: number;
+}> {
+  const occurrences: Array<{ target: string; slotName: string; targetIndex: number }> = [];
+  const slots = Object.entries(entry.$slots ?? {}).sort(([left], [right]) => left.localeCompare(right));
+  for (const [slotName, slot] of slots) {
     if (!Array.isArray(slot?.$allowedComponents)) continue;
-    names.push(...(slot.$allowedComponents as unknown[]).filter((value): value is string => typeof value === 'string'));
+    slot.$allowedComponents.forEach((target, targetIndex) => {
+      if (typeof target === 'string') occurrences.push({ target, slotName, targetIndex });
+    });
   }
-  return names;
+  return occurrences;
+}
+
+function allowedComponentNames(entry: CDFComponentEntry): string[] {
+  return allowedComponentOccurrences(entry).map(({ target }) => target);
 }
 
 function aggregateGlyphFor(closure: Closure, statusByName: Map<string, NodeStatus>): string | null {
@@ -113,8 +129,10 @@ export function buildVisibleRows(props: {
   viewMode?: 'grouped' | 'flat';
   graph: ComponentGraphNode[];
   filterVisibleKeys?: Set<string>;
+  edgeLabel?: string;
 }): VisibleRow[] {
   const { items, cycleParticipants, alwaysExpanded, showFlatTier, viewMode, graph, filterVisibleKeys } = props;
+  const edgeLabel = props.edgeLabel ?? 'dep';
 
   if (viewMode === 'flat') {
     const rows: VisibleRow[] = [];
@@ -142,7 +160,7 @@ export function buildVisibleRows(props: {
       if (!rec) continue;
       rows.push({
         kind: 'cycle',
-        key: `cycle:${key}`,
+        key: sidebarRowKey('cycle', key),
         label: `${GLYPH_WARN} ${key} (cycle)`,
         indent: 0,
         itemIdx: rec.idx,
@@ -152,10 +170,10 @@ export function buildVisibleRows(props: {
       const rec = itemByKey.get(key);
       if (!rec) continue;
       const dep = depCountByKey.get(key);
-      const suffix = dep !== undefined ? ` (${dep} dep${dep === 1 ? '' : 's'})` : '';
+      const suffix = dep !== undefined ? ` (${dep} ${edgeLabel}${dep === 1 ? '' : 's'})` : '';
       rows.push({
         kind: 'flat',
-        key: `flat:${key}`,
+        key: sidebarRowKey('flat', key),
         label: `${key}${suffix}`,
         indent: 0,
         itemIdx: rec.idx,
@@ -205,7 +223,7 @@ export function buildVisibleRows(props: {
     const glyphExpand = expanded ? GLYPH_EXPAND_EXPANDED : GLYPH_EXPAND_COLLAPSED;
     rows.push({
       kind: 'cycle',
-      key: `cycle:${key}`,
+      key: sidebarRowKey('cycle', key),
       label: `${glyphExpand} ${GLYPH_WARN} ${key} (cycle)`,
       indent: 0,
       itemIdx: rec.idx,
@@ -233,7 +251,7 @@ export function buildVisibleRows(props: {
       const labelName = child.isCycleMember ? `${GLYPH_WARN} ${child.name} (cycle)` : child.name;
       rows.push({
         kind: 'group-child',
-        key: `cycle-child:${key}:${child.name}`,
+        key: sidebarRowKey('cycle-child', key, child.name),
         label: `${indent}${glyph} ${labelName}${sharedSuffix ? ' (shared)' : ''}`,
         indent: child.depth,
         sharedSuffix,
@@ -248,7 +266,7 @@ export function buildVisibleRows(props: {
     if (!rec) continue;
     rows.push({
       kind: 'empty',
-      key: `empty:${key}`,
+      key: sidebarRowKey('empty', key),
       label: `${key} (empty)`,
       indent: 0,
       itemIdx: rec.idx,
@@ -290,24 +308,20 @@ export function buildVisibleRows(props: {
   }
 
   const seenSharedOccurrence = new Set<string>();
-  const seenCycleChildOccurrence = new Set<string>();
+  const seenCycleChildOwners = new Map<string, Set<string>>();
 
   for (const root of groupRoots) {
     const closure = closures.get(root)!;
     let injectedCycleCount = 0;
-    const seenInject = new Set<string>();
     const countInjections = (parentName: string): void => {
       const parentItem = itemByKey.get(parentName)?.it;
       if (!parentItem) return;
-      for (const target of allowedComponentNames(parentItem.entry)) {
-        if (!cycleParticipants.has(target)) continue;
-        const key = `${parentName}→${target}`;
-        if (seenInject.has(key)) continue;
-        seenInject.add(key);
-        injectedCycleCount += 1;
-      }
+      injectedCycleCount += allowedComponentOccurrences(parentItem.entry).filter(({ target }) =>
+        cycleParticipants.has(target),
+      ).length;
     };
     countInjections(root);
+    for (const node of closure.nodes) if (node.name !== root) countInjections(node.name);
     const depCount = closure.nodes.length - 1 + injectedCycleCount;
     const expanded = alwaysExpanded ? true : props.expandedGroups.has(root);
     const glyphExpand = expanded ? GLYPH_EXPAND_EXPANDED : GLYPH_EXPAND_COLLAPSED;
@@ -315,8 +329,8 @@ export function buildVisibleRows(props: {
     const rec = itemByKey.get(root)!;
     rows.push({
       kind: 'group-root',
-      key: `root:${root}`,
-      label: `${glyphExpand} ${root} (${depCount} dep${depCount === 1 ? '' : 's'})${aggregate ? ' ' + aggregate : ''}`,
+      key: sidebarRowKey('group-root', root),
+      label: `${glyphExpand} ${root} (${depCount} ${edgeLabel}${depCount === 1 ? '' : 's'})${aggregate ? ' ' + aggregate : ''}`,
       indent: 0,
       aggregateGlyph: aggregate,
       itemIdx: rec.idx,
@@ -334,26 +348,31 @@ export function buildVisibleRows(props: {
       name: string;
       depth: number;
       isCycleChild: boolean;
+      occurrence: Array<string | number>;
     };
     const injectedChildren: ChildRow[] = [];
     const emitCycleChildrenOf = (parentName: string, parentDepth: number): void => {
       const parentItem = itemByKey.get(parentName)?.it;
       if (!parentItem) return;
-      const seen = new Set<string>();
-      for (const target of allowedComponentNames(parentItem.entry)) {
+      for (const { target, slotName, targetIndex } of allowedComponentOccurrences(parentItem.entry)) {
         if (!cycleParticipants.has(target)) continue;
-        if (seen.has(target)) continue;
-        seen.add(target);
         injectedChildren.push({
           name: target,
           depth: parentDepth + 1,
           isCycleChild: true,
+          occurrence: ['cycle-edge', parentName, slotName, targetIndex, target],
         });
       }
     };
     emitCycleChildrenOf(root, 0);
     for (const c of closureChildren) {
-      injectedChildren.push({ name: c.name, depth: c.depth, isCycleChild: false });
+      injectedChildren.push({
+        name: c.name,
+        depth: c.depth,
+        isCycleChild: false,
+        occurrence: ['closure-node', c.name],
+      });
+      emitCycleChildrenOf(c.name, c.depth);
     }
 
     // A child is "last at its depth" when no later child in the flat list
@@ -375,8 +394,11 @@ export function buildVisibleRows(props: {
       const glyph = isLast ? GLYPH_TREE_LAST : GLYPH_TREE_MID;
       let sharedSuffix = false;
       if (child.isCycleChild) {
-        if (seenCycleChildOccurrence.has(child.name)) sharedSuffix = true;
-        else seenCycleChildOccurrence.add(child.name);
+        const owner = JSON.stringify([root, child.occurrence[1]]);
+        const owners = seenCycleChildOwners.get(child.name) ?? new Set<string>();
+        sharedSuffix = owners.size > 0 && !owners.has(owner);
+        owners.add(owner);
+        seenCycleChildOwners.set(child.name, owners);
       } else if (sharedDeps.has(child.name)) {
         if (seenSharedOccurrence.has(child.name)) sharedSuffix = true;
         else seenSharedOccurrence.add(child.name);
@@ -386,7 +408,7 @@ export function buildVisibleRows(props: {
       const labelName = child.isCycleChild ? `${GLYPH_WARN} ${child.name} (cycle)` : child.name;
       rows.push({
         kind: 'group-child',
-        key: `child:${root}:${child.name}`,
+        key: sidebarRowKey('group-child', root, ...child.occurrence),
         label: `${indent}${glyph} ${labelName}${sharedSuffix ? ' (shared)' : ''}`,
         indent: child.depth,
         sharedSuffix,
@@ -402,7 +424,7 @@ export function buildVisibleRows(props: {
     if (!rec) continue;
     rows.push({
       kind: 'standalone',
-      key: `stand:${name}`,
+      key: sidebarRowKey('standalone', name),
       label: name,
       indent: 0,
       itemIdx: rec.idx,
@@ -420,7 +442,7 @@ export function buildVisibleRows(props: {
     if (!rec) continue;
     rows.push({
       kind: 'standalone',
-      key: `shared-standalone:${name}`,
+      key: sidebarRowKey('shared-standalone', name),
       label: `${name} (shared)`,
       indent: 0,
       sharedSuffix: true,
@@ -433,7 +455,7 @@ export function buildVisibleRows(props: {
     if (flatNames.length > 0) {
       rows.push({
         kind: 'flat-header',
-        key: 'flat-header',
+        key: sidebarRowKey('flat-header'),
         label: '── All components ──',
         indent: 0,
         itemIdx: -1,
@@ -443,7 +465,7 @@ export function buildVisibleRows(props: {
         if (!rec) continue;
         rows.push({
           kind: 'flat',
-          key: `flat:${name}`,
+          key: sidebarRowKey('flat', name),
           label: name,
           indent: 0,
           itemIdx: rec.idx,
@@ -653,7 +675,9 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
               wrap={wrapLabels ? 'wrap' : 'truncate'}
             >
               {' '}
-              {row.label}
+              {itemName && props.displayLabelByKey?.has(itemName)
+                ? row.label.replace(itemName, props.displayLabelByKey.get(itemName)!)
+                : row.label}
             </Text>
             {inheritanceStyle.glyph && (
               <Text color={inheritanceStyle.dim ? PALETTE.muted : inheritanceStyle.color} bold={inheritanceStyle.bold}>

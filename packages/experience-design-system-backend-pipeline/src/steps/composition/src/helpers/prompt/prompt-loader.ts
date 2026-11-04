@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export function resolvePromptPath(fileName: string): string {
+function resolvePromptPath(fileName: string): string {
   const thisDir = dirname(fileURLToPath(import.meta.url));
   let dir = thisDir;
   for (;;) {

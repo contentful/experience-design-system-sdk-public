@@ -1,7 +1,7 @@
 import { DESIGN_TOKEN_TYPES, type DesignTokenType } from '../constants/token-types.js';
 import { flattenDTCG } from './flatten.js';
 
-export interface DTCGValidationError {
+interface DTCGValidationError {
   path: string;
   message: string;
   actual?: unknown;

@@ -13,6 +13,7 @@ export function ExtractionScreen({ progress, agent }: ExtractionScreenProps): Re
     <RunningStep
       step="extraction"
       description="Extracting context from your source files."
+      elapsedLabel="Total extraction time"
       lines={progressRows(progress, agent)}
     />
   );

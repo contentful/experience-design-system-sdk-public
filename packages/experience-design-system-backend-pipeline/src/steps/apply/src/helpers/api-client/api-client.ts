@@ -1,4 +1,11 @@
 import {
+  parseCDFComponents,
+  validateCDF,
+  componentDefinitionImportIssues,
+  componentModelFamilyIssues,
+  validateImportPrerequisites,
+} from '@contentful/experience-design-system-types';
+import {
   designSystemImportApply,
   designSystemImportGetOperation,
   designSystemImportSourcelessPreview,
@@ -17,6 +24,13 @@ import { sanitizePreviewResponse } from '../sanitize-preview.js';
 import { toApiHost } from '../host-utils.js';
 import { ApiError } from '../../types/api-error.js';
 import type { ApiClientOptions, RetryConfig } from '../../types/contract.js';
+import { openPipelineDb } from '../../../../../persistence/src/session/repositories/db.js';
+import {
+  loadBoundSessionPrerequisiteSnapshot,
+  assertResolvedImportPrerequisites,
+  createSessionPrerequisiteSaveReceipt,
+  verifyLocalSavedPrerequisiteReceipt,
+} from '../../../../../persistence/src/session/repositories/import-prerequisites.js';
 
 export class ApiClient {
   private host: string;
@@ -26,8 +40,10 @@ export class ApiClient {
   private retry: RetryConfig;
   private userAgent: string;
   private lastRequestId?: string;
+  private prerequisiteSessionId?: string;
 
   constructor(opts: ApiClientOptions) {
+    this.prerequisiteSessionId = opts.prerequisiteSessionId;
     this.host = toApiHost(opts.host);
     this.token = opts.cmaToken;
     this.spaceId = opts.spaceId;
@@ -123,7 +139,49 @@ export class ApiClient {
     throw new ApiError(`preflight failed: ${res.status}`, res.status, body);
   }
 
+  private admitRepresentations(cdf: CDFDocument): void {
+    const parsed = parseCDFComponents(cdf);
+    const components = parsed.components;
+    const familyIssues = componentModelFamilyIssues(components);
+    if (familyIssues.length)
+      throw new Error(
+        `Invalid complete representation document: ${familyIssues.map((issue) => issue.path + ': ' + issue.message).join('; ')}`,
+      );
+    if (components.some(({ entry }) => entry.$model || entry.$representationPlans)) {
+      const validation = validateCDF(cdf);
+      if (!validation.valid)
+        throw new Error(
+          'Invalid complete representation document: ' +
+            validation.errors.map((issue) => issue.path + ': ' + issue.message).join('; '),
+        );
+    }
+    const prerequisites = validateImportPrerequisites(parsed);
+    if (!prerequisites.valid)
+      throw new Error(`Invalid import prerequisites: ${prerequisites.errors.map((issue) => issue.message).join('; ')}`);
+    if (this.prerequisiteSessionId) {
+      const db = openPipelineDb();
+      try {
+        const target = { host: this.host, spaceId: this.spaceId, environmentId: this.environmentId };
+        const snapshot = loadBoundSessionPrerequisiteSnapshot(db, this.prerequisiteSessionId, target);
+        const receipt = createSessionPrerequisiteSaveReceipt(db, this.prerequisiteSessionId, cdf, target);
+        if (
+          (snapshot?.snapshotHash ?? null) !== receipt.snapshotHash ||
+          !verifyLocalSavedPrerequisiteReceipt(db, receipt, cdf, target)
+        )
+          throw new Error('Import prerequisite receipt does not match current source, target and document');
+        assertResolvedImportPrerequisites(prerequisites.plan, snapshot);
+      } finally {
+        db.close();
+      }
+    } else assertResolvedImportPrerequisites(prerequisites.plan);
+    const blockers = components.flatMap(({ key, entry }) =>
+      componentDefinitionImportIssues(entry).map((issue) => `${key}${issue.path}: ${issue.message}`),
+    );
+    if (blockers.length) throw new Error(`Definition import prerequisites unavailable: ${blockers.join('; ')}`);
+  }
+
   async previewImport(cdf: CDFDocument): Promise<ServerPreviewResponse> {
+    this.admitRepresentations(cdf);
     const result = await this.requestWithRetry('preview', PREVIEW_ERROR_PREFIX, () =>
       designSystemImportSourcelessPreview({
         baseUrl: this.host,
@@ -144,6 +202,7 @@ export class ApiClient {
   }
 
   async applyImport(cdf: CDFDocument, opts: { acknowledgeBreakingChanges: boolean }): Promise<ApplyOperationResponse> {
+    this.admitRepresentations(cdf);
     let result: Awaited<ReturnType<typeof designSystemImportApply<false>>>;
     try {
       result = await designSystemImportApply<false>({

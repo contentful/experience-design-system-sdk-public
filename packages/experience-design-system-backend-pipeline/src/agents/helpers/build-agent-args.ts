@@ -17,6 +17,7 @@ export function buildArgs(
   model?: string,
   promptViaStdin = false,
   bedrock = false,
+  conversation?: { id?: string },
 ): string[] {
   const resolvedModel = resolveAgentModel(agent, model, bedrock);
   const modelArg = resolvedModel ? ['--model', resolvedModel] : [];
@@ -26,7 +27,7 @@ export function buildArgs(
     case 'claude':
       return buildClaudeArgs(modelArg, promptArg);
     case 'codex':
-      return buildCodexArgs(modelArg, promptArg, bedrock);
+      return buildCodexArgs(modelArg, promptArg, bedrock, conversation);
     case 'opencode':
       return buildOpencodeArgs(modelArg, promptArg);
     case 'cursor':

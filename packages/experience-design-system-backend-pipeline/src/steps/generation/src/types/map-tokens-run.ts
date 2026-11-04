@@ -1,6 +1,7 @@
 import type { AgentName } from '../../../../agents/types/agent-name.js';
 
 export interface MapTokensRunRequest {
+  signal?: AbortSignal;
   sessionId?: string;
   agent: AgentName | 'skipped';
   model?: string;

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { runTokensOnly, type TokensOnlyInput, type TokensOnlyResult } from './run-tokens-only.js';
+import { isAbortError, linkAbortSignal, trackImportWork } from '../../cancellation.js';
 
 export type TokensOnlyState = { status: 'running' } | { status: 'done'; result: TokensOnlyResult };
 
@@ -9,20 +10,39 @@ export type TokensOnlyState = { status: 'running' } | { status: 'done'; result: 
  */
 export function useTokensOnly(input: TokensOnlyInput | undefined): TokensOnlyState | undefined {
   const [state, setState] = useState<TokensOnlyState>();
-  const current = useRef<TokensOnlyInput>();
+  const current = useRef<{ input: TokensOnlyInput; controller: AbortController }>();
 
   useEffect(() => {
-    current.current = input;
     if (!input) {
+      current.current = undefined;
       setState(undefined);
       return;
     }
+    const linked = linkAbortSignal(input.signal);
+    const run = { input, controller: linked.controller };
+    current.current = run;
+    const isCurrent = (): boolean => current.current === run && !run.controller.signal.aborted;
     setState({ status: 'running' });
-    void runTokensOnly(input).then((result) => {
-      if (current.current === input) setState({ status: 'done', result });
-    });
+    void trackImportWork(runTokensOnly({ ...input, signal: run.controller.signal }))
+      .then((result) => {
+        if (isCurrent()) setState({ status: 'done', result });
+      })
+      .catch((error: unknown) => {
+        if (!isCurrent() || isAbortError(error)) return;
+        setState({
+          status: 'done',
+          result: {
+            ok: false,
+            step: 'generate tokens',
+            message: error instanceof Error ? error.message : String(error),
+          },
+        });
+      })
+      .finally(linked.dispose);
     return () => {
-      if (current.current === input) current.current = undefined;
+      if (current.current === run) current.current = undefined;
+      run.controller.abort();
+      linked.dispose();
     };
   }, [input]);
 

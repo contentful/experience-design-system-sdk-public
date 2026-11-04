@@ -8,6 +8,7 @@ export function createReviewSessionDetail(session: ReviewSessionSnapshot): Revie
       originalProposal: component.originalProposal,
       editedProposal: component.editedProposal,
       status: component.status,
+      ...(component.scopeProvenance ? { scopeProvenance: component.scopeProvenance } : {}),
     })),
   };
 }

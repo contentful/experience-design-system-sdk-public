@@ -27,6 +27,15 @@ describe('runExtractAndComposeSession — public surface', () => {
       conflicts: [],
       compositionWarnings: [],
       scannedFileCount: 0,
+      sourceCallSiteEvidence: [],
+      sourceCallSiteRejections: [],
+      sourceEvidenceHandle: {
+        envelopeId: 'source-env',
+        digest: 'digest',
+        extractionStepId: 1,
+        coverage: 'unavailable',
+        readiness: 'ready',
+      },
     };
     // Verifies the type by construction; the real behavioral coverage lives in
     // cli-legacy's `__extract` subprocess tests, which exercise the orchestrator

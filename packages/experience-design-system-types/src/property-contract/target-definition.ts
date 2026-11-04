@@ -1,3 +1,8 @@
+import {
+  allowedResourcesJsonSchema,
+  SAME_SPACE_RESOURCE_SOURCE,
+  targetDefinitionMetadataJsonProperties,
+} from './resource-link-schema.js';
 import { childPath, jsonEqual, jsonValueIssue, own, type JsonValue, type PropertyIssue } from './json-value.js';
 import { isDateTimeValue } from './date-time-value.js';
 import { discriminatedUnionIssues, matchingDiscriminatedUnionMember } from './discriminated-union.js';
@@ -17,7 +22,7 @@ export const TARGET_PROPERTY_TYPES = [
   'DiscriminatedUnion',
 ] as const;
 export type TargetPropertyType = (typeof TARGET_PROPERTY_TYPES)[number];
-export const SAME_SPACE_RESOURCE_SOURCE = 'crn:contentful:::content:spaces/$self/environments/$self';
+export { SAME_SPACE_RESOURCE_SOURCE } from './resource-link-schema.js';
 export type AllowedResourceDefinition =
   | { type: 'Contentful:Entry'; source: typeof SAME_SPACE_RESOURCE_SOURCE; allowedTypes: string[] }
   | { type: 'Contentful:Asset'; source: typeof SAME_SPACE_RESOURCE_SOURCE };
@@ -196,35 +201,12 @@ export const targetDefinitionJsonSchema = {
       required: ['type'],
       properties: {
         type: { enum: [...TARGET_PROPERTY_TYPES] },
-        id: { type: 'string' },
-        name: { type: 'string' },
-        description: { type: 'string' },
-        required: { type: 'boolean' },
+        ...targetDefinitionMetadataJsonProperties,
         values: { type: 'array', minItems: 1 },
         defaultValue: {},
         items: { $ref: '#/definitions/target' },
         fields: { type: 'object', minProperties: 1, additionalProperties: { $ref: '#/definitions/target' } },
-        allowedResources: {
-          type: 'array',
-          minItems: 1,
-          items: {
-            type: 'object',
-            required: ['type', 'source'],
-            properties: {
-              type: { enum: ['Contentful:Entry', 'Contentful:Asset'] },
-              source: { const: SAME_SPACE_RESOURCE_SOURCE },
-              allowedTypes: { type: 'array', items: { type: 'string' } },
-            },
-            allOf: [
-              {
-                if: { properties: { type: { const: 'Contentful:Entry' } } },
-                then: { required: ['allowedTypes'] },
-                else: { not: { required: ['allowedTypes'] } },
-              },
-            ],
-            additionalProperties: false,
-          },
-        },
+        allowedResources: allowedResourcesJsonSchema,
         value: {},
         valueType: { $ref: '#/definitions/target' },
         discriminator: { type: 'string', minLength: 1 },

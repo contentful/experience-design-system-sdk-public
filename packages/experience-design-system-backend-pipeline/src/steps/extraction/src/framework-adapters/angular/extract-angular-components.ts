@@ -7,7 +7,6 @@ import type {
   RawComponentDefinition,
   RawSlotDefinition,
 } from '../../types/component.js';
-import { computeExtractionScore, deriveNeedsReview } from '../../helpers/quality/scoring.js';
 import { findComponentDecorator, hasComponentDecorator } from './helpers/find-component-decorator.js';
 import { extractProps } from './helpers/props/extract-props.js';
 import { readComponentMetadata } from './helpers/read-component-metadata.js';
@@ -61,10 +60,6 @@ export async function extractAngularComponents(
           slots: normalizeSlots(slots),
           sourcePath: filePath,
         };
-        const score = computeExtractionScore(partial);
-        partial.extractionConfidence = score.confidence;
-        partial.reviewReasons = score.reasons;
-        partial.needsReview = deriveNeedsReview(score.confidence);
 
         components.push(partial);
       }
