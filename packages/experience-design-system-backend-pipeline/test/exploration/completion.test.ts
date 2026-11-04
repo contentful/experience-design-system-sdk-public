@@ -1,9 +1,11 @@
+import { readExplorationContext } from '../exploration-fixture.js';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { VerifyComponentWork, VerifiedItem } from '@contentful/experience-design-system-types';
 import * as api from '../../src/index.js';
+import * as indexedPrompt from '../../src/steps/exploration/src/services/indexed-exploration-prompt.js';
 
 afterEach(() => vi.restoreAllMocks());
 const roster = [{ name: 'Example', source: 'example.tsx', componentId: 'example' }];
@@ -52,7 +54,7 @@ const verified = (name: string, outcome: VerifiedItem['outcome'] = 'confirmed'):
   reason: 'Declared input.',
 });
 const assignment = (prompt: string) =>
-  JSON.parse(prompt.split('\nAssignment:\n')[1]!.split('\n')[0]!) as {
+  JSON.parse(readExplorationContext(prompt).split('\nAssignment:\n')[1]!.split('\n')[0]!) as {
     component: string;
     scope?: string;
     checkIds?: string[];
@@ -60,7 +62,7 @@ const assignment = (prompt: string) =>
 const options = {
   agent: 'codex' as const,
   outDir: '',
-  timeoutMs: 1000,
+  timeoutMs: 10000,
   backoffMs: 0,
   maxAttempts: 1,
   skillContentOverride: 'Inspect supplied source.',
@@ -145,6 +147,13 @@ describe('assigned exploration report coverage', () => {
 });
 
 describe('bounded verify/check execution', () => {
+  beforeEach(() => {
+    // Isolate work scheduling from filesystem preparation, covered by the evidence-reader integration tests.
+    vi.spyOn(indexedPrompt, 'prepareIndexedExplorationPrompt').mockImplementation(async (options) => ({
+      text: `Task: ${options.skill}\nAssignment:\n${options.stageAssignmentInline}\nInput data:\n{}`,
+      dispose: async () => {},
+    }));
+  });
   it.each(['verify', 'check'] as const)('honors %s concurrency and retains input ordering', async (stage) => {
     let active = 0,
       peak = 0;
@@ -244,7 +253,7 @@ describe('explicit bounded stage context paths', () => {
         callSiteEvidencePath: 'calls.json',
         invoker: {
           invoke: async (request) => {
-            prompt = request.prompt;
+            prompt = readExplorationContext(request.prompt);
             return output({ agentRole: 'components-1', components: [] });
           },
         },

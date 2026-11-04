@@ -1,3 +1,4 @@
+import { readExplorationContext } from '../../exploration-fixture.js';
 import { preflightGenerationResult, readGenerationContext } from '../../generation-fixture.js';
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -143,7 +144,7 @@ it('retains all source channels through cold saved slot/value/reference consumer
     const explored = await runExploreStage({
       agent: 'codex',
       outDir: '',
-      timeoutMs: 1000,
+      timeoutMs: 10000,
       backoffMs: 0,
       maxAttempts: 1,
       scopes: ['components-2', 'components-3'],
@@ -154,7 +155,7 @@ it('retains all source channels through cold saved slot/value/reference consumer
       skillContentOverride: 'Use slot, value and reference provenance.',
       invoker: {
         invoke: async ({ prompt }) => {
-          prompts.push(readGenerationContext(prompt));
+          prompts.push(readExplorationContext(prompt));
           const scope = /"scope":"([^"]+)"/.exec(prompt)![1];
           return preflightGenerationResult(
             prompt,

@@ -1,3 +1,4 @@
+import { readExplorationContext } from '../exploration-fixture.js';
 import { preflightGenerationResult, readGenerationContext } from '../generation-fixture.js';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -104,7 +105,8 @@ async function seed(slotNames = ['renderBody']) {
   };
   const requested: string[] = [];
   const invoker = {
-    invoke: async ({ prompt }: { prompt: string }): Promise<AgentRunResult> => {
+    invoke: async ({ prompt: invocationPrompt }: { prompt: string }): Promise<AgentRunResult> => {
+      const prompt = readExplorationContext(invocationPrompt);
       const assignment = JSON.parse(prompt.split('\nAssignment:\n')[1]!.split('\n')[0]!) as {
         scope?: string;
         ids?: string[];
@@ -356,7 +358,7 @@ it('loads full path/text detail overrides and existing context into each actual 
     ],
     invoker: {
       invoke: async (options) => {
-        prompts.push(options.prompt);
+        prompts.push(readExplorationContext(options.prompt));
         return request.invoker.invoke(options);
       },
     },

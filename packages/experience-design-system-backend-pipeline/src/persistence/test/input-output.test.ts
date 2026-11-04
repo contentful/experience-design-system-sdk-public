@@ -1,4 +1,5 @@
 import { preflightGenerationResult, readGenerationContext } from '../../../test/generation-fixture.js';
+import { readExplorationContext } from '../../../test/exploration-fixture.js';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -106,7 +107,7 @@ it('publishes exact associations from mounted default extraction and exploration
   const prompts: string[] = [];
   const invoker = {
     invoke: async ({ prompt }: { prompt: string }) => {
-      prompts.push(prompt);
+      prompts.push(readExplorationContext(prompt));
       const scope = /"scope":"([^"]+)"/.exec(prompt)![1]!;
       return {
         stdout: JSON.stringify({
@@ -503,7 +504,8 @@ it.each(['supports', 'does-not-support'])(
     const f = await fixture(true);
     let checks = 0;
     const invoker = {
-      invoke: async ({ prompt }: { prompt: string }) => {
+      invoke: async ({ prompt: invocationPrompt }: { prompt: string }) => {
+        const prompt = readExplorationContext(invocationPrompt);
         const assignment = JSON.parse(prompt.split('\nAssignment:\n')[1]!.split('\n')[0]!);
         const input = JSON.parse(prompt.split('\nInput data:\n')[1]!.split('\n')[0]!);
         let output: unknown;

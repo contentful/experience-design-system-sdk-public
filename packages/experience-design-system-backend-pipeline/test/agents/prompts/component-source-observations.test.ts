@@ -1,3 +1,4 @@
+import { readExplorationContext } from '../../exploration-fixture.js';
 import { preflightGenerationResult, readGenerationContext } from '../../generation-fixture.js';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -60,7 +61,7 @@ it('routes real default observations through selection/generation/scoped explora
       invoker: {
         invoke: async ({ prompt }) => {
           const scope = /"scope":"([^"\n]+)"/.exec(prompt)![1]!;
-          captured.push(JSON.parse(prompt.split('\nInput data:\n')[1]!.split('\n')[0]!));
+          captured.push(JSON.parse(readExplorationContext(prompt).split('\nInput data:\n')[1]!.split('\n')[0]!));
           return preflightGenerationResult(prompt, {
             stdout: JSON.stringify({ agentRole: scope, components: [{ name: 'Panel', source: path, included: true }] }),
             stderr: '',
@@ -74,7 +75,7 @@ it('routes real default observations through selection/generation/scoped explora
       rawComponentsInline: JSON.stringify([component]),
       sourceInput: { files: [], observations: { accepted: [], rejected: [] }, omittedObservations: 0 } as never,
       outDir: '',
-      timeoutMs: 1000,
+      timeoutMs: 10000,
       backoffMs: 0,
       skillContentOverride: 'Inspect source.',
     });
@@ -83,7 +84,8 @@ it('routes real default observations through selection/generation/scoped explora
     expect(
       (captured[0]!.componentEvidence as { closureFactProjection: unknown }[])[0]!.closureFactProjection,
     ).toBeDefined();
-    expect((captured[0]!.components as Record<string, unknown>[])[0]!.componentFacts).toBeUndefined();
+    expect((captured[0]!.components as Record<string, unknown>[])[0]!.componentFacts).toEqual(component.componentFacts);
+    expect((captured[1]!.components as Record<string, unknown>[])[0]!.componentFacts).toBeUndefined();
     expect(captured[1]!.componentEvidence).toBeUndefined();
     expect(captured[1]!.omittedComponentFacts).toBe(collection.observations.length);
     expect(JSON.stringify(captured[1])).not.toContain('readValue');

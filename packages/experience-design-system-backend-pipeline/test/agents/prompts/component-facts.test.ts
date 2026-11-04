@@ -1,3 +1,4 @@
+import { readExplorationContext } from '../../exploration-fixture.js';
 import { preflightGenerationResult, readGenerationContext } from '../../generation-fixture.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RawComponentDefinition } from '../../../src/steps/extraction/src/types/component.js';
@@ -76,7 +77,7 @@ describe('component evidence prompt channel', () => {
       invoker: {
         invoke: async ({ prompt }) => {
           const scope = /"scope":"([^"\n]+)"/.exec(prompt)![1]!;
-          captured.push(JSON.parse(prompt.split('\nInput data:\n')[1]!.split('\n')[0]!));
+          captured.push(JSON.parse(readExplorationContext(prompt).split('\nInput data:\n')[1]!.split('\n')[0]!));
           return preflightGenerationResult(prompt, {
             stdout: JSON.stringify({
               agentRole: scope,
@@ -97,12 +98,13 @@ describe('component evidence prompt channel', () => {
         omittedObservations: 3,
       } as never,
       outDir: '',
-      timeoutMs: 1000,
+      timeoutMs: 10000,
       backoffMs: 0,
       skillContentOverride: 'Inspect source.',
     });
     expect(result.ok).toBe(true);
-    expect((captured[0]!.components as Record<string, unknown>[])[0]!.componentFacts).toBeUndefined();
+    expect((captured[0]!.components as Record<string, unknown>[])[0]!.componentFacts).toEqual(component.componentFacts);
+    expect((captured[1]!.components as Record<string, unknown>[])[0]!.componentFacts).toBeUndefined();
     expect(captured[0]!.componentEvidence).toMatchObject([{ status: 'available', facts: component.componentFacts }]);
     expect(captured[1]!.componentEvidence).toBeUndefined();
     expect(JSON.stringify(captured[1])).not.toContain('readValue');

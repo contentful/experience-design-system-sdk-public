@@ -1,3 +1,4 @@
+import { readExplorationContext } from '../exploration-fixture.js';
 import { describe, expect, it } from 'vitest';
 import type { SessionSourceEnvelope } from '../../src/persistence/src/session/repositories/db.js';
 import { buildSharedSource, projectSharedSource, renderSharedSource } from '../../src/source-evidence/shared-source.js';
@@ -103,11 +104,13 @@ describe('shared saved source projections', () => {
         sourceInput,
         agent: 'codex',
         outDir: '/example',
-        timeoutMs: 1000,
+        timeoutMs: 10000,
         skillContentOverride: 'Inspect supplied source.',
         invoker: {
           invoke: async ({ prompt }) => {
-            delivered = JSON.parse(prompt.split('\nInput data:\n')[1]!.split('\n')[0]!).sourceInput;
+            delivered = JSON.parse(
+              readExplorationContext(prompt).split('\nInput data:\n')[1]!.split('\n')[0]!,
+            ).sourceInput;
             return {
               stdout: JSON.stringify({ agentRole: scope, components: [] }),
               stderr: '',

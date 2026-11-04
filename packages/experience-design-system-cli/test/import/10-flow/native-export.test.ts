@@ -17,7 +17,7 @@ it('uses actual editor, close/reopen readback and runPrintFiles export without t
   const dbPath = join(directory, 'session.db');
   try {
     const property = JSON.parse(
-      '{"$type":"array","$category":"content","$required":false,"$items":{"$type":"record","$required":true,"$fields":{"__proto__":{"$type":"boolean","$required":false},"constructor":{"$type":"string","$required":false,"$default":""},"a.b/λ":{"$type":"number","$required":true,"$values":[0,1]}}},"$default":[{"__proto__":false,"a.b/λ":0}]}',
+      '{"$type":"array","$category":"content","$required":false,"$items":{"$type":"record","$required":true,"$fields":{"__proto__":{"$type":"boolean","$required":false},"constructor":{"$type":"string","$required":false,"$default":""},"a.b/λ":{"$type":"number","$required":true,"$values":[0,1]}}},"$default":[{"a.b/λ":0}]}',
     );
     let db = openPipelineDb(dbPath);
     const { sessionId } = getOrCreateSession(db, 'new', 'example', { command: 'analyze extract' });
@@ -38,9 +38,10 @@ it('uses actual editor, close/reopen readback and runPrintFiles export without t
       { ...realSaveDeps(), openDb: () => openPipelineDb(dbPath), sleep: async () => {}, warn: vi.fn() },
       vi.fn(),
     );
-    expect(result.ok).toBe(true);
+    expect(result.ok, JSON.stringify(result)).toBe(true);
     const exported = JSON.parse(readFileSync(join(directory, 'components.json'), 'utf8'));
-    expect(validateCDF(exported).valid).toBe(true);
+    const validation = validateCDF(exported);
+    expect(validation.valid, JSON.stringify(validation)).toBe(true);
     expect(exported.Example.$properties.rows).toEqual({ ...property, $description: 'Rows' });
     expect(Object.hasOwn(exported.Example.$properties.rows.$items.$fields, '__proto__')).toBe(true);
   } finally {

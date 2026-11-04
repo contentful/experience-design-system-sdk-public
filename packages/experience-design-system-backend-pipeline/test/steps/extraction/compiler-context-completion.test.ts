@@ -1,4 +1,5 @@
 import { preflightGenerationResult, readGenerationContext } from '../../generation-fixture.js';
+import { readExplorationContext } from '../../exploration-fixture.js';
 import { mkdirSync, mkdtempSync, realpathSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -295,7 +296,7 @@ it.each(['stable', 'changed', 'deleted'] as const)(
       const selection = await runExploreStage({
         agent: 'codex',
         outDir: '',
-        timeoutMs: 1000,
+        timeoutMs: 10000,
         backoffMs: 0,
         maxAttempts: 1,
         scopes: ['components-1'],
@@ -306,7 +307,7 @@ it.each(['stable', 'changed', 'deleted'] as const)(
         skillContentOverride: 'Inspect immutable source.',
         invoker: {
           invoke: async ({ prompt }) => {
-            selectionPrompts.push(readGenerationContext(prompt));
+            selectionPrompts.push(readExplorationContext(prompt));
             return preflightGenerationResult(prompt, {
               stdout: JSON.stringify({
                 agentRole: 'components-1',

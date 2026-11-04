@@ -1,3 +1,4 @@
+import { readExplorationContext } from '../../exploration-fixture.js';
 import { mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
@@ -115,12 +116,12 @@ describe('source call-site production wiring', () => {
           sourceInput: input,
           agent: 'codex',
           outDir: projectPath,
-          timeoutMs: 1000,
+          timeoutMs: 10000,
           maxAttempts: 1,
           skillContentOverride: 'Use supplied caller evidence.',
           invoker: {
             invoke: async ({ prompt }) => {
-              const data = JSON.parse(prompt.split('\nInput data:\n')[1]!.split('\n')[0]!);
+              const data = JSON.parse(readExplorationContext(prompt).split('\nInput data:\n')[1]!.split('\n')[0]!);
               expect(data.sourceInput.observations).toEqual(input.observations);
               expect(prompt).not.toContain('DISK_CHANGED_AFTER_SAVE');
               const assignment = JSON.parse(prompt.split('\nAssignment:\n')[1]!.split('\n')[0]!);

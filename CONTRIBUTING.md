@@ -153,7 +153,11 @@ TUI tests use [`ink-testing-library`](https://github.com/vadimdemedes/ink-testin
 
 The CLI's `test` target depends on its `build` target, so `pnpm -F @contentful/experience-design-system-cli test` builds first.
 
-The backend-pipeline package's `vitest.config.ts` runs with `pool: 'forks'` and `retry: 1` for worker isolation. Contributors do not need to configure this, but expect test wall-clock time to reflect per-test process forks rather than a shared worker pool — flaky individual tests retry once before failing the suite.
+The backend-pipeline package uses forked workers, at most four at once, and retries an individual failing test once. The CLI uses at most two workers; both packages allow 30 seconds per test so source analysis and mounted wizard tests can finish on CI runners. Explicit operation-deadline tests retain their own smaller budgets.
+
+Exploration invoker fixtures use `test/exploration-fixture.ts` in the backend package to execute the exact immutable reader supplied in each prompt while its artifacts are available. Assertions check the retrieved evidence, not whether the initial task index contains every source record inline. Candidate-free scopes must still withhold extracted hints. Scheduling tests isolate prompt preparation so filesystem latency does not decide whether agent invocations overlap.
+
+Client tests cover source and transport fixtures without collecting compiled copies from `dist`; their shared workspace dependency is transformed by Vitest for consistent ESM imports.
 
 ## Adding a New Package
 

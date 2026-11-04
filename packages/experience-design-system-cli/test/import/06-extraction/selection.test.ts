@@ -11,6 +11,7 @@ import {
   storeRawComponents,
 } from '@contentful/experience-design-system-backend-pipeline';
 import { captureSourceEvidence } from '../../../../experience-design-system-backend-pipeline/src/steps/extraction/source-evidence/capture.js';
+import { readExplorationContext } from '../../../../experience-design-system-backend-pipeline/test/exploration-fixture.js';
 
 // The agent itself is scripted: it prints the tool calls a real agent would, and records the prompt it was given.
 const agent = vi.hoisted(() => ({
@@ -35,10 +36,11 @@ vi.mock('@contentful/experience-design-system-backend-pipeline', async (importOr
       agent.debugSinks.push(hooks.onDebugEvent);
       return {
         invoke: async (options: { prompt: string; signal?: AbortSignal }) => {
-          agent.invocations.push({ prompt: options.prompt, signal: options.signal });
+          const prompt = readExplorationContext(options.prompt);
+          agent.invocations.push({ prompt, signal: options.signal });
           const scope = /"scope":"([^"\n]+)"/.exec(options.prompt)?.[1];
           if (scope) {
-            const input = JSON.parse(options.prompt.split('\nInput data:\n')[1]!.split('\n')[0]!) as {
+            const input = JSON.parse(prompt.split('\nInput data:\n')[1]!.split('\n')[0]!) as {
               components: Array<{ name: string; source: string; component_id: string }>;
             };
             return {

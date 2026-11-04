@@ -63,7 +63,10 @@ describe('connected exploration persistence and output', () => {
         expect(activity.at(-1)).toMatchObject({ stage: 'exploring', scope, done: calls.length, total: 7 });
         calls.push(scope!);
         const candidateFree = scope === 'components-6' || scope === 'components-7';
-        if (candidateFree) expect(request.prompt).not.toContain('"slotCandidates"');
+        if (candidateFree) {
+          const assignment = JSON.parse(request.prompt.split('\nAssignment:\n')[1]!.split('\n')[0]!);
+          expect(assignment).not.toHaveProperty('slotCandidates');
+        }
         return {
           stdout: JSON.stringify({
             agentRole: scope,

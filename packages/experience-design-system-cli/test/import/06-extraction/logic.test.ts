@@ -68,7 +68,7 @@ describe('progressRows', () => {
   it('shows the first frame of a fresh run', () => {
     const rows = progressRows(initialProgress({ hasCredentials: true, hasRawTokens: true }), 'claude');
     expect(rows).toEqual([
-      { id: 'source-analysis', text: 'Analyzing source files...', complete: false },
+      { id: 'source-analysis', text: 'Analyzing source files...', complete: false, pending: false },
       {
         id: 'relationships',
         text: 'Source relationship evidence waiting for analysis…',
@@ -97,12 +97,14 @@ describe('progressRows', () => {
       id: 'source-analysis',
       text: 'Analyzing source files — 1/40',
       complete: false,
+      pending: false,
       progress: { done: 1, total: 40, label: 'source files considered' },
     });
     expect(progressRows(base({ scan: { scanned: 40, total: 40 } }), 'claude')[0]).toEqual({
       id: 'source-analysis',
       text: 'Analyzed 40 source files',
       complete: true,
+      pending: false,
       progress: { done: 40, total: 40, label: 'source files considered' },
     });
   });

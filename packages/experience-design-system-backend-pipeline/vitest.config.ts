@@ -7,6 +7,7 @@ export default defineConfig({
     include: ['src/**/*.test.{ts,tsx}', 'test/**/*.test.{ts,tsx}'],
     testTimeout: 30000,
     pool: 'forks',
+    maxWorkers: 4,
     retry: 1,
     passWithNoTests: true,
   },
