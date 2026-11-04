@@ -38,6 +38,7 @@
         "ajv",
         "contentful-management",
         "figures",
+        "parse5",
         "zod"
       ]
     }
