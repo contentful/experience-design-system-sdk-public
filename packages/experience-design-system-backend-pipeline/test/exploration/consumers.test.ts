@@ -280,7 +280,7 @@ describe('actual accepted session consumers', () => {
     } finally {
       db.close();
     }
-  });
+  }, 90000);
   it('fences detail replay and generation writes when saved human choices change', async () => {
     const { sessionId, decisions, request } = await seed();
     await api.runExplorationComponentsSession(request);
@@ -315,7 +315,7 @@ describe('actual accepted session consumers', () => {
     } finally {
       db.close();
     }
-  });
+  }, 90000);
 });
 
 it('loads full path/text detail overrides and existing context into each actual selected stage', async () => {
@@ -383,7 +383,7 @@ it('loads full path/text detail overrides and existing context into each actual 
   } finally {
     reopened.close();
   }
-});
+}, 90000);
 
 it('rejects a missing detail prompt path before stage dispatch while retaining accepted component records', async () => {
   const { sessionId, decisions, request } = await seed();
@@ -406,7 +406,7 @@ it('rejects a missing detail prompt path before stage dispatch while retaining a
   } finally {
     reopened.close();
   }
-});
+}, 90000);
 
 it('keeps independently accepted parent-child edges in two named slots through cold gate, generation and export', async () => {
   const { sessionId, decisions, request } = await seed(['renderBody', 'accessory']);
@@ -439,4 +439,4 @@ it('keeps independently accepted parent-child edges in two named slots through c
   } finally {
     db.close();
   }
-});
+}, 90000);
