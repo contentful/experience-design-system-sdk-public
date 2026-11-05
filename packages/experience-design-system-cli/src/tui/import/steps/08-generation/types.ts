@@ -1,4 +1,5 @@
 import type { GenerationHandoff } from '@contentful/experience-design-system-types/handoff';
+import type { ActivityItem } from '../../shared/running-step/activity.js';
 
 // The generation stage runs after the user confirms the scope. It saves the decisions, generates the accepted components
 // (or takes them from the cache), and maps tokens onto them. What it leaves behind is the generated session the review
@@ -34,6 +35,8 @@ export interface GenerationProgress {
    * run carries on through the rest and only fails at the end. Null until the first progress line.
    */
   components: { done: number; total: number; current: string; failed: number } | null;
+  /** One entry for each component the run has started, in the order they began. Feeds the activity panel. */
+  activity: ActivityItem[];
   mapTokens: 'idle' | 'running' | 'complete';
   /** Whether token mapping will run at all; unknown until the generated components have been looked at. */
   mapTokensEligible: boolean | null;

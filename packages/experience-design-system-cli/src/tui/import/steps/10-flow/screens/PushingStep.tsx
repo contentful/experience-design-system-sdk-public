@@ -5,6 +5,7 @@ import type { PushProgress } from '../support/push-progress.js';
 import { StepHeader } from '@tui/shared/components/StepHeader.js';
 import { countedThings, type Produced, type ProducedCounts } from '../support/produced.js';
 import { useTimedSpinner } from '../support/use-timed-spinner.js';
+import { ActivityPanel, AsideLayout } from '../../../shared/running-step/activity-panel.js';
 import { PROGRESS_THEME } from '../../../shared/running-step/theme.js';
 import { PALETTE } from '@tui/theme.js';
 
@@ -21,50 +22,53 @@ export function PushingStep({ progress, produced, counts }: PushingStepProps): R
 
   const showGlobal = progress && progress.kind === 'progress';
   const showCurrent = progress && progress.kind === 'progress' && progress.current ? progress.current : null;
+  const items = progress && progress.kind === 'progress' ? progress.items : [];
 
   return (
     <Box flexDirection="column">
       <StepHeader step="push" />
-      <Box flexDirection="column" gap={1} paddingX={2} paddingBottom={1}>
-        <Box gap={1}>
-          {spinner}
-          <Text>Writing {countedThings(produced, counts)} to your Contentful space...</Text>
-        </Box>
-
-        {operationId && (
+      <AsideLayout aside={items.length > 0 ? <ActivityPanel title="Entities" items={items} /> : undefined}>
+        <Box flexDirection="column" gap={1} paddingX={2} paddingBottom={1}>
           <Box gap={1}>
-            <Text color={PALETTE.muted}>Operation:</Text>
-            <Text>{operationId}</Text>
+            {spinner}
+            <Text>Writing {countedThings(produced, counts)} to your Contentful space...</Text>
           </Box>
-        )}
 
-        {showGlobal && progress && progress.kind === 'progress' && (
-          <Box gap={1} flexDirection="column">
-            <Box gap={2}>
-              <Box width={40}>
-                <ThemeProvider theme={PROGRESS_THEME}>
-                  <ProgressBar value={Math.round((progress.processed / progress.total) * 100)} />
-                </ThemeProvider>
-              </Box>
-              <Text color={PALETTE.muted}>
-                {progress.processed}/{progress.total} entities
-              </Text>
-              {progress.failed > 0 && <Text color={PALETTE.error}>{progress.failed} failed</Text>}
+          {operationId && (
+            <Box gap={1}>
+              <Text color={PALETTE.muted}>Operation:</Text>
+              <Text>{operationId}</Text>
             </Box>
-          </Box>
-        )}
+          )}
 
-        {showCurrent && (
-          <Box gap={1}>
-            <Text color={PALETTE.muted}>Now processing:</Text>
-            <Text>{showCurrent}</Text>
-          </Box>
-        )}
+          {showGlobal && progress && progress.kind === 'progress' && (
+            <Box gap={1} flexDirection="column">
+              <Box gap={2}>
+                <Box width={40}>
+                  <ThemeProvider theme={PROGRESS_THEME}>
+                    <ProgressBar value={Math.round((progress.processed / progress.total) * 100)} />
+                  </ThemeProvider>
+                </Box>
+                <Text color={PALETTE.muted}>
+                  {progress.processed}/{progress.total} entities
+                </Text>
+                {progress.failed > 0 && <Text color={PALETTE.error}>{progress.failed} failed</Text>}
+              </Box>
+            </Box>
+          )}
 
-        <Box marginTop={1}>
-          <Text color={PALETTE.muted}>Elapsed: {elapsed}</Text>
+          {showCurrent && (
+            <Box gap={1}>
+              <Text color={PALETTE.muted}>Now processing:</Text>
+              <Text>{showCurrent}</Text>
+            </Box>
+          )}
+
+          <Box marginTop={1}>
+            <Text color={PALETTE.muted}>Elapsed: {elapsed}</Text>
+          </Box>
         </Box>
-      </Box>
+      </AsideLayout>
     </Box>
   );
 }

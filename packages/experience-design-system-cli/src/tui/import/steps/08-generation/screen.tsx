@@ -1,4 +1,5 @@
 import React from 'react';
+import { ActivityPanel } from '../../shared/running-step/activity-panel.js';
 import { RunningStep } from '../../shared/index.js';
 import { describeGeneration, progressRows } from './logic.js';
 import type { GenerationProgress } from './types.js';
@@ -24,6 +25,7 @@ export function GenerationScreen({
       step="generation"
       description={describeGeneration({ acceptedCount, agent, hasTokens })}
       lines={progressRows(progress, agent, rowMs)}
+      aside={progress.activity.length > 0 ? <ActivityPanel title="Components" items={progress.activity} /> : undefined}
     />
   );
 }

@@ -4,7 +4,7 @@ import { lineState } from '../../../src/tui/import/shared/running-step/logic.js'
 import type { GenerationProgress } from '../../../src/tui/import/steps/08-generation/types.js';
 
 const progress = (components: GenerationProgress['components'], mapTokens: GenerationProgress['mapTokens'] = 'idle') =>
-  ({ components, mapTokens, mapTokensEligible: null }) satisfies GenerationProgress;
+  ({ components, activity: [], mapTokens, mapTokensEligible: null }) satisfies GenerationProgress;
 
 // A component that fails does not stop the run, which only fails at the end. What must hold is that the screen says so as
 // it happens, and never shows a run with failures as a success.

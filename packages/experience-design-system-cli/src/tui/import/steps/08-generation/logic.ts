@@ -1,3 +1,5 @@
+import type { GenerateComponentsProgress } from '@contentful/experience-design-system-backend-pipeline';
+import { truncate, type ActivityItem } from '../../shared/running-step/activity.js';
 import { withTimes, type RunningLine } from '../../shared/running-step/logic.js';
 import type { GenerationInput, GenerationProgress, GenerationResult } from './types.js';
 
@@ -19,12 +21,35 @@ export function generationLogInputs(input: GenerationInput): Record<string, unkn
   };
 }
 
+// A long run must not make the log grow without bound.
+const MAX_LOGGED_FAILURES = 10;
+const MAX_LOGGED_ERROR = 300;
+
+/**
+ * The last progress for the log. The panel's list of every component is left out, since the log says which components
+ * failed and why instead, and that is what a person reading it needs.
+ */
+function lastProgress(progress: GenerationProgress): Record<string, unknown> {
+  const { activity, ...rest } = progress;
+  const failed = activity.filter((item) => item.state === 'failed');
+  return {
+    final_progress: rest,
+    ...(failed.length > 0
+      ? {
+          failed_components: failed
+            .slice(0, MAX_LOGGED_FAILURES)
+            .map((item) => ({ name: item.name, error: truncate(item.error ?? '', MAX_LOGGED_ERROR) })),
+        }
+      : {}),
+  };
+}
+
 /** How the stage ended. A failure names the step that failed (save decisions, generate components, map tokens). */
 export function generationLogOutputs(
   result: GenerationResult,
   progress: GenerationProgress | undefined,
 ): { outputs: Record<string, unknown>; status: 'success' | 'error' } {
-  const last = progress ? { final_progress: progress } : {};
+  const last = progress ? lastProgress(progress) : {};
   if (!result.ok) {
     return { outputs: { result: 'failed', failed_step: result.step, error: result.message, ...last }, status: 'error' };
   }
@@ -47,7 +72,42 @@ export function generationLogOutputs(
 }
 
 export function initialProgress(): GenerationProgress {
-  return { components: null, mapTokens: 'idle', mapTokensEligible: null };
+  return { components: null, activity: [], mapTokens: 'idle', mapTokensEligible: null };
+}
+
+/**
+ * The panel's entries after one more event. Each component has one entry, in the order they began: it is running from
+ * when it starts, then done, cached or failed. A component the pipeline starts again for a retry keeps its entry.
+ */
+export function applyActivityEvent(
+  event: GenerateComponentsProgress,
+  previous: readonly ActivityItem[],
+  now: number,
+): ActivityItem[] {
+  if (
+    event.kind !== 'component:started' &&
+    event.kind !== 'component:completed' &&
+    event.kind !== 'component:cached' &&
+    event.kind !== 'component:failed'
+  ) {
+    return [...previous];
+  }
+  const index = previous.findIndex((item) => item.name === event.name);
+  const startedAt = previous[index]?.startedAt ?? now;
+  const item: ActivityItem =
+    event.kind === 'component:started'
+      ? {
+          name: event.name,
+          state: 'running',
+          startedAt,
+          ...(event.attempt > 1 ? { detail: `attempt ${event.attempt}` } : {}),
+        }
+      : event.kind === 'component:cached'
+        ? { name: event.name, state: 'done', detail: 'cached', startedAt }
+        : event.kind === 'component:failed'
+          ? { name: event.name, state: 'failed', error: event.error, ms: now - startedAt, startedAt }
+          : { name: event.name, state: 'done', ms: now - startedAt, startedAt };
+  return index >= 0 ? previous.map((existing, i) => (i === index ? item : existing)) : [...previous, item];
 }
 
 export function shouldRunMapTokens(counts: { mappablePropCount: number; rawTokenCount: number }): boolean {

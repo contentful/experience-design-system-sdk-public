@@ -17,6 +17,7 @@ import {
   type ServerPreviewResponse,
 } from '@contentful/experience-design-system-types';
 import { cliUserAgent } from '../../../../user-agent.js';
+import { activityFromItems } from '../support/push-progress.js';
 import { buildSkippedPushTransition, shouldRefusePush } from '../support/wizard-state-transitions.js';
 import type { FlowPatch, FlowState, PushResult } from './types.js';
 
@@ -136,7 +137,14 @@ export async function runPush(
           const lastDone = items.length > 0 ? items[items.length - 1] : null;
           const current = lastDone && lastDone.status === 'succeeded' ? lastDone.id : null;
           onPatch({
-            pushProgress: { kind: 'progress', processed: done, total: summary.total, failed: summary.failed, current },
+            pushProgress: {
+              kind: 'progress',
+              processed: done,
+              total: summary.total,
+              failed: summary.failed,
+              current,
+              items: activityFromItems(items),
+            },
           });
         }
         safeLog(deps, { pollTick: { attempt: pollCount, status: op.sys.status, summary: op.summary } });

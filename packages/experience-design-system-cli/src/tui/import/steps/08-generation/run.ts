@@ -14,6 +14,7 @@ import {
 } from '@contentful/experience-design-system-backend-pipeline';
 import { findSkillPath } from '../06-extraction/find-skill-path.js';
 import { agentAuthMessage } from '../06-extraction/logic.js';
+import { applyActivityEvent } from './logic.js';
 import { prepareMapTokens } from './map-tokens.js';
 import { saveDecisions } from './save-decisions.js';
 
@@ -47,7 +48,7 @@ export async function runGeneration(
   onProgress: (progress: GenerationProgress) => void,
   deps: GenerationDeps = realDeps,
 ): Promise<GenerationResult> {
-  let progress: GenerationProgress = { components: null, mapTokens: 'idle', mapTokensEligible: null };
+  let progress: GenerationProgress = { components: null, activity: [], mapTokens: 'idle', mapTokensEligible: null };
   const update = (change: Partial<GenerationProgress>): void => {
     progress = { ...progress, ...change };
     onProgress(progress);
@@ -80,7 +81,11 @@ export async function runGeneration(
       noCache: input.noCache,
       existingEntitiesPath: input.existingEntitiesPath,
       precomputedCachedNames: new Set(handedOverNames),
-      onProgress: (event) => update({ components: applyProgressEvent(event, progress.components, accepted.length) }),
+      onProgress: (event) =>
+        update({
+          components: applyProgressEvent(event, progress.components, accepted.length),
+          activity: applyActivityEvent(event, progress.activity, Date.now()),
+        }),
     });
   } catch (error) {
     return fail('generate components', errorMessage(error));

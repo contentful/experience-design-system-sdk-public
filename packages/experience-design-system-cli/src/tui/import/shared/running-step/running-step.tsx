@@ -7,11 +7,14 @@ import { PROGRESS_THEME } from './theme.js';
 import { StepHeader } from '@tui/shared/components/StepHeader.js';
 import type { ImportStepId } from '@tui/shared/components/StepHeader.js';
 import { useElapsed } from './use-elapsed.js';
+import { AsideLayout } from './activity-panel.js';
 
 interface RunningStepProps {
   step: ImportStepId;
   description: string;
   lines?: readonly RunningLine[];
+  /** A panel shown beside the step, or under it on a narrow terminal. */
+  aside?: React.ReactNode;
 }
 
 // Every icon is one column wide, so the text lines up. The warning sign is two columns in many terminals.
@@ -54,23 +57,26 @@ export function RunningStep({
   step,
   description,
   lines = [{ text: 'Running...' }],
+  aside,
 }: RunningStepProps): React.ReactElement {
   const elapsed = useElapsed();
 
   return (
     <Box flexDirection="column">
       <StepHeader step={step} />
-      <Box flexDirection="column" gap={1} paddingX={2} paddingBottom={1}>
-        <Text>{description}</Text>
-        <Box marginTop={1} flexDirection="column" gap={1}>
-          {lines.map((line, index) => (
-            <Line key={index} line={line} />
-          ))}
+      <AsideLayout aside={aside}>
+        <Box flexDirection="column" gap={1} paddingX={2} paddingBottom={1}>
+          <Text>{description}</Text>
+          <Box marginTop={1} flexDirection="column" gap={1}>
+            {lines.map((line, index) => (
+              <Line key={index} line={line} />
+            ))}
+          </Box>
+          <Box marginTop={1}>
+            <Text color={PALETTE.muted}>Elapsed: {elapsed}</Text>
+          </Box>
         </Box>
-        <Box marginTop={1}>
-          <Text color={PALETTE.muted}>Elapsed: {elapsed}</Text>
-        </Box>
-      </Box>
+      </AsideLayout>
     </Box>
   );
 }
