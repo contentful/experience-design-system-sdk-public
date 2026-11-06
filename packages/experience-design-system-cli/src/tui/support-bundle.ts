@@ -1,5 +1,6 @@
+import { spawn } from 'node:child_process';
 import { readdir, readFile, stat, writeFile } from 'node:fs/promises';
-import { basename, join, sep } from 'node:path';
+import { basename, dirname, join, sep } from 'node:path';
 import { currentDebugSessionDir, currentSessionDir, settleDebugLogs } from './debug-store.js';
 import { createZip, type ZipEntry } from './zip.js';
 
@@ -39,6 +40,25 @@ export async function bundleDebugLogs(): Promise<SupportBundle> {
     return { status: 'created', path, files: entries.length };
   } catch {
     return { status: 'failed', folder: debugDir };
+  }
+}
+
+/** Shows the zip (or, if there is none, the debug folder) in Finder or File Explorer. Best effort: a failure is ignored. */
+export function openSupportBundle(bundle: SupportBundle): void {
+  if (bundle.status === 'no-logs') return;
+  const target = bundle.status === 'created' ? bundle.path : bundle.folder;
+  const command =
+    process.platform === 'darwin'
+      ? { file: 'open', args: bundle.status === 'created' ? ['-R', target] : [target] }
+      : process.platform === 'win32'
+        ? { file: 'explorer.exe', args: bundle.status === 'created' ? [`/select,${target}`] : [target] }
+        : { file: 'xdg-open', args: [bundle.status === 'created' ? dirname(target) : target] };
+  try {
+    const child = spawn(command.file, command.args, { stdio: 'ignore', detached: true });
+    child.on('error', () => undefined);
+    child.unref();
+  } catch {
+    // there is no file manager to open; the path on screen is still enough
   }
 }
 
