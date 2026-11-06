@@ -334,8 +334,33 @@ describe('runGeneration', () => {
         }) as GenerationDeps['runGenerate'],
       });
       await runGeneration(input(), (progress) => seen.push(progress), deps);
-      expect(seen.map((p) => p.components)).toContainEqual({ done: 1, total: 2, current: 'Button' });
-      expect(seen.map((p) => p.components)).toContainEqual({ done: 2, total: 2, current: 'Card' });
+      expect(seen.map((p) => p.components)).toContainEqual({ done: 1, total: 2, current: 'Button', failed: 0 });
+      expect(seen.map((p) => p.components)).toContainEqual({ done: 2, total: 2, current: 'Card', failed: 0 });
+    });
+
+    // The run carries on through every component and only fails at the end, so a failure has to show when it happens.
+    it('counts a failed component as soon as it fails, while the rest are still running', async () => {
+      const seen: GenerationProgress[] = [];
+      const { deps } = fakes({
+        runGenerate: vi.fn(async (req) => {
+          req.onProgress?.({
+            kind: 'component:started',
+            index: 0,
+            total: 2,
+            name: 'Button',
+            attempt: 1,
+            maxAttempts: 2,
+          });
+          req.onProgress?.({ kind: 'component:failed', index: 0, total: 2, name: 'Button', error: 'agent timed out' });
+          req.onProgress?.({ kind: 'component:started', index: 1, total: 2, name: 'Card', attempt: 1, maxAttempts: 2 });
+          return generatedResponse({ allOk: false });
+        }) as GenerationDeps['runGenerate'],
+      });
+
+      await runGeneration(input(), (progress) => seen.push(progress), deps);
+
+      // After Button failed and before Card finished, one is done and one has failed.
+      expect(seen.map((p) => p.components)).toContainEqual({ done: 1, total: 2, current: 'Card', failed: 1 });
     });
 
     it('moves token mapping from running to complete', async () => {

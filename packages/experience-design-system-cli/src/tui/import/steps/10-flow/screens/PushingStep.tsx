@@ -49,6 +49,7 @@ export function PushingStep({ progress, produced, counts }: PushingStepProps): R
               <Text color={PALETTE.muted}>
                 {progress.processed}/{progress.total} entities
               </Text>
+              {progress.failed > 0 && <Text color={PALETTE.error}>{progress.failed} failed</Text>}
             </Box>
           </Box>
         )}

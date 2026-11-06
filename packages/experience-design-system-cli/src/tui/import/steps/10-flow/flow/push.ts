@@ -135,7 +135,9 @@ export async function runPush(
           const items = op.items ?? [];
           const lastDone = items.length > 0 ? items[items.length - 1] : null;
           const current = lastDone && lastDone.status === 'succeeded' ? lastDone.id : null;
-          onPatch({ pushProgress: { kind: 'progress', processed: done, total: summary.total, current } });
+          onPatch({
+            pushProgress: { kind: 'progress', processed: done, total: summary.total, failed: summary.failed, current },
+          });
         }
         safeLog(deps, { pollTick: { attempt: pollCount, status: op.sys.status, summary: op.summary } });
       },

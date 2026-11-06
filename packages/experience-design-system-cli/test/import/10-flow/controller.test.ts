@@ -140,7 +140,7 @@ describe('the flow controller', () => {
     it('clears once for each step change and not for an update that keeps the step', async () => {
       steps.runPush.mockImplementation(async (_i, _d, onPatch) => {
         onPatch({ step: 'pushing', pushProgress: { kind: 'queued', operationId: 'op-1' } });
-        onPatch({ pushProgress: { kind: 'progress', processed: 1, total: 2, current: null } });
+        onPatch({ pushProgress: { kind: 'progress', processed: 1, total: 2, failed: 0, current: null } });
         return { step: 'done' };
       });
       const controller = createFlowController(start(), deps());

@@ -8,6 +8,8 @@ interface GenerationScreenProps {
   agent: string;
   acceptedCount: number;
   hasTokens: boolean;
+  /** How long each finished row took, by position. */
+  rowMs?: ReadonlyArray<number | undefined>;
 }
 
 export function GenerationScreen({
@@ -15,12 +17,13 @@ export function GenerationScreen({
   agent,
   acceptedCount,
   hasTokens,
+  rowMs,
 }: GenerationScreenProps): React.ReactElement {
   return (
     <RunningStep
       step="generation"
       description={describeGeneration({ acceptedCount, agent, hasTokens })}
-      lines={progressRows(progress, agent)}
+      lines={progressRows(progress, agent, rowMs)}
     />
   );
 }

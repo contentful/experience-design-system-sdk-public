@@ -420,7 +420,13 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
             );
           }
           if (extraction?.status === 'running') {
-            return <ExtractionScreen progress={extraction.progress} agent={extractionRun.input.agent} />;
+            return (
+              <ExtractionScreen
+                progress={extraction.progress}
+                agent={extractionRun.input.agent}
+                rowMs={extraction.rowMs}
+              />
+            );
           }
           return <></>;
         }
@@ -450,6 +456,7 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
                 agent={scopeRun.input.agent}
                 acceptedCount={scopeFlow.decisions.accepted.length}
                 hasTokens={scopeRun.extraction.tokensPath !== ''}
+                rowMs={generation.rowMs}
               />
             );
           }
