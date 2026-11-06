@@ -46,10 +46,10 @@ export async function bundleDebugLogs(): Promise<SupportBundle> {
 export function supportInstruction(bundle: SupportBundle): string {
   switch (bundle.status) {
     case 'created':
-      return `Debug logs saved to ${bundle.path}\nSend this file to Contentful support so they can look into it.`;
+      return `The import hit an error. We zipped up your debug logs, you can find the file here:\n${bundle.path}\nSend that zip file to Contentful support so they can look into it.`;
     case 'no-logs':
-      return 'No debug logs were recorded. To get help, turn on Debug Mode in Settings, run the import again and send the zip file it saves to Contentful support.';
+      return 'The import hit an error, but no debug logs were recorded. To get help, turn on Debug Mode in Settings, run the import again and send the zip file it saves to Contentful support.';
     case 'failed':
-      return `Your debug logs are in ${bundle.folder}\nZip that folder and send it to Contentful support so they can look into it.`;
+      return `The import hit an error. We could not zip your debug logs, but you can find them here:\n${bundle.folder}\nZip that folder and send it to Contentful support so they can look into it.`;
   }
 }
