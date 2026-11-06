@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import { PALETTE } from '@tui/theme.js';
-import { openSupportBundle, supportInstruction } from '@tui/support-bundle.js';
+import { supportInstruction } from '@tui/support-bundle.js';
 import { useErrorControls } from './controls.js';
 import { errorControls } from './logic.js';
 import { useSupportBundle } from './use-support-bundle.js';
@@ -21,19 +21,12 @@ export function ErrorStep({
   onRetryCredentials,
   onAcknowledgeBreakingChanges,
 }: ErrorStepProps): React.ReactElement {
+  useErrorControls({ onExit, onRetry: onRetryCredentials, onAcknowledge: onAcknowledgeBreakingChanges });
   const bundle = useSupportBundle();
-  const canOpen = bundle !== undefined && bundle.status !== 'no-logs';
-  useErrorControls({
-    onExit,
-    onRetry: onRetryCredentials,
-    onAcknowledge: onAcknowledgeBreakingChanges,
-    onOpen: canOpen ? () => openSupportBundle(bundle) : undefined,
-  });
 
   const controls = errorControls({
     canRetry: onRetryCredentials !== undefined,
     canAcknowledge: onAcknowledgeBreakingChanges !== undefined,
-    canOpen,
   });
 
   return (
