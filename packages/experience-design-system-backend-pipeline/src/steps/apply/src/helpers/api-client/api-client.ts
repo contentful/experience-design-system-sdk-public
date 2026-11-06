@@ -1,7 +1,7 @@
 import {
   designSystemImportApply,
   designSystemImportGetOperation,
-  designSystemImportSourcelessPreview,
+  designSystemImportCreate,
 } from '@contentful/experience-design-system-client';
 import type { ApplyOperationResponse, CDFDocument, ServerPreviewResponse } from '../../../../shared/index.js';
 import { APPLY_ERROR_PREFIX, PREVIEW_ERROR_PREFIX, USER_AGENT } from '../../constants/index.js';
@@ -125,7 +125,7 @@ export class ApiClient {
 
   async previewImport(cdf: CDFDocument): Promise<ServerPreviewResponse> {
     const result = await this.requestWithRetry('preview', PREVIEW_ERROR_PREFIX, () =>
-      designSystemImportSourcelessPreview({
+      designSystemImportCreate({
         baseUrl: this.host,
         headers: this.headers(),
         path: { spaceId: this.spaceId, environmentId: this.environmentId },
