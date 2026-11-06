@@ -1,8 +1,10 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import { PALETTE } from '@tui/theme.js';
+import { supportInstruction } from '@tui/support-bundle.js';
 import { useErrorControls } from './controls.js';
 import { errorControls } from './logic.js';
+import { useSupportBundle } from './use-support-bundle.js';
 
 interface ErrorStepProps {
   stepName: string;
@@ -20,6 +22,7 @@ export function ErrorStep({
   onAcknowledgeBreakingChanges,
 }: ErrorStepProps): React.ReactElement {
   useErrorControls({ onExit, onRetry: onRetryCredentials, onAcknowledge: onAcknowledgeBreakingChanges });
+  const bundle = useSupportBundle();
 
   const controls = errorControls({
     canRetry: onRetryCredentials !== undefined,
@@ -32,6 +35,7 @@ export function ErrorStep({
         ✗ {stepName} failed
       </Text>
       <Text color={PALETTE.error}>{message}</Text>
+      {bundle && <Text color={PALETTE.muted}>{supportInstruction(bundle)}</Text>}
       <Box marginTop={1} gap={3}>
         {controls.map((control) => (
           <Text key={control.keys} color={PALETTE.muted}>

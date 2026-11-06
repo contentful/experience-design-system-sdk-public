@@ -200,7 +200,31 @@ export function setDebugRunProgress(outputs: Record<string, unknown>): void {
   if (pendingRun) pendingRun.progress = outputs;
 }
 
-export async function finishDebugRun({
+// Logs that are still being written. Finishing a log is not instant, and something that reads the logs the moment a step
+// fails (the zip for support) has to wait for the log of that very step, so it can wait on these.
+const unsettled = new Set<Promise<unknown>>();
+
+function track<T>(work: Promise<T>): Promise<T> {
+  unsettled.add(work);
+  const forget = (): void => void unsettled.delete(work);
+  work.then(forget, forget);
+  return work;
+}
+
+/** Resolves once every log that has been finished is on disk. */
+export async function settleDebugLogs(): Promise<void> {
+  while (unsettled.size > 0) await Promise.allSettled([...unsettled]);
+}
+
+export function finishDebugRun(args: {
+  outputs: Record<string, unknown>;
+  status: Status;
+  exitMethod: ExitMethod;
+}): Promise<void> {
+  return track(finishRun(args));
+}
+
+async function finishRun({
   outputs,
   status,
   exitMethod,
