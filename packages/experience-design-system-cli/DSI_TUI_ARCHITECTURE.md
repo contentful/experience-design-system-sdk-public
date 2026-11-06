@@ -76,7 +76,7 @@ Import it through the `@tui` alias, not a long relative path: `import { PALETTE 
 Components used by more than one flow live in `src/tui/shared/components/`. Flows keep any other styling beside their screens.
 
 - `ControlHints`: the one control-hint line. It shows `[keys]` in the accent colour and the label in the normal text colour, with no border. Use it for every screen's key hints, passing `{ keys, label }` entries (add `active: true` to highlight a hint whose mode is on). Do not hand-write hint lines.
-- `StepHeader`: the import's tab bar: Extract, Select, Generate, Review and Push, with the version on the right and a rule across the full width. Pass `step="extraction"` and so on; `step="done"` marks every step finished. Render it above the screen's padded content, not inside the padding, so the rule reaches the edges.
+- `StepHeader`: the import's tab bar: Setup, Extract, Select, Generate, Review and Push, with the version on the right and a rule across the full width. Pass `step="extraction"` and so on; `step="done"` marks every step finished. Render it above the screen's padded content, not inside the padding, so the rule reaches the edges.
 
 ### The Import flow
 

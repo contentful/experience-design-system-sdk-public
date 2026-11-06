@@ -1,0 +1,43 @@
+name: Docs alignment
+
+on:
+  pull_request:
+    branches:
+      - main
+      - development
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  docs-alignment:
+    name: Docs alignment
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 #v6.0.3
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: List the files this PR changes
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: git diff --name-only "origin/${BASE_REF}...HEAD" > "$RUNNER_TEMP/changed-files.txt"
+
+      # Reads facts from the code and checks that the repo docs, and the public docs when
+      # DOCS_REPO_TOKEN is set, still agree. Drift is reported as warnings and the job passes.
+      # Set the repository variable DOCS_ALIGNMENT_STRICT to "true" to make drift fail the job.
+      - name: Check that the docs match the code
+        env:
+          DOCS_REPO_TOKEN: ${{ secrets.DOCS_REPO_TOKEN }}
+          STRICT: ${{ vars.DOCS_ALIGNMENT_STRICT }}
+        run: |
+          args=(--changed-files "$RUNNER_TEMP/changed-files.txt")
+          if [ "$STRICT" = "true" ]; then args+=(--strict); fi
+          python3 scripts/docs-alignment/check.py "${args[@]}"
