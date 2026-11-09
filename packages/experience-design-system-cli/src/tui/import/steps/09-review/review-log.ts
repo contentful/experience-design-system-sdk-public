@@ -46,7 +46,7 @@ export function openReviewTrail(components: CdfReviewEntry[], now: number): Revi
 }
 
 export function recordReviewAction(trail: ReviewTrail, label: string): void {
-  const kind = label.split(':')[0] ?? label;
+  const kind = label.split(':')[0];
   trail.kinds[kind] = (trail.kinds[kind] ?? 0) + 1;
   if (trail.actions.length < MAX_ACTIONS) trail.actions.push(label);
 }

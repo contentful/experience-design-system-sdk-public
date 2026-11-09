@@ -91,6 +91,15 @@ function entryErrors(node: Record<string, unknown>, prefix: string): CDFValidati
           ? validateTokenEntry
           : undefined;
     if (!check) {
+      // Groups carry no `$type`, so a node that names one the schema does not know is a mistake.
+      if (type !== undefined) {
+        errors.push({
+          path: `${path}/$type`,
+          message: `Unknown $type "${String(type)}"`,
+          expected: 'component or a design token type',
+          actual: String(type),
+        });
+      }
       errors.push(...entryErrors(value as Record<string, unknown>, path));
     } else if (!check(value)) {
       errors.push(...toValidationErrors(check.errors, path));

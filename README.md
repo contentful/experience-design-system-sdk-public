@@ -4,7 +4,7 @@
 
 Contentful Experiences lets you compose pages and layouts from your own design system components. The `@contentful/experience-design-system-cli` imports your design system into Contentful. It extracts Component Type definitions from your local codebase, invokes an AI agent to generate Component Definition Format (CDF) definitions, and pushes them to your Contentful space.
 
-Your codebase remains the single source of truth. The CLI analyzes your source files (`.tsx`, `.ts`, `.jsx`, `.js`, `.vue`, `.astro`) using static analysis, then delegates property classification and CDF generation to a coding agent.
+Your codebase remains the single source of truth. The CLI analyzes your source files (`.tsx`, `.ts`, `.jsx`, `.js`, `.vue`, `.svelte`, `.astro`) using static analysis, then delegates property classification and CDF generation to a coding agent.
 
 ## Prerequisites
 
@@ -28,19 +28,13 @@ If you are a developer and want to build the tool from its source code instead, 
 
 ### Run
 
-First, move your terminal into the folder that contains your design system. In the terminal, type `cd` followed by a space, then drag that folder from your file manager (Finder on a Mac) into the terminal window so its path fills in, and press Enter. You can also type the path yourself, for example:
-
-```bash
-cd ~/Documents/my-design-system
-```
-
-Then start the import by typing:
+Start the import by typing:
 
 ```bash
 experiences import
 ```
 
-This opens a full-screen guided wizard, so make your terminal window as large as you can before you run it. The wizard walks you through these steps in order: choosing your project folder, adding an optional file of design tokens, entering your Contentful details, reading your components, choosing which components to import, generating the component definitions, reviewing them, and finally sending them to Contentful.
+This opens a full-screen guided wizard, so make your terminal window as large as you can before you run it. The wizard asks for everything it needs on its own screens. It walks you through these steps in order: choosing your project folder, adding an optional file of design tokens, entering your Contentful details, reading your components, choosing which components to import, generating the component definitions, reviewing them, and finally sending them to Contentful.
 
 ## How it works
 
@@ -54,8 +48,6 @@ The CLI runs your component library through four stages:
 
 **4. Apply** — Saves a combined `components.json` to disk for source control, shows a diff of what will change in your Contentful space, then pushes.
 
-To apply a checked-in CDF file without the wizard, use `experiences apply <file>`.
-
 ## Packages
 
 | Package                                                                                  | Description                                                                                       |
@@ -65,11 +57,22 @@ To apply a checked-in CDF file without the wizard, use `experiences apply <file>
 
 ## Command Reference
 
-Full documentation for every flag and every subcommand lives in [`packages/experience-design-system-cli/README.md`](packages/experience-design-system-cli/README.md).
+The CLI has one command, `experiences import`. It is also what runs when you start `experiences` with no command. It opens a full-screen home screen with three options: **Import**, **Settings**, and **Help**. Use **Settings** to save your Contentful credentials and choose your coding agent, and **Import** to start the wizard.
 
-| Command                    | What it does                                                             |
-| -------------------------- | ------------------------------------------------------------------------ |
-| `experiences setup`        | Interactive setup — installs prerequisites and saves credentials + agent |
-| `experiences doctor`       | Health check — verify Node version, credentials, and agent binaries      |
-| `experiences import`       | Run the interactive wizard (extract → select → generate → review → push) |
-| `experiences apply <file>` | Write component types and design tokens from one CDF file to Contentful  |
+## Settings and defaults
+
+Two settings are **on** until you turn them off. Both are under **Settings** on the home screen.
+
+### Usage analytics (Settings → Opt-in Analytics)
+
+The CLI shares anonymous usage data by default. It records which CLI commands are used and where imports succeed or fail. It never includes source code, file paths, credentials, or authored content.
+
+To turn it off, open **Settings → Opt-in Analytics** and press Enter or Space. You can also set the `DISABLE_ANALYTICS` environment variable to any non-empty value (for example `DISABLE_ANALYTICS=1 experiences import`), which turns it off for that run without changing your saved setting.
+
+### Debug logging (Settings → Debug Mode)
+
+The CLI writes debug logs for each screen by default, so there is something to share if you hit a problem. The CMA token is redacted from them. Logs are deleted after 30 days; you can change that to 7 or 14 days, or turn logging off, under **Settings → Debug Mode**.
+
+The logs go in a folder for each terminal session, `<base>/.contentful/<date>-session-<n>/debug`, next to the `tokens.json` and `components.json` each import saves. `<base>` is the **Root Project Directory** if you set one under **Settings → Configuration → Project**, and otherwise the project you are importing. That means that **by default these folders are created inside your own project**. To keep them out of it, set a Root Project Directory somewhere else, or add `.contentful/` to your `.gitignore`.
+
+With Debug Mode off no logs are written and the saved files go in `<project>/.contentful/`. The **Help** screen shows where the current session writes its files.

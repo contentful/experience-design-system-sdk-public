@@ -1,6 +1,7 @@
 import { parseAgentModel, resolveAgent, resolveModel } from '@contentful/experience-design-system-backend-pipeline';
 import type { ExtractAndComposeProgress } from '@contentful/experience-design-system-backend-pipeline';
 import { scrubError } from '@tui/shared/debug-trail.js';
+import { withTimes, type RunningLine } from '../../shared/running-step/logic.js';
 import type { ExtractionInput, ExtractionProgress, ExtractionResult } from './types.js';
 
 /** Structured progress events emitted by the orchestrator (extraction + composition). */
@@ -92,13 +93,20 @@ function compositionDone(progress: ExtractionProgress): boolean {
   return progress.composition === 'done' || progress.composition === 'cache-hit';
 }
 
-/** The rows the screen shows, in the order the wizard showed them. Rows that do not apply are left out. */
-export function progressRows(progress: ExtractionProgress, agent: string): Array<{ text: string; complete: boolean }> {
+/**
+ * The rows the screen shows, in the order the wizard showed them. Rows that do not apply are left out. `rowMs` is how long
+ * each finished row took, by position (see `trackFinished`).
+ */
+export function progressRows(
+  progress: ExtractionProgress,
+  agent: string,
+  rowMs: ReadonlyArray<number | undefined> = [],
+): RunningLine[] {
   const { scan, composition, selection, existingEntities, tokens } = progress;
   const scanned = scan?.scanned ?? 0;
   const scanComplete = (scan?.total ?? 0) > 0;
 
-  const rows: Array<{ text: string; complete: boolean }> = [
+  const rows: RunningLine[] = [
     {
       text: scan === null ? 'Scanning files...' : `${scanComplete ? 'Scanned' : 'Scanning'} ${plural(scanned, 'file')}`,
       complete: scanComplete,
@@ -127,6 +135,8 @@ export function progressRows(progress: ExtractionProgress, agent: string): Array
             ? 'Existing components and tokens ready'
             : 'Existing entities unavailable; continuing without them',
       complete: existingEntities !== 'running',
+      // The import carries on without them, so this is not shown as a success.
+      ...(existingEntities === 'failed' ? { state: 'warning' as const } : {}),
     });
   }
 
@@ -139,10 +149,12 @@ export function progressRows(progress: ExtractionProgress, agent: string): Array
             ? 'Token definition generation failed'
             : `Generating token definitions via ${agent}...`,
       complete: tokens === 'complete',
+      // A failed job is not still running.
+      ...(tokens === 'failed' ? { state: 'failed' as const } : {}),
     });
   }
 
-  return rows;
+  return withTimes(rows, rowMs);
 }
 
 /** True when every job is already done, so the screen would only flash. The wizard shows nothing in this case. */

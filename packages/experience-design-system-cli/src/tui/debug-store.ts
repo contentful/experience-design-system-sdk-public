@@ -200,7 +200,31 @@ export function setDebugRunProgress(outputs: Record<string, unknown>): void {
   if (pendingRun) pendingRun.progress = outputs;
 }
 
-export async function finishDebugRun({
+// Logs that are still being written. Finishing a log is not instant, and something that reads the logs the moment a step
+// fails (the zip for support) has to wait for the log of that very step, so it can wait on these.
+const unsettled = new Set<Promise<unknown>>();
+
+function track<T>(work: Promise<T>): Promise<T> {
+  unsettled.add(work);
+  const forget = (): void => void unsettled.delete(work);
+  work.then(forget, forget);
+  return work;
+}
+
+/** Resolves once every log that has been finished is on disk. */
+export async function settleDebugLogs(): Promise<void> {
+  while (unsettled.size > 0) await Promise.allSettled([...unsettled]);
+}
+
+export function finishDebugRun(args: {
+  outputs: Record<string, unknown>;
+  status: Status;
+  exitMethod: ExitMethod;
+}): Promise<void> {
+  return track(finishRun(args));
+}
+
+async function finishRun({
   outputs,
   status,
   exitMethod,
@@ -216,7 +240,7 @@ export async function finishDebugRun({
 
   const durationMs = Date.now() - run.startedAt;
   const log: FinishedLog = {
-    flow: logFolder(run.flow, run.step),
+    folder: logFolder(run.flow, run.step),
     menuOption: run.menuOption,
     content: renderMarkdown(run, { outputs: redact(outputs), status, exitMethod, durationMs }),
   };
@@ -230,7 +254,7 @@ export async function finishDebugRun({
   await writeLog(root, log);
 }
 
-type FinishedLog = { flow: string; menuOption: string; content: string };
+type FinishedLog = { folder: string; menuOption: string; content: string };
 
 // Import steps are numbered ("04-credentials"), so their folders carry the number and a file browser lists them in the
 // order the steps run. Other flows keep the folder named after the flow.
@@ -244,7 +268,7 @@ const WAITING_LIMIT = 50;
 const waiting: FinishedLog[] = [];
 
 async function writeLog(root: string, log: FinishedLog): Promise<void> {
-  const dir = join(root, ...log.flow.split('/'));
+  const dir = join(root, ...log.folder.split('/'));
   await mkdir(dir, { recursive: true });
   const filename = nextAttemptFilename(dir, log.menuOption);
   await writeFile(join(dir, filename), log.content, { mode: 0o600 });
