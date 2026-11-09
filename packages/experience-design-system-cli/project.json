@@ -7,7 +7,11 @@
   "targets": {
     "build": {
       "executor": "nx:run-commands",
-      "outputs": ["{workspaceRoot}/packages/experience-design-system-cli/dist"],
+      "outputs": [
+        "{workspaceRoot}/packages/experience-design-system-cli/dist",
+        "{workspaceRoot}/packages/experience-design-system-cli/skills",
+        "{workspaceRoot}/packages/experience-design-system-cli/prompts"
+      ],
       "options": {
         "parallel": false,
         "commands": [
@@ -102,6 +106,10 @@
     },
     "copy-assets": {
       "executor": "nx:run-commands",
+      "outputs": [
+        "{workspaceRoot}/packages/experience-design-system-cli/skills",
+        "{workspaceRoot}/packages/experience-design-system-cli/prompts"
+      ],
       "options": {
         "parallel": false,
         "commands": [
