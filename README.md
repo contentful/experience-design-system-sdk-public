@@ -58,3 +58,21 @@ The CLI runs your component library through four stages:
 ## Command Reference
 
 The CLI has one command, `experiences import`. It is also what runs when you start `experiences` with no command. It opens a full-screen home screen with three options: **Import**, **Settings**, and **Help**. Use **Settings** to save your Contentful credentials and choose your coding agent, and **Import** to start the wizard.
+
+## Settings and defaults
+
+Two settings are **on** until you turn them off. Both are under **Settings** on the home screen.
+
+### Usage analytics (Settings → Opt-in Analytics)
+
+The CLI shares anonymous usage data by default. It records which CLI commands are used and where imports succeed or fail. It never includes source code, file paths, credentials, or authored content.
+
+To turn it off, open **Settings → Opt-in Analytics** and press Enter or Space. You can also set the `DISABLE_ANALYTICS` environment variable to any non-empty value (for example `DISABLE_ANALYTICS=1 experiences import`), which turns it off for that run without changing your saved setting.
+
+### Debug logging (Settings → Debug Mode)
+
+The CLI writes debug logs for each screen by default, so there is something to share if you hit a problem. The CMA token is redacted from them. Logs are deleted after 30 days; you can change that to 7 or 14 days, or turn logging off, under **Settings → Debug Mode**.
+
+The logs go in a folder for each terminal session, `<base>/.contentful/<date>-session-<n>/debug`, next to the `tokens.json` and `components.json` each import saves. `<base>` is the **Root Project Directory** if you set one under **Settings → Configuration → Project**, and otherwise the project you are importing. That means that **by default these folders are created inside your own project**. To keep them out of it, set a Root Project Directory somewhere else, or add `.contentful/` to your `.gitignore`.
+
+With Debug Mode off no logs are written and the saved files go in `<project>/.contentful/`. The **Help** screen shows where the current session writes its files.
