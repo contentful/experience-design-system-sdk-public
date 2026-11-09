@@ -48,10 +48,13 @@ function Summary({
   scan,
   path,
   hasTokens,
+  empty,
 }: {
   scan: Extract<ScanResult, { ok: true }>;
   path: string;
   hasTokens: boolean;
+  /** Nothing was found to import, so the screen does not ask the user to confirm it. */
+  empty: boolean;
 }): React.ReactElement {
   const { total, rows, warning } = summarize(scan.counts, { hasTokens });
   return (
@@ -60,13 +63,17 @@ function Summary({
         Scanned <Text bold>{path}</Text>
       </Text>
       <Box flexDirection="column">
-        <Text color={PALETTE.success}>✓ Found {total} files:</Text>
+        {empty ? (
+          <Text color={PALETTE.muted}>Found {total} files:</Text>
+        ) : (
+          <Text color={PALETTE.success}>✓ Found {total} files:</Text>
+        )}
         {rows.map((row) => (
           <Row key={row.label} row={row} />
         ))}
       </Box>
       {warning && <Text color={PALETTE.warning}>⚠ {warning}</Text>}
-      <Text>Does this look right?</Text>
+      {!empty && <Text>Does this look right?</Text>}
     </Box>
   );
 }
@@ -95,7 +102,7 @@ export function PathValidationScreen({
     setScan(scanFiles(resolvedPath));
   }, [resolvedPath]);
 
-  const phase = phaseOf(scan);
+  const phase = phaseOf(scan, { hasTokens });
 
   // A scan that failed is a failed step, whatever the user does next; the log says what they did about it.
   const finish = (outcome: 'continued' | 'changed-path' | 'back', exitMethod: 'saved' | 'discarded') => {
@@ -132,7 +139,9 @@ export function PathValidationScreen({
           </Text>
         )}
         {scan?.ok === false && <Failure scan={scan} path={resolvedPath} />}
-        {scan?.ok === true && <Summary scan={scan} path={resolvedPath} hasTokens={hasTokens} />}
+        {scan?.ok === true && (
+          <Summary scan={scan} path={resolvedPath} hasTokens={hasTokens} empty={phase === 'empty'} />
+        )}
 
         <Box marginTop={1}>
           <ControlHints hints={controlsFor(phase)} />

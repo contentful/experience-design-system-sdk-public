@@ -8,7 +8,8 @@ export type ScanResult =
   | { ok: true; counts: FileCounts; filePaths: string[]; warnings: string[] }
   | { ok: false; failure: ScanFailureCode };
 
-export type PathPhase = 'scanning' | 'ready' | 'failed';
+/** `empty` is a scan that worked but found nothing the import can use, so there is nothing to continue with. */
+export type PathPhase = 'scanning' | 'ready' | 'empty' | 'failed';
 
 export type KeyAction = 'confirm' | 'change-path' | 'back';
 
@@ -124,9 +125,19 @@ export function scanReport(
   };
 }
 
-export function phaseOf(scan: ScanResult | undefined): PathPhase {
+/**
+ * Whether the scan found anything to import: component files, or (when the import also generates tokens) `.json`
+ * files. Without either there is nothing for the later steps to work on.
+ */
+export function hasImportableFiles(counts: FileCounts, { hasTokens = true }: { hasTokens?: boolean } = {}): boolean {
+  const componentFiles = COMPONENT_CATEGORIES.reduce((sum, category) => sum + counts[category], 0);
+  return componentFiles > 0 || (hasTokens && counts.json > 0);
+}
+
+export function phaseOf(scan: ScanResult | undefined, { hasTokens = true }: { hasTokens?: boolean } = {}): PathPhase {
   if (scan === undefined) return 'scanning';
-  return scan.ok ? 'ready' : 'failed';
+  if (!scan.ok) return 'failed';
+  return hasImportableFiles(scan.counts, { hasTokens }) ? 'ready' : 'empty';
 }
 
 export function keyAction(phase: PathPhase, input: string, key: Key): KeyAction | undefined {
@@ -135,6 +146,6 @@ export function keyAction(phase: PathPhase, input: string, key: Key): KeyAction 
     if (key.return) return 'confirm';
     if (input === 'e') return 'change-path';
   }
-  if (phase === 'failed' && (key.return || input === 'e')) return 'change-path';
+  if ((phase === 'failed' || phase === 'empty') && (key.return || input === 'e')) return 'change-path';
   return undefined;
 }

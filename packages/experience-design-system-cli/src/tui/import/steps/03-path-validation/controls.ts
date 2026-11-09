@@ -19,6 +19,10 @@ const CONTROLS: Record<PathPhase, readonly Control[]> = {
     { keys: 'e', label: 'Change path' },
     { keys: 'Esc', label: 'Back' },
   ],
+  empty: [
+    { keys: 'Enter/e', label: 'Try a different path' },
+    { keys: 'Esc', label: 'Back' },
+  ],
   failed: [
     { keys: 'Enter/e', label: 'Try a different path' },
     { keys: 'Esc', label: 'Back' },
