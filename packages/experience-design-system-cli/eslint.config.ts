@@ -4,7 +4,7 @@ import tseslint from "typescript-eslint";
 
 export default defineConfig([
 	{
-		ignores: ["**/node_modules/**", "**/dist/**", "**/.nx/**", "**/coverage/**", "eslint.config.ts"],
+		ignores: ["**/node_modules/**", "**/dist/**", "**/.nx/**", "**/coverage/**", "eslint.config.ts", "test/e2e/fixtures/**"],
 	},
 	...tseslint.configs.recommended,
 	eslintPluginPrettierRecommended,

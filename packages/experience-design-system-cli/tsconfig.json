@@ -18,5 +18,5 @@
     "noEmit": true,
     "paths": { "@tui/*": ["./src/tui/*"] }
   },
-  "exclude": ["dist", "node_modules"]
+  "exclude": ["dist", "node_modules", "test/e2e/fixtures"]
 }
