@@ -23,6 +23,9 @@ const COLUMNS = 200;
 const ANSI = /\u001B\[[0-9;?]*[A-Za-z]/g;
 const CLEAR_SCREEN = '\x1b[H\x1b[0J';
 const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost']);
+// The process events the app's debug store listens to, for its crash and exit handling.
+const PROCESS_EVENTS = ['uncaughtException', 'unhandledRejection', 'SIGINT', 'SIGTERM', 'SIGHUP'] as const;
+const emitter: NodeJS.EventEmitter = process;
 
 export interface ImportSession {
   /** The text on screen right now, with colours removed. */
@@ -84,6 +87,8 @@ export async function startImport(): Promise<ImportSession> {
   // The debug store reads the settings when it is first imported, so every scenario loads a fresh copy of the app. ink
   // and react are loaded after the reset too, so the app and the renderer share one copy of react.
   vi.resetModules();
+  // Only the listeners the app adds are taken off again: the test runner has its own on the same events.
+  const listenersBefore = PROCESS_EVENTS.map((event) => new Set<unknown>(emitter.listeners(event)));
   blockOutsideNetwork();
   const writeToTerminal = process.stdout.write.bind(process.stdout);
   const quietWrite = vi
@@ -146,8 +151,11 @@ export async function startImport(): Promise<ImportSession> {
       unmount();
       quietWrite.mockRestore();
       vi.unstubAllGlobals();
-      for (const event of ['uncaughtException', 'unhandledRejection', 'SIGINT', 'SIGTERM', 'SIGHUP'] as const)
-        process.removeAllListeners(event);
+      PROCESS_EVENTS.forEach((event, index) => {
+        for (const listener of emitter.listeners(event)) {
+          if (!listenersBefore[index]!.has(listener)) emitter.off(event, listener as (...args: unknown[]) => void);
+        }
+      });
     },
   };
 }

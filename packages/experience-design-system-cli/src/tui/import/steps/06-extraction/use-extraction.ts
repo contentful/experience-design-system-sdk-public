@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { startDebugRun, finishDebugRun } from '@tui/debug-store.js';
-import { trackFinished } from '../../shared/running-step/logic.js';
+import { rowTimer } from '../../shared/running-step/logic.js';
 import { extractionLogInputs, extractionLogOutputs, initialProgress, progressRows } from './logic.js';
 import { runExtraction } from './run.js';
 import type { ExtractionInput, ExtractionProgress, ExtractionResult } from './types.js';
@@ -35,8 +35,7 @@ export function useExtraction(input: ExtractionInput | undefined): ExtractionSta
     // The log is written when the run ends, with the last progress, so a failed job shows which one it was.
     let lastProgress: ExtractionProgress | undefined;
     // How long each job took, noted the first time it is seen finished.
-    const startedAt = Date.now();
-    let rowMs: Array<number | undefined> = [];
+    const timeRows = rowTimer();
     startDebugRun({
       flow: 'import/extraction',
       step: '06-extraction',
@@ -45,7 +44,7 @@ export function useExtraction(input: ExtractionInput | undefined): ExtractionSta
     });
     void runExtraction(input, (progress) => {
       lastProgress = progress;
-      rowMs = trackFinished(rowMs, progressRows(progress, input.agent), Date.now() - startedAt);
+      const rowMs = timeRows(progressRows(progress, input.agent));
       if (current.current === input) setState({ status: 'running', progress, rowMs });
     }).then((result) => {
       if (current.current !== input) return;
