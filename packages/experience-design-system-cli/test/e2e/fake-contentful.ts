@@ -28,6 +28,13 @@ const emptyGroup = { new: [], changed: [], unchanged: [], removed: [] };
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
+/** The components in a CDF document: its top-level entries of `$type: component`, named by their key. */
+function componentsIn(document: Record<string, unknown>): Array<{ id: string; entry: Record<string, unknown> }> {
+  return Object.entries(document)
+    .filter(([, value]) => isRecord(value) && value['$type'] === 'component')
+    .map(([id, value]) => ({ id, entry: value as Record<string, unknown> }));
+}
+
 /** The tokens in a CDF document: every object with a `$type` and a `$value`, named by its dotted path. */
 function tokensIn(
   node: unknown,
@@ -49,12 +56,11 @@ export async function startFakeContentful(): Promise<FakeContentful> {
 
   // Everything pushed succeeds, so the operation is finished the moment it is asked about.
   const operation = (document: Record<string, unknown>) => {
-    const items = tokensIn(document).map((token) => ({
-      entityType: 'DesignToken',
-      id: token.id,
-      action: 'create',
-      status: 'succeeded',
-    }));
+    const created = (entityType: string, id: string) => ({ entityType, id, action: 'create', status: 'succeeded' });
+    const items = [
+      ...componentsIn(document).map((component) => created('ComponentType', component.id)),
+      ...tokensIn(document).map((token) => created('DesignToken', token.id)),
+    ];
     return {
       sys: {
         type: 'ApplyOperation',
@@ -87,7 +93,16 @@ export async function startFakeContentful(): Promise<FakeContentful> {
         name: token.name,
         type: token.type,
       }));
-      return send(200, { components: emptyGroup, tokens: { ...emptyGroup, new: created }, taxonomies: emptyGroup });
+      const components = componentsIn(document).map((component) => ({
+        ...component.entry,
+        id: component.id,
+        name: component.id,
+      }));
+      return send(200, {
+        components: { ...emptyGroup, new: components },
+        tokens: { ...emptyGroup, new: created },
+        taxonomies: emptyGroup,
+      });
     }
     if (path.endsWith('/imports/apply') && request.method === 'POST') {
       const document = await readBody(request);

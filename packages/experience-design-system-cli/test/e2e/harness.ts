@@ -73,7 +73,9 @@ function blockOutsideNetwork(): void {
   const real = globalThis.fetch;
   vi.stubGlobal('fetch', (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
     const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url);
-    if (!LOCAL_HOSTS.has(url.hostname)) return Promise.reject(new Error(`e2e: blocked request to ${url.hostname}`));
+    // Only the network is blocked: data: and file: URLs are how some libraries load their own code.
+    const outside = (url.protocol === 'http:' || url.protocol === 'https:') && !LOCAL_HOSTS.has(url.hostname);
+    if (outside) return Promise.reject(new Error(`e2e: blocked request to ${url.hostname}`));
     return real(input, init);
   });
 }

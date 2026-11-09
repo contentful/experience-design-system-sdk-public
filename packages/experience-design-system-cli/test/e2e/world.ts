@@ -4,10 +4,11 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // A scenario's temp folders: a copy of the fixture project, an output folder, and a private config home and pipeline
-// database, so nothing touches the real `.contentful` folder or settings.
+// database, so nothing touches the real `.contentful` folder or settings. Usage analytics is switched off with
+// DISABLE_ANALYTICS: it is on by default, and the harness enters the app below the code that reads the saved preference.
 
 const FIXTURE_PROJECT = fileURLToPath(new URL('./fixtures/project', import.meta.url));
-const ENV_KEYS = ['EDS_HOME', 'EDS_PIPELINE_DB_PATH'] as const;
+const ENV_KEYS = ['EDS_HOME', 'EDS_PIPELINE_DB_PATH', 'DISABLE_ANALYTICS'] as const;
 
 export interface ImportWorld {
   projectDir: string;
@@ -32,6 +33,7 @@ export async function createWorld(): Promise<ImportWorld> {
   const previous = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
   process.env['EDS_HOME'] = home;
   process.env['EDS_PIPELINE_DB_PATH'] = join(root, 'pipeline.db');
+  process.env['DISABLE_ANALYTICS'] = '1';
 
   return {
     projectDir,
