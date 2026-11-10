@@ -39,8 +39,6 @@ Each preference screen:
 - Implements domain-specific store adapters (e.g., `analytics-store.ts`, `debug-mode-store.ts`)
 - Follows the same UX pattern: load state on mount, toggle on Enter/Space, navigate on Esc/q
 
-See `src/tui/settings/README.md` for implementation details.
-
 ## Supported Frameworks
 
 1. React
