@@ -18,7 +18,9 @@ import { createWorld, type ImportWorld } from './world.js';
 /** The fixture's Button has four props and its size is a fixed set of values, so that is what the push must carry. */
 function expectButtonFromFixtureWasPushed(contentful: FakeContentful): void {
   type Properties = Record<string, { $type: string; $values?: string[] }>;
-  const button = (contentful.pushed[0]?.['Button'] as { $properties: Properties }).$properties;
+  const pushed = contentful.pushed[0];
+  expect(pushed, 'nothing was pushed').toBeDefined();
+  const button = (pushed!['Button'] as { $properties: Properties }).$properties;
   expect(Object.keys(button).sort()).toEqual(['color', 'label', 'size', 'url']);
   expect(button['size']).toMatchObject({ $type: 'enum', $values: ['lg', 'md', 'sm'] });
 }

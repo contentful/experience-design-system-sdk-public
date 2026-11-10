@@ -29,11 +29,18 @@ describe('the support bundle', () => {
     await rm(base, { recursive: true, force: true });
   });
 
-  async function load() {
+  async function load({ debugMode = true } = {}) {
     vi.resetModules();
+    if (!debugMode) {
+      await writeFile(
+        join(home, 'config.json'),
+        JSON.stringify({ debugMode: { enabled: false }, contentfulBaseDir: base }),
+      );
+    }
     const store = await import('../src/tui/debug-store.js');
     const bundle = await import('../src/tui/support-bundle.js');
-    await vi.waitFor(() => expect(store.currentSessionDir()).toBeDefined());
+    // With Debug Mode off there is no session folder to wait for.
+    if (debugMode) await vi.waitFor(() => expect(store.currentSessionDir()).toBeDefined());
     return { store, bundle };
   }
 
@@ -70,8 +77,16 @@ describe('the support bundle', () => {
     expect(readZip(readFileSync(second.path))).toHaveLength(1);
   });
 
-  it('has nothing to send when no logs were written, which is what Debug Mode being off leaves', async () => {
+  it('has nothing to send when no logs were written yet', async () => {
     const { bundle } = await load();
+
+    expect(await bundle.bundleDebugLogs()).toEqual({ status: 'no-logs' });
+  });
+
+  it('has nothing to send when Debug Mode is off, because nothing is written', async () => {
+    const { store, bundle } = await load({ debugMode: false });
+    store.startDebugRun({ flow: 'import/welcome', step: '01-welcome', menuOption: 'Welcome', inputs: {} });
+    await store.finishDebugRun({ outputs: {}, status: 'success', exitMethod: 'saved' });
 
     expect(await bundle.bundleDebugLogs()).toEqual({ status: 'no-logs' });
   });

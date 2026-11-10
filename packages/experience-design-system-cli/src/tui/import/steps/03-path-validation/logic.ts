@@ -77,6 +77,11 @@ export function describeFailure(failure: ScanFailureCode, path: string): Failure
   }
 }
 
+/** How many of the scanned files are component files. */
+function componentFileCount(counts: FileCounts): number {
+  return COMPONENT_CATEGORIES.reduce((sum, category) => sum + counts[category], 0);
+}
+
 /**
  * The scan result as rows and a warning. When the import does not generate tokens (components only), `.json` files are
  * not design tokens here, so the row says they are ignored and the warnings do not mention tokens.
@@ -88,8 +93,7 @@ export function summarize(counts: FileCounts, { hasTokens = true }: { hasTokens?
     return { label: ROW_LABELS[category], count: counts[category], tone };
   });
 
-  const componentFiles = COMPONENT_CATEGORIES.reduce((sum, category) => sum + counts[category], 0);
-  if (componentFiles > 0) return { total: counts.total, rows };
+  if (componentFileCount(counts) > 0) return { total: counts.total, rows };
   if (hasTokens && counts.json > 0) {
     return { total: counts.total, rows, warning: 'No component files found — only token files detected.' };
   }
@@ -130,8 +134,7 @@ export function scanReport(
  * files. Without either there is nothing for the later steps to work on.
  */
 export function hasImportableFiles(counts: FileCounts, { hasTokens = true }: { hasTokens?: boolean } = {}): boolean {
-  const componentFiles = COMPONENT_CATEGORIES.reduce((sum, category) => sum + counts[category], 0);
-  return componentFiles > 0 || (hasTokens && counts.json > 0);
+  return componentFileCount(counts) > 0 || (hasTokens && counts.json > 0);
 }
 
 export function phaseOf(scan: ScanResult | undefined, { hasTokens = true }: { hasTokens?: boolean } = {}): PathPhase {

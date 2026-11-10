@@ -14,6 +14,8 @@ const LOCAL_HEADER = 0x04034b50;
 const CENTRAL_HEADER = 0x02014b50;
 const END_OF_ARCHIVE = 0x06054b50;
 const VERSION = 20;
+// The end-of-archive record counts entries in 16 bits, and this writer has no zip64 form for more.
+const MAX_ENTRIES = 0xffff;
 const UTF8_NAMES = 0x0800;
 const DEFLATE = 8;
 
@@ -26,6 +28,8 @@ function dosDateTime(date: Date): { day: number; time: number } {
 }
 
 export function createZip(entries: readonly ZipEntry[]): Buffer {
+  if (entries.length > MAX_ENTRIES)
+    throw new Error(`a zip made here holds at most ${MAX_ENTRIES} files, not ${entries.length}`);
   const body: Buffer[] = [];
   const directory: Buffer[] = [];
   let offset = 0;

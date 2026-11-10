@@ -26,6 +26,14 @@ export function formatDuration(ms: number): string {
 }
 
 /**
+ * Whether the row has ended. A row is finished when it is complete or has failed. A warning alone does not say so: a row
+ * can report failures so far (Generation does) and still be running.
+ */
+function isFinished(row: RunningLine): boolean {
+  return row.complete === true || row.state === 'failed';
+}
+
+/**
  * How long each row took, by position, for the rows that have finished. A row's time is how long the run had been going
  * when it was first seen finished, and it does not change after that. Rows keep their position for the whole run, so a row
  * that appears later is added at the end.
@@ -35,7 +43,17 @@ export function trackFinished(
   rows: readonly RunningLine[],
   elapsedMs: number,
 ): Array<number | undefined> {
-  return rows.map((row, index) => previous[index] ?? (lineState(row) === 'running' ? undefined : elapsedMs));
+  return rows.map((row, index) => previous[index] ?? (isFinished(row) ? elapsedMs : undefined));
+}
+
+/**
+ * Starts the clock and returns what to call with the rows after every progress event: the time each finished row took,
+ * by position (see `trackFinished`).
+ */
+export function rowTimer(): (rows: readonly RunningLine[]) => Array<number | undefined> {
+  const startedAt = Date.now();
+  let rowMs: Array<number | undefined> = [];
+  return (rows) => (rowMs = trackFinished(rowMs, rows, Date.now() - startedAt));
 }
 
 /** The rows with the time each finished row took, by position. */
