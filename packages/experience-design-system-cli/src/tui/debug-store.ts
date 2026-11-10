@@ -218,9 +218,9 @@ export async function settleDebugLogs(): Promise<void> {
 type FinishArgs = {
   outputs: Record<string, unknown>;
   /**
-   * The facts for a person, one line each. With it the log has a Summary and a Data section (the outputs) that say the
-   * same thing twice, once for people and once for AI. Without it the log keeps its Inputs and Outputs sections. The
-   * lines are written as given, so a step must not put a secret in one.
+   * The facts for a person, one line each; a line indented by two spaces is a sub-point of the one above. With it the log
+   * has a Summary (for people) and a Data (for AI, the outputs) section that say the same thing twice. Without it the log
+   * keeps its Inputs and Outputs sections. The lines are written as given, so a step must not put a secret in one.
    */
   summary?: string[];
   status: Status;
@@ -317,11 +317,13 @@ ${when} · ${finish.durationMs}ms on screen · ${finish.status} (${finish.exitMe
 `;
 
   if (finish.summary) {
+    // A line that starts with two spaces is a sub-point of the line above it.
+    const bullets = finish.summary.map((line) => (line.startsWith('  ') ? `  - ${line.trim()}` : `- ${line}`));
     return `${header}
-## Summary
-${finish.summary.map((line) => `- ${line}`).join('\n')}
+## Summary (for people)
+${bullets.join('\n')}
 
-## Data
+## Data (for AI)
 \`\`\`json
 ${JSON.stringify(finish.outputs, null, 2)}
 \`\`\`

@@ -53,8 +53,12 @@ export function preflightLog(
   if (context) {
     const { settings, agents } = context;
     summary.push(
-      `Settings: default agent ${AGENT_LABELS[settings.default_agent]} · base directory ${settings.base_dir_set ? 'set' : 'not set'} · analytics ${settings.analytics ? 'on' : 'off'}`,
-      `Agents: ${AGENT_NAMES.map((name) => agentLine(name, agents[name])).join(' · ')}`,
+      'Settings:',
+      `  Default agent: ${AGENT_LABELS[settings.default_agent]}`,
+      `  Base directory: ${settings.base_dir_set ? 'set' : 'not set'}`,
+      `  Analytics: ${settings.analytics ? 'on' : 'off'}`,
+      'Agents:',
+      ...AGENT_NAMES.map((name) => `  ${agentLine(name, agents[name])}`),
     );
   } else {
     summary.push('Settings and agents: not collected');
@@ -72,5 +76,5 @@ export function preflightLog(
 
 function agentLine(name: AgentName, { status, version }: AgentReadiness): string {
   const number = /\d+(?:\.\d+)+/.exec(version)?.[0];
-  return `${AGENT_LABELS[name]} ${LIST_STATUS[status].text}${number ? ` (${number})` : ''}`;
+  return `${AGENT_LABELS[name]}: ${LIST_STATUS[status].text}${number ? ` (${number})` : ''}`;
 }
