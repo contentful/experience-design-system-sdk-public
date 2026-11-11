@@ -6,7 +6,7 @@ Resolves parent-child relationships between extracted components and wires child
 
 1. Filters the full file set to composition candidates (by name pattern and content markers), caps the result to the prompt token budget.
 2. Collects deterministic edges from manifests and AGENTS.md files colocated with components (ranked above agent output).
-3. If any parent still has unresolved children, invokes the AI agent with the capped candidate files and parses `map_edge` tool calls.
+3. If any parent still has unresolved children (or `forceAgent` is set), invokes the AI agent with the capped candidate files and parses `map_edge` tool calls.
 4. Merges agent edges with deterministic edges (manifest and typed-slot evidence wins on conflict).
 5. Applies merged edges to the component list, synthesizing slots when a high-trust edge targets a missing slot name.
 
@@ -19,7 +19,7 @@ Resolves parent-child relationships between extracted components and wires child
 | `components`                          | `RawComponentDefinition[]`                | From Step 1                           |
 | `allFiles`                            | `Array<{ path, content }>`                | Full project file set                 |
 | `agent`                               | `AgentName?`                              | Defaults to `claude`                  |
-| `forceAgent`                          | `boolean?`                                | Skips cache lookup                    |
+| `forceAgent`                          | `boolean?`                                | Always runs the agent and skips the cache lookup |
 | `promptOverride`                      | `string?`                                 | Replaces the default agent prompt     |
 | `onProgress` / `onWarning`            | callbacks                                 | Phase strings and human-readable text |
 | `onCacheLookup` / `onCacheStore`      | callbacks                                 | See **Cache** below                   |
@@ -39,8 +39,8 @@ Resolves parent-child relationships between extracted components and wires child
 
 ## External calls
 
-AI agent via `runAgent` from `@contentful/experience-design-system-generation`. Timeout: 120 s. Prompt is sent over stdin. No HTTP calls.
+AI agent via `runAgent` from this package's `src/agents/` (`agents/services/run-agent.ts`). Timeout: 120 s. Prompt is sent over stdin. No HTTP calls.
 
 ## DSI contribution
 
-Enables accurate downstream generation: without composed slots the generated CDF would list every component as a terminal node. Edge-rank conflicts (`winner` vs `loser` provenance) surface as warnings the CLI attaches to the active command context — visible on `dsi_cli_command_completed` as composition warning count.
+Enables accurate downstream generation: without composed slots the generated CDF would list every component as a terminal node. Edge-rank conflicts (`winner` vs `loser` provenance) are reported through `onWarning`. The extraction session returns the warnings as `compositionWarnings`; the TUI does not currently record them in analytics.
