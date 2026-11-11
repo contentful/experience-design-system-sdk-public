@@ -19,7 +19,7 @@ The single settings file, read and written through `@contentful/experience-desig
 One folder per terminal session, numbered per day. `<root>` is the "Root Project Directory" setting (Settings > Configuration > Project). When it is empty, the session is created once the import starts, in the project being imported.
 
 - `debug/` holds the per-screen debug logs (markdown run snapshots), written only while Debug Mode is on.
-- `dsi-import-N/` holds one import run's output: `tokens.json`, `.existing-entities.json` and `components.json`. Each import in the session gets the next number, so a second import never overwrites the first. Token reuse offers the newest `tokens.json` found across all sessions.
+- `dsi-import-N/` holds one import run's output: `tokens.json`, `.existing-entities.json` and `components.json`. Each import in the session gets the next number, so a second import never overwrites the first.
 
 ## Project Architecture
 
@@ -31,13 +31,27 @@ For each directory and flow, there is always a top level parent container screen
 
 ### Settings Flow (`src/tui/settings/`)
 
-Settings pages persist user preferences and credentials to `~/.contentful/experience-design-system-cli/config.json`. `utils/v1-store.ts` re-exports the shared read/write functions from `@contentful/experience-design-system-types/config`.
+Settings pages persist user preferences and credentials to `~/.contentful/experience-design-system-cli/config.json`. `src/tui/settings/shared/v1-store.ts` re-exports the shared read/write functions from `@contentful/experience-design-system-types/config`.
 
 Each preference screen:
 
-- Imports `readV1Store` / `writeV1Store` from `utils/v1-store.ts`
+- Imports `readV1Store` / `writeV1Store` from `settings/shared/v1-store.ts`
 - Implements domain-specific store adapters (e.g., `analytics-store.ts`, `debug-mode-store.ts`)
 - Follows the same UX pattern: load state on mount, toggle on Enter/Space, navigate on Esc/q
+
+#### Agent settings
+
+Settings > Configuration > Agents (`settings/configuration/agents/`) is where the user picks the coding agent the import runs. It writes three keys to `config.json`:
+
+- `agent`: the default agent (`claude`, `codex`, `opencode`, `cursor` or `copilot`). It is only written once the user chooses one, so someone who never chose keeps the built-in default, even if that default changes in a later version.
+- `agentModel`: the model for the default agent. It always matches the default agent's entry in `agents`.
+- `agents`: each agent's own `model` and `binary` (the path to its command), so changing the default does not lose another agent's settings. An empty model means the agent's built-in default, and an empty binary means the command is looked up on the `PATH`.
+
+A saved binary reaches the pipeline through `EDS_AGENT_BINARY_<AGENT>`, which `apply-binary-overrides.ts` sets at startup and again after each save. A saved path wins over a variable already in the shell, and clearing it puts the shell's value back.
+
+#### Project settings
+
+Settings > Configuration > Project (`settings/configuration/project/`) holds the Contentful credentials (Space ID, Environment ID, CMA Token and API Host), the Root Project Directory that sessions are created in (`contentfulBaseDir`), and the import defaults `defaultComponentDir` and `defaultTokenFile`.
 
 ## Supported Frameworks
 
@@ -53,7 +67,7 @@ Each preference screen:
 
 ## TUI Design Patterns
 
-The v2 TUI uses React 18 and Ink 5, the same copies v1 uses. Its only runtime dependencies are `ink`, `react`, `commander` and `semver`.
+The TUI uses React 18 and Ink 5, with `ink-text-input` for text fields.
 
 ### State
 
@@ -78,7 +92,7 @@ Components used by more than one flow live in `src/tui/shared/components/`. Flow
 
 ### The Import flow
 
-`src/tui/import/` is the Import menu item. The Import menu item shows the Welcome step (`steps/01-welcome`) and collects the project path, then the Token input step (`steps/02-token-input`) and collects the token file, then the Path validation step (`steps/03-path-validation`), which scans the project folder and asks the user to confirm it. `app.tsx` then runs the rest of the import in the same process: credentials (`steps/04-credentials`), token reuse, extraction, the scope gate, generation, the review (`steps/09-review`) and the save, preview, push and done screens (`steps/10-flow`). The flow's state machine is `steps/10-flow/flow/controller.ts`, kept free of React so it can be tested; `flow/use-flow.ts` and `flow/screen.tsx` connect it to the terminal. When the flow ends it reports an exit code and `PageContainer.tsx` shows the result, then resumes the menu.
+`src/tui/import/` is the Import menu item. It first asks what to import (`steps/00-preflight`): design tokens and components, tokens only, or components only. The steps after that depend on the choice. The Welcome step (`steps/01-welcome`) collects the project path, the Token input step (`steps/02-token-input`) collects the token file, and the Path validation step (`steps/03-path-validation`) scans the project folder and asks the user to confirm it. `app.tsx` then runs the rest of the import in the same process: credentials (`steps/04-credentials`), token review (`steps/05-token-review`), extraction (`steps/06-extraction`), the scope gate (`steps/07-scope-gate`), generation (`steps/08-generation`), the review (`steps/09-review`) and the save, preview, push and done screens (`steps/10-flow`). Components only skips the token screens, and tokens only skips extraction, the scope gate, generation and the review. The flow's state machine is `steps/10-flow/flow/controller.ts`, kept free of React so it can be tested; `flow/use-flow.ts` and `flow/screen.tsx` connect it to the terminal. When the flow ends it reports an exit code and `PageContainer.tsx` shows the result, then resumes the menu.
 
 ### Multi-step flows
 
@@ -136,7 +150,9 @@ export function ConfirmScreen({
 
 ## Testing
 
-Use `ink-testing-library` for screen tests and set `NO_COLOR=1` to suppress ANSI codes. Wait for Ink to subscribe to input before sending keys.
+Use `ink-testing-library` for screen tests. Colors are always on in tests (the vitest config sets `FORCE_COLOR=3`), so match on text rather than ANSI codes. Wait for Ink to subscribe to input before sending keys.
+
+`test/e2e` drives the whole wizard with keystrokes against a fixture project, with only the agent and Contentful faked. See CONTRIBUTING.md for how to run it.
 
 ## Performance Tips
 
