@@ -30,6 +30,20 @@ export type AgentEnvironment = {
   env_override: string;
 };
 
+const versionOf = (checks: readonly AgentCheck[]): string => {
+  const version = checks.find((check) => check.step === 'version');
+  return version?.ok ? version.detail : '';
+};
+
+/** The quick checks for every agent, with the binary path saved for it. */
+const inspectEach = (config: AgentConfig) =>
+  Promise.all(
+    AGENT_NAMES.map(async (name) => {
+      const saved = config.agents[name].binary;
+      return { name, saved, checks: await inspectAgent(name, saved) };
+    }),
+  );
+
 /** What the quick checks found for one agent, as plain facts for the log. */
 function environmentFrom(
   checks: readonly AgentCheck[],
@@ -37,12 +51,11 @@ function environmentFrom(
   envValue: string | undefined,
 ): AgentEnvironment {
   const path = checks.find((check) => check.step === 'path');
-  const version = checks.find((check) => check.step === 'version');
   const overridden = envValue !== undefined && envValue !== '' && envValue !== savedBinary.trim();
   return {
     found: path?.ok === true,
     resolved_path: path?.ok ? path.detail : '',
-    version: version?.ok ? version.detail : '',
+    version: versionOf(checks),
     env_override: overridden ? envValue : '',
   };
 }
@@ -53,14 +66,13 @@ function environmentFrom(
  * spends a prompt.
  */
 export async function describeAgents(config: AgentConfig): Promise<Record<AgentName, AgentEnvironment>> {
-  const entries = await Promise.all(
-    AGENT_NAMES.map(async (name) => {
-      const saved = config.agents[name].binary;
-      const checks = await inspectAgent(name, saved);
-      return [name, environmentFrom(checks, saved, process.env[`EDS_AGENT_BINARY_${name.toUpperCase()}`])] as const;
-    }),
-  );
-  return Object.fromEntries(entries) as Record<AgentName, AgentEnvironment>;
+  const inspected = await inspectEach(config);
+  return Object.fromEntries(
+    inspected.map(({ name, saved, checks }) => [
+      name,
+      environmentFrom(checks, saved, process.env[`EDS_AGENT_BINARY_${name.toUpperCase()}`]),
+    ]),
+  ) as Record<AgentName, AgentEnvironment>;
 }
 
 export type AgentReadiness = { status: AgentStatus; version: string };
@@ -70,16 +82,11 @@ export type AgentReadiness = { status: AgentStatus; version: string };
  * could run. Uses the quick checks only, so it never spends a prompt.
  */
 export async function agentReadiness(config: AgentConfig): Promise<Record<AgentName, AgentReadiness>> {
-  const entries = await Promise.all(
-    AGENT_NAMES.map(async (name) => {
-      const saved = config.agents[name].binary;
-      const checks = await inspectAgent(name, saved);
-      const version = checks.find((check) => check.step === 'version');
-      return [
-        name,
-        { status: statusFromChecks(name, checks, saved), version: version?.ok ? version.detail : '' },
-      ] as const;
-    }),
-  );
-  return Object.fromEntries(entries) as Record<AgentName, AgentReadiness>;
+  const inspected = await inspectEach(config);
+  return Object.fromEntries(
+    inspected.map(({ name, saved, checks }) => [
+      name,
+      { status: statusFromChecks(name, checks, saved), version: versionOf(checks) },
+    ]),
+  ) as Record<AgentName, AgentReadiness>;
 }
