@@ -1,5 +1,3 @@
-import type { CDFComponentEntry } from './types.js';
-
 function createComponentIdResolver(existingIds: readonly string[]): (id: string) => string {
   const exactIds = new Set(existingIds);
   const idsByLowercase = new Map<string, Set<string>>();
@@ -39,37 +37,4 @@ export function resolveComponentIds(
     }
   }
   return resolved;
-}
-
-export function resolveCDFComponentIds(
-  components: Array<{ key: string; entry: CDFComponentEntry }>,
-  existingIds: readonly string[],
-): Array<{ key: string; entry: CDFComponentEntry }> {
-  const componentIds = resolveComponentIds(
-    components.map((component) => component.key),
-    existingIds,
-  );
-  const resolveReferenceId = createComponentIdResolver(existingIds);
-
-  return components.map(({ key, entry }) => ({
-    key: componentIds.get(key)!,
-    entry: entry.$slots
-      ? {
-          ...entry,
-          $slots: Object.fromEntries(
-            Object.entries(entry.$slots).map(([name, slot]) => [
-              name,
-              slot?.$allowedComponents
-                ? {
-                    ...slot,
-                    $allowedComponents: slot.$allowedComponents.map(
-                      (id) => componentIds.get(id) ?? resolveReferenceId(id),
-                    ),
-                  }
-                : slot,
-            ]),
-          ),
-        }
-      : entry,
-  }));
 }

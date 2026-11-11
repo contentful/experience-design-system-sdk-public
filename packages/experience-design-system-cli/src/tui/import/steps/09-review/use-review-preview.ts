@@ -11,7 +11,6 @@ export type UseReviewPreviewOptions = {
   loading: boolean;
   livePreview: boolean;
   sessionId: string;
-  existingEntitiesPath?: string | null;
   tokensPath: string;
   spaceId: string;
   environmentId: string;
@@ -33,7 +32,6 @@ export function useReviewPreview({
   loading,
   livePreview,
   sessionId,
-  existingEntitiesPath,
   tokensPath,
   spaceId,
   environmentId,
@@ -64,7 +62,6 @@ export function useReviewPreview({
   const livePreviewHook = useLivePreview({
     enabled: livePreview,
     sessionId,
-    existingEntitiesPath,
     tokensPath,
     spaceId,
     environmentId,

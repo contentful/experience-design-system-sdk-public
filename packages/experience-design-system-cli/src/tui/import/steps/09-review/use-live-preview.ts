@@ -6,7 +6,6 @@ import { runLivePreview } from './run-live-preview.js';
 export type UseLivePreviewOptions = {
   enabled: boolean;
   sessionId: string;
-  existingEntitiesPath?: string | null;
   tokensPath: string;
   spaceId: string;
   environmentId: string;
@@ -107,7 +106,6 @@ export function useLivePreview(opts: UseLivePreviewOptions): UseLivePreviewRetur
     try {
       const result = await runLivePreview({
         sessionId: current.sessionId,
-        existingEntitiesPath: current.existingEntitiesPath,
         tokensPath: current.tokensPath,
         spaceId: current.spaceId,
         environmentId: current.environmentId,

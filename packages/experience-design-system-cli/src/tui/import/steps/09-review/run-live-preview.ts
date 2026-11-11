@@ -1,12 +1,11 @@
 import type { ServerPreviewResponse } from '@contentful/experience-design-system-types';
-import { buildCDF, resolveComponentIds } from '@contentful/experience-design-system-types';
+import { buildCDF } from '@contentful/experience-design-system-types';
 import { ImportApiClient } from '@contentful/experience-design-system-backend-pipeline';
 import { readTokensFromPath, toCDFTokens } from '@contentful/experience-design-system-backend-pipeline';
 import {
   backfillUnclassifiedProps,
   loadCDFComponents,
   openPipelineDb,
-  readExistingComponentIdsFromSession,
 } from '@contentful/experience-design-system-backend-pipeline';
 import { cliUserAgent } from '../../../user-agent.js';
 
@@ -25,7 +24,6 @@ export type LivePreviewResult = {
 
 export type RunLivePreviewOptions = {
   sessionId: string;
-  existingEntitiesPath?: string | null;
   tokensPath: string;
   spaceId: string;
   environmentId: string;
@@ -73,6 +71,7 @@ export async function runLivePreview(opts: RunLivePreviewOptions): Promise<LiveP
 
   let components: Array<{
     key: string;
+    id?: string;
     entry: import('@contentful/experience-design-system-types').CDFComponentEntry;
   }> = [];
   if (sessionId) {
@@ -97,15 +96,8 @@ export async function runLivePreview(opts: RunLivePreviewOptions): Promise<LiveP
     tokens = await readTokensFromPath({ flag: 'tokens', path: tokensPath });
   }
 
-  const existingComponentIds = await readExistingComponentIdsFromSession(opts.existingEntitiesPath);
-  const componentIds = resolveComponentIds(
-    components.map((component) => component.key),
-    existingComponentIds,
-  );
-  const cdf = buildCDF(components, toCDFTokens(tokens), {
-    deleteAll: opts.deleteAllComponents === true,
-    existingComponentIds,
-  })!;
+  const componentIds = new Map(components.map((component) => [component.key, component.id ?? component.key]));
+  const cdf = buildCDF(components, toCDFTokens(tokens), { deleteAll: opts.deleteAllComponents === true })!;
 
   const client = new ImportApiClient({ host, cmaToken, spaceId, environmentId, userAgent: cliUserAgent() });
   const startedAt = Date.now();

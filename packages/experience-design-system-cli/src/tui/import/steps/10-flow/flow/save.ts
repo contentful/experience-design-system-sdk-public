@@ -8,7 +8,6 @@ import {
   loadDTCGTokens,
   openPipelineDb,
   readTokensFromPath,
-  readExistingComponentIdsFromSession,
   toCDFTokens,
 } from '@contentful/experience-design-system-backend-pipeline';
 import {
@@ -30,7 +29,7 @@ const describeCdfError = (error: { path: string; message: string }): string =>
 
 /** The document written to `components.json`: the components and tokens as one schema-valid CDF. */
 function buildSavedCDF(
-  components: Array<{ key: string; entry: CDFComponentEntry }>,
+  components: Array<{ key: string; id?: string; entry: CDFComponentEntry }>,
   tokens: DTCGTokenEntry[],
   opts: Parameters<typeof buildCDF>[2] = {},
 ): CDFDocument {
@@ -66,7 +65,6 @@ export const realSaveDeps = (): SaveDeps => ({
 
 export interface WriteFilesInput {
   extractSessionId: string | null;
-  existingEntitiesPath?: string | null;
   outDir: string;
   tokenSessionId?: string | null;
   tokensPath?: string;
@@ -99,7 +97,6 @@ export async function runPrintFiles(
     if (!input.tokenSessionId && input.tokensPath) tokens = await deps.readTokens(input.tokensPath);
 
     const cdf = buildSavedCDF(components, tokens, {
-      existingComponentIds: await readExistingComponentIdsFromSession(input.existingEntitiesPath),
       deleteAll: input.allowEmpty,
       onRepair: (message) => deps.warn(`${message}\n`),
     });

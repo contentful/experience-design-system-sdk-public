@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CDFComponentEntry, ServerPreviewResponse } from '@contentful/experience-design-system-types';
 import {
   ApiError,
+  assignCDFComponentIds,
   getOrCreateSession,
   openPipelineDb,
   storeCDFComponents,
@@ -64,6 +65,7 @@ describe('component identity through the import flow', () => {
           slots: [],
         })),
       );
+      assignCDFComponentIds(db, sessionId, ['card', 'panel']);
       storeCDFComponents(db, sessionId, [
         { key: 'Card', entry },
         { key: 'Panel', entry: panel },
@@ -90,7 +92,6 @@ describe('component identity through the import flow', () => {
   const previewInput = (): RunPreviewInput => ({
     state: { credentialsSkipped: false },
     extractSessionId: sessionId,
-    existingEntitiesPath,
     tokensPath: '',
     spaceId: 'example-space',
     environmentId: 'example-environment',
@@ -109,7 +110,7 @@ describe('component identity through the import flow', () => {
   it('saves and previews the same resolved IDs, including the document used for push', async () => {
     const written = vi.fn();
     const result = await runPrintFiles(
-      { extractSessionId: sessionId, outDir: dir, existingEntitiesPath },
+      { extractSessionId: sessionId, outDir: dir },
       {
         openDb: openPipelineDb,
         readTokens: vi.fn(),
@@ -132,7 +133,6 @@ describe('component identity through the import flow', () => {
   it('uses resolved IDs for live preview while keeping review annotations keyed by source names', async () => {
     const result = await runLivePreview({
       sessionId,
-      existingEntitiesPath,
       tokensPath: '',
       spaceId: 'example-space',
       environmentId: 'example-environment',
@@ -145,11 +145,11 @@ describe('component identity through the import flow', () => {
     expect([...annotations]).toEqual([['Badge', 'new']]);
   });
 
-  it('keeps the generated IDs when no existing-entity snapshot is available', async () => {
+  it('keeps stored IDs after the existing-entity snapshot is deleted', async () => {
     await rm(existingEntitiesPath);
     const preview = await runPreview(previewInput(), previewDeps());
-    expect(preview.cdf).toHaveProperty('Card');
-    expect(preview.cdf).not.toHaveProperty('card');
+    expect(preview.cdf).toHaveProperty('card');
+    expect(preview.cdf).not.toHaveProperty('Card');
   });
 
   it('keeps resolved IDs when server defaults cause a second preview', async () => {

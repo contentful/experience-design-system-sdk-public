@@ -200,3 +200,5 @@ export { hashComponentShape } from './session/helpers/components/hash-component-
 export { hashTokenContent } from './session/helpers/tokens/hash-token-content.js';
 export { buildDtcgGroups } from './session/helpers/tokens/build-dtcg-groups.js';
 export { buildDtcgTokens } from './session/helpers/tokens/build-dtcg-tokens.js';
+
+export { assignCDFComponentIds, loadCDFComponentIds } from './session/services/component-identity.js';

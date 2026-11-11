@@ -99,7 +99,6 @@ import { LivePreviewSummary } from './components/LivePreviewSummary.js';
 
 type GenerateReviewStepProps = {
   extractSessionId: string | null;
-  existingEntitiesPath?: string | null;
   tokenSessionId?: string | null;
   onFinalize: (accepted: number, rejected: number, unresolved: number) => void;
   onQuit: () => void;
@@ -440,7 +439,6 @@ export function GenerateReviewStep(props: GenerateReviewStepProps): React.ReactE
 
 function GenerateReviewStepView({
   extractSessionId,
-  existingEntitiesPath,
   tokenSessionId,
   onFinalize,
   onQuit,
@@ -563,7 +561,6 @@ function GenerateReviewStepView({
     loading,
     livePreview,
     sessionId: extractSessionId,
-    existingEntitiesPath,
     tokensPath,
     spaceId,
     environmentId,
@@ -583,7 +580,6 @@ function GenerateReviewStepView({
   const { finalizePreview, handleFinalizeConfirm } = useReviewFinalize({
     showFinalize,
     extractSessionId,
-    existingEntitiesPath,
     tokensPath,
     spaceId,
     environmentId,

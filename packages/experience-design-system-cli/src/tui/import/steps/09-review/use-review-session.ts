@@ -206,7 +206,6 @@ export function useReviewHistory({
 export type UseReviewFinalizeOptions = {
   showFinalize: boolean;
   extractSessionId: string;
-  existingEntitiesPath?: string | null;
   tokensPath: string;
   spaceId: string;
   environmentId: string;
@@ -225,7 +224,6 @@ export type UseReviewFinalizeOptions = {
 export function useReviewFinalize({
   showFinalize,
   extractSessionId,
-  existingEntitiesPath,
   tokensPath,
   spaceId,
   environmentId,
@@ -237,7 +235,6 @@ export function useReviewFinalize({
   const finalizePreview = useReviewFinalizePreview({
     open: showFinalize,
     extractSessionId,
-    existingEntitiesPath,
     tokensPath,
     spaceId,
     environmentId,

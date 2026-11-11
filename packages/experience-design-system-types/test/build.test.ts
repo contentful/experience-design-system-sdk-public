@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildCDF, buildFilteredCDF, CDF_SCHEMA_URL } from '../src/cdf/index.js';
+import { buildCDF, buildFilteredCDF, resolveComponentIds, CDF_SCHEMA_URL } from '../src/cdf/index.js';
 import type { CDFComponentEntry, CDFTokenEntry } from '../src/cdf/index.js';
 
 const CARD: { key: string; entry: CDFComponentEntry } = {
@@ -37,12 +37,13 @@ describe('buildCDF', () => {
 });
 
 describe('buildCDF existing component IDs', () => {
-  const build = (keys: string[], existingComponentIds: string[]) =>
-    buildCDF(
-      keys.map((key) => ({ key, entry: CARD.entry })),
+  const build = (keys: string[], existingComponentIds: string[]) => {
+    const ids = resolveComponentIds(keys, existingComponentIds);
+    return buildCDF(
+      keys.map((key) => ({ key, id: ids.get(key), entry: CARD.entry })),
       [],
-      { existingComponentIds },
     );
+  };
 
   it('reuses a unique existing ID when only its case differs', () => {
     expect(build(['Card'], ['card'])).toEqual({ $schema: CDF_SCHEMA_URL, card: CARD.entry });
@@ -74,40 +75,25 @@ describe('buildCDF existing component IDs', () => {
     expect(Object.keys(build(['Card', 'card'], ['card'])!)).toEqual(['$schema', 'Card', 'card']);
   });
 
-  it('rewrites slot references to the same IDs without changing source definitions or tokens', () => {
+  it('consumes stored IDs and slot references without changing source definitions or tokens', () => {
     const parent = {
       key: 'Panel',
+      id: 'panel',
       entry: {
         $type: 'component' as const,
         $properties: {},
-        $slots: { children: { $allowedComponents: ['Card', 'EXTERNAL', 'NewCard'] } },
+        $slots: { children: { $allowedComponents: ['card', 'external', 'NewCard'] } },
       },
     };
-    const doc = buildCDF([parent, CARD], [PRIMARY_COLOR], {
-      existingComponentIds: ['panel', 'card', 'external'],
-    });
-
+    const doc = buildCDF([parent, { ...CARD, id: 'card' }], [PRIMARY_COLOR]);
     expect((doc?.panel as CDFComponentEntry).$slots?.children?.$allowedComponents).toEqual([
       'card',
       'external',
       'NewCard',
     ]);
-    expect(parent.entry.$slots.children.$allowedComponents).toEqual(['Card', 'EXTERNAL', 'NewCard']);
+    expect(parent.key).toBe('Panel');
+    expect(parent.entry.$slots.children.$allowedComponents).toEqual(['card', 'external', 'NewCard']);
     expect((doc?.color as Record<string, unknown>).brand).toEqual({ primary: PRIMARY_COLOR.entry });
-  });
-
-  it('resolves differently cased references to an external component independently', () => {
-    const doc = buildCDF(
-      [
-        {
-          key: 'Panel',
-          entry: { ...CARD.entry, $slots: { children: { $allowedComponents: ['External', 'EXTERNAL'] } } },
-        },
-      ],
-      [],
-      { existingComponentIds: ['external'] },
-    );
-    expect((doc?.Panel as CDFComponentEntry).$slots?.children?.$allowedComponents).toEqual(['external', 'external']);
   });
 });
 

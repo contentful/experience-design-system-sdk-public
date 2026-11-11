@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
+import { persistCDFSlotIds } from '../services/component-identity.js';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
@@ -80,6 +81,11 @@ CREATE TABLE IF NOT EXISTS steps (
   updated_at    TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS session_component_identity (
+  session_id TEXT NOT NULL PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+  existing_ids TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS raw_components (
   session_id             TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   component_id           TEXT NOT NULL,
@@ -89,6 +95,7 @@ CREATE TABLE IF NOT EXISTS raw_components (
   extracted_at           TEXT NOT NULL,
   status                 TEXT NOT NULL DEFAULT 'extracted',
   cdf_schema             TEXT,
+  cdf_id                 TEXT,
   description            TEXT,
   extraction_confidence  INTEGER,
   review_reasons         TEXT NOT NULL DEFAULT '[]',
@@ -147,6 +154,7 @@ CREATE TABLE IF NOT EXISTS raw_slot_allowed_components (
   slot_name         TEXT NOT NULL,
   position          INTEGER NOT NULL,
   allowed_component TEXT NOT NULL,
+  cdf_id TEXT,
   PRIMARY KEY (session_id, component_id, slot_name, position),
   FOREIGN KEY (session_id, component_id, slot_name) REFERENCES raw_slots(session_id, component_id, name) ON DELETE CASCADE
 );
@@ -266,6 +274,11 @@ function applyDbMigrations(db: DatabaseSync): void {
 
   const rawCompCols = db.prepare('PRAGMA table_info(raw_components)').all() as Array<{ name: string }>;
   const rawCompColNames = new Set(rawCompCols.map((c) => c.name));
+  if (!rawCompColNames.has('cdf_id')) db.exec('ALTER TABLE raw_components ADD COLUMN cdf_id TEXT');
+  const slotRefCols = db.prepare('PRAGMA table_info(raw_slot_allowed_components)').all() as Array<{ name: string }>;
+  if (!slotRefCols.some((col) => col.name === 'cdf_id')) {
+    db.exec('ALTER TABLE raw_slot_allowed_components ADD COLUMN cdf_id TEXT');
+  }
   if (!rawCompColNames.has('extraction_confidence')) {
     db.exec('ALTER TABLE raw_components ADD COLUMN extraction_confidence INTEGER');
   }
@@ -857,6 +870,7 @@ export function applyToolCalls(
       `UPDATE raw_components SET status = 'generated', extracted_at = ? WHERE session_id = ? AND component_id = ?`,
     ).run(now, sessionId, componentId);
     db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
+    persistCDFSlotIds(db, sessionId);
     db.exec('COMMIT');
   } catch (e) {
     db.exec('ROLLBACK');
@@ -934,8 +948,8 @@ export function storeRawComponents(
   const now = new Date().toISOString();
 
   const insertComp = db.prepare(
-    `INSERT INTO raw_components (session_id, component_id, name, source, framework, extracted_at, extraction_confidence, review_reasons, needs_review, source_path)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO raw_components (session_id, component_id, name, source, framework, extracted_at, extraction_confidence, review_reasons, needs_review, source_path, cdf_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const insertProp = db.prepare(
     `INSERT INTO raw_props
@@ -1017,6 +1031,14 @@ export function storeRawComponents(
         .all(sessionId) as StatusSnapshot[];
     }
 
+    const assignedIds = new Map(
+      (
+        db.prepare('SELECT component_id, cdf_id FROM raw_components WHERE session_id = ?').all(sessionId) as Array<{
+          component_id: string;
+          cdf_id: string | null;
+        }>
+      ).map((row) => [row.component_id, row.cdf_id]),
+    );
     db.prepare('DELETE FROM raw_components WHERE session_id = ?').run(sessionId);
 
     for (const comp of components) {
@@ -1032,6 +1054,7 @@ export function storeRawComponents(
         JSON.stringify(comp.reviewReasons ?? []),
         comp.needsReview ? 1 : 0,
         comp.sourcePath ?? null,
+        assignedIds.get(componentId) ?? null,
       );
 
       for (let i = 0; i < comp.props.length; i++) {
@@ -1153,6 +1176,7 @@ export function storeRawComponents(
       db.prepare('UPDATE raw_components SET status = ? WHERE session_id = ?').run(options.status, sessionId);
     }
     db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
+    persistCDFSlotIds(db, sessionId);
     db.exec('COMMIT');
   } catch (e) {
     db.exec('ROLLBACK');
@@ -1779,6 +1803,7 @@ export function storeCDFComponents(
     }
 
     db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
+    persistCDFSlotIds(db, sessionId);
     db.exec('COMMIT');
   } catch (e) {
     db.exec('ROLLBACK');
@@ -1789,15 +1814,16 @@ export function storeCDFComponents(
 export function loadCDFComponents(
   db: DatabaseSync,
   sessionId: string,
-): Array<{ key: string; entry: CDFComponentEntry }> {
+): Array<{ key: string; id?: string; entry: CDFComponentEntry }> {
   const components = db
     .prepare(
-      `SELECT component_id, name, description FROM raw_components
+      `SELECT component_id, name, cdf_id, description FROM raw_components
        WHERE session_id = ? AND status = 'generated' ORDER BY rowid`,
     )
     .all(sessionId) as Array<{
     component_id: string;
     name: string;
+    cdf_id: string | null;
     description: string | null;
   }>;
 
@@ -1848,7 +1874,7 @@ export function loadCDFComponents(
 
   const allowedComponents = db
     .prepare(
-      `SELECT component_id, slot_name, allowed_component
+      `SELECT component_id, slot_name, COALESCE(cdf_id, allowed_component) AS allowed_component
        FROM raw_slot_allowed_components WHERE session_id = ? ORDER BY component_id, slot_name, position`,
     )
     .all(sessionId) as Array<{
@@ -1890,7 +1916,7 @@ export function loadCDFComponents(
   const toTokenPaths = (rows: typeof tokenPaths | undefined): string[] | undefined =>
     rows === undefined ? undefined : rows.map((r) => r.path);
 
-  return components.map(({ component_id, name, description }) => {
+  return components.map(({ component_id, name, cdf_id, description }) => {
     const compProps = propsByComponent.get(component_id) ?? [];
 
     const $properties: CDFComponentEntry['$properties'] = {};
@@ -1946,7 +1972,7 @@ export function loadCDFComponents(
     const entry: CDFComponentEntry = { $type: 'component', $properties };
     if (description !== null) entry.$description = description;
     if (Object.keys($slots).length > 0) entry.$slots = $slots;
-    return { key: name, entry };
+    return { key: name, ...(cdf_id === null ? {} : { id: cdf_id }), entry };
   });
 }
 

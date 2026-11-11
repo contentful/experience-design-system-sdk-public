@@ -1,3 +1,4 @@
+import { assignCDFComponentIds, persistCDFSlotIds } from '../../persistence/src/session/services/component-identity.js';
 import { createLocalCliAgentInvoker } from '../../agents/invoker/create-local-cli-agent-invoker.js';
 import type { AgentName } from '../../agents/types/agent-name.js';
 import { loadRawComponents, openPipelineDb } from '../../persistence/src/session/repositories/db.js';
@@ -71,6 +72,11 @@ export async function runGenerateComponentsSession(
     );
     components = filtered;
 
+    assignCDFComponentIds(
+      db,
+      request.sessionId,
+      (existingEntities?.components ?? []).map((component) => component.sys.id),
+    );
     const duplicateNames = collectDuplicateNames(components);
     const invoker = createLocalCliAgentInvoker({});
     const concurrency = Math.max(1, Math.min(DEFAULT_COMPONENT_CONCURRENCY, components.length));
@@ -101,6 +107,7 @@ export async function runGenerateComponentsSession(
       ),
     );
 
+    persistCDFSlotIds(db, request.sessionId);
     const allOk = results.every((r) => !r.failed);
     const renamedSlotsCount = results.reduce((sum, r) => sum + r.renamedSlotsCount, 0);
     return {

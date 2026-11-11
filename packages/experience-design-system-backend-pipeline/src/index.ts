@@ -211,10 +211,7 @@ export type {
   FetchAndPersistSuccess,
   FetchAndPersistFailure,
 } from './steps/generation/src/controller/existing-entities/fetch-and-persist.js';
-export {
-  readExistingContentfulEntitiesFromSession,
-  readExistingComponentIdsFromSession,
-} from './steps/generation/src/controller/existing-entities/read-from-session.js';
+export { readExistingContentfulEntitiesFromSession } from './steps/generation/src/controller/existing-entities/read-from-session.js';
 export { fetchExistingContentfulEntitiesFromContentful } from './steps/generation/src/helpers/existing-entities/fetch-from-contentful.js';
 export { summarizeForSelect } from './steps/generation/src/controller/existing-entities/summarize-for-select.js';
 export {
@@ -459,3 +456,5 @@ export type {
   OsName,
   AnalyticsWriteResult,
 } from './analytics/index.js';
+
+export { assignCDFComponentIds, loadCDFComponentIds } from './persistence/src/session/services/component-identity.js';

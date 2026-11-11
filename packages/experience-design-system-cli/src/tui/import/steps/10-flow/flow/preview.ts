@@ -10,7 +10,7 @@ import {
   parsePreviewValidationErrors,
   patchReviewStateWithValidationErrors,
   readTokensFromPath,
-  readExistingComponentIdsFromSession,
+  loadCDFComponentIds,
   recordContentfulContext,
   seedCDFFromPreviewResponse,
   seedDefaultsFromChangedItems,
@@ -20,7 +20,6 @@ import {
 } from '@contentful/experience-design-system-backend-pipeline';
 import {
   buildCDF,
-  resolveComponentIds,
   type CDFComponentEntry,
   type CDFDocument,
   type DTCGTokenEntry,
@@ -35,7 +34,7 @@ type PreviewClient = {
   /** Request id of the most recent response, used by `recordContentfulContext` for analytics correlation. */
   getLastRequestId(): string | undefined;
 };
-type ComponentRow = { key: string; entry: CDFComponentEntry };
+type ComponentRow = { key: string; id?: string; entry: CDFComponentEntry };
 
 /** The outside world `runPreview` talks to, so each branch can be tested without a database or a network. */
 export interface PreviewDeps {
@@ -57,7 +56,6 @@ export const realPreviewDeps = (): PreviewDeps => ({
 export interface RunPreviewInput {
   state: Pick<FlowState, 'credentialsSkipped'>;
   extractSessionId: string | null;
-  existingEntitiesPath?: string | null;
   tokensPath: string;
   spaceId: string;
   environmentId: string;
@@ -117,7 +115,6 @@ export async function runPreview(input: RunPreviewInput, deps: PreviewDeps): Pro
 
   const sourceNames = new Map<string, string>();
   try {
-    const existingComponentIds = await readExistingComponentIdsFromSession(input.existingEntitiesPath);
     const client = deps.createClient({
       cmaToken: input.cmaToken,
       spaceId: input.spaceId,
@@ -129,6 +126,7 @@ export async function runPreview(input: RunPreviewInput, deps: PreviewDeps): Pro
     if (input.extractSessionId) {
       const db = deps.openDb();
       try {
+        for (const [name, id] of loadCDFComponentIds(db, input.extractSessionId)) sourceNames.set(id, name);
         backfillUnclassifiedProps(db, input.extractSessionId);
         components = loadCDFComponents(db, input.extractSessionId);
       } finally {
@@ -138,12 +136,7 @@ export async function runPreview(input: RunPreviewInput, deps: PreviewDeps): Pro
     let tokens: DTCGTokenEntry[] = [];
     if (input.tokensPath) tokens = await deps.readTokens(input.tokensPath);
 
-    const componentIds = resolveComponentIds(
-      components.map((component) => component.key),
-      existingComponentIds,
-    );
-    for (const [name, id] of componentIds) sourceNames.set(id, name);
-    const cdfOptions = { deleteAll: input.deleteAll, existingComponentIds };
+    const cdfOptions = { deleteAll: input.deleteAll };
     let cdf = buildCDF(components, toCDFTokens(tokens), cdfOptions)!;
     let preview = await client.previewImport(cdf);
 
@@ -159,10 +152,8 @@ export async function runPreview(input: RunPreviewInput, deps: PreviewDeps): Pro
               }>
             ).map((row) => row.name),
           );
-          const rawComponentIds = resolveComponentIds([...localNames], existingComponentIds);
-          const rawSourceNames = new Map([...rawComponentIds].map(([name, id]) => [id, name]));
           const falseRemovals = preview.components.removed
-            .map((removed) => ({ ...removed, name: rawSourceNames.get(removed.id) ?? removed.name }))
+            .map((removed) => ({ ...removed, name: sourceNames.get(removed.id) ?? removed.name }))
             .filter((removed) => localNames.has(removed.name));
           if (falseRemovals.length > 0) {
             const seeded = seedCDFFromPreviewResponse(db, input.extractSessionId, falseRemovals);
@@ -181,13 +172,6 @@ export async function runPreview(input: RunPreviewInput, deps: PreviewDeps): Pro
 
         if (needsRepreview) {
           components = loadCDFComponents(db, input.extractSessionId);
-          sourceNames.clear();
-          for (const [name, id] of resolveComponentIds(
-            components.map((component) => component.key),
-            existingComponentIds,
-          )) {
-            sourceNames.set(id, name);
-          }
           cdf = buildCDF(components, toCDFTokens(tokens), cdfOptions)!;
           preview = await client.previewImport(cdf);
         }
