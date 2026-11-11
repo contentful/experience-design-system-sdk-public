@@ -39,17 +39,7 @@ Each step under `BP/steps/` (apply, composition, extraction, generation, selecti
 
 ### Wizard steps (`STEPS/`)
 
-```
-00-preflight → 01-welcome → 02-token-input → 03-path-validation → 04-credentials
-        → 06-extraction (selection agent runs here)
-        → 07-scope-gate → 08-generation → 09-review → 10-flow (save → preview → push → done)
-```
-
-The choice in `00-preflight` decides which steps run (the lists are in `00-preflight/logic.ts`):
-
-- **Tokens and components:** the diagram above, with the project folder asked in `01-welcome`, the tokens file in `02-token-input`, and the file scan confirmed in `03-path-validation`.
-- **Components only:** the same without `02-token-input`.
-- **Tokens only:** tokens file and credentials, token generation, `05-token-review`, then `10-flow`. It skips `01`, `03`, `06`, `07`, `08` and `09`.
+Run in folder order, `00-preflight` to `10-flow`. The import choice made in `00-preflight` decides which steps run (the lists are in `00-preflight/logic.ts`; the table in `ARCHITECTURE.md` shows which choice uses which step). `06-extraction` is where the selection agent runs, and `10-flow` does save → preview → push → done.
 
 The steps run in one process and hand data on through the session database and `ImportHandoff` (`packages/experience-design-system-types/src/handoff/index.ts`). Each step folder holds its screen and logic; `06-extraction`, `08-generation` and `10-flow` also hold the code that calls the backend pipeline. Screens shared across steps (`gate-step`, `running-step`, `error-step`, `overview-box`) are in `CLI/src/tui/import/shared/`; the preview-validation error screen is `STEPS/preview-validation-error/`.
 

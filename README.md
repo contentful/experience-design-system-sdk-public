@@ -44,14 +44,20 @@ After that it works through your components and tokens, you review the result, a
 
 ## How it works
 
-The CLI runs your component library through four stages:
+```mermaid
+flowchart LR
+    A["1. Analyze"] --> B["2. Select"] --> G1{{"Scope gate<br/>you confirm"}} --> C["3. Generate"] --> G2{{"Final review<br/>you edit"}} --> D["4. Apply"]
+    T["Tokens only:<br/>generate and review tokens"] -.-> D
+```
 
-1. **Analyze:** reads your source files and extracts every component: its name, props, types, and source location.
-2. **Select:** an AI agent decides which components to expose in Contentful Experiences (buttons, cards, layouts) and which to skip (hooks, context providers, utilities). A **scope gate** screen lets you confirm or override that list.
-3. **Generate:** an AI agent produces definitions that say what each prop is for: content, a design token, or interactive state. A **final review** screen lets you edit names, descriptions, defaults, allowed values, and slot constraints inline.
-4. **Apply:** saves a combined `components.json` to disk for source control, shows a diff of what will change in your space, then pushes.
+| Stage    | What happens                                                                                                                              |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Analyze  | Reads your source files and extracts every component: name, props, types, source location                                                |
+| Select   | An AI agent keeps the components worth exposing (buttons, cards, layouts) and skips the rest (hooks, context providers, utilities)       |
+| Generate | An AI agent says what each prop is for: content, a design token, or interactive state                                                     |
+| Apply    | Saves a combined `components.json` for source control, shows a diff of what will change in your space, then pushes                        |
 
-If you import design tokens only, the CLI skips the component stages: it generates tokens from your token file, shows them for review, then goes straight to Apply.
+At the **scope gate** you confirm or override the selected list. In the **final review** you edit names, descriptions, defaults, allowed values, and slot constraints inline.
 
 ## Packages
 
