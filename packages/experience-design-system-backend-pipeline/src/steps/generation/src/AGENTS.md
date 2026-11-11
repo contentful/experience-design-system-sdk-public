@@ -37,12 +37,11 @@ Timeouts and non-zero exit codes become per-component `CdfGenerationFailure` ent
 
 ## Cache
 
-| Field       | Value                                                                                               |
-|-------------|-----------------------------------------------------------------------------------------------------|
-| **Key**     | `(inputHash, promptHash)` — SHA-256 of `JSON.stringify(component)` + SHA-256 of the built prompt    |
-| **Value**   | `CDFComponentEntry` (JSON-serialized)                                                               |
-| **Lookup**  | Per component, before agent invocation                                                              |
-| **Store**   | Per component, after successful agent invocation and tool-call parsing                              |
+- **Key:** `(inputHash, promptHash)`: SHA-256 of `JSON.stringify(component)` and SHA-256 of the built prompt
+- **Value:** the `CDFComponentEntry`, JSON-serialized
+- **Lookup:** per component, before agent invocation
+- **Store:** per component, after a successful agent run and tool-call parsing
+
 
 ## External calls
 

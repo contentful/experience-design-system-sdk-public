@@ -29,14 +29,13 @@ Empty input short-circuits with no agent call. A timeout or a non-zero exit thro
 
 ## Cache
 
-This step's service accepts `onCacheLookup` and `onCacheStore` but never calls them. The import does not use `selectComponents`: it runs its own selection in `packages/experience-design-system-cli/src/tui/import/steps/06-extraction/selection.ts`, which does the caching described here.
+The service accepts `onCacheLookup` and `onCacheStore` but never calls them. The import does not use `selectComponents`: it runs its own selection in `packages/experience-design-system-cli/src/tui/import/steps/06-extraction/selection.ts`, which does the caching described here.
 
-| Field       | Value                                                                                               |
-|-------------|-----------------------------------------------------------------------------------------------------|
-| **Key**     | `(componentHash, promptHash, cliVersion)` — the component hash, a hash of the prompt text plus agent and model, and the CLI version |
-| **Value**   | `{ decision, reason }` — one row per component, in `selection_cache`                                |
-| **Lookup**  | Per component, before agent invocation; `noCache` asks again for everything                        |
-| **Store**   | New decisions, in one transaction with the accept and reject writes to `raw_components`             |
+- **Key:** `(componentHash, promptHash, cliVersion)`: the component hash, a hash of the prompt text plus agent and model, and the CLI version
+- **Value:** `{ decision, reason }`, one row per component in `selection_cache`
+- **Lookup:** per component, before agent invocation; `noCache` asks again for everything
+- **Store:** new decisions, in one transaction with the accept and reject writes to `raw_components`
+
 
 ## External calls
 
