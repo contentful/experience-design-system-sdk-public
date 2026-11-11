@@ -5,14 +5,14 @@ Ships the resolved CDF document to Contentful: preview, apply, poll.
 ## What it does
 
 1. Builds the CDF document from components and tokens (`buildCDF`).
-2. Calls `POST /imports/preview` and inspects the response:
+2. Calls `POST /spaces/{s}/environments/{e}/design_systems/imports/preview` and inspects the response:
    - Empty preview → returns `no-changes`.
    - `previewOnly === true` → returns `preview` (with `hasBreakingChanges` flag).
-3. Otherwise calls `POST /imports` with `acknowledgeBreakingChanges` as supplied; receives an operation ID.
-4. Polls `GET /imports/operations/{operationId}` until terminal (succeeded/failed), with exponential backoff and `Retry-After` honoring.
+3. Otherwise calls `POST …/design_systems/imports/apply` with `acknowledgeBreakingChanges` as supplied; receives an operation ID.
+4. Polls `GET …/design_systems/imports/apply/{operationId}` until the operation is `succeeded`, `partial` or `failed`. The wait between polls grows from 2s to 5s, with jitter, and it gives up with a timeout error after 150 polls.
 5. Parses the final operation into per-entity write counts and returns `applied`.
 
-Transient 5xx and 429 responses on preview/poll are retried; apply requests are not retried once dispatched (idempotency unknown).
+5xx responses and network errors on preview and poll are retried (3 attempts, exponential backoff, `Retry-After` respected). Apply requests are not retried once dispatched, because retrying could start a duplicate operation.
 
 ## Input
 
@@ -45,14 +45,15 @@ Transient 5xx and 429 responses on preview/poll are retried; apply requests are 
 
 Contentful Management API via `ApiClient` (internal):
 
-| Endpoint                                         | When                 |
-|--------------------------------------------------|----------------------|
-| `GET /` (preflight)                              | Token validation     |
-| `POST /spaces/{s}/environments/{e}/imports/preview` | Always               |
-| `POST /spaces/{s}/environments/{e}/imports`      | Non-preview only     |
-| `GET  /spaces/{s}/environments/{e}/imports/operations/{op}` | Poll until terminal  |
+| Endpoint                                                              | When                                              |
+|-----------------------------------------------------------------------|---------------------------------------------------|
+| `GET /users/me`                                                       | Token validation (`validateToken`, not in `applyComponents`) |
+| `GET /spaces/{s}/environments/{e}/design_systems/preflight`           | Right after the token check                       |
+| `POST /spaces/{s}/environments/{e}/design_systems/imports/preview`    | Always                                            |
+| `POST /spaces/{s}/environments/{e}/design_systems/imports/apply`      | Non-preview only                                  |
+| `GET  /spaces/{s}/environments/{e}/design_systems/imports/apply/{op}` | Poll until terminal                               |
 
-User-Agent is set; `X-Contentful-Request-Id` from each response is captured on `client.getLastRequestId()`.
+The caller's user agent (or this package's own) is sent as `X-Contentful-User-Agent`. `X-Contentful-Request-Id` from each response is captured on `client.getLastRequestId()`.
 
 ## DSI contribution
 
@@ -65,4 +66,4 @@ This is the only step that produces fields the CLI's terminal analytics event ca
 | `componentWriteResult`      | `component_type_result` on completion    | Per-run created/updated/failed counts |
 | `designTokenWriteResult`    | `design_token_result` on completion      | Per-run created/updated/failed counts |
 
-The CLI reads these off the result struct and passes them to `setCommandContext` / `enrichCommandResult` before `completeActiveCommand` fires `dsi_cli_command_completed`. On preview-only and no-changes variants, only `xContentfulRequestId` is attached.
+The TUI does not call `applyComponents` (it is exported for other callers). The import's preview and push screens use `ImportApiClient` directly (`packages/experience-design-system-cli/src/tui/import/steps/10-flow/flow/preview.ts` and `push.ts`) and record the outcome themselves with `recordContentfulContext` (preview) and `recordApplyOutcome` (push) from `src/analytics/apply.ts`. These attach the fields above to the active analytics command before `dsi_cli_command_completed` fires. A preview attaches only the request id and the space and environment.
