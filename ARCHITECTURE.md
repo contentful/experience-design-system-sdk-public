@@ -13,24 +13,20 @@ An Nx monorepo with four packages. The CLI is the developer-facing ingestion too
 
 ## System Context
 
-```
-Design system codebase
-  (React / Vue / Astro / Stencil / Web Components / Svelte / Angular)
-        │
-        ▼
-  experience-design-system-cli   (binaries: experiences | exo | experience-design-system-cli)
-    Ink TUI: Import, Settings, Help (Upgrade check on the home screen)
-        │  in-process function calls (no subprocesses, no hidden commands)
-        ▼
-  experience-design-system-backend-pipeline
-    extraction → composition → selection → generation → apply
-        │                │                                │
-        │                │ spawns coding-agent            │ HTTP via
-        │                ▼ subprocesses                  ▼ experience-design-system-client
-        │         claude / codex / opencode /         Contentful ExO
-        │         cursor / copilot                    (component types + design tokens)
-        ▼
-  ~/.contentful/experience-design-system-cli/   (session DB, caches, config, run history)
+```mermaid
+flowchart TD
+    SRC["Design system codebase<br/>React, Vue, Astro, Stencil, Web Components, Svelte, Angular"] --> CLI
+    subgraph CLI["cli (binaries: experiences, exo, experience-design-system-cli)"]
+        TUI["Ink TUI: Import, Settings, Help<br/>(upgrade check on the home screen)"]
+    end
+    CLI -->|"in-process function calls<br/>(no subprocesses, no hidden commands)"| BP
+    subgraph BP["backend-pipeline"]
+        direction LR
+        E["extraction"] --> C["composition"] --> S["selection"] --> G["generation"] --> A["apply"]
+    end
+    C & S & G -.->|"spawn subprocess"| AG["coding agent<br/>claude, codex, opencode, cursor, copilot"]
+    A -->|"HTTP via the client package"| EXO["Contentful ExO<br/>component types + design tokens"]
+    BP --> DISK[("~/.contentful/experience-design-system-cli/<br/>session DB, caches, config, run history")]
 ```
 
 `experience-design-system-types` is imported by both the CLI and the backend pipeline. The CLI has one command, `experiences import` (the default); everything else happens in TUI screens.
@@ -43,19 +39,21 @@ The only package users install. `bin/cli.js` loads `dist/index.js`; `program.ts`
 
 The TUI lives under `src/tui/`: `home/` (menu, version and upgrade check), `import/`, `settings/` (agents, project, debug mode, analytics opt-in) and `help/`. The import wizard is a numbered series of step folders in `src/tui/import/steps/`:
 
-| Folder               | Screen                                                                              |
-| -------------------- | ----------------------------------------------------------------------------------- |
-| `00-preflight`       | Choose what to import: tokens and components, tokens only, or components only       |
-| `01-welcome`         | Welcome                                                                             |
-| `02-token-input`     | Tokens file                                                                         |
-| `03-path-validation` | Validates the project path and scans its files                                      |
-| `04-credentials`     | Collects and validates Contentful credentials; continues only once they validate    |
-| `05-token-review`    | Reviews generated tokens (tokens-only imports)                                      |
-| `06-extraction`      | Runs extraction, composition and selection                                          |
-| `07-scope-gate`      | The human gate: accept or reject components                                         |
-| `08-generation`      | Runs generation, then token mapping when tokens were supplied                       |
-| `09-review`          | Edits generated definitions with rationale panels and a live preview                |
-| `10-flow`            | Save, preview, push and done (`flow/save.ts`, `flow/preview.ts`, `flow/push.ts`)    |
+| Folder               | Screen                                                                           | Both | Components | Tokens |
+| -------------------- | -------------------------------------------------------------------------------- | :--: | :--------: | :----: |
+| `00-preflight`       | Choose what to import: tokens and components, components only, or tokens only   |  ✓   |     ✓      |   ✓    |
+| `01-welcome`         | Welcome and project folder                                                       |  ✓   |     ✓      |   –    |
+| `02-token-input`     | Tokens file                                                                      |  ✓   |     –      |   ✓    |
+| `03-path-validation` | Validates the project path and scans its files                                   |  ✓   |     ✓      |   –    |
+| `04-credentials`     | Collects and validates Contentful credentials; continues only once they validate |  ✓   |     ✓      |   ✓    |
+| `05-token-review`    | Reviews generated tokens                                                         |  –   |     –      |   ✓    |
+| `06-extraction`      | Runs extraction, composition and selection                                       |  ✓   |     ✓      |   –    |
+| `07-scope-gate`      | The human gate: accept or reject components                                      |  ✓   |     ✓      |   –    |
+| `08-generation`      | Runs generation, then token mapping when tokens were supplied                    |  ✓   |     ✓      |   –    |
+| `09-review`          | Edits generated definitions with rationale panels and a live preview             |  ✓   |     ✓      |   –    |
+| `10-flow`            | Save, preview, push and done (`flow/save.ts`, `flow/preview.ts`, `flow/push.ts`) |  ✓   |     ✓      |   ✓    |
+
+Columns are the three import choices; the screens run in folder order. A tokens-only import generates its tokens (`run-generate-tokens-session`) after the credentials, and reviews them in `05-token-review`.
 
 Each step folder wraps a call into the backend pipeline (`logic.ts`, `run.ts`) with Ink components (`screen.tsx`, `use-*.ts`). The CLI has no extraction, agent-invocation or HTTP code of its own. For TUI guidelines see `packages/experience-design-system-cli/DSI_TUI_ARCHITECTURE.md`.
 
@@ -284,11 +282,7 @@ React (`react/extract-react-components.ts`, with shared TSX logic in `shared/ext
 
 ## The Import Wizard
 
-`experiences import` needs an interactive terminal and has no headless mode. It starts with `00-preflight`, whose choice decides the screens that follow:
-
-- **Tokens and components:** welcome, token input, path validation, credentials, extraction (with composition and selection), scope gate, generation, review, then save, preview, push and done in `10-flow`.
-- **Components only:** the same, without token input.
-- **Tokens only:** token input, credentials, token generation, token review, then `10-flow`.
+`experiences import` needs an interactive terminal and has no headless mode. Which screens run depends on the choice made in `00-preflight` (see the table under `experience-design-system-cli`).
 
 A single human gate, the scope gate, comes before generation. With tokens and a terminal at least 100 columns wide it shows components and tokens in two columns, otherwise in one. Final review edits names, `$description`, `$default`, `$allowedComponents` and `$values` inline, with rationale and source panels, and re-runs the live preview after each save. After review the wizard saves one combined CDF, then previews and pushes it.
 
