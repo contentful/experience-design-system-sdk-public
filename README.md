@@ -2,7 +2,7 @@
 
 > ⚠️ This feature is in Beta, APIs may be unstable
 
-Contentful Experiences lets you compose pages and layouts from your own design system components. The `@contentful/experience-design-system-cli` imports your design system into Contentful. It extracts Component Type definitions from your local codebase, invokes an AI agent to generate Component Definition Format (CDF) definitions, and pushes them to your Contentful space.
+Contentful Experiences lets you compose pages and layouts from your own design system components. The `@contentful/experience-design-system-cli` imports your design system into Contentful. It extracts Component Type definitions from your local codebase and, if you have a design token file, generates design tokens from it. It invokes an AI agent to generate Component Definition Format (CDF) definitions and pushes everything to your Contentful space.
 
 Your codebase remains the single source of truth. The CLI analyzes your source files (`.tsx`, `.ts`, `.jsx`, `.js`, `.vue`, `.svelte`, `.astro`) using static analysis, then delegates property classification and CDF generation to a coding agent.
 
@@ -34,7 +34,17 @@ Start the import by typing:
 experiences import
 ```
 
-This opens a full-screen guided wizard, so make your terminal window as large as you can before you run it. The wizard asks for everything it needs on its own screens. It walks you through these steps in order: choosing your project folder, adding an optional file of design tokens, entering your Contentful details, reading your components, choosing which components to import, generating the component definitions, reviewing them, and finally sending them to Contentful.
+This opens a full-screen guided wizard, so make your terminal window as large as you can before you run it. The wizard asks for everything it needs on its own screens.
+
+It first asks what you want to import, then asks only for what that choice needs:
+
+| You choose                   | The wizard asks for                                                       |
+| ---------------------------- | ------------------------------------------------------------------------- |
+| Design tokens and components | Your project folder, a file of design tokens, and your Contentful details |
+| Components only              | Your project folder and your Contentful details                           |
+| Design tokens only           | A file of design tokens and your Contentful details                       |
+
+After that it works through your components and tokens, you review the result, and it shows what will change in your space before it sends anything to Contentful.
 
 ## How it works
 
@@ -48,12 +58,16 @@ The CLI runs your component library through four stages:
 
 **4. Apply** — Saves a combined `components.json` to disk for source control, shows a diff of what will change in your Contentful space, then pushes.
 
+If you import design tokens only, the CLI skips the component stages: it generates tokens from your token file, shows them for review, then goes straight to the Apply stage.
+
 ## Packages
 
-| Package                                                                                  | Description                                                                                       |
-| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| [`@contentful/experience-design-system-cli`](packages/experience-design-system-cli/)     | The CLI: interactive TUI and wizard to review, generate, validate, and push component definitions |
-| [`@contentful/experience-design-system-types`](packages/experience-design-system-types/) | Shared types and schemas for the CDF and DTCG data formats                                        |
+| Package                                                                                                        | Description                                                                                       |
+| -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| [`@contentful/experience-design-system-cli`](packages/experience-design-system-cli/)                           | The CLI: interactive TUI and wizard to review, generate, validate, and push component definitions |
+| [`@contentful/experience-design-system-backend-pipeline`](packages/experience-design-system-backend-pipeline/) | The logic behind the CLI: extraction, composition, selection, generation and apply                |
+| [`@contentful/experience-design-system-client`](packages/experience-design-system-client/)                     | Generated client for the Experience Design System Integrations API                                |
+| [`@contentful/experience-design-system-types`](packages/experience-design-system-types/)                       | Shared types and schemas for the CDF and DTCG data formats                                        |
 
 ## Command Reference
 
@@ -76,3 +90,11 @@ The CLI writes debug logs for each screen by default, so there is something to s
 The logs go in a folder for each terminal session, `<base>/.contentful/<date>-session-<n>/debug`, next to the `tokens.json` and `components.json` each import saves. `<base>` is the **Root Project Directory** if you set one under **Settings → Configuration → Project**, and otherwise the project you are importing. That means that **by default these folders are created inside your own project**. To keep them out of it, set a Root Project Directory somewhere else, or add `.contentful/` to your `.gitignore`.
 
 With Debug Mode off no logs are written and the saved files go in `<project>/.contentful/`. The **Help** screen shows where the current session writes its files.
+
+## If an import fails
+
+When a step fails, the error screen says so and saves a zip of that session's debug logs. It shows the full path to the zip, which looks like `<base>/.contentful/<date>-session-<n>/<date>-session-<n>-debug-logs.zip`.
+
+Send that zip file to Contentful support. The zip sits next to the `debug` folder, so the log cleanup does not delete it. Delete it yourself when you no longer need it.
+
+If Debug Mode is off, there is nothing to zip. The error screen tells you to turn on Debug Mode under **Settings → Debug Mode**, run the import again, and send the zip it saves.
