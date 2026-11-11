@@ -1,4 +1,4 @@
-import { importModeLabel, type ImportTarget } from '../00-preflight/logic.js';
+import type { ImportTarget } from '../00-preflight/logic.js';
 import { describeFailure, summarize, type ScanResult } from './logic.js';
 
 // What the debug log says about the Path validation: what the scan found, how long it took, and what the user did next.
@@ -36,7 +36,7 @@ export function pathValidationLog({
   outcome: PathOutcome;
   hasTokens: boolean;
 }): { summary: string[]; data: Record<string, unknown> } {
-  const summary = [`Import mode: ${importModeLabel(mode)}`, `Project path: ${resolvedPath}`];
+  const summary = [`Project path: ${resolvedPath}`];
   const data: Record<string, unknown> = { import_mode: mode, resolved_path: resolvedPath };
 
   if (scan === undefined) {

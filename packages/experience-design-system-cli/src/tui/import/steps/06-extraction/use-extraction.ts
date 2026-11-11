@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { startDebugRun, finishDebugRun } from '@tui/debug-store.js';
 import { rowTimer } from '../../shared/running-step/logic.js';
-import { extractionLogInputs, extractionLogOutputs, initialProgress, progressRows } from './logic.js';
+import { extractionLog } from './log.js';
+import { initialProgress, progressRows } from './logic.js';
 import { runExtraction } from './run.js';
 import type { ExtractionInput, ExtractionProgress, ExtractionResult } from './types.js';
 
@@ -36,22 +37,20 @@ export function useExtraction(input: ExtractionInput | undefined): ExtractionSta
     let lastProgress: ExtractionProgress | undefined;
     // How long each job took, noted the first time it is seen finished.
     const timeRows = rowTimer();
-    startDebugRun({
-      flow: 'import/extraction',
-      step: '06-extraction',
-      menuOption: 'Extraction',
-      inputs: extractionLogInputs(input),
-    });
+    startDebugRun({ flow: 'import/extraction', step: '06-extraction', menuOption: 'Extraction' });
     void runExtraction(input, (progress) => {
       lastProgress = progress;
       const rowMs = timeRows(progressRows(progress, input.agent));
       if (current.current === input) setState({ status: 'running', progress, rowMs });
     }).then((result) => {
       if (current.current !== input) return;
-      void finishDebugRun({
-        ...extractionLogOutputs(result, lastProgress, input.credentials?.cmaToken ?? ''),
-        exitMethod: result.ok ? 'saved' : 'discarded',
+      const rowMs = lastProgress ? timeRows(progressRows(lastProgress, input.agent)) : [];
+      const { summary, data, status } = extractionLog({
+        input,
+        result,
+        rows: lastProgress ? progressRows(lastProgress, input.agent, rowMs) : [],
       });
+      void finishDebugRun({ summary, outputs: data, status, exitMethod: result.ok ? 'saved' : 'discarded' });
       setState({ status: 'done', result });
     });
     return () => {

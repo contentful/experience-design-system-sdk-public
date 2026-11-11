@@ -1,4 +1,4 @@
-import { importModeLabel, type ImportTarget } from '../00-preflight/logic.js';
+import type { ImportTarget } from '../00-preflight/logic.js';
 
 // What the debug log says about the Welcome: the project path the user ended up with, and whether they typed it or
 // kept the one the import was started with. Nothing typed but not submitted is logged.
@@ -21,7 +21,6 @@ export function welcomeLog({
   const source = projectPath === null ? null : kept ? 'prefilled' : 'typed';
 
   const summary = [
-    `Import mode: ${importModeLabel(mode)}`,
     projectPath === null ? 'Project path: none (left the import)' : `Project path: ${projectPath}`,
     ...(source ? [`Path source: ${source === 'prefilled' ? 'pre-filled, kept as is' : 'typed by the user'}`] : []),
     `Empty submits: ${emptySubmits}`,
