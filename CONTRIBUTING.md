@@ -74,14 +74,14 @@ mode run `pnpm -F <package> exec vitest`.
 After building, run the CLI from the checkout:
 
 ```bash
-node packages/experience-design-system-cli/bin/cli.js --help
+node packages/experience-design-system-cli/bin/cli.js --version
 ```
 
 Outside CI, `pnpm build` also runs `scripts/link-cli.js` (the root `postbuild` script), which symlinks the local build
 into your global npm bin directory as `experiences`, `exo` and `experience-design-system-cli`:
 
 ```bash
-experiences --help
+experiences --version
 ```
 
 ### Live reload while working on the TUI
@@ -89,8 +89,7 @@ experiences --help
 From a checkout, run the TUI in watch mode instead of rebuilding by hand:
 
 ```bash
-experiences import --watch          # after a first `pnpm build`, which links the command
-pnpm dev                            # same thing from the repo root
+pnpm dev
 ```
 
 It rebuilds `dist/` whenever the source changes and restarts the app, so you land back on the Start screen after each
@@ -101,7 +100,7 @@ save. Notes:
 - It watches only the CLI package's own source. Other workspace packages are imported from their built output, so
   after editing one (for example `backend-pipeline`) rebuild it with `pnpm -F <package> build`.
 - Pressing `q` quits the app but leaves the watcher running; save a file to start it again. Ctrl+C stops everything.
-- `--watch` only works from a checkout. The published package does not include the dev script.
+- `pnpm dev` only works from a checkout. The published package does not include the dev script.
 
 ### Testing the import wizard against a real codebase
 
@@ -109,7 +108,7 @@ save. Notes:
 node packages/experience-design-system-cli/bin/cli.js import
 ```
 
-`import` needs an interactive terminal and a coding agent on your `$PATH` (`claude` by default; pick another with `--agent`). The wizard asks for the project folder and an optional token file on its own screens, so there are no flags for them. Extracted components are stored in the session database (`EDS_PIPELINE_DB_PATH` overrides its location); use a temp path to avoid touching your real one. To push, set your Contentful space ID, environment ID and management token in the Settings menu, or export `CONTENTFUL_SPACE_ID`, `CONTENTFUL_ENVIRONMENT_ID` and `CONTENTFUL_MANAGEMENT_TOKEN`.
+`import` needs an interactive terminal and a coding agent on your `$PATH` (`claude` by default; pick another in the Settings menu). The wizard first asks what to import (design tokens and components, tokens only, or components only). It then asks for the project folder and the token file that choice needs, on its own screens, so there are no flags for them. Extracted components are stored in the session database (`EDS_PIPELINE_DB_PATH` overrides its location); use a temp path to avoid touching your real one. To push, set your Contentful space ID, environment ID and management token in the Settings menu, or export `CONTENTFUL_SPACE_ID`, `CONTENTFUL_ENVIRONMENT_ID` and `CONTENTFUL_MANAGEMENT_TOKEN`.
 
 ## Commit Convention
 
@@ -119,12 +118,12 @@ This repo enforces [Conventional Commits](https://www.conventionalcommits.org/) 
 type(scope): description
 ```
 
-Valid types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `perf`, `ci`, `build`, `revert`
+Valid types: `feat`, `fix`, `chore`, `docs`, `style`, `refactor`, `test`, `perf`, `ci`, `build`, `revert`
 
 Examples:
 
 ```
-feat(cli): add --agent flag to import
+feat(cli): add an agent picker to the Settings menu
 fix(backend-pipeline): handle SVGProps without inflating prop count
 chore: update pnpm lockfile
 docs: add ARCHITECTURE.md
@@ -153,6 +152,20 @@ pnpm -F @contentful/experience-design-system-cli test
 TUI tests use [`ink-testing-library`](https://github.com/vadimdemedes/ink-testing-library). The CLI's `vitest.config.ts` sets `FORCE_COLOR=3`, so rendered frames contain ANSI codes. Tests that assert on raw strings should strip ANSI codes before comparing.
 
 The CLI's `test` target depends on its `build` target, so `pnpm -F @contentful/experience-design-system-cli test` builds first.
+
+### End-to-end import tests
+
+`packages/experience-design-system-cli/test/e2e/` runs the real app through each import choice, by sending the keystrokes a person would. Only the agent and Contentful are fake, so these tests need no network, no agent and no Contentful space. They run with the rest of the CLI tests, or on their own:
+
+```bash
+# All three scenarios (build first with `pnpm build`, because they use the built packages)
+pnpm -F @contentful/experience-design-system-cli exec vitest run test/e2e
+
+# One scenario, by name: "both", "components only" or "tokens only" (this form builds first)
+pnpm nx test experience-design-system-cli -- -t "tokens only"
+```
+
+`test/e2e/fixtures/` is a copy of another project's components and token file. Do not edit it. `ARCHITECTURE.md` explains how the fakes work.
 
 The backend-pipeline package's `vitest.config.ts` runs with `pool: 'forks'` and `retry: 1` for worker isolation. Contributors do not need to configure this, but expect test wall-clock time to reflect per-test process forks rather than a shared worker pool — flaky individual tests retry once before failing the suite.
 
@@ -184,7 +197,7 @@ Extraction lives in `packages/experience-design-system-backend-pipeline/src/step
 - PR titles must follow Conventional Commits and reference a Jira ticket, e.g. `[INTEG-1234]` (both validated in CI)
 - All tests must pass
 - Bito Code Review will automatically review your PR — address or reply to all comments before merging
-- Squash merge or rebase merge only — merge commits are disabled at the repo level
+- The repo allows merge commits, squash and rebase. In practice, PRs into `development` are merged with a merge commit. A release PR (`development` into `main`) must use a merge commit, never squash: a squash drops `development` as a parent and brings back conflicts on the next release.
 - At least one approving code owner review is required before merging
 
 ## CI/CD
@@ -215,6 +228,8 @@ Releases are fully automated via `scripts/release.js` (invoked as `pnpm release`
 2. Commits the version bump, tags it, and pushes to `main`
 3. Publishes the new version to GitHub Packages
 4. If a new tag now points at `HEAD`, a follow-up CI step mirrors the same version to the public npmjs.org registry via OIDC trusted publishing, so it's installable from `npmjs.org` and not just GitHub Packages
+
+After a stable release, merge `main` back into `development` in a PR titled like `chore: merge main into development after the X.Y.Z release [INTEG-1234]`, using a merge commit. The release commit (the version bump and tag) exists only on `main`, so `development` stays one commit behind until you do.
 
 **`canary` (pre-release integration):**
 

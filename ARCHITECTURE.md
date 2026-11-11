@@ -45,7 +45,7 @@ Design system codebase
 
 ### `experience-design-system-cli`
 
-The published package and the only one users install. `bin/cli.js` loads `dist/index.js`; `program.ts` builds the `commander` program (`src/commands/import.ts` registers the default command with `--agent`, `--prompt <stage=value>` and a repo-checkout-only `--watch`); `app.tsx` renders the TUI.
+The published package and the only one users install. `bin/cli.js` loads `dist/index.js`; `program.ts` builds the `commander` program (`src/commands/import.ts` registers the default command); `app.tsx` renders the TUI.
 
 The TUI lives under `src/tui/`: `home/` (menu and version/upgrade check), `import/`, `settings/` (agents, project, debug mode, analytics opt-in) and `help/`. The import wizard is a numbered series of step folders in `src/tui/import/steps/`:
 
@@ -285,8 +285,8 @@ Agents are always invoked as subprocesses (`backend-pipeline/src/agents/invoker/
 
 The backend pipeline owns agent invocation under `packages/experience-design-system-backend-pipeline/src/agents/`:
 
-- **Agent choice**: `claude`, `codex`, `opencode`, `cursor` or `copilot` (`agents/types/agent-name.ts`), optionally with a model (`--agent claude:sonnet`). Resolution order is flag, then the agent preferences in `config.json`, then the built-in default; `EDS_AGENT_MODEL_<AGENT>` sets a per-agent model, and `EDS_AGENT_BINARY_<AGENT>` points the pipeline at a different binary for that agent (the end-to-end tests use it for a fake `claude`).
-- **Skill files**: markdown instructions in `agents/skills/selection/select-components.md` and `agents/skills/generation/` (`generate-components.md`, `generate-tokens.md`, `map-tokens.md`); the composition prompt is `prompts/composition-edges.md` at the package root. `--prompt <stage=value>` overrides a stage prompt with a file or literal text.
+- **Agent choice**: `claude`, `codex`, `opencode`, `cursor` or `copilot` (`agents/types/agent-name.ts`), optionally with a model (`claude:sonnet`). The agent comes from the preferences saved in the TUI settings (`config.json`), then the built-in default; `EDS_AGENT_MODEL_<AGENT>` sets a per-agent model, and `EDS_AGENT_BINARY_<AGENT>` points the pipeline at a different binary for that agent (the end-to-end tests use it for a fake `claude`).
+- **Skill files**: markdown instructions in `agents/skills/selection/select-components.md` and `agents/skills/generation/` (`generate-components.md`, `generate-tokens.md`, `map-tokens.md`); the composition prompt is `prompts/composition-edges.md` at the package root.
 - **Prompt building**: `agents/prompts/build-prompt.ts` combines a skill file with a runtime preamble (mode, inline JSON of the component data, optional file paths, the output protocol). Raw components are passed inline, not as a file path.
 - **Output protocol**: the agent emits one JSON tool-call object per line on stdout. The parsers are in `agents/parsers/`.
 
@@ -306,7 +306,7 @@ React components commonly extend `HTMLAttributes<T>`, `ButtonHTMLAttributes<T>`,
 
 ## The Import Wizard
 
-`experiences import` requires an interactive terminal and has no headless mode. It takes `--agent` and `--prompt <stage=value>`, and asks for the project and tokens file on its own screens.
+`experiences import` requires an interactive terminal and has no headless mode. It asks for the project and tokens file on its own screens.
 
 The screens in `src/tui/import/steps/` start with `00-preflight`, which asks what to import. The choice decides which screens follow:
 

@@ -81,7 +81,7 @@ Two settings are **on** until you turn them off. Both are under **Settings** on 
 
 The CLI shares anonymous usage data by default. It records which CLI commands are used and where imports succeed or fail. It never includes source code, file paths, credentials, or authored content.
 
-To turn it off, open **Settings → Opt-in Analytics** and press Enter or Space. You can also set the `DISABLE_ANALYTICS` environment variable to any non-empty value (for example `DISABLE_ANALYTICS=1 experiences import`), which turns it off for that run without changing your saved setting.
+To turn it off, open **Settings → Opt-in Analytics** and press Enter or Space.
 
 ### Debug logging (Settings → Debug Mode)
 
