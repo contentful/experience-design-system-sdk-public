@@ -23,6 +23,13 @@ const COLUMNS = 200;
 const ANSI = /\u001B\[[0-9;?]*[A-Za-z]/g;
 const CLEAR_SCREEN = '\x1b[H\x1b[0J';
 const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost']);
+// A screen attaches its key handler just after its frame is drawn. Keys are sent only once the screen has stopped
+// redrawing for this long, because a key sent the moment the text shows is lost on a slow machine.
+const INPUT_READY_QUIET_MS = 150;
+const INPUT_READY_MAX_MS = 2_000;
+// The process events the app's debug store listens to, for its crash and exit handling.
+const PROCESS_EVENTS = ['uncaughtException', 'unhandledRejection', 'SIGINT', 'SIGTERM', 'SIGHUP'] as const;
+const emitter: NodeJS.EventEmitter = process;
 
 export interface ImportSession {
   /** The text on screen right now, with colours removed. */
@@ -39,8 +46,10 @@ class FakeStdout extends EventEmitter {
   columns = COLUMNS;
   rows = 60;
   last = '';
+  lastWriteAt = 0;
   write = (frame: string): boolean => {
     this.last = frame;
+    this.lastWriteAt = Date.now();
     return true;
   };
 }
@@ -84,6 +93,8 @@ export async function startImport(): Promise<ImportSession> {
   // The debug store reads the settings when it is first imported, so every scenario loads a fresh copy of the app. ink
   // and react are loaded after the reset too, so the app and the renderer share one copy of react.
   vi.resetModules();
+  // Only the listeners the app adds are taken off again: the test runner has its own on the same events.
+  const listenersBefore = PROCESS_EVENTS.map((event) => new Set<unknown>(emitter.listeners(event)));
   blockOutsideNetwork();
   const writeToTerminal = process.stdout.write.bind(process.stdout);
   const quietWrite = vi
@@ -141,13 +152,18 @@ export async function startImport(): Promise<ImportSession> {
           throw new Error(`e2e: "${String(text)}" never appeared. The screen was:\n${screen()}`);
         await sleep(25);
       }
+      const readyBy = Date.now() + INPUT_READY_MAX_MS;
+      while (Date.now() - stdout.lastWriteAt < INPUT_READY_QUIET_MS && Date.now() < readyBy) await sleep(25);
     },
     stop: async () => {
       unmount();
       quietWrite.mockRestore();
       vi.unstubAllGlobals();
-      for (const event of ['uncaughtException', 'unhandledRejection', 'SIGINT', 'SIGTERM', 'SIGHUP'] as const)
-        process.removeAllListeners(event);
+      PROCESS_EVENTS.forEach((event, index) => {
+        for (const listener of emitter.listeners(event)) {
+          if (!listenersBefore[index]!.has(listener)) emitter.off(event, listener as (...args: unknown[]) => void);
+        }
+      });
     },
   };
 }

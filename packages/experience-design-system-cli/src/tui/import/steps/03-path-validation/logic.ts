@@ -77,6 +77,11 @@ export function describeFailure(failure: ScanFailureCode, path: string): Failure
   }
 }
 
+/** How many of the scanned files are component files. */
+function componentFileCount(counts: FileCounts): number {
+  return COMPONENT_CATEGORIES.reduce((sum, category) => sum + counts[category], 0);
+}
+
 /**
  * The scan result as rows and a warning. When the import does not generate tokens (components only), `.json` files are
  * not design tokens here, so the row says they are ignored and the warnings do not mention tokens.
@@ -88,8 +93,7 @@ export function summarize(counts: FileCounts, { hasTokens = true }: { hasTokens?
     return { label: ROW_LABELS[category], count: counts[category], tone };
   });
 
-  const componentFiles = COMPONENT_CATEGORIES.reduce((sum, category) => sum + counts[category], 0);
-  if (componentFiles > 0) return { total: counts.total, rows };
+  if (componentFileCount(counts) > 0) return { total: counts.total, rows };
   if (hasTokens && counts.json > 0) {
     return { total: counts.total, rows, warning: 'No component files found — only token files detected.' };
   }
@@ -103,35 +107,11 @@ export function summarize(counts: FileCounts, { hasTokens = true }: { hasTokens?
 }
 
 /**
- * What the debug log says about a scan: the counts and warnings when it worked, or the failure and the message the user
- * saw when it did not. File paths are left out, since a project can have thousands; the counts are what show whether
- * the scan found the components.
- */
-export function scanReport(
-  scan: ScanResult | undefined,
-  path: string,
-  { hasTokens = true }: { hasTokens?: boolean } = {},
-): Record<string, unknown> {
-  if (scan === undefined) return { scan: 'unfinished' };
-  if (!scan.ok) return { scan: 'failed', failure: scan.failure, error: describeFailure(scan.failure, path).headline };
-  const { total, warning } = summarize(scan.counts, { hasTokens });
-  const { total: _total, ...byType } = scan.counts;
-  return {
-    scan: 'ok',
-    files_found: total,
-    counts: Object.fromEntries(Object.entries(byType).filter(([, count]) => count > 0)),
-    ...(warning ? { warning } : {}),
-    ...(scan.warnings.length > 0 ? { scan_warnings: scan.warnings } : {}),
-  };
-}
-
-/**
  * Whether the scan found anything to import: component files, or (when the import also generates tokens) `.json`
  * files. Without either there is nothing for the later steps to work on.
  */
 export function hasImportableFiles(counts: FileCounts, { hasTokens = true }: { hasTokens?: boolean } = {}): boolean {
-  const componentFiles = COMPONENT_CATEGORIES.reduce((sum, category) => sum + counts[category], 0);
-  return componentFiles > 0 || (hasTokens && counts.json > 0);
+  return componentFileCount(counts) > 0 || (hasTokens && counts.json > 0);
 }
 
 export function phaseOf(scan: ScanResult | undefined, { hasTokens = true }: { hasTokens?: boolean } = {}): PathPhase {

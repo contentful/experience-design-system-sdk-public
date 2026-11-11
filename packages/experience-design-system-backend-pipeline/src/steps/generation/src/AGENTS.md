@@ -2,6 +2,8 @@
 
 Runs the AI agent per component to produce typed CDF entries — property types, categories, slot definitions, and descriptions.
 
+This describes the `generateCdfComponents` endpoint and its service. The import does not call it: the TUI runs `runGenerateComponentsSession` (`src/orchestrators/run-generate-components-session/`), which has its own per-component run, cache and worker pool. The step also holds token generation and mapping (`controller/map-tokens/`, `helpers/token-defaults/`), which this file does not cover.
+
 ## What it does
 
 For each accepted component, concurrently (up to `concurrency`, default 3):
@@ -21,7 +23,7 @@ Timeouts and non-zero exit codes become per-component `CdfGenerationFailure` ent
 | Field                                 | Type                                                       | Notes                                   |
 |---------------------------------------|------------------------------------------------------------|-----------------------------------------|
 | `components`                          | `RawComponentDefinition[]`                                 | Only accepted components from Step 3    |
-| `tokens`                              | `DTCGTokenEntry[]?`                                        | Available tokens for `$token.kind` resolution |
+| `tokens`                              | `DTCGTokenEntry[]?`                                        | Accepted by the type; the service does not read it |
 | `agent`                               | `AgentName?`                                               | Defaults to `claude`                    |
 | `model`                               | `string?`                                                  | Per-agent model override                |
 | `concurrency`                         | `number?`                                                  | Default 3                               |
@@ -35,17 +37,16 @@ Timeouts and non-zero exit codes become per-component `CdfGenerationFailure` ent
 
 ## Cache
 
-| Field       | Value                                                                                               |
-|-------------|-----------------------------------------------------------------------------------------------------|
-| **Key**     | `(inputHash, promptHash)` — SHA-256 of `JSON.stringify(component)` + SHA-256 of the built prompt    |
-| **Value**   | `CDFComponentEntry` (JSON-serialized)                                                               |
-| **Lookup**  | Per component, before agent invocation                                                              |
-| **Store**   | Per component, after successful agent invocation and tool-call parsing                              |
+- **Key:** `(inputHash, promptHash)`: SHA-256 of `JSON.stringify(component)` and SHA-256 of the built prompt
+- **Value:** the `CDFComponentEntry`, JSON-serialized
+- **Lookup:** per component, before agent invocation
+- **Store:** per component, after a successful agent run and tool-call parsing
+
 
 ## External calls
 
-AI agent via `createLocalCliAgentInvoker` from `@contentful/experience-design-system-generation`. Timeout: 120 s per component. No HTTP calls.
+AI agent via `createLocalCliAgentInvoker` from this package's `src/agents/`. Timeout: 120 s per component. No HTTP calls.
 
 ## DSI contribution
 
-Produces the component half of the CDF document that Step 5 ships to Contentful. Per-component failures (timeouts, exit codes, unparseable tool calls) flow back as `CdfGenerationFailure[]` — the CLI counts these on command context and the terminal `dsi_cli_command_completed` event, which is how we track agent reliability per release.
+Produces the component half of the CDF document that Step 5 ships to Contentful. Per-component failures (agent errors, timeouts and non-zero exits) flow back as `CdfGenerationFailure[]`. Nothing in the CLI or the analytics layer reads them today.

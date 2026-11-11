@@ -48,6 +48,6 @@ describe('the review debug log', () => {
       outputs: { outcome: 'left the review without finishing' },
       exitMethod: 'discarded',
     });
-    expect(reviewProgress(trail, arrived, 1000)['outcome']).toBe('interrupted');
+    expect(reviewProgress(trail, arrived, 1000).outputs['outcome']).toBe('interrupted');
   });
 });

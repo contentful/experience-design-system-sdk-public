@@ -37,6 +37,13 @@ describe('trackFinished', () => {
     expect(trackFinished([], [{ text: 'x', complete: true, state: 'warning' }], 5000)).toEqual([5000]);
   });
 
+  it('keeps timing a warning row that is still running, and stops once it has ended', () => {
+    const running = { text: 'x', complete: false, state: 'warning' as const };
+
+    expect(trackFinished([], [running], 4000)).toEqual([undefined]);
+    expect(trackFinished([], [{ ...running, complete: true }], 4000)).toEqual([4000]);
+  });
+
   it('adds a row that appears later at the end without moving the others', () => {
     expect(trackFinished([2000], [done, done], 7000)).toEqual([2000, 7000]);
   });

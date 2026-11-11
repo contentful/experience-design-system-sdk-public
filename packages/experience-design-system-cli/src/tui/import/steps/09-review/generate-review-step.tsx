@@ -409,7 +409,7 @@ function deriveBreakingChanges(response: ServerPreviewResponse): BreakingCompone
   const out: BreakingComponent[] = [];
   for (const item of response.components.changed ?? []) {
     if (item.changeClassification?.classification !== 'breaking') continue;
-    const componentName = item.current?.name;
+    const componentName = item.current?.id ?? item.current?.name;
     if (typeof componentName !== 'string') continue;
     out.push({
       componentName,

@@ -9,18 +9,27 @@ import { pruneExpiredLogs } from './debug-prune.js';
 type PendingRun = {
   flow: string;
   step: string;
-  runId: string;
   menuOption: string;
   inputs: Record<string, unknown>;
   startedAt: number;
   // What a long run has found so far. A crash or Ctrl+C writes this instead of an empty log.
   progress?: Record<string, unknown>;
+  progressSummary?: string[];
 };
 
 type Status = 'success' | 'error';
 type ExitMethod = 'saved' | 'discarded' | 'crashed';
 
 let pendingRun: PendingRun | undefined;
+
+// What the user chose to import at the Preflight, in the words they saw. It decides which steps run and is held until the
+// import ends, so every import log says it in its header instead of each step being told.
+let importMode: string | undefined;
+
+/** Set when the user chooses at the Preflight, and cleared when the Preflight opens again. */
+export function setDebugImportMode(label: string | undefined): void {
+  importMode = label;
+}
 
 function generateRunId(): string {
   const now = new Date();
@@ -173,14 +182,14 @@ export function startDebugRun({
   flow,
   step,
   menuOption,
-  inputs,
+  inputs = {},
 }: {
   flow: string;
   step: string;
   menuOption: string;
-  inputs: Record<string, unknown>;
+  /** What the step starts with. A step that writes a `summary` when it finishes leaves this out and puts its facts in the data. */
+  inputs?: Record<string, unknown>;
 }): void {
-  const runId = generateRunId();
   const startedAt = Date.now();
   const redactedInputs = redact(inputs);
 
@@ -188,16 +197,21 @@ export function startDebugRun({
   // logged as itself: if it were registered late, its finish would be dropped and the next step's finish would land on it,
   // mixing the two logs. When Debug Mode turns out to be off the run is withdrawn here, and finishDebugRun checks again
   // before it writes.
-  const run: PendingRun = { flow, step, runId, menuOption, inputs: redactedInputs, startedAt };
+  const run: PendingRun = { flow, step, menuOption, inputs: redactedInputs, startedAt };
   pendingRun = run;
   void isDebugModeEnabled().then((enabled) => {
     if (!enabled && pendingRun === run) pendingRun = undefined;
   });
 }
 
-/** Keeps what the open run has so far, in memory. It is only written if the run is cut short. */
-export function setDebugRunProgress(outputs: Record<string, unknown>): void {
-  if (pendingRun) pendingRun.progress = outputs;
+/**
+ * Keeps what the open run has so far, in memory. It is only written if the run is cut short, in the same layout as a
+ * finished log when a `summary` is given.
+ */
+export function setDebugRunProgress(outputs: Record<string, unknown>, summary?: string[]): void {
+  if (!pendingRun) return;
+  pendingRun.progress = outputs;
+  pendingRun.progressSummary = summary;
 }
 
 // Logs that are still being written. Finishing a log is not instant, and something that reads the logs the moment a step
@@ -216,23 +230,23 @@ export async function settleDebugLogs(): Promise<void> {
   while (unsettled.size > 0) await Promise.allSettled([...unsettled]);
 }
 
-export function finishDebugRun(args: {
+type FinishArgs = {
   outputs: Record<string, unknown>;
+  /**
+   * The facts for a person, one line each; every two spaces a line is indented by nest it one level under the line above. With it the log
+   * has a Summary (for people) and a Data (for AI, the outputs) section that say the same thing twice. Without it the log
+   * keeps its Inputs and Outputs sections. The lines are written as given, so a step must not put a secret in one.
+   */
+  summary?: string[];
   status: Status;
   exitMethod: ExitMethod;
-}): Promise<void> {
+};
+
+export function finishDebugRun(args: FinishArgs): Promise<void> {
   return track(finishRun(args));
 }
 
-async function finishRun({
-  outputs,
-  status,
-  exitMethod,
-}: {
-  outputs: Record<string, unknown>;
-  status: Status;
-  exitMethod: ExitMethod;
-}): Promise<void> {
+async function finishRun({ outputs, summary, status, exitMethod }: FinishArgs): Promise<void> {
   const run = pendingRun;
   if (!run) return;
   pendingRun = undefined;
@@ -242,7 +256,7 @@ async function finishRun({
   const log: FinishedLog = {
     folder: logFolder(run.flow, run.step),
     menuOption: run.menuOption,
-    content: renderMarkdown(run, { outputs: redact(outputs), status, exitMethod, durationMs }),
+    content: renderMarkdown(run, { outputs: redact(outputs), summary, status, exitMethod, durationMs }),
   };
 
   // Without a session folder yet (no base directory is configured and the import has not started) the log waits.
@@ -305,25 +319,37 @@ function nextAttemptFilename(dir: string, menuOption: string): string {
 
 function renderMarkdown(
   run: PendingRun,
-  finish: { outputs: Record<string, unknown>; status: Status; exitMethod: ExitMethod; durationMs: number },
+  finish: Required<Pick<FinishArgs, 'outputs' | 'status' | 'exitMethod'>> &
+    Pick<FinishArgs, 'summary'> & { durationMs: number },
 ): string {
-  const stepMatch = /^(\d+)-(.+)$/.exec(run.step);
-  const stepLabel = stepMatch ? `${stepMatch[1]} - ${stepMatch[2]}` : run.step;
-  const flowSlug = run.flow.split('/').join('-');
+  const stepNumber = /^(\d+)-/.exec(run.step)?.[1];
+  const title = stepNumber ? `${run.menuOption} · step ${stepNumber}` : run.menuOption;
+  const when = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
 
-  return `# Debug Log
+  const mode = run.flow.startsWith('import/') && importMode ? `\nImport mode: ${importMode}` : '';
+  const header = `# ${title}
 
-- Run ID: ${run.runId}
-- Flow: ${flowSlug}
-- Step: ${stepLabel}
-- Menu option: ${run.menuOption}
-- Date: ${new Date().toISOString()}
-- CLI version: ${readPackageVersion()}
-- Platform: ${process.platform} / Node ${process.version}
-- Duration on screen: ${finish.durationMs}ms
-- Status: ${finish.status}
-- Exit method: ${finish.exitMethod}
+${when} · ${finish.durationMs}ms on screen · ${finish.status} (${finish.exitMethod}) · CLI ${readPackageVersion()} · ${process.platform} / Node ${process.version}${mode}
+`;
 
+  if (finish.summary) {
+    // Each two spaces a line starts with is one level of nesting under the line above it.
+    const bullets = finish.summary.map((line) => {
+      const depth = Math.floor((line.length - line.trimStart().length) / 2);
+      return `${'  '.repeat(depth)}- ${line.trim()}`;
+    });
+    return `${header}
+## Summary (for people)
+${bullets.join('\n')}
+
+## Data (for AI)
+\`\`\`json
+${JSON.stringify(finish.outputs, null, 2)}
+\`\`\`
+`;
+  }
+
+  return `${header}
 ## Inputs
 \`\`\`json
 ${JSON.stringify(run.inputs, null, 2)}
@@ -337,7 +363,12 @@ ${JSON.stringify(finish.outputs, null, 2)}
 }
 
 function handleCrash(): Promise<void> {
-  return finishDebugRun({ outputs: pendingRun?.progress ?? {}, status: 'error', exitMethod: 'crashed' });
+  return finishDebugRun({
+    outputs: pendingRun?.progress ?? {},
+    summary: pendingRun?.progressSummary,
+    status: 'error',
+    exitMethod: 'crashed',
+  });
 }
 
 process.once('uncaughtException', (err) => {

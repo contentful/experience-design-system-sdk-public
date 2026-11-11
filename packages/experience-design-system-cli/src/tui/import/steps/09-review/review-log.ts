@@ -20,9 +20,12 @@ export type ReviewTrail = {
   kinds: Record<string, number>;
 };
 
-const countStatuses = (components: CdfReviewEntry[]): Record<string, number> => {
+/** What a log section carries: `summary` for a person, `outputs` for AI, both with the same facts. */
+type ReviewLog = { summary: string[]; outputs: Record<string, unknown> };
+
+const countStatuses = (statuses: Iterable<ReviewComponentStatus>): Record<string, number> => {
   const counts: Record<string, number> = {};
-  for (const { status } of components) counts[status] = (counts[status] ?? 0) + 1;
+  for (const status of statuses) counts[status] = (counts[status] ?? 0) + 1;
   return counts;
 };
 
@@ -31,9 +34,18 @@ const capped = (keys: string[]): { count: number; keys: string[] } => ({
   keys: keys.slice(0, MAX_NAMES),
 });
 
-/** What the review starts with: how many components, and how the AI and the checks left them. */
-export function reviewInputs(components: CdfReviewEntry[]): Record<string, unknown> {
-  return { components: components.length, by_status: countStatuses(components) };
+const countsText = (counts: Record<string, number>): string =>
+  Object.entries(counts)
+    .map(([name, count]) => `${count} ${name}`)
+    .join(', ') || 'none';
+
+/** A count and its keys as Summary lines: `Label: 2`, then the keys as sub-points, and how many were left out. */
+function namedLines(label: string, { count, keys }: { count: number; keys: string[] }): string[] {
+  return [
+    `${label}: ${count}`,
+    ...keys.map((key) => `  ${key}`),
+    ...(count > keys.length ? [`  …and ${count - keys.length} more`] : []),
+  ];
 }
 
 export function openReviewTrail(components: CdfReviewEntry[], now: number): ReviewTrail {
@@ -51,12 +63,7 @@ export function recordReviewAction(trail: ReviewTrail, label: string): void {
   if (trail.actions.length < MAX_ACTIONS) trail.actions.push(label);
 }
 
-function render(
-  trail: ReviewTrail,
-  components: CdfReviewEntry[],
-  now: number,
-  outcome: string,
-): Record<string, unknown> {
+function render(trail: ReviewTrail, components: CdfReviewEntry[], now: number, outcome: string): ReviewLog {
   // The decisions that matter: where a component ended up accepted or rejected after arriving as something else.
   const acceptedByUser: string[] = [];
   const rejectedByUser: string[] = [];
@@ -67,18 +74,37 @@ function render(
     if (status === 'rejected') rejectedByUser.push(key);
   }
   const total = Object.values(trail.kinds).reduce((sum, count) => sum + count, 0);
+  const seconds = Math.round((now - trail.startedAt) / 100) / 10;
+  const arrived = countStatuses(trail.start.values());
+  const ended = countStatuses(components.map((component) => component.status));
+  const accepted = capped(acceptedByUser);
+  const rejected = capped(rejectedByUser);
+
   return {
-    outcome,
-    seconds: Math.round((now - trail.startedAt) / 100) / 10,
-    edits: { total, by_kind: trail.kinds, in_order: trail.actions },
-    now: countStatuses(components),
-    accepted_by_user: capped(acceptedByUser),
-    rejected_by_user: capped(rejectedByUser),
+    summary: [
+      `Components: ${components.length}`,
+      `Arrived as: ${countsText(arrived)}`,
+      `Ended as: ${countsText(ended)}`,
+      `Time in the review: ${seconds}s`,
+      `Edits: ${total}${total > 0 ? ` (${countsText(trail.kinds)})` : ''}`,
+      ...namedLines('Accepted by you', accepted),
+      ...namedLines('Rejected by you', rejected),
+      `Outcome: ${outcome}`,
+    ],
+    outputs: {
+      outcome,
+      seconds,
+      arrived,
+      edits: { total, by_kind: trail.kinds, in_order: trail.actions },
+      now: ended,
+      accepted_by_user: accepted,
+      rejected_by_user: rejected,
+    },
   };
 }
 
 /** What a crash or Ctrl+C writes if it cuts the review short. */
-export function reviewProgress(trail: ReviewTrail, components: CdfReviewEntry[], now: number): Record<string, unknown> {
+export function reviewProgress(trail: ReviewTrail, components: CdfReviewEntry[], now: number): ReviewLog {
   return render(trail, components, now, 'interrupted');
 }
 
@@ -88,13 +114,21 @@ export function reviewFinish(
   components: CdfReviewEntry[],
   now: number,
   final: { accepted: number; rejected: number; unresolved: number } | undefined,
-): { outputs: Record<string, unknown>; status: 'success'; exitMethod: 'saved' | 'discarded' } {
+): ReviewLog & { status: 'success'; exitMethod: 'saved' | 'discarded' } {
   const outcome = final
     ? `finalized: ${final.accepted} accepted, ${final.rejected} rejected, ${final.unresolved} unresolved`
     : 'left the review without finishing';
   return {
-    outputs: render(trail, components, now, outcome),
+    ...render(trail, components, now, outcome),
     status: 'success',
     exitMethod: final ? 'saved' : 'discarded',
+  };
+}
+
+/** The log for a review that never opened, because the components could not be read. */
+export function reviewLoadFailureLog(error: string): ReviewLog {
+  return {
+    summary: [`Could not read the components: ${error}`],
+    outputs: { outcome: 'could not load the components', error },
   };
 }

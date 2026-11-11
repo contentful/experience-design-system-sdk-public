@@ -5,7 +5,7 @@ import {
   openReviewTrail,
   recordReviewAction,
   reviewFinish,
-  reviewInputs,
+  reviewLoadFailureLog,
   reviewProgress,
   type ReviewTrail,
 } from './review-log.js';
@@ -36,17 +36,15 @@ export function useReviewLog({
   useEffect(() => {
     if (loading || started.current) return;
     started.current = true;
-    startDebugRun({ ...REVIEW_RUN, inputs: reviewInputs(components) });
+    startDebugRun({ ...REVIEW_RUN });
     if (loadError) {
-      void finishDebugRun({
-        outputs: { outcome: 'could not load the components', error: loadError },
-        status: 'error',
-        exitMethod: 'discarded',
-      });
+      const { summary, outputs } = reviewLoadFailureLog(loadError);
+      void finishDebugRun({ summary, outputs, status: 'error', exitMethod: 'discarded' });
       return;
     }
     trail.current = openReviewTrail(components, Date.now());
-    setDebugRunProgress(reviewProgress(trail.current, components, Date.now()));
+    const progress = reviewProgress(trail.current, components, Date.now());
+    setDebugRunProgress(progress.outputs, progress.summary);
   }, [loading, loadError, components]);
 
   useEffect(
@@ -62,7 +60,8 @@ export function useReviewLog({
     record: (label) => {
       if (!trail.current) return;
       recordReviewAction(trail.current, label);
-      setDebugRunProgress(reviewProgress(trail.current, latest.current, Date.now()));
+      const progress = reviewProgress(trail.current, latest.current, Date.now());
+      setDebugRunProgress(progress.outputs, progress.summary);
     },
     finish: (counts) => {
       const open = trail.current;

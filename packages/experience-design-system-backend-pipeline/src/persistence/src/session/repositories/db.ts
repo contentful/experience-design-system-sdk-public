@@ -2136,7 +2136,7 @@ export function seedCDFFromPreviewResponse(
 
     const localComponent = db
       .prepare(`SELECT component_id FROM raw_components WHERE session_id = ? AND name = ?`)
-      .get(sessionId, item.name) as { component_id: string } | undefined;
+      .get(sessionId, item.id ?? item.name) as { component_id: string } | undefined;
 
     if (!localComponent) continue;
 
@@ -2178,7 +2178,7 @@ export function seedDefaultsFromChangedItems(
 
     const localComponent = db
       .prepare(`SELECT component_id FROM raw_components WHERE session_id = ? AND name = ?`)
-      .get(sessionId, current.name) as { component_id: string } | undefined;
+      .get(sessionId, current.id ?? current.name) as { component_id: string } | undefined;
 
     if (!localComponent) continue;
 

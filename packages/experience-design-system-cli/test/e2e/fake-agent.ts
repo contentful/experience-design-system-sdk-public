@@ -1,6 +1,7 @@
 import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { setEnv } from './env.js';
 
 // The stand-in for the `claude` CLI. The pipeline already lets EDS_AGENT_BINARY_CLAUDE point at another binary, so this
 // is a real subprocess the real code spawns, parses and times out. It answers `auth status --json`, and for every other
@@ -83,8 +84,8 @@ function classifyProp(prop) {
   const base = { tool: 'classify_prop', prop: prop.name, required: Boolean(prop.required), description: 'The ' + prop.name + '.', reason: 'Scripted classification.' };
   if (Array.isArray(prop.allowedValues) && prop.allowedValues.length > 0) return { ...base, cdf_type: 'enum', cdf_category: 'design', values: prop.allowedValues };
   if (/boolean/.test(prop.type || '')) return { ...base, cdf_type: 'boolean', cdf_category: 'state' };
-  if (/color/i.test(prop.name)) return { ...base, cdf_type: 'token', cdf_category: 'design', token_kind: 'color' };
-  if (/spacing|radius|gap|size/i.test(prop.name)) return { ...base, cdf_type: 'token', cdf_category: 'design', token_kind: 'dimension' };
+  const tokenKind = /color/i.test(prop.name) ? 'color' : /spacing|radius|gap|size/i.test(prop.name) ? 'dimension' : null;
+  if (tokenKind) return { ...base, cdf_type: 'token', cdf_category: 'design', token_kind: tokenKind };
   return { ...base, cdf_type: 'string', cdf_category: prop.category === 'design' ? 'design' : 'content' };
 }
 
@@ -122,17 +123,12 @@ export async function startFakeAgent(): Promise<FakeAgent> {
   await chmod(binary, 0o755);
   await writeFile(callsFile, '');
 
-  const previous = { binary: process.env['EDS_AGENT_BINARY_CLAUDE'], calls: process.env['FAKE_AGENT_CALLS'] };
-  process.env['EDS_AGENT_BINARY_CLAUDE'] = binary;
-  process.env['FAKE_AGENT_CALLS'] = callsFile;
+  const restoreEnv = setEnv({ EDS_AGENT_BINARY_CLAUDE: binary, FAKE_AGENT_CALLS: callsFile });
 
   return {
     calls: async () => (await readFile(callsFile, 'utf8')).split('\n').filter(Boolean),
     stop: async () => {
-      if (previous.binary === undefined) delete process.env['EDS_AGENT_BINARY_CLAUDE'];
-      else process.env['EDS_AGENT_BINARY_CLAUDE'] = previous.binary;
-      if (previous.calls === undefined) delete process.env['FAKE_AGENT_CALLS'];
-      else process.env['FAKE_AGENT_CALLS'] = previous.calls;
+      restoreEnv();
       await rm(dir, { recursive: true, force: true });
     },
   };

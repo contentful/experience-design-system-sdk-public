@@ -1,6 +1,6 @@
 import { AGENT_NAMES, type AgentName } from '@contentful/experience-design-system-backend-pipeline';
 import type { Snapshot } from '@tui/shared/debug-trail.js';
-import { inspectAgent, type AgentCheck } from './agent-status.js';
+import { inspectAgent, statusFromChecks, type AgentCheck, type AgentStatus } from './agent-status.js';
 import type { AgentConfig } from './agent-store.js';
 
 // What the Agents log records, split out of the screen so the screen only calls it.
@@ -61,4 +61,25 @@ export async function describeAgents(config: AgentConfig): Promise<Record<AgentN
     }),
   );
   return Object.fromEntries(entries) as Record<AgentName, AgentEnvironment>;
+}
+
+export type AgentReadiness = { status: AgentStatus; version: string };
+
+/**
+ * The one-word state the Agents list shows for every agent, with its version, for a log that needs to say which agents
+ * could run. Uses the quick checks only, so it never spends a prompt.
+ */
+export async function agentReadiness(config: AgentConfig): Promise<Record<AgentName, AgentReadiness>> {
+  const entries = await Promise.all(
+    AGENT_NAMES.map(async (name) => {
+      const saved = config.agents[name].binary;
+      const checks = await inspectAgent(name, saved);
+      const version = checks.find((check) => check.step === 'version');
+      return [
+        name,
+        { status: statusFromChecks(name, checks, saved), version: version?.ok ? version.detail : '' },
+      ] as const;
+    }),
+  );
+  return Object.fromEntries(entries) as Record<AgentName, AgentReadiness>;
 }

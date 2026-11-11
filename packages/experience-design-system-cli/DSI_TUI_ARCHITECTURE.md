@@ -1,90 +1,73 @@
 # Engineering Design and Implementation Standard
 
-## Purpose
-
-This document defines how humans and coding agents: design, implement, test, and review changes for the `experience-design-system-cli` package.
+How humans and coding agents design, implement, test and review changes to the `experience-design-system-cli` package. It supports React, Astro, Vue, Svelte, Stencil, Web Components and Angular codebases.
 
 ## Project structure
 
-**packages/experience-design-system-cli/src/tui**
-This package is the Terminal UI flow that the customer interacts with
+- `src/tui/`: the terminal UI the customer interacts with.
+- `src/api/`: the API calls the TUI needs.
+- `~/.contentful/experience-design-system-cli/config.json`: the single settings file, read and written through `@contentful/experience-design-system-types/config` (the only module that knows the path). It holds credentials (spaceId, environmentId, cmaToken, host), preferences (analyticsDisabled, debug, debugMode), agent settings (agent, agentModel, agents) and defaults. `EDS_HOME` relocates the whole folder (tests use it).
+- One folder per terminal session, numbered per day. `<root>` is the "Root Project Directory" setting (Settings > Configuration > Project); when it is empty, the session is created once the import starts, in the project being imported:
 
-**packages/experience-design-system-cli/src/api**
-This is where all the api calls are made that the TUI needs
+```
+<root>/.contentful/MM-DD-YYYY-session-N/
+├── debug/           per-screen debug logs (markdown run snapshots), written only while Debug Mode is on
+└── dsi-import-N/    one import run's output: tokens.json, .existing-entities.json, components.json
+                     (each import in the session gets the next number, so a second never overwrites the first)
+```
 
-**~/.contentful/experience-design-system-cli/config.json**
-The single settings file, read and written through `@contentful/experience-design-system-types/config` (the only module that knows the path). Holds credentials (spaceId, environmentId, cmaToken, host), preferences (analyticsDisabled, debug, debugMode), agent settings (agent, agentModel, agents) and defaults. `EDS_HOME` relocates the whole folder (used by tests).
+## Architecture
 
-**<root>/.contentful/MM-DD-YYYY-session-N/**
-One folder per terminal session, numbered per day. `<root>` is the "Root Project Directory" setting (Settings > Configuration > Project). When it is empty, the session is created once the import starts, in the project being imported.
+Each directory in `src/tui/` is a menu item in the TUI and an independent flow of screens. Flows stay separate even when that duplicates code: with agentic engineering we do not want a bug in one flow to break another, and independence makes bugs easier to trace and changes faster to make.
 
-- `debug/` holds the per-screen debug logs (markdown run snapshots), written only while Debug Mode is on.
-- `dsi-import-N/` holds one import run's output: `tokens.json`, `.existing-entities.json` and `components.json`. Each import in the session gets the next number, so a second import never overwrites the first. Token reuse offers the newest `tokens.json` found across all sessions.
+Every flow has a top-level parent screen named `PageContainer.tsx`. It is the outer layer for all the flow's pages and unifies the controls, look, theme and functions they share. Each flow's `PageContainer.tsx` may differ, because each flow serves a different purpose.
 
-## Project Architecture
+The TUI needs an interactive terminal. `app.tsx` exports `runApp`, which `program.ts` renders for the default command.
 
-**packages/experience-design-system-cli/src/tui**
-Each directory in `packages/experience-design-system-cli/src/tui` represents a menu item in the TUI and is an indepedent flow of screens.
-Each flow is separate and if that results in code duplication, that is okay. This is because with agentic engineering we do not want to introduce dependencies where one bug in a given flow breaks the another flow. Additionally, by keeping each flow independent, we can easily trace the source of the bug, introduce updates faster, and build more efficiently without having to think about consequences outside of the given flow.
+### Settings flow (`src/tui/settings/`)
 
-For each directory and flow, there is always a top level parent container screen named: `PageContainer.tsx`. This defines the outer layer for all the pages for a given flow. Each `PageContainer.tsx` for a given flow is allowed to be different as each flow serves a different purpose. The purpose of `PageContainer.tsx` for a given flow is to unify the same controls, look, theme, and functions that is shared across all pages/screens for a given flow.
+Settings pages persist preferences and credentials to `config.json`. `settings/shared/v1-store.ts` re-exports the shared read and write functions from `@contentful/experience-design-system-types/config`. Each preference screen:
 
-### Settings Flow (`src/tui/settings/`)
+- imports `readV1Store` / `writeV1Store` from `settings/shared/v1-store.ts`;
+- has domain-specific store adapters (for example `analytics-store.ts`, `debug-mode-store.ts`);
+- follows the same pattern: load state on mount, toggle on Enter or Space, navigate on Esc or q.
 
-Settings pages persist user preferences and credentials to `~/.contentful/experience-design-system-cli/config.json`. `utils/v1-store.ts` re-exports the shared read/write functions from `@contentful/experience-design-system-types/config`.
+**Agent settings** (Settings > Configuration > Agents, `settings/configuration/agents/`) is where the user picks the coding agent the import runs. It writes three keys to `config.json`:
 
-Each preference screen:
+- `agent`: the default agent (`claude`, `codex`, `opencode`, `cursor` or `copilot`). It is written only once the user chooses one, so someone who never chose keeps the built-in default, even if that default changes in a later version.
+- `agentModel`: the model for the default agent. It always matches the default agent's entry in `agents`.
+- `agents`: each agent's own `model` and `binary` (the path to its command), so changing the default does not lose another agent's settings. An empty model means the agent's built-in default; an empty binary means the command is looked up on the `PATH`.
 
-- Imports `readV1Store` / `writeV1Store` from `utils/v1-store.ts`
-- Implements domain-specific store adapters (e.g., `analytics-store.ts`, `debug-mode-store.ts`)
-- Follows the same UX pattern: load state on mount, toggle on Enter/Space, navigate on Esc/q
+A saved binary reaches the pipeline through `EDS_AGENT_BINARY_<AGENT>`, which `apply-binary-overrides.ts` sets at startup and after each save. A saved path wins over a variable already in the shell, and clearing it restores the shell's value.
 
-See `src/tui/settings/README.md` for implementation details.
+**Project settings** (Settings > Configuration > Project, `settings/configuration/project/`) holds the Contentful credentials (Space ID, Environment ID, CMA Token, API Host), the Root Project Directory that sessions are created in (`contentfulBaseDir`), and the import defaults `defaultComponentDir` and `defaultTokenFile`.
 
-## Supported Frameworks
+### Import flow (`src/tui/import/`)
 
-1. React
-2. Astro
-3. Vue
-4. Svelte
-5. Stencil
-6. Web Components
-7. Angular
+The Import menu item. It asks what to import (`steps/00-preflight`), and the choice decides which of the numbered steps `01-welcome` … `10-flow` run; `ARCHITECTURE.md` lists them. `app.tsx` runs the whole import in one process. The flow's state machine is `steps/10-flow/flow/controller.ts`, kept free of React so it can be tested; `flow/use-flow.ts` and `flow/screen.tsx` connect it to the terminal. When the flow ends it reports an exit code, and `PageContainer.tsx` shows the result and resumes the menu.
 
----
+## TUI design patterns
 
-## TUI Design Patterns
+The TUI uses React 18 and Ink 5, with `ink-text-input` for text fields.
 
-The v2 TUI uses React 18 and Ink 5, the same copies v1 uses. Its only runtime dependencies are `ink`, `react`, `commander` and `semver`.
+**State.** Each screen manages its own state with `useState`. State flows down through props and up through callbacks. There is no shared store.
 
-### State
+**Input.** Use Ink's `useInput` for keys, with one listener per screen (several on one screen conflict). Existing screens treat `q` and `Esc` as "go back" (see `src/tui/home/home.tsx` and `src/tui/settings/debug-mode/screen.tsx`). `useInput` subscribes after the first frame, so a key sent immediately on mount can be dropped.
 
-Each screen manages its own React state with `useState`. State flows down via props and up via callbacks. There is no shared store.
+**Theme.** The shared palette is in `src/tui/theme.ts`, with a dark and a light set chosen from the terminal background. Screens import `PALETTE` and never hardcode colours, including named ones like `'red'` or `'gray'`. Use `PALETTE.accent` for emphasis and `PALETTE.onAccent` for text on an accent background. Do not define a second palette in a flow.
 
-### Input
+Import it through the `@tui` alias, not a long relative path: `import { PALETTE } from '@tui/theme.js';`. The alias maps `@tui/*` to `src/tui/*` and is set in `tsconfig.json` (`paths`, used by the type check and the esbuild build) and in `vitest.config.ts` (`resolve.alias`), so a new alias needs both. Use it when the relative path goes up three or more folders.
 
-Use Ink's `useInput` for keys. The existing screens treat `q` and `Esc` as "go back" (see `src/tui/home/home.tsx` and `src/tui/settings/debug-mode/screen.tsx`). `useInput` subscribes after the first frame, so a keypress sent immediately on mount can be dropped.
+**Shared components** are those used by more than one flow, in `src/tui/shared/components/`. Flows keep any other styling beside their screens.
 
-### Theme
+- `ControlHints`: the one control-hint line, with `[keys]` in the accent colour and the label in the normal text colour, no border. Use it for every screen's key hints, passing `{ keys, label }` entries (add `active: true` to highlight a hint whose mode is on). Do not hand-write hint lines.
+- `StepHeader`: the import's tab bar (Extract, Select, Generate, Review, Push) with the version on the right and a rule across the full width. Pass `step="extraction"` and so on; `step="done"` marks every step finished. Render it above the screen's padded content, not inside the padding, so the rule reaches the edges.
 
-The shared colour palette lives in `src/tui/theme.ts`. It has a dark and a light set and picks one from the terminal background. Screens import `PALETTE` from there and should not hardcode colours, including named ones like `'red'` or `'gray'`. Use `PALETTE.accent` for emphasis and `PALETTE.onAccent` for text on an accent background. Do not define a second palette in a flow.
+**Keep renders light.** Ink redraws every frame, so do expensive work (file I/O, network calls) outside React.
 
-Import it through the `@tui` alias, not a long relative path: `import { PALETTE } from '@tui/theme.js';`. The alias maps `@tui/*` to `src/tui/*`. It is set in `tsconfig.json` (`paths`, used by the type check and the esbuild build) and in `vitest.config.ts` (`resolve.alias`), so a new alias needs both. Use it when the relative path goes up three or more folders.
+## Multi-step flows
 
-### Shared components
-
-Components used by more than one flow live in `src/tui/shared/components/`. Flows keep any other styling beside their screens.
-
-- `ControlHints`: the one control-hint line. It shows `[keys]` in the accent colour and the label in the normal text colour, with no border. Use it for every screen's key hints, passing `{ keys, label }` entries (add `active: true` to highlight a hint whose mode is on). Do not hand-write hint lines.
-- `StepHeader`: the import's tab bar: Extract, Select, Generate, Review and Push, with the version on the right and a rule across the full width. Pass `step="extraction"` and so on; `step="done"` marks every step finished. Render it above the screen's padded content, not inside the padding, so the rule reaches the edges.
-
-### The Import flow
-
-`src/tui/import/` is the Import menu item. The Import menu item shows the Welcome step (`steps/01-welcome`) and collects the project path, then the Token input step (`steps/02-token-input`) and collects the token file, then the Path validation step (`steps/03-path-validation`), which scans the project folder and asks the user to confirm it. `app.tsx` then runs the rest of the import in the same process: credentials (`steps/04-credentials`), token reuse, extraction, the scope gate, generation, the review (`steps/09-review`) and the save, preview, push and done screens (`steps/10-flow`). The flow's state machine is `steps/10-flow/flow/controller.ts`, kept free of React so it can be tested; `flow/use-flow.ts` and `flow/screen.tsx` connect it to the terminal. When the flow ends it reports an exit code and `PageContainer.tsx` shows the result, then resumes the menu.
-
-### Multi-step flows
-
-Inside one flow, share code freely, but keep each screen small and its parts separate. The import flow is the reference:
+Inside one flow, share code freely but keep each screen small and its parts separate. The import flow is the reference:
 
 ```
 src/tui/import/
@@ -99,18 +82,14 @@ src/tui/import/
 
 Rules for a screen:
 
-- Use Ink and its ecosystem for input and layout. Text fields are `ink-text-input`, which handles focus, the cursor, pasting and editing; keys that are not part of a field go through Ink's `useInput`. Do not read stdin or parse keys by hand.
-- Controls belong to the screen: its key handling and the hints shown for it live in that step's `controls.ts`.
-- Keep comments out of v2 source. Names, types and small functions carry the meaning.
+- Use Ink and its ecosystem for input and layout. Text fields are `ink-text-input`, which handles focus, the cursor, pasting and editing; keys outside a field go through `useInput`. Do not read stdin or parse keys by hand.
+- Controls belong to the screen: its key handling and hints live in that step's `controls.ts`.
+- Keep comments out of this package's source. Names, types and small functions carry the meaning.
 - Props in, a typed result out through callbacks. A screen does not know which screen comes next.
 - No `process.exit`, no database, network or subprocess calls, and no filesystem work while rendering. `logic.ts` never imports Ink or React components, so it can be tested without rendering.
 - Numbered folders are steps of the happy path. Pieces used by several steps are not steps and stay unnumbered.
 
-### Terminal
-
-The TUI needs an interactive terminal. `app.tsx` exports `runApp`, which `program.ts` renders for the default command.
-
-### Example Screen
+### Example screen
 
 ```tsx
 import { Box, Text, useInput } from "ink";
@@ -138,20 +117,10 @@ export function ConfirmScreen({
 
 ## Testing
 
-Use `ink-testing-library` for screen tests and set `NO_COLOR=1` to suppress ANSI codes. Wait for Ink to subscribe to input before sending keys.
+Use `ink-testing-library` for screen tests. Colors are always on in tests (the vitest config sets `FORCE_COLOR=3`), so match on text rather than ANSI codes. Wait for Ink to subscribe to input before sending keys.
 
-## Performance Tips
+`test/e2e` drives the whole wizard with keystrokes against a fixture project, with only the agent and Contentful faked. See `CONTRIBUTING.md` for how to run it.
 
-1. **Keep renders light** — Ink renders every frame. Move expensive work (file I/O, network calls) outside React
-2. **Only one `useInput` listener per screen** — multiple listeners on the same screen conflict
+## References
 
-## Skills & Resources
-
-### Available Skills
-
-- **`ink-api`** — Core Ink API (Box, Text, colors, hooks)
-- **`ink-ui`** — Ink UI component reference
-
-### External References
-
-- **Ink GitHub**: https://github.com/vadimdemedes/ink
+Skills in `.claude/skills/`: `ink-api` (core Ink API: Box, Text, colors, hooks) and `ink-ui` (Ink UI component reference). Ink itself: https://github.com/vadimdemedes/ink

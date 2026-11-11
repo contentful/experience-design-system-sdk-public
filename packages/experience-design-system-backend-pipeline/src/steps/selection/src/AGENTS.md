@@ -5,10 +5,10 @@ Runs the AI agent to decide which extracted components belong in the final CDF.
 ## What it does
 
 1. Builds a selection prompt (`skill: 'select'`, `mode: 'autonomous'`) with the full component list inlined.
-2. Invokes the agent via `createLocalCliAgentInvoker` and parses `accept_component` / `reject_component` tool calls.
+2. Invokes the agent via `createLocalCliAgentInvoker` and parses `select_component` / `reject_component` tool calls.
 3. Returns one `ComponentSelection` per decision — accepted entries pass through to generation; rejected entries carry a reason string.
 
-Empty input short-circuits with no agent call.
+Empty input short-circuits with no agent call. A timeout or a non-zero exit throws.
 
 ## Input
 
@@ -29,17 +29,18 @@ Empty input short-circuits with no agent call.
 
 ## Cache
 
-| Field       | Value                                                                                               |
-|-------------|-----------------------------------------------------------------------------------------------------|
-| **Key**     | `(componentHash, promptHash)` — SHA-256 of the component JSON + SHA-256 of the built prompt         |
-| **Value**   | `{ decision, reason }` — one row per component                                                      |
-| **Lookup**  | Per component, before agent invocation                                                              |
-| **Store**   | Per component, after successful agent invocation                                                    |
+The service accepts `onCacheLookup` and `onCacheStore` but never calls them. The import does not use `selectComponents`: it runs its own selection in `packages/experience-design-system-cli/src/tui/import/steps/06-extraction/selection.ts`, which does the caching described here.
+
+- **Key:** `(componentHash, promptHash, cliVersion)`: the component hash, a hash of the prompt text plus agent and model, and the CLI version
+- **Value:** `{ decision, reason }`, one row per component in `selection_cache`
+- **Lookup:** per component, before agent invocation; `noCache` asks again for everything
+- **Store:** new decisions, in one transaction with the accept and reject writes to `raw_components`
+
 
 ## External calls
 
-AI agent via `createLocalCliAgentInvoker` from `@contentful/experience-design-system-generation`. Timeout: `EDS_AGENT_TIMEOUT_MS` env or 5 min. No HTTP calls.
+AI agent via `createLocalCliAgentInvoker` from this package's `src/agents/`. Timeout: `EDS_AGENT_TIMEOUT_MS` env or 5 min. No HTTP calls.
 
 ## DSI contribution
 
-Narrows the component set before generation runs — expensive agent calls in Step 4 only fire for accepted components. The CLI records accepted-vs-rejected counts and reasons on command context; these appear on `dsi_cli_command_completed` and inform downstream analysis of which component shapes the agent commonly discards.
+Narrows the component set before generation runs — expensive agent calls in Step 4 only fire for accepted components. Selection results are not recorded in analytics today: the completion event has an `accepted_component_count` field, but nothing sets it. Only the extracted component count is recorded.

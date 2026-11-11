@@ -6,6 +6,7 @@ import { ControlHints } from '@tui/shared/components/ControlHints.js';
 import { StepHeader } from '@tui/shared/components/StepHeader.js';
 import { useTerminalWidth } from '@tui/use-terminal-width.js';
 import { loadTokenRows } from './load.js';
+import { tokenReviewLog, type TokenReviewOutcome } from './log.js';
 import { TOKEN_REVIEW_CONTROLS, computeColumnWindow } from './logic.js';
 
 interface TokenReviewScreenProps {
@@ -26,17 +27,19 @@ export function TokenReviewScreen({ tokensPath, onContinue, onQuit }: TokenRevie
 
   // This screen only appears when the import generates tokens. A file that could not be read is logged as an error.
   useEffect(() => {
-    startDebugRun({
-      flow: 'import/token-review',
-      step: '05-token-review',
-      menuOption: 'Token review',
-      inputs: { import_mode: 'tokens', tokens_path: tokensPath },
-    });
+    startDebugRun({ flow: 'import/token-review', step: '05-token-review', menuOption: 'Token review' });
   }, []);
 
-  const finish = (outcome: 'continued' | 'back'): void => {
+  const finish = (outcome: TokenReviewOutcome): void => {
+    const { summary, data } = tokenReviewLog({
+      tokensPath,
+      tokenCount: rows.length,
+      loadError: loaded.ok ? undefined : loaded.message,
+      outcome,
+    });
     void finishDebugRun({
-      outputs: { outcome, ...(loaded.ok ? { tokens: rows.length } : { load_error: loaded.message }) },
+      summary,
+      outputs: data,
       status: loaded.ok ? 'success' : 'error',
       exitMethod: outcome === 'continued' ? 'saved' : 'discarded',
     });
