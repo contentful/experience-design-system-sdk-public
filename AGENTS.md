@@ -13,7 +13,7 @@ Nx monorepo with four packages:
 
 The CLI extracts React/Vue/Svelte/Astro/Angular/Stencil/Web Component definitions from customer codebases using the TypeScript compiler API (ts-morph), invokes a coding agent to produce CDF artifacts, validates them against JSON schemas, and provides interactive terminal UIs (Ink) for reviewing, finalizing, and pushing them to Contentful ExO.
 
-The import pipeline runs inside `experiences import`: **extract → compose → selection agent → scope gate → generation → review → save → preview → push (apply).** When a raw token source is supplied on the token-input screen, token generation runs before component extraction and token mapping runs after generation.
+The import pipeline runs inside `experiences import`: **extract → compose → selection agent → scope gate → generation → review → save → preview → push (apply).** The first screen asks what to import: tokens and components, tokens only, or components only. When a raw token source is supplied, token generation runs alongside component extraction and token mapping runs after generation. A tokens-only import skips extraction, selection, the scope gate and generation: it generates tokens, shows them for review, then goes to save, preview and push.
 
 ### Where things live
 
@@ -35,9 +35,15 @@ Each step directory under `packages/experience-design-system-backend-pipeline/sr
 
 ```
 00-preflight → 01-welcome → 02-token-input → 03-path-validation → 04-credentials
-        → 05-token-review → 06-extraction (selection agent runs here)
+        → 06-extraction (selection agent runs here)
         → 07-scope-gate → 08-generation → 09-review → 10-flow (save → preview → push → done)
 ```
+
+Which steps a run uses depends on the choice made in `00-preflight` (the lists are in `packages/experience-design-system-cli/src/tui/import/steps/00-preflight/logic.ts`):
+
+- **Tokens and components** asks for the project folder (`01-welcome`), the tokens file (`02-token-input`), confirms the file scan (`03-path-validation`), then follows the diagram above.
+- **Components only** is the same without `02-token-input`.
+- **Tokens only** asks for the tokens file and the credentials, generates the tokens, shows them in `05-token-review`, then goes straight to `10-flow`. It skips `01-welcome`, `03-path-validation`, `06-extraction`, `07-scope-gate`, `08-generation` and `09-review`.
 
 The steps run in one process and hand data on through the session database and `ImportHandoff` (`packages/experience-design-system-types/src/handoff/index.ts`). Each step directory holds its screen component plus its logic; `06-extraction`, `08-generation` and `10-flow` also hold the code that calls the backend-pipeline. Screens shared across steps (`gate-step`, `running-step`, `error-step`, `overview-box`) are in `packages/experience-design-system-cli/src/tui/import/shared/`. The preview-validation error screen is `packages/experience-design-system-cli/src/tui/import/steps/preview-validation-error/`.
 
@@ -89,7 +95,7 @@ The session layer lives in `packages/experience-design-system-backend-pipeline/s
 - `getOrCreateSession(db, sessionFlag, name, hints)` — creates or resumes a session
 - `createStep(db, sessionId, command, inputs)` — creates a step, marking any prior pending step as interrupted
 - `updateStep(db, stepId, status, outputs, error?)` — marks a step complete or failed
-- `storeRawComponents(db, sessionId, components)` — idempotent DELETE+INSERT; replaces all raw components for the session
+- `storeRawComponents(db, sessionId, components, options?)` — idempotent DELETE+INSERT; replaces all raw components for the session (`{ preserveStatus: true }` keeps the selection decisions)
 - `loadRawComponents(db, sessionId)` — returns `RawComponentDefinition[]` from the session
 
 `configRoot()` (`packages/experience-design-system-backend-pipeline/src/persistence/src/session/helpers/config-root.ts`, overridable with `EDS_HOME`) is the single source of truth for where files go on disk: `config.json`, `pipeline.db`, `reviews/`, `state/runs.json`. Credentials are read and written by `packages/experience-design-system-backend-pipeline/src/persistence/src/credentials/`.
@@ -141,7 +147,7 @@ The output protocol for the selection agent: the agent emits JSON tool-call line
 
 `packages/experience-design-system-cli/src/tui/import/steps/06-extraction/selection.ts` runs in the CLI during the extraction stage, once extraction has stored the components in the session DB. It makes one agent call for the components it has not decided yet to decide whether each belongs in Contentful ExO as a Component Type. The decisions feed the scope gate (`packages/experience-design-system-cli/src/tui/import/steps/07-scope-gate`), where the operator confirms or changes them. `packages/experience-design-system-backend-pipeline/src/steps/selection/src/` holds the library-side selection service and review helpers.
 
-- Skips components whose decision is cached (keyed on the component, the prompt, agent, model and CLI version; cache code in `packages/experience-design-system-backend-pipeline/src/persistence/src/session/cache/selection.ts`); the `noCache` option (threaded through `packages/experience-design-system-cli/app.tsx`; there is no CLI flag for it) asks again for everything
+- Skips components whose decision is cached (keyed on the component, the prompt, agent, model and CLI version; cache code in `packages/experience-design-system-backend-pipeline/src/persistence/src/session/cache/selection.ts`); the `noCache` option (threaded through `packages/experience-design-system-cli/app.tsx`; there is no CLI flag for it) asks again for everything. The TUI always sets `noCache: true`, so in practice every import asks again
 - Times out after 5 minutes (`EDS_AGENT_TIMEOUT_MS`), and writes nothing if the call fails
 - Stores accept and reject decisions, with rationale, in the pipeline DB (`raw_components.reject_reason`)
 - `--prompt select=<file-or-text>` overrides its prompt
@@ -159,16 +165,22 @@ The wizard's `10-flow` step previews and pushes the saved CDF. The CLI side is `
 All TUI components are standard React functional components rendered by Ink. They live in `packages/experience-design-system-cli/src/tui/`; see `packages/experience-design-system-cli/DSI_TUI_ARCHITECTURE.md` for the engineering standard:
 
 - `packages/experience-design-system-cli/src/tui/home/` — the home screen
-- `packages/experience-design-system-cli/src/tui/import/` — the wizard: `packages/experience-design-system-backend-pipeline/src/steps/` (see the step machine above) and `packages/experience-design-system-backend-pipeline/src/steps/shared/`
+- `packages/experience-design-system-cli/src/tui/import/` — the wizard: `packages/experience-design-system-cli/src/tui/import/steps/` (see the step machine above) and `packages/experience-design-system-cli/src/tui/import/shared/`
 - `packages/experience-design-system-cli/src/tui/settings/` — configuration (agents, project), debug mode and analytics opt-in screens
 - `packages/experience-design-system-cli/src/tui/help/` — help screens
 - `packages/experience-design-system-cli/src/tui/shared/components/` — `ControlHints`, `StepHeader`, `FieldForm`, `ClearableTextInput`
 
 Colors come from the shared `PALETTE` in `packages/experience-design-system-cli/src/tui/theme.ts`, imported as `@tui/theme.js` (the `@tui/*` alias maps to `src/tui/*`; it is set in `tsconfig.json` and `vitest.config.ts`). Do not hardcode colours or define another palette. Control hints use `ControlHints` and the import's step tabs use `StepHeader`, both in `packages/experience-design-system-cli/src/tui/shared/components/`.
 
-When writing TUI tests, use `ink-testing-library`. Set `NO_COLOR=1` in the environment before running tests to suppress ANSI escape codes. Strip ANSI before snapshot assertions if the test renders raw strings.
+When writing TUI tests, use `ink-testing-library`. The test config sets `FORCE_COLOR=3` (`packages/experience-design-system-cli/vitest.config.ts`), so `NO_COLOR` is ignored and rendered output contains ANSI colour codes. Strip them before comparing text (the pattern is in `packages/experience-design-system-cli/test/e2e/harness.ts`).
 
-The scope gate (`packages/experience-design-system-cli/src/tui/import/steps/07-scope-gate`) shows two columns at 100 or more terminal columns (`packages/experience-design-system-cli/src/tui/import/steps/07-scope-gate/columns.ts`) and one column below that.
+The scope gate (`packages/experience-design-system-cli/src/tui/import/steps/07-scope-gate`) shows two columns (components and tokens) when there are tokens and the terminal is 100 or more columns wide (`packages/experience-design-system-cli/src/tui/import/steps/07-scope-gate/columns.ts`) and one column otherwise.
+
+## Debug Logs and the Support Zip
+
+Every import step writes a markdown debug log through `startDebugRun` and `finishDebugRun` in `packages/experience-design-system-cli/src/tui/debug-store.ts`. The logs go to `<base>/.contentful/<date>-session-<n>/debug/import/<NN-step>/` and are written only while Debug Mode is on, which it is by default. When you add or change an import step, give it a log the same way. Never write the CMA token into a log; the credentials log has a test for that (`packages/experience-design-system-cli/test/import/04-credentials/credentials-log.test.ts`).
+
+When a step ends on the shared error screen (`ErrorStep`), `packages/experience-design-system-cli/src/tui/support-bundle.ts` zips the session's logs next to the `debug` folder and shows where the file is, so the user can send it to Contentful support. It first waits for the failing step's own log to finish writing (`settleDebugLogs`), and builds the zip with `packages/experience-design-system-cli/src/tui/zip.ts`, which needs no extra dependency.
 
 ## Session Persistence
 
@@ -178,25 +190,34 @@ Run records are appended to `~/.contentful/experience-design-system-cli/state/ru
 
 ## Testing
 
-- CLI tests live in `packages/experience-design-system-cli/test/`, mirroring `packages/experience-design-system-backend-pipeline/src/`
+- CLI tests live in `packages/experience-design-system-cli/test/`, laid out like the CLI's own `src/` (for example `test/import/` for `src/tui/import/steps/`). The end-to-end scenarios are in `test/e2e/` (see below)
 - Backend-pipeline tests live next to each module (`src/steps/*/test/`, `packages/experience-design-system-backend-pipeline/src/persistence/test/`) and in `packages/experience-design-system-backend-pipeline/test/`
 - Vitest, no Jest
 - Tests that run extraction or generation must set `EDS_PIPELINE_DB_PATH` to an isolated temp path
 
+## End-to-End Import Tests
+
+`packages/experience-design-system-cli/test/e2e/` renders the real app, types the keystrokes a person would, and goes from the first screen to the Done screen for each import choice (both, components only, tokens only). Only the agent and Contentful are fake: a fake `claude` binary (the pipeline reads `EDS_AGENT_BINARY_CLAUDE`) and a local server whose address is typed in as the API host. Everything else is real, and each scenario checks the saved CDF against the schema.
+
+- The fixture project in `test/e2e/fixtures/` is a copy of another project's components and tokens file. Do not edit it; lint and typecheck skip it.
+- Run one scenario with `pnpm nx test experience-design-system-cli -- -t "tokens only"` (or `"components only"`, `"both"`).
+- A screen attaches its key handler just after it draws, so a key sent too early is lost on a slow machine. The harness waits for each screen to stop redrawing after `waitForText`; keep using it before pressing a key.
+
 ## Commit Convention
 
-Conventional Commits are enforced by a pre-commit hook:
+Conventional Commits are enforced by commitlint in the `commit-msg` hook (`.husky/commit-msg`):
 
 ```
 type(scope): description
 ```
 
-Valid types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `perf`, `ci`, `build`, `revert`
+Valid types: `feat`, `fix`, `chore`, `docs`, `style`, `refactor`, `test`, `perf`, `ci`, `build`, `revert`
 
 ## Pull Requests
 
 - Base branch is `development`, not `main`. Branch off `development` and open PRs against `development`.
-- `main` is the release branch — it's what CI publishes stable versions from. Never branch off it or target it directly.
+- PR titles follow Conventional Commits and end with the Jira ticket, for example `[INTEG-1234]`. CI checks both.
+- `main` is the release branch — it's what CI publishes stable versions from. Never branch off it, and only release PRs from `development` target it (see "Release Process" in `CONTRIBUTING.md`).
 
 ## Sharp Edges
 
