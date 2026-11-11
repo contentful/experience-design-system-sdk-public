@@ -108,6 +108,7 @@ function initialFlowState(start: FlowStart): FlowState {
     tokenSessionId: extraction?.tokenSessionId ?? start.tokensOnly?.tokenSessionId ?? null,
     tokenCount: extraction?.tokenCount ?? start.tokensOnly?.tokenCount ?? 0,
     extractSessionId: extraction?.sessionId ?? null,
+    existingEntitiesPath: extraction?.existingEntitiesPath ?? null,
     generateSessionId: generation?.route === 'review' ? generation.sessionId : null,
     generatedCount: generation?.route === 'review' ? generation.generatedCount : 0,
     generatedAcceptedCount: 0,
@@ -231,6 +232,7 @@ export function createFlowController(start: FlowStart, deps: FlowDeps): FlowCont
         {
           state,
           extractSessionId: state.extractSessionId,
+          existingEntitiesPath: state.existingEntitiesPath,
           tokensPath: state.tokensPath,
           spaceId: state.spaceId,
           environmentId: state.environmentId,
@@ -274,6 +276,7 @@ export function createFlowController(start: FlowStart, deps: FlowDeps): FlowCont
     const written = await runPrintFiles(
       {
         extractSessionId: state.extractSessionId,
+        existingEntitiesPath: state.existingEntitiesPath,
         outDir: path,
         ...(skipGate ? { skipGate: true } : {}),
         ...(state.tokenSessionId ? { tokenSessionId: state.tokenSessionId } : {}),

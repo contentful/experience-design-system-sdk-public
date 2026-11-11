@@ -36,6 +36,7 @@ export type FlowState = {
   tokenSessionId: string | null;
   tokenCount: number;
   extractSessionId: string | null;
+  existingEntitiesPath?: string | null;
   generateSessionId: string | null;
   generatedCount: number;
   generatedAcceptedCount: number;

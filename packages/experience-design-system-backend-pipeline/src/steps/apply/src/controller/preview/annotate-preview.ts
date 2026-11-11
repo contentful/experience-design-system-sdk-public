@@ -7,8 +7,9 @@ export type { PreviewAnnotation };
 export interface AnnotatePreviewRequest {
   preview: ServerPreviewResponse;
   localNames: readonly string[];
+  componentIds?: ReadonlyMap<string, string>;
 }
 
 export function annotatePreview(request: AnnotatePreviewRequest): Map<string, PreviewAnnotation> {
-  return impl(request.preview, request.localNames);
+  return impl(request.preview, request.localNames, request.componentIds);
 }

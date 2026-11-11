@@ -19,3 +19,10 @@ export async function readExistingContentfulEntitiesFromSession(
     return undefined;
   }
 }
+
+export async function readExistingComponentIdsFromSession(path: string | null | undefined): Promise<string[]> {
+  const entities = await readExistingContentfulEntitiesFromSession({ path: path ?? undefined });
+  return (entities?.components ?? []).flatMap((component) =>
+    typeof component?.sys?.id === 'string' ? [component.sys.id] : [],
+  );
+}

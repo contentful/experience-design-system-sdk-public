@@ -11,13 +11,14 @@ export type UseReviewPreviewOptions = {
   loading: boolean;
   livePreview: boolean;
   sessionId: string;
+  existingEntitiesPath?: string | null;
   tokensPath: string;
   spaceId: string;
   environmentId: string;
   cmaToken: string;
   host: string;
   deleteAllComponents?: boolean;
-  onResult?: (response: ServerPreviewResponse) => void;
+  onResult?: (response: ServerPreviewResponse, componentIds?: ReadonlyMap<string, string>) => void;
 };
 
 export type UseReviewPreviewResult = {
@@ -32,6 +33,7 @@ export function useReviewPreview({
   loading,
   livePreview,
   sessionId,
+  existingEntitiesPath,
   tokensPath,
   spaceId,
   environmentId,
@@ -44,16 +46,17 @@ export function useReviewPreview({
   const [removedComponents, setRemovedComponents] = useState<ComponentTypeSummary[]>([]);
 
   const handleResult = useCallback(
-    (response: ServerPreviewResponse | null): void => {
+    (response: ServerPreviewResponse | null, componentIds?: ReadonlyMap<string, string>): void => {
       if (!response) return;
       setPreviewAnnotations(
         applyPreviewAnnotations(
           response,
           components.map((component) => component.key),
+          componentIds,
         ),
       );
       setRemovedComponents(response.components.removed ?? []);
-      onResult?.(response);
+      onResult?.(response, componentIds);
     },
     [components, onResult],
   );
@@ -61,6 +64,7 @@ export function useReviewPreview({
   const livePreviewHook = useLivePreview({
     enabled: livePreview,
     sessionId,
+    existingEntitiesPath,
     tokensPath,
     spaceId,
     environmentId,

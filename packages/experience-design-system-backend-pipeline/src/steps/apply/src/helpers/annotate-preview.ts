@@ -9,13 +9,15 @@ import type { PreviewAnnotation } from '../types/preview-annotation.js';
 export function annotatePreview(
   preview: ServerPreviewResponse,
   localNames: readonly string[],
+  componentIds: ReadonlyMap<string, string> = new Map(),
 ): Map<string, PreviewAnnotation> {
   const out = new Map<string, PreviewAnnotation>();
   const unchanged = new Set(preview.components.unchanged);
+  const sourceNames = new Map([...componentIds].map(([name, id]) => [id, name]));
 
   const changedNames = new Set<string>();
   for (const item of preview.components.changed) {
-    const name = item.current?.name;
+    const name = sourceNames.get(item.current?.id) ?? item.current?.name;
     if (typeof name !== 'string') continue;
     changedNames.add(name);
     if (item.changeClassification?.classification === 'breaking') {
@@ -27,14 +29,15 @@ export function annotatePreview(
 
   const removedNames = new Set<string>();
   for (const entity of preview.components.removed) {
-    if (entity.name) {
-      removedNames.add(entity.name);
-      out.set(entity.name, 'removed');
+    const name = sourceNames.get(entity.id) ?? entity.name;
+    if (name) {
+      removedNames.add(name);
+      out.set(name, 'removed');
     }
   }
 
   for (const name of localNames) {
-    if (unchanged.has(name)) continue;
+    if (unchanged.has(componentIds.get(name) ?? name)) continue;
     if (changedNames.has(name)) continue;
     if (removedNames.has(name)) continue;
     if (out.has(name)) continue;

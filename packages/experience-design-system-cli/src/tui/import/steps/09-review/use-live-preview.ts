@@ -6,12 +6,13 @@ import { runLivePreview } from './run-live-preview.js';
 export type UseLivePreviewOptions = {
   enabled: boolean;
   sessionId: string;
+  existingEntitiesPath?: string | null;
   tokensPath: string;
   spaceId: string;
   environmentId: string;
   cmaToken: string;
   host: string;
-  onResult: (response: ServerPreviewResponse | null) => void;
+  onResult: (response: ServerPreviewResponse | null, componentIds?: ReadonlyMap<string, string>) => void;
   debounceMs?: number;
   /** Preview an empty-but-present CDF document (delete-all diff) when nothing
    *  is accepted, so the final-review UI can show what a push would delete. */
@@ -106,6 +107,7 @@ export function useLivePreview(opts: UseLivePreviewOptions): UseLivePreviewRetur
     try {
       const result = await runLivePreview({
         sessionId: current.sessionId,
+        existingEntitiesPath: current.existingEntitiesPath,
         tokensPath: current.tokensPath,
         spaceId: current.spaceId,
         environmentId: current.environmentId,
@@ -116,7 +118,7 @@ export function useLivePreview(opts: UseLivePreviewOptions): UseLivePreviewRetur
       });
       // Discard stale responses (generation tag).
       if (result.generation !== latestRef.current) return;
-      current.onResult(result.response);
+      current.onResult(result.response, result.componentIds);
     } catch (err) {
       if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
         setDisabled(true);

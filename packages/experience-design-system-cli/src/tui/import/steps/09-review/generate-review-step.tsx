@@ -99,6 +99,7 @@ import { LivePreviewSummary } from './components/LivePreviewSummary.js';
 
 type GenerateReviewStepProps = {
   extractSessionId: string | null;
+  existingEntitiesPath?: string | null;
   tokenSessionId?: string | null;
   onFinalize: (accepted: number, rejected: number, unresolved: number) => void;
   onQuit: () => void;
@@ -405,11 +406,15 @@ function buildBreakingRows(breakingChanges: BreakingComponent[]): BreakingRow[] 
   return out;
 }
 
-function deriveBreakingChanges(response: ServerPreviewResponse): BreakingComponent[] {
+function deriveBreakingChanges(
+  response: ServerPreviewResponse,
+  componentIds: ReadonlyMap<string, string> = new Map(),
+): BreakingComponent[] {
+  const sourceNames = new Map([...componentIds].map(([name, id]) => [id, name]));
   const out: BreakingComponent[] = [];
   for (const item of response.components.changed ?? []) {
     if (item.changeClassification?.classification !== 'breaking') continue;
-    const componentName = item.current?.name;
+    const componentName = sourceNames.get(item.current?.id) ?? item.current?.name;
     if (typeof componentName !== 'string') continue;
     out.push({
       componentName,
@@ -435,6 +440,7 @@ export function GenerateReviewStep(props: GenerateReviewStepProps): React.ReactE
 
 function GenerateReviewStepView({
   extractSessionId,
+  existingEntitiesPath,
   tokenSessionId,
   onFinalize,
   onQuit,
@@ -557,25 +563,27 @@ function GenerateReviewStepView({
     loading,
     livePreview,
     sessionId: extractSessionId,
+    existingEntitiesPath,
     tokensPath,
     spaceId,
     environmentId,
     cmaToken,
     host,
     deleteAllComponents: acceptedCountForPreview === 0,
-    onResult: (response) => {
+    onResult: (response, componentIds) => {
       const nextRemoved = response.components.removed ?? [];
       if (!removedBannerDefaultedRef.current && nextRemoved.length > 0) {
         removedBannerDefaultedRef.current = true;
         setRemovedBannerCollapsed(nextRemoved.length > 5);
       }
-      setBreakingChanges(deriveBreakingChanges(response));
+      setBreakingChanges(deriveBreakingChanges(response, componentIds));
     },
   });
 
   const { finalizePreview, handleFinalizeConfirm } = useReviewFinalize({
     showFinalize,
     extractSessionId,
+    existingEntitiesPath,
     tokensPath,
     spaceId,
     environmentId,

@@ -1,11 +1,12 @@
 import type { ServerPreviewResponse } from '@contentful/experience-design-system-types';
-import { buildCDF } from '@contentful/experience-design-system-types';
+import { buildCDF, resolveComponentIds } from '@contentful/experience-design-system-types';
 import { ImportApiClient } from '@contentful/experience-design-system-backend-pipeline';
 import { readTokensFromPath, toCDFTokens } from '@contentful/experience-design-system-backend-pipeline';
 import {
   backfillUnclassifiedProps,
   loadCDFComponents,
   openPipelineDb,
+  readExistingComponentIdsFromSession,
 } from '@contentful/experience-design-system-backend-pipeline';
 import { cliUserAgent } from '../../../user-agent.js';
 
@@ -19,10 +20,12 @@ class TimeoutError extends Error {
 export type LivePreviewResult = {
   generation: number;
   response: ServerPreviewResponse | null;
+  componentIds?: ReadonlyMap<string, string>;
 };
 
 export type RunLivePreviewOptions = {
   sessionId: string;
+  existingEntitiesPath?: string | null;
   tokensPath: string;
   spaceId: string;
   environmentId: string;
@@ -94,7 +97,15 @@ export async function runLivePreview(opts: RunLivePreviewOptions): Promise<LiveP
     tokens = await readTokensFromPath({ flag: 'tokens', path: tokensPath });
   }
 
-  const cdf = buildCDF(components, toCDFTokens(tokens), { deleteAll: opts.deleteAllComponents === true })!;
+  const existingComponentIds = await readExistingComponentIdsFromSession(opts.existingEntitiesPath);
+  const componentIds = resolveComponentIds(
+    components.map((component) => component.key),
+    existingComponentIds,
+  );
+  const cdf = buildCDF(components, toCDFTokens(tokens), {
+    deleteAll: opts.deleteAllComponents === true,
+    existingComponentIds,
+  })!;
 
   const client = new ImportApiClient({ host, cmaToken, spaceId, environmentId, userAgent: cliUserAgent() });
   const startedAt = Date.now();
@@ -114,7 +125,7 @@ export async function runLivePreview(opts: RunLivePreviewOptions): Promise<LiveP
         // best-effort
       }
     }
-    return { generation, response };
+    return { generation, response, componentIds };
   } finally {
     if (timeoutHandle) clearTimeout(timeoutHandle);
   }

@@ -114,6 +114,23 @@ describe('the flow controller', () => {
     steps.recordRun.mockResolvedValue('run-9');
   });
 
+  it('passes the fetched component snapshot from the handoff to saving, preview and review state', async () => {
+    const existingEntitiesPath = '/example-run/.existing-entities.json';
+    const controller = createFlowController(
+      start({
+        handoff: { ...handoff(review), extraction: { ...extraction, existingEntitiesPath } },
+      }),
+      deps(),
+    );
+    expect(controller.getState().existingEntitiesPath).toBe(existingEntitiesPath);
+
+    controller.finalize(4, 0, 0);
+    await controller.submitPath('/out');
+
+    expect(steps.runPrintFiles.mock.calls[0]![0]).toMatchObject({ existingEntitiesPath });
+    expect(steps.runPreview.mock.calls[0]![0]).toMatchObject({ existingEntitiesPath });
+  });
+
   describe('clearing the terminal between steps', () => {
     it('does so before listeners hear about the new step, so the clear cannot wipe what they draw', () => {
       const order: string[] = [];

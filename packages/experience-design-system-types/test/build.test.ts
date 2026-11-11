@@ -36,6 +36,81 @@ describe('buildCDF', () => {
   });
 });
 
+describe('buildCDF existing component IDs', () => {
+  const build = (keys: string[], existingComponentIds: string[]) =>
+    buildCDF(
+      keys.map((key) => ({ key, entry: CARD.entry })),
+      [],
+      { existingComponentIds },
+    );
+
+  it('reuses a unique existing ID when only its case differs', () => {
+    expect(build(['Card'], ['card'])).toEqual({ $schema: CDF_SCHEMA_URL, card: CARD.entry });
+  });
+
+  it('prefers an exact ID even when other IDs differ only in case', () => {
+    expect(build(['Card'], ['card', 'Card', 'CARD'])).toEqual({ $schema: CDF_SCHEMA_URL, Card: CARD.entry });
+  });
+
+  it('keeps the generated ID when fetched IDs are ambiguous, regardless of their order', () => {
+    for (const ids of [
+      ['card', 'CARD'],
+      ['CARD', 'card'],
+    ]) {
+      expect(build(['Card'], ids)).toEqual({ $schema: CDF_SCHEMA_URL, Card: CARD.entry });
+    }
+  });
+
+  it('keeps new IDs and does not match punctuation or display names', () => {
+    expect(build(['NewCard', 'InfoCard'], ['Info Card'])).toEqual({
+      $schema: CDF_SCHEMA_URL,
+      NewCard: CARD.entry,
+      InfoCard: CARD.entry,
+    });
+  });
+
+  it('never merges two generated components into the same existing ID', () => {
+    expect(Object.keys(build(['Card', 'CARD'], ['card'])!)).toEqual(['$schema', 'Card', 'CARD']);
+    expect(Object.keys(build(['Card', 'card'], ['card'])!)).toEqual(['$schema', 'Card', 'card']);
+  });
+
+  it('rewrites slot references to the same IDs without changing source definitions or tokens', () => {
+    const parent = {
+      key: 'Panel',
+      entry: {
+        $type: 'component' as const,
+        $properties: {},
+        $slots: { children: { $allowedComponents: ['Card', 'EXTERNAL', 'NewCard'] } },
+      },
+    };
+    const doc = buildCDF([parent, CARD], [PRIMARY_COLOR], {
+      existingComponentIds: ['panel', 'card', 'external'],
+    });
+
+    expect((doc?.panel as CDFComponentEntry).$slots?.children?.$allowedComponents).toEqual([
+      'card',
+      'external',
+      'NewCard',
+    ]);
+    expect(parent.entry.$slots.children.$allowedComponents).toEqual(['Card', 'EXTERNAL', 'NewCard']);
+    expect((doc?.color as Record<string, unknown>).brand).toEqual({ primary: PRIMARY_COLOR.entry });
+  });
+
+  it('resolves differently cased references to an external component independently', () => {
+    const doc = buildCDF(
+      [
+        {
+          key: 'Panel',
+          entry: { ...CARD.entry, $slots: { children: { $allowedComponents: ['External', 'EXTERNAL'] } } },
+        },
+      ],
+      [],
+      { existingComponentIds: ['external'] },
+    );
+    expect((doc?.Panel as CDFComponentEntry).$slots?.children?.$allowedComponents).toEqual(['external', 'external']);
+  });
+});
+
 // The API rejects a token property with no kind, after the preview has passed. Saving, previewing and pushing all build
 // their document here, so what must hold is that none of them can send one: the kind is taken from the token file, or
 // the property stops being a token property.

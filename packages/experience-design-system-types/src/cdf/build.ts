@@ -1,4 +1,5 @@
 import { repairTokenKinds } from './repair-token-kinds.js';
+import { resolveCDFComponentIds } from './component-ids.js';
 import { CDF_SCHEMA_URL } from './schema.js';
 import type { CDFComponentEntry, CDFTokenEntry, CDFValidationError } from './types.js';
 
@@ -52,12 +53,12 @@ export interface CDFDocument {
 export function buildCDF(
   components: Array<{ key: string; entry: CDFComponentEntry }>,
   tokens: Array<{ path: string; entry: CDFTokenEntry }>,
-  opts: { deleteAll?: boolean; onRepair?: (message: string) => void } = {},
+  opts: { deleteAll?: boolean; onRepair?: (message: string) => void; existingComponentIds?: readonly string[] } = {},
 ): CDFDocument | undefined {
   if (components.length === 0 && tokens.length === 0 && !opts.deleteAll) return undefined;
 
   const doc: CDFDocument = { $schema: CDF_SCHEMA_URL };
-  for (const { key, entry } of components) {
+  for (const { key, entry } of resolveCDFComponentIds(components, opts.existingComponentIds ?? [])) {
     setAtPath(doc, key, stripUnsupportedSlotFields(repairTokenKinds(entry, key, tokens, opts.onRepair)));
   }
   for (const { path, entry } of resolveTokenPathCollisions(tokens)) {

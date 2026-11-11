@@ -50,6 +50,7 @@ export function FlowScreen({
         return (
           <GenerateReviewStep
             extractSessionId={state.extractSessionId}
+            existingEntitiesPath={state.existingEntitiesPath}
             tokenSessionId={state.tokenSessionId}
             livePreview={livePreview}
             spaceId={state.spaceId}

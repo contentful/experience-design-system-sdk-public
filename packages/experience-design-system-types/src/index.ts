@@ -12,6 +12,7 @@ export {
   CDFSlotSchema,
   CDFTokenSchema,
   buildCDF,
+  resolveComponentIds,
   buildFilteredCDF,
   stripUnsupportedSlotFields,
   validateSlotReferences,
