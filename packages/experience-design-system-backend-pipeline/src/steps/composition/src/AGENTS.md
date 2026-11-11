@@ -30,12 +30,11 @@ Resolves parent-child relationships between extracted components and wires child
 
 ## Cache
 
-| Field       | Value                                                                                               |
-|-------------|-----------------------------------------------------------------------------------------------------|
-| **Key**     | SHA-256 of (sorted `path+content` hashes of capped candidate files) + agent name                    |
-| **Value**   | Raw agent stdout (JSONL of `map_edge` tool calls)                                                   |
-| **Lookup**  | Before invoking the agent; skipped when `forceAgent` is true                                        |
-| **Store**   | After a successful agent run (`exitCode === 0`)                                                     |
+- **Key:** SHA-256 of the sorted `path+content` hashes of the capped candidate files, plus the agent name
+- **Value:** the agent's raw stdout (JSONL of `map_edge` tool calls)
+- **Lookup:** before invoking the agent; skipped when `forceAgent` is true
+- **Store:** after a successful agent run (`exitCode === 0`)
+
 
 ## External calls
 
