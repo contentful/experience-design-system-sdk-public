@@ -55,7 +55,7 @@ Run records are appended to `~/.contentful/experience-design-system-cli/state/ru
 
 ### Import options
 
-`experiences import` opens the TUI and takes `--agent`, `--prompt <stage=value>` and `--watch` (restart the TUI on source changes, repo checkout only); the project and tokens file are collected on the TUI's own screens. The model is passed as `--agent agent:model`; agent and model resolve `--agent` → the agent saved in the TUI settings (`config.json`, `packages/experience-design-system-cli/src/tui/settings/configuration/agents/agent-store.ts`) → the built-in default (see `resolveAgentChoice` in `packages/experience-design-system-cli/src/tui/import/steps/06-extraction/logic.ts`). `EDS_AGENT_MODEL_<AGENT>` sets a per-agent model (`packages/experience-design-system-backend-pipeline/src/agents/helpers/resolution/resolve-agent-model.ts`).
+`experiences import` opens the TUI; the project and tokens file are collected on the TUI's own screens. Agent and model resolve to the agent saved in the TUI settings (`config.json`, `packages/experience-design-system-cli/src/tui/settings/configuration/agents/agent-store.ts`) → the built-in default (see `resolveAgentChoice` in `packages/experience-design-system-cli/src/tui/import/steps/06-extraction/logic.ts`). `EDS_AGENT_MODEL_<AGENT>` sets a per-agent model (`packages/experience-design-system-backend-pipeline/src/agents/helpers/resolution/resolve-agent-model.ts`).
 
 ## Build System
 
@@ -150,7 +150,6 @@ The output protocol for the selection agent: the agent emits JSON tool-call line
 - Skips components whose decision is cached (keyed on the component, the prompt, agent, model and CLI version; cache code in `packages/experience-design-system-backend-pipeline/src/persistence/src/session/cache/selection.ts`); the `noCache` option (threaded through `packages/experience-design-system-cli/app.tsx`; there is no CLI flag for it) asks again for everything. The TUI always sets `noCache: true`, so in practice every import asks again
 - Times out after 5 minutes (`EDS_AGENT_TIMEOUT_MS`), and writes nothing if the call fails
 - Stores accept and reject decisions, with rationale, in the pipeline DB (`raw_components.reject_reason`)
-- `--prompt select=<file-or-text>` overrides its prompt
 
 **Selection criteria**: accept any component that renders visible UI — atoms, molecules, and organisms are all valid Component Types in ExO. Reject only: React hooks, pure context providers, A/B testing or variant-routing wrappers (whose _entire_ purpose is routing), analytics trackers, security utilities. A component is not rejected merely because it has few props, is low-level, or contains some personalization-related props.
 
