@@ -151,10 +151,20 @@ Extraction lives in `packages/experience-design-system-backend-pipeline/src/step
 
 ## Branching and Deployment
 
-- **`development`**: the default integration branch. Branch from it and open PRs against it. Pushes run CI (lint, test, quality), and PRs into `development` publish dev builds.
-- **`main`**: production, updated by release PRs from `development`. Every push runs a stable, conventional-commit-driven release (see Release Process).
-- **`canary`**: pre-release integration. Every push publishes a tagged `X.Y.Z-alpha.N` prerelease (npm dist-tag `canary`) to GitHub Packages. The release step first syncs `main` into `canary`, so canary always includes everything on main.
-- **Any other branch or PR**: no naming convention is enforced. Each PR (and each push to a non-main, non-canary branch that CI runs on) publishes a throwaway, SHA-stamped prerelease (dist-tag `dev`) for the Nx-affected packages only, with no git commit or tag. If nothing is affected, the step does nothing.
+```mermaid
+flowchart LR
+    F["your branch"] -->|"PR"| D["development"]
+    D -->|"release PR<br/>(merge commit, never squash)"| M["main"]
+    M -->|"back-merge PR<br/>(merge commit)"| D
+    M -.->|"synced into canary<br/>before each canary release"| C["canary"]
+```
+
+| Branch                       | Purpose                                              | What a push or PR publishes                                                                                          |
+| ---------------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `development`                | Default integration branch; branch from it, PR into it | CI (lint, test, quality). PRs into it publish dev builds                                                             |
+| `main`                       | Production, updated by release PRs from `development` | A stable, conventional-commit-driven release (see Release Process)                                                   |
+| `canary`                     | Pre-release integration                              | A tagged `X.Y.Z-alpha.N` prerelease (dist-tag `canary`) on GitHub Packages; `main` is synced in first                |
+| Any other branch or PR       | No naming convention enforced                        | A throwaway, SHA-stamped prerelease (dist-tag `dev`) for the Nx-affected packages only, with no commit or tag; nothing if none are affected |
 
 ## Pull Requests
 
