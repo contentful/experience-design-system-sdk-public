@@ -10,7 +10,6 @@ import {
   parsePreviewValidationErrors,
   patchReviewStateWithValidationErrors,
   readTokensFromPath,
-  loadCDFComponentIds,
   recordContentfulContext,
   seedCDFFromPreviewResponse,
   seedDefaultsFromChangedItems,
@@ -34,7 +33,7 @@ type PreviewClient = {
   /** Request id of the most recent response, used by `recordContentfulContext` for analytics correlation. */
   getLastRequestId(): string | undefined;
 };
-type ComponentRow = { key: string; id?: string; entry: CDFComponentEntry };
+type ComponentRow = { key: string; entry: CDFComponentEntry };
 
 /** The outside world `runPreview` talks to, so each branch can be tested without a database or a network. */
 export interface PreviewDeps {
@@ -75,13 +74,9 @@ async function handlePreview422(
   err: ApiError,
   extractSessionId: string | null,
   patchFn: PreviewDeps['patchReviewState'],
-  sourceNames: ReadonlyMap<string, string>,
 ): Promise<Preview422Outcome> {
   if (err.status !== 422) return { kind: 'not-422' };
-  const errors = parsePreviewValidationErrors(err.body).map((error) => ({
-    ...error,
-    componentName: sourceNames.get(error.componentName) ?? error.componentName,
-  }));
+  const errors = parsePreviewValidationErrors(err.body);
   if (errors.length === 0) return { kind: 'unparseable', message: err.message };
 
   let missingNames: string[] = [];
@@ -113,7 +108,6 @@ export async function runPreview(input: RunPreviewInput, deps: PreviewDeps): Pro
   // context so a failed preview still carries space/env in the failure event.
   setCommandContext({ space_key: input.spaceId, environment_key: input.environmentId });
 
-  const sourceNames = new Map<string, string>();
   try {
     const client = deps.createClient({
       cmaToken: input.cmaToken,
@@ -126,7 +120,6 @@ export async function runPreview(input: RunPreviewInput, deps: PreviewDeps): Pro
     if (input.extractSessionId) {
       const db = deps.openDb();
       try {
-        for (const [name, id] of loadCDFComponentIds(db, input.extractSessionId)) sourceNames.set(id, name);
         backfillUnclassifiedProps(db, input.extractSessionId);
         components = loadCDFComponents(db, input.extractSessionId);
       } finally {
@@ -136,8 +129,7 @@ export async function runPreview(input: RunPreviewInput, deps: PreviewDeps): Pro
     let tokens: DTCGTokenEntry[] = [];
     if (input.tokensPath) tokens = await deps.readTokens(input.tokensPath);
 
-    const cdfOptions = { deleteAll: input.deleteAll };
-    let cdf = buildCDF(components, toCDFTokens(tokens), cdfOptions)!;
+    let cdf = buildCDF(components, toCDFTokens(tokens), { deleteAll: input.deleteAll })!;
     let preview = await client.previewImport(cdf);
 
     if (input.extractSessionId) {
@@ -152,9 +144,9 @@ export async function runPreview(input: RunPreviewInput, deps: PreviewDeps): Pro
               }>
             ).map((row) => row.name),
           );
-          const falseRemovals = preview.components.removed
-            .map((removed) => ({ ...removed, name: sourceNames.get(removed.id) ?? removed.name }))
-            .filter((removed) => localNames.has(removed.name));
+          const falseRemovals = preview.components.removed.filter((removed) =>
+            localNames.has(removed.id ?? removed.name),
+          );
           if (falseRemovals.length > 0) {
             const seeded = seedCDFFromPreviewResponse(db, input.extractSessionId, falseRemovals);
             if (seeded > 0) needsRepreview = true;
@@ -162,17 +154,13 @@ export async function runPreview(input: RunPreviewInput, deps: PreviewDeps): Pro
         }
 
         if (preview.components.changed.length > 0) {
-          const changed = preview.components.changed.map((item) => ({
-            ...item,
-            current: { ...item.current, name: sourceNames.get(item.current.id) ?? item.current.name },
-          }));
-          const seededDefaults = seedDefaultsFromChangedItems(db, input.extractSessionId, changed);
+          const seededDefaults = seedDefaultsFromChangedItems(db, input.extractSessionId, preview.components.changed);
           if (seededDefaults > 0) needsRepreview = true;
         }
 
         if (needsRepreview) {
           components = loadCDFComponents(db, input.extractSessionId);
-          cdf = buildCDF(components, toCDFTokens(tokens), cdfOptions)!;
+          cdf = buildCDF(components, toCDFTokens(tokens), { deleteAll: input.deleteAll })!;
           preview = await client.previewImport(cdf);
         }
       } finally {
@@ -206,16 +194,11 @@ export async function runPreview(input: RunPreviewInput, deps: PreviewDeps): Pro
       ...clearedValidationErrorState(),
     };
   } catch (e) {
-    return previewFailure(e, input, deps, sourceNames);
+    return previewFailure(e, input, deps);
   }
 }
 
-async function previewFailure(
-  e: unknown,
-  input: RunPreviewInput,
-  deps: PreviewDeps,
-  sourceNames: ReadonlyMap<string, string>,
-): Promise<FlowPatch> {
+async function previewFailure(e: unknown, input: RunPreviewInput, deps: PreviewDeps): Promise<FlowPatch> {
   if (e instanceof ApiError) {
     if (e.status === 401 || e.status === 403) {
       let bodyMsg = '';
@@ -251,7 +234,7 @@ async function previewFailure(
           `\nIf using a custom host configuration, make sure the space exists on that host.`,
       };
     }
-    const outcome = await handlePreview422(e, input.extractSessionId, deps.patchReviewState, sourceNames);
+    const outcome = await handlePreview422(e, input.extractSessionId, deps.patchReviewState);
     if (outcome.kind === 'validation-error') {
       return {
         step: 'preview-validation-error',

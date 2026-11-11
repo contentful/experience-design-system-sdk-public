@@ -50,15 +50,15 @@ export interface CDFDocument {
  * given one: the API rejects it, and the preview does not notice. `onRepair` hears about each repair.
  */
 export function buildCDF(
-  components: Array<{ key: string; id?: string; entry: CDFComponentEntry }>,
+  components: Array<{ key: string; entry: CDFComponentEntry }>,
   tokens: Array<{ path: string; entry: CDFTokenEntry }>,
   opts: { deleteAll?: boolean; onRepair?: (message: string) => void } = {},
 ): CDFDocument | undefined {
   if (components.length === 0 && tokens.length === 0 && !opts.deleteAll) return undefined;
 
   const doc: CDFDocument = { $schema: CDF_SCHEMA_URL };
-  for (const { key, id, entry } of components) {
-    setAtPath(doc, id ?? key, stripUnsupportedSlotFields(repairTokenKinds(entry, id ?? key, tokens, opts.onRepair)));
+  for (const { key, entry } of components) {
+    setAtPath(doc, key, stripUnsupportedSlotFields(repairTokenKinds(entry, key, tokens, opts.onRepair)));
   }
   for (const { path, entry } of resolveTokenPathCollisions(tokens)) {
     setAtPath(doc, path, entry);
@@ -101,19 +101,19 @@ export function buildFilteredCDF(
  * rest of this module no longer says "manifest".
  */
 export function validateSlotReferences(
-  components: Array<{ key: string; id?: string; entry: CDFComponentEntry }>,
+  components: Array<{ key: string; entry: CDFComponentEntry }>,
 ): CDFValidationError[] {
-  const componentKeys = new Set(components.map((c) => c.id ?? c.key));
+  const componentKeys = new Set(components.map((c) => c.key));
 
   const errors: CDFValidationError[] = [];
-  for (const { key, id, entry } of components) {
+  for (const { key, entry } of components) {
     const slots = entry.$slots ?? {};
     for (const [slotKey, slot] of Object.entries(slots)) {
       const allowed = slot?.$allowedComponents ?? [];
       const unresolved = allowed.filter((name) => !componentKeys.has(name));
       if (unresolved.length === 0) continue;
       errors.push({
-        path: `manifest:components/${id ?? key}/$slots/${slotKey}/$allowedComponents`,
+        path: `manifest:components/${key}/$slots/${slotKey}/$allowedComponents`,
         message:
           `Unresolved $allowedComponents reference(s): ${unresolved.join(', ')}. ` +
           `Not found in this document — if not an existing Component in the target ` +

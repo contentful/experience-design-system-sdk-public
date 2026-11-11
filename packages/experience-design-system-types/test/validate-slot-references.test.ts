@@ -7,15 +7,6 @@ function component(key: string, entry: Partial<CDFComponentEntry> = {}): { key: 
 }
 
 describe('validateSlotReferences', () => {
-  it('validates stored canonical IDs and reports canonical paths for unresolved references', () => {
-    const card = { ...component('Card'), id: 'card' };
-    const panel = { ...component('Panel', { $slots: { children: { $allowedComponents: ['card'] } } }), id: 'panel' };
-    expect(validateSlotReferences([card, panel])).toEqual([]);
-    panel.entry.$slots!.children!.$allowedComponents = ['Missing'];
-    expect(validateSlotReferences([card, panel])[0]?.path).toBe(
-      'manifest:components/panel/$slots/children/$allowedComponents',
-    );
-  });
   it('returns no errors when every $allowedComponents entry resolves within the document', () => {
     const icon = component('Icon');
     const iconButton = component('IconButton', {

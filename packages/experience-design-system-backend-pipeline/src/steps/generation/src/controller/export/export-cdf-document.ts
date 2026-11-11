@@ -57,8 +57,8 @@ export async function exportCdfDocument(request: ExportCdfDocumentRequest): Prom
 
     const cdf: Record<string, unknown> = { $schema: CDF_SCHEMA_URL };
     const missingDescription: string[] = [];
-    for (const { key, id, entry } of components) {
-      cdf[id ?? key] = entry;
+    for (const { key, entry } of components) {
+      cdf[key] = entry;
       if (!entry.$description) missingDescription.push(key);
     }
 

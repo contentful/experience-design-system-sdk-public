@@ -456,5 +456,3 @@ export type {
   OsName,
   AnalyticsWriteResult,
 } from './analytics/index.js';
-
-export { assignCDFComponentIds, loadCDFComponentIds } from './persistence/src/session/services/component-identity.js';

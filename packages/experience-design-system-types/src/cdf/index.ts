@@ -1,5 +1,4 @@
 export { validateCDF, parseCDFComponents } from './validate.js';
-export { resolveComponentIds } from './component-ids.js';
 export { CDF_SCHEMA_URL, cdfJsonSchema } from './schema.js';
 export { CDF_PROPERTY_TYPES, CDF_PROPERTY_CATEGORIES } from './vocabularies.js';
 export {

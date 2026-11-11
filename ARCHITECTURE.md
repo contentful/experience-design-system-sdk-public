@@ -198,8 +198,6 @@ interface CDFPropertyDefinition {
 
 For design-category token properties, extraction stores the raw default in `raw_props.default_value` and token mapping never rewrites it. Mapping resolves `tokenReference` (else the raw default) to a canonical DTCG path when it matches exactly or has one token-kind-compatible normalized terminal-member match, and stores it in `raw_token_name_paths`. When CDF is projected, that path becomes `$default`; otherwise the raw default stays. The agent may write reviewed-compatible DTCG paths to `$token.allowed`; an empty or absent restriction leaves the property unrestricted.
 
-Before concurrent component generation starts, the session assigns and persists each component's canonical CDF ID. Exact IDs take precedence; otherwise a unique case-insensitive match is reused. Ambiguous or absent matches keep the generated ID, and a fallback never merges two generated components. The target snapshot is retained with the session so resumed generation preserves its identity decisions. Generation and review writers persist canonical slot-reference IDs alongside source references. Save and preview consume these stored IDs without re-reading the snapshot or resolving identities again. Source names remain unchanged for editing; response IDs are mapped back to those names for annotations and validation recovery.
-
 ### DTCG (W3C Design Token Format)
 
 Token files following the W3C DTCG spec (`packages/experience-design-system-types/src/dtcg/`). Supplied by the user or produced by token generation, and merged into the CDF document on save and apply.

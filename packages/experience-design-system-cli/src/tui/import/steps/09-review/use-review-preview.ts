@@ -17,7 +17,7 @@ export type UseReviewPreviewOptions = {
   cmaToken: string;
   host: string;
   deleteAllComponents?: boolean;
-  onResult?: (response: ServerPreviewResponse, componentIds?: ReadonlyMap<string, string>) => void;
+  onResult?: (response: ServerPreviewResponse) => void;
 };
 
 export type UseReviewPreviewResult = {
@@ -44,17 +44,16 @@ export function useReviewPreview({
   const [removedComponents, setRemovedComponents] = useState<ComponentTypeSummary[]>([]);
 
   const handleResult = useCallback(
-    (response: ServerPreviewResponse | null, componentIds?: ReadonlyMap<string, string>): void => {
+    (response: ServerPreviewResponse | null): void => {
       if (!response) return;
       setPreviewAnnotations(
         applyPreviewAnnotations(
           response,
           components.map((component) => component.key),
-          componentIds,
         ),
       );
       setRemovedComponents(response.components.removed ?? []);
-      onResult?.(response, componentIds);
+      onResult?.(response);
     },
     [components, onResult],
   );

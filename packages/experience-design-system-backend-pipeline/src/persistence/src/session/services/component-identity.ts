@@ -1,68 +1,49 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { resolveComponentIds } from '@contentful/experience-design-system-types';
 
-export function loadCDFComponentIds(db: DatabaseSync, sessionId: string): Map<string, string> {
-  const rows = db.prepare('SELECT name, cdf_id FROM raw_components WHERE session_id = ?').all(sessionId) as Array<{
-    name: string;
-    cdf_id: string | null;
-  }>;
-  return new Map(rows.map((row) => [row.name, row.cdf_id ?? row.name]));
+/** Exact matches win; ambiguous case matches and local collisions retain their generated IDs. */
+export function resolveComponentIds(
+  generatedIds: readonly string[],
+  existingIds: readonly string[],
+): Map<string, string> {
+  const generated = [...new Set(generatedIds)];
+  const existing = [...new Set(existingIds)];
+  return new Map(
+    generated.map((id) => {
+      const matches = existing.filter((candidate) => candidate.toLowerCase() === id.toLowerCase());
+      const collision = generated.some((candidate) => candidate !== id && candidate.toLowerCase() === id.toLowerCase());
+      return [id, !existing.includes(id) && matches.length === 1 && !collision ? matches[0]! : id];
+    }),
+  );
 }
 
-/** Assign identities once, before concurrent generation can create cross-component references. */
-export function assignCDFComponentIds(db: DatabaseSync, sessionId: string, existingIds: readonly string[]): void {
-  const pending = db
-    .prepare('SELECT 1 FROM raw_components WHERE session_id = ? AND cdf_id IS NULL LIMIT 1')
-    .get(sessionId);
-  if (!pending) return;
+/** Persist the exported ID in the existing name field, together with its slot references. */
+export function alignComponentIds(db: DatabaseSync, sessionId: string, existingIds: readonly string[]): void {
+  const components = db.prepare('SELECT name FROM raw_components WHERE session_id = ?').all(sessionId) as {
+    name: string;
+  }[];
+  const ids = resolveComponentIds(
+    components.map((c) => c.name),
+    existingIds,
+  );
+  const slots = db
+    .prepare('SELECT rowid, allowed_component FROM raw_slot_allowed_components WHERE session_id = ?')
+    .all(sessionId) as { rowid: number; allowed_component: string }[];
+  const updateComponent = db.prepare('UPDATE raw_components SET name = ? WHERE session_id = ? AND name = ?');
+  const updateSlot = db.prepare('UPDATE raw_slot_allowed_components SET allowed_component = ? WHERE rowid = ?');
   db.exec('BEGIN');
   try {
-    db.prepare('INSERT OR IGNORE INTO session_component_identity (session_id, existing_ids) VALUES (?, ?)').run(
-      sessionId,
-      JSON.stringify(existingIds),
-    );
-    const saved = db
-      .prepare('SELECT existing_ids FROM session_component_identity WHERE session_id = ?')
-      .get(sessionId) as { existing_ids: string };
-    const ids = resolveComponentIds(
-      [...loadCDFComponentIds(db, sessionId).keys()],
-      JSON.parse(saved.existing_ids) as string[],
-    );
-    const update = db.prepare(
-      'UPDATE raw_components SET cdf_id = ? WHERE session_id = ? AND name = ? AND cdf_id IS NULL',
-    );
-    for (const [name, id] of ids) update.run(id, sessionId, name);
+    for (const [name, id] of ids) {
+      if (name !== id) updateComponent.run(id, sessionId, name);
+    }
+    for (const slot of slots) {
+      const id =
+        ids.get(slot.allowed_component) ??
+        resolveComponentIds([slot.allowed_component], existingIds).get(slot.allowed_component)!;
+      if (slot.allowed_component !== id) updateSlot.run(id, slot.rowid);
+    }
     db.exec('COMMIT');
   } catch (error) {
     db.exec('ROLLBACK');
     throw error;
-  }
-}
-
-/** Persist the canonical reference when generation or review writes a slot, never during preview. */
-export function persistCDFSlotIds(db: DatabaseSync, sessionId: string): void {
-  const saved = db
-    .prepare('SELECT existing_ids FROM session_component_identity WHERE session_id = ?')
-    .get(sessionId) as { existing_ids: string } | undefined;
-  if (!saved) return;
-  const existingIds = JSON.parse(saved.existing_ids) as string[];
-  const componentIds = loadCDFComponentIds(db, sessionId);
-  const rows = db
-    .prepare(
-      `SELECT a.rowid AS row_id, a.allowed_component
-    FROM raw_slot_allowed_components a
-    JOIN raw_components c ON c.session_id = a.session_id AND c.component_id = a.component_id
-    WHERE a.session_id = ? AND a.cdf_id IS NULL AND c.status = 'generated'`,
-    )
-    .all(sessionId) as Array<{
-    row_id: number;
-    allowed_component: string;
-  }>;
-  const update = db.prepare('UPDATE raw_slot_allowed_components SET cdf_id = ? WHERE rowid = ?');
-  for (const row of rows) {
-    const id =
-      componentIds.get(row.allowed_component) ??
-      resolveComponentIds([row.allowed_component], existingIds).get(row.allowed_component)!;
-    update.run(id, row.row_id);
   }
 }

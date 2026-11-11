@@ -32,38 +32,4 @@ describe('annotatePreview', () => {
     expect(result.get('D')).toBe('removed');
     expect(result.get('E')).toBe('new');
   });
-
-  it('uses resolved IDs for unchanged, changed, breaking and removed source components', () => {
-    const response = {
-      tokens: { unchanged: [], changed: [], new: [], removed: [] },
-      taxonomies: { unchanged: [], changed: [], new: [], removed: [] },
-      components: {
-        unchanged: ['card'],
-        changed: [
-          { current: { id: 'panel', name: 'Panel Display' }, changeClassification: { classification: 'compatible' } },
-          { current: { id: 'button', name: 'Button Display' }, changeClassification: { classification: 'breaking' } },
-        ],
-        removed: [{ id: 'section', name: 'Section Display' }],
-        new: [],
-      },
-    } as never;
-    const result = annotatePreview({
-      preview: response,
-      localNames: ['Card', 'Panel', 'Button', 'Section', 'Badge'],
-      componentIds: new Map([
-        ['Card', 'card'],
-        ['Panel', 'panel'],
-        ['Button', 'button'],
-        ['Section', 'section'],
-        ['Badge', 'Badge'],
-      ]),
-    });
-
-    expect(result.get('Card')).toBeUndefined();
-    expect(result.get('Panel')).toBe('changed');
-    expect(result.get('Button')).toBe('breaking');
-    expect(result.get('Section')).toBe('removed');
-    expect(result.get('Badge')).toBe('new');
-    expect(result.has('Panel Display')).toBe(false);
-  });
 });

@@ -1,4 +1,4 @@
-import { assignCDFComponentIds, persistCDFSlotIds } from '../../persistence/src/session/services/component-identity.js';
+import { alignComponentIds, resolveComponentIds } from '../../persistence/src/session/services/component-identity.js';
 import { createLocalCliAgentInvoker } from '../../agents/invoker/create-local-cli-agent-invoker.js';
 import type { AgentName } from '../../agents/types/agent-name.js';
 import { loadRawComponents, openPipelineDb } from '../../persistence/src/session/repositories/db.js';
@@ -55,13 +55,20 @@ export async function runGenerateComponentsSession(
   const db = openPipelineDb();
   try {
     const acceptedNames = await loadAcceptedNames(request.sessionId);
-    const acceptedSet = acceptedNames ? new Set(acceptedNames) : undefined;
+    const acceptedSet = acceptedNames
+      ? new Set(
+          resolveComponentIds(
+            [...acceptedNames],
+            loadRawComponents(db, request.sessionId).map((c) => c.name),
+          ).values(),
+        )
+      : undefined;
     let components = loadRawComponents(db, request.sessionId, acceptedSet ?? undefined);
     if (components.length === 0) return buildEmptySessionResponse(request.sessionId);
 
     const allowedComponentNames = new Set([
       ...components.map((c) => c.name),
-      ...(existingEntities?.components ?? []).map((c) => c.name),
+      ...(existingEntities?.components ?? []).flatMap((c) => [c.name, c.sys.id]),
     ]);
     const { components: filtered, dropped } = filterDroppedAllowedComponents(
       db,
@@ -72,11 +79,6 @@ export async function runGenerateComponentsSession(
     );
     components = filtered;
 
-    assignCDFComponentIds(
-      db,
-      request.sessionId,
-      (existingEntities?.components ?? []).map((component) => component.sys.id),
-    );
     const duplicateNames = collectDuplicateNames(components);
     const invoker = createLocalCliAgentInvoker({});
     const concurrency = Math.max(1, Math.min(DEFAULT_COMPONENT_CONCURRENCY, components.length));
@@ -107,7 +109,11 @@ export async function runGenerateComponentsSession(
       ),
     );
 
-    persistCDFSlotIds(db, request.sessionId);
+    alignComponentIds(
+      db,
+      request.sessionId,
+      (existingEntities?.components ?? []).map((c) => c.sys.id),
+    );
     const allOk = results.every((r) => !r.failed);
     const renamedSlotsCount = results.reduce((sum, r) => sum + r.renamedSlotsCount, 0);
     return {

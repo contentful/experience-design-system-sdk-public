@@ -405,15 +405,11 @@ function buildBreakingRows(breakingChanges: BreakingComponent[]): BreakingRow[] 
   return out;
 }
 
-function deriveBreakingChanges(
-  response: ServerPreviewResponse,
-  componentIds: ReadonlyMap<string, string> = new Map(),
-): BreakingComponent[] {
-  const sourceNames = new Map([...componentIds].map(([name, id]) => [id, name]));
+function deriveBreakingChanges(response: ServerPreviewResponse): BreakingComponent[] {
   const out: BreakingComponent[] = [];
   for (const item of response.components.changed ?? []) {
     if (item.changeClassification?.classification !== 'breaking') continue;
-    const componentName = sourceNames.get(item.current?.id) ?? item.current?.name;
+    const componentName = item.current?.id ?? item.current?.name;
     if (typeof componentName !== 'string') continue;
     out.push({
       componentName,
@@ -567,13 +563,13 @@ function GenerateReviewStepView({
     cmaToken,
     host,
     deleteAllComponents: acceptedCountForPreview === 0,
-    onResult: (response, componentIds) => {
+    onResult: (response) => {
       const nextRemoved = response.components.removed ?? [];
       if (!removedBannerDefaultedRef.current && nextRemoved.length > 0) {
         removedBannerDefaultedRef.current = true;
         setRemovedBannerCollapsed(nextRemoved.length > 5);
       }
-      setBreakingChanges(deriveBreakingChanges(response, componentIds));
+      setBreakingChanges(deriveBreakingChanges(response));
     },
   });
 

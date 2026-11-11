@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildCDF, buildFilteredCDF, resolveComponentIds, CDF_SCHEMA_URL } from '../src/cdf/index.js';
+import { buildCDF, buildFilteredCDF, CDF_SCHEMA_URL } from '../src/cdf/index.js';
 import type { CDFComponentEntry, CDFTokenEntry } from '../src/cdf/index.js';
 
 const CARD: { key: string; entry: CDFComponentEntry } = {
@@ -33,67 +33,6 @@ describe('buildCDF', () => {
   it('supports components-only and tokens-only documents', () => {
     expect(buildCDF([CARD], [])?.Card).toBeDefined();
     expect((buildCDF([], [PRIMARY_COLOR])?.color as Record<string, unknown>)?.brand).toBeDefined();
-  });
-});
-
-describe('buildCDF existing component IDs', () => {
-  const build = (keys: string[], existingComponentIds: string[]) => {
-    const ids = resolveComponentIds(keys, existingComponentIds);
-    return buildCDF(
-      keys.map((key) => ({ key, id: ids.get(key), entry: CARD.entry })),
-      [],
-    );
-  };
-
-  it('reuses a unique existing ID when only its case differs', () => {
-    expect(build(['Card'], ['card'])).toEqual({ $schema: CDF_SCHEMA_URL, card: CARD.entry });
-  });
-
-  it('prefers an exact ID even when other IDs differ only in case', () => {
-    expect(build(['Card'], ['card', 'Card', 'CARD'])).toEqual({ $schema: CDF_SCHEMA_URL, Card: CARD.entry });
-  });
-
-  it('keeps the generated ID when fetched IDs are ambiguous, regardless of their order', () => {
-    for (const ids of [
-      ['card', 'CARD'],
-      ['CARD', 'card'],
-    ]) {
-      expect(build(['Card'], ids)).toEqual({ $schema: CDF_SCHEMA_URL, Card: CARD.entry });
-    }
-  });
-
-  it('keeps new IDs and does not match punctuation or display names', () => {
-    expect(build(['NewCard', 'InfoCard'], ['Info Card'])).toEqual({
-      $schema: CDF_SCHEMA_URL,
-      NewCard: CARD.entry,
-      InfoCard: CARD.entry,
-    });
-  });
-
-  it('never merges two generated components into the same existing ID', () => {
-    expect(Object.keys(build(['Card', 'CARD'], ['card'])!)).toEqual(['$schema', 'Card', 'CARD']);
-    expect(Object.keys(build(['Card', 'card'], ['card'])!)).toEqual(['$schema', 'Card', 'card']);
-  });
-
-  it('consumes stored IDs and slot references without changing source definitions or tokens', () => {
-    const parent = {
-      key: 'Panel',
-      id: 'panel',
-      entry: {
-        $type: 'component' as const,
-        $properties: {},
-        $slots: { children: { $allowedComponents: ['card', 'external', 'NewCard'] } },
-      },
-    };
-    const doc = buildCDF([parent, { ...CARD, id: 'card' }], [PRIMARY_COLOR]);
-    expect((doc?.panel as CDFComponentEntry).$slots?.children?.$allowedComponents).toEqual([
-      'card',
-      'external',
-      'NewCard',
-    ]);
-    expect(parent.key).toBe('Panel');
-    expect(parent.entry.$slots.children.$allowedComponents).toEqual(['card', 'external', 'NewCard']);
-    expect((doc?.color as Record<string, unknown>).brand).toEqual({ primary: PRIMARY_COLOR.entry });
   });
 });
 

@@ -29,7 +29,7 @@ export interface ApplyCredentials {
 }
 
 export interface ApplyEndpointRequest {
-  components: Array<{ key: string; id?: string; entry: CDFComponentEntry }>;
+  components: Array<{ key: string; entry: CDFComponentEntry }>;
   tokens?: DTCGTokenEntry[];
   credentials: ApplyCredentials;
   previewOnly?: boolean;

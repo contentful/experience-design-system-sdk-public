@@ -19,7 +19,6 @@ class TimeoutError extends Error {
 export type LivePreviewResult = {
   generation: number;
   response: ServerPreviewResponse | null;
-  componentIds?: ReadonlyMap<string, string>;
 };
 
 export type RunLivePreviewOptions = {
@@ -71,7 +70,6 @@ export async function runLivePreview(opts: RunLivePreviewOptions): Promise<LiveP
 
   let components: Array<{
     key: string;
-    id?: string;
     entry: import('@contentful/experience-design-system-types').CDFComponentEntry;
   }> = [];
   if (sessionId) {
@@ -96,7 +94,6 @@ export async function runLivePreview(opts: RunLivePreviewOptions): Promise<LiveP
     tokens = await readTokensFromPath({ flag: 'tokens', path: tokensPath });
   }
 
-  const componentIds = new Map(components.map((component) => [component.key, component.id ?? component.key]));
   const cdf = buildCDF(components, toCDFTokens(tokens), { deleteAll: opts.deleteAllComponents === true })!;
 
   const client = new ImportApiClient({ host, cmaToken, spaceId, environmentId, userAgent: cliUserAgent() });
@@ -117,7 +114,7 @@ export async function runLivePreview(opts: RunLivePreviewOptions): Promise<LiveP
         // best-effort
       }
     }
-    return { generation, response, componentIds };
+    return { generation, response };
   } finally {
     if (timeoutHandle) clearTimeout(timeoutHandle);
   }

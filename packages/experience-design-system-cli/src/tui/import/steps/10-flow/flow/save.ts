@@ -29,9 +29,9 @@ const describeCdfError = (error: { path: string; message: string }): string =>
 
 /** The document written to `components.json`: the components and tokens as one schema-valid CDF. */
 function buildSavedCDF(
-  components: Array<{ key: string; id?: string; entry: CDFComponentEntry }>,
+  components: Array<{ key: string; entry: CDFComponentEntry }>,
   tokens: DTCGTokenEntry[],
-  opts: Parameters<typeof buildCDF>[2] = {},
+  opts: { deleteAll?: boolean; onRepair?: (message: string) => void } = {},
 ): CDFDocument {
   const cdf = buildCDF(components, toCDFTokens(tokens), opts);
   if (!cdf) throw new Error('nothing to save — no components or tokens resolved');
