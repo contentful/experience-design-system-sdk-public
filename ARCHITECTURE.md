@@ -55,8 +55,8 @@ The TUI lives under `src/tui/`: `home/` (menu and version/upgrade check), `impor
 | `01-welcome`         | Welcome                                                                                      |
 | `02-token-input`     | Tokens file                                                                                  |
 | `03-path-validation` | Validates the project path and scans its files                                               |
-| `04-credentials`     | Collects and validates Contentful credentials (skip means files are saved, not pushed)       |
-| `05-token-review`    | Reviews generated tokens                                                                     |
+| `04-credentials`     | Collects and validates Contentful credentials; it continues only once they validate          |
+| `05-token-review`    | Reviews generated tokens (tokens-only imports)                                               |
 | `06-extraction`      | Runs extraction, composition and selection                                                   |
 | `07-scope-gate`      | The human gate: accept or reject components                                                  |
 | `08-generation`      | Runs generation, then token mapping when tokens were supplied                                |
@@ -67,7 +67,7 @@ Each step folder wraps a call into the backend pipeline (`logic.ts`, `run.ts`) w
 
 **See `packages/experience-design-system-cli/DSI_TUI_ARCHITECTURE.md` for TUI architecture and component guidelines.**
 
-**Key dependencies:** `ink` 5 and `react` 18 (terminal renderer), `commander` (argument parsing), `semver` (version check), plus the backend-pipeline and types workspace packages.
+**Key dependencies:** `ink` 5 and `react` 18 (terminal renderer), `commander` (argument parsing), `semver` (version check), `typescript` (a runtime dependency, because customer sources are compiled at run time), plus the backend-pipeline and types workspace packages.
 
 ### `experience-design-system-backend-pipeline`
 
@@ -101,7 +101,7 @@ Where to look (paths relative to `packages/experience-design-system-backend-pipe
 - **Apply**: `steps/apply/src/controller/endpoint/apply-components-endpoint.ts`; the HTTP wrapper (retry, polling) is `steps/apply/src/helpers/api-client/api-client.ts`.
 - **Orchestration**: `orchestrators/*/run-*-session.ts` tie steps, the session database and the caches together.
 
-**Key dependencies:** `ts-morph` and `typescript` (static analysis; the package compiles customer sources at run time), `@vue/compiler-sfc` and `svelte` (SFC parsing), `node:sqlite` (`DatabaseSync`, built-in synchronous SQLite), `zod`, `ajv`, `contentful-management`, `@segment/analytics-node`, and the client and types packages.
+**Key dependencies:** `ts-morph` (static analysis; the package compiles customer sources at run time), `@vue/compiler-sfc` and `svelte` (SFC parsing), `node:sqlite` (`DatabaseSync`, built-in synchronous SQLite), `zod`, `ajv`, `contentful-management`, `@segment/analytics-node`, and the client and types packages.
 
 ### `experience-design-system-client`
 
@@ -123,19 +123,19 @@ CDF and DTCG type definitions, Zod schemas and validation utilities (`src/cdf/`,
 | 4    | Generation  | `steps/generation`, run by `run-generate-components-session`               | Accepted components, tokens           | CDF fields on `raw_props` / `raw_components`, `generation_cache`; files on save       |
 | 5    | Apply       | `steps/apply`, driven by the CLI's `10-flow/flow/preview.ts` and `push.ts` | The saved CDF document                | Run record update; calls the sources API                                              |
 
-Token generation (`run-generate-tokens-session`) is an optional branch that runs before extraction when the user supplies a tokens file; it stores DTCG groups and leaves in `raw_token_groups` and `raw_tokens`. Token mapping runs after generation in `steps/generation/src/controller/map-tokens/`.
+Token generation (`run-generate-tokens-session`) is an optional branch that runs at the same time as extraction when the user supplies a tokens file (a tokens-only import runs it on its own); it stores DTCG groups and leaves in `raw_token_groups` and `raw_tokens`. Token mapping runs after generation in `steps/generation/src/controller/map-tokens/`.
 
 ### On-disk state
 
 All locations are resolved by `configRoot()` in `packages/experience-design-system-backend-pipeline/src/persistence/src/session/helpers/config-root.ts`: `~/.contentful/experience-design-system-cli/`, overridable with `EDS_HOME`.
 
-| Path                     | Contents                                                                                                                                 | Code (under `backend-pipeline/src/persistence/src/`)          |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| `pipeline.db`            | SQLite session database: sessions, step state, raw extracted data, token data and all caches (`EDS_PIPELINE_DB_PATH` overrides the path) | `session/repositories/db.ts`                                  |
-| `config.json`            | Credentials and settings: agent and project preferences, debug mode, analytics opt-in (mode 0600)                                        | `credentials/`, `session/helpers/config-root.ts`              |
-| `state/runs.json`        | One record per import run: appended by the CLI (`appendRun`), updated after a push (`updateRun`)                                         | `runs/`                                                       |
-| `reviews/`               | Per-session review state (`current-review-state.json`) for the scope gate and final review (`EDS_REVIEW_ARTIFACTS_DIR` overrides)        | `review-session/`                                             |
-| `<project>/.contentful/` | The saved `components.json` and `tokens.json`. With Debug Mode on they go in a per-terminal-session folder, next to the debug logs       | CLI: `src/tui/help/file-locations.ts`, `10-flow/flow/save.ts` |
+| Path                     | Contents                                                                                                                                                                      | Code (under `backend-pipeline/src/persistence/src/`)          |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `pipeline.db`            | SQLite session database: sessions, step state, raw extracted data, token data and all caches (`EDS_PIPELINE_DB_PATH` overrides the path)                                      | `session/repositories/db.ts`                                  |
+| `config.json`            | Credentials and settings: agent and project preferences, debug mode, analytics opt-in (mode 0600)                                                                             | `credentials/`, `session/helpers/config-root.ts`              |
+| `state/runs.json`        | One record per import run: appended by the CLI (`appendRun`), updated after a push (`updateRun`)                                                                              | `runs/`                                                       |
+| `reviews/`               | Per-session review state (`current-review-state.json`) for the scope gate and final review (`EDS_REVIEW_ARTIFACTS_DIR` overrides)                                             | `review-session/`                                             |
+| `<project>/.contentful/` | The saved `components.json` and `tokens.json`. With Debug Mode on they go in a per-terminal-session folder, next to the debug logs and, after an error, the zip of those logs | CLI: `src/tui/help/file-locations.ts`, `10-flow/flow/save.ts` |
 
 `DatabaseSync` is used throughout. Synchronous writes are safe from SIGINT and uncaught exceptions without async ceremony, so the database is consistent at the moment of a signal. Schema creation and in-place migrations are in `db.ts`.
 
@@ -198,7 +198,7 @@ interface CDFComponentEntry {
 
 interface CDFPropertyDefinition {
   $type: CDFPropertyType; // 'string' | 'richtext' | 'number' | 'media' | 'link' | 'enum' | 'token' | 'boolean'
-  $category: CDFPropertyCategory; // 'content' | 'design' | 'state'
+  $category: CDFPropertyCategory; // 'content' | 'design' | 'state' | 'unattached'
   $description?: string;
   $required?: boolean;
   $default?: unknown;
@@ -228,7 +228,7 @@ sequenceDiagram
     participant API as Contentful ExO<br/>(via client)
 
     Dev->>CLI: experiences import
-    opt tokens file supplied
+    opt tokens file supplied (runs at the same time as extraction)
         CLI->>BP: runGenerateTokensSession
         BP->>Agent: spawn subprocess
         BP->>DB: raw_token_groups, raw_tokens
@@ -268,7 +268,7 @@ sequenceDiagram
 
     opt credentials provided
         CLI->>BP: ImportApiClient preview
-        BP->>API: POST manifest preview
+        BP->>API: POST CDF preview
         CLI-->>Dev: preview gate (diff and confirmation)
         CLI->>BP: ImportApiClient apply, then poll
         BP->>API: POST apply, poll operation
@@ -285,7 +285,7 @@ Agents are always invoked as subprocesses (`backend-pipeline/src/agents/invoker/
 
 The backend pipeline owns agent invocation under `packages/experience-design-system-backend-pipeline/src/agents/`:
 
-- **Agent choice**: `claude`, `codex`, `opencode`, `cursor` or `copilot` (`agents/types/agent-name.ts`), optionally with a model (`--agent claude:sonnet`). Resolution order is flag, then the agent preferences in `config.json`, then the built-in default; `EDS_AGENT_MODEL_<AGENT>` sets a per-agent model.
+- **Agent choice**: `claude`, `codex`, `opencode`, `cursor` or `copilot` (`agents/types/agent-name.ts`), optionally with a model (`--agent claude:sonnet`). Resolution order is flag, then the agent preferences in `config.json`, then the built-in default; `EDS_AGENT_MODEL_<AGENT>` sets a per-agent model, and `EDS_AGENT_BINARY_<AGENT>` points the pipeline at a different binary for that agent (the end-to-end tests use it for a fake `claude`).
 - **Skill files**: markdown instructions in `agents/skills/selection/select-components.md` and `agents/skills/generation/` (`generate-components.md`, `generate-tokens.md`, `map-tokens.md`); the composition prompt is `prompts/composition-edges.md` at the package root. `--prompt <stage=value>` overrides a stage prompt with a file or literal text.
 - **Prompt building**: `agents/prompts/build-prompt.ts` combines a skill file with a runtime preamble (mode, inline JSON of the component data, optional file paths, the output protocol). Raw components are passed inline, not as a file path.
 - **Output protocol**: the agent emits one JSON tool-call object per line on stdout. The parsers are in `agents/parsers/`.
@@ -308,17 +308,37 @@ React components commonly extend `HTMLAttributes<T>`, `ButtonHTMLAttributes<T>`,
 
 `experiences import` requires an interactive terminal and has no headless mode. It takes `--agent` and `--prompt <stage=value>`, and asks for the project and tokens file on its own screens.
 
-The screens in `src/tui/import/steps/` run in order: preflight, welcome, token input, path validation, credentials, optional token review, extraction (with composition and selection), scope gate, generation, review, then save, preview, push and done in `10-flow`. A single human gate (the scope gate) precedes generation. Final review edits names, `$description`, `$default`, `$allowedComponents` and `$values` inline with rationale and source panels and re-runs the live preview after each save. After review the wizard always saves one combined CDF, then previews and pushes it. The Credentials screen has no skip option: it continues only once the credentials validate. `ImportHandoff` still carries `credentialsSkipped`, and the flow still honours it (files are saved, the preview is bypassed and push is refused), but nothing sets it to `true` today.
+The screens in `src/tui/import/steps/` start with `00-preflight`, which asks what to import. The choice decides which screens follow:
+
+- **Tokens and components:** welcome, token input, path validation, credentials, extraction (with composition and selection), scope gate, generation, review, then save, preview, push and done in `10-flow`.
+- **Components only:** the same, without token input.
+- **Tokens only:** token input, credentials, token generation, token review, then `10-flow`.
+
+A single human gate (the scope gate) precedes generation. Final review edits names, `$description`, `$default`, `$allowedComponents` and `$values` inline with rationale and source panels and re-runs the live preview after each save. After review the wizard always saves one combined CDF, then previews and pushes it. The Credentials screen has no skip option: it continues only once the credentials validate. `ImportHandoff` still carries `credentialsSkipped`, and the flow still honours it (files are saved, the preview is bypassed and push is refused), but nothing sets it to `true` today.
 
 ### Apply
 
-The sources-API contract is implemented in `packages/experience-design-system-backend-pipeline/src/steps/apply/src/`: build the CDF document (`buildCDF` from the types package), `POST /imports/preview`, check for breaking changes, `POST /imports`, then poll `GET /imports/operations/{operationId}` with backoff and `Retry-After` handling. Transient 5xx and 429 responses are retried on preview and poll; the apply request itself is not retried once dispatched. The CLI drives these calls from `10-flow/flow/preview.ts`, `10-flow/flow/push.ts` and the live preview in `09-review/run-live-preview.ts`, using `ImportApiClient` from the pipeline package.
+The sources-API contract is implemented in `packages/experience-design-system-backend-pipeline/src/steps/apply/src/`: build the CDF document (`buildCDF` from the types package), then call the endpoints under `/spaces/{spaceId}/environments/{environmentId}/design_systems`: `POST …/imports/preview`, check for breaking changes, `POST …/imports/apply`, then poll `GET …/imports/apply/{operationId}` with backoff and `Retry-After` handling. Transient 5xx and 429 responses are retried on preview and poll; the apply request itself is not retried once dispatched. The CLI drives these calls from `10-flow/flow/preview.ts`, `10-flow/flow/push.ts` and the live preview in `09-review/run-live-preview.ts`, using `ImportApiClient` from the pipeline package.
+
+---
+
+## Debug Logs and the Support Zip
+
+Every import step writes a markdown debug log through `startDebugRun` and `finishDebugRun` in `packages/experience-design-system-cli/src/tui/debug-store.ts`. The logs go to `<base>/.contentful/<date>-session-<n>/debug/import/<NN-step>/`, one file per run of a step, and are written only while Debug Mode is on, which it is by default. Logs older than the retention setting (7, 14 or 30 days) are deleted. Only `.md` files under `debug/` are touched.
+
+When a step ends on the shared error screen, `packages/experience-design-system-cli/src/tui/support-bundle.ts` zips the session's logs into `<date>-session-<n>-debug-logs.zip`, next to `debug/`, and the screen shows where it is. The user sends that file to Contentful support. Because the zip is outside `debug/`, the cleanup leaves it alone.
+
+---
+
+## End-to-End Tests
+
+`packages/experience-design-system-cli/test/e2e/` drives the real app with keystrokes through each import choice, from the first screen to the Done screen. Only the agent and Contentful are fake. The pipeline reads `EDS_AGENT_BINARY_CLAUDE` to find the agent binary, so the tests point it at a fake `claude` script, and Contentful is a local server whose address is typed in as the API host. Each scenario checks the saved CDF against the schema.
 
 ---
 
 ## TUI Resources
 
-The wizard renders Ink (React) component trees in a TTY. State uses React hooks, keyboard input uses Ink's `useInput`, and `NO_COLOR=1` suppresses ANSI color. The scope gate shows two columns at 100 or more terminal columns and one column below that.
+The wizard renders Ink (React) component trees in a TTY. State uses React hooks, keyboard input uses Ink's `useInput`, and `NO_COLOR=1` suppresses ANSI color. The scope gate shows two columns (components and tokens) when there are tokens and the terminal is 100 or more columns wide, and one column otherwise.
 
 - **`packages/experience-design-system-cli/DSI_TUI_ARCHITECTURE.md`**: architecture and screen guidelines
 - **`packages/experience-design-system-cli/.claude/skills/ink-api/SKILL.md`**: Ink core API (Box, Text, colors, hooks)
