@@ -144,7 +144,9 @@ export async function runPreview(input: RunPreviewInput, deps: PreviewDeps): Pro
               }>
             ).map((row) => row.name),
           );
-          const falseRemovals = preview.components.removed.filter((removed) => localNames.has(removed.name));
+          const falseRemovals = preview.components.removed.filter((removed) =>
+            localNames.has(removed.id ?? removed.name),
+          );
           if (falseRemovals.length > 0) {
             const seeded = seedCDFFromPreviewResponse(db, input.extractSessionId, falseRemovals);
             if (seeded > 0) needsRepreview = true;

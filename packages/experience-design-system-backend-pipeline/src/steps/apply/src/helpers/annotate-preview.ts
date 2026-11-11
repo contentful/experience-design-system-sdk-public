@@ -15,7 +15,7 @@ export function annotatePreview(
 
   const changedNames = new Set<string>();
   for (const item of preview.components.changed) {
-    const name = item.current?.name;
+    const name = item.current?.id ?? item.current?.name;
     if (typeof name !== 'string') continue;
     changedNames.add(name);
     if (item.changeClassification?.classification === 'breaking') {
@@ -27,9 +27,10 @@ export function annotatePreview(
 
   const removedNames = new Set<string>();
   for (const entity of preview.components.removed) {
-    if (entity.name) {
-      removedNames.add(entity.name);
-      out.set(entity.name, 'removed');
+    const name = entity.id ?? entity.name;
+    if (name) {
+      removedNames.add(name);
+      out.set(name, 'removed');
     }
   }
 
