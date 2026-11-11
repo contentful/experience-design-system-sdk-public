@@ -1,6 +1,16 @@
 import { useEffect, useRef } from 'react';
 import { startDebugRun, finishDebugRun, setDebugRunProgress } from '@tui/debug-store.js';
-import { FLOW_RUN, advance, flowFinish, flowProgress, isFlowFinished, openTrail, type FlowTrail } from './flow-log.js';
+import { importJourneys } from '../../../shared/import-ledger.js';
+import {
+  FLOW_RUN,
+  advance,
+  flowFinish,
+  flowProgress,
+  isFlowFinished,
+  noteFlowJourneys,
+  openTrail,
+  type FlowTrail,
+} from './flow-log.js';
 import type { FlowState } from './types.js';
 
 /**
@@ -33,13 +43,15 @@ export function useFlowLog(state: FlowState): void {
       return;
     }
 
+    // What the preview and the push found for each component goes into the ledger first, so the log can say it.
+    noteFlowJourneys(open);
     if (isFlowFinished(state.step)) {
       trail.current = undefined;
-      void finishDebugRun(flowFinish(open, state, now));
+      void finishDebugRun(flowFinish(open, state, now, importJourneys()));
       return;
     }
     trail.current = open;
-    const progress = flowProgress(open, now);
+    const progress = flowProgress(open, now, importJourneys());
     setDebugRunProgress(progress.outputs, progress.summary);
   }, [state]);
 
@@ -47,7 +59,10 @@ export function useFlowLog(state: FlowState): void {
     () => () => {
       const open = trail.current;
       trail.current = undefined;
-      if (open) void finishDebugRun(flowFinish(open, undefined, Date.now()));
+      if (open) {
+        noteFlowJourneys(open);
+        void finishDebugRun(flowFinish(open, undefined, Date.now(), importJourneys()));
+      }
     },
     [],
   );

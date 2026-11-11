@@ -1,14 +1,14 @@
+import { nameLines, nameList } from '../../shared/entity-lists.js';
 import type { CdfReviewEntry, ReviewComponentStatus } from './types.js';
 
 // What the debug log says about the Review. The step is interactive, so the log records what the user decided, not every
 // keypress: how each component ended up compared with how it arrived, the kinds of edit that were made, and how the step
-// ended. Only component keys and counts are stored.
+// ended. Components are listed by key; the lists are cut (see `entity-lists`) and the counts are always the full counts.
 
 export const REVIEW_RUN = { flow: 'import/review', step: '09-review', menuOption: 'Review' } as const;
 
 // A long session must not make the log grow without bound.
 const MAX_ACTIONS = 30;
-const MAX_NAMES = 20;
 
 export type ReviewTrail = {
   startedAt: number;
@@ -29,24 +29,10 @@ const countStatuses = (statuses: Iterable<ReviewComponentStatus>): Record<string
   return counts;
 };
 
-const capped = (keys: string[]): { count: number; keys: string[] } => ({
-  count: keys.length,
-  keys: keys.slice(0, MAX_NAMES),
-});
-
 const countsText = (counts: Record<string, number>): string =>
   Object.entries(counts)
     .map(([name, count]) => `${count} ${name}`)
     .join(', ') || 'none';
-
-/** A count and its keys as Summary lines: `Label: 2`, then the keys as sub-points, and how many were left out. */
-function namedLines(label: string, { count, keys }: { count: number; keys: string[] }): string[] {
-  return [
-    `${label}: ${count}`,
-    ...keys.map((key) => `  ${key}`),
-    ...(count > keys.length ? [`  …and ${count - keys.length} more`] : []),
-  ];
-}
 
 export function openReviewTrail(components: CdfReviewEntry[], now: number): ReviewTrail {
   return {
@@ -77,18 +63,25 @@ function render(trail: ReviewTrail, components: CdfReviewEntry[], now: number, o
   const seconds = Math.round((now - trail.startedAt) / 100) / 10;
   const arrived = countStatuses(trail.start.values());
   const ended = countStatuses(components.map((component) => component.status));
-  const accepted = capped(acceptedByUser);
-  const rejected = capped(rejectedByUser);
+  const accepted = nameList(acceptedByUser);
+  const rejected = nameList(rejectedByUser);
+  // Where every component ended up, by name, so a component can be found by the status it finished in.
+  const finalByStatus: Record<string, string[]> = {};
+  for (const { key, status } of components) (finalByStatus[status] ??= []).push(key);
+  const finalLists = Object.fromEntries(
+    Object.entries(finalByStatus).map(([status, keys]) => [status, nameList(keys)]),
+  );
 
   return {
     summary: [
       `Components: ${components.length}`,
       `Arrived as: ${countsText(arrived)}`,
       `Ended as: ${countsText(ended)}`,
+      ...Object.entries(finalLists).flatMap(([status, list]) => nameLines(`Finished ${status}`, list)),
       `Time in the review: ${seconds}s`,
       `Edits: ${total}${total > 0 ? ` (${countsText(trail.kinds)})` : ''}`,
-      ...namedLines('Accepted by you', accepted),
-      ...namedLines('Rejected by you', rejected),
+      ...nameLines('Accepted by you (they arrived as something else)', accepted),
+      ...nameLines('Rejected by you (they arrived as something else)', rejected),
       `Outcome: ${outcome}`,
     ],
     outputs: {
@@ -97,6 +90,7 @@ function render(trail: ReviewTrail, components: CdfReviewEntry[], now: number, o
       arrived,
       edits: { total, by_kind: trail.kinds, in_order: trail.actions },
       now: ended,
+      finished_as: finalLists,
       accepted_by_user: accepted,
       rejected_by_user: rejected,
     },

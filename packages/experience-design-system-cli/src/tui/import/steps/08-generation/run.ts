@@ -85,6 +85,16 @@ export async function runGeneration(
   } catch (error) {
     return fail('generate components', errorMessage(error));
   }
+  try {
+    input.onDetails?.({
+      generated: generated.results.filter((r) => !r.failed && !r.cached).map((r) => r.componentName),
+      fromCache: generated.results.filter((r) => !r.failed && r.cached).map((r) => r.componentName),
+      failed: generated.results.filter((r) => r.failed).map((r) => r.componentName),
+      duplicateNames: generated.duplicateNames.map((duplicate) => duplicate.name),
+    });
+  } catch {
+    // Telling the log must never stop the stage.
+  }
   if (generated.emptySession) return fail('generate components', 'no raw components in session');
   if (!generated.allOk) {
     const firstFailure = generated.results.find((r) => r.failed);

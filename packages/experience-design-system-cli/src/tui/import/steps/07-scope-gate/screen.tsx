@@ -2,6 +2,7 @@ import React, { useEffect, useMemo } from 'react';
 import { Box, Text } from 'ink';
 import { startDebugRun, finishDebugRun } from '@tui/debug-store.js';
 import { StepHeader } from '@tui/shared/components/StepHeader.js';
+import { noteJourney } from '../../shared/import-ledger.js';
 import { scopeGateLog } from './log.js';
 import { TokensColumn } from './panels/tokens-column.js';
 import { loadTokenRows } from '../05-token-review/load.js';
@@ -87,6 +88,8 @@ export function ScopeGateScreen({
     tokenCount: tokens.length,
     tokensWidth: longest.path + longest.value + 10,
     onConfirm: (decisions) => {
+      noteJourney(decisions.accepted, { decision: 'accepted' });
+      noteJourney(decisions.rejected, { decision: 'left out' });
       const { summary, data } = scopeGateLog({ components, tokenCount: tokens.length, decisions });
       void finishDebugRun({ summary, outputs: data, status: 'success', exitMethod: 'saved' });
       onConfirm(decisions);
