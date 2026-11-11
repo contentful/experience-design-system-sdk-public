@@ -5,6 +5,7 @@ import { startDebugRun, finishDebugRun } from '@tui/debug-store.js';
 import type { ImportTarget } from '../00-preflight/logic.js';
 import { ClearableTextInput } from '../../../shared/components/ClearableTextInput.js';
 import { TOKEN_INPUT_CONTROLS, useTokenInputControls } from './controls.js';
+import { tokenInputLog, type RejectedAttempt } from './log.js';
 import { toTokenPath } from './logic.js';
 import { validateTokenPath } from './validate-path.js';
 import { ControlHints } from '@tui/shared/components/ControlHints.js';
@@ -33,24 +34,35 @@ export function TokenInputScreen({
   const [failure, setFailure] = useState<Failure | null>(null);
   // Every path that was turned down, with the reason the user was shown, so "I could not get past this step" can be
   // read from the log.
-  const rejected = useRef<Array<{ entered: string; error: string; resolved_path?: string }>>([]).current;
+  const rejected = useRef<RejectedAttempt[]>([]).current;
+  // Enter on an empty field is counted, not listed: it names no path, and it can look like a stuck screen.
+  const visit = useRef({ emptySubmits: 0 }).current;
 
   useEffect(() => {
-    startDebugRun({
-      flow: 'import/token-input',
-      step: '02-token-input',
-      menuOption: 'Token input',
-      inputs: { import_mode: mode, initial_path: initialPath },
-    });
+    startDebugRun({ flow: 'import/token-input', step: '02-token-input', menuOption: 'Token input' });
   }, []);
+
+  const finish = (tokenPath: string | null, enteredPath: string, endedOnError?: string): void => {
+    const { summary, data } = tokenInputLog({
+      mode,
+      tokenPath,
+      enteredPath,
+      initialPath,
+      rejected,
+      emptySubmits: visit.emptySubmits,
+      endedOnError,
+    });
+    void finishDebugRun({
+      summary,
+      outputs: data,
+      status: endedOnError ? 'error' : 'success',
+      exitMethod: tokenPath ? 'saved' : 'discarded',
+    });
+  };
 
   // Leaving with a path that was rejected and never fixed is the case worth flagging as an error.
   const back = () => {
-    void finishDebugRun({
-      outputs: { token_path: null, rejected_attempts: rejected, ...(failure ? { error: failure.error } : {}) },
-      status: failure ? 'error' : 'success',
-      exitMethod: 'discarded',
-    });
+    finish(null, tokenPath, failure?.error);
     onBack();
   };
 
@@ -75,7 +87,8 @@ export function TokenInputScreen({
   const submit = (value: string) => {
     const rawPath = toTokenPath(value);
     if (!rawPath) {
-      reject('', { error: 'Enter the path to your token file.' });
+      visit.emptySubmits += 1;
+      setFailure({ error: 'Enter the path to your token file.' });
       return;
     }
     const check = validateTokenPath(rawPath);
@@ -83,15 +96,7 @@ export function TokenInputScreen({
       reject(rawPath, { error: check.error, resolvedPath: check.resolvedPath });
       return;
     }
-    void finishDebugRun({
-      outputs: {
-        token_path: check.path,
-        changed_from_initial: rawPath !== initialPath.trim(),
-        rejected_attempts: rejected,
-      },
-      status: 'success',
-      exitMethod: 'saved',
-    });
+    finish(check.path, rawPath);
     onConfirm(check.path);
   };
 
