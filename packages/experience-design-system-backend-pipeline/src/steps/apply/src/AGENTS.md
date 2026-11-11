@@ -4,13 +4,19 @@ Ships the resolved CDF document to Contentful: preview, apply, poll.
 
 ## What it does
 
-1. Builds the CDF document from components and tokens (`buildCDF`).
-2. Calls `POST /spaces/{s}/environments/{e}/design_systems/imports/preview` and inspects the response:
-   - Empty preview → returns `no-changes`.
-   - `previewOnly === true` → returns `preview` (with a `hasBreakingChanges` flag).
-3. Otherwise calls `POST …/design_systems/imports/apply` with `acknowledgeBreakingChanges` as supplied and receives an operation ID.
-4. Polls `GET …/design_systems/imports/apply/{operationId}` until the operation is `succeeded`, `partial` or `failed`. The wait between polls grows from 2s to 5s, with jitter, and it gives up with a timeout error after 150 polls.
-5. Parses the final operation into per-entity write counts and returns `applied`.
+```mermaid
+flowchart TD
+    B["buildCDF from components and tokens"] --> P["POST …/design_systems/imports/preview"]
+    P --> E{"empty preview?"}
+    E -->|yes| N["return no-changes"]
+    E -->|no| O{"previewOnly?"}
+    O -->|yes| R["return preview<br/>(with hasBreakingChanges)"]
+    O -->|no| A["POST …/design_systems/imports/apply<br/>(acknowledgeBreakingChanges as supplied)"]
+    A --> L["poll GET …/design_systems/imports/apply/{operationId}<br/>until succeeded, partial or failed"]
+    L --> D["return applied<br/>(per-entity write counts)"]
+```
+
+Between polls the wait grows from 2s to 5s, with jitter, and polling gives up with a timeout error after 150 polls.
 
 5xx responses and network errors on preview and poll are retried (3 attempts, exponential backoff, `Retry-After` respected). Apply is not retried once dispatched, because retrying could start a duplicate operation.
 
