@@ -73,13 +73,6 @@ If you import design tokens only, the CLI skips the component stages: it generat
 
 The CLI has one command, `experiences import`. It is also what runs when you start `experiences` with no command. It opens a full-screen home screen with three options: **Import**, **Settings**, and **Help**. Use **Settings** to save your Contentful credentials and choose your coding agent, and **Import** to start the wizard.
 
-Two optional flags change how an import runs:
-
-| Flag                      | What it does                                                                                                                                                                                                                                                                                                                                                                                   |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--agent <name>`          | The coding agent to use for this run, as `name` or `name:model` (for example `--agent codex`). It overrides the default agent saved in Settings.                                                                                                                                                                                                                                               |
-| `--prompt <step>=<value>` | Replaces the instructions one step gives the AI agent, using a file path or text. Repeat it to replace more than one. The steps you can change are `select` (which components to import), `generate` (how component definitions are written), `composition` (how components nest inside each other) and `tokens` (how tokens are generated). Example: `--prompt select=./my-select-prompt.md`. |
-
 ## Settings and defaults
 
 Two settings are **on** until you turn them off. Both are under **Settings** on the home screen.
