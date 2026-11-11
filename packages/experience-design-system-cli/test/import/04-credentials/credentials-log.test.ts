@@ -33,8 +33,7 @@ describe('the Credentials debug log', () => {
   it('never writes the CMA token, not as a value and not inside an API error that echoes it', async () => {
     vi.resetModules();
     const store = await import('../../../src/tui/debug-store.js');
-    const { credentialsLog, credentialsOutputs, rejectedAttempt } =
-      await import('../../../src/tui/import/steps/04-credentials/logic.js');
+    const { credentialsLog, rejectedAttempt } = await import('../../../src/tui/import/steps/04-credentials/log.js');
     await vi.waitFor(() => expect(store.currentDebugSessionDir()).toBeDefined());
 
     const token = 'CFPAT-s3cr3t/abc+def=';
@@ -46,26 +45,18 @@ describe('the Credentials debug log', () => {
       ),
     ];
 
-    store.startDebugRun({
-      flow: 'import/credentials',
-      step: '04-credentials',
-      menuOption: 'Credentials',
-      inputs: { import_mode: 'both', prefilled: true, ...credentialsLog({ ...credentials, cmaToken: '' }) },
-    });
+    store.startDebugRun({ flow: 'import/credentials', step: '04-credentials', menuOption: 'Credentials' });
     await vi.waitFor(async () => {
-      await store.finishDebugRun({
-        outputs: {
-          ...credentialsOutputs({
-            outcome: 'back',
-            credentials,
-            initial: { ...credentials, cmaToken: '' },
-            attempts,
-          }),
-          error: attempts[0]!.reason,
-        },
-        status: 'error',
-        exitMethod: 'discarded',
+      const { summary, data } = credentialsLog({
+        mode: 'both',
+        prefilled: true,
+        credentials,
+        initial: { ...credentials, cmaToken: '' },
+        attempts,
+        outcome: 'back',
+        endedOnError: attempts[0]!.reason,
       });
+      await store.finishDebugRun({ summary, outputs: data, status: 'error', exitMethod: 'discarded' });
       expect(existsSync(store.currentDebugSessionDir()!)).toBe(true);
       expect(await readdir(store.currentDebugSessionDir()!, { recursive: true })).toContainEqual(
         expect.stringMatching(/credentials.*\.md$/),
@@ -79,7 +70,9 @@ describe('the Credentials debug log', () => {
 
     expect(log).not.toContain(token);
     expect(log).not.toContain(encodeURIComponent(token));
-    // It still says a token was set and how long it was, and what was rejected, so a truncated paste can be spotted.
+    // It still says a token was set and how long it was, and what was rejected, so a truncated paste can be spotted. The
+    // Summary is written as given, so it is checked as well as the Data the logger cleans.
+    expect(log).toContain(`CMA token: present (${token.length} characters)`);
     expect(log).toContain(`[present, ${token.length} chars]`);
     expect(log).toContain('401 Unauthorized for [redacted]');
   });

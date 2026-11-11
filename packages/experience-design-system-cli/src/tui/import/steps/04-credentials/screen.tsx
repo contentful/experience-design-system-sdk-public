@@ -7,15 +7,12 @@ import { formLabelWidth, type FormField, type FormNotice } from '@tui/shared/com
 import { ClearableTextInput } from '@tui/shared/components/ClearableTextInput.js';
 import { ControlHints } from '@tui/shared/components/ControlHints.js';
 import { StepHeader } from '@tui/shared/components/StepHeader.js';
+import { credentialsLog, rejectedAttempt, type CredentialAttempt } from './log.js';
 import {
-  credentialsLog,
-  credentialsOutputs,
   credentialsPurpose,
   isUnchanged,
   missingFields,
   normalize,
-  rejectedAttempt,
-  type CredentialAttempt,
   type CredentialField,
   type CredentialValues,
 } from './logic.js';
@@ -83,13 +80,26 @@ export function CredentialsScreen({
   const visit = useRef({ attempts: [] as CredentialAttempt[], lastReason: '' }).current;
 
   useEffect(() => {
-    startDebugRun({
-      flow: 'import/credentials',
-      step: '04-credentials',
-      menuOption: 'Credentials',
-      inputs: { import_mode: mode, prefilled, ...credentialsLog(initialValues) },
-    });
+    startDebugRun({ flow: 'import/credentials', step: '04-credentials', menuOption: 'Credentials' });
   }, []);
+
+  const finish = (
+    outcome: 'validated' | 'back',
+    credentials: CredentialValues,
+    exitMethod: 'saved' | 'discarded',
+    endedOnError?: string,
+  ): void => {
+    const { summary, data } = credentialsLog({
+      mode,
+      prefilled,
+      credentials,
+      initial: initialValues,
+      attempts: visit.attempts,
+      outcome,
+      endedOnError,
+    });
+    void finishDebugRun({ summary, outputs: data, status: endedOnError ? 'error' : 'success', exitMethod });
+  };
 
   const reject = (attempt: CredentialAttempt, text: string): void => {
     if (visit.attempts.length < MAX_LOGGED_ATTEMPTS) visit.attempts.push(attempt);
@@ -99,19 +109,7 @@ export function CredentialsScreen({
 
   // Leaving with a rejection that was never fixed is the case worth flagging as an error.
   const leave = (): void => {
-    void finishDebugRun({
-      outputs: {
-        ...credentialsOutputs({
-          outcome: 'back',
-          credentials: normalize(values),
-          initial: initialValues,
-          attempts: visit.attempts,
-        }),
-        ...(notice ? { error: visit.lastReason } : {}),
-      },
-      status: notice ? 'error' : 'success',
-      exitMethod: 'discarded',
-    });
+    finish('back', normalize(values), 'discarded', notice ? visit.lastReason : undefined);
     onBack();
   };
 
@@ -132,16 +130,7 @@ export function CredentialsScreen({
       reject(rejectedAttempt(result.error, credentials), result.error);
       return;
     }
-    void finishDebugRun({
-      outputs: credentialsOutputs({
-        outcome: 'validated',
-        credentials,
-        initial: initialValues,
-        attempts: visit.attempts,
-      }),
-      status: 'success',
-      exitMethod: 'saved',
-    });
+    finish('validated', credentials, 'saved');
     onDone({ skipped: false, credentials });
   };
 
