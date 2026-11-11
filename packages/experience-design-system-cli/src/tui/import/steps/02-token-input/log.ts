@@ -1,4 +1,4 @@
-import { importModeLabel, type ImportTarget } from '../00-preflight/logic.js';
+import type { ImportTarget } from '../00-preflight/logic.js';
 
 // What the debug log says about the Token input: the file the user ended up with, and above all why a path was turned
 // down, so "I could not get past this step" can be read from the log. Nothing typed but not submitted is logged.
@@ -32,7 +32,6 @@ export function tokenInputLog({
   const source = tokenPath === null ? null : kept ? 'prefilled' : 'typed';
 
   const summary = [
-    `Import mode: ${importModeLabel(mode)}`,
     tokenPath === null ? 'Token file: none (went back)' : `Token file: ${tokenPath}`,
     ...(source ? [`Path source: ${source === 'prefilled' ? 'pre-filled, kept as is' : 'typed by the user'}`] : []),
     `Rejected paths: ${rejected.length}`,

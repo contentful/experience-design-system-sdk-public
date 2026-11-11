@@ -2,7 +2,7 @@ import React, { useEffect, useMemo } from 'react';
 import { Box, Text } from 'ink';
 import { startDebugRun, finishDebugRun } from '@tui/debug-store.js';
 import { StepHeader } from '@tui/shared/components/StepHeader.js';
-import { scopeGateLogInputs, scopeGateLogOutputs } from './log.js';
+import { scopeGateLog } from './log.js';
 import { TokensColumn } from './panels/tokens-column.js';
 import { loadTokenRows } from '../05-token-review/load.js';
 import { longestEntries } from '../05-token-review/logic.js';
@@ -79,12 +79,7 @@ export function ScopeGateScreen({
   const longest = useMemo(() => longestEntries(tokens), [tokens]);
 
   useEffect(() => {
-    startDebugRun({
-      flow: 'import/scope-gate',
-      step: '07-scope-gate',
-      menuOption: 'Scope gate',
-      inputs: scopeGateLogInputs(components, tokens.length),
-    });
+    startDebugRun({ flow: 'import/scope-gate', step: '07-scope-gate', menuOption: 'Scope gate' });
   }, []);
 
   const gate = useScopeGate({
@@ -92,15 +87,13 @@ export function ScopeGateScreen({
     tokenCount: tokens.length,
     tokensWidth: longest.path + longest.value + 10,
     onConfirm: (decisions) => {
-      void finishDebugRun({
-        outputs: scopeGateLogOutputs(components, decisions),
-        status: 'success',
-        exitMethod: 'saved',
-      });
+      const { summary, data } = scopeGateLog({ components, tokenCount: tokens.length, decisions });
+      void finishDebugRun({ summary, outputs: data, status: 'success', exitMethod: 'saved' });
       onConfirm(decisions);
     },
     onQuit: () => {
-      void finishDebugRun({ outputs: { outcome: 'quit' }, status: 'success', exitMethod: 'discarded' });
+      const { summary, data } = scopeGateLog({ components, tokenCount: tokens.length, decisions: null });
+      void finishDebugRun({ summary, outputs: data, status: 'success', exitMethod: 'discarded' });
       onQuit();
     },
   });

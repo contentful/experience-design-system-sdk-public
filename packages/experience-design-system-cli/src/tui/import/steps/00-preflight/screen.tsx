@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text } from 'ink';
 import { PALETTE } from '@tui/theme.js';
-import { startDebugRun, finishDebugRun } from '@tui/debug-store.js';
+import { startDebugRun, finishDebugRun, setDebugImportMode } from '@tui/debug-store.js';
 import { PREFLIGHT_CONTROLS, usePreflightControls } from './controls.js';
 import { collectPreflightContext, preflightLog, type PreflightContext } from './log.js';
-import { IMPORT_TARGET_OPTIONS, overviewFor, type ImportTarget } from './logic.js';
+import { IMPORT_TARGET_OPTIONS, importModeLabel, overviewFor, type ImportTarget } from './logic.js';
 import { OverviewBox } from '../../shared/index.js';
 import { ControlHints } from '@tui/shared/components/ControlHints.js';
 import { StepHeader } from '@tui/shared/components/StepHeader.js';
@@ -23,6 +23,8 @@ export function PreflightScreen({ onChoose, onQuit }: PreflightScreenProps): Rea
   const context = useRef<PreflightContext | undefined>(undefined);
 
   useEffect(() => {
+    // A new Preflight is a new choice, so the logs of the earlier one stop applying.
+    setDebugImportMode(undefined);
     startDebugRun({ flow: 'import/preflight', step: '00-preflight', menuOption: 'Preflight' });
     void collectPreflightContext().then((collected) => {
       context.current = collected;
@@ -40,6 +42,7 @@ export function PreflightScreen({ onChoose, onQuit }: PreflightScreenProps): Rea
 
   const choose = (target: ImportTarget): void => {
     finish(target);
+    setDebugImportMode(importModeLabel(target));
     onChoose(target);
   };
 

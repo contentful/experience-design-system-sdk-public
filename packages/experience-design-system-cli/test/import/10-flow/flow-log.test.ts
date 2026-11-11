@@ -84,7 +84,7 @@ describe('the flow debug log', () => {
     const progress = log.flowProgress(trail, 7000);
     trail = log.advance(trail, at({ step: 'pushing' }), failedPush, 8000);
 
-    store.startDebugRun({ ...log.FLOW_RUN, inputs: log.flowContext(state) });
+    store.startDebugRun({ ...log.FLOW_RUN });
     await vi.waitFor(async () => {
       await store.finishDebugRun(log.flowFinish(trail, failedPush, 8000));
       expect(await readdir(store.currentDebugSessionDir()!, { recursive: true })).toEqual(
@@ -101,8 +101,8 @@ describe('the flow debug log', () => {
     expect(files).toHaveLength(1);
     expect(text).toContain('Push: failed (2s)');
     expect(text).toContain('failed at push: 401 Unauthorized for [redacted]');
-    // The token is still reported as set (and how long), and nothing carries it, finished or cut short.
-    expect(text).toContain(`[present, ${token.length} chars]`);
+    // The credentials are not repeated in this log, and nothing carries the token, finished or cut short.
+    expect(text).not.toContain('cma_token');
     for (const written of [text, JSON.stringify(progress)]) {
       expect(written).not.toContain(token);
       expect(written).not.toContain(encodeURIComponent(token));

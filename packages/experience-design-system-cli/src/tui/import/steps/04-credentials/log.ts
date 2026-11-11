@@ -1,5 +1,5 @@
 import { diffSnapshots, scrubError } from '@tui/shared/debug-trail.js';
-import { importModeLabel, type ImportTarget } from '../00-preflight/logic.js';
+import type { ImportTarget } from '../00-preflight/logic.js';
 import type { CredentialField, CredentialValues } from './logic.js';
 
 // What the debug log says about the Credentials. This is the one step that handles a secret, so everything here is about
@@ -51,7 +51,6 @@ export function credentialsLog({
   const tokenLength = credentials.cmaToken.length;
 
   const summary = [
-    `Import mode: ${importModeLabel(mode)}`,
     `Credentials: ${prefilled ? 'pre-filled from Settings' : 'entered by hand'}`,
     `Space ID: ${credentials.spaceId || 'not set'}`,
     `Environment: ${credentials.environmentId || 'not set'}`,

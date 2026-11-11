@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { startDebugRun, finishDebugRun } from '@tui/debug-store.js';
 import { checkGenerationCache, type CacheCheckInput } from './cache-check.js';
 import { loadScopeGate } from './load.js';
+import { scopeGateLoadFailureLog } from './log.js';
 import type { ScopeDecisions, ScopeGateLoad } from './types.js';
 
 // The lifecycle around the gate screen, kept out of the screen so it can be tested without a terminal:
@@ -38,17 +39,9 @@ export function useScopeGateFlow(
   // Components that cannot be read never reach the screen, so the log for that is written here.
   useEffect(() => {
     if (!sessionId || !loaded || loaded.ok) return;
-    startDebugRun({
-      flow: 'import/scope-gate',
-      step: '07-scope-gate',
-      menuOption: 'Scope gate',
-      inputs: { session_id: sessionId },
-    });
-    void finishDebugRun({
-      outputs: { outcome: 'could not load the components', error: loaded.message },
-      status: 'error',
-      exitMethod: 'discarded',
-    });
+    startDebugRun({ flow: 'import/scope-gate', step: '07-scope-gate', menuOption: 'Scope gate' });
+    const { summary, data } = scopeGateLoadFailureLog(sessionId, loaded.message);
+    void finishDebugRun({ summary, outputs: data, status: 'error', exitMethod: 'discarded' });
   }, [sessionId, loaded]);
 
   // Started once per session, as soon as the gate has components to show.

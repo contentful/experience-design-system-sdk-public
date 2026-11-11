@@ -14,12 +14,22 @@ type PendingRun = {
   startedAt: number;
   // What a long run has found so far. A crash or Ctrl+C writes this instead of an empty log.
   progress?: Record<string, unknown>;
+  progressSummary?: string[];
 };
 
 type Status = 'success' | 'error';
 type ExitMethod = 'saved' | 'discarded' | 'crashed';
 
 let pendingRun: PendingRun | undefined;
+
+// What the user chose to import at the Preflight, in the words they saw. It decides which steps run and is held until the
+// import ends, so every import log says it in its header instead of each step being told.
+let importMode: string | undefined;
+
+/** Set when the user chooses at the Preflight, and cleared when the Preflight opens again. */
+export function setDebugImportMode(label: string | undefined): void {
+  importMode = label;
+}
 
 function generateRunId(): string {
   const now = new Date();
@@ -194,9 +204,14 @@ export function startDebugRun({
   });
 }
 
-/** Keeps what the open run has so far, in memory. It is only written if the run is cut short. */
-export function setDebugRunProgress(outputs: Record<string, unknown>): void {
-  if (pendingRun) pendingRun.progress = outputs;
+/**
+ * Keeps what the open run has so far, in memory. It is only written if the run is cut short, in the same layout as a
+ * finished log when a `summary` is given.
+ */
+export function setDebugRunProgress(outputs: Record<string, unknown>, summary?: string[]): void {
+  if (!pendingRun) return;
+  pendingRun.progress = outputs;
+  pendingRun.progressSummary = summary;
 }
 
 // Logs that are still being written. Finishing a log is not instant, and something that reads the logs the moment a step
@@ -218,7 +233,7 @@ export async function settleDebugLogs(): Promise<void> {
 type FinishArgs = {
   outputs: Record<string, unknown>;
   /**
-   * The facts for a person, one line each; a line indented by two spaces is a sub-point of the one above. With it the log
+   * The facts for a person, one line each; every two spaces a line is indented by nest it one level under the line above. With it the log
    * has a Summary (for people) and a Data (for AI, the outputs) section that say the same thing twice. Without it the log
    * keeps its Inputs and Outputs sections. The lines are written as given, so a step must not put a secret in one.
    */
@@ -311,14 +326,18 @@ function renderMarkdown(
   const title = stepNumber ? `${run.menuOption} · step ${stepNumber}` : run.menuOption;
   const when = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
 
+  const mode = run.flow.startsWith('import/') && importMode ? `\nImport mode: ${importMode}` : '';
   const header = `# ${title}
 
-${when} · ${finish.durationMs}ms on screen · ${finish.status} (${finish.exitMethod}) · CLI ${readPackageVersion()} · ${process.platform} / Node ${process.version}
+${when} · ${finish.durationMs}ms on screen · ${finish.status} (${finish.exitMethod}) · CLI ${readPackageVersion()} · ${process.platform} / Node ${process.version}${mode}
 `;
 
   if (finish.summary) {
-    // A line that starts with two spaces is a sub-point of the line above it.
-    const bullets = finish.summary.map((line) => (line.startsWith('  ') ? `  - ${line.trim()}` : `- ${line}`));
+    // Each two spaces a line starts with is one level of nesting under the line above it.
+    const bullets = finish.summary.map((line) => {
+      const depth = Math.floor((line.length - line.trimStart().length) / 2);
+      return `${'  '.repeat(depth)}- ${line.trim()}`;
+    });
     return `${header}
 ## Summary (for people)
 ${bullets.join('\n')}
@@ -344,7 +363,12 @@ ${JSON.stringify(finish.outputs, null, 2)}
 }
 
 function handleCrash(): Promise<void> {
-  return finishDebugRun({ outputs: pendingRun?.progress ?? {}, status: 'error', exitMethod: 'crashed' });
+  return finishDebugRun({
+    outputs: pendingRun?.progress ?? {},
+    summary: pendingRun?.progressSummary,
+    status: 'error',
+    exitMethod: 'crashed',
+  });
 }
 
 process.once('uncaughtException', (err) => {

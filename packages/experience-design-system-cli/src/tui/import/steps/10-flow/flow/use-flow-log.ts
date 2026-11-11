@@ -1,15 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { startDebugRun, finishDebugRun, setDebugRunProgress } from '@tui/debug-store.js';
-import {
-  FLOW_RUN,
-  advance,
-  flowContext,
-  flowFinish,
-  flowProgress,
-  isFlowFinished,
-  openTrail,
-  type FlowTrail,
-} from './flow-log.js';
+import { FLOW_RUN, advance, flowFinish, flowProgress, isFlowFinished, openTrail, type FlowTrail } from './flow-log.js';
 import type { FlowState } from './types.js';
 
 /**
@@ -35,7 +26,7 @@ export function useFlowLog(state: FlowState): void {
       // Only the steps that do work add to the trail, and those always happen inside a run, so the step before the first
       // one has nothing to record.
       open = openTrail(state, now);
-      startDebugRun({ ...FLOW_RUN, inputs: flowContext(state) });
+      startDebugRun({ ...FLOW_RUN });
     } else if (before && moved) {
       open = advance(open, before, state, now);
     } else {
@@ -48,7 +39,8 @@ export function useFlowLog(state: FlowState): void {
       return;
     }
     trail.current = open;
-    setDebugRunProgress(flowProgress(open, now));
+    const progress = flowProgress(open, now);
+    setDebugRunProgress(progress.outputs, progress.summary);
   }, [state]);
 
   useEffect(
