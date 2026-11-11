@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Text } from 'ink';
 import { PALETTE } from '@tui/theme.js';
 import { startDebugRun, finishDebugRun } from '@tui/debug-store.js';
@@ -6,7 +6,8 @@ import { resolveUserPath } from '../../resolve-user-path.js';
 import type { ImportTarget } from '../00-preflight/logic.js';
 import { controlsFor, usePathValidationControls } from './controls.js';
 import { scanFiles } from './helpers/scan-files.js';
-import { describeFailure, phaseOf, scanReport, summarize, type ScanResult, type SummaryRow } from './logic.js';
+import { pathValidationLog, type PathOutcome } from './log.js';
+import { describeFailure, phaseOf, summarize, type ScanResult, type SummaryRow } from './logic.js';
 import { ControlHints } from '@tui/shared/components/ControlHints.js';
 import { StepHeader } from '@tui/shared/components/StepHeader.js';
 
@@ -88,26 +89,35 @@ export function PathValidationScreen({
 }: PathValidationScreenProps): React.ReactElement {
   const resolvedPath = useMemo(() => resolveUserPath(projectPath), [projectPath]);
   const [scan, setScan] = useState<ScanResult>();
+  // The scan runs on this thread, so how long it took is how long a big project held the screen.
+  const scanMs = useRef<number>();
 
   useEffect(() => {
-    startDebugRun({
-      flow: 'import/path-validation',
-      step: '03-path-validation',
-      menuOption: 'Path validation',
-      inputs: { import_mode: mode, project_path: projectPath, resolved_path: resolvedPath },
-    });
+    startDebugRun({ flow: 'import/path-validation', step: '03-path-validation', menuOption: 'Path validation' });
   }, []);
 
   useEffect(() => {
-    setScan(scanFiles(resolvedPath));
+    const started = Date.now();
+    const result = scanFiles(resolvedPath);
+    scanMs.current = Date.now() - started;
+    setScan(result);
   }, [resolvedPath]);
 
   const phase = phaseOf(scan, { hasTokens });
 
   // A scan that failed is a failed step, whatever the user does next; the log says what they did about it.
-  const finish = (outcome: 'continued' | 'changed-path' | 'back', exitMethod: 'saved' | 'discarded') => {
+  const finish = (outcome: PathOutcome, exitMethod: 'saved' | 'discarded') => {
+    const { summary, data } = pathValidationLog({
+      mode,
+      resolvedPath,
+      scan,
+      scanMs: scanMs.current,
+      outcome,
+      hasTokens,
+    });
     void finishDebugRun({
-      outputs: { outcome, ...scanReport(scan, resolvedPath, { hasTokens }) },
+      summary,
+      outputs: data,
       status: scan?.ok === false ? 'error' : 'success',
       exitMethod,
     });
