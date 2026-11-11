@@ -5,6 +5,7 @@ import { startDebugRun, finishDebugRun } from '@tui/debug-store.js';
 import type { ImportTarget } from '../00-preflight/logic.js';
 import { ClearableTextInput } from '../../../shared/components/ClearableTextInput.js';
 import { WELCOME_CONTROLS, useWelcomeControls } from './controls.js';
+import { welcomeLog } from './log.js';
 import { toProjectPath } from './logic.js';
 import { ControlHints } from '@tui/shared/components/ControlHints.js';
 import { StepHeader } from '@tui/shared/components/StepHeader.js';
@@ -23,24 +24,21 @@ export function WelcomeScreen({ mode, onContinue, onQuit, initialPath = '' }: We
   const visit = useRef({ emptySubmits: 0 }).current;
 
   useEffect(() => {
-    startDebugRun({
-      flow: 'import/welcome',
-      step: '01-welcome',
-      menuOption: 'Welcome',
-      inputs: { import_mode: mode, initial_path: initialPath },
-    });
+    startDebugRun({ flow: 'import/welcome', step: '01-welcome', menuOption: 'Welcome' });
   }, []);
 
-  const quit = () => {
-    void finishDebugRun({
-      outputs: {
-        project_path: null,
-        typed_something: toProjectPath(projectPath) !== null,
-        empty_submits: visit.emptySubmits,
-      },
-      status: 'success',
-      exitMethod: 'discarded',
+  const finish = (path: string | null): void => {
+    const { summary, data } = welcomeLog({
+      mode,
+      projectPath: path,
+      initialPath,
+      emptySubmits: visit.emptySubmits,
     });
+    void finishDebugRun({ summary, outputs: data, status: 'success', exitMethod: path ? 'saved' : 'discarded' });
+  };
+
+  const quit = () => {
+    finish(null);
     onQuit();
   };
 
@@ -52,15 +50,7 @@ export function WelcomeScreen({ mode, onContinue, onQuit, initialPath = '' }: We
       visit.emptySubmits += 1;
       return;
     }
-    void finishDebugRun({
-      outputs: {
-        project_path: path,
-        changed_from_initial: path !== initialPath.trim(),
-        empty_submits: visit.emptySubmits,
-      },
-      status: 'success',
-      exitMethod: 'saved',
-    });
+    finish(path);
     onContinue(path);
   };
 

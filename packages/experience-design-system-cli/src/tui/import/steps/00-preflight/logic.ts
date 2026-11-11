@@ -10,6 +10,11 @@ export const IMPORT_TARGET_OPTIONS: ReadonlyArray<{ target: ImportTarget; label:
   { target: 'components', label: 'Components only' },
 ];
 
+/** The words the user saw for a choice. The logs of the steps after the preflight say it, since it decides which steps run. */
+export function importModeLabel(target: ImportTarget): string {
+  return IMPORT_TARGET_OPTIONS.find((option) => option.target === target)!.label;
+}
+
 // The steps each mode goes through, shown on the preflight screen under the option in focus.
 const COMPONENTS_OVERVIEW: readonly OverviewStep[] = [
   { description: 'Extract components from your codebase', ai: true },

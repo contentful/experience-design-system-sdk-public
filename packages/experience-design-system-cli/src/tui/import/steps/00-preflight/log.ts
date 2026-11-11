@@ -3,7 +3,7 @@ import { readSettings } from '@contentful/experience-design-system-types/config'
 import { agentReadiness, type AgentReadiness } from '@tui/settings/configuration/agents/agent-debug.js';
 import { LIST_STATUS } from '@tui/settings/configuration/agents/agent-status.js';
 import { AGENT_LABELS, readAgentConfig } from '@tui/settings/configuration/agents/agent-store.js';
-import { IMPORT_TARGET_OPTIONS, type ImportTarget } from './logic.js';
+import { importModeLabel, type ImportTarget } from './logic.js';
 
 // What the debug log says about the Preflight: what the user chose, and what was true on their machine when they chose
 // it, so a later problem can be read against the terminal, settings and agents they had. The options shown, the order the
@@ -44,10 +44,8 @@ export function preflightLog(
   context: PreflightContext | undefined,
 ): { summary: string[]; data: Record<string, unknown> } {
   const { columns, rows } = terminal;
-  const label = IMPORT_TARGET_OPTIONS.find((option) => option.target === chosen)?.label;
-
   const summary = [
-    label ? `Chose: ${label}` : 'Left the import without choosing',
+    chosen ? `Chose: ${importModeLabel(chosen)}` : 'Left the import without choosing',
     columns && rows ? `Terminal: ${columns} × ${rows}` : 'Terminal: size unknown',
   ];
   if (context) {
