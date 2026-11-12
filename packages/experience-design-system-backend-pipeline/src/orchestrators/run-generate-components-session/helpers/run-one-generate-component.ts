@@ -9,6 +9,7 @@ import {
   applyToolCalls,
   computeComponentInputHash,
   copyComponentFromCache,
+  loadCDFComponents,
   loadComponentSourceRef,
   renameEmptySlots,
   storeCache,
@@ -21,6 +22,11 @@ import type { ExistingContentfulEntities } from '../../../steps/generation/src/t
 import type { GeneratedComponentResult, GenerateComponentsProgress } from '../types.js';
 import { buildCachedComponentResult } from './build-cached-component-result.js';
 import { buildFailedComponentResult } from './build-failed-component-result.js';
+import {
+  GenerationPreflightError,
+  validateGeneratedCDF,
+  validateGenerationCalls,
+} from './validate-generation-preflight.js';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env['EDS_AGENT_TIMEOUT_MS'] ?? 5 * 60 * 1000);
 const RETRY_BACKOFF_MS = Number(process.env['EDS_RETRY_BACKOFF_MS'] ?? 5_000);
@@ -166,13 +172,18 @@ export async function runOneGenerateComponent(
 
   const maxAttempts = 2;
   let lastError = '';
+  let attemptPrompt = prompt;
+  let retryBackoffMs = RETRY_BACKOFF_MS;
+  let failureKind: 'preflight' | undefined;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    if (attempt > 1) await new Promise((res) => setTimeout(res, RETRY_BACKOFF_MS));
+    if (attempt > 1 && retryBackoffMs > 0) await new Promise((res) => setTimeout(res, retryBackoffMs));
+    retryBackoffMs = RETRY_BACKOFF_MS;
+    failureKind = undefined;
     onProgress?.({ kind: 'component:started', index, total, name: component.name, attempt, maxAttempts });
     const { result } = await invokeAgentWithOutput(
       invoker,
-      { agent, model, prompt, timeoutMs: DEFAULT_TIMEOUT_MS },
+      { agent, model, prompt: attemptPrompt, timeoutMs: DEFAULT_TIMEOUT_MS },
       verbose,
     );
 
@@ -187,15 +198,42 @@ export async function runOneGenerateComponent(
       continue;
     }
 
-    const { calls, warnings } = parseToolCalls(result.stdout);
-    if (calls.length === 0) {
-      lastError = describeAgentFailure(result);
+    const invalidCalls: string[] = [];
+    const { calls, warnings } = parseToolCalls(result.stdout, (message) => invalidCalls.push(message));
+    let applied;
+    try {
+      validateGenerationCalls(
+        { props: component.props, slots: effectiveSlots },
+        calls,
+        allowedComponentNames,
+        invalidCalls,
+      );
+      if (calls.length === 0) throw new GenerationPreflightError(['No valid generation tool calls were produced.']);
+      applied = applyToolCalls(db, sessionId, component.component_id, component.name, calls, warnings, {
+        allowedComponentNames,
+        validateBeforeCommit: () => {
+          const generated = loadCDFComponents(db, sessionId).find((entry) => entry.key === component.name);
+          if (!generated) throw new Error(`Generated component "${component.name}" was not found.`);
+          validateGeneratedCDF(generated);
+        },
+      });
+    } catch (error) {
+      if (!(error instanceof GenerationPreflightError)) throw error;
+      lastError = error.message;
+      failureKind = 'preflight';
+      retryBackoffMs = 0;
+      attemptPrompt = `${prompt}\n\n${lastError}\nRegenerate the complete component tool calls, correcting these errors. Use only properties and slots from the supplied extracted component and component names from the allowlist.`;
+      onProgress?.({
+        kind: 'component:preflight-failed',
+        index,
+        total,
+        name: component.name,
+        attempt,
+        maxAttempts,
+        error: lastError,
+      });
       continue;
     }
-
-    const applied = applyToolCalls(db, sessionId, component.component_id, component.name, calls, warnings, {
-      allowedComponentNames,
-    });
     if (!noCache) {
       storeCache(
         db,
@@ -230,5 +268,8 @@ export async function runOneGenerateComponent(
   }
 
   onProgress?.({ kind: 'component:failed', index, total, name: component.name, error: lastError });
-  return buildFailedComponentResult(component.name, lastError, renames.length);
+  return {
+    ...buildFailedComponentResult(component.name, lastError, renames.length),
+    ...(failureKind ? { failureKind } : {}),
+  };
 }

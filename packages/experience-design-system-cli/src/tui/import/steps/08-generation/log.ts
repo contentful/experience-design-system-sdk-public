@@ -50,7 +50,7 @@ export function generationLog({
   const { generation } = result;
   if (generation.route === 'review') {
     summary.push(
-      'Result: done',
+      generation.generationIssues?.length ? 'Result: continued with generation warnings' : 'Result: done',
       `Generated: ${generation.generatedCount} of ${generation.acceptedCount} accepted`,
       `Token mapping: ${generation.mapTokensEligible ? 'ran' : 'not needed'}`,
       `Session: ${generation.sessionId}`,
@@ -65,6 +65,7 @@ export function generationLog({
         route: generation.route,
         session_id: generation.sessionId,
         generated: generation.generatedCount,
+        ...(generation.generationIssues?.length ? { generation_issues: generation.generationIssues } : {}),
         map_tokens_eligible: generation.mapTokensEligible,
         jobs: jobData(rows),
       },

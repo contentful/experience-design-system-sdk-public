@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   getOrCreateSession,
+  runImportGeneration as runGeneration,
+  type ImportGenerationDeps as GenerationDeps,
   openPipelineDb,
   storeRawComponents,
   type AgentAuthStatus,
@@ -13,7 +15,6 @@ import {
 import { runExtraction, type ExtractionDeps } from '../../src/tui/import/steps/06-extraction/run.js';
 import type { ExtractionInput } from '../../src/tui/import/steps/06-extraction/types.js';
 import { loadScopeGate } from '../../src/tui/import/steps/07-scope-gate/load.js';
-import { runGeneration, type GenerationDeps } from '../../src/tui/import/steps/08-generation/run.js';
 
 // This test reads top to bottom as the first half of an import: extraction finds the components, the scope gate loads
 // them for the user to accept or reject, and generation turns the accepted ones into definitions and hands the result
@@ -158,7 +159,6 @@ describe('an import, from extraction to the hand-off to the review', () => {
         agent: 'claude',
         promptOverrides: [],
         noCache: false,
-        hasTokens: false,
       },
       () => {},
       generationDeps,
@@ -252,7 +252,6 @@ describe('an import, from extraction to the hand-off to the review', () => {
         agent: 'claude',
         promptOverrides: [],
         noCache: false,
-        hasTokens: false,
       },
       () => {},
       deps,

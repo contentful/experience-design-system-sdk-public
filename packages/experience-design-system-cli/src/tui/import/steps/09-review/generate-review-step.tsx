@@ -11,6 +11,7 @@ import type {
   DownstreamImpact,
   ServerPreviewResponse,
 } from '@contentful/experience-design-system-types';
+import type { GenerationIssue } from '@contentful/experience-design-system-types/handoff';
 import {
   GroupedSidebar,
   buildVisibleRows,
@@ -27,10 +28,9 @@ import { computeRenderStatuses, pickDrillTarget, type RenderStatus } from './gra
 import { removedComponentsHeader, removedComponentLine } from './components/removed-components-text.js';
 import { useImmediateInput } from '../07-scope-gate/sidebar/hooks/useImmediateInput.js';
 import {
-  openPipelineDb,
-  storeCDFComponents,
-  storeSlotCycles,
-  loadSlotCycles,
+  saveGeneratedReviewComponent,
+  refreshGeneratedReviewCycles,
+  loadReviewSessionState,
   type StoredSlotCycle,
 } from '@contentful/experience-design-system-backend-pipeline';
 import {
@@ -76,12 +76,13 @@ import {
   buildReviewFieldEditor,
   getReviewSelectionState,
   ReviewEmptyComponentsWarning,
+  ReviewGenerationWarning,
   ReviewComponentPanel,
   ReviewFinalizeError,
   ReviewNoSelection,
 } from './components/ReviewComponentPanel.js';
 import { ReviewLoadError, ReviewLoadingState } from './components/ReviewStatus.js';
-import { createReviewHistorySnapshot, loadReviewSessionState, type ReviewSessionLoadResult } from './session.js';
+import { createReviewHistorySnapshot, type ReviewSessionLoadResult } from './session.js';
 import { useReviewFinalize, useReviewHistory, useReviewMetadata, useReviewSession } from './use-review-session.js';
 import type { CdfReviewEntry } from './types.js';
 import { useReviewEditor } from './use-review-editor.js';
@@ -99,6 +100,7 @@ import { LivePreviewSummary } from './components/LivePreviewSummary.js';
 
 type GenerateReviewStepProps = {
   extractSessionId: string | null;
+  generationIssues?: GenerationIssue[];
   tokenSessionId?: string | null;
   onFinalize: (accepted: number, rejected: number, unresolved: number) => void;
   onQuit: () => void;
@@ -435,6 +437,7 @@ export function GenerateReviewStep(props: GenerateReviewStepProps): React.ReactE
 
 function GenerateReviewStepView({
   extractSessionId,
+  generationIssues,
   tokenSessionId,
   onFinalize,
   onQuit,
@@ -452,22 +455,16 @@ function GenerateReviewStepView({
   const setLoadedSlotCycles = useCallback((cycles: StoredSlotCycle[] | undefined): void => {
     setSlotCycles(cycles ?? []);
   }, []);
-  const loadSessionState = useCallback(
-    (): ReviewSessionLoadResult<StoredSlotCycle[]> =>
-      loadReviewSessionState({
-        extractSessionId,
-        tokenSessionId,
-        loadExtra: (db, sessionId) => loadSlotCycles(db, sessionId),
-        sortEntries: (entries, cycles) => {
-          const cycleParticipants = new Set<string>();
-          for (const cycle of cycles ?? []) {
-            for (const participant of cycle.path) cycleParticipants.add(participant);
-          }
-          return sortComponentsForSidebar(entries, cycleParticipants);
-        },
-      }),
-    [extractSessionId, tokenSessionId],
-  );
+  const loadSessionState = useCallback((): ReviewSessionLoadResult<StoredSlotCycle[]> => {
+    const result = loadReviewSessionState({ extractSessionId, generationIssues, tokenSessionId });
+    const cycleParticipants = new Set(result.slotCycles.flatMap((cycle) => cycle.path));
+    return {
+      entries: sortComponentsForSidebar(result.entries, cycleParticipants),
+      tokens: result.tokens,
+      error: result.error,
+      extra: result.slotCycles,
+    };
+  }, [extractSessionId, tokenSessionId, generationIssues]);
   const reviewSurface = useReviewSurfaceState(initialFinalizeError);
   const {
     components,
@@ -590,23 +587,9 @@ function GenerateReviewStepView({
 
   const recomputeCycles = (currentComponents: CdfReviewEntry[]): void => {
     try {
-      const view = computeCycleView(currentComponents);
-      const rawCycles = view.pushBlocking;
-      const next: StoredSlotCycle[] = rawCycles.map((cycle) => ({
-        path: cycle.path,
-        edges: cycle.edges,
-        suggestedBreak: cycle.edges.length > 0 ? suggestCycleBreakEdge(cycle, rawCycles) : null,
-      }));
-      const prevSerialized = JSON.stringify(slotCycles);
-      const nextSerialized = JSON.stringify(next);
-      if (prevSerialized === nextSerialized) return;
+      const next = refreshGeneratedReviewCycles(extractSessionId, currentComponents);
+      if (JSON.stringify(slotCycles) === JSON.stringify(next)) return;
       setSlotCycles(next);
-      const db = openPipelineDb();
-      try {
-        storeSlotCycles(db, extractSessionId, next);
-      } finally {
-        db.close();
-      }
       if (next.length === 0) setFinalizeError(null);
     } catch {
       // Defensive: swallow — never let cycle detection crash the review UI.
@@ -634,6 +617,7 @@ function GenerateReviewStepView({
     const m = new Map<string, NodeStatus>();
     for (const c of components) {
       if (c.status === 'rejected') m.set(c.key, 'error');
+      else if (c.generationError) m.set(c.key, 'warning');
     }
     return m;
   }, [components]);
@@ -778,7 +762,7 @@ function GenerateReviewStepView({
   const selectedIdx = visibleRowsMemo[cursorRowIdx]?.itemIdx ?? -1;
   const focusedComponentKey: string | null = components[selectedIdx]?.key ?? null;
   const { sidebarVisibleCount: visibleCount, panelMaxRows } = computeSidebarBudget({
-    rows: terminalRows || FALLBACK_ROWS,
+    rows: (terminalRows || FALLBACK_ROWS) - (components.some((component) => component.generationError) ? 2 : 0),
     panelOpen: false,
     entryCount: 0,
   });
@@ -924,12 +908,7 @@ function GenerateReviewStepView({
       component.key === target.key ? { ...component, entry: nextEntry } : component,
     );
     setComponents(next);
-    const db = openPipelineDb();
-    try {
-      storeCDFComponents(db, extractSessionId, [{ key: target.key, entry: nextEntry }]);
-    } finally {
-      db.close();
-    }
+    saveGeneratedReviewComponent(extractSessionId, target.key, nextEntry);
     recomputeCycles(next);
     livePreviewHook.trigger();
     pushHistorySnapshot(next, 'break-cycle-edge');
@@ -1511,6 +1490,11 @@ function GenerateReviewStepView({
           );
         })()}
       <ReviewEmptyComponentsWarning count={emptyCount} hidden={dialogOpen} />
+      <ReviewGenerationWarning
+        count={components.filter((component) => component.generationError).length}
+        selected={selected}
+        hidden={dialogOpen}
+      />
       <ReviewFinalizeError message={finalizeError} hidden={dialogOpen} />
       {!dialogOpen && breakPanel.isOpen && (
         <BreakCyclePanel
