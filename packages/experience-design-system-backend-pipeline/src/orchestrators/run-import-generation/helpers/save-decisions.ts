@@ -1,9 +1,5 @@
-import {
-  applyScopeDecisions,
-  openPipelineDb,
-  writeScopeDecisionsSnapshot,
-} from '@contentful/experience-design-system-backend-pipeline';
-import type { GenerationInput } from './types.js';
+import { applyScopeDecisions, openPipelineDb, writeScopeDecisionsSnapshot } from '../../../persistence/src/index.js';
+import type { ImportGenerationInput as GenerationInput } from '../types.js';
 
 /**
  * Applies the scope decisions to the session and writes the review snapshot that `generate components` reads to leave

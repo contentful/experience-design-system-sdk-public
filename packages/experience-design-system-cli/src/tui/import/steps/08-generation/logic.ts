@@ -5,10 +5,6 @@ export function initialProgress(): GenerationProgress {
   return { components: null, mapTokens: 'idle', mapTokensEligible: null };
 }
 
-export function shouldRunMapTokens(counts: { mappablePropCount: number; rawTokenCount: number }): boolean {
-  return counts.mappablePropCount > 0 && counts.rawTokenCount > 0;
-}
-
 export function formatAcceptanceSummary(counts: { accepted: number; autoRejected: number }): string {
   const accepted = `${counts.accepted} component${counts.accepted === 1 ? '' : 's'} accepted`;
   if (counts.autoRejected === 0) return `${accepted}.`;

@@ -456,3 +456,29 @@ export type {
   OsName,
   AnalyticsWriteResult,
 } from './analytics/index.js';
+
+export {
+  runImportGeneration,
+  type ImportGenerationDeps,
+} from './orchestrators/run-import-generation/run-import-generation.js';
+export type {
+  ImportGenerationInput,
+  ImportGenerationProgress,
+  ImportGenerationResult,
+  ImportGenerationStepName,
+} from './orchestrators/run-import-generation/types.js';
+export {
+  loadReviewSessionState,
+  finalizeReviewSession,
+  saveGeneratedReviewComponent,
+  saveGeneratedReviewDraft,
+  loadGeneratedReviewMetadata,
+  refreshGeneratedReviewCycles,
+} from './orchestrators/review-generated-session/review-generated-session.js';
+export type {
+  GeneratedReviewEntry,
+  GeneratedReviewSession,
+  LoadGeneratedReviewSessionOptions,
+  ReviewFinalizeCounts,
+  ReviewToken,
+} from './orchestrators/review-generated-session/types.js';

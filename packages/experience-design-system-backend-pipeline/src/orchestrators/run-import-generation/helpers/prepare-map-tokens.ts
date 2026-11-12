@@ -3,11 +3,10 @@ import {
   loadCDFComponents,
   loadDTCGTokens,
   openPipelineDb,
-  readTokensFromPath,
-  storeDTCGTokens,
-} from '@contentful/experience-design-system-backend-pipeline';
-import { shouldRunMapTokens } from './logic.js';
-import type { GenerationInput } from './types.js';
+  storeDtcgTokens as storeDTCGTokens,
+} from '../../../persistence/src/index.js';
+import { readTokensFromPath } from '../../../steps/apply/src/controller/tokens/read-tokens-from-path.js';
+import type { ImportGenerationInput as GenerationInput } from '../types.js';
 
 export interface MapTokensPlan {
   /** False when there is nothing to map, in which case the command is not run. */
@@ -42,7 +41,7 @@ export async function prepareMapTokens(
     );
     const rawTokenCount = loadDTCGTokens(db, generatedSessionId).tokens.length;
     return {
-      eligible: shouldRunMapTokens({ mappablePropCount, rawTokenCount }),
+      eligible: mappablePropCount > 0 && rawTokenCount > 0,
       mappablePropCount,
       rawTokenCount,
     };
