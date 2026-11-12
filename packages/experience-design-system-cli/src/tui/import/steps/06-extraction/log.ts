@@ -1,6 +1,5 @@
-import type { AgentName } from '@contentful/experience-design-system-backend-pipeline';
-import { AGENT_LABELS } from '@tui/settings/configuration/agents/agent-store.js';
 import { scrubError } from '@tui/shared/debug-trail.js';
+import { agentLine } from '../../shared/agent-log.js';
 import { jobData, jobLines } from '../../shared/job-log.js';
 import type { RunningLine } from '../../shared/running-step/logic.js';
 import type { TokensOnlyInput, TokensOnlyResult } from './run-tokens-only.js';
@@ -9,9 +8,6 @@ import type { ExtractionInput, ExtractionResult } from './types.js';
 // What the debug log says about the Extraction: which agent ran and with what, what each job did and how long it took, and
 // where it stopped if it failed. The credentials are not repeated here, since the Credentials log has them; the token is
 // only used to scrub a failure message, because the agent and the API can echo what they were sent.
-
-const agentLine = (agent: string, model: string | undefined): string =>
-  `${AGENT_LABELS[agent as AgentName] ?? agent} (${model ? `model ${model}` : 'default model'})`;
 
 /** The log's two sections: `summary` for a person, `data` for AI, both carrying the same facts. */
 export function extractionLog({

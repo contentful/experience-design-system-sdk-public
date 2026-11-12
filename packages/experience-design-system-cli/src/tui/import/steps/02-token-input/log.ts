@@ -1,3 +1,4 @@
+import { pathSourceLine, pathSourceOf, wentBackLine } from '../../shared/input-log.js';
 import type { ImportTarget } from '../00-preflight/logic.js';
 
 // What the debug log says about the Token input: the file the user ended up with, and above all why a path was turned
@@ -28,16 +29,15 @@ export function tokenInputLog({
   /** The error still showing when the user went back, if there was one. */
   endedOnError: string | undefined;
 }): { summary: string[]; data: Record<string, unknown> } {
-  const kept = tokenPath !== null && initialPath.trim() !== '' && enteredPath === initialPath.trim();
-  const source = tokenPath === null ? null : kept ? 'prefilled' : 'typed';
+  const source = pathSourceOf(tokenPath, enteredPath, initialPath);
 
   const summary = [
     tokenPath === null ? 'Token file: none (went back)' : `Token file: ${tokenPath}`,
-    ...(source ? [`Path source: ${source === 'prefilled' ? 'pre-filled, kept as is' : 'typed by the user'}`] : []),
+    ...pathSourceLine(source),
     `Rejected paths: ${rejected.length}`,
     ...rejected.map((attempt) => `  "${attempt.entered}" → ${attempt.error}`),
     `Empty submits: ${emptySubmits}`,
-    ...(endedOnError ? [`Went back while this error was showing: ${endedOnError}`] : []),
+    ...wentBackLine(endedOnError),
   ];
 
   return {

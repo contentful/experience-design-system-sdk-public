@@ -6,12 +6,23 @@ export function resolveComponentIds(
   existingIds: readonly string[],
 ): Map<string, string> {
   const generated = [...new Set(generatedIds)];
-  const existing = [...new Set(existingIds)];
+  const existing = new Set(existingIds);
+  const existingByLowerCase = new Map<string, string[]>();
+  for (const id of existing) {
+    const key = id.toLowerCase();
+    existingByLowerCase.set(key, [...(existingByLowerCase.get(key) ?? []), id]);
+  }
+  const generatedPerLowerCase = new Map<string, number>();
+  for (const id of generated) {
+    const key = id.toLowerCase();
+    generatedPerLowerCase.set(key, (generatedPerLowerCase.get(key) ?? 0) + 1);
+  }
   return new Map(
     generated.map((id) => {
-      const matches = existing.filter((candidate) => candidate.toLowerCase() === id.toLowerCase());
-      const collision = generated.some((candidate) => candidate !== id && candidate.toLowerCase() === id.toLowerCase());
-      return [id, !existing.includes(id) && matches.length === 1 && !collision ? matches[0]! : id];
+      const key = id.toLowerCase();
+      const matches = existingByLowerCase.get(key) ?? [];
+      const collision = (generatedPerLowerCase.get(key) ?? 0) > 1;
+      return [id, !existing.has(id) && matches.length === 1 && !collision ? matches[0]! : id];
     }),
   );
 }
@@ -35,10 +46,16 @@ export function alignComponentIds(db: DatabaseSync, sessionId: string, existingI
     for (const [name, id] of ids) {
       if (name !== id) updateComponent.run(id, sessionId, name);
     }
+    const slotIds = new Map<string, string>();
     for (const slot of slots) {
-      const id =
-        ids.get(slot.allowed_component) ??
-        resolveComponentIds([slot.allowed_component], existingIds).get(slot.allowed_component)!;
+      if (!slotIds.has(slot.allowed_component)) {
+        slotIds.set(
+          slot.allowed_component,
+          ids.get(slot.allowed_component) ??
+            resolveComponentIds([slot.allowed_component], existingIds).get(slot.allowed_component)!,
+        );
+      }
+      const id = slotIds.get(slot.allowed_component)!;
       if (slot.allowed_component !== id) updateSlot.run(id, slot.rowid);
     }
     db.exec('COMMIT');

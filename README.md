@@ -80,7 +80,7 @@ The CLI shares anonymous usage data by default: which commands are used and wher
 
 The CLI writes a debug log for each screen by default, so there is something to share if you hit a problem. The CMA token is redacted. Logs are deleted after 30 days; under **Settings → Debug Mode** you can change that to 7 or 14 days, or turn logging off.
 
-The logs go in a folder for each terminal session, `<base>/.contentful/<date>-session-<n>/debug`, next to the `tokens.json` and `components.json` each import saves. `<base>` is the **Root Project Directory** if you set one under **Settings → Configuration → Project**, otherwise the project you are importing. So **by default these folders are created inside your own project**. To keep them out, set a Root Project Directory somewhere else, or add `.contentful/` to your `.gitignore`.
+The logs go in a folder for each terminal session, `<base>/.contentful/<date>-session-<n>/debug`, next to a `dsi-import-<n>` folder holding the `tokens.json` and `components.json` each import saves. `<base>` is the **Root Project Directory** if you set one under **Settings → Configuration → Project**, otherwise the project you are importing. So **by default these folders are created inside your own project**. To keep them out, set a Root Project Directory somewhere else, or add `.contentful/` to your `.gitignore`.
 
 With Debug Mode off, no logs are written and the saved files go in `<project>/.contentful/`. The **Help** screen shows where the current session writes its files.
 
