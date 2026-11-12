@@ -23,6 +23,8 @@ export type PushResult = {
   designTokens: { created: number; updated: number; removed: number; failed: number };
   summary?: { total: number; succeeded: number; failed: number };
   failures?: Array<{ entityType: string; entityId: string; message: string }>;
+  /** What the push did to each entity, as the API reported it. For the debug log; the screens use the counts. */
+  items?: Array<{ entityType: string; id: string; action: string; status: string }>;
 };
 
 /** Everything the flow keeps between steps. The same fields the wizard kept, minus those only the early stages used. */

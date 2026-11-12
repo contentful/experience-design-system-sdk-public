@@ -25,6 +25,17 @@ export interface GenerationInput {
   noCache: boolean;
   /** Whether a token catalog is in use. It changes the wording of the screen, not what runs. */
   hasTokens: boolean;
+  /** Told which components were generated, restored from the cache or failed, once the agent run has ended. For the log. */
+  onDetails?: (details: GenerationDetails) => void;
+}
+
+/** What happened to each component, by name. A component that failed ends the stage, so these are known even then. */
+export interface GenerationDetails {
+  generated: string[];
+  fromCache: string[];
+  failed: string[];
+  /** Names found more than once in the project. */
+  duplicateNames: string[];
 }
 
 /** One line per thing the screen shows, in the order it shows them. */

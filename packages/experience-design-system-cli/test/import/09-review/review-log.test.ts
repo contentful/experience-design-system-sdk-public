@@ -35,8 +35,8 @@ describe('the review debug log', () => {
     const { outputs, exitMethod } = reviewFinish(trail, ended, 5000, { accepted: 2, rejected: 1, unresolved: 1 });
 
     expect(outputs['outcome']).toBe('finalized: 2 accepted, 1 rejected, 1 unresolved');
-    expect(outputs['rejected_by_user']).toEqual({ count: 1, keys: ['Hero'] });
-    expect(outputs['accepted_by_user']).toEqual({ count: 1, keys: ['Card'] });
+    expect(outputs['rejected_by_user']).toEqual({ count: 1, names: ['Hero'] });
+    expect(outputs['accepted_by_user']).toEqual({ count: 1, names: ['Card'] });
     expect(outputs['edits']).toMatchObject({ total: 3, by_kind: { 'edit-save': 1, 'token-review': 1, undo: 1 } });
     expect(exitMethod).toBe('saved');
   });

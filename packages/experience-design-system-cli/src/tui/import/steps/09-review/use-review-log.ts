@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { startDebugRun, finishDebugRun, setDebugRunProgress } from '@tui/debug-store.js';
+import { noteJourney } from '../../shared/import-ledger.js';
 import {
   REVIEW_RUN,
   openReviewTrail,
@@ -33,6 +34,12 @@ export function useReviewLog({
   const latest = useRef(components);
   latest.current = components;
 
+  // Ends the log with the components as they are now, and notes where each one finished for the Publish log.
+  const settle = (open: ReviewTrail, counts: Counts | undefined): void => {
+    for (const { key, status } of latest.current) noteJourney([key], { review: status });
+    void finishDebugRun(reviewFinish(open, latest.current, Date.now(), counts));
+  };
+
   useEffect(() => {
     if (loading || started.current) return;
     started.current = true;
@@ -51,7 +58,7 @@ export function useReviewLog({
     () => () => {
       const open = trail.current;
       trail.current = undefined;
-      if (open) void finishDebugRun(reviewFinish(open, latest.current, Date.now(), undefined));
+      if (open) settle(open, undefined);
     },
     [],
   );
@@ -66,7 +73,7 @@ export function useReviewLog({
     finish: (counts) => {
       const open = trail.current;
       trail.current = undefined;
-      if (open) void finishDebugRun(reviewFinish(open, latest.current, Date.now(), counts));
+      if (open) settle(open, counts);
     },
   };
 }

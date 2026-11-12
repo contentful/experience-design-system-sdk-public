@@ -1,8 +1,11 @@
 import type { AgentName } from '@contentful/experience-design-system-backend-pipeline';
 import { AGENT_LABELS } from '@tui/settings/configuration/agents/agent-store.js';
 import { scrubError } from '@tui/shared/debug-trail.js';
+import { byAiSuggestion, repeatedNames } from '../../shared/component-facts.js';
+import { nameLines, nameList } from '../../shared/entity-lists.js';
 import { jobData, jobLines } from '../../shared/job-log.js';
 import type { RunningLine } from '../../shared/running-step/logic.js';
+import type { ScopeComponent } from '../07-scope-gate/types.js';
 import type { TokensOnlyInput, TokensOnlyResult } from './run-tokens-only.js';
 import type { ExtractionInput, ExtractionResult } from './types.js';
 
@@ -18,11 +21,14 @@ export function extractionLog({
   input,
   result,
   rows,
+  components,
 }: {
   input: ExtractionInput;
   result: ExtractionResult;
   /** The rows the screen showed, with how long each one took. */
   rows: readonly RunningLine[];
+  /** The components the extraction found, as the session has them. Empty when they could not be read. */
+  components: readonly ScopeComponent[];
 }): { summary: string[]; data: Record<string, unknown>; status: 'success' | 'error' } {
   const lookup = input.credentials !== null;
   const settings = {
@@ -54,12 +60,30 @@ export function extractionLog({
   }
 
   const { extraction } = result;
+  const names = components.map((component) => component.name);
+  const found = nameList(names);
+  const repeated = nameList(repeatedNames(names));
+  const suggested = byAiSuggestion(components);
+  const aiAccepted = nameList(suggested.accepted);
+  const aiRejected = nameList(suggested.rejected);
+  const aiNone = nameList(suggested.none);
+
   summary.push(
     'Result: done',
     `Session: ${extraction.sessionId}`,
-    `Tokens: ${extraction.tokenCount}`,
+    `Tokens generated: ${extraction.tokenCount}`,
     `Existing entities: ${extraction.existingEntitiesStatus}`,
     `Composition: ${extraction.compositionPhase}`,
+    ...nameLines(
+      'Components found',
+      found,
+      0,
+      found.count === names.length ? undefined : `${names.length} (${found.count} different names)`,
+    ),
+    ...nameLines('Found more than once (they share one decision)', repeated),
+    ...nameLines('The selection agent accepted', aiAccepted),
+    ...nameLines('The selection agent rejected', aiRejected),
+    ...nameLines('No suggestion from the selection agent', aiNone),
     'What ran:',
     ...jobLines(rows),
   );
@@ -72,6 +96,11 @@ export function extractionLog({
       token_count: extraction.tokenCount,
       existing_entities_status: extraction.existingEntitiesStatus,
       composition_phase: extraction.compositionPhase,
+      components_found: found,
+      found_more_than_once: repeated,
+      ai_accepted: aiAccepted,
+      ai_rejected: aiRejected,
+      ai_no_suggestion: aiNone,
       jobs: jobData(rows),
     },
     status: 'success',

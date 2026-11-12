@@ -3,6 +3,7 @@ import { Box, Text } from 'ink';
 import { PALETTE } from '@tui/theme.js';
 import { startDebugRun, finishDebugRun, setDebugImportMode } from '@tui/debug-store.js';
 import { PREFLIGHT_CONTROLS, usePreflightControls } from './controls.js';
+import { resetImportLedger } from '../../shared/import-ledger.js';
 import { collectPreflightContext, preflightLog, type PreflightContext } from './log.js';
 import { IMPORT_TARGET_OPTIONS, importModeLabel, overviewFor, type ImportTarget } from './logic.js';
 import { OverviewBox } from '../../shared/index.js';
@@ -25,6 +26,7 @@ export function PreflightScreen({ onChoose, onQuit }: PreflightScreenProps): Rea
   useEffect(() => {
     // A new Preflight is a new choice, so the logs of the earlier one stop applying.
     setDebugImportMode(undefined);
+    resetImportLedger();
     startDebugRun({ flow: 'import/preflight', step: '00-preflight', menuOption: 'Preflight' });
     void collectPreflightContext().then((collected) => {
       context.current = collected;

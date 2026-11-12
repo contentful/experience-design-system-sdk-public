@@ -26,6 +26,7 @@ describe('the Extraction debug log', () => {
         message: `401 Unauthorized for ${token} (url: /spaces?access_token=${encodeURIComponent(token)})`,
       },
       rows: [],
+      components: [],
     });
 
     const written = JSON.stringify({ summary, data });

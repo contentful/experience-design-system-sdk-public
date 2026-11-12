@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { startDebugRun, finishDebugRun } from '@tui/debug-store.js';
+import { noteJourney } from '../../shared/import-ledger.js';
 import { rowTimer } from '../../shared/running-step/logic.js';
 import { generationLog } from './log.js';
 import { initialProgress, progressRows } from './logic.js';
 import { runGeneration } from './run.js';
-import type { GenerationInput, GenerationProgress, GenerationResult } from './types.js';
+import type { GenerationDetails, GenerationInput, GenerationProgress, GenerationResult } from './types.js';
 
 export type GenerationState =
   | { status: 'running'; progress: GenerationProgress; rowMs: Array<number | undefined> }
@@ -30,18 +31,26 @@ export function useGeneration(input: GenerationInput | undefined): GenerationSta
     let lastProgress: GenerationProgress | undefined;
     // How long each row took, noted the first time it is seen finished.
     const timeRows = rowTimer();
+    // Which components were generated, restored from the cache or failed, told by the run once the agent has finished.
+    let details: GenerationDetails | undefined;
     startDebugRun({ flow: 'import/generation', step: '08-generation', menuOption: 'Generation' });
-    void runGeneration(input, (progress) => {
+    void runGeneration({ ...input, onDetails: (told) => (details = told) }, (progress) => {
       lastProgress = progress;
       const rowMs = timeRows(progressRows(progress, input.agent));
       if (current.current === input) setState({ status: 'running', progress, rowMs });
     }).then((result) => {
       if (current.current !== input) return;
       const rowMs = lastProgress ? timeRows(progressRows(lastProgress, input.agent)) : [];
+      if (details) {
+        noteJourney(details.generated, { generation: 'generated' });
+        noteJourney(details.fromCache, { generation: 'restored from cache' });
+        noteJourney(details.failed, { generation: 'failed' });
+      }
       const { summary, data, status } = generationLog({
         input,
         result,
         rows: lastProgress ? progressRows(lastProgress, input.agent, rowMs) : [],
+        details,
       });
       void finishDebugRun({ summary, outputs: data, status, exitMethod: result.ok ? 'saved' : 'discarded' });
       setState({ status: 'done', result });

@@ -215,6 +215,7 @@ function resultOf(operation: ApplyOperationResponse, preview: ServerPreviewRespo
         failed: failed('DesignToken'),
       },
       summary: operation.summary,
+      items: items.map(({ entityType, id, action, status }) => ({ entityType, id, action, status })),
       failures: items
         .filter((item) => item.status === 'failed')
         .map((item) => ({
