@@ -140,6 +140,8 @@ Main tables in `pipeline.db`:
 
 Generated component attempts pass preflight before their tool calls are committed or cached: classifications must use supported types and categories, properties and slots must exist in the extracted component, allowed-component references must belong to the generation allowlist, and the projected CDF must pass the shared schema validator. A rejected attempt is rolled back and immediately regenerated with its validation errors in the prompt, within the existing two-attempt limit. Exhausted preflight failures do not stop the batch or prevent review: affected components carry warning markers and their generation errors into review, including when no definition was committed. Rejected output is never cached. Cycle checks remain in review; unresolved token kinds retain the existing mapping and document-repair behavior.
 
+The backend's `runImportGeneration` owns scope-decision persistence, authentication checks, generation continuation policy, prompt preparation, token mapping, and the generation handoff. It emits structured progress events; the CLI translates them into terminal text and progress rows. The backend review-session API loads definitions, tokens and cycles, merges generation issues, supplies missing review entries, persists edits, refreshes blocking cycles, and finalizes review decisions. The CLI owns display sorting, warning colors and copy, layout, input handling, and local undo/redo state.
+
 ### RawComponentDefinition (extraction output)
 
 Defined in `packages/experience-design-system-backend-pipeline/src/steps/extraction/src/types/component.ts`. Produced by extraction, stored in `pipeline.db`, consumed by selection and generation. Abridged:

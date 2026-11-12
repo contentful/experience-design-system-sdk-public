@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import {
-  loadComponentRationale,
-  loadComponentReviewMetadata,
-  openPipelineDb,
+  finalizeReviewSession,
+  loadGeneratedReviewMetadata,
   readTokensFromPath,
   type ComponentRationale,
   type ComponentReviewMetadata,
 } from '@contentful/experience-design-system-backend-pipeline';
 import { createHistoryStack, type HistorySnapshot, type HistoryStack } from './history.js';
-import { finalizeReviewSession, type ReviewSessionLoadResult } from './session.js';
+import type { ReviewSessionLoadResult } from './session.js';
 import { useReviewFinalizePreview } from './use-finalize-preview.js';
 import type { CdfReviewEntry, TokenReviewToken } from './types.js';
 
@@ -121,23 +120,7 @@ export function useReviewMetadata({ components, selectedIdx, extractSessionId }:
       return;
     }
 
-    let metadata: ComponentReviewMetadata | null = null;
-    let rationale: ComponentRationale | null = null;
-    const db = openPipelineDb();
-    try {
-      try {
-        metadata = loadComponentReviewMetadata(db, extractSessionId, current.key);
-      } catch {
-        metadata = null;
-      }
-      try {
-        rationale = loadComponentRationale(db, extractSessionId, current.key);
-      } catch {
-        rationale = null;
-      }
-    } finally {
-      db.close();
-    }
+    const { metadata, rationale } = loadGeneratedReviewMetadata(extractSessionId, current.key);
     setReviewMetadata(metadata);
     setComponentRationale(rationale);
   }, [components, extractSessionId, selectedIdx]);

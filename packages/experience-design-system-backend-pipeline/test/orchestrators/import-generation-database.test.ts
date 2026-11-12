@@ -9,9 +9,9 @@ import {
   storeCDFComponents,
   storeDTCGTokens,
   storeRawComponents,
-} from '@contentful/experience-design-system-backend-pipeline';
-import { prepareMapTokens } from '../../../src/tui/import/steps/08-generation/map-tokens.js';
-import { saveDecisions } from '../../../src/tui/import/steps/08-generation/save-decisions.js';
+} from '../../src/index.js';
+import { prepareMapTokens } from '../../src/orchestrators/run-import-generation/helpers/prepare-map-tokens.js';
+import { saveDecisions } from '../../src/orchestrators/run-import-generation/helpers/save-decisions.js';
 
 const raw = (name: string) => ({
   name,
@@ -26,6 +26,7 @@ const designProp = { $type: 'token' as const, $category: 'design' as const, '$to
 describe('the generation stage and the pipeline database', () => {
   let dir: string;
   let previousDbPath: string | undefined;
+  let previousHome: string | undefined;
 
   const newSession = (): string => {
     const db = openPipelineDb();
@@ -51,12 +52,16 @@ describe('the generation stage and the pipeline database', () => {
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'generation-db-'));
     previousDbPath = process.env.EDS_PIPELINE_DB_PATH;
+    previousHome = process.env.EDS_HOME;
+    process.env.EDS_HOME = dir;
     process.env.EDS_PIPELINE_DB_PATH = join(dir, 'pipeline.db');
   });
 
   afterEach(async () => {
     if (previousDbPath === undefined) delete process.env.EDS_PIPELINE_DB_PATH;
     else process.env.EDS_PIPELINE_DB_PATH = previousDbPath;
+    if (previousHome === undefined) delete process.env.EDS_HOME;
+    else process.env.EDS_HOME = previousHome;
     await rm(dir, { recursive: true, force: true });
   });
 
