@@ -87,8 +87,9 @@ export async function runGeneration(
   }
   if (generated.emptySession) return fail('generate components', 'no raw components in session');
   if (!generated.allOk) {
-    const firstFailure = generated.results.find((r) => r.failed);
-    return fail('generate components', firstFailure?.error ?? 'unknown error');
+    const firstFailure = generated.results.find((r) => r.failed && r.failureKind !== 'preflight');
+    if (firstFailure) return fail('generate components', firstFailure.error ?? 'unknown error');
+    if (!generated.results.some((result) => result.failed)) return fail('generate components', 'unknown error');
   }
 
   let plan;
@@ -128,6 +129,16 @@ export async function runGeneration(
       sessionId: input.sessionId,
       acceptedCount: accepted.length,
       generatedCount,
+      ...(generated.results.some((result) => result.failed && result.failureKind === 'preflight')
+        ? {
+            generationIssues: generated.results
+              .filter((result) => result.failed && result.failureKind === 'preflight')
+              .map((result) => ({
+                componentName: result.componentName,
+                error: result.error ?? 'Generation preflight failed',
+              })),
+          }
+        : {}),
       mapTokensEligible: plan.eligible,
     },
   };
@@ -167,6 +178,14 @@ function applyProgressEvent(
   total: number,
 ): GenerationProgress['components'] {
   const failed = previous?.failed ?? 0;
+  if (event.kind === 'component:preflight-failed') {
+    return {
+      done: previous?.done ?? 0,
+      total: event.total || total,
+      current: `${event.name}: generation preflight failed${event.attempt < event.maxAttempts ? ', regenerating' : ''}`,
+      failed,
+    };
+  }
   if (event.kind === 'component:started') {
     return { done: previous?.done ?? 0, total: event.total || total, current: event.name, failed };
   }

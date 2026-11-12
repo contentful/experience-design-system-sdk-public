@@ -28,7 +28,7 @@ export function describeGeneration(input: { acceptedCount: number; agent: string
 
 /**
  * The components row: a progress bar while they are being generated, then a summary once every one has been tried. A
- * component that fails does not stop the run, which only fails at the end, so failures are shown as they happen.
+ * component that fails does not stop the remaining components, so failures are shown as they happen.
  */
 function componentsRow(components: GenerationProgress['components'], name: string): RunningLine {
   if (!components) return { text: `Starting up ${name}...`, complete: false };

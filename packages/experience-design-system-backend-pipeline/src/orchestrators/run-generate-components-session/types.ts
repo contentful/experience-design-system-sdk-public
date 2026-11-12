@@ -2,6 +2,15 @@ import type { ExistingContentfulEntities } from '../../steps/generation/src/type
 
 export type GenerateComponentsProgress =
   | {
+      kind: 'component:preflight-failed';
+      index: number;
+      total: number;
+      name: string;
+      attempt: number;
+      maxAttempts: number;
+      error: string;
+    }
+  | {
       kind: 'component:started';
       index: number;
       total: number;
@@ -47,6 +56,7 @@ export interface GeneratedComponentResult {
   slots: number;
   warnings: string[];
   failed: boolean;
+  failureKind?: 'preflight';
   error?: string;
   cached: boolean;
   renamedSlotsCount: number;

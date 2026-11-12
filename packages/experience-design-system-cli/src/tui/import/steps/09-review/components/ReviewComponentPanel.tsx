@@ -94,6 +94,30 @@ export function ReviewEmptyComponentsWarning({
   );
 }
 
+export function ReviewGenerationWarning({
+  count,
+  selected,
+  hidden,
+}: {
+  count: number;
+  selected: CdfReviewEntry | null;
+  hidden: boolean;
+}): React.ReactElement | null {
+  if (hidden || count === 0) return null;
+  return (
+    <Box flexDirection="column" height={2} flexShrink={0}>
+      <Text color={PALETTE.warning} bold wrap="truncate-end">
+        {`⚠ Generation needs attention: ${count} component${count === 1 ? '' : 's'} could not pass validation after retries.`}
+      </Text>
+      <Text color={PALETTE.warning} wrap="truncate-end">
+        {selected?.generationError
+          ? `${selected.key}: ${selected.generationError.replace(/\s+/g, ' ')}`
+          : 'Select a flagged component to see its generation error.'}
+      </Text>
+    </Box>
+  );
+}
+
 export function ReviewNoSelection(): React.ReactElement {
   return (
     <Box flexGrow={1} paddingLeft={1} flexDirection="column">

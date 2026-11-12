@@ -57,6 +57,23 @@ describe('ImportHandoff', () => {
       expect(parseHandoff(serializeHandoff(generated))).toEqual({ ok: true, handoff: generated });
     });
 
+    it('preserves generation warnings for the review screen', () => {
+      const generation = {
+        ...review,
+        generationIssues: [{ componentName: 'Button', error: 'Unknown slot' }],
+      };
+      expect(parseHandoff(withGeneration(generation))).toEqual({
+        ok: true,
+        handoff: { ...handoff, generation },
+      });
+    });
+
+    it('rejects malformed generation warnings', () => {
+      expect(parseHandoff(withGeneration({ ...review, generationIssues: [{ componentName: 'Button' }] })).ok).toBe(
+        false,
+      );
+    });
+
     it('reads back "nothing accepted" exactly as written', () => {
       const nothing = { ...handoff, generation: push } as ImportHandoff;
       expect(parseHandoff(serializeHandoff(nothing))).toEqual({ ok: true, handoff: nothing });

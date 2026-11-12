@@ -6,6 +6,7 @@ export type CdfReviewEntry = {
   key: string;
   entry: CDFComponentEntry;
   status: ReviewComponentStatus;
+  generationError?: string;
 };
 
 export type ReviewPanel = 'none' | 'prop-rationale' | 'component-rationale' | 'source' | 'token-review';

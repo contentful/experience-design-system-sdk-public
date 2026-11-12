@@ -239,6 +239,40 @@ describe('runGeneration', () => {
   });
 
   describe('failures', () => {
+    it.each([1, 2])('continues to review when %i components exhaust preflight retries', async (failedCount) => {
+      const issue = { componentName: 'Button', error: 'Slot "invented" does not exist.' };
+      const response = generatedResponse();
+      response.allOk = false;
+      response.results[0] = {
+        ...response.results[0]!,
+        ...issue,
+        failed: true,
+        failureKind: 'preflight',
+      };
+      if (failedCount === 2) {
+        response.results[1] = {
+          ...response.results[1]!,
+          failed: true,
+          failureKind: 'preflight',
+          error: 'Invalid classification',
+        };
+      }
+      const { deps } = fakes({ runGenerate: vi.fn(async () => response) });
+      const result = await runGeneration(input(), () => {}, deps);
+      expect(result).toMatchObject({
+        ok: true,
+        generation: {
+          route: 'review',
+          generatedCount: 2 - failedCount,
+          generationIssues: [
+            issue,
+            ...(failedCount === 2 ? [{ componentName: 'Card', error: 'Invalid classification' }] : []),
+          ],
+        },
+      });
+      expect(deps.runMapTokens).toHaveBeenCalledTimes(1);
+    });
+
     it('stops at a failed save without generating or mapping', async () => {
       const { deps, calls } = fakes({
         saveDecisions: vi.fn(async () => {
@@ -297,6 +331,47 @@ describe('runGeneration', () => {
   });
 
   describe('progress', () => {
+    it('shows preflight regeneration without counting the rejected attempt as done or failed', async () => {
+      const seen: GenerationProgress[] = [];
+      const { deps } = fakes({
+        runGenerate: vi.fn(async (req) => {
+          req.onProgress?.({
+            kind: 'component:preflight-failed',
+            index: 0,
+            total: 2,
+            name: 'Button',
+            attempt: 1,
+            maxAttempts: 2,
+            error: 'Unknown slot',
+          });
+          req.onProgress?.({
+            kind: 'component:completed',
+            index: 0,
+            total: 2,
+            name: 'Button',
+            classified: 1,
+            excluded: 0,
+            slots: 0,
+            warnings: [],
+          });
+          return generatedResponse();
+        }) as GenerationDeps['runGenerate'],
+      });
+      await runGeneration(input(), (progress) => seen.push(progress), deps);
+      expect(seen.map((progress) => progress.components)).toContainEqual({
+        done: 0,
+        total: 2,
+        current: 'Button: generation preflight failed, regenerating',
+        failed: 0,
+      });
+      expect(seen.map((progress) => progress.components)).toContainEqual({
+        done: 1,
+        total: 2,
+        current: 'Button',
+        failed: 0,
+      });
+    });
+
     it('reports completed components to the screen', async () => {
       const seen: GenerationProgress[] = [];
       const { deps } = fakes({

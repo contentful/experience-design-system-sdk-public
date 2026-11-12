@@ -2233,7 +2233,7 @@ export function FieldEditor({
       {header}
 
       <Box flexDirection="column" width={innerWidth} flexShrink={0}>
-        {focusLevel === 'field' && !inComponentDesc && currentProp ? (
+        {focusLevel === 'field' && !inComponentDesc && !inSlots && currentProp ? (
           <PropRow
             prop={currentProp}
             selected

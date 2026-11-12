@@ -534,6 +534,7 @@ export interface ApplyToolCallsResult {
 export interface ApplyToolCallsOptions {
   /** Component names that may appear in generated slot allowed-components lists. */
   allowedComponentNames?: ReadonlySet<string>;
+  validateBeforeCommit?: () => void;
 }
 
 export interface ComponentReviewMetadata {
@@ -857,6 +858,7 @@ export function applyToolCalls(
       `UPDATE raw_components SET status = 'generated', extracted_at = ? WHERE session_id = ? AND component_id = ?`,
     ).run(now, sessionId, componentId);
     db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
+    options.validateBeforeCommit?.();
     db.exec('COMMIT');
   } catch (e) {
     db.exec('ROLLBACK');

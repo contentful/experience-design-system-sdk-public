@@ -114,6 +114,15 @@ export async function runGenerateComponentsSession(
       request.sessionId,
       (existingEntities?.components ?? []).map((c) => c.sys.id),
     );
+    const persistedNames = new Map(
+      loadRawComponents(db, request.sessionId).map((component) => [component.component_id, component.name]),
+    );
+    for (let index = 0; index < results.length; index++) {
+      if (results[index]!.failureKind === 'preflight') {
+        results[index]!.componentName =
+          persistedNames.get(components[index]!.component_id) ?? results[index]!.componentName;
+      }
+    }
     const allOk = results.every((r) => !r.failed);
     const renamedSlotsCount = results.reduce((sum, r) => sum + r.renamedSlotsCount, 0);
     return {

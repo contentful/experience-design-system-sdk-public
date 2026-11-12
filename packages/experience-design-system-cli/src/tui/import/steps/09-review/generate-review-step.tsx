@@ -11,6 +11,7 @@ import type {
   DownstreamImpact,
   ServerPreviewResponse,
 } from '@contentful/experience-design-system-types';
+import type { GenerationIssue } from '@contentful/experience-design-system-types/handoff';
 import {
   GroupedSidebar,
   buildVisibleRows,
@@ -76,6 +77,7 @@ import {
   buildReviewFieldEditor,
   getReviewSelectionState,
   ReviewEmptyComponentsWarning,
+  ReviewGenerationWarning,
   ReviewComponentPanel,
   ReviewFinalizeError,
   ReviewNoSelection,
@@ -99,6 +101,7 @@ import { LivePreviewSummary } from './components/LivePreviewSummary.js';
 
 type GenerateReviewStepProps = {
   extractSessionId: string | null;
+  generationIssues?: GenerationIssue[];
   tokenSessionId?: string | null;
   onFinalize: (accepted: number, rejected: number, unresolved: number) => void;
   onQuit: () => void;
@@ -435,6 +438,7 @@ export function GenerateReviewStep(props: GenerateReviewStepProps): React.ReactE
 
 function GenerateReviewStepView({
   extractSessionId,
+  generationIssues,
   tokenSessionId,
   onFinalize,
   onQuit,
@@ -456,6 +460,7 @@ function GenerateReviewStepView({
     (): ReviewSessionLoadResult<StoredSlotCycle[]> =>
       loadReviewSessionState({
         extractSessionId,
+        generationIssues,
         tokenSessionId,
         loadExtra: (db, sessionId) => loadSlotCycles(db, sessionId),
         sortEntries: (entries, cycles) => {
@@ -466,7 +471,7 @@ function GenerateReviewStepView({
           return sortComponentsForSidebar(entries, cycleParticipants);
         },
       }),
-    [extractSessionId, tokenSessionId],
+    [extractSessionId, tokenSessionId, generationIssues],
   );
   const reviewSurface = useReviewSurfaceState(initialFinalizeError);
   const {
@@ -634,6 +639,7 @@ function GenerateReviewStepView({
     const m = new Map<string, NodeStatus>();
     for (const c of components) {
       if (c.status === 'rejected') m.set(c.key, 'error');
+      else if (c.generationError) m.set(c.key, 'warning');
     }
     return m;
   }, [components]);
@@ -778,7 +784,7 @@ function GenerateReviewStepView({
   const selectedIdx = visibleRowsMemo[cursorRowIdx]?.itemIdx ?? -1;
   const focusedComponentKey: string | null = components[selectedIdx]?.key ?? null;
   const { sidebarVisibleCount: visibleCount, panelMaxRows } = computeSidebarBudget({
-    rows: terminalRows || FALLBACK_ROWS,
+    rows: (terminalRows || FALLBACK_ROWS) - (components.some((component) => component.generationError) ? 2 : 0),
     panelOpen: false,
     entryCount: 0,
   });
@@ -1511,6 +1517,11 @@ function GenerateReviewStepView({
           );
         })()}
       <ReviewEmptyComponentsWarning count={emptyCount} hidden={dialogOpen} />
+      <ReviewGenerationWarning
+        count={components.filter((component) => component.generationError).length}
+        selected={selected}
+        hidden={dialogOpen}
+      />
       <ReviewFinalizeError message={finalizeError} hidden={dialogOpen} />
       {!dialogOpen && breakPanel.isOpen && (
         <BreakCyclePanel
