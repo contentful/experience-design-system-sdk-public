@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
+import type { GenerationIssue } from '@contentful/experience-design-system-types/handoff';
 import {
   loadCDFComponents,
   loadDTCGTokens,
@@ -19,6 +20,7 @@ export type ReviewSessionLoadResult<TExtra = undefined> = {
 export type ReviewSessionLoaderOptions<TExtra = undefined> = {
   extractSessionId: string;
   tokenSessionId?: string | null;
+  generationIssues?: readonly GenerationIssue[];
   loadExtra?: (db: DatabaseSync, sessionId: string) => TExtra;
   sortEntries: (entries: CdfReviewEntry[], extra: TExtra | undefined) => CdfReviewEntry[];
 };
@@ -26,6 +28,7 @@ export type ReviewSessionLoaderOptions<TExtra = undefined> = {
 export function loadReviewSessionState<TExtra = undefined>({
   extractSessionId,
   tokenSessionId,
+  generationIssues = [],
   loadExtra,
   sortEntries,
 }: ReviewSessionLoaderOptions<TExtra>): ReviewSessionLoadResult<TExtra> {
@@ -44,7 +47,7 @@ export function loadReviewSessionState<TExtra = undefined>({
     db.close();
   }
 
-  if (cdfComponents.length === 0) {
+  if (cdfComponents.length === 0 && generationIssues.length === 0) {
     return {
       entries: [],
       tokens: [],
@@ -53,11 +56,23 @@ export function loadReviewSessionState<TExtra = undefined>({
     };
   }
 
-  const entries = cdfComponents.map(({ key, entry }) => ({
+  const entries: CdfReviewEntry[] = cdfComponents.map(({ key, entry }) => ({
     key,
     entry,
     status: 'needs-review' as const,
   }));
+  for (const issue of generationIssues) {
+    const existing = entries.find((component) => component.key === issue.componentName);
+    if (existing) existing.generationError = issue.error;
+    else {
+      entries.push({
+        key: issue.componentName,
+        entry: { $type: 'component', $properties: {} },
+        status: 'needs-review',
+        generationError: issue.error,
+      });
+    }
+  }
 
   return {
     entries: sortEntries(entries, extra),
@@ -79,6 +94,7 @@ export function createReviewHistorySnapshot(
       key: component.key,
       entry: component.entry,
       status: component.status,
+      ...(component.generationError ? { generationError: component.generationError } : {}),
     })),
     autoRejected: [...(options.autoRejected ?? [])],
     undoSnapshot:

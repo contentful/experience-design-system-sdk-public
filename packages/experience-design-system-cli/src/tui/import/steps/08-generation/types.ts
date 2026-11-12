@@ -31,7 +31,7 @@ export interface GenerationInput {
 export interface GenerationProgress {
   /**
    * Components finished, out of the total, and the one being worked on. `failed` counts the finished ones that failed: the
-   * run carries on through the rest and only fails at the end. Null until the first progress line.
+   * run carries on through the rest. Null until the first progress line.
    */
   components: { done: number; total: number; current: string; failed: number } | null;
   mapTokens: 'idle' | 'running' | 'complete';

@@ -73,6 +73,32 @@ describe('the review session and the pipeline database', () => {
   });
 
   describe('loadReviewSessionState', () => {
+    it('keeps failed generation visible even when no definition was committed', () => {
+      const sessionId = newSession();
+      const result = loadReviewSessionState({
+        extractSessionId: sessionId,
+        generationIssues: [{ componentName: 'Button', error: 'Unknown slot' }],
+        sortEntries: keepOrder,
+      });
+      expect(result.error).toBeNull();
+      expect(result.entries).toEqual([
+        { key: 'Button', entry, status: 'needs-review', generationError: 'Unknown slot' },
+      ]);
+    });
+
+    it('flags an existing definition once and leaves unaffected components alone', () => {
+      const sessionId = newSession();
+      seed(sessionId, ['Button', 'Card']);
+      const result = loadReviewSessionState({
+        extractSessionId: sessionId,
+        generationIssues: [{ componentName: 'Button', error: 'Unknown slot' }],
+        sortEntries: keepOrder,
+      });
+      expect(result.entries).toHaveLength(2);
+      expect(result.entries[0]?.generationError).toBe('Unknown slot');
+      expect(result.entries[1]?.generationError).toBeUndefined();
+    });
+
     it('loads the generated definitions, every one waiting for review', () => {
       const sessionId = newSession();
       seed(sessionId, ['Button', 'Card']);

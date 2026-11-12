@@ -8,28 +8,32 @@ import type {
 } from '../types/tool-calls.js';
 import { readToolCallObjects } from './helpers/read-tool-call-objects.js';
 
-export function parseToolCalls(stdout: string): ParsedToolCalls {
+export function parseToolCalls(stdout: string, onInvalidCall?: (message: string) => void): ParsedToolCalls {
   const calls: ToolCall[] = [];
   const { objects, warnings } = readToolCallObjects(stdout);
+  const invalidCall = (message: string): void => {
+    warnings.push(message);
+    onInvalidCall?.(message);
+  };
 
   for (const rec of objects) {
     if (!VALID_TOOL_NAMES.has(rec.tool as string)) {
-      warnings.push(`unknown tool: ${String(rec.tool)}`);
+      invalidCall(`unknown tool: ${String(rec.tool)}`);
       continue;
     }
     const tool = rec.tool as ToolCall['tool'];
 
     if (tool === 'classify_prop') {
       if (typeof rec.prop !== 'string' || !rec.prop) {
-        warnings.push('classify_prop missing prop name — skipped');
+        invalidCall('classify_prop missing prop name — skipped');
         continue;
       }
       if (typeof rec.cdf_type !== 'string' || !VALID_CDF_TYPES.has(rec.cdf_type)) {
-        warnings.push(`classify_prop '${rec.prop}': invalid cdf_type '${String(rec.cdf_type)}' — skipped`);
+        invalidCall(`classify_prop '${rec.prop}': invalid cdf_type '${String(rec.cdf_type)}' — skipped`);
         continue;
       }
       if (typeof rec.cdf_category !== 'string' || !VALID_CATEGORIES.has(rec.cdf_category)) {
-        warnings.push(`classify_prop '${rec.prop}': invalid cdf_category '${String(rec.cdf_category)}' — skipped`);
+        invalidCall(`classify_prop '${rec.prop}': invalid cdf_category '${String(rec.cdf_category)}' — skipped`);
         continue;
       }
       const call: ClassifyPropCall = {
@@ -49,7 +53,7 @@ export function parseToolCalls(stdout: string): ParsedToolCalls {
       calls.push(call);
     } else if (tool === 'exclude_prop') {
       if (typeof rec.prop !== 'string' || !rec.prop) {
-        warnings.push('exclude_prop missing prop name — skipped');
+        invalidCall('exclude_prop missing prop name — skipped');
         continue;
       }
       calls.push({
@@ -71,7 +75,7 @@ export function parseToolCalls(stdout: string): ParsedToolCalls {
       calls.push(call);
     } else if (tool === 'classify_slot') {
       if (typeof rec.slot !== 'string' || !rec.slot) {
-        warnings.push('classify_slot missing slot name — skipped');
+        invalidCall('classify_slot missing slot name — skipped');
         continue;
       }
       const call: ClassifySlotCall = { tool: 'classify_slot', slot: rec.slot };

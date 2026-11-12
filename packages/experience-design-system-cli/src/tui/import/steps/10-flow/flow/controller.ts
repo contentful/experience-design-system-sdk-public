@@ -110,6 +110,7 @@ function initialFlowState(start: FlowStart): FlowState {
     extractSessionId: extraction?.sessionId ?? null,
     generateSessionId: generation?.route === 'review' ? generation.sessionId : null,
     generatedCount: generation?.route === 'review' ? generation.generatedCount : 0,
+    generationIssues: generation?.route === 'review' ? generation.generationIssues : undefined,
     generatedAcceptedCount: 0,
     componentsPath: '',
     spaceId: start.credentials.spaceId,

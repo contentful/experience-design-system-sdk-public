@@ -9,6 +9,9 @@ export const HANDOFF_ENV = 'EDS_IMPORT_HANDOFF';
 
 const NonEmpty = z.string().check(z.minLength(1));
 
+const GenerationIssueSchema = z.object({ componentName: NonEmpty, error: NonEmpty });
+export type GenerationIssue = z.infer<typeof GenerationIssueSchema>;
+
 const TokensSchema = z.object({
   /**
    * What to do about an existing `tokens.json`.
@@ -40,6 +43,7 @@ const GenerationSchema = z.discriminatedUnion('route', [
     acceptedCount: z.number(),
     /** How many definitions were generated, which can differ from the accepted count. */
     generatedCount: z.number(),
+    generationIssues: z.optional(z.array(GenerationIssueSchema)),
     /**
      * Whether token mapping was worth running (there were design props that are tokens, and tokens to map them from).
      * The step count the wizard shows depends on it.

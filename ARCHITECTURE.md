@@ -138,6 +138,8 @@ Main tables in `pipeline.db`:
 
 ## Data Formats
 
+Generated component attempts pass preflight before their tool calls are committed or cached: classifications must use supported types and categories, properties and slots must exist in the extracted component, allowed-component references must belong to the generation allowlist, and the projected CDF must pass the shared schema validator. A rejected attempt is rolled back and immediately regenerated with its validation errors in the prompt, within the existing two-attempt limit. Exhausted preflight failures do not stop the batch or prevent review: affected components carry warning markers and their generation errors into review, including when no definition was committed. Rejected output is never cached. Cycle checks remain in review; unresolved token kinds retain the existing mapping and document-repair behavior.
+
 ### RawComponentDefinition (extraction output)
 
 Defined in `packages/experience-design-system-backend-pipeline/src/steps/extraction/src/types/component.ts`. Produced by extraction, stored in `pipeline.db`, consumed by selection and generation. Abridged:
