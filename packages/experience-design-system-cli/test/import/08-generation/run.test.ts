@@ -1,3 +1,4 @@
+import { progressRows } from '../../../src/tui/import/steps/08-generation/logic.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   ImportGenerationProgress,
@@ -119,5 +120,24 @@ describe('generation UI adapter', () => {
     expect(seen[2]?.components).toEqual({ done: 2, total: 2, current: 'Card', failed: 1 });
     expect(seen.map((progress) => progress.mapTokens)).toContain('running');
     expect(seen.at(-1)).toMatchObject({ mapTokens: 'complete', mapTokensEligible: true });
+  });
+  it('counts an exhausted proposal as generated and renders a review warning rather than a failed stage', async () => {
+    backend.runImportGeneration.mockImplementation(
+      async (_input, report: (event: ImportGenerationProgress) => void) => {
+        report({
+          kind: 'components',
+          event: { kind: 'component:review-required', index: 0, total: 1, name: 'Card', error: 'Empty enum' },
+        });
+        return success;
+      },
+    );
+    const seen: GenerationProgress[] = [];
+    await runGeneration(input, (progress) => seen.push(progress));
+    expect(seen[0]?.components).toMatchObject({ done: 1, failed: 0, needsReview: 1 });
+    expect(progressRows(seen[0]!, 'claude')[0]).toMatchObject({
+      text: 'Generated 1 component, 1 needs review',
+      complete: true,
+      state: 'warning',
+    });
   });
 });

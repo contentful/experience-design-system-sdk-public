@@ -44,8 +44,20 @@ function applyProgressEvent(
   total: number,
 ): GenerationProgress['components'] {
   const failed = previous?.failed ?? 0;
+  if (event.kind === 'component:review-required') {
+    return {
+      ...previous,
+      done: (previous?.done ?? 0) + 1,
+      total: event.total || total,
+      current: event.name,
+      failed,
+      needsReview: (previous?.needsReview ?? 0) + 1,
+    };
+  }
+
   if (event.kind === 'component:preflight-failed') {
     return {
+      ...previous,
       done: previous?.done ?? 0,
       total: event.total || total,
       current: `${event.name}: generation preflight failed${event.attempt < event.maxAttempts ? ', regenerating' : ''}`,
@@ -53,10 +65,11 @@ function applyProgressEvent(
     };
   }
   if (event.kind === 'component:started') {
-    return { done: previous?.done ?? 0, total: event.total || total, current: event.name, failed };
+    return { ...previous, done: previous?.done ?? 0, total: event.total || total, current: event.name, failed };
   }
   if (event.kind === 'component:completed' || event.kind === 'component:failed' || event.kind === 'component:cached') {
     return {
+      ...previous,
       done: (previous?.done ?? 0) + 1,
       total: event.total || total,
       current: event.name,

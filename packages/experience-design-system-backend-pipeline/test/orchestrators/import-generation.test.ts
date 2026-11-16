@@ -247,12 +247,14 @@ describe('runGeneration', () => {
         ...issue,
         failed: true,
         failureKind: 'preflight',
+        reviewRequired: true,
       };
       if (failedCount === 2) {
         response.results[1] = {
           ...response.results[1]!,
           failed: true,
           failureKind: 'preflight',
+          reviewRequired: true,
           error: 'Invalid classification',
         };
       }
@@ -262,7 +264,7 @@ describe('runGeneration', () => {
         ok: true,
         generation: {
           route: 'review',
-          generatedCount: 2 - failedCount,
+          generatedCount: 2,
           generationIssues: [
             issue,
             ...(failedCount === 2 ? [{ componentName: 'Card', error: 'Invalid classification' }] : []),

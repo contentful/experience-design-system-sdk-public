@@ -1,3 +1,4 @@
+import { readGenerationReviewDraft } from './generation-review-drafts.js';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
@@ -855,7 +856,7 @@ export function applyToolCalls(
     }
 
     db.prepare(
-      `UPDATE raw_components SET status = 'generated', extracted_at = ? WHERE session_id = ? AND component_id = ?`,
+      `UPDATE raw_components SET status = 'generated', cdf_schema = NULL, extracted_at = ? WHERE session_id = ? AND component_id = ?`,
     ).run(now, sessionId, componentId);
     db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
     options.validateBeforeCommit?.();
@@ -1684,6 +1685,19 @@ export function storeCDFComponents(
       if (row) {
         const { component_id: componentId } = row;
         updateComp.run(entry.$description ?? null, sessionId, key);
+        const stored = db
+          .prepare('SELECT cdf_schema FROM raw_components WHERE session_id = ? AND component_id = ?')
+          .get(sessionId, componentId) as { cdf_schema: string | null };
+        const draft = readGenerationReviewDraft(stored.cdf_schema);
+        if (draft) {
+          db.prepare('UPDATE raw_components SET cdf_schema = ? WHERE session_id = ? AND component_id = ?').run(
+            JSON.stringify({ ...draft, entry }),
+            sessionId,
+            componentId,
+          );
+          continue;
+        }
+
         for (const [propName, prop] of Object.entries(entry.$properties)) {
           updateProp.run(
             prop.$type,
@@ -1794,13 +1808,14 @@ export function loadCDFComponents(
 ): Array<{ key: string; entry: CDFComponentEntry }> {
   const components = db
     .prepare(
-      `SELECT component_id, name, description FROM raw_components
+      `SELECT component_id, name, description, cdf_schema FROM raw_components
        WHERE session_id = ? AND status = 'generated' ORDER BY rowid`,
     )
     .all(sessionId) as Array<{
     component_id: string;
     name: string;
     description: string | null;
+    cdf_schema: string | null;
   }>;
 
   if (components.length === 0) return [];
@@ -1892,7 +1907,9 @@ export function loadCDFComponents(
   const toTokenPaths = (rows: typeof tokenPaths | undefined): string[] | undefined =>
     rows === undefined ? undefined : rows.map((r) => r.path);
 
-  return components.map(({ component_id, name, description }) => {
+  return components.map(({ component_id, name, description, cdf_schema }) => {
+    const draft = readGenerationReviewDraft(cdf_schema);
+    if (draft) return { key: name, entry: draft.entry };
     const compProps = propsByComponent.get(component_id) ?? [];
 
     const $properties: CDFComponentEntry['$properties'] = {};
@@ -2610,7 +2627,7 @@ export function copyComponentFromCache(
     if (srcComp) {
       db.prepare(
         `UPDATE raw_components
-         SET description = ?, status = ?, component_description_rationale = ?, props_rationale = ?, slots_rationale = ?, extracted_at = ?
+         SET description = ?, status = ?, cdf_schema = NULL, component_description_rationale = ?, props_rationale = ?, slots_rationale = ?, extracted_at = ?
          WHERE session_id = ? AND component_id = ?`,
       ).run(
         srcComp.description,

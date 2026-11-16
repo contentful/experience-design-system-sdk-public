@@ -1,3 +1,4 @@
+import { storeGenerationReviewDraft } from '../../src/persistence/src/session/repositories/generation-review-drafts.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -218,6 +219,37 @@ describe('the review session and the pipeline database', () => {
 
       expect(counts).toEqual({ accepted: 2, rejected: 0, unresolved: 0 });
     });
+  });
+
+  it('loads a persisted warning and the final proposal without a handoff, then preserves manual repair on reload', () => {
+    const sessionId = newSession();
+    seed(sessionId, ['Button']);
+    const draft = {
+      ...entry,
+      $properties: { variant: { $type: 'enum' as const, $category: 'design' as const, $values: [] } },
+      $slots: { invented: { $description: 'Proposed slot' } },
+    };
+    const db = openPipelineDb();
+    try {
+      const row = db.prepare('SELECT component_id FROM raw_components WHERE session_id = ?').get(sessionId) as {
+        component_id: string;
+      };
+      storeGenerationReviewDraft(db, sessionId, row.component_id, {
+        entry: draft,
+        error: 'Empty enum',
+        agentOutput: 'example output',
+      });
+    } finally {
+      db.close();
+    }
+    const loaded = loadReviewSessionState({ extractSessionId: sessionId });
+    expect(loaded.entries[0]).toMatchObject({ entry: draft, generationError: 'Empty enum' });
+    const repaired = {
+      ...draft,
+      $properties: { variant: { ...draft.$properties.variant, $values: ['primary', 'secondary'] } },
+    };
+    reviewApi.saveGeneratedReviewDraft(sessionId, 'Button', JSON.stringify(repaired));
+    expect(loadReviewSessionState({ extractSessionId: sessionId }).entries[0]?.entry).toEqual(repaired);
   });
 
   describe('review edits and metadata', () => {

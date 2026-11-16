@@ -1,3 +1,4 @@
+import { loadGenerationReviewIssues } from '../../persistence/src/session/repositories/generation-review-drafts.js';
 import { buildComponentGraph } from '../../steps/composition/src/helpers/graph/build-component-graph.js';
 import { findSlotCycles } from '../../steps/composition/src/helpers/cycles/find-slot-cycles.js';
 import { suggestCycleBreakEdge } from '../../steps/composition/src/helpers/cycles/suggest-cycle-break-edge.js';
@@ -32,6 +33,7 @@ export function loadReviewSessionState({
   let cdfComponents: Array<{ key: string; entry: CDFComponentEntry }> = [];
   let tokens: ReviewToken[] = [];
   let slotCycles: StoredSlotCycle[] = [];
+  let storedIssues: typeof generationIssues = [];
   try {
     cdfComponents = loadCDFComponents(db, extractSessionId);
     tokens = loadDTCGTokens(db, tokenSessionId ?? extractSessionId).tokens.map((token) => ({
@@ -39,11 +41,12 @@ export function loadReviewSessionState({
       kind: token.$type,
     }));
     slotCycles = loadSlotCycles(db, extractSessionId);
+    storedIssues = loadGenerationReviewIssues(db, extractSessionId);
   } finally {
     db.close();
   }
 
-  if (cdfComponents.length === 0 && generationIssues.length === 0) {
+  if (cdfComponents.length === 0 && generationIssues.length === 0 && storedIssues.length === 0) {
     return {
       entries: [],
       tokens: [],
@@ -57,7 +60,7 @@ export function loadReviewSessionState({
     entry,
     status: 'needs-review' as const,
   }));
-  for (const issue of generationIssues) {
+  for (const issue of [...generationIssues, ...storedIssues]) {
     const existing = entries.find((component) => component.key === issue.componentName);
     if (existing) existing.generationError = issue.error;
     else {

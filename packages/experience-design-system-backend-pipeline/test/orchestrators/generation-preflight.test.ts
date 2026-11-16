@@ -2,12 +2,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DatabaseSync } from 'node:sqlite';
 import { buildCDF, validateCDF } from '@contentful/experience-design-system-types';
 import {
+  copyComponentFromCache,
   getOrCreateSession,
   loadCDFComponents,
   loadRawComponents,
   openPipelineDb,
   storeRawComponents,
 } from '../../src/persistence/src/session/repositories/db.js';
+import { storeGenerationReviewDraft } from '../../src/persistence/src/session/repositories/generation-review-drafts.js';
 import { runOneGenerateComponent } from '../../src/orchestrators/run-generate-components-session/helpers/run-one-generate-component.js';
 import type { AgentInvoker } from '../../src/agents/types/invoker.js';
 import type { GenerateComponentsProgress } from '../../src/orchestrators/run-generate-components-session/types.js';
@@ -80,6 +82,28 @@ function setup(outputs: ReturnType<typeof output>[]) {
 }
 
 describe('generation agent preflight', () => {
+  it('replaces a retained invalid proposal when restoring a valid cached component', async () => {
+    const { db, sessionId, run } = setup([output(propCall())]);
+    await run();
+    const raw = loadRawComponents(db, sessionId);
+    const target = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' }).sessionId;
+    storeRawComponents(db, target, raw);
+    storeGenerationReviewDraft(db, target, raw[0]!.component_id, {
+      entry: { $type: 'component', $properties: {}, $slots: { invented: {} } },
+      error: 'Invalid slot',
+      agentOutput: '',
+    });
+    copyComponentFromCache(db, sessionId, target, raw[0]!.component_id);
+    expect(loadCDFComponents(db, target)[0]!.entry.$properties.label).toEqual({
+      $type: 'string',
+      $category: 'content',
+    });
+    expect(loadCDFComponents(db, target)[0]!.entry.$slots?.invented).toBeUndefined();
+    expect(db.prepare('SELECT cdf_schema FROM raw_components WHERE session_id = ?').get(target)).toEqual({
+      cdf_schema: null,
+    });
+  });
+
   it('rolls back an invalid CDF and immediately regenerates with validation feedback', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout'] });
     const { db, sessionId, invoke, events, run } = setup([
@@ -99,7 +123,7 @@ describe('generation agent preflight', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('fails after the bounded retries without persisting or caching either invalid attempt', async () => {
+  it('retains the final invalid proposal for review after bounded retries without caching it', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout'] });
     const invalid = output(propCall({ token_kind: '' }));
     const { db, sessionId, invoke, events, run } = setup([invalid, invalid]);
@@ -109,10 +133,73 @@ describe('generation agent preflight', () => {
     expect(result.failed).toBe(true);
     expect(result.failureKind).toBe('preflight');
     expect(result.error).toContain('$token.kind');
-    expect(loadCDFComponents(db, sessionId)).toEqual([]);
+    expect(result.reviewRequired).toBe(true);
+    expect(loadCDFComponents(db, sessionId)[0]?.entry.$properties.label).toEqual({
+      $type: 'string',
+      $category: 'content',
+      '$token.kind': '',
+    });
     expect(db.prepare('SELECT * FROM generation_cache').all()).toEqual([]);
     expect(db.prepare('SELECT cdf_type FROM raw_props').get()).toEqual({ cdf_type: null });
     expect(events.some((event) => event.kind === 'component:completed')).toBe(false);
+  });
+
+  it('keeps the final invented slot and valid fields visible instead of dropping the proposal', async () => {
+    const first = output(propCall({ description: 'First attempt' }), {
+      tool: 'classify_slot',
+      slot: 'invented',
+      description: 'First slot',
+    });
+    const last = output(propCall({ description: 'Last attempt' }), {
+      tool: 'classify_slot',
+      slot: 'invented',
+      description: 'Last slot',
+    });
+    const { db, sessionId, events, run } = setup([first, last]);
+    const result = await run();
+    expect(result).toMatchObject({ failed: true, failureKind: 'preflight', reviewRequired: true });
+    const entry = loadCDFComponents(db, sessionId)[0]!.entry;
+    expect(entry.$properties.label.$description).toBe('Last attempt');
+    expect(entry.$slots?.invented?.$description).toBe('Last slot');
+    expect(db.prepare('SELECT * FROM generation_cache').all()).toEqual([]);
+    expect(events.at(-1)?.kind).toBe('component:review-required');
+  });
+
+  it.each([
+    { call: propCall({ cdf_type: 'enum', values: [] }), expected: { $type: 'enum', $values: [] } },
+    { call: propCall({ cdf_type: 'impossible' }), expected: { $type: 'impossible' } },
+    {
+      call: propCall({ cdf_type: 'token', token_kind: 'impossible' }),
+      expected: { $type: 'token', '$token.kind': 'impossible' },
+    },
+  ])('retains invalid classification details for manual repair: %j', async ({ call, expected }) => {
+    const { db, sessionId, run } = setup([output(call), output(call)]);
+    expect((await run()).reviewRequired).toBe(true);
+    expect(loadCDFComponents(db, sessionId)[0]?.entry.$properties.label).toMatchObject(expected);
+  });
+
+  it('keeps unknown allowed-component references in the review proposal', async () => {
+    const invalid = output(propCall(), {
+      tool: 'classify_slot',
+      slot: 'children',
+      allowed_components: ['MissingComponent'],
+    });
+    const { db, sessionId, run } = setup([invalid, invalid]);
+    await run();
+    expect(loadCDFComponents(db, sessionId)[0]?.entry.$slots?.children.$allowedComponents).toEqual([
+      'MissingComponent',
+    ]);
+  });
+
+  it('replaces a retained draft after a later successful generation and clears its warning', async () => {
+    const invalid = output(propCall({ cdf_type: 'enum', values: [] }));
+    const { db, sessionId, invoke, run } = setup([invalid, invalid]);
+    await run();
+    invoke.mockResolvedValueOnce(output(propCall({ cdf_type: 'enum', values: ['primary', 'secondary'] })));
+    expect((await run()).failed).toBe(false);
+    expect(loadCDFComponents(db, sessionId)[0]?.entry.$properties.label.$values).toEqual(['primary', 'secondary']);
+    expect(db.prepare('SELECT cdf_schema FROM raw_components').get()).toEqual({ cdf_schema: null });
+    expect(db.prepare('SELECT * FROM generation_cache').all()).toHaveLength(1);
   });
 
   it('regenerates when an invalid classification was skipped beside valid tool calls', async () => {

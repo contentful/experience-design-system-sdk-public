@@ -116,7 +116,7 @@ export async function runImportGeneration(
   }
   onProgress({ kind: 'map-tokens', eligible: plan.eligible, state: 'complete' });
 
-  const generatedCount = generated.results.filter((r) => !r.failed).length;
+  const generatedCount = generated.results.filter((r) => !r.failed || r.reviewRequired).length;
   return {
     ok: true,
     generation: {

@@ -1,6 +1,7 @@
 import type { ExistingContentfulEntities } from '../../steps/generation/src/types/existing-entities.js';
 
 export type GenerateComponentsProgress =
+  | { kind: 'component:review-required'; index: number; total: number; name: string; error: string }
   | {
       kind: 'component:preflight-failed';
       index: number;
@@ -57,6 +58,7 @@ export interface GeneratedComponentResult {
   warnings: string[];
   failed: boolean;
   failureKind?: 'preflight';
+  reviewRequired?: boolean;
   error?: string;
   cached: boolean;
   renamedSlotsCount: number;

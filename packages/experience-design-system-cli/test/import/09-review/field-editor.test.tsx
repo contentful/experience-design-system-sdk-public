@@ -93,4 +93,26 @@ describe('FieldEditor', () => {
     expect(stripAnsi(view.lastFrame() ?? '')).toContain('› default:');
     expect(stripAnsi(view.lastFrame() ?? '')).not.toContain('Slot description');
   });
+  it('shows an invalid proposed type so the user can repair it', async () => {
+    const invalid = JSON.stringify({
+      $type: 'component',
+      $properties: {
+        title: { $type: 'impossible', $category: 'content' },
+      },
+    });
+    const view = render(
+      <FieldEditor
+        value={invalid}
+        width={80}
+        height={18}
+        fixedHeight
+        initialFocusTarget={{ kind: 'prop', name: 'title' }}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    await settle();
+    expect(stripAnsi(view.lastFrame() ?? '')).toContain('impossible');
+  });
 });

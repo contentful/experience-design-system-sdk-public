@@ -1,3 +1,5 @@
+import { storeGenerationReviewDraft } from '../../../persistence/src/session/repositories/generation-review-drafts.js';
+import { buildGenerationReviewDraft } from './build-generation-review-draft.js';
 import type { DatabaseSync } from 'node:sqlite';
 import type { AgentName } from '../../../agents/types/agent-name.js';
 import type { AgentInvoker } from '../../../agents/types/invoker.js';
@@ -232,6 +234,23 @@ export async function runOneGenerateComponent(
         maxAttempts,
         error: lastError,
       });
+      if (attempt === maxAttempts) {
+        const base = loadCDFComponents(db, sessionId).find((entry) => entry.key === component.name)?.entry ?? {
+          $type: 'component' as const,
+          $properties: {},
+        };
+        storeGenerationReviewDraft(db, sessionId, component.component_id, {
+          entry: buildGenerationReviewDraft(result.stdout, base),
+          error: lastError,
+          agentOutput: result.stdout,
+        });
+        onProgress?.({ kind: 'component:review-required', index, total, name: component.name, error: lastError });
+        return {
+          ...buildFailedComponentResult(component.name, lastError, renames.length),
+          failureKind: 'preflight',
+          reviewRequired: true,
+        };
+      }
       continue;
     }
     if (!noCache) {

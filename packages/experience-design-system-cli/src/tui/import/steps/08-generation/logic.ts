@@ -28,9 +28,15 @@ export function describeGeneration(input: { acceptedCount: number; agent: string
  */
 function componentsRow(components: GenerationProgress['components'], name: string): RunningLine {
   if (!components) return { text: `Starting up ${name}...`, complete: false };
-  const { done, total, current, failed } = components;
+  const { done, total, current, failed, needsReview = 0 } = components;
 
   if (total > 0 && done >= total) {
+    if (failed === 0 && needsReview > 0)
+      return {
+        text: `Generated ${total} component${total === 1 ? '' : 's'}, ${needsReview} ${needsReview === 1 ? 'needs' : 'need'} review`,
+        complete: true,
+        state: 'warning',
+      };
     return failed > 0
       ? {
           text: `Generated ${total - failed} of ${total} components, ${failed} failed`,

@@ -16,7 +16,7 @@ export interface GenerationProgress {
    * Components finished, out of the total, and the one being worked on. `failed` counts the finished ones that failed: the
    * run carries on through the rest. Null until the first progress line.
    */
-  components: { done: number; total: number; current: string; failed: number } | null;
+  components: { done: number; total: number; current: string; failed: number; needsReview?: number } | null;
   mapTokens: 'idle' | 'running' | 'complete';
   /** Whether token mapping will run at all; unknown until the generated components have been looked at. */
   mapTokensEligible: boolean | null;
