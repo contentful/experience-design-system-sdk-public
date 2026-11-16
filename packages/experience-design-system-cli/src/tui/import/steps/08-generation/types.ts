@@ -1,7 +1,6 @@
 import type {
   ImportGenerationInput,
   ImportGenerationResult,
-  ImportGenerationStepName,
 } from '@contentful/experience-design-system-backend-pipeline';
 
 // The generation stage runs after the user confirms the scope. It saves the decisions, generates the accepted components
@@ -22,5 +21,4 @@ export interface GenerationProgress {
   mapTokensEligible: boolean | null;
 }
 
-export type GenerationStepName = ImportGenerationStepName;
 export type GenerationResult = ImportGenerationResult;
