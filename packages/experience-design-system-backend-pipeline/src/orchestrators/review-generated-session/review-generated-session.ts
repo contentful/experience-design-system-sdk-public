@@ -1,10 +1,21 @@
-import { loadGenerationReviewIssues } from '../../persistence/src/session/repositories/generation-review-drafts.js';
+import {
+  loadGenerationReviewIssues,
+  readGenerationReviewDraft,
+} from '../../persistence/src/session/repositories/generation-review-drafts.js';
+import type { DatabaseSync } from 'node:sqlite';
+import type { ToolCall } from '../../agents/types/tool-calls.js';
+import {
+  GenerationPreflightError,
+  validateGeneratedCDF,
+  validateGenerationCalls,
+} from '../run-generate-components-session/helpers/validate-generation-preflight.js';
 import { buildComponentGraph } from '../../steps/composition/src/helpers/graph/build-component-graph.js';
 import { findSlotCycles } from '../../steps/composition/src/helpers/cycles/find-slot-cycles.js';
 import { suggestCycleBreakEdge } from '../../steps/composition/src/helpers/cycles/suggest-cycle-break-edge.js';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 import {
   loadCDFComponents,
+  loadRawComponents,
   loadDTCGTokens,
   loadSlotCycles,
   openPipelineDb,
@@ -74,11 +85,68 @@ export function loadReviewSessionState({
   }
 
   return {
-    entries,
+    entries: refreshGeneratedReviewWarnings(extractSessionId, entries),
     tokens,
     error: null,
     slotCycles,
   };
+}
+
+/** Recheck retained proposals against the current edits, including restored history. */
+export function refreshGeneratedReviewWarnings(
+  sessionId: string,
+  components: GeneratedReviewEntry[],
+): GeneratedReviewEntry[] {
+  const db = openPipelineDb();
+  try {
+    return revalidateReviewWarnings(db, sessionId, components);
+  } finally {
+    db.close();
+  }
+}
+
+function revalidateReviewWarnings(
+  db: DatabaseSync,
+  sessionId: string,
+  components: GeneratedReviewEntry[],
+): GeneratedReviewEntry[] {
+  const raw = loadRawComponents(db, sessionId);
+  const rows = db
+    .prepare('SELECT name, cdf_schema FROM raw_components WHERE session_id = ? AND cdf_schema IS NOT NULL')
+    .all(sessionId) as Array<{ name: string; cdf_schema: string }>;
+  const drafts = new Map(rows.map((row) => [row.name, readGenerationReviewDraft(row.cdf_schema)]));
+  return components.map((component) => {
+    const draft = drafts.get(component.key);
+    const source = raw.find((item) => item.name === component.key);
+    if (!draft || !source) return component;
+    let generationError: string | undefined;
+    try {
+      validateGeneratedCDF(component);
+      const calls: ToolCall[] = Object.entries(component.entry.$properties)
+        .filter(([, property]) => property.$category !== 'unattached')
+        .map(([prop, property]) => ({
+          tool: 'classify_prop',
+          prop,
+          cdf_type: property.$type,
+          cdf_category: property.$category as 'content' | 'design' | 'state',
+          values: property.$values,
+          token_kind: property['$token.kind'],
+        }));
+      for (const [slot, definition] of Object.entries(component.entry.$slots ?? {})) {
+        calls.push({ tool: 'classify_slot', slot, allowed_components: definition.$allowedComponents });
+      }
+      validateGenerationCalls(
+        source,
+        calls,
+        new Set([...raw.map((item) => item.name), ...(draft.allowedComponentNames ?? [])]),
+        [],
+      );
+    } catch (error) {
+      if (!(error instanceof GenerationPreflightError)) throw error;
+      generationError = error.message;
+    }
+    return { ...component, generationError };
+  });
 }
 
 export function finalizeReviewSession(

@@ -243,6 +243,7 @@ export async function runOneGenerateComponent(
           entry: buildGenerationReviewDraft(result.stdout, base),
           error: lastError,
           agentOutput: result.stdout,
+          allowedComponentNames: [...allowedComponentNames],
         });
         onProgress?.({ kind: 'component:review-required', index, total, name: component.name, error: lastError });
         return {

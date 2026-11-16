@@ -243,13 +243,46 @@ describe('the review session and the pipeline database', () => {
       db.close();
     }
     const loaded = loadReviewSessionState({ extractSessionId: sessionId });
-    expect(loaded.entries[0]).toMatchObject({ entry: draft, generationError: 'Empty enum' });
+    expect(loaded.entries[0]).toMatchObject({ entry: draft });
+    expect(loaded.entries[0]?.generationError).toContain('non-empty values list');
     const repaired = {
       ...draft,
       $properties: { variant: { ...draft.$properties.variant, $values: ['primary', 'secondary'] } },
     };
     reviewApi.saveGeneratedReviewDraft(sessionId, 'Button', JSON.stringify(repaired));
     expect(loadReviewSessionState({ extractSessionId: sessionId }).entries[0]?.entry).toEqual(repaired);
+    expect(loadReviewSessionState({ extractSessionId: sessionId }).entries[0]?.generationError).toContain('invented');
+  });
+
+  it('clears a resolved generation warning even when the original handoff still contains it', () => {
+    const sessionId = newSession();
+    seed(sessionId, ['Button']);
+    const db = openPipelineDb();
+    try {
+      const row = db.prepare('SELECT component_id FROM raw_components WHERE session_id = ?').get(sessionId) as {
+        component_id: string;
+      };
+      storeGenerationReviewDraft(db, sessionId, row.component_id, {
+        entry: { ...entry, $slots: { invented: {} } },
+        error: 'Unknown slot',
+        agentOutput: '',
+      });
+    } finally {
+      db.close();
+    }
+    const options = {
+      extractSessionId: sessionId,
+      generationIssues: [{ componentName: 'Button', error: 'Unknown slot' }],
+    };
+    expect(loadReviewSessionState(options).entries[0]?.generationError).toBeTruthy();
+    const initial = loadReviewSessionState(options).entries;
+    const edited = initial.map((component) => ({ ...component, entry }));
+    expect(reviewApi.refreshGeneratedReviewWarnings(sessionId, edited)[0]?.generationError).toBeUndefined();
+    expect(reviewApi.refreshGeneratedReviewWarnings(sessionId, initial)[0]?.generationError).toContain('invented');
+    reviewApi.saveGeneratedReviewDraft(sessionId, 'Button', JSON.stringify(entry));
+    expect(loadReviewSessionState(options).entries[0]?.generationError).toBeUndefined();
+    reviewApi.saveGeneratedReviewDraft(sessionId, 'Button', JSON.stringify({ ...entry, $slots: { invented: {} } }));
+    expect(loadReviewSessionState(options).entries[0]?.generationError).toContain('invented');
   });
 
   describe('review edits and metadata', () => {

@@ -3,7 +3,12 @@ import type { CDFComponentEntry } from '@contentful/experience-design-system-typ
 import type { GenerationIssue } from '@contentful/experience-design-system-types/handoff';
 import { withTransaction } from './shared/with-transaction.js';
 
-export type GenerationReviewDraft = { entry: CDFComponentEntry; error: string; agentOutput: string };
+export type GenerationReviewDraft = {
+  entry: CDFComponentEntry;
+  error: string;
+  agentOutput: string;
+  allowedComponentNames?: string[];
+};
 
 export function readGenerationReviewDraft(serialized: string | null): GenerationReviewDraft | null {
   if (!serialized) return null;

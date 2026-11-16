@@ -474,6 +474,7 @@ export {
   saveGeneratedReviewDraft,
   loadGeneratedReviewMetadata,
   refreshGeneratedReviewCycles,
+  refreshGeneratedReviewWarnings,
 } from './orchestrators/review-generated-session/review-generated-session.js';
 export type {
   GeneratedReviewEntry,

@@ -5,6 +5,21 @@ import { ReviewGenerationWarning } from '../../../src/tui/import/steps/09-review
 afterEach(cleanup);
 
 describe('generation warnings in review', () => {
+  it('removes the banner after repair and restores it when an invalid proposal is restored', () => {
+    const selected = {
+      key: 'Button',
+      entry: { $type: 'component' as const, $properties: {} },
+      status: 'needs-review' as const,
+      generationError: 'Unknown slot',
+    };
+    const view = render(<ReviewGenerationWarning count={1} hidden={false} selected={selected} />);
+    view.rerender(
+      <ReviewGenerationWarning count={0} hidden={false} selected={{ ...selected, generationError: undefined }} />,
+    );
+    expect(view.lastFrame()).not.toContain('Generation needs attention');
+    view.rerender(<ReviewGenerationWarning count={1} hidden={false} selected={selected} />);
+    expect(view.lastFrame()).toContain('Generation needs attention');
+  });
   it('shows the warning count and the selected component error', () => {
     const view = render(
       <ReviewGenerationWarning

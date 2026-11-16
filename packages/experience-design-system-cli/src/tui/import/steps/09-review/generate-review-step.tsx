@@ -30,6 +30,7 @@ import { useImmediateInput } from '../07-scope-gate/sidebar/hooks/useImmediateIn
 import {
   saveGeneratedReviewComponent,
   refreshGeneratedReviewCycles,
+  refreshGeneratedReviewWarnings,
   loadReviewSessionState,
   type StoredSlotCycle,
 } from '@contentful/experience-design-system-backend-pipeline';
@@ -479,6 +480,13 @@ function GenerateReviewStepView({
     onExtraLoaded: setLoadedSlotCycles,
   });
   const reviewLog = useReviewLog({ loading, loadError, components });
+  useEffect(() => {
+    if (loading || loadError) return;
+    const next = refreshGeneratedReviewWarnings(extractSessionId, components);
+    if (next.some((component, index) => component.generationError !== components[index]?.generationError)) {
+      setComponents(next);
+    }
+  }, [components, extractSessionId, loading, loadError, setComponents]);
 
   const [nav, setNav] = useState<{ cursorRowIdx: number; sidebarScrollOffset: number }>({
     cursorRowIdx: 0,
