@@ -13,7 +13,11 @@ import {
   seedCDFFromPreviewResponse,
   seedDefaultsFromChangedItems,
 } from '../../src/persistence/src/session/repositories/db.js';
-import { resolveComponentIds } from '../../src/persistence/src/session/services/component-identity.js';
+import { storeGenerationReviewDraft } from '../../src/persistence/src/session/repositories/generation-review-drafts.js';
+import {
+  alignComponentIds,
+  resolveComponentIds,
+} from '../../src/persistence/src/session/services/component-identity.js';
 import { annotatePreview } from '../../src/steps/apply/src/helpers/annotate-preview.js';
 
 vi.mock('../../src/agents/invoker/create-local-cli-agent-invoker.js', () => ({
@@ -61,6 +65,33 @@ it.each([
   [['Card', 'card'], ['card'], ['Card', 'card']],
 ])('resolves %j against %j without ambiguous matches or collisions', (generated, existing, expected) => {
   expect([...resolveComponentIds(generated, existing).values()]).toEqual(expected);
+});
+
+it('aligns a retained review draft and its known references while preserving unknown references', () => {
+  const db = openPipelineDb(':memory:');
+  try {
+    const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+    storeRawComponents(
+      db,
+      sessionId,
+      ['Card', 'Panel'].map((name) => ({ name, source: name, framework: 'react', props: [], slots: [] })),
+    );
+    const panel = loadRawComponents(db, sessionId).find((component) => component.name === 'Panel')!;
+    storeGenerationReviewDraft(db, sessionId, panel.component_id, {
+      entry: { $type: 'component', $properties: {}, $slots: { invented: { $allowedComponents: ['Card', 'Missing'] } } },
+      error: 'Unknown reference',
+      agentOutput: 'example',
+    });
+    alignComponentIds(db, sessionId, ['card', 'panel']);
+    expect(loadCDFComponents(db, sessionId)[0]).toMatchObject({
+      key: 'panel',
+      entry: {
+        $slots: { invented: { $allowedComponents: ['card', 'Missing'] } },
+      },
+    });
+  } finally {
+    db.close();
+  }
 });
 
 describe('one persisted component ID', () => {

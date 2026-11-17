@@ -1,3 +1,4 @@
+import { readGenerationReviewDraft } from '../repositories/generation-review-drafts.js';
 import type { DatabaseSync } from 'node:sqlite';
 
 /** Exact matches win; ambiguous case matches and local collisions retain their generated IDs. */
@@ -18,8 +19,12 @@ export function resolveComponentIds(
 
 /** Persist the exported ID in the existing name field, together with its slot references. */
 export function alignComponentIds(db: DatabaseSync, sessionId: string, existingIds: readonly string[]): void {
-  const components = db.prepare('SELECT name FROM raw_components WHERE session_id = ?').all(sessionId) as {
+  const components = db
+    .prepare('SELECT name, component_id, cdf_schema FROM raw_components WHERE session_id = ?')
+    .all(sessionId) as {
     name: string;
+    component_id: string;
+    cdf_schema: string | null;
   }[];
   const ids = resolveComponentIds(
     components.map((c) => c.name),
@@ -34,6 +39,21 @@ export function alignComponentIds(db: DatabaseSync, sessionId: string, existingI
   try {
     for (const [name, id] of ids) {
       if (name !== id) updateComponent.run(id, sessionId, name);
+    }
+    for (const component of components) {
+      const draft = readGenerationReviewDraft(component.cdf_schema);
+      if (!draft) continue;
+      for (const slot of Object.values(draft.entry.$slots ?? {})) {
+        if (Array.isArray(slot.$allowedComponents))
+          slot.$allowedComponents = slot.$allowedComponents.map((name) =>
+            typeof name === 'string' ? (ids.get(name) ?? resolveComponentIds([name], existingIds).get(name)!) : name,
+          );
+      }
+      db.prepare('UPDATE raw_components SET cdf_schema = ? WHERE session_id = ? AND component_id = ?').run(
+        JSON.stringify(draft),
+        sessionId,
+        component.component_id,
+      );
     }
     for (const slot of slots) {
       const id =

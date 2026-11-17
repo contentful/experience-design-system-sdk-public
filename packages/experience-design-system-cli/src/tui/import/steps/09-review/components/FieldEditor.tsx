@@ -161,7 +161,7 @@ function parseToState(json: string): {
   const rawProps = (component.$properties ?? {}) as Record<string, unknown>;
   const props: PropState[] = Object.entries(rawProps).map(([name, raw]) => {
     const p = (raw ?? {}) as Record<string, unknown>;
-    const type = CDF_PROPERTY_TYPES.includes(p.$type as never) ? (p.$type as PropState['type']) : 'string';
+    const type = typeof p.$type === 'string' ? (p.$type as PropState['type']) : 'string';
     let defaultValue: string | boolean | null = null;
     if (p.$default !== undefined && p.$default !== null) {
       if (type === 'boolean') {
@@ -173,9 +173,7 @@ function parseToState(json: string): {
     return {
       name,
       type,
-      category: CDF_PROPERTY_CATEGORIES.includes(p.$category as never)
-        ? (p.$category as PropState['category'])
-        : 'content',
+      category: typeof p.$category === 'string' ? (p.$category as PropState['category']) : 'content',
       required: p.$required === true,
       description: typeof p.$description === 'string' ? p.$description : '',
       values: Array.isArray(p.$values) ? (p.$values as string[]).filter((v) => typeof v === 'string') : [],
@@ -2233,7 +2231,7 @@ export function FieldEditor({
       {header}
 
       <Box flexDirection="column" width={innerWidth} flexShrink={0}>
-        {focusLevel === 'field' && !inComponentDesc && currentProp ? (
+        {focusLevel === 'field' && !inComponentDesc && !inSlots && currentProp ? (
           <PropRow
             prop={currentProp}
             selected
