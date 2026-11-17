@@ -65,7 +65,9 @@ export function alignComponentIds(db: DatabaseSync, sessionId: string, existingI
       if (!draft) continue;
       for (const slot of Object.values(draft.entry.$slots ?? {})) {
         if (Array.isArray(slot.$allowedComponents))
-          slot.$allowedComponents = slot.$allowedComponents.map((name) => (typeof name === 'string' ? idOf(name) : name));
+          slot.$allowedComponents = slot.$allowedComponents.map((name) =>
+            typeof name === 'string' ? idOf(name) : name,
+          );
       }
       db.prepare('UPDATE raw_components SET cdf_schema = ? WHERE session_id = ? AND component_id = ?').run(
         JSON.stringify(draft),
