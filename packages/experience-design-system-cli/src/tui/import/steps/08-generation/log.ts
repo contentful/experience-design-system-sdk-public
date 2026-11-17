@@ -1,5 +1,4 @@
-import type { AgentName } from '@contentful/experience-design-system-backend-pipeline';
-import { AGENT_LABELS } from '@tui/settings/configuration/agents/agent-store.js';
+import { agentLine } from '../../shared/agent-log.js';
 import { jobData, jobLines } from '../../shared/job-log.js';
 import type { RunningLine } from '../../shared/running-step/logic.js';
 import type { GenerationInput, GenerationResult } from './types.js';
@@ -30,7 +29,7 @@ export function generationLog({
     custom_generate_prompt: Boolean(input.generatePromptPath),
   };
   const summary = [
-    `Agent: ${AGENT_LABELS[input.agent as AgentName] ?? input.agent} (${input.agentModel ? `model ${input.agentModel}` : 'default model'})`,
+    `Agent: ${agentLine(input.agent, input.agentModel)}`,
     `To generate: ${settings.accepted} accepted, ${settings.left_out} left out`,
     `Design tokens: ${settings.has_tokens ? 'used' : 'none'}`,
     `Cache: ${settings.cache ? 'on' : 'off'}`,

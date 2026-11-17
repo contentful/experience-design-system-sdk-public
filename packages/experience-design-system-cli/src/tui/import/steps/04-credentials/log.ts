@@ -1,4 +1,5 @@
 import { diffSnapshots, scrubError } from '@tui/shared/debug-trail.js';
+import { wentBackLine } from '../../shared/input-log.js';
 import type { ImportTarget } from '../00-preflight/logic.js';
 import type { CredentialField, CredentialValues } from './logic.js';
 
@@ -60,7 +61,7 @@ export function credentialsLog({
     `Rejected attempts: ${attempts.length}`,
     ...attempts.map((attempt) => `  ${attempt.reason}`),
     `Outcome: ${outcome === 'validated' ? 'validated' : 'went back'}`,
-    ...(endedOnError ? [`Went back while this error was showing: ${endedOnError}`] : []),
+    ...wentBackLine(endedOnError),
   ];
 
   return {
