@@ -1,3 +1,4 @@
+import { rejectGeneratedComponents } from '../../persistence/src/session/repositories/reject-generated-components.js';
 import {
   loadGenerationReviewIssues,
   readGenerationReviewDraft,
@@ -112,8 +113,8 @@ function revalidateReviewWarnings(
 ): GeneratedReviewEntry[] {
   const raw = loadRawComponents(db, sessionId);
   const rows = db
-    .prepare('SELECT name, cdf_schema FROM raw_components WHERE session_id = ? AND cdf_schema IS NOT NULL')
-    .all(sessionId) as Array<{ name: string; cdf_schema: string }>;
+    .prepare('SELECT name, cdf_schema, status FROM raw_components WHERE session_id = ?')
+    .all(sessionId) as Array<{ name: string; cdf_schema: string | null; status: string }>;
   const drafts = new Map(rows.map((row) => [row.name, readGenerationReviewDraft(row.cdf_schema)]));
   return components.map((component) => {
     const draft = drafts.get(component.key);
@@ -138,7 +139,10 @@ function revalidateReviewWarnings(
       validateGenerationCalls(
         source,
         calls,
-        new Set([...raw.map((item) => item.name), ...(draft.allowedComponentNames ?? [])]),
+        new Set(
+          draft.allowedComponentNames ??
+            rows.filter((row) => !['rejected', 'generate-rejected'].includes(row.status)).map((row) => row.name),
+        ),
         [],
       );
     } catch (error) {
@@ -165,17 +169,7 @@ export function finalizeReviewSession(
   if (toReject.length > 0) {
     const db = openPipelineDb();
     try {
-      const statement = db.prepare(
-        `UPDATE raw_components SET status = 'generate-rejected' WHERE session_id = ? AND name = ?`,
-      );
-      db.exec('BEGIN');
-      try {
-        for (const name of toReject) statement.run(extractSessionId, name);
-        db.exec('COMMIT');
-      } catch (error) {
-        db.exec('ROLLBACK');
-        throw error;
-      }
+      rejectGeneratedComponents(db, extractSessionId, toReject);
     } finally {
       db.close();
     }

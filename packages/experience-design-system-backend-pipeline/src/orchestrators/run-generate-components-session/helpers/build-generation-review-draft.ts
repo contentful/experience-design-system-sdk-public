@@ -1,8 +1,13 @@
+import type { RawPropDefinition } from '../../../steps/extraction/src/types/component.js';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 import { readToolCallObjects } from '../../../agents/parsers/helpers/read-tool-call-objects.js';
 
 /** Preserve the final proposal's invalid fields for review rather than parsing them away. */
-export function buildGenerationReviewDraft(stdout: string, base: CDFComponentEntry): CDFComponentEntry {
+export function buildGenerationReviewDraft(
+  stdout: string,
+  base: CDFComponentEntry,
+  extractedProps: readonly RawPropDefinition[],
+): CDFComponentEntry {
   const entry: Record<string, unknown> = { ...base };
   const properties = new Map<string, Record<string, unknown>>(Object.entries(base.$properties));
   const slots = new Map<string, Record<string, unknown>>(Object.entries(base.$slots ?? {}));
@@ -24,7 +29,11 @@ export function buildGenerationReviewDraft(stdout: string, base: CDFComponentEnt
       }
       properties.set(call.prop, property);
     } else if (call.tool === 'exclude_prop' && typeof call.prop === 'string' && call.prop) {
-      properties.set(call.prop, { $type: properties.get(call.prop)?.$type ?? 'string', $category: 'unattached' });
+      const extracted = extractedProps.find((prop) => prop.name === call.prop);
+      properties.set(call.prop, {
+        $type: extracted?.type === 'boolean' ? 'boolean' : 'string',
+        $category: 'unattached',
+      });
     } else if (call.tool === 'classify_slot' && typeof call.slot === 'string' && call.slot) {
       const slot: Record<string, unknown> = {};
       for (const [source, target] of Object.entries({

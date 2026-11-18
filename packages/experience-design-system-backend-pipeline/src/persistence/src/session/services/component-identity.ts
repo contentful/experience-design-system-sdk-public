@@ -30,6 +30,8 @@ export function alignComponentIds(db: DatabaseSync, sessionId: string, existingI
     components.map((c) => c.name),
     existingIds,
   );
+  const resolveReference = (name: string): string =>
+    ids.get(name) ?? resolveComponentIds([name], existingIds).get(name)!;
   const slots = db
     .prepare('SELECT rowid, allowed_component FROM raw_slot_allowed_components WHERE session_id = ?')
     .all(sessionId) as { rowid: number; allowed_component: string }[];
@@ -46,9 +48,10 @@ export function alignComponentIds(db: DatabaseSync, sessionId: string, existingI
       for (const slot of Object.values(draft.entry.$slots ?? {})) {
         if (Array.isArray(slot.$allowedComponents))
           slot.$allowedComponents = slot.$allowedComponents.map((name) =>
-            typeof name === 'string' ? (ids.get(name) ?? resolveComponentIds([name], existingIds).get(name)!) : name,
+            typeof name === 'string' ? resolveReference(name) : name,
           );
       }
+      if (draft.allowedComponentNames) draft.allowedComponentNames = draft.allowedComponentNames.map(resolveReference);
       db.prepare('UPDATE raw_components SET cdf_schema = ? WHERE session_id = ? AND component_id = ?').run(
         JSON.stringify(draft),
         sessionId,
@@ -56,9 +59,7 @@ export function alignComponentIds(db: DatabaseSync, sessionId: string, existingI
       );
     }
     for (const slot of slots) {
-      const id =
-        ids.get(slot.allowed_component) ??
-        resolveComponentIds([slot.allowed_component], existingIds).get(slot.allowed_component)!;
+      const id = resolveReference(slot.allowed_component);
       if (slot.allowed_component !== id) updateSlot.run(id, slot.rowid);
     }
     db.exec('COMMIT');

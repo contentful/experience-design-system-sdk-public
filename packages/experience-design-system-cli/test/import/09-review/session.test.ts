@@ -1,3 +1,4 @@
+import { createHistoryStack } from '../../../src/tui/import/steps/09-review/history.js';
 import { describe, expect, it } from 'vitest';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 import { createReviewHistorySnapshot } from '../../../src/tui/import/steps/09-review/session.js';
@@ -32,4 +33,12 @@ describe('review history', () => {
       expect(createReviewHistorySnapshot([], { undoSnapshot: null }).undoSnapshot).toBeNull();
     });
   });
+});
+
+it('restores warning metadata through cloned undo and redo snapshots', () => {
+  const warned = { ...review('Button', 'needs-review'), generationError: 'Unknown slot' };
+  const history = createHistoryStack(createReviewHistorySnapshot([warned]));
+  history.push(createReviewHistorySnapshot([review('Button', 'reviewed')]), 'repair');
+  expect(history.undo()?.components[0]).toMatchObject({ generationError: 'Unknown slot' });
+  expect(history.redo()?.components[0]).not.toHaveProperty('generationError');
 });

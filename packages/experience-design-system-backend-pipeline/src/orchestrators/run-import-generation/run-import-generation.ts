@@ -46,7 +46,10 @@ export async function runImportGeneration(
 ): Promise<ImportGenerationResult> {
   const accepted = input.decisions.accepted;
 
-  const handedOverNames = await input.cachedNames.catch((): string[] => []);
+  const handedOverNames = await input.cachedNames.catch((): string[] => {
+    onProgress({ kind: 'cache-check', state: 'failed' });
+    return [];
+  });
 
   try {
     await deps.saveDecisions({ sessionId: input.sessionId, decisions: input.decisions });

@@ -1,6 +1,9 @@
 import { cleanup, render } from 'ink-testing-library';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ReviewGenerationWarning } from '../../../src/tui/import/steps/09-review/components/ReviewComponentPanel.js';
+import {
+  generationWarningRows,
+  ReviewGenerationWarning,
+} from '../../../src/tui/import/steps/09-review/components/ReviewComponentPanel.js';
 
 afterEach(cleanup);
 
@@ -45,5 +48,13 @@ describe('generation warnings in review', () => {
   ])('does not show a banner when warnings are absent or a dialog is open: %j', (props) => {
     const view = render(<ReviewGenerationWarning {...props} selected={null} />);
     expect(view.lastFrame()).not.toContain('Generation needs attention');
+  });
+});
+
+describe('warning layout', () => {
+  it('reserves rows only for a visible generation banner', () => {
+    expect(generationWarningRows(1, false)).toBe(2);
+    expect(generationWarningRows(0, false)).toBe(0);
+    expect(generationWarningRows(1, true)).toBe(0);
   });
 });

@@ -103,7 +103,7 @@ export function ReviewGenerationWarning({
   selected: CdfReviewEntry | null;
   hidden: boolean;
 }): React.ReactElement | null {
-  if (hidden || count === 0) return null;
+  if (generationWarningRows(count, hidden) === 0) return null;
   return (
     <Box flexDirection="column" height={2} flexShrink={0}>
       <Text color={PALETTE.warning} bold wrap="truncate-end">
@@ -249,4 +249,8 @@ export function ReviewComponentPanel({
       </Box>
     </FixedPanel>
   );
+}
+
+export function generationWarningRows(count: number, hidden: boolean): number {
+  return !hidden && count > 0 ? 2 : 0;
 }

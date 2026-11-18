@@ -11,6 +11,7 @@ export type GenerationInput = ImportGenerationInput & { hasTokens: boolean };
 
 /** One line per thing the screen shows, in the order it shows them. */
 export interface GenerationProgress {
+  cacheRestoreFailed?: boolean;
   /**
    * Components finished, out of the total, and the one being worked on. `failed` counts the finished ones that failed: the
    * run carries on through the rest. Null until the first progress line.
