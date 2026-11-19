@@ -1,6 +1,5 @@
-import { rejectGeneratedComponents } from '../../../../../persistence/src/session/repositories/reject-generated-components.js';
 import { readFile } from 'node:fs/promises';
-import { openPipelineDb } from '../../../../../persistence/src/session/repositories/db.js';
+import { openPipelineDb, rejectGeneratedComponents } from '../../../../../persistence/src/session/repositories/db.js';
 import { getRefineArtifactsRoot } from '../../../../../persistence/src/review-session/repositories/review-artifacts-root.js';
 import { getRefineSessionPaths } from '../../../../../persistence/src/review-session/repositories/review-session-paths.js';
 import { saveReviewState } from '../../../../../persistence/src/review-session/repositories/save-review-state.js';
