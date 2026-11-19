@@ -115,7 +115,11 @@ export async function runGenerateComponentsSession(
       (existingEntities?.components ?? []).map((c) => c.sys.id),
     );
     const persistedNames = new Map(
-      loadRawComponents(db, request.sessionId).map((component) => [component.component_id, component.name]),
+      (
+        db
+          .prepare('SELECT component_id, name FROM raw_components WHERE session_id = ?')
+          .all(request.sessionId) as Array<{ component_id: string; name: string }>
+      ).map((component) => [component.component_id, component.name]),
     );
     for (let index = 0; index < results.length; index++) {
       if (results[index]!.failureKind === 'preflight') {

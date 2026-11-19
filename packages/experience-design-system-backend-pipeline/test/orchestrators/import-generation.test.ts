@@ -137,6 +137,15 @@ describe('runGeneration', () => {
       expect(calls[0]).toBe('save');
     });
 
+    it('reports a cache restore failure without exposing its error payload', async () => {
+      const { deps } = fakes();
+      const progress = vi.fn();
+      await runGeneration(input({ cachedNames: Promise.reject(new Error('private payload')) }), progress, deps);
+      expect(progress).toHaveBeenCalledWith({ kind: 'cache-check', state: 'failed' });
+      expect(JSON.stringify(progress.mock.calls)).not.toContain('private payload');
+      expect(deps.runGenerate).toHaveBeenCalledWith(expect.objectContaining({ precomputedCachedNames: new Set() }));
+    });
+
     it('treats a check that failed as nothing cached, and goes on', async () => {
       const { deps, calls } = fakes();
       const result = await runGeneration(input({ cachedNames: Promise.reject(new Error('boom')) }), () => {}, deps);

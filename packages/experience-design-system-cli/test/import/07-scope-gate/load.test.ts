@@ -1,5 +1,5 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { temporaryEnvironment } from '../../../../../tools/test/temporary-environment.js';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -23,7 +23,6 @@ const component = (name: string, slots: Array<{ name: string; allowedComponents?
 
 describe('loadScopeGate', () => {
   let dir: string;
-  let previousDbPath: string | undefined;
 
   const seed = (components: ReturnType<typeof component>[]): string => {
     const db = openPipelineDb();
@@ -36,16 +35,12 @@ describe('loadScopeGate', () => {
     }
   };
 
+  const environment = temporaryEnvironment('scope-gate-load-', { EDS_PIPELINE_DB_PATH: 'pipeline.db' });
   beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), 'scope-gate-load-'));
-    previousDbPath = process.env.EDS_PIPELINE_DB_PATH;
-    process.env.EDS_PIPELINE_DB_PATH = join(dir, 'pipeline.db');
+    dir = await environment.open();
   });
-
   afterEach(async () => {
-    if (previousDbPath === undefined) delete process.env.EDS_PIPELINE_DB_PATH;
-    else process.env.EDS_PIPELINE_DB_PATH = previousDbPath;
-    await rm(dir, { recursive: true, force: true });
+    await environment.close();
   });
 
   it('returns the extracted components, sorted by name', () => {

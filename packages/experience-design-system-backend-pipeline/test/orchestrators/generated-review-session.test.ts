@@ -1,11 +1,9 @@
+import { newSession, statuses } from '../helpers/pipeline-db.js';
+import { temporaryEnvironment } from '../../../../tools/test/temporary-environment.js';
 import { storeGenerationReviewDraft } from '../../src/persistence/src/session/repositories/generation-review-drafts.js';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 import {
-  getOrCreateSession,
   openPipelineDb,
   storeCDFComponents,
   storeDTCGTokens,
@@ -24,17 +22,6 @@ const entry: CDFComponentEntry = { $type: 'component', $properties: {} };
 const review = (key: string, status: CdfReviewEntry['status']): CdfReviewEntry => ({ key, entry, status });
 
 describe('the review session and the pipeline database', () => {
-  let dir: string;
-  let previousDbPath: string | undefined;
-
-  const newSession = (): string => {
-    const db = openPipelineDb();
-    try {
-      return getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' }).sessionId;
-    } finally {
-      db.close();
-    }
-  };
   const seed = (sessionId: string, names: string[]): void => {
     const db = openPipelineDb();
     try {
@@ -48,29 +35,13 @@ describe('the review session and the pipeline database', () => {
       db.close();
     }
   };
-  const statuses = (sessionId: string): Record<string, string> => {
-    const db = openPipelineDb();
-    try {
-      const rows = db.prepare('SELECT name, status FROM raw_components WHERE session_id = ?').all(sessionId) as Array<{
-        name: string;
-        status: string;
-      }>;
-      return Object.fromEntries(rows.map((row) => [row.name, row.status]));
-    } finally {
-      db.close();
-    }
-  };
 
+  const environment = temporaryEnvironment('review-session-', { EDS_PIPELINE_DB_PATH: 'pipeline.db' });
   beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), 'review-session-'));
-    previousDbPath = process.env.EDS_PIPELINE_DB_PATH;
-    process.env.EDS_PIPELINE_DB_PATH = join(dir, 'pipeline.db');
+    await environment.open();
   });
-
   afterEach(async () => {
-    if (previousDbPath === undefined) delete process.env.EDS_PIPELINE_DB_PATH;
-    else process.env.EDS_PIPELINE_DB_PATH = previousDbPath;
-    await rm(dir, { recursive: true, force: true });
+    await environment.close();
   });
 
   describe('loadReviewSessionState', () => {
@@ -283,6 +254,40 @@ describe('the review session and the pipeline database', () => {
     expect(loadReviewSessionState(options).entries[0]?.generationError).toBeUndefined();
     reviewApi.saveGeneratedReviewDraft(sessionId, 'Button', JSON.stringify({ ...entry, $slots: { invented: {} } }));
     expect(loadReviewSessionState(options).entries[0]?.generationError).toContain('invented');
+  });
+
+  it.each([
+    ['Rejected', false, ['Button', 'External']],
+    ['External', true, ['Button', 'External']],
+    ['Rejected', false, undefined],
+    ['Button', true, undefined],
+  ])('revalidates references to %s against the generation allowlist', (reference, allowed, allowedNames) => {
+    const sessionId = newSession();
+    const db = openPipelineDb();
+    try {
+      storeRawComponents(db, sessionId, [
+        { ...raw('Button'), slots: [{ name: 'children', isDefault: true }] },
+        raw('Rejected'),
+      ]);
+      db.prepare("UPDATE raw_components SET status = 'rejected' WHERE session_id = ? AND name = ?").run(
+        sessionId,
+        'Rejected',
+      );
+      const row = db
+        .prepare('SELECT component_id FROM raw_components WHERE session_id = ? AND name = ?')
+        .get(sessionId, 'Button') as { component_id: string };
+      storeGenerationReviewDraft(db, sessionId, row.component_id, {
+        entry: { ...entry, $slots: { children: { $allowedComponents: [reference] } } },
+        error: 'Original validation error',
+        agentOutput: '',
+        ...(allowedNames ? { allowedComponentNames: allowedNames } : {}),
+      });
+    } finally {
+      db.close();
+    }
+    const button = loadReviewSessionState({ extractSessionId: sessionId }).entries.find((c) => c.key === 'Button');
+    if (allowed) expect(button?.generationError).toBeUndefined();
+    else expect(button?.generationError).toContain('Rejected');
   });
 
   describe('review edits and metadata', () => {

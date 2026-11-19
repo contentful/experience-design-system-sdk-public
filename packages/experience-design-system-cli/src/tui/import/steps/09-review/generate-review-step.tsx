@@ -1,3 +1,4 @@
+import { useGenerationReviewWarnings } from './use-generation-review-warnings.js';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import figures from 'figures';
 import { PALETTE } from '@tui/theme.js';
@@ -30,7 +31,6 @@ import { useImmediateInput } from '../07-scope-gate/sidebar/hooks/useImmediateIn
 import {
   saveGeneratedReviewComponent,
   refreshGeneratedReviewCycles,
-  refreshGeneratedReviewWarnings,
   loadReviewSessionState,
   type StoredSlotCycle,
 } from '@contentful/experience-design-system-backend-pipeline';
@@ -78,6 +78,7 @@ import {
   getReviewSelectionState,
   ReviewEmptyComponentsWarning,
   ReviewGenerationWarning,
+  generationWarningRows,
   ReviewComponentPanel,
   ReviewFinalizeError,
   ReviewNoSelection,
@@ -480,13 +481,13 @@ function GenerateReviewStepView({
     onExtraLoaded: setLoadedSlotCycles,
   });
   const reviewLog = useReviewLog({ loading, loadError, components });
-  useEffect(() => {
-    if (loading || loadError) return;
-    const next = refreshGeneratedReviewWarnings(extractSessionId, components);
-    if (next.some((component, index) => component.generationError !== components[index]?.generationError)) {
-      setComponents(next);
-    }
-  }, [components, extractSessionId, loading, loadError, setComponents]);
+  const warningRefreshError = useGenerationReviewWarnings(
+    extractSessionId,
+    components,
+    setComponents,
+    loading,
+    loadError,
+  );
 
   const [nav, setNav] = useState<{ cursorRowIdx: number; sidebarScrollOffset: number }>({
     cursorRowIdx: 0,
@@ -668,6 +669,7 @@ function GenerateReviewStepView({
       key: c.key,
       entry: c.entry,
       status: c.status,
+      ...(c.generationError ? { generationError: c.generationError } : {}),
     }));
     setComponents(restored);
     setAutoRejected(snap.autoRejected);
@@ -770,7 +772,13 @@ function GenerateReviewStepView({
   const selectedIdx = visibleRowsMemo[cursorRowIdx]?.itemIdx ?? -1;
   const focusedComponentKey: string | null = components[selectedIdx]?.key ?? null;
   const { sidebarVisibleCount: visibleCount, panelMaxRows } = computeSidebarBudget({
-    rows: (terminalRows || FALLBACK_ROWS) - (components.some((component) => component.generationError) ? 2 : 0),
+    rows:
+      (terminalRows || FALLBACK_ROWS) -
+      generationWarningRows(
+        components.filter((component) => component.generationError).length,
+        showFinalize || showQuit,
+      ) -
+      (!showFinalize && !showQuit && warningRefreshError && !finalizeError ? 1 : 0),
     panelOpen: false,
     entryCount: 0,
   });
@@ -1503,7 +1511,7 @@ function GenerateReviewStepView({
         selected={selected}
         hidden={dialogOpen}
       />
-      <ReviewFinalizeError message={finalizeError} hidden={dialogOpen} />
+      <ReviewFinalizeError message={finalizeError ?? warningRefreshError} hidden={dialogOpen} />
       {!dialogOpen && breakPanel.isOpen && (
         <BreakCyclePanel
           cycle={cycleRows[cyclesCursor]}

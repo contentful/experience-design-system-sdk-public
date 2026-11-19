@@ -25,6 +25,7 @@ export interface ImportGenerationInput {
 }
 
 export type ImportGenerationProgress =
+  | { kind: 'cache-check'; state: 'failed' }
   | { kind: 'components'; event: GenerateComponentsProgress }
   | { kind: 'map-tokens'; eligible: boolean; state: 'idle' | 'running' | 'complete' };
 

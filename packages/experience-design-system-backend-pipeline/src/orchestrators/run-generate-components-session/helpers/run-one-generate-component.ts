@@ -202,7 +202,7 @@ export async function runOneGenerateComponent(
 
     const invalidCalls: string[] = [];
     const { calls, warnings } = parseToolCalls(result.stdout, (message) => invalidCalls.push(message));
-    let applied;
+    let applied: ReturnType<typeof applyToolCalls>;
     try {
       validateGenerationCalls(
         { props: component.props, slots: effectiveSlots },
@@ -240,7 +240,7 @@ export async function runOneGenerateComponent(
           $properties: {},
         };
         storeGenerationReviewDraft(db, sessionId, component.component_id, {
-          entry: buildGenerationReviewDraft(result.stdout, base),
+          entry: buildGenerationReviewDraft(result.stdout, base, component.props),
           error: lastError,
           agentOutput: result.stdout,
           allowedComponentNames: [...allowedComponentNames],

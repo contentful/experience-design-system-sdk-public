@@ -54,6 +54,25 @@ describe('generation UI adapter', () => {
     );
   });
 
+  it('preserves cache fallback diagnostics across later progress events', async () => {
+    backend.runImportGeneration.mockImplementation(
+      async (_input, report: (event: ImportGenerationProgress) => void) => {
+        report({ kind: 'cache-check', state: 'failed' });
+        report({
+          kind: 'components',
+          event: { kind: 'component:cached', index: 0, total: 2, name: 'Button', pinned: false },
+        });
+        report({ kind: 'map-tokens', eligible: false, state: 'complete' });
+        return success;
+      },
+    );
+    const progress: GenerationProgress[] = [];
+    await runGeneration(input, (event) => progress.push(event));
+    expect(progress).toHaveLength(3);
+    expect(progress.every((event) => event.cacheRestoreFailed)).toBe(true);
+    expect(progress[2]?.mapTokens).toBe('complete');
+  });
+
   it('preserves operational errors from the backend', async () => {
     const error = { ok: false, step: 'generate components', message: 'Agent timed out' };
     backend.runImportGeneration.mockResolvedValue(error);

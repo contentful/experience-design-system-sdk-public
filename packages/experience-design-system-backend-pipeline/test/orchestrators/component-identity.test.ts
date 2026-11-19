@@ -81,8 +81,13 @@ it('aligns a retained review draft and its known references while preserving unk
       entry: { $type: 'component', $properties: {}, $slots: { invented: { $allowedComponents: ['Card', 'Missing'] } } },
       error: 'Unknown reference',
       agentOutput: 'example',
+      allowedComponentNames: ['Card', 'Panel', 'Missing'],
     });
     alignComponentIds(db, sessionId, ['card', 'panel']);
+    const retained = db
+      .prepare('SELECT cdf_schema FROM raw_components WHERE session_id = ? AND name = ?')
+      .get(sessionId, 'panel') as { cdf_schema: string };
+    expect(JSON.parse(retained.cdf_schema).allowedComponentNames).toEqual(['card', 'panel', 'Missing']);
     expect(loadCDFComponents(db, sessionId)[0]).toMatchObject({
       key: 'panel',
       entry: {

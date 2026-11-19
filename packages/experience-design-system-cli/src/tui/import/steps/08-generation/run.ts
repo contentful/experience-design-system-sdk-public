@@ -22,6 +22,11 @@ export async function runGeneration(
       mapTokensSkillPath: MAP_TOKENS_SKILL_PATH,
     },
     (event) => {
+      if (event.kind === 'cache-check') {
+        progress = { ...progress, cacheRestoreFailed: true };
+        onProgress(progress);
+        return;
+      }
       progress =
         event.kind === 'components'
           ? {
