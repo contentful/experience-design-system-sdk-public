@@ -1,4 +1,4 @@
-import { rejectGeneratedComponents } from '../../persistence/src/session/repositories/reject-generated-components.js';
+import { rejectGeneratedComponents } from '../../persistence/src/session/repositories/db.js';
 import {
   loadGenerationReviewIssues,
   readGenerationReviewDraft,
