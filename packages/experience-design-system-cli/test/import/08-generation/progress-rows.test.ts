@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { progressRows } from '../../../src/tui/import/steps/08-generation/logic.js';
-import { lineState } from '../../../src/tui/import/shared/running-step/logic.js';
+import { lineState, trackFinished } from '../../../src/tui/import/shared/running-step/logic.js';
 import type { GenerationProgress } from '../../../src/tui/import/steps/08-generation/types.js';
 
 const progress = (components: GenerationProgress['components'], mapTokens: GenerationProgress['mapTokens'] = 'idle') =>
@@ -20,6 +20,11 @@ describe('the generation rows', () => {
 
     expect(row).toMatchObject({ text: 'Generated 8 of 10 components, 2 failed' });
     expect(lineState(row!)).toBe('failed');
+  });
+
+  it('reports both failures and retained proposals needing review', () => {
+    const [row] = progressRows(progress({ done: 4, total: 4, current: 'Card', failed: 1, needsReview: 2 }), 'claude');
+    expect(row).toMatchObject({ text: 'Generated 3 of 4 components, 1 failed, 2 need review', state: 'failed' });
   });
 
   it('shows a clean run as generated once every component has been tried', () => {
@@ -45,4 +50,20 @@ describe('the generation rows', () => {
     expect(rows[1]).toMatchObject({ text: 'Mapping token restrictions via Claude...' });
     expect(rows[1]).not.toHaveProperty('ms');
   });
+});
+
+it('shows cache fallback as a warning without marking generation failed', () => {
+  const state = { ...progress({ done: 1, total: 1, current: 'Button', failed: 0 }), cacheRestoreFailed: true };
+  const rows = progressRows(state, 'claude');
+  expect(rows[0]).toEqual({ text: 'Generated 1 component', complete: true });
+  expect(rows[1]).toMatchObject({ text: 'Cache restore failed; regenerating selected components', state: 'warning' });
+});
+
+it('keeps cache diagnostics in the same timed row when token mapping starts', () => {
+  const state = { ...progress({ done: 1, total: 1, current: 'Button', failed: 0 }), cacheRestoreFailed: true };
+  const times = trackFinished([], progressRows(state, 'claude'), 1000);
+  const next = progressRows({ ...state, mapTokens: 'running' }, 'claude', times);
+  expect(next[1]).toMatchObject({ text: 'Cache restore failed; regenerating selected components', ms: 1000 });
+  expect(next[2]).toMatchObject({ text: 'Mapping token restrictions via Claude...' });
+  expect(next[2]).not.toHaveProperty('ms');
 });

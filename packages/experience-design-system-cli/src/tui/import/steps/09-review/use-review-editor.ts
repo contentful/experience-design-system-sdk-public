@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
-import { openPipelineDb, storeCDFComponents } from '@contentful/experience-design-system-backend-pipeline';
+import {
+  saveGeneratedReviewComponent,
+  saveGeneratedReviewDraft,
+} from '@contentful/experience-design-system-backend-pipeline';
 import { collectTokenSuggestions } from './token-suggestions.js';
 import type {
   CdfReviewEntry,
@@ -52,19 +55,6 @@ export type UseReviewEditorResult = {
   handleTokenEditSave: (suggestion: TokenPropSuggestion) => void;
 };
 
-function parseReviewEntry(draftValue: string): CDFComponentEntry {
-  const parsed = JSON.parse(draftValue) as Record<string, unknown>;
-  const keys = Object.keys(parsed);
-  const entry =
-    keys.length === 1 && typeof parsed[keys[0]] === 'object' && parsed[keys[0]] !== null
-      ? (parsed[keys[0]] as CDFComponentEntry)
-      : (parsed as unknown as CDFComponentEntry);
-  if (entry.$type !== 'component' || typeof entry.$properties !== 'object' || entry.$properties === null) {
-    throw new Error('Invalid CDF entry: must have $type: "component" and $properties object');
-  }
-  return entry;
-}
-
 export function useReviewEditor({
   components,
   selectedIdx,
@@ -114,7 +104,7 @@ export function useReviewEditor({
     if (!current) return;
     if (draftValue.trim() === '') return;
     try {
-      const entry = parseReviewEntry(draftValue);
+      const entry = saveGeneratedReviewDraft(extractSessionId, current.key, draftValue);
       const next = components.map((component, index) =>
         index === selectedIdx
           ? {
@@ -127,12 +117,6 @@ export function useReviewEditor({
       setComponents(next);
       setDraftValue('');
       setSaveError(null);
-      const db = openPipelineDb();
-      try {
-        storeCDFComponents(db, extractSessionId, [{ key: current.key, entry }]);
-      } finally {
-        db.close();
-      }
       onEditSaved(next);
     } catch (error: unknown) {
       setSaveError(String(error));
@@ -160,12 +144,7 @@ export function useReviewEditor({
       index === selectedIdx ? { ...component, entry: nextEntry } : component,
     );
     setComponents(next);
-    const db = openPipelineDb();
-    try {
-      storeCDFComponents(db, extractSessionId, [{ key: current.key, entry: nextEntry }]);
-    } finally {
-      db.close();
-    }
+    saveGeneratedReviewComponent(extractSessionId, current.key, nextEntry);
     pushHistorySnapshot(next, `token-review:${propName}`);
     onTokenSaved(next);
   };

@@ -1,17 +1,17 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { newSession, statuses } from '../helpers/pipeline-db.js';
+import { temporaryEnvironment } from '../../../../tools/test/temporary-environment.js';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  getOrCreateSession,
   loadDTCGTokens,
   openPipelineDb,
   storeCDFComponents,
   storeDTCGTokens,
   storeRawComponents,
-} from '@contentful/experience-design-system-backend-pipeline';
-import { prepareMapTokens } from '../../../src/tui/import/steps/08-generation/map-tokens.js';
-import { saveDecisions } from '../../../src/tui/import/steps/08-generation/save-decisions.js';
+} from '../../src/index.js';
+import { prepareMapTokens } from '../../src/orchestrators/run-import-generation/helpers/prepare-map-tokens.js';
+import { saveDecisions } from '../../src/orchestrators/run-import-generation/helpers/save-decisions.js';
 
 const raw = (name: string) => ({
   name,
@@ -25,39 +25,13 @@ const designProp = { $type: 'token' as const, $category: 'design' as const, '$to
 
 describe('the generation stage and the pipeline database', () => {
   let dir: string;
-  let previousDbPath: string | undefined;
 
-  const newSession = (): string => {
-    const db = openPipelineDb();
-    try {
-      return getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' }).sessionId;
-    } finally {
-      db.close();
-    }
-  };
-  const statuses = (sessionId: string): Record<string, string> => {
-    const db = openPipelineDb();
-    try {
-      const rows = db.prepare('SELECT name, status FROM raw_components WHERE session_id = ?').all(sessionId) as Array<{
-        name: string;
-        status: string;
-      }>;
-      return Object.fromEntries(rows.map((row) => [row.name, row.status]));
-    } finally {
-      db.close();
-    }
-  };
-
+  const environment = temporaryEnvironment('generation-db-', { EDS_PIPELINE_DB_PATH: 'pipeline.db', EDS_HOME: '.' });
   beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), 'generation-db-'));
-    previousDbPath = process.env.EDS_PIPELINE_DB_PATH;
-    process.env.EDS_PIPELINE_DB_PATH = join(dir, 'pipeline.db');
+    dir = await environment.open();
   });
-
   afterEach(async () => {
-    if (previousDbPath === undefined) delete process.env.EDS_PIPELINE_DB_PATH;
-    else process.env.EDS_PIPELINE_DB_PATH = previousDbPath;
-    await rm(dir, { recursive: true, force: true });
+    await environment.close();
   });
 
   describe('saveDecisions', () => {

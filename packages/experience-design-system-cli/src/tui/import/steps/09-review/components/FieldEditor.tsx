@@ -65,7 +65,7 @@ type FocusLevel = 'section' | 'prop' | 'slot' | 'field' | 'componentDescription'
 
 type PropState = {
   name: string;
-  type: (typeof CDF_PROPERTY_TYPES)[number];
+  type: string;
   category: (typeof CDF_PROPERTY_CATEGORIES)[number];
   required: boolean;
   description: string;
@@ -161,7 +161,7 @@ function parseToState(json: string): {
   const rawProps = (component.$properties ?? {}) as Record<string, unknown>;
   const props: PropState[] = Object.entries(rawProps).map(([name, raw]) => {
     const p = (raw ?? {}) as Record<string, unknown>;
-    const type = CDF_PROPERTY_TYPES.includes(p.$type as never) ? (p.$type as PropState['type']) : 'string';
+    const type = typeof p.$type === 'string' ? p.$type : 'string';
     let defaultValue: string | boolean | null = null;
     if (p.$default !== undefined && p.$default !== null) {
       if (type === 'boolean') {
@@ -173,9 +173,7 @@ function parseToState(json: string): {
     return {
       name,
       type,
-      category: CDF_PROPERTY_CATEGORIES.includes(p.$category as never)
-        ? (p.$category as PropState['category'])
-        : 'content',
+      category: typeof p.$category === 'string' ? (p.$category as PropState['category']) : 'content',
       required: p.$required === true,
       description: typeof p.$description === 'string' ? p.$description : '',
       values: Array.isArray(p.$values) ? (p.$values as string[]).filter((v) => typeof v === 'string') : [],
@@ -203,6 +201,8 @@ function parseToState(json: string): {
   return { state: { componentDescription, props, slots }, error: null };
 }
 
+type DraftPropertyDefinition = Omit<CDFPropertyDefinition, '$type'> & { $type: string };
+
 function serializeState(state: EditorState, originalJson: string): string {
   let wrapperKey: string | null = null;
   try {
@@ -216,9 +216,9 @@ function serializeState(state: EditorState, originalJson: string): string {
     }
   } catch {}
 
-  const $properties: Record<string, CDFPropertyDefinition> = {};
+  const $properties: Record<string, DraftPropertyDefinition> = {};
   for (const p of state.props) {
-    const def: CDFPropertyDefinition = {
+    const def: DraftPropertyDefinition = {
       $type: p.type,
       $category: p.category,
     };
@@ -241,7 +241,7 @@ function serializeState(state: EditorState, originalJson: string): string {
     $properties[p.name] = def;
   }
 
-  const entry: CDFComponentEntry = {
+  const entry: Omit<CDFComponentEntry, '$properties'> & { $properties: typeof $properties } = {
     $type: 'component',
     $properties,
   };
@@ -1688,7 +1688,7 @@ export function FieldEditor({
         const next = key.leftArrow
           ? options[(idx - 1 + options.length) % options.length]
           : options[(idx + 1) % options.length];
-        const updated = { ...currentProp, type: next as PropState['type'] };
+        const updated = { ...currentProp, type: next };
         if (next === 'token') {
           updated.category = 'design';
           updated.tokenKind ||= DESIGN_TOKEN_TYPES[0] ?? '';
@@ -2233,7 +2233,7 @@ export function FieldEditor({
       {header}
 
       <Box flexDirection="column" width={innerWidth} flexShrink={0}>
-        {focusLevel === 'field' && !inComponentDesc && currentProp ? (
+        {focusLevel === 'field' && !inComponentDesc && !inSlots && currentProp ? (
           <PropRow
             prop={currentProp}
             selected

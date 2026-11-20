@@ -1,4 +1,5 @@
 import type { CDFDocument, ServerPreviewResponse } from '@contentful/experience-design-system-types';
+import type { GenerationIssue } from '@contentful/experience-design-system-types/handoff';
 import type { PreviewValidationError } from '@contentful/experience-design-system-backend-pipeline';
 import type { PushProgress } from '../support/push-progress.js';
 
@@ -38,6 +39,7 @@ export type FlowState = {
   extractSessionId: string | null;
   generateSessionId: string | null;
   generatedCount: number;
+  generationIssues?: GenerationIssue[];
   generatedAcceptedCount: number;
   componentsPath: string;
   spaceId: string;

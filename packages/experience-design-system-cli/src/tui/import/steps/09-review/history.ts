@@ -11,6 +11,7 @@ interface CdfReviewEntrySnapshot {
   key: string;
   entry: CDFComponentEntry;
   status: ReviewComponentStatus;
+  generationError?: string;
 }
 
 export interface HistoryStack {
@@ -31,6 +32,7 @@ function cloneSnapshot(snap: HistorySnapshot): HistorySnapshot {
       key: c.key,
       entry: JSON.parse(JSON.stringify(c.entry)) as CDFComponentEntry,
       status: c.status,
+      ...(c.generationError ? { generationError: c.generationError } : {}),
     })),
     autoRejected: [...snap.autoRejected],
     undoSnapshot: snap.undoSnapshot === null ? null : new Map(Array.from(snap.undoSnapshot.entries())),

@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { openPipelineDb } from '../../../../../persistence/src/session/repositories/db.js';
+import { openPipelineDb, rejectGeneratedComponents } from '../../../../../persistence/src/session/repositories/db.js';
 import { getRefineArtifactsRoot } from '../../../../../persistence/src/review-session/repositories/review-artifacts-root.js';
 import { getRefineSessionPaths } from '../../../../../persistence/src/review-session/repositories/review-session-paths.js';
 import { saveReviewState } from '../../../../../persistence/src/review-session/repositories/save-review-state.js';
@@ -18,10 +18,7 @@ export async function rejectComponentsByName(
 
   const db = openPipelineDb();
   try {
-    const placeholders = names.map(() => '?').join(',');
-    db.prepare(
-      `UPDATE raw_components SET status = 'generate-rejected' WHERE session_id = ? AND name IN (${placeholders})`,
-    ).run(sessionId, ...names);
+    rejectGeneratedComponents(db, sessionId, names);
   } finally {
     db.close();
   }
