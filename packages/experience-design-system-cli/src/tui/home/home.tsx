@@ -9,7 +9,8 @@ import { ControlHints } from '@tui/shared/components/ControlHints.js';
 
 const VERSION = readPackageVersion();
 const HEADING = 'Contentful Design System Import';
-const MIN_TERMINAL_WIDTH = 164;
+// The home menu is about 40 columns wide, and the import wizard's step header and screens fit in 80.
+export const MIN_TERMINAL_WIDTH = 80;
 
 const START_ITEMS: { label: string; screen: Screen }[] = [
   { label: 'Import', screen: 'import' },
@@ -67,7 +68,8 @@ export function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => voi
           Terminal too small
         </Text>
         <Text color={PALETTE.muted}>
-          Press q to quit, make your terminal full screen, then run experiences import again.
+          This screen needs at least {MIN_TERMINAL_WIDTH} columns and the terminal is {terminalWidth} wide. Widen it, or
+          press q to quit.
         </Text>
       </Box>
     );
