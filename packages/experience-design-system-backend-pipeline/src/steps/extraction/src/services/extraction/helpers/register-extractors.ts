@@ -3,7 +3,7 @@ import { extractAstroComponents } from '../../../framework-adapters/astro/extrac
 import { extractReactComponents } from '../../../framework-adapters/react/extract-react-components.js';
 import { extractStencilComponents } from '../../../framework-adapters/stencil/extractor.js';
 import { extractSvelteComponents } from '../../../framework-adapters/svelte/extract-svelte-components.js';
-import { extractVueTsxComponents } from '../../../framework-adapters/vue-tsx/extract-vue-tsx-components.js';
+import { extractVueTsxComponents } from '../../../framework-adapters/vue-tsx/extractor.js';
 import { extractVueComponents } from '../../../framework-adapters/vue/extractor.js';
 import { extractWebComponentDefinitions } from '../../../framework-adapters/web-components/extractor.js';
 import { extractAngularComponents } from '../../../framework-adapters/angular/extract-angular-components.js';
