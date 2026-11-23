@@ -11,6 +11,15 @@ import {
 
 // These run real throwaway scripts instead of mocking the process layer. What matters: the path the user typed is the
 // thing that gets run, the screen never tells a user a broken agent is ready, and a test leaves nothing behind.
+const CODEX_ANSWER = [
+  { type: 'thread.started', thread_id: '11111111-1111-4111-8111-111111111111' },
+  { type: 'turn.started' },
+  { type: 'item.completed', item: { type: 'agent_message', text: 'ok' } },
+  { type: 'turn.completed' },
+]
+  .map((event) => `'${JSON.stringify(event)}'`)
+  .join(' ');
+
 describe('checking an agent', () => {
   let dir: string;
 
@@ -53,7 +62,7 @@ describe('checking an agent', () => {
   it('is ready only once the agent answers a real prompt, and runs the path that was typed', async () => {
     const path = await script(
       'codex',
-      'case "$1" in --version) echo "codex 9.9.9";; *) cat >/dev/null; echo ok;; esac',
+      `case "$1" in --version) echo "codex 9.9.9";; *) cat >/dev/null; printf '%s\\n' ${CODEX_ANSWER};; esac`,
     );
 
     const checks = await testAgent('codex', path, '');
