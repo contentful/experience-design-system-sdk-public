@@ -2,38 +2,21 @@
   "$schema": "./node_modules/nx/schemas/nx-schema.json",
   "targetDefaults": {
     "build": {
-      "dependsOn": [
-        "^build",
-        "clean"
-      ],
+      "dependsOn": ["^build"],
       "cache": true,
-      "inputs": [
-        "package",
-        "^package"
-      ]
+      "inputs": ["package", "^package"]
     },
     "test": {
       "cache": true,
-      "inputs": [
-        "default",
-        "^package",
-        "{workspaceRoot}/vitest.config.ts"
-      ]
+      "inputs": ["default", "^package", "{workspaceRoot}/vitest.config.ts"]
     },
     "lint": {
       "cache": true,
-      "inputs": [
-        "default",
-        "{workspaceRoot}/eslint.config.ts",
-        "{workspaceRoot}/.eslintrc.json"
-      ]
+      "inputs": ["default", "{workspaceRoot}/eslint.config.ts", "{workspaceRoot}/.eslintrc.json"]
     },
     "typecheck": {
       "cache": true,
-      "inputs": [
-        "default",
-        "^package"
-      ]
+      "inputs": ["default", "^package"]
     },
     "nx-release-publish": {
       "options": {
@@ -42,10 +25,7 @@
     }
   },
   "namedInputs": {
-    "default": [
-      "{projectRoot}/**/*",
-      "sharedGlobals"
-    ],
+    "default": ["{projectRoot}/**/*", "sharedGlobals"],
     "package": [
       "default",
       "!{projectRoot}/**/?(*.)+(spec|test).[jt]s?(x)?(.snap)",
