@@ -3,7 +3,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-import { configRoot } from '../helpers/config-root.js';
+import { getPipelineDbPath } from '../helpers/pipeline-db-path.js';
+export { getPipelineDbPath } from '../helpers/pipeline-db-path.js';
 import { dirname, resolve } from 'node:path';
 import { escapeForRegExp, excerptAroundNames } from '../helpers/source-excerpt.js';
 import type {
@@ -229,13 +230,6 @@ CREATE INDEX IF NOT EXISTS idx_generation_cache_entity  ON generation_cache(enti
 CREATE INDEX IF NOT EXISTS idx_generation_cache_session ON generation_cache(source_session_id);
 CREATE INDEX IF NOT EXISTS idx_scanned_files_session    ON scanned_files(session_id);
 `;
-
-export function getPipelineDbPath(): string {
-  if (process.env.EDS_PIPELINE_DB_PATH) {
-    return resolve(process.env.EDS_PIPELINE_DB_PATH);
-  }
-  return resolve(configRoot(), 'pipeline.db');
-}
 
 export function openPipelineDb(dbPath?: string): DatabaseSync {
   const path = dbPath ?? getPipelineDbPath();

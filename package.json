@@ -8,6 +8,7 @@
     "./tools/*"
   ],
   "scripts": {
+    "profile:import": "node scripts/profile-import.mjs",
     "build": "nx run-many -t build",
     "typecheck": "nx run-many -t typecheck",
     "clean": "nx run-many -t clean",

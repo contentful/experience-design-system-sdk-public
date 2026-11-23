@@ -52,6 +52,11 @@ export type {
   EntityDiffGroup,
   ServerPreviewResponse,
 } from './sources-api/preview/index.js';
+export {
+  PROPERTY_BREAKING_REASONS,
+  SLOT_BREAKING_REASONS,
+  sanitizeBreakingChanges,
+} from './sources-api/preview/index.js';
 
 // Sources API — Apply
 export type {

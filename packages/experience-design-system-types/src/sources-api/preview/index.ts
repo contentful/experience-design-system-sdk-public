@@ -1,17 +1,49 @@
 import type { CDFComponentEntry } from '../../cdf/index.js';
 import type { DTCGTokenEntry } from '../../dtcg/index.js';
+import { cloneJson, jsonValueIssue, own } from '../../property-contract/json-value.js';
+
+export const PROPERTY_BREAKING_REASONS = [
+  'removed',
+  'added_required_no_default',
+  'type_changed',
+  'validation_narrowed',
+] as const;
+export const SLOT_BREAKING_REASONS = ['slot_removed', 'slot_allowed_components_narrowed'] as const;
 
 interface PropertyBreakingChange {
   propertyId: string;
-  reason: 'removed' | 'added_required_no_default' | 'type_changed' | 'validation_narrowed';
+  reason: (typeof PROPERTY_BREAKING_REASONS)[number];
 }
 
 interface SlotBreakingChange {
   slotId: string;
-  reason: 'slot_removed' | 'slot_allowed_components_narrowed';
+  reason: (typeof SLOT_BREAKING_REASONS)[number];
 }
 
 export type BreakingChange = PropertyBreakingChange | SlotBreakingChange;
+
+export function sanitizeBreakingChanges(value: unknown): BreakingChange[] {
+  const unsafe = jsonValueIssue(value);
+  if (!Array.isArray(value) || (unsafe && !/^\/\d+(?:\/|$)/.test(unsafe.path))) return [];
+  const changes: BreakingChange[] = [];
+  for (let index = 0; index < value.length; index++) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (!descriptor?.enumerable || !own(descriptor, 'value')) continue;
+    const item: unknown = descriptor.value;
+    if (jsonValueIssue(item) || !item || typeof item !== 'object' || Array.isArray(item)) continue;
+    const row = item as Record<string, unknown>;
+    const property = own(row, 'propertyId');
+    const slot = own(row, 'slotId');
+    if (property === slot || Object.keys(row).some((key) => !['reason', 'propertyId', 'slotId'].includes(key)))
+      continue;
+    const id = property ? row.propertyId : row.slotId;
+    const reasons: readonly string[] = property ? PROPERTY_BREAKING_REASONS : SLOT_BREAKING_REASONS;
+    if (typeof id !== 'string' || !id.trim() || typeof row.reason !== 'string' || !reasons.includes(row.reason))
+      continue;
+    changes.push(cloneJson(row) as unknown as BreakingChange);
+  }
+  return changes;
+}
 
 export interface ChangeClassification {
   classification: 'breaking' | 'compatible';
