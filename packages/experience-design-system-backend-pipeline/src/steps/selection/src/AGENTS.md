@@ -39,7 +39,7 @@ The service accepts `onCacheLookup` and `onCacheStore` but never calls them. The
 
 ## External calls
 
-AI agent via `createLocalCliAgentInvoker` from this package's `src/agents/`. Timeout: `EDS_AGENT_TIMEOUT_MS` env or 5 min. No HTTP calls.
+AI agent via `createLocalCliAgentInvoker` from this package's `src/agents/`. Timeout: `EDS_AGENT_TIMEOUT_MS` env or 5 min. Claude and Codex prompts go over stdin by default; other agents use argv. There is no application prompt-size limit. No HTTP calls.
 
 ## DSI contribution
 

@@ -1,5 +1,20 @@
 // CDF (Component Definition Format) exports — one schema/file for both
 // components and design tokens, no separate manifest envelope.
+export { shouldUseStdinForPrompt } from './agent-prompt-transport.js';
+export {
+  createAgentPromptArtifact,
+  shouldUsePromptArtifact,
+  type AgentPromptArtifact,
+} from './agent-prompt-artifact.js';
+
+export {
+  createAgentCancellationResult,
+  runAgentProcess,
+  type AgentProcessEndDetails,
+  type AgentProcessResult,
+  type RunAgentProcessOptions,
+} from './agent-process-lifecycle.js';
+
 export {
   validateCDF,
   parseCDFComponents,
