@@ -26,12 +26,14 @@
       "cache": true
     },
     "build": {
+      "cache": false,
       "executor": "@nx/js:tsc",
       "outputs": ["{options.outputPath}"],
       "options": {
         "outputPath": "packages/experience-design-system-client/dist",
         "main": "packages/experience-design-system-client/src/index.ts",
         "tsConfig": "packages/experience-design-system-client/tsconfig.build.json",
+        "clean": false,
         "assets": []
       },
       "dependsOn": ["codegen", "^build"]
