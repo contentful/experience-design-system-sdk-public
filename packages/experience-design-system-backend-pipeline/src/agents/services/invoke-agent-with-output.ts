@@ -14,7 +14,7 @@ export interface InvokeAgentWithOutputResult {
  * and keep the raw stdout for parsing.
  */
 export async function invokeAgentWithOutput(
-  invoker: AgentInvoker,
+  invoker: Pick<AgentInvoker, 'invoke'>,
   options: Omit<InvokeAgentOptions, 'onOutput'>,
   verbose: boolean,
 ): Promise<InvokeAgentWithOutputResult> {
