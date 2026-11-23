@@ -215,7 +215,7 @@ describe('the review session and the pipeline database', () => {
     }
     const loaded = loadReviewSessionState({ extractSessionId: sessionId });
     expect(loaded.entries[0]).toMatchObject({ entry: draft });
-    expect(loaded.entries[0]?.generationError).toContain('Invalid Component definition');
+    expect(loaded.entries[0]?.generationError).toContain('$properties/variant/$values');
     const repaired = {
       ...draft,
       $properties: { variant: { ...draft.$properties.variant, $values: ['primary', 'secondary'] } },

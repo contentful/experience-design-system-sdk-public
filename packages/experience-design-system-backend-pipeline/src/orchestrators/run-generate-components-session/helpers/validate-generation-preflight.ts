@@ -1,8 +1,10 @@
 import {
   buildCDF,
+  CDF_SCHEMA_URL,
   DESIGN_TOKEN_TYPES,
   validateCDF,
   type CDFComponentEntry,
+  type CDFValidationError,
 } from '@contentful/experience-design-system-types';
 import type { ToolCall } from '../../../agents/types/tool-calls.js';
 import type { RawComponentDefinition } from '../../../steps/extraction/src/types/component.js';
@@ -68,14 +70,17 @@ export function validateGeneratedCDF(component: { key: string; entry: CDFCompone
   try {
     document = buildCDF([isolated], []);
   } catch (error) {
-    throw new GenerationPreflightError([error instanceof Error ? error.message : String(error)]);
-  }
-  const validation = validateCDF(document);
-  if (!validation.valid) {
+    const fields = validateCDF({ $schema: CDF_SCHEMA_URL, [isolated.key]: isolated.entry });
     throw new GenerationPreflightError(
-      validation.errors.map(
-        (error) => `${error.path}: ${error.message}${error.expected ? ` (${error.expected})` : ''}`,
-      ),
+      fields.valid ? [error instanceof Error ? error.message : String(error)] : formatValidationErrors(fields.errors),
     );
   }
+  const validation = validateCDF(document);
+  if (!validation.valid) throw new GenerationPreflightError(formatValidationErrors(validation.errors));
+}
+
+function formatValidationErrors(errors: CDFValidationError[]): string[] {
+  return [
+    ...new Set(errors.map((error) => `${error.path}: ${error.message}${error.expected ? ` (${error.expected})` : ''}`)),
+  ];
 }

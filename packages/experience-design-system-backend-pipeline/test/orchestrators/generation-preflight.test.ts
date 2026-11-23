@@ -114,7 +114,7 @@ describe('generation agent preflight', () => {
 
     expect(invoke).toHaveBeenCalledTimes(2);
     expect(invoke.mock.calls[1]![0].prompt).toContain('Generation preflight');
-    expect(invoke.mock.calls[1]![0].prompt).toContain('Invalid Component definition');
+    expect(invoke.mock.calls[1]![0].prompt).toContain('$token.kind');
     expect(result.failed).toBe(false);
     const document = buildCDF(loadCDFComponents(db, sessionId), []);
     expect(validateCDF(document).valid).toBe(true);
@@ -132,7 +132,7 @@ describe('generation agent preflight', () => {
     expect(invoke).toHaveBeenCalledTimes(2);
     expect(result.failed).toBe(true);
     expect(result.failureKind).toBe('preflight');
-    expect(result.error).toContain('Invalid Component definition');
+    expect(result.error).toContain('$token.kind');
     expect(result.reviewRequired).toBe(true);
     expect(loadCDFComponents(db, sessionId)[0]?.entry.$properties.label).toEqual({
       $type: 'string',
