@@ -5,7 +5,7 @@ import { extractStencilComponents } from '../../../framework-adapters/stencil/ex
 import { extractSvelteComponents } from '../../../framework-adapters/svelte/extract-svelte-components.js';
 import { extractVueTsxComponents } from '../../../framework-adapters/vue-tsx/extract-vue-tsx-components.js';
 import { extractVueComponents } from '../../../framework-adapters/vue/extract-vue-components.js';
-import { extractWebComponentDefinitions } from '../../../framework-adapters/web-components/extract-web-components.js';
+import { extractWebComponentDefinitions } from '../../../framework-adapters/web-components/extractor.js';
 import { extractAngularComponents } from '../../../framework-adapters/angular/extract-angular-components.js';
 import { isAngularSourceFile } from '../../../framework-adapters/angular/helpers/is-angular-source-file.js';
 
