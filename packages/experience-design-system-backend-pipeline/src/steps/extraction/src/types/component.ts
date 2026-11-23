@@ -1,3 +1,7 @@
+import type { ExtractorOptions } from './options.js';
+
+export type RawPropCategory = 'content' | 'design' | 'state';
+
 export type ExtractionValidationIssueCode =
   | 'EMPTY_COMPONENT_NAME'
   | 'EMPTY_PROP_NAME'
@@ -25,7 +29,7 @@ export interface RawPropDefinition {
    * that select visible content (for example an icon or flag name).
    */
   domAttribute?: boolean;
-  category?: 'content' | 'design' | 'state';
+  category?: RawPropCategory;
   defaultValue?: string;
   allowedValues?: string[];
   description?: string;
@@ -72,9 +76,12 @@ export interface RawComponentDefinition {
 }
 
 export interface ComponentExtractionResult {
+  compilerSources?: import('../compiler/context.js').CompilerLoadedSource[];
+  sourceInventory?: import('../../source-evidence/discovery.js').SourceEvidenceInventory;
   components: RawComponentDefinition[];
   warnings: string[];
   exclusions?: ExtractionExclusion[];
+  extractionDiagnostics?: import('../candidates/types.js').ExtractionDiagnostics;
 }
 
 /** A deterministic item removed before the interactive scope gate. */
@@ -90,22 +97,6 @@ export type ExtractorProgress = {
   filesProcessed: number;
   componentsFound: number;
 };
-
-/**
- * Optional extraction-time settings forwarded from the CLI through the
- * pipeline to each extractor. Only the Svelte extractor currently consumes
- * any of these; other extractors ignore the value.
- */
-export interface ExtractorOptions {
-  /**
-   * Whether the Svelte extractor should run a retry pass for components whose
-   * declared Props type couldn't be resolved on the first pass (cross-package
-   * extends, path-alias-only types, etc.). See svelte.ts for the policy.
-   */
-  resolveUnreachable?: 'auto' | 'always' | 'never';
-  /** Absolute project root — used by the retry pass to locate tsconfig.json and node_modules. */
-  projectRoot?: string;
-}
 
 export interface ComponentExtractor {
   name: string;
@@ -126,3 +117,5 @@ export function stripScoringFields({
 }: RawComponentDefinition): Omit<RawComponentDefinition, 'extractionConfidence' | 'reviewReasons' | 'needsReview'> {
   return rest;
 }
+
+export type { ExtractorOptions };
