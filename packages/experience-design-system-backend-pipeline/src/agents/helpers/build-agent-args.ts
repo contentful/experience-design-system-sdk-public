@@ -17,6 +17,7 @@ export function buildArgs(
   model?: string,
   promptViaStdin = false,
   bedrock = false,
+  conversation?: { id?: string; newSession?: boolean },
 ): string[] {
   const resolvedModel = resolveAgentModel(agent, model, bedrock);
   const modelArg = resolvedModel ? ['--model', resolvedModel] : [];
@@ -24,14 +25,14 @@ export function buildArgs(
 
   switch (agent) {
     case 'claude':
-      return buildClaudeArgs(modelArg, promptArg);
+      return buildClaudeArgs(modelArg, promptArg, conversation);
     case 'codex':
-      return buildCodexArgs(modelArg, promptArg, bedrock);
+      return buildCodexArgs(modelArg, promptArg, bedrock, conversation);
     case 'opencode':
-      return buildOpencodeArgs(modelArg, promptArg);
+      return buildOpencodeArgs(modelArg, promptArg, conversation);
     case 'cursor':
-      return buildCursorArgs(modelArg, promptArg);
+      return buildCursorArgs(modelArg, promptArg, conversation);
     case 'copilot':
-      return buildCopilotArgs(model, promptArg);
+      return buildCopilotArgs(model, promptArg, conversation);
   }
 }

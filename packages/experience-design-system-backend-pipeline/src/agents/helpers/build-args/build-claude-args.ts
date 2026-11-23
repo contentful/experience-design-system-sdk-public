@@ -1,3 +1,9 @@
-export function buildClaudeArgs(modelArg: string[], promptArg: string[]): string[] {
-  return ['--print', ...modelArg, ...promptArg];
+export function buildClaudeArgs(modelArg: string[], promptArg: string[], conversation?: { id?: string }): string[] {
+  return [
+    '--print',
+    ...(conversation ? ['--output-format', 'stream-json', '--verbose'] : []),
+    ...(conversation?.id ? ['--resume', conversation.id] : []),
+    ...modelArg,
+    ...promptArg,
+  ];
 }

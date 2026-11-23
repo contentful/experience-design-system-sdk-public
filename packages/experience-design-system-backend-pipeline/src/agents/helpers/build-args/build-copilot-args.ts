@@ -10,8 +10,23 @@ import { resolveAgentModel } from '../resolution/resolve-agent-model.js';
  * the user set an explicit override (via flag or EDS_AGENT_MODEL_COPILOT);
  * the sentinel string 'Auto' means "omit".
  */
-export function buildCopilotArgs(model: string | undefined, promptArg: string[]): string[] {
+export function buildCopilotArgs(
+  model: string | undefined,
+  promptArg: string[],
+  conversation?: { id?: string; newSession?: boolean },
+): string[] {
   const copilotModel = resolveAgentModel('copilot', model);
   const copilotModelArg = !copilotModel || copilotModel === 'Auto' ? [] : ['--model', copilotModel];
-  return ['-p', ...promptArg, ...copilotModelArg, '--allow-all-tools'];
+  return [
+    '-p',
+    ...promptArg,
+    ...copilotModelArg,
+    '--allow-all-tools',
+    ...(conversation ? ['--silent'] : []),
+    ...(conversation?.id
+      ? conversation.newSession
+        ? ['--session-id', conversation.id]
+        : [`--resume=${conversation.id}`]
+      : []),
+  ];
 }

@@ -89,6 +89,26 @@ describe('local agent prompt transport', () => {
     }
   });
 
+  it('records a rejected conversation response as an invocation failure', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'agent-invalid-profile-'));
+    vi.stubEnv('EDS_IMPORT_PROFILE_DIR', directory);
+    try {
+      const result = await runAgent({ agent: 'codex', prompt: 'task', timeoutMs: 20000, preserveConversation: true });
+      expect(result.exitCode).toBe(1);
+      const events = readdirSync(directory).flatMap((name) =>
+        readFileSync(join(directory, name), 'utf8')
+          .trim()
+          .split('\n')
+          .map((line) => JSON.parse(line)),
+      );
+      expect(events.find((event) => event.type === 'span-end' && event.name === 'agent.invocation').status).toBe(
+        'error',
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it('returns before binary resolution and side effects for a pre-aborted invocation', async () => {
     const controller = new AbortController();
     controller.abort();
@@ -133,15 +153,19 @@ describe('local agent prompt transport', () => {
     });
 
     controller.abort();
-    stdout.write('late output');
+    const conversation = { agent: 'claude', id: '11111111-1111-4111-8111-111111111111' };
+    stdout.write(
+      JSON.stringify({ type: 'result', subtype: 'success', session_id: conversation.id, result: 'late output' }),
+    );
     stderr.write('retained diagnostic');
     child.emit('close', 0, null);
 
-    await expect(resultPromise).resolves.toEqual({
+    await expect(resultPromise).resolves.toMatchObject({
       exitCode: 1,
       stdout: 'late output',
       stderr: 'retained diagnostic',
       timedOut: false,
+      conversation,
     });
     expect(child.kill).toHaveBeenCalledExactlyOnceWith('SIGTERM');
     expect(onOutput).not.toHaveBeenCalled();
