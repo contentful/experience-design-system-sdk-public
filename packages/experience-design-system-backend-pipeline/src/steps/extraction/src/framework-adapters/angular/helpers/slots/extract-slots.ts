@@ -5,12 +5,12 @@ import { parseNgContentElements } from '../template/parse-ng-content-elements.js
 import { resolveTemplateSource } from '../template/resolve-template-source.js';
 import { deriveSlotName } from './derive-slot-name.js';
 import { extractContentChildQueries } from './extract-content-child-queries.js';
-import { extractTemplateRefSlots } from './extract-template-ref-slots.js';
 
 export async function extractSlots(
   cls: ClassDeclaration,
   meta: AngularComponentMetadata,
   props: RawPropDefinition[],
+  warnings?: string[],
 ): Promise<{ props: RawPropDefinition[]; slots: RawSlotDefinition[] }> {
   const byName = new Map<string, RawSlotDefinition>();
 
@@ -26,14 +26,11 @@ export async function extractSlots(
     }
   }
 
-  for (const slot of extractContentChildQueries(cls)) {
-    if (!byName.has(slot.name)) byName.set(slot.name, slot);
+  for (const query of extractContentChildQueries(cls)) {
+    warnings?.push(
+      `${query.sourcePath}:${query.startLine}: content query ${query.name} observed: ${query.declaration}; output ownership unresolved.`,
+    );
   }
 
-  const split = extractTemplateRefSlots(props);
-  for (const slot of split.slots) {
-    if (!byName.has(slot.name)) byName.set(slot.name, slot);
-  }
-
-  return { props: split.props, slots: [...byName.values()] };
+  return { props, slots: [...byName.values()] };
 }

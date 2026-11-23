@@ -26,25 +26,29 @@ function collectClassChain(cls: ClassDeclaration): ClassDeclaration[] {
   return chain;
 }
 
-export function extractProps(cls: ClassDeclaration, meta: AngularComponentMetadata): RawPropDefinition[] {
+export function extractProps(
+  cls: ClassDeclaration,
+  meta: AngularComponentMetadata,
+  warnings?: string[],
+): RawPropDefinition[] {
   const byName = new Map<string, RawPropDefinition>();
   const chain = collectClassChain(cls);
 
   for (const klass of chain) {
     for (const field of klass.getProperties()) {
-      const prop = extractDecoratorInput(field);
+      const prop = extractDecoratorInput(field, warnings);
       if (prop && !byName.has(prop.name)) byName.set(prop.name, prop);
     }
     for (const setter of klass.getSetAccessors()) {
-      const prop = extractDecoratorInput(setter);
+      const prop = extractDecoratorInput(setter, warnings);
       if (prop && !byName.has(prop.name)) byName.set(prop.name, prop);
     }
     for (const getter of klass.getGetAccessors()) {
-      const prop = extractDecoratorInput(getter);
+      const prop = extractDecoratorInput(getter, warnings);
       if (prop && !byName.has(prop.name)) byName.set(prop.name, prop);
     }
     for (const field of klass.getProperties()) {
-      const prop = extractSignalInput(field);
+      const prop = extractSignalInput(field, warnings);
       if (prop && !byName.has(prop.name)) byName.set(prop.name, prop);
     }
   }
