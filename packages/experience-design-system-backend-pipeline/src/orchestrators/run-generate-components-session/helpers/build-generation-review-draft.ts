@@ -9,7 +9,7 @@ export function buildGenerationReviewDraft(
   extractedProps: readonly RawPropDefinition[],
 ): CDFComponentEntry {
   const entry: Record<string, unknown> = { ...base };
-  const properties = new Map<string, Record<string, unknown>>(Object.entries(base.$properties));
+  const properties = new Map(Object.entries(base.$properties as unknown as Record<string, Record<string, unknown>>));
   const slots = new Map<string, Record<string, unknown>>(Object.entries(base.$slots ?? {}));
   for (const call of readToolCallObjects(stdout).objects) {
     if (call.tool === 'classify_component' && Object.hasOwn(call, 'description')) entry.$description = call.description;
@@ -49,5 +49,5 @@ export function buildGenerationReviewDraft(
   entry.$properties = Object.fromEntries(properties);
   if (slots.size > 0) entry.$slots = Object.fromEntries(slots);
   // This is editable CDF-shaped data, intentionally not a schema-valid document.
-  return entry as CDFComponentEntry;
+  return entry as unknown as CDFComponentEntry;
 }

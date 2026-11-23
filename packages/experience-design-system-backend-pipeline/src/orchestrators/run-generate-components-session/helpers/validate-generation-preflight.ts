@@ -8,7 +8,7 @@ import type { ToolCall } from '../../../agents/types/tool-calls.js';
 import type { RawComponentDefinition } from '../../../steps/extraction/src/types/component.js';
 
 export class GenerationPreflightError extends Error {
-  constructor(errors: string[]) {
+  constructor(readonly errors: string[]) {
     super(`Generation preflight failed:\n${errors.join('\n')}`);
     this.name = 'GenerationPreflightError';
   }
@@ -48,7 +48,29 @@ export function validateGenerationCalls(
 }
 
 export function validateGeneratedCDF(component: { key: string; entry: CDFComponentEntry }): void {
-  const validation = validateCDF(buildCDF([component], []));
+  const isolated = {
+    key: component.key,
+    entry: {
+      ...component.entry,
+      ...(component.entry.$slots
+        ? {
+            $slots: Object.fromEntries(
+              Object.entries(component.entry.$slots).map(([name, { $allowedComponents: _references, ...slot }]) => [
+                name,
+                slot,
+              ]),
+            ),
+          }
+        : {}),
+    },
+  };
+  let document: ReturnType<typeof buildCDF>;
+  try {
+    document = buildCDF([isolated], []);
+  } catch (error) {
+    throw new GenerationPreflightError([error instanceof Error ? error.message : String(error)]);
+  }
+  const validation = validateCDF(document);
   if (!validation.valid) {
     throw new GenerationPreflightError(
       validation.errors.map(

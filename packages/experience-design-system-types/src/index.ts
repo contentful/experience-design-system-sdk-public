@@ -30,8 +30,14 @@ export {
   buildFilteredCDF,
   stripUnsupportedSlotFields,
   validateSlotReferences,
+  finiteValuesIssue,
+  isFinitePrimitiveType,
+  isFinitePrimitiveValue,
+  type FinitePrimitiveType,
+  type FinitePrimitiveValue,
   type CDFComponentEntry,
   type CDFPropertyDefinition,
+  type CDFFieldDefinition,
   type CDFSlotDefinition,
   type CDFTokenEntry,
   type CDFValidationError,
@@ -67,11 +73,6 @@ export type {
   EntityDiffGroup,
   ServerPreviewResponse,
 } from './sources-api/preview/index.js';
-export {
-  PROPERTY_BREAKING_REASONS,
-  SLOT_BREAKING_REASONS,
-  sanitizeBreakingChanges,
-} from './sources-api/preview/index.js';
 
 // Sources API — Apply
 export type {
@@ -82,7 +83,41 @@ export type {
   ApplyGateError,
 } from './sources-api/apply/index.js';
 
-// Property contract — pillar #4 foundation (target types + validators).
-// Dormant: no current consumer imports these. Available for forthcoming
-// evidence-aware extractors and generation. See INTEG-5147 / INTEG-4927.
+export type {
+  SharedSource,
+  SharedSourceFile,
+  SharedSourceCompilerContext,
+  SharedSourceReference,
+  SharedSourceRange,
+  SharedSourceCoverage,
+  SharedSourceCallerCoverage,
+} from './shared-source.js';
+
 export * from './property-contract/index.js';
+export {
+  validateCDFProperty,
+  cdfToTarget,
+  targetToCDF,
+  cdfDefinitionChildren,
+  containsCDFDefinitionType,
+  normalizeCDFBooleanChoices,
+} from './cdf/property-validation.js';
+
+export * from './source-input-association.js';
+
+export {
+  PROPERTY_BREAKING_REASONS,
+  SLOT_BREAKING_REASONS,
+  sanitizeBreakingChanges,
+} from './sources-api/preview/index.js';
+export type { SlotSummary, ProjectionDiagnostic } from './sources-api/preview/index.js';
+
+export * from './schema-export.js';
+
+export { previewContractSchemas } from './sources-api/preview/schema.js';
+
+export { expandCDFModelDependencies } from './cdf/build.js';
+
+export { toOpenAPISchema } from './schema-export.js';
+
+export type { ProposedComponentSummary } from './sources-api/preview/index.js';

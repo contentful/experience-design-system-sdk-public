@@ -8,7 +8,13 @@ export const PROPERTY_BREAKING_REASONS = [
   'type_changed',
   'validation_narrowed',
 ] as const;
-export const SLOT_BREAKING_REASONS = ['slot_removed', 'slot_allowed_components_narrowed'] as const;
+export const SLOT_BREAKING_REASONS = [
+  'slot_removed',
+  'slot_allowed_components_narrowed',
+  'slot_became_required',
+  'slot_added_required',
+  'slot_cardinality_narrowed',
+] as const;
 
 interface PropertyBreakingChange {
   propertyId: string;
@@ -57,18 +63,43 @@ export interface DownstreamImpact {
 }
 
 export interface PropertySummary {
+  definition?: import('../../cdf/types.js').CDFFieldDefinition;
+  targetDefinition?: import('../../property-contract/json-value.js').JsonValue;
+  sourceDefinition?: import('../../property-contract/json-value.js').JsonValue;
+  diagnostics?: import('../../property-contract/json-value.js').JsonValue[];
   type: string;
   category: string;
   required: boolean;
   default?: unknown;
 }
 
+export interface SlotSummary {
+  definition?: import('../../cdf/types.js').CDFSlotDefinition;
+  targetDefinition?: import('../../property-contract/json-value.js').JsonValue;
+  sourceDefinition?: import('../../property-contract/json-value.js').JsonValue;
+  required?: boolean;
+  allowedComponents?: string[];
+  metadata?: import('../../property-contract/json-value.js').JsonValue;
+}
+export interface ProjectionDiagnostic {
+  componentId: string;
+  propertyId: string;
+  path: string;
+  outcome: 'supported' | 'conditional' | 'lossy' | 'unsupported';
+  code: string;
+  message: string;
+}
 export interface ComponentTypeSummary {
   id: string;
   name: string;
   contentProperties: string[];
   designProperties: string[];
   slots: string[];
+  targetDefinition?: import('../../property-contract/json-value.js').JsonValue;
+  definition?: import('../../property-contract/json-value.js').JsonValue;
+  sourceDefinition?: import('../../property-contract/json-value.js').JsonValue;
+  fullSlots?: Record<string, SlotSummary>;
+  projectionDiagnostics?: ProjectionDiagnostic[];
   fullProperties?: Record<string, PropertySummary>;
   /**
    * Per-slot `$allowedComponents` on the currently-published version, keyed by
@@ -97,6 +128,7 @@ export interface ChangedEntity<TCurrent, TProposed> {
   hasPendingDraftChanges: boolean;
   changeClassification?: ChangeClassification;
   impact?: DownstreamImpact;
+  projectionDiagnostics?: ProjectionDiagnostic[];
 }
 
 export interface EntityDiffGroup<TCurrent, TProposed> {
@@ -106,8 +138,13 @@ export interface EntityDiffGroup<TCurrent, TProposed> {
   removed: TCurrent[];
 }
 
+export interface ProposedComponentSummary extends Partial<CDFComponentEntry> {
+  key?: string;
+  definition?: CDFComponentEntry;
+}
+
 export interface ServerPreviewResponse {
-  components: EntityDiffGroup<ComponentTypeSummary, CDFComponentEntry>;
+  components: EntityDiffGroup<ComponentTypeSummary, ProposedComponentSummary>;
   tokens: EntityDiffGroup<DesignTokenSummary, DTCGTokenEntry>;
   taxonomies: EntityDiffGroup<TaxonomySummary, TaxonomySummary>;
 }

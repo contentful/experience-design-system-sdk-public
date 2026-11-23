@@ -187,7 +187,7 @@ interface CDFComponentEntry {
 }
 
 interface CDFPropertyDefinition {
-  $type: CDFPropertyType; // 'string' | 'richtext' | 'number' | 'media' | 'link' | 'enum' | 'token' | 'boolean'
+  $type: CDFPropertyType; // see CDF_PROPERTY_TYPES in src/cdf/vocabularies.ts ('string' | 'number' | 'boolean' | 'token' | 'array' | 'record' | ...)
   $category: CDFPropertyCategory; // 'content' | 'design' | 'state' | 'unattached'
   $description?: string;
   $required?: boolean;
@@ -199,6 +199,8 @@ interface CDFPropertyDefinition {
 ```
 
 For design-category token properties, extraction stores the raw default in `raw_props.default_value` and token mapping never rewrites it. Mapping resolves `tokenReference` (else the raw default) to a canonical DTCG path when it matches exactly or has one token-kind-compatible normalized terminal-member match, and stores it in `raw_token_name_paths`. When CDF is projected, that path becomes `$default`; otherwise the raw default stays. The agent may write reviewed-compatible DTCG paths to `$token.allowed`; an empty or absent restriction leaves the property unrestricted.
+
+Finite source choices keep their primitive string, number or boolean type with typed `$values`; `enum` is rejected rather than silently converted.
 
 ### DTCG (W3C Design Token Format)
 

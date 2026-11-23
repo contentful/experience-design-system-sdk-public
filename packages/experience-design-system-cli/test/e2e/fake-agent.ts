@@ -62,7 +62,7 @@ function mapTokens() {
 }
 
 // Generation: one component per call, with its props and slots in the prompt. Each prop is classified from its own data:
-// a fixed set of values is an enum, colour and size props are design tokens, the rest are plain strings.
+// a fixed set of values is a string with values, colour and size props are design tokens, the rest are plain strings.
 function generateComponents(prompt) {
   note('generate-components');
   const blocks = [...prompt.matchAll(/\x60\x60\x60json\n([\s\S]*?)\n\x60\x60\x60/g)].map((match) => {
@@ -82,7 +82,7 @@ function generateComponents(prompt) {
 
 function classifyProp(prop) {
   const base = { tool: 'classify_prop', prop: prop.name, required: Boolean(prop.required), description: 'The ' + prop.name + '.', reason: 'Scripted classification.' };
-  if (Array.isArray(prop.allowedValues) && prop.allowedValues.length > 0) return { ...base, cdf_type: 'enum', cdf_category: 'design', values: prop.allowedValues };
+  if (Array.isArray(prop.allowedValues) && prop.allowedValues.length > 0) return { ...base, cdf_type: 'string', cdf_category: 'design', values: prop.allowedValues };
   if (/boolean/.test(prop.type || '')) return { ...base, cdf_type: 'boolean', cdf_category: 'state' };
   const tokenKind = /color/i.test(prop.name) ? 'color' : /spacing|radius|gap|size/i.test(prop.name) ? 'dimension' : null;
   if (tokenKind) return { ...base, cdf_type: 'token', cdf_category: 'design', token_kind: tokenKind };

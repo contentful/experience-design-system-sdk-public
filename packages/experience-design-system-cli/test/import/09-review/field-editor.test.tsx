@@ -90,6 +90,7 @@ describe('FieldEditor', () => {
     await press('\x1b[B');
     expect(stripAnsi(view.lastFrame() ?? '')).toContain('› type:');
     await press('\x1b[B');
+    await press('\x1b[B');
     expect(stripAnsi(view.lastFrame() ?? '')).toContain('› default:');
     expect(stripAnsi(view.lastFrame() ?? '')).not.toContain('Slot description');
   });

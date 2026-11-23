@@ -31,7 +31,7 @@ All input is embedded inline in the prompt before this file:
 - **DTCG token data** — full token tree, if provided
 - **Token-name sidecar** — raw CSS custom property name → DTCG dot-notation path, if provided
 - **Component source references** — the real file text for the component's own source, plus up to 5 sibling files (e.g. a co-located `.styles.ts` or `utils.ts`, or a file reached transitively through another sibling — such as a re-exported component's own styles module), if provided. **You have no filesystem access and no tools — `sourcePath` is a citation label only, never something to open.**
-  - A **"uses not shown"** line may accompany these files. The files are excerpts windowed around the property names, and this line names the properties with at least one use that fell outside the excerpt budget. Treat those properties' consumption as unknown: do not classify them `token` on what is shown, and do not conclude they are unread. Unknown resolves to `enum` (or `string`) per "Ambiguity resolves to `enum`".
+  - A **"uses not shown"** line may accompany these files. The files are excerpts windowed around the property names, and this line names the properties with at least one use that fell outside the excerpt budget. Treat those properties' consumption as unknown: do not classify them `token` on what is shown, and do not conclude they are unread. Unknown resolves to `string` with `values` (or open `string`) per "Ambiguity resolves to `string` with `values`".
 
 ```typescript
 interface RawPropDefinition {
@@ -94,8 +94,8 @@ Emit one JSON object per line. The CLI parses lines starting with `{`. Lines not
 - Every prop in the input must produce exactly one call: `classify_prop` OR `exclude_prop`.
 - Every slot must produce exactly one `classify_slot` call.
 - Emit `classify_component` once at the start (required). The `description` field is **required** — always provide a brief description of the component's purpose.
-- `values` is required for `cdf_type: "enum"` — must be a non-empty string array of the variant names the prop accepts. **There is no legal `enum` with a guessed list.** If the value set is shown to you anywhere in the material below — the type's own declaration, an `allowedValues` list on the raw prop, a variant/lookup map, a default, a sibling excerpt — copy it and emit `enum`. If it is shown nowhere, emit `cdf_type: "string"` and leave `values` off. `string` is an unrestricted enum: the author can still pass the real value. A guessed list silently rejects it.
-- **Do NOT include `values` for `cdf_type: "token"`.** The two property types carry different kinds of list. An `enum` prop's list holds _variant names_ the component accepts (`"primary"`, `"secondary"`). A `token` prop's list holds _design token paths_ (`"color.brand.primary"`), produced by the separate token-mapping step (`$token.allowed`) — never by you. Emitting `values` on a token prop makes the definition invalid.
+- `values` is optional for `cdf_type: "string"` — when present it must be a non-empty string array of the variant names the prop accepts. There is no `enum` type; a fixed set of choices is `cdf_type: "string"` with `values`. **There is no legal `values` list that is guessed.** If the value set is shown to you anywhere in the material below — the type's own declaration, an `allowedValues` list on the raw prop, a variant/lookup map, a default, a sibling excerpt — copy it into `values`. If it is shown nowhere, emit `cdf_type: "string"` and leave `values` off. `string` without `values` is unrestricted: the author can still pass the real value. A guessed list silently rejects it.
+- **Do NOT include `values` for `cdf_type: "token"`.** The two property types carry different kinds of list. A string prop's `values` list holds _variant names_ the component accepts (`"primary"`, `"secondary"`). A `token` prop's list holds _design token paths_ (`"color.brand.primary"`), produced by the separate token-mapping step (`$token.allowed`) — never by you. Emitting `values` on a token prop makes the definition invalid.
 - `token_kind` is required for `cdf_type: "token"` — must be a DTCG `$type` string, e.g. `"color"`.
 - `required` must be a JSON boolean (`true`/`false`), not a string.
 - `description` on `classify_prop` is customer-facing — keep it short and subject to the description content rules below.
@@ -118,14 +118,13 @@ Emit one JSON object per line. The CLI parses lines starting with `{`. Lines not
 
 ## Valid cdf_type values
 
-Exactly **6** valid types:
+Exactly **5** valid types (there is no `enum`; use `string` with `values`):
 
 | cdf_type   | Use case                                                                   |
 | ---------- | -------------------------------------------------------------------------- |
-| `string`   | Plain text, URLs, href props, numbers (as string), any string-shaped value |
+| `string`   | Plain text, URLs, href props, numbers (as string), any string-shaped value; with `values` for a fixed set of string choices |
 | `richtext` | Formatted text, HTML, ReactNode used as markup                             |
 | `media`    | Images, videos, media assets                                               |
-| `enum`     | Fixed set of string choices — requires `values`                            |
 | `token`    | Design-token-linked prop — requires `token_kind`                           |
 | `boolean`  | Boolean toggle props (visible, disabled, enabled, etc.)                    |
 
@@ -135,20 +134,20 @@ Exactly **6** valid types:
 
 ---
 
-### `enum` versus `token`
+### `string` with `values` versus `token`
 
 Both describe a closed set of choices, but the _contents_ differ, and that is the whole distinction:
 
 |         | What the list holds                     | Example                                          |
 | ------- | --------------------------------------- | ------------------------------------------------ |
-| `enum`  | Variant names the component accepts     | `["primary", "secondary", "ghost"]`              |
+| `string` with `values` | Variant names the component accepts     | `["primary", "secondary", "ghost"]`              |
 | `token` | Design token paths the prop may bind to | `["color.brand.primary", "color.brand.neutral"]` |
 
 The distinction is **what the component does with the value it receives**. That
 is decidable from source; it is not inferred from the property's name, from the
 component's role, or from the property's TypeScript type.
 
-An `enum` design property is delivered as a plain string, so the component
+A `string` design property with `values` is delivered as a plain string, so the component
 receives `variant="primary"` — the value its own code branches on. A `token`
 property is resolved to the token's value _before_ it reaches the component, so
 that same component would receive `variant="#0059c8"` and match no branch.
@@ -165,7 +164,7 @@ that decides. There is no fourth question.
   or a vocabulary of its own (`allowedValues`, a literal union) — any of these means
   the component needs the _name_. A presence check (`if (width)`) or arithmetic on
   the value is not a lookup.
-  **Yes → `enum`, names in `values`, stop.** No → Q2.
+  **Yes → `string`, names in `values`, stop.** No → Q2.
 - **Q2 — Is the value written straight into a style or attribute?**
   `rx={radius}`, `padding: ${padding}`, `style={{ color }}`, `background: var(${bg})` —
   the value reaches the renderer without the component resolving it.
@@ -200,7 +199,7 @@ export const Divider = ({ thickness = tokens.borderWidthDefault, inset = 0 }: Di
 - `inset` — Q1: no lookup. Q2: yes, `marginLeft: inset`. Q3: no, the default is the
   bare number `0` and nothing at this use is a token. → **`string`**, `default: "0"`.
 
-A lookup map from variant names to tokens is evidence **for** `enum`, not against
+A lookup map from variant names to tokens is evidence **for** `string` with `values`, not against
 it — that is Q1 answering yes. The map exists precisely because the component was
 handed a name it had to resolve itself.
 
@@ -211,21 +210,21 @@ the default "could be overridden" (every default can), or because the tie-break
 below exists. Nothing downstream re-derives, corrects, or second-guesses this —
 what you emit is what ships.
 
-**Ambiguity resolves to `enum` — but only when Q1–Q3 cannot be answered, and only
+**Ambiguity resolves to `string` with `values` — but only when Q1–Q3 cannot be answered, and only
 when you can still cite its values.** The tie-break applies solely when the source
 shown does not let you answer the three questions: the property is interpolated
 in one place and looked up in another, the use sits in a file you cannot see, or
 the source is truncated at the point of use (the "uses not shown" line). In those
-cases emit `enum` if a value set is citable from the source shown, else `cdf_type:
-"string"` per "no legal `enum` with a guessed list" — either way, record the
+cases emit `string` with `values` if a value set is citable from the source shown, else `cdf_type:
+"string"` without `values` per "no legal `values` list that is guessed" — either way, record the
 ambiguity in `reason`. When the three
 questions _can_ be answered from the source shown, they are answered and the
-tie-break does not apply: a clear Q1-yes is `enum`, a clear Q2-yes + Q3-yes is
-`token`, and a type annotation does not create ambiguity. An `enum` is delivered
+tie-break does not apply: a clear Q1-yes is `string` with `values`, a clear Q2-yes + Q3-yes is
+`token`, and a type annotation does not create ambiguity. A `string` with `values` is delivered
 as the plain string the component was written to receive and remains reachable
 from a content-type field; a wrong `token` delivers a resolved value the
 component cannot branch on and is permanently excluded from content-type field
-mapping. That asymmetric cost is why a genuine tie goes to `enum` — it is not a
+mapping. That asymmetric cost is why a genuine tie goes to `string` with `values` — it is not a
 reason to call a decided case a tie.
 
 ---
@@ -262,30 +261,30 @@ For each `RawPropDefinition`, apply in order:
 2. **Common semantic props — DO classify, do not exclude.** The LLM has been over-excluding these because they sound like framework internals; they are not. Classify each per the rest of this tree:
    - `icon` / `leftIcon` / `rightIcon` / `prefixIcon` / `suffixIcon` — slot or `string` (icon name); see slot guidance below
    - `items` / `options` / `actions` / `links` — usually array content; if the element shape is simple, classify as `string` (comma-separated names/IDs) and note in `description`. Only exclude when elements are deep nested objects with no flat representation.
-   - `value` (the bare prop, not `modelValue`) — content prop, usually `string` (or `enum` if from a fixed set). Note: Vue's `modelValue` / `modelModifiers` are excluded by pre-classify because they're v-model framework wiring.
+   - `value` (the bare prop, not `modelValue`) — content prop, usually `string` (with `values` if from a fixed set). Note: Vue's `modelValue` / `modelModifiers` are excluded by pre-classify because they're v-model framework wiring.
    - `name` — content prop, usually `string`. Treat it as semantic component data, not as a DOM pass-through.
    - `form` (when not the literal `<form>` HTML attribute) — typically content; classify as `string` unless it's a complex form-config object
    - `inputId` / `componentId` — these CAN be content (anchor IDs, marketer-set tracking refs). Classify as `string`, `cdf_category: "content"` when the type is a plain string. Only exclude if the prop is clearly internal (e.g. typed as a generated React ID).
    - `accessibleNameRef` / `accessibleDescriptionRef` (web components) — these are ID references for a11y wiring; classify as `string`, `cdf_category: "state"` (behavioral wiring, not design or content).
    - `eventDetails` / similar telemetry props — `cdf_category: "state"`.
 3. **Positional/geometric design prop?** (`top`, `bottom`, `left`, `right`, `rotation`, `offset`, `zIndex`) → `classify_prop`, `cdf_type: "string"`, `cdf_category: "design"`.
-4. **`enum` or `token`? — run the three-question procedure first.** Before any type-based rule, for every design prop that carries a value, answer Q1–Q3 from "`enum` versus `token`" above, in order, from the source shown:
-   - **Q1** looked up / switched on / compared / has its own vocabulary → `cdf_type: "enum"`, names in `values`, no `token_kind`. This holds even when every name maps 1:1 to a design token; the map is the component resolving a name it was given.
+4. **`string` with `values` or `token`? — run the three-question procedure first.** Before any type-based rule, for every design prop that carries a value, answer Q1–Q3 from "`string` with `values` versus `token`" above, in order, from the source shown:
+   - **Q1** looked up / switched on / compared / has its own vocabulary → `cdf_type: "string"`, names in `values`, no `token_kind`. This holds even when every name maps 1:1 to a design token; the map is the component resolving a name it was given.
    - **Q2** not written straight into a style or attribute → not `token`; continue to rules 5–7.
    - **Q3** written straight into a style or attribute **and** a token reference at that use (a `tokens.*` parameter default, a `tokenReference`, an inline `tokens.*` / `var(--*)`) → `cdf_type: "token"`, `token_kind` from that reference via the sidecar, no `values`. Interpolated with no token reference at that use → `cdf_type: "string"`.
-   - Q1–Q3 **cannot be answered** from the source shown (unread, truncated, in a file you cannot see, evidence pointing both ways) → `cdf_type: "enum"` (or `string`). See "Ambiguity resolves to `enum`" above.
+   - Q1–Q3 **cannot be answered** from the source shown (unread, truncated, in a file you cannot see, evidence pointing both ways) → `cdf_type: "string"` with `values` (or open `string`). See "Ambiguity resolves to `string` with `values`" above.
 
-   **Do not classify on the component's role.** A layout primitive is not automatically a token consumer. Design systems routinely key their primitives on token _names_, and those props are `enum` — the component needs the name to perform its own lookup:
+   **Do not classify on the component's role.** A layout primitive is not automatically a token consumer. Design systems routinely key their primitives on token _names_, and those props are `string` with `values` — the component needs the name to perform its own lookup:
 
    ```ts
-   // Box.tsx — padding is an enum, despite Box being a layout primitive
+   // Box.tsx — padding is a string with values, despite Box being a layout primitive
    const { padding } = props; // "spacingXs"
    getSpacingStyles({ padding }); // → SpacingTable["spacingXs"] → "0.5rem"
    ```
 
-   Classify that `padding` as `token` and the platform delivers `"0.5rem"`, so `SpacingTable["0.5rem"]` is `undefined` and the spacing silently disappears. A value that is spelled like a token name is still a lookup key (Q1 yes). Curated components with named variant APIs (`Button`, `Tag`, `Badge`, `Avatar`, `Notification`) are `enum` for the same reason. A design system may legitimately produce **zero** token-typed props.
+   Classify that `padding` as `token` and the platform delivers `"0.5rem"`, so `SpacingTable["0.5rem"]` is `undefined` and the spacing silently disappears. A value that is spelled like a token name is still a lookup key (Q1 yes). Curated components with named variant APIs (`Button`, `Tag`, `Badge`, `Avatar`, `Notification`) are `string` with `values` for the same reason. A design system may legitimately produce **zero** token-typed props.
 
-5. **Union of string literals** (e.g. `'a' | 'b' | 'c'`)? → `cdf_type: "enum"`, extract literals into `values`. (Rule 4's Q1 will normally have decided this already — a literal union is the prop's own vocabulary.) This applies even when Component source references show each literal resolving to a design token internally — a resolved token map is evidence about the component's internals, not its interface.
+5. **Union of string literals** (e.g. `'a' | 'b' | 'c'`)? → `cdf_type: "string"`, extract literals into `values`. (Rule 4's Q1 will normally have decided this already — a literal union is the prop's own vocabulary.) This applies even when Component source references show each literal resolving to a design token internally — a resolved token map is evidence about the component's internals, not its interface.
 6. **Raw type is `string`** and prop name is `href`, `url`, or clearly a URL? → `cdf_type: "string"`, `cdf_category: "content"`.
 7. **Raw type is `string` / `number` / `boolean`?** → For `boolean`, use `cdf_type: "boolean"` with `default: true` or `false` (native boolean). For `number`, use `cdf_type: "string"` with `default` as the numeric value as a string (e.g. `"0"`). For `string`, use `cdf_type: "string"`. **A design prop reaches this rule only after leaving rule 4 at Q2 (not written into a style) or Q3 (written into a style with no token reference at that use).** A prop that answered Q3 yes is already `token` and never arrives here — a `string`, `number`, or `string | number` annotation on it does not bring it back to this rule.
 8. **Media/image type** (`ImageProps`, `MediaSource`, asset types)? → `cdf_type: "media"`.
@@ -302,9 +301,9 @@ A prop with a complex TypeScript type is **not automatically excluded**. Many pr
 
 | Raw type pattern                                                                                | How to resolve                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `'primary' \| 'secondary' \| 'ghost'` (union of literals)                                       | → `enum`, extract `values`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `HeadingSize` / `ButtonVariant` / any named type that is clearly a finite set of visual options | → `enum` if you can cite its values from the source shown (the type's own declaration, a lookup table, a default) — copy them, never invent them. If the source shown does not enumerate the values, this is not the Q1–Q3 ambiguity tie-break — it is the "no legal `enum` with a guessed list" rule: emit `cdf_type: "string"` instead, with the missing evidence noted in `reason`. Do not default to a generic guess like `['sm', 'md', 'lg']` or `['primary', 'secondary']` — those are one design system's vocabulary, not a fallback for missing evidence. |
-| `Variant` / `variant` prop                                                                      | Usually a visual design variant. → `enum`, `cdf_category: "design"`. Same evidence rule as above — cite values from the source shown; do not invent them.                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `'primary' \| 'secondary' \| 'ghost'` (union of literals)                                       | → `string`, extract `values`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `HeadingSize` / `ButtonVariant` / any named type that is clearly a finite set of visual options | → `string` with `values` if you can cite its values from the source shown (the type's own declaration, a lookup table, a default) — copy them, never invent them. If the source shown does not enumerate the values, this is not the Q1–Q3 ambiguity tie-break — it is the "no legal `values` list that is guessed" rule: emit `cdf_type: "string"` without `values` instead, with the missing evidence noted in `reason`. Do not default to a generic guess like `['sm', 'md', 'lg']` or `['primary', 'secondary']` — those are one design system's vocabulary, not a fallback for missing evidence. |
+| `Variant` / `variant` prop                                                                      | Usually a visual design variant. → `string` with `values`, `cdf_category: "design"`. Same evidence rule as above — cite values from the source shown; do not invent them.                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `Section[]` / array of custom items where the structure is unclear                              | → `exclude_prop` only if the array elements are complex objects with no obvious flat representation. If items are simple (title, label, id), consider representing as `string` (a comma-separated IDs or keys) or note in `description` why.                                                                                                                                                                                                                                                                                                                      |
 | `ExperienceConfiguration<Variant>` / deep generic                                               | Personalization config — → `exclude_prop`, reason: `"personalization configuration — framework internal"`                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `React.Dispatch<...>` / setter                                                                  | State setter — → `exclude_prop`, reason: `"React state setter — framework internal"`                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
@@ -340,7 +339,7 @@ Output:
 {"tool":"classify_prop","prop":"item_url","cdf_type":"string","cdf_category":"content","required":false,"description":"Image source URL"}
 {"tool":"classify_prop","prop":"item_alt","cdf_type":"string","cdf_category":"content","required":false,"description":"Image alt text"}
 {"tool":"classify_prop","prop":"item_linkUrl","cdf_type":"string","cdf_category":"content","required":false,"description":"Navigation URL"}
-{"tool":"classify_prop","prop":"item_target","cdf_type":"enum","cdf_category":"design","required":false,"values":["_blank","_self","_parent","_top"],"description":"Link open behavior"}
+{"tool":"classify_prop","prop":"item_target","cdf_type":"string","cdf_category":"design","required":false,"values":["_blank","_self","_parent","_top"],"description":"Link open behavior"}
 
 Note: Underscore notation is used (not dot-notation) because the backend's `toDisplayName()`
 function splits on `.` and takes only the last segment, producing poor display names. Underscore
@@ -360,14 +359,14 @@ Rules for nested objects:
 
 `token_kind` becomes `$token.kind` in the CDF output — the DTCG `$type` of the token the prop binds to. For a prop that earned `cdf_type: "token"` (Q2 yes, Q3 yes), take the token name cited at Q3 (`tokens.borderRadiusSmall`, `var(--brand-primary)`, a raw `tokenReference`) and resolve it against the inline token data: through the token-name sidecar (raw name → DTCG dot-notation path) when one is provided, otherwise by matching the name to the DTCG tree by spelling (`tokens.borderRadiusSmall` → `border-radius.border-radius-small`); the leaf's `$type` (`"dimension"`) is the `token_kind`. If the name cannot be resolved to a leaf, keep `cdf_type: "token"`, omit `token_kind`, and say so in `description` (`"WARNING: token_kind unknown — <name> not found in token data"`).
 
-**Canonical example — a named variant backed by tokens is still `enum`:**
+**Canonical example — a named variant backed by tokens is still `string` with `values`:**
 
 ```
 Tag.variant has allowedValues ["primary","secondary","warning","negative"] and PillNext.styles.ts
 maps each one to a token (primary→tokens.blue100, warning→tokens.orange100, ...). The mapping is
 internal to the design system — Tag's prop signature accepts the name, not the token. Classifying
-as enum so the author picks "primary" and the component receives "primary".
-{"tool":"classify_prop","prop":"variant","cdf_type":"enum","cdf_category":"design","required":false,"values":["primary","secondary","warning","negative"],"default":"primary","description":"Visual variant","reason":"Fully token-backed internally, but the component consumes the variant name. Token classification would deliver a resolved color the component cannot branch on."}
+as string with values so the author picks "primary" and the component receives "primary".
+{"tool":"classify_prop","prop":"variant","cdf_type":"string","cdf_category":"design","required":false,"values":["primary","secondary","warning","negative"],"default":"primary","description":"Visual variant","reason":"Fully token-backed internally, but the component consumes the variant name. Token classification would deliver a resolved color the component cannot branch on."}
 ```
 
 ---
@@ -438,11 +437,11 @@ Output:
 
 ```
 Starting Button classification — 5 props, 1 slot
-{"tool":"classify_component","description":"Primary action button with variant and state support","rationale":{"description":"Button is an atom — a single interactive control that triggers an action. It carries a label, a small set of visual variants, and a disabled flag, which is the minimal surface a marketer needs to configure a call-to-action.","props":"Kept label (content), variant (enum, design), disabled (boolean, state), and className (string, design escape hatch). Excluded onClick because it is an event handler — framework-internal and not configurable in Contentful.","slots":"Kept the icon slot as optional because the button renders correctly without it and the icon is purely decorative."}}
+{"tool":"classify_component","description":"Primary action button with variant and state support","rationale":{"description":"Button is an atom — a single interactive control that triggers an action. It carries a label, a small set of visual variants, and a disabled flag, which is the minimal surface a marketer needs to configure a call-to-action.","props":"Kept label (content), variant (string with values, design), disabled (boolean, state), and className (string, design escape hatch). Excluded onClick because it is an event handler — framework-internal and not configurable in Contentful.","slots":"Kept the icon slot as optional because the button renders correctly without it and the icon is purely decorative."}}
 label is a required string content prop
 {"tool":"classify_prop","prop":"label","cdf_type":"string","cdf_category":"content","required":true,"description":"Button label text"}
-variant is a string union — enum type, category design
-{"tool":"classify_prop","prop":"variant","cdf_type":"enum","cdf_category":"design","required":false,"values":["primary","secondary","ghost"],"default":"primary","description":"Visual variant"}
+variant is a string union — string type with values, category design
+{"tool":"classify_prop","prop":"variant","cdf_type":"string","cdf_category":"design","required":false,"values":["primary","secondary","ghost"],"default":"primary","description":"Visual variant"}
 disabled is a boolean state prop — raw category says design, correcting to state
 {"tool":"classify_prop","prop":"disabled","cdf_type":"boolean","cdf_category":"state","required":false,"default":false,"description":"Disables the button"}
 onClick is an event handler — framework internal
@@ -485,11 +484,11 @@ Output:
 
 ```
 Starting Card classification — 2 props, 2 slots
-{"tool":"classify_component","description":"Container that groups related content with a title, body, and optional footer","rationale":{"description":"Card is a molecule — it composes a title with body and footer slots into a single visual container. Useful as a building block for lists and grids of related content.","props":"Kept title (string, content) as the customer-facing label and elevation (enum, design) for the three visual depth variants. Nothing was excluded — both raw props map cleanly to CDF.","slots":"Kept both body (required, primary content area) and footer (optional, supplementary area). Body is required because a card with no body renders empty; footer is optional because many cards do not need one."}}
+{"tool":"classify_component","description":"Container that groups related content with a title, body, and optional footer","rationale":{"description":"Card is a molecule — it composes a title with body and footer slots into a single visual container. Useful as a building block for lists and grids of related content.","props":"Kept title (string, content) as the customer-facing label and elevation (string with values, design) for the three visual depth variants. Nothing was excluded — both raw props map cleanly to CDF.","slots":"Kept both body (required, primary content area) and footer (optional, supplementary area). Body is required because a card with no body renders empty; footer is optional because many cards do not need one."}}
 title is a required content string
 {"tool":"classify_prop","prop":"title","cdf_type":"string","cdf_category":"content","required":true,"description":"Card title text"}
-elevation is a finite visual variant — enum, design
-{"tool":"classify_prop","prop":"elevation","cdf_type":"enum","cdf_category":"design","required":false,"values":["flat","raised","floating"],"default":"raised","description":"Visual depth variant"}
+elevation is a finite visual variant — string with values, design
+{"tool":"classify_prop","prop":"elevation","cdf_type":"string","cdf_category":"design","required":false,"values":["flat","raised","floating"],"default":"raised","description":"Visual depth variant"}
 body is the primary content region — required
 {"tool":"classify_slot","slot":"body","required":true,"description":"Main card body content","rationale":"Body is the primary content region of the card. Required because a card with no body renders an empty container, which is never a useful editor state."}
 footer is supplementary and optional
@@ -506,14 +505,14 @@ often than it is right, and a wrong name matches no style rule — the author's
 setting silently does nothing.
 
 So: look for the declaration in the source shown. If it is there, copy it. If it
-is not, **emit `string`** — `string` is an unrestricted enum, so the author stays
+is not, **emit `string`** — `string` without `values` is unrestricted, so the author stays
 unrestricted but correct.
 
 Members visible in the source shown — copy them, do not paraphrase:
 
 ```
 titleSize has type HeadingSize; HeadingSize is declared in the excerpt as 'sm' | 'md' | 'lg'
-{"tool":"classify_prop","prop":"titleSize","cdf_type":"enum","cdf_category":"design","required":false,"values":["sm","md","lg"],"description":"Heading size","reason":"Copied from the HeadingSize declaration shown in the excerpt."}
+{"tool":"classify_prop","prop":"titleSize","cdf_type":"string","cdf_category":"design","required":false,"values":["sm","md","lg"],"description":"Heading size","reason":"Copied from the HeadingSize declaration shown in the excerpt."}
 ```
 
 Members NOT visible in the source shown — degrade to `string`:
@@ -547,7 +546,7 @@ Before emitting any tool calls, verify:
 1. Every prop in the input has exactly one `classify_prop` or `exclude_prop` call
 2. Every slot has exactly one `classify_slot` call
 3. `classify_component` is emitted exactly once
-4. Every `cdf_type: "enum"` has a non-empty `values` array taken from the material shown. A prop whose value set was shown nowhere is `cdf_type: "string"` with no `values` — never an `enum` with a plausible-looking list, and never an `exclude_prop`.
+4. Every `values` array is non-empty and taken from the material shown. A prop whose value set was shown nowhere is `cdf_type: "string"` with no `values` — never a `values` list that merely looks plausible, and never an `exclude_prop`.
 5. Every `cdf_type: "token"` has `token_kind` (or a warning in `description` if lookup failed) and does **not** have `values` set
 6. No `cdf_type: "link"` — all href/url props use `string`
 7. `required` values are JSON booleans, not strings
@@ -557,9 +556,9 @@ Before emitting any tool calls, verify:
 11. `classify_component` includes a `rationale` object with all three sub-fields (`rationale.description`, `rationale.props`, `rationale.slots`) populated as non-empty strings.
 12. Every `classify_slot` includes a non-empty `rationale` string.
 13. `rationale.description` follows the same "Description content rules" as `description` — no internal initiative names (`INTEG-*`, `EDSI`, `DSI`, `M1`, `M2`, wave/phase references, etc.).
-14. Every `cdf_type: "token"` prop cites a line that interpolates its value into a style **and** a token reference at that use (Q2 yes, Q3 yes), and carries no `values`. If you cannot cite both, it is `enum` or `string`; if you can, it is `token` — its type annotation is not a reason to emit `string`.
-15. Every prop whose values are friendly names is `enum` with a non-empty `values` array, even when each name resolves to a design token internally; every prop for which Q1–Q3 could not be answered was emitted as `enum` (or `string`) with the ambiguity stated in `reason`, and no answerable prop was called ambiguous.
-16. Every `enum`'s `values` array is copied from evidence in the material shown — a type declaration, an `allowedValues` list on the raw prop, a variant or lookup map, a default, in the component's own file or in any sibling excerpt — and none of it was invented. Where the value set appears nowhere, the prop is `cdf_type: "string"`, with the reason recorded in `reason`. Do not drop a prop merely because you could not enumerate its values.
+14. Every `cdf_type: "token"` prop cites a line that interpolates its value into a style **and** a token reference at that use (Q2 yes, Q3 yes), and carries no `values`. If you cannot cite both, it is `string` (with or without `values`); if you can, it is `token` — its type annotation is not a reason to emit `string`.
+15. Every prop whose values are friendly names is `string` with a non-empty `values` array, even when each name resolves to a design token internally; every prop for which Q1–Q3 could not be answered was emitted as `string` with `values` (or open `string`) with the ambiguity stated in `reason`, and no answerable prop was called ambiguous.
+16. Every `values` array is copied from evidence in the material shown — a type declaration, an `allowedValues` list on the raw prop, a variant or lookup map, a default, in the component's own file or in any sibling excerpt — and none of it was invented. Where the value set appears nowhere, the prop is `cdf_type: "string"`, with the reason recorded in `reason`. Do not drop a prop merely because you could not enumerate its values.
 
 After the run completes, the developer can validate the pipeline output with:
 
@@ -597,7 +596,7 @@ Your goal is **consistency**: the customer will see the diff between what you pr
 1. **Prop names**: `classify_prop.prop` MUST always be the codebase prop name — that's the DB lookup key. When a codebase prop looks like it corresponds to an existing space prop (e.g. codebase `kind` ↔ space `variant`, codebase `text` ↔ space `label`), keep `prop` as the codebase name and put the alignment note in `reason`, e.g. `"looks like existing space prop 'variant' — customer may want to reconcile at review"`. Never rewrite `prop` itself; reconciliation happens downstream, not in this tool call.
 2. **Categories**: match the space's category (`design` / `content`) for equivalent props, even if you'd normally categorize differently. Note the alignment in `reason`.
 3. **Slot names**: match slot IDs / names when the shape is equivalent.
-4. **Enum values**: never invent new values to bridge a mismatch. If the codebase's enum diverges from the space's, classify against your best-effort mapping and cite the divergence in `reason` — this is a signal for human review, not a green light to rewrite the space's enum.
+4. **Finite values**: never invent new values to bridge a mismatch. If the codebase's value set diverges from the space's, classify against your best-effort mapping and cite the divergence in `reason` — this is a signal for human review, not a green light to rewrite the space's values.
 5. **Never realign silently.** Every classification influenced by the `likelyMatch` MUST cite it in `reason`.
 
 ### When only `otherComponents` is present (no direct match)
