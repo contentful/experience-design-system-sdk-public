@@ -1704,7 +1704,9 @@ export function storeCDFComponents(
           );
           if (prop.$values && prop.$values.length > 0) {
             deleteAllowedValues.run(sessionId, componentId, propName);
-            prop.$values.forEach((v, i) => insertAllowedValue.run(sessionId, componentId, propName, v, i));
+            prop.$values
+              .filter((v): v is string => typeof v === 'string')
+              .forEach((v, i) => insertAllowedValue.run(sessionId, componentId, propName, v, i));
           }
           if (prop.$type === 'token' && prop.$category === 'design') {
             // Reconcile the persisted mapping even when the property omits
@@ -1765,7 +1767,9 @@ export function storeCDFComponents(
             prop['$token.kind'] ?? null,
           );
           if (prop.$values && prop.$values.length > 0) {
-            prop.$values.forEach((v, i) => insertAllowedValue.run(sessionId, componentId, propName, v, i));
+            prop.$values
+              .filter((v): v is string => typeof v === 'string')
+              .forEach((v, i) => insertAllowedValue.run(sessionId, componentId, propName, v, i));
           }
           if (prop.$type === 'token' && prop.$category === 'design') {
             writeTokenPaths(componentId, propName, prop['$token.allowed'] ?? []);

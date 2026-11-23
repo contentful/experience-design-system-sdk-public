@@ -6,15 +6,19 @@ describe('sanitizeBreakingChanges', () => {
     const input = [
       { propertyId: 'title', reason: 'removed' },
       { slotId: 'body', reason: 'slot_allowed_components_narrowed' },
+      { slotId: 'body', reason: 'slot_became_required' },
+      { slotId: 'footer', reason: 'slot_added_required' },
+      { slotId: 'items', reason: 'slot_cardinality_narrowed' },
     ];
     expect(sanitizeBreakingChanges(input)).toEqual(input);
   });
 
-  it('drops unknown reasons, including slot reasons the server does not send yet', () => {
+  it('drops unknown reasons and reasons on the wrong kind of row', () => {
     expect(
       sanitizeBreakingChanges([
         { propertyId: 'title', reason: 'renamed' },
-        { slotId: 'body', reason: 'slot_became_required' },
+        { slotId: 'body', reason: 'slot_renamed' },
+        { slotId: 'body', reason: 'removed' },
         { propertyId: 'title', reason: 'slot_removed' },
       ]),
     ).toEqual([]);

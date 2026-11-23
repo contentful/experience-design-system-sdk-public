@@ -22,7 +22,7 @@ function expectButtonFromFixtureWasPushed(contentful: FakeContentful): void {
   expect(pushed, 'nothing was pushed').toBeDefined();
   const button = (pushed!['Button'] as { $properties: Properties }).$properties;
   expect(Object.keys(button).sort()).toEqual(['color', 'label', 'size', 'url']);
-  expect(button['size']).toMatchObject({ $type: 'enum', $values: ['lg', 'md', 'sm'] });
+  expect(button['size']).toMatchObject({ $type: 'string', $values: ['lg', 'md', 'sm'] });
 }
 
 // End-to-end import scenarios: the real app, driven by keystrokes, against the fixture project. Only the agent and
