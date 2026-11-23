@@ -77,6 +77,19 @@ describe('conversation continuation across agent providers', () => {
     vi.unstubAllEnvs();
   });
 
+  it.each([
+    ['claude', ['--print', '--output-format', 'stream-json', '--verbose']],
+    ['codex', ['exec', '--json']],
+    ['cursor', ['--print', '--output-format', 'stream-json']],
+    ['opencode', ['run', '--format', 'json']],
+    ['copilot', ['-p', '--silent', '--session-id']],
+  ] as const)('requests native event output from %s through the local invoker', async (agent, flags) => {
+    outputs = [{ stdout: eventsFor(agent, idFor(agent), 'answer') }];
+    const result = await createLocalCliAgentInvoker().invoke({ agent, prompt: 'task', timeoutMs: 0 });
+    expect(result).toMatchObject({ exitCode: 0, stdout: 'answer' });
+    for (const flag of flags) expect(captures[0].args).toContain(flag);
+  });
+
   it.each(AGENT_NAMES)('retains %s identity when its process exits before a final response', async (agent) => {
     const id = idFor(agent);
     outputs = [{ stdout: eventsFor(agent, id), code: 1 }];

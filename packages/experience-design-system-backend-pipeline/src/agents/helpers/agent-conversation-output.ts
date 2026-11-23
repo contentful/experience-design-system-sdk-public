@@ -35,6 +35,7 @@ export function decodeAgentConversationOutput(
   let nativeUsage: AgentNativeUsage | undefined;
   let identityValid = true;
   const errors: string[] = [];
+  const unparsed: string[] = [];
   for (const line of result.stdout.split('\n')) {
     if (!line.trim()) continue;
     let event: unknown;
@@ -42,6 +43,7 @@ export function decodeAgentConversationOutput(
       event = JSON.parse(line);
     } catch {
       errors.push(`Invalid ${agent} conversation event`);
+      unparsed.push(line.trim());
       continue;
     }
     if (!record(event)) {
@@ -99,7 +101,7 @@ export function decodeAgentConversationOutput(
     ...result,
     exitCode: errors.length && result.exitCode === 0 ? 1 : result.exitCode,
     stdout: message,
-    stderr: [result.stderr, ...new Set(errors)].filter(Boolean).join('\n'),
+    stderr: [result.stderr, ...new Set(errors), ...unparsed].filter(Boolean).join('\n'),
     ...(conversation ? { conversation } : {}),
     ...(identityValid && conversation && nativeUsage ? { nativeUsage } : {}),
   };

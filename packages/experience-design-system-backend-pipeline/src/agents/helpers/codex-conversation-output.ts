@@ -12,6 +12,7 @@ export function decodeCodexConversationOutput(result: AgentRunResult, previous?:
   let nativeUsage: AgentNativeUsage | undefined;
   let identityValid = true;
   const errors: string[] = [];
+  const unparsed: string[] = [];
   const turnErrors: string[] = [];
   for (const line of result.stdout.split('\n')) {
     if (!line.trim()) continue;
@@ -20,6 +21,7 @@ export function decodeCodexConversationOutput(result: AgentRunResult, previous?:
       event = JSON.parse(line);
     } catch {
       errors.push('Invalid Codex conversation event');
+      unparsed.push(line.trim());
       continue;
     }
     if (!record(event)) {
@@ -64,7 +66,7 @@ export function decodeCodexConversationOutput(result: AgentRunResult, previous?:
     ...result,
     exitCode: (errors.length || (!completed && turnErrors.length)) && result.exitCode === 0 ? 1 : result.exitCode,
     stdout: message,
-    stderr: [result.stderr, ...new Set([...errors, ...turnErrors])].filter(Boolean).join('\n'),
+    stderr: [result.stderr, ...new Set([...errors, ...turnErrors]), ...unparsed].filter(Boolean).join('\n'),
     ...(conversation ? { conversation } : {}),
     ...(identityValid && conversation && nativeUsage ? { nativeUsage } : {}),
   };
