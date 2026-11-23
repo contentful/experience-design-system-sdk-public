@@ -8,6 +8,7 @@ export interface InvokeAgentOptions {
   prompt: string;
   timeoutMs: number;
   onOutput?: (chunk: string) => void;
+  signal?: AbortSignal;
 }
 
 /**

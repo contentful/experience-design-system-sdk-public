@@ -17,12 +17,8 @@ const PREAMBLE_BUILDERS: Record<Skill, (inputBlock: string) => string> = {
 
 export async function buildPrompt(options: PromptOptions): Promise<string> {
   const skillContent = options.skillContentOverride ?? (await readSkillFile(options.skill, options.skillPathOverride));
-  const preamble = buildSkillPreamble(options);
-  return `${preamble}\n\nSkill instructions follow:\n---\n${skillContent}`;
-}
-
-function buildSkillPreamble(options: PromptOptions): string {
+  const preamble = PREAMBLE_BUILDERS[options.skill]('');
   const sections = buildInputSections(options);
   const inputBlock = sections.length > 0 ? `\n\n${sections.join('\n\n')}` : '';
-  return PREAMBLE_BUILDERS[options.skill](inputBlock);
+  return `${preamble}\n\nSkill instructions follow:\n---\n${skillContent}\n\nRuntime context:${inputBlock}`;
 }
