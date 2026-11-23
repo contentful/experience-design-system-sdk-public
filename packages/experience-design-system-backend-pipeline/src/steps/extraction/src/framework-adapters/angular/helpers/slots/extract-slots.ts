@@ -28,7 +28,7 @@ export async function extractSlots(
 
   for (const query of extractContentChildQueries(cls)) {
     warnings?.push(
-      `${query.sourcePath}:${query.startLine}: content query ${query.name} observed: ${query.declaration}; output ownership unresolved.`,
+      `${query.sourcePath}:${query.startLine}: content query ${query.name} observed: ${query.declaration.replace(/;\s*$/, '')}; output ownership unresolved.`,
     );
   }
 
