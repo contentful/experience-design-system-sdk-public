@@ -144,44 +144,96 @@ describe('decoded conversation output matches plain output for every caller pars
     expect(decoded.stderr).toContain('Invalid API key');
   });
 
-  it('uses the last Cursor assistant message when present, otherwise the result text', () => {
-    const withAssistant = [
+  const [firstHalf, secondHalf] = [
+    plainText.split('\n').slice(0, 4).join('\n'),
+    plainText.split('\n').slice(4).join('\n'),
+  ];
+  const parsersAgree = (decoded: string) => {
+    expect(parseSelectToolCalls(decoded)).toEqual(parseSelectToolCalls(plainText));
+    expect(parseToolCalls(decoded)).toEqual(parseToolCalls(plainText));
+    expect(parseTokenToolCalls(decoded)).toEqual(parseTokenToolCalls(plainText));
+    expect(parseMapTokenPropToolCalls(decoded)).toEqual(parseMapTokenPropToolCalls(plainText));
+  };
+
+  it('keeps tool calls from every Cursor assistant event in order', () => {
+    const stdout = [
       line({ type: 'system', subtype: 'init', session_id: uuid }),
-      line({ type: 'assistant', session_id: uuid, message: { content: [{ type: 'text', text: 'final' }] } }),
-      line({ type: 'result', subtype: 'success', session_id: uuid, result: 'earlier\nfinal', is_error: false }),
+      line({ type: 'assistant', session_id: uuid, message: { content: [{ type: 'text', text: firstHalf }] } }),
+      line({ type: 'tool_call', subtype: 'started', session_id: uuid }),
+      line({ type: 'assistant', session_id: uuid, message: { content: [{ type: 'text', text: secondHalf }] } }),
+      line({ type: 'result', subtype: 'success', session_id: uuid, result: secondHalf, is_error: false }),
     ].join('\n');
-    expect(decodeAgentConversationOutput('cursor', run(withAssistant)).stdout).toBe('final');
-    const resultOnly = [
-      line({ type: 'system', subtype: 'init', session_id: uuid }),
-      line({ type: 'result', subtype: 'success', session_id: uuid, result: 'final', is_error: false }),
-    ].join('\n');
-    expect(decodeAgentConversationOutput('cursor', run(resultOnly)).stdout).toBe('final');
+    const decoded = decodeAgentConversationOutput('cursor', run(stdout));
+    expect(decoded).toMatchObject({ exitCode: 0, stdout: plainText });
+    parsersAgree(decoded.stdout);
   });
 
-  it('keeps only the last OpenCode step text as the final response', () => {
+  it('falls back to the Cursor result text when no assistant event carries text', () => {
+    const stdout = [
+      line({ type: 'system', subtype: 'init', session_id: uuid }),
+      line({ type: 'result', subtype: 'success', session_id: uuid, result: plainText, is_error: false }),
+    ].join('\n');
+    expect(decodeAgentConversationOutput('cursor', run(stdout)).stdout).toBe(plainText);
+  });
+
+  it('keeps tool calls from every OpenCode step and text part in order', () => {
+    const [a, b] = [firstHalf.slice(0, 40), firstHalf.slice(40)];
     const stdout = [
       line({ type: 'step_start', sessionID: 'ses_example', part: { type: 'step-start' } }),
-      line({ type: 'text', sessionID: 'ses_example', part: { type: 'text', text: 'first step' } }),
+      line({ type: 'text', sessionID: 'ses_example', part: { type: 'text', text: a } }),
+      line({ type: 'text', sessionID: 'ses_example', part: { type: 'text', text: b } }),
+      line({ type: 'tool_use', sessionID: 'ses_example', part: { type: 'tool' } }),
       line({ type: 'step_finish', sessionID: 'ses_example', part: { type: 'step-finish', reason: 'tool-calls' } }),
       line({ type: 'step_start', sessionID: 'ses_example', part: { type: 'step-start' } }),
-      line({ type: 'text', sessionID: 'ses_example', part: { type: 'text', text: 'final ' } }),
-      line({ type: 'text', sessionID: 'ses_example', part: { type: 'text', text: 'answer' } }),
+      line({ type: 'text', sessionID: 'ses_example', part: { type: 'text', text: `${secondHalf}\n` } }),
       line({ type: 'step_finish', sessionID: 'ses_example', part: { type: 'step-finish', reason: 'stop' } }),
     ].join('\n');
-    expect(decodeAgentConversationOutput('opencode', run(stdout))).toMatchObject({
-      exitCode: 0,
-      stdout: 'final answer',
-    });
+    const decoded = decodeAgentConversationOutput('opencode', run(stdout));
+    expect(decoded).toMatchObject({ exitCode: 0, stdout: plainText });
+    parsersAgree(decoded.stdout);
   });
 
-  it('keeps only the last Codex agent message of the final turn', () => {
+  it('still fails an OpenCode stream whose last step did not stop', () => {
+    const stdout = [
+      line({ type: 'step_start', sessionID: 'ses_example', part: { type: 'step-start' } }),
+      line({ type: 'text', sessionID: 'ses_example', part: { type: 'text', text: firstHalf } }),
+      line({ type: 'step_finish', sessionID: 'ses_example', part: { type: 'step-finish', reason: 'stop' } }),
+      line({ type: 'step_start', sessionID: 'ses_example', part: { type: 'step-start' } }),
+      line({ type: 'text', sessionID: 'ses_example', part: { type: 'text', text: secondHalf } }),
+    ].join('\n');
+    expect(decodeAgentConversationOutput('opencode', run(stdout)).exitCode).toBe(1);
+  });
+
+  it('returns the Claude result text, which is what plain --print printed, across tool-use events', () => {
+    const stdout = [
+      line({ type: 'system', subtype: 'init', session_id: uuid }),
+      line({ type: 'assistant', session_id: uuid, message: { content: [{ type: 'text', text: 'Let me look.' }] } }),
+      line({ type: 'user', session_id: uuid, message: { content: [{ type: 'tool_result', content: 'file' }] } }),
+      line({ type: 'assistant', session_id: uuid, message: { content: [{ type: 'text', text: plainText }] } }),
+      line({ type: 'result', subtype: 'success', session_id: uuid, result: plainText, is_error: false }),
+    ].join('\n');
+    const decoded = decodeAgentConversationOutput('claude', run(stdout));
+    expect(decoded).toMatchObject({ exitCode: 0, stdout: plainText });
+    parsersAgree(decoded.stdout);
+  });
+
+  it('returns the last Codex agent message, which is what plain exec printed, across tool items', () => {
     const stdout = [
       line({ type: 'thread.started', thread_id: uuid }),
       line({ type: 'turn.started' }),
       line({ type: 'item.completed', item: { type: 'agent_message', text: 'progress note' } }),
-      line({ type: 'item.completed', item: { type: 'agent_message', text: 'final' } }),
+      line({ type: 'item.completed', item: { type: 'command_execution', command: 'ls' } }),
+      line({ type: 'item.completed', item: { type: 'agent_message', text: plainText } }),
       line({ type: 'turn.completed' }),
     ].join('\n');
-    expect(decodeAgentConversationOutput('codex', run(stdout))).toMatchObject({ exitCode: 0, stdout: 'final' });
+    const decoded = decodeAgentConversationOutput('codex', run(stdout));
+    expect(decoded).toMatchObject({ exitCode: 0, stdout: plainText });
+    parsersAgree(decoded.stdout);
+  });
+
+  it('passes multi-line Copilot output through so every tool call survives', () => {
+    const decoded = decodeAgentConversationOutput('copilot', run(`${firstHalf}\n${secondHalf}`));
+    expect(decoded.stdout).toBe(plainText);
+    parsersAgree(decoded.stdout);
   });
 });

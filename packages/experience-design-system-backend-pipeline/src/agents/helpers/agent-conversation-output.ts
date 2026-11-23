@@ -30,7 +30,8 @@ export function decodeAgentConversationOutput(
   }
   let conversation = previous;
   let message = '';
-  let assistantMessage = '';
+  const assistantMessages: string[] = [];
+  const steps: string[] = [];
   let completed = false;
   let nativeUsage: AgentNativeUsage | undefined;
   let identityValid = true;
@@ -65,11 +66,12 @@ export function decodeAgentConversationOutput(
     if (event.type === 'step_finish' || event.type === 'result') nativeUsage = readNativeUsageSnapshot(agent, event);
     if (agent === 'opencode') {
       if (event.type === 'text' && record(event.part) && typeof event.part.text === 'string') {
-        message += event.part.text;
+        if (!steps.length) steps.push('');
+        steps[steps.length - 1] += event.part.text;
         completed = false;
       }
       if (event.type === 'step_start') {
-        message = '';
+        steps.push('');
         completed = false;
       }
       if (event.type === 'step_finish' && record(event.part) && event.part.reason === 'stop') completed = true;
@@ -79,22 +81,31 @@ export function decodeAgentConversationOutput(
       }
     } else {
       if (event.type === 'assistant' && record(event.message) && Array.isArray(event.message.content)) {
-        assistantMessage = event.message.content
+        const text = event.message.content
           .filter(
             (part): part is Record<string, unknown> =>
               record(part) && part.type === 'text' && typeof part.text === 'string',
           )
           .map((part) => part.text)
           .join('\n');
+        if (text) assistantMessages.push(text);
       }
       if (event.type === 'result') {
         completed = event.subtype === 'success' && event.is_error !== true;
         if (typeof event.result === 'string')
-          message = agent === 'cursor' && assistantMessage.trim() ? assistantMessage : event.result;
+          message =
+            agent === 'cursor' && assistantMessages.some((text) => text.trim())
+              ? assistantMessages.join('\n')
+              : event.result;
         if (!completed) errors.push(typeof event.result === 'string' ? event.result : `${agent} conversation failed`);
       }
     }
   }
+  if (agent === 'opencode')
+    message = steps
+      .map((step) => step.replace(/\n+$/, ''))
+      .filter((step) => step.trim())
+      .join('\n');
   if (result.exitCode === 0 && !result.timedOut && (!conversation || !completed || !message.trim()))
     errors.push(`${agent} conversation did not return a completed final response`);
   return {
