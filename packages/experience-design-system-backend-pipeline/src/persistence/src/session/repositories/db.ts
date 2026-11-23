@@ -26,6 +26,7 @@ import { createPendingStep, updatePendingStepsToInterrupted, updateStepStatus } 
 import { getOrCreateSessionForCommand, type SessionResolution } from '../services/session-resolver.js';
 import { getRawTokenNamePaths, type RawTokenNamePathSource } from './tokens/read.js';
 import { type RawPropTokenPathSource } from './tokens/write.js';
+import { initializeCapturedSourceStore } from './source-evidence-store/schema.js';
 
 export { hashComponentShape as computeComponentInputHash } from '../helpers/components/hash-component-shape.js';
 export { hashTokenContent as computeTokenInputHash } from '../helpers/tokens/hash-token-content.js';
@@ -196,6 +197,22 @@ CREATE TABLE IF NOT EXISTS slot_cycles (
   PRIMARY KEY (session_id, cycle_index)
 );
 
+CREATE TABLE IF NOT EXISTS session_source_envelopes (
+  envelope_id  TEXT NOT NULL PRIMARY KEY,
+  session_id   TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  step_id      INTEGER NOT NULL REFERENCES steps(id) ON DELETE CASCADE,
+  digest       TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at   TEXT NOT NULL,
+  UNIQUE (session_id, step_id)
+);
+
+CREATE TRIGGER IF NOT EXISTS session_source_envelopes_immutable
+BEFORE UPDATE ON session_source_envelopes
+BEGIN
+  SELECT RAISE(ABORT, 'source envelopes are immutable');
+END;
+
 CREATE TABLE IF NOT EXISTS raw_prop_token_paths (
   session_id   TEXT NOT NULL,
   component_id TEXT NOT NULL,
@@ -240,6 +257,7 @@ export function openPipelineDb(dbPath?: string): DatabaseSync {
     db.exec('PRAGMA journal_mode = WAL');
     db.exec('PRAGMA synchronous = NORMAL');
     db.exec(SCHEMA);
+    initializeCapturedSourceStore(db);
     applyDbMigrations(db);
     return db;
   } catch (e) {
