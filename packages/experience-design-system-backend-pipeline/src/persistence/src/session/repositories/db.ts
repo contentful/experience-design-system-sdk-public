@@ -763,7 +763,7 @@ export function applyToolCalls(
         }
       } else if (call.tool === 'classify_prop') {
         const changes = updateProp.run(
-          call.cdf_type,
+          call.cdf_type ?? null,
           call.cdf_category,
           call.token_kind ?? null,
           call.required !== undefined ? (call.required ? 1 : 0) : 0,
@@ -794,11 +794,11 @@ export function applyToolCalls(
           deleteTokenPaths.run(sessionId, componentId, call.prop);
           if (call.values && call.values.length > 0) {
             deleteAllowedValues.run(sessionId, componentId, call.prop);
-            call.values.forEach((v, i) => insertAllowedValue.run(sessionId, componentId, call.prop, v, i));
+            call.values.forEach((v, i) => insertAllowedValue.run(sessionId, componentId, call.prop, String(v), i));
           }
         }
         if (call.default !== undefined) {
-          const storedDefault = typeof call.default === 'boolean' ? String(call.default) : call.default;
+          const storedDefault = typeof call.default === 'string' ? call.default : JSON.stringify(call.default);
           db.prepare(
             `UPDATE raw_props SET default_value = ? WHERE session_id = ? AND component_id = ? AND name = ?`,
           ).run(storedDefault, sessionId, componentId, call.prop);

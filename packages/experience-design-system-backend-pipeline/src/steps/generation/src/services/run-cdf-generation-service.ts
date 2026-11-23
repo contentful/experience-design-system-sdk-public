@@ -27,7 +27,7 @@ function toolCallsToEntry(component: RawComponentDefinition, calls: ToolCall[]):
     if (call.tool === 'classify_component') {
       if (call.description) description = call.description;
     } else if (call.tool === 'classify_prop') {
-      if (!knownProps.has(call.prop)) continue;
+      if (!knownProps.has(call.prop) || !call.cdf_type) continue;
       const prop: CDFPropertyDefinition = {
         $type: call.cdf_type as CDFPropertyDefinition['$type'],
         $category: call.cdf_category,
