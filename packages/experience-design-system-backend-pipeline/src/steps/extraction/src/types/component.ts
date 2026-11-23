@@ -1,4 +1,4 @@
-import type { ExtractorOptions } from './options.js';
+import type { SourceCandidate, SourceCandidateSource } from '../candidates/types.js';
 
 export type RawPropCategory = 'content' | 'design' | 'state';
 
@@ -73,6 +73,9 @@ export interface RawComponentDefinition {
   validationIssues?: ExtractionValidationIssue[];
   /** Absolute path to the source file this component was extracted from. Null for synthesized / multi-file. */
   sourcePath?: string;
+  sourceCandidates?: SourceCandidate[];
+  sourceCandidateSources?: SourceCandidateSource[];
+  factSchemaVersion?: number;
 }
 
 export interface ComponentExtractionResult {
@@ -94,19 +97,10 @@ export interface ExtractionExclusion {
 }
 
 export type ExtractorProgress = {
+  activity?: string;
   filesProcessed: number;
   componentsFound: number;
 };
-
-export interface ComponentExtractor {
-  name: string;
-  fileFilter: (filePath: string) => boolean;
-  extract(
-    filePaths: string[],
-    onProgress?: (p: ExtractorProgress) => void,
-    opts?: ExtractorOptions,
-  ): Promise<ComponentExtractionResult>;
-}
 
 /** Strip internal scoring fields before serialising a RawComponentDefinition for display or editing. */
 export function stripScoringFields({
@@ -118,4 +112,4 @@ export function stripScoringFields({
   return rest;
 }
 
-export type { ExtractorOptions };
+export type { ExtractorOptions } from './options.js';

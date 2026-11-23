@@ -1,7 +1,6 @@
 import { readFile } from 'node:fs/promises';
-import type { Project, SourceFile } from 'ts-morph';
 
-export type FileExtractionOutcome<T, M = undefined> = {
+type FileExtractionOutcome<T, M = undefined> = {
   item: T | null;
   warnings?: string[];
   metadata?: M;
@@ -19,6 +18,7 @@ export async function runFileExtractionWorkers<T, M = undefined>(
   formatError: (filePath: string, error: unknown) => string,
   onProgress?: (progress: FileExtractionProgress) => void,
   onResult?: (filePath: string, outcome: FileExtractionOutcome<T, M>) => void,
+  loadSource: (path: string) => Promise<string> = (path) => readFile(path, 'utf-8'),
 ): Promise<{ items: T[]; warnings: string[] }> {
   const warnings: string[] = [];
   const items: T[] = [];
@@ -31,7 +31,7 @@ export async function runFileExtractionWorkers<T, M = undefined>(
       if (!filePath) break;
 
       try {
-        const source = await readFile(filePath, 'utf-8');
+        const source = await loadSource(filePath);
         const outcome = await extractFile(filePath, source);
         warnings.push(...(outcome.warnings ?? []));
         if (outcome.item) items.push(outcome.item);
@@ -46,36 +46,6 @@ export async function runFileExtractionWorkers<T, M = undefined>(
   }
 
   await Promise.all(Array.from({ length: Math.min(concurrency, filePaths.length) }, worker));
-
-  return { items, warnings };
-}
-
-export function createSortedExtractionResult<T extends { name: string }>(
-  components: T[],
-  warnings: string[],
-): { components: T[]; warnings: string[] } {
-  return {
-    components: components.sort((a, b) => a.name.localeCompare(b.name)),
-    warnings,
-  };
-}
-
-export function extractProjectSourceFiles<T>(
-  project: Project,
-  extractFile: (sourceFile: SourceFile, warnings: string[]) => T[],
-): { items: T[]; warnings: string[] } {
-  const warnings: string[] = [];
-  const items: T[] = [];
-
-  for (const sourceFile of project.getSourceFiles()) {
-    try {
-      items.push(...extractFile(sourceFile, warnings));
-    } catch (error) {
-      warnings.push(
-        `Failed to extract from ${sourceFile.getFilePath()}: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-  }
 
   return { items, warnings };
 }
