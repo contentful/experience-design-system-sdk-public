@@ -36,7 +36,12 @@ const output = (...calls: object[]) => ({
   timedOut: false,
 });
 
-function setup(outputs: ReturnType<typeof output>[]) {
+function setup(
+  outputs: ReturnType<typeof output>[],
+  props: Parameters<typeof storeRawComponents>[2][number]['props'] = [
+    { name: 'label', type: 'string', required: false },
+  ],
+) {
   const db = openPipelineDb(':memory:');
   databases.push(db);
   const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
@@ -45,7 +50,7 @@ function setup(outputs: ReturnType<typeof output>[]) {
       name: 'Card',
       source: 'src/Card.tsx',
       framework: 'react',
-      props: [{ name: 'label', type: 'string', required: false }],
+      props,
       slots: [{ name: 'children', isDefault: true }],
     },
   ]);
@@ -82,6 +87,43 @@ function setup(outputs: ReturnType<typeof output>[]) {
 }
 
 describe('generation agent preflight', () => {
+  const nullableChoice = {
+    name: 'label',
+    type: "'primary' | 'default' | 'dashed' | null",
+    required: false,
+    defaultValue: 'null',
+    allowedValues: ['primary', 'default', 'dashed'],
+  };
+  const choiceCall = (overrides = {}) =>
+    propCall({ cdf_category: 'design', required: false, values: ['primary', 'default', 'dashed'], ...overrides });
+
+  it('generates a nullable finite choice whose source default is null without a default', async () => {
+    const { db, sessionId, invoke, run } = setup([output(choiceCall())], [nullableChoice]);
+    const result = await run();
+
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(result.failed).toBe(false);
+    expect(loadCDFComponents(db, sessionId)[0]!.entry.$properties.label).toEqual({
+      $type: 'string',
+      $category: 'design',
+      $values: ['primary', 'default', 'dashed'],
+    });
+    expect(validateCDF(buildCDF(loadCDFComponents(db, sessionId), [])).valid).toBe(true);
+  });
+
+  it.each(['undefined', ' null '])('projects no default for the %j source default', async (defaultValue) => {
+    const { db, sessionId, run } = setup(
+      [output(propCall({ cdf_type: 'boolean', cdf_category: 'state' }))],
+      [{ name: 'label', type: 'boolean | null', required: false, defaultValue }],
+    );
+    await run();
+
+    expect(loadCDFComponents(db, sessionId)[0]!.entry.$properties.label).toEqual({
+      $type: 'boolean',
+      $category: 'state',
+    });
+  });
+
   it('replaces a retained invalid proposal when restoring a valid cached component', async () => {
     const { db, sessionId, run } = setup([output(propCall())]);
     await run();
