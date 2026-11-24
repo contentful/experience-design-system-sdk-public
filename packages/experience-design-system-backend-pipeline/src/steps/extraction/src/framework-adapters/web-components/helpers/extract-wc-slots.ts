@@ -10,9 +10,9 @@ export function extractSlotsFromTemplate(templateContent: string): RawSlotDefini
 
   for (const match of templateContent.matchAll(slotRegex)) {
     const attrs = match[1] ?? '';
-    const nameMatch = attrs.match(/\bname=["']([^"']+)["']/);
+    const nameMatch = attrs.match(/(?:^|\s)name=["']([^"']+)["']/);
     const name = nameMatch?.[1] ?? 'default';
-    const boundName = attrs.includes(TEMPLATE_EXPRESSION_MARKER) && /\bname=/.test(attrs);
+    const boundName = attrs.includes(TEMPLATE_EXPRESSION_MARKER) && /(?:^|\s)name=/.test(attrs);
     if (boundName && (!nameMatch || name.includes(TEMPLATE_EXPRESSION_MARKER))) continue;
     slots.set(name, name === 'default');
   }

@@ -40,6 +40,17 @@ describe('extractSlotsFromTemplate', () => {
       { name: 'footer', isDefault: false },
     ]);
   });
+
+  it('treats a slot with only a data-name attribute as the default slot', () => {
+    expect(extractSlotsFromTemplate('<slot data-name="x"></slot>')).toEqual([{ name: 'default', isDefault: true }]);
+  });
+
+  it('treats a slot with a bound data-name attribute as the default slot', () => {
+    const template = ['<slot data-name=', '></slot>'];
+    expect(extractSlotsFromTemplate(template.join(TEMPLATE_EXPRESSION_MARKER))).toEqual([
+      { name: 'default', isDefault: true },
+    ]);
+  });
 });
 
 describe('mergeSlotLists', () => {
