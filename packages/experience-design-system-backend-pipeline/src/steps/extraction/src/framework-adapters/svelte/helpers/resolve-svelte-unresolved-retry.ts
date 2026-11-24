@@ -24,6 +24,7 @@ export interface RetryContext {
   moduleScript: AstNode | undefined;
   annotation: AstNode;
   componentName: string;
+  slotInputNames: ReadonlySet<string>;
 }
 
 async function retryComponentWithProject(
@@ -56,12 +57,14 @@ async function retryComponentWithProject(
 
   const { props } = extractFromTypeMembersOnly(members);
   const previousProps = new Map(component.props.map((prop) => [prop.name, prop]));
-  component.props = props.map((prop) => {
-    const previous = previousProps.get(prop.name);
-    return previous?.defaultValue !== undefined
-      ? { ...prop, defaultValue: previous.defaultValue, required: false }
-      : prop;
-  });
+  component.props = props
+    .filter((prop) => !ctx.slotInputNames.has(prop.name))
+    .map((prop) => {
+      const previous = previousProps.get(prop.name);
+      return previous?.defaultValue !== undefined
+        ? { ...prop, defaultValue: previous.defaultValue, required: false }
+        : prop;
+    });
 
   const remainingReasons = (component.reviewReasons ?? []).filter((r) => r !== 'props-type-unresolved');
   const score = computeExtractionScore(component, {

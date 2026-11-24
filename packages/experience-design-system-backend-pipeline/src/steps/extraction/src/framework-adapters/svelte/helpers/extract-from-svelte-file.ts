@@ -77,6 +77,8 @@ export async function extractFromSvelteFile(
         ...(propNamesTreatedAsSnippet.has(prop.name) ? { _rawTypeText: prop.type } : {}),
       }),
     );
+  const slotInputNames = new Set(snippetSlotsFromProps.map((slot) => slot.name));
+  props = props.filter((prop) => !slotInputNames.has(prop.name));
   const { slots, mixedWarning } = mergeSlots(templateSlots, snippetSlotsFromProps);
   if (mixedWarning) {
     warnings.push(`${name}: mixed render and <slot> usage detected (${filePath}); preserving <slot> declarations`);
@@ -112,6 +114,7 @@ export async function extractFromSvelteFile(
         moduleScript,
         annotation,
         componentName: name,
+        slotInputNames,
       };
     }
   }

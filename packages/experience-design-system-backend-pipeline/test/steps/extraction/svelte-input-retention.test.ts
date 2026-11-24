@@ -55,9 +55,7 @@ it.each(['Snippet', 'Paint'])('preserves a native imported snippet alias %s', as
     </script><div>{@render payload('fixed')}{count}</div>`,
   );
   const component = (await extractSvelteComponents([path])).components[0]!;
-  expect(component.props.map((prop) => prop.name)).toEqual(['payload', 'count']);
-  expect(component.props.find((prop) => prop.name === 'payload')?.required).toBe(true);
-  expect(component.props.find((prop) => prop.name === 'payload')?.type).toContain(name);
+  expect(component.props.map((prop) => prop.name)).toEqual(['count']);
   expect(component.slots.map((slot) => slot.name)).toEqual(['payload']);
 });
 
@@ -77,12 +75,15 @@ it.each(['payload', 'children'].flatMap((name) => [false, true].map((used) => ({
       </script><div>${used ? `{@render ${name}?.('fixed')}` : 'fixed'}{count}</div>`,
     );
     const component = (await extractSvelteComponents([path])).components[0]!;
-    expect(component.props.find((prop) => prop.name === name)).toMatchObject({
-      name,
-      required: false,
-      defaultValue: 'null',
-    });
-    expect(component.props.find((prop) => prop.name === name)?.type).toContain('Paint');
+    expect(component.props.map((prop) => prop.name)).toEqual(used ? ['count'] : [name, 'count']);
+    if (!used) {
+      expect(component.props.find((prop) => prop.name === name)).toMatchObject({
+        name,
+        required: false,
+        defaultValue: 'null',
+      });
+      expect(component.props.find((prop) => prop.name === name)?.type).toContain('Paint');
+    }
     expect(component.slots).toEqual(used ? [expect.objectContaining({ name, isDefault: false })] : []);
   },
 );
@@ -116,7 +117,9 @@ it.each([
     interface Inputs { payload: Paint } ${binding}</script>${output}`,
   );
   const component = (await extractSvelteComponents([path])).components[0]!;
-  expect(component.props).toEqual([expect.objectContaining({ name: 'payload', type: 'Paint', required: true })]);
+  expect(component.props).toEqual(
+    rendered ? [] : [expect.objectContaining({ name: 'payload', type: 'Paint', required: true })],
+  );
   expect(component.slots).toEqual(rendered ? [{ name: 'payload', isDefault: false }] : []);
 });
 
@@ -152,6 +155,7 @@ it('retains native input contracts and explicit template slots after type recove
           moduleScript: undefined,
           annotation: getRetryAnnotation(propsCall)!,
           componentName: component.name,
+          slotInputNames: new Set(),
         },
       ],
     ]),
@@ -175,7 +179,7 @@ it('preserves an explicit default template slot when a rendered input has the sa
     let { default: paint }: Inputs = $props();</script><slot/>{@render paint()}`,
   );
   const component = (await extractSvelteComponents([path])).components[0]!;
-  expect(component.props).toEqual([expect.objectContaining({ name: 'default', type: 'Paint', required: true })]);
+  expect(component.props).toEqual([]);
   expect(component.slots).toEqual([{ name: 'default', isDefault: true }]);
 });
 
@@ -255,6 +259,58 @@ it('infers allowed components for a rendered snippet slot from its tuple type', 
     { name: 'content', isDefault: false, allowedComponents: ['A', 'B'] },
     { name: 'children', isDefault: false },
   ]);
-  expect(card.props.map((prop) => prop.name)).toEqual(['header', 'content', 'footer', 'children']);
+  expect(card.props.map((prop) => prop.name)).toEqual(['footer']);
   for (const slot of card.slots) expect(slot).not.toHaveProperty('_rawTypeText');
+});
+
+it('keeps a rendered snippet input as a slot only', async () => {
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'snippet-slot-only-')));
+  roots.push(root);
+  const path = join(root, 'Card.svelte');
+  writeFileSync(
+    path,
+    `<script lang="ts">
+    import type { Snippet } from 'svelte';
+    interface Props { title: string; count?: number; header?: Snippet; footer?: Snippet; unused?: Snippet; variant?: 'a' | 'b' }
+    let { title, count = 3, header, footer, unused, variant = 'a' }: Props = $props();
+    </script><div>{#if header}{@render header()}{/if}<h2>{title}</h2>{@render footer?.()}<slot name="aside" /></div>`,
+  );
+  const component = (await extractSvelteComponents([path])).components[0]!;
+  expect(component.props.map((prop) => prop.name)).toEqual(['title', 'count', 'unused', 'variant']);
+  expect(component.props.find((prop) => prop.name === 'unused')).toMatchObject({ type: 'Snippet', required: false });
+  expect(component.slots).toEqual([
+    { name: 'aside', isDefault: false },
+    { name: 'header', isDefault: false },
+    { name: 'footer', isDefault: false },
+  ]);
+});
+
+it('keeps a rendered snippet input as a slot only after type recovery', async () => {
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'snippet-slot-retry-')));
+  roots.push(root);
+  writeFileSync(
+    join(root, 'tsconfig.json'),
+    JSON.stringify({ compilerOptions: { strict: true }, include: ['*.d.ts'] }),
+  );
+  writeFileSync(
+    join(root, 'native.d.ts'),
+    `declare module 'svelte' { export interface Snippet { (): unknown } }
+    declare module 'external-types' { export interface Base { title: string } }`,
+  );
+  const path = join(root, 'Card.svelte');
+  writeFileSync(
+    path,
+    `<script lang="ts">
+    import type { Snippet } from 'svelte';
+    import type { Base } from 'external-types';
+    interface Props extends Base { header?: Snippet }
+    let { title, header }: Props = $props();
+    </script><div>{@render header?.()}{title}</div>`,
+  );
+  const component = (
+    await extractSvelteComponents([path], undefined, { projectRoot: root, resolveUnreachable: 'always' })
+  ).components[0]!;
+  expect(component.reviewReasons).not.toContain('props-type-unresolved');
+  expect(component.props).toEqual([expect.objectContaining({ name: 'title', type: 'string', required: true })]);
+  expect(component.slots).toEqual([{ name: 'header', isDefault: false }]);
 });
