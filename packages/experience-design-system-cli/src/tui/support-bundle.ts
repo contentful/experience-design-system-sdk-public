@@ -2,6 +2,7 @@ import { readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { basename, join, sep } from 'node:path';
 import { currentDebugSessionDir, currentSessionDir, settleDebugLogs } from './debug-store.js';
 import { createZip, type ZipEntry } from './zip.js';
+import { printable } from './shared/path-text.js';
 
 // What the user sends to Contentful support when an import fails: this terminal session's debug logs in one zip.
 
@@ -46,10 +47,10 @@ export async function bundleDebugLogs(): Promise<SupportBundle> {
 export function supportInstruction(bundle: SupportBundle): string {
   switch (bundle.status) {
     case 'created':
-      return `The import hit an error. We zipped up your debug logs, you can find the file here:\n${bundle.path}\nSend that zip file to Contentful support so they can look into it.`;
+      return `The import hit an error. We zipped up your debug logs, you can find the file here:\n${printable(bundle.path)}\nSend that zip file to Contentful support so they can look into it.`;
     case 'no-logs':
       return 'The import hit an error, but no debug logs were recorded. To get help, turn on Debug Mode in Settings, run the import again and send the zip file it saves to Contentful support.';
     case 'failed':
-      return `The import hit an error. We could not zip your debug logs, but you can find them here:\n${bundle.folder}\nZip that folder and send it to Contentful support so they can look into it.`;
+      return `The import hit an error. We could not zip your debug logs, but you can find them here:\n${printable(bundle.folder)}\nZip that folder and send it to Contentful support so they can look into it.`;
   }
 }

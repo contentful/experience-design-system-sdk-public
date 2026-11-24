@@ -3,6 +3,7 @@ import { readSettings } from '@contentful/experience-design-system-types/config'
 import { agentReadiness, type AgentReadiness } from '@tui/settings/configuration/agents/agent-debug.js';
 import { LIST_STATUS } from '@tui/settings/configuration/agents/agent-status.js';
 import { AGENT_LABELS, readAgentConfig } from '@tui/settings/configuration/agents/agent-store.js';
+import { usableBaseDir } from '@tui/settings/configuration/project/base-dir.js';
 import { importModeLabel, type ImportTarget } from './logic.js';
 
 // What the debug log says about the Preflight: what the user chose, and what was true on their machine when they chose
@@ -21,11 +22,10 @@ export type PreflightContext = {
 export async function collectPreflightContext(): Promise<PreflightContext | undefined> {
   try {
     const [config, settings] = await Promise.all([readAgentConfig(), readSettings()]);
-    const baseDir = settings['contentfulBaseDir'];
     return {
       settings: {
         default_agent: config.defaultAgent,
-        base_dir_set: typeof baseDir === 'string' && baseDir !== '',
+        base_dir_set: usableBaseDir(settings['contentfulBaseDir']) !== undefined,
         analytics: analyticsEnabled(),
       },
       agents: await agentReadiness(config),
