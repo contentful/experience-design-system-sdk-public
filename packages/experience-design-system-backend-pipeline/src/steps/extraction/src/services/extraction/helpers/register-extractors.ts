@@ -2,7 +2,7 @@ import type { ComponentExtractor } from '../../../types/component-extractor.js';
 import { extractAstroComponents } from '../../../framework-adapters/astro/extractor.js';
 import { extractReactComponents } from '../../../framework-adapters/react/extract-react-components.js';
 import { extractStencilComponents } from '../../../framework-adapters/stencil/extractor.js';
-import { extractSvelteComponents } from '../../../framework-adapters/svelte/extract-svelte-components.js';
+import { extractSvelteComponents } from '../../../framework-adapters/svelte/extractor.js';
 import { extractVueTsxComponents } from '../../../framework-adapters/vue-tsx/extractor.js';
 import { extractVueComponents } from '../../../framework-adapters/vue/extractor.js';
 import { extractWebComponentDefinitions } from '../../../framework-adapters/web-components/extractor.js';
