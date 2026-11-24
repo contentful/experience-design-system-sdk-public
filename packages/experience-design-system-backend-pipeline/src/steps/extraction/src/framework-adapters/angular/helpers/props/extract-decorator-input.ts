@@ -1,11 +1,11 @@
 import { Node, type GetAccessorDeclaration, type PropertyDeclaration, type SetAccessorDeclaration } from 'ts-morph';
 import type { RawPropDefinition } from '../../../../types/component.js';
+import type { ExtractedInput } from '../../types/extracted-input.js';
 import { resolvePropType } from './resolve-prop-type.js';
 
 export function extractDecoratorInput(
   field: PropertyDeclaration | SetAccessorDeclaration | GetAccessorDeclaration,
-  warnings?: string[],
-): RawPropDefinition | null {
+): ExtractedInput | null {
   const decorator = field.getDecorator('Input');
   if (!decorator) return null;
 
@@ -73,10 +73,5 @@ export function extractDecoratorInput(
   if (resolved.allowedValues) {
     prop.allowedValues = resolved.allowedValues;
   }
-  if (transform !== undefined) {
-    warnings?.push(
-      `${field.getSourceFile().getFilePath()}: input ${name} uses unresolved transform ${transform}; source type retained.`,
-    );
-  }
-  return prop;
+  return transform === undefined ? { prop } : { prop, transform };
 }

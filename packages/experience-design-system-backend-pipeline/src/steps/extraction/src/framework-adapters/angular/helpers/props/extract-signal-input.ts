@@ -1,8 +1,9 @@
 import { Node, type PropertyDeclaration } from 'ts-morph';
 import type { RawPropDefinition } from '../../../../types/component.js';
+import type { ExtractedInput } from '../../types/extracted-input.js';
 import { resolvePropType } from './resolve-prop-type.js';
 
-export function extractSignalInput(field: PropertyDeclaration, warnings?: string[]): RawPropDefinition | null {
+export function extractSignalInput(field: PropertyDeclaration): ExtractedInput | null {
   const init = field.getInitializer();
   if (!init || !Node.isCallExpression(init)) return null;
 
@@ -67,10 +68,5 @@ export function extractSignalInput(field: PropertyDeclaration, warnings?: string
   if (resolved.allowedValues) {
     prop.allowedValues = resolved.allowedValues;
   }
-  if (transform !== undefined) {
-    warnings?.push(
-      `${field.getSourceFile().getFilePath()}: input ${name} uses unresolved transform ${transform}; source type retained.`,
-    );
-  }
-  return prop;
+  return transform === undefined ? { prop } : { prop, transform };
 }

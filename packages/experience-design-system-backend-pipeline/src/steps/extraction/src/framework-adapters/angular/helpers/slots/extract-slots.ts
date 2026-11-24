@@ -10,7 +10,7 @@ export async function extractSlots(
   cls: ClassDeclaration,
   meta: AngularComponentMetadata,
   props: RawPropDefinition[],
-  warnings?: string[],
+  warnings: string[],
 ): Promise<{ props: RawPropDefinition[]; slots: RawSlotDefinition[] }> {
   const byName = new Map<string, RawSlotDefinition>();
 
@@ -27,7 +27,7 @@ export async function extractSlots(
   }
 
   for (const query of extractContentChildQueries(cls)) {
-    warnings?.push(
+    warnings.push(
       `${query.sourcePath}:${query.startLine}: content query ${query.name} observed: ${query.declaration.replace(/;\s*$/, '')}; output ownership unresolved.`,
     );
   }

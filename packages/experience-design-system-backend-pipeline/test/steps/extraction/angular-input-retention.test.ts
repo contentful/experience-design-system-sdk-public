@@ -148,6 +148,31 @@ it.each(['booleanAttribute', 'numberAttribute', 'notbooleanAttribute', 'convertV
   },
 );
 
+it('reports one unresolved transform warning per retained input', async () => {
+  const { path } = fixture(`
+    import { Component, Input, booleanAttribute } from '@angular/core';
+    class Base {
+      @Input({ transform: booleanAttribute }) disabled = false;
+      @Input({ transform: booleanAttribute }) inherited = false;
+    }
+    @Component({ selector: 'app-example', template: '' })
+    export class Example extends Base {
+      @Input({ transform: booleanAttribute }) override disabled = false;
+      @Input({ transform: booleanAttribute })
+      get open(): boolean { return this._open; }
+      set open(value: boolean) { this._open = value; }
+      private _open = false;
+    }
+  `);
+  const { components, warnings } = await extractAngularComponents([path]);
+  const transformWarnings = warnings.filter((warning) => warning.includes('unresolved transform'));
+  expect(transformWarnings).toHaveLength(3);
+  for (const name of ['disabled', 'inherited', 'open']) {
+    expect(transformWarnings.filter((warning) => warning.includes(`input ${name} `))).toHaveLength(1);
+  }
+  expect(components[0]!.props.map((prop) => prop.name).sort()).toEqual(['disabled', 'inherited', 'open']);
+});
+
 it.each([
   '@ContentChild(Item) selected!: Item;',
   '@ContentChildren(Item) selected!: Item[];',
