@@ -4,9 +4,8 @@ import { createHash } from 'node:crypto';
 import { fstatSync, readSync } from 'node:fs';
 import type { EvidenceRecordLocation, EvidenceValue } from './types.js';
 
-export const EVIDENCE_BUFFER_BYTES = 64 * 1024;
-export const EVIDENCE_PAGE_BYTES = 1024 * 1024;
-export interface EvidenceEntry {
+const EVIDENCE_BUFFER_BYTES = 64 * 1024;
+interface EvidenceEntry {
   key: string;
   value: EvidenceValue;
 }

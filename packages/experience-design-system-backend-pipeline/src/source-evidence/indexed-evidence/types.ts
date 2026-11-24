@@ -9,29 +9,3 @@ export interface EvidenceRecordLocation {
   kind: EvidenceRecord['kind'];
   count: number;
 }
-export interface EvidenceRecordDescriptor extends EvidenceRecordLocation {
-  recordId: string;
-}
-export interface EvidenceEncodedPage {
-  recordId: string;
-  kind: EvidenceRecord['kind'];
-  total: number;
-  offset: number;
-  nextOffset: number | null;
-  complete: boolean;
-  entries: Array<{ key: string; value: EvidenceValue }>;
-}
-export interface EvidenceCatalogAuthority {
-  bytes: number;
-  sha256: string;
-}
-export interface EvidenceCatalogPage {
-  operation: 'catalog';
-  pointer: string;
-  total: number;
-  offset: number;
-  nextOffset: number | null;
-  unread: number;
-  complete: boolean;
-  entries: Array<Record<string, unknown>>;
-}
