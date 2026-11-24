@@ -382,7 +382,7 @@ interface BreakingRow {
   focusTarget?: { kind: 'prop' | 'slot'; name: string };
 }
 
-function buildBreakingRows(breakingChanges: BreakingComponent[]): BreakingRow[] {
+export function buildBreakingRows(breakingChanges: BreakingComponent[]): BreakingRow[] {
   const out: BreakingRow[] = [];
   for (const b of breakingChanges) {
     if (b.changes.length === 0) {
@@ -409,7 +409,7 @@ function buildBreakingRows(breakingChanges: BreakingComponent[]): BreakingRow[] 
   return out;
 }
 
-function deriveBreakingChanges(response: ServerPreviewResponse): BreakingComponent[] {
+export function deriveBreakingChanges(response: ServerPreviewResponse): BreakingComponent[] {
   const out: BreakingComponent[] = [];
   for (const item of response.components.changed ?? []) {
     if (item.changeClassification?.classification !== 'breaking') continue;
