@@ -3,6 +3,7 @@ import { Box, Text, useInput } from 'ink';
 import { PALETTE } from '@tui/theme.js';
 import { ControlHints } from './ControlHints.js';
 import { ClearableTextInput, isClearKey } from './ClearableTextInput.js';
+import { printable } from '../path-text.js';
 
 export interface FormField<K extends string> {
   key: K;
@@ -199,7 +200,7 @@ export function FieldForm<K extends string>({
           {fields.map((field, index) => {
             const isActive = index === active;
             const value = values[field.key];
-            const display = field.masked ? '•'.repeat(value.length) : value;
+            const display = field.masked ? '•'.repeat(value.length) : printable(value);
             return (
               <Box key={field.key} gap={1}>
                 {pointer(isActive)}
@@ -247,7 +248,7 @@ export function FieldForm<K extends string>({
           <>
             <Text> </Text>
             <Text color={notice.kind === 'success' ? PALETTE.success : PALETTE.error}>
-              {notice.kind === 'success' ? '✓' : '✗'} {notice.text}
+              {notice.kind === 'success' ? '✓' : '✗'} {printable(notice.text)}
             </Text>
           </>
         )}

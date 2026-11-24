@@ -3,6 +3,7 @@ import { currentDebugSessionDir, currentSessionDir } from '../debug-store.js';
 import { readDebugModeSetting } from '../settings/debug-mode/debug-mode-store.js';
 import { readPackageVersion } from '../home/version.js';
 import { describeFileLocations } from './file-locations.js';
+import { usableBaseDir } from '../settings/configuration/project/base-dir.js';
 
 export interface HelpRow {
   label: string;
@@ -18,9 +19,8 @@ export interface HelpInfo {
 // Directory and whether Debug Mode is on) and never returns a value from it, so no credential can reach the screen.
 export async function readHelpInfo(): Promise<HelpInfo> {
   const [debugMode, settings] = await Promise.all([readDebugModeSetting(), readSettings()]);
-  const base = settings['contentfulBaseDir'];
   const locations = describeFileLocations({
-    contentfulBaseDir: typeof base === 'string' ? base : '',
+    contentfulBaseDir: usableBaseDir(settings['contentfulBaseDir']) ?? '',
     debugModeEnabled: debugMode.enabled,
     currentSessionDir: currentSessionDir(),
   });

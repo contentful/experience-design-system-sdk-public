@@ -1,5 +1,6 @@
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
+import { cleanPathText } from '../shared/path-text.js';
 
 function stripQuotes(value: string): string {
   const quoted = (value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"));
@@ -11,5 +12,5 @@ function expandHome(value: string): string {
 }
 
 export function resolveUserPath(raw: string): string {
-  return resolve(expandHome(stripQuotes(raw.trim())));
+  return resolve(expandHome(stripQuotes(cleanPathText(raw))));
 }
