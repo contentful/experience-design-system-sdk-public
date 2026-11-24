@@ -149,3 +149,52 @@ it('mounts the actual preview screen with unknown shapes and both required-slot 
     ui.unmount();
   }
 });
+it('shows the changed shape when only nested items, fields or values differ', () => {
+  const shaped: ComponentTypeSummary = {
+    ...current,
+    fullProperties: {
+      data: {
+        type: 'array',
+        category: 'content',
+        required: false,
+        definition: { $type: 'array', $category: 'content', $items: { $type: 'string' } },
+      },
+    },
+  };
+  const lines = computeComponentDiffLines(shaped, {
+    $properties: { data: { $type: 'array', $category: 'content', $items: { $type: 'number' } } },
+    $slots: {},
+  });
+  const removed = lines.find((line) => line.key === 'data-old');
+  const added = lines.find((line) => line.key === 'data-new');
+  expect(removed?.text).toBe('- data: array, content, optional, $items={"$type":"string"}');
+  expect(added?.text).toBe('+ data: array, content, optional, $items={"$type":"number"}');
+  expect(removed?.color).toBe(PALETTE.error);
+  expect(added?.color).toBe(PALETTE.success);
+});
+it('leaves unchanged shapes out of the property diff lines', () => {
+  const shaped: ComponentTypeSummary = {
+    ...current,
+    fullProperties: {
+      data: {
+        type: 'array',
+        category: 'content',
+        required: false,
+        definition: { $type: 'array', $category: 'content', $items: { $type: 'string' } },
+      },
+    },
+  };
+  const lines = computeComponentDiffLines(shaped, {
+    $properties: { data: { $type: 'array', $category: 'content', $required: true, $items: { $type: 'string' } } },
+    $slots: {},
+  });
+  expect(lines.filter((line) => line.key.startsWith('data-')).map((line) => line.text)).toEqual([
+    '- data: array, content, optional',
+    '+ data: array, content, required',
+  ]);
+});
+it('colors slot requiredness changes with the theme palette', () => {
+  const lines = computeComponentDiffLines(current, { $properties: {}, $slots: { constructor: { $required: true } } });
+  expect(lines.find((line) => line.key === 'slot-constructor-required-old')?.color).toBe(PALETTE.error);
+  expect(lines.find((line) => line.key === 'slot-constructor-required-new')?.color).toBe(PALETTE.success);
+});

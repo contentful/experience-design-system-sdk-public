@@ -39,8 +39,9 @@ export function computeComponentDiffLines(
 
   for (const name of [...currentProps].sort()) {
     if (knownProperties && !proposedProps.has(name)) {
-      if (oldProps?.[name]) {
-        lines.push({ key: `${name}-rm`, color: PALETTE.error, text: `- ${name}: ${formatOldProp(oldProps[name])}` });
+      const oldProp = ownEntry(oldProps, name);
+      if (oldProp) {
+        lines.push({ key: `${name}-rm`, color: PALETTE.error, text: `- ${name}: ${formatOldProp(oldProp)}` });
       } else {
         const cat = current.contentProperties.includes(name) ? 'content' : 'design';
         lines.push({ key: `${name}-rm`, color: PALETTE.error, text: `- ${name} (${cat})` });
@@ -52,7 +53,7 @@ export function computeComponentDiffLines(
   for (const name of [...currentProps].sort()) {
     if (!proposedProps.has(name)) continue;
     const newDef = proposedProperties[name]!;
-    const oldDef = oldProps?.[name];
+    const oldDef = ownEntry(oldProps, name);
 
     if (!oldDef) continue;
 
@@ -100,8 +101,8 @@ export function computeComponentDiffLines(
   }
 
   for (const name of [...proposedSlotNames].sort()) {
+    const summary = ownEntry(current.fullSlots, name);
     if (currentSlots.has(name)) {
-      const summary = current.fullSlots && Object.hasOwn(current.fullSlots, name) ? current.fullSlots[name] : undefined;
       const previousRequired = summary?.required ?? summary?.definition?.$required;
       const nextRequired = proposedSlots[name]?.['$required'] === true;
       if (previousRequired === undefined) {
@@ -114,18 +115,17 @@ export function computeComponentDiffLines(
       } else if (previousRequired !== nextRequired) {
         lines.push({
           key: `slot-${name}-required-old`,
-          color: 'red',
+          color: PALETTE.error,
           text: `- slot ${name}: ${previousRequired ? 'required' : 'optional'}`,
         });
         lines.push({
           key: `slot-${name}-required-new`,
-          color: 'green',
+          color: PALETTE.success,
           text: `+ slot ${name}: ${nextRequired ? 'required' : 'optional'}`,
         });
       }
     }
     const nextAllowed = normalizeAllowedComponents(proposedSlots[name]?.['$allowedComponents']);
-    const summary = current.fullSlots && Object.hasOwn(current.fullSlots, name) ? current.fullSlots[name] : undefined;
     const knownAllowed =
       Object.hasOwn(currentSlotAllowed, name) ||
       summary?.definition !== undefined ||
@@ -172,6 +172,10 @@ export function computeComponentDiffLines(
   }
 
   return lines;
+}
+
+function ownEntry<T>(entries: Record<string, T> | undefined, name: string): T | undefined {
+  return entries && Object.hasOwn(entries, name) ? entries[name] : undefined;
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
@@ -244,8 +248,17 @@ function diffProperty(name: string, old: PropertySummary, newDef: Record<string,
 
   if (!typeChanged && !categoryChanged && !requiredChanged && !defaultChanged && !structureChanged) return diffs;
 
-  diffs.push({ key: `${name}-old`, color: PALETTE.error, text: `- ${name}: ${formatOldProp(old)}` });
-  diffs.push({ key: `${name}-new`, color: PALETTE.success, text: `+ ${name}: ${formatPropDef(newDef)}` });
+  const shapeKeys = structureChanged ? SHAPE_KEYS.filter((key) => !jsonEqual(old.definition?.[key], newDef[key])) : [];
+  diffs.push({
+    key: `${name}-old`,
+    color: PALETTE.error,
+    text: `- ${name}: ${formatOldProp(old)}${formatShape(old.definition ?? {}, shapeKeys)}`,
+  });
+  diffs.push({
+    key: `${name}-new`,
+    color: PALETTE.success,
+    text: `+ ${name}: ${formatPropDef(newDef)}${formatShape(newDef, shapeKeys)}`,
+  });
   return diffs;
 }
 
@@ -257,6 +270,20 @@ function formatDefault(value: unknown): string {
     if (name) return name;
   }
   return JSON.stringify(value);
+}
+
+const SHAPE_KEYS = ['$items', '$fields', '$values'] as const;
+
+function formatShape(
+  definition: CDFFieldDefinition | Record<string, unknown>,
+  keys: ReadonlyArray<(typeof SHAPE_KEYS)[number]>,
+): string {
+  return keys
+    .map((key) => {
+      const value = (definition as Record<string, unknown>)[key];
+      return `, ${key}=${value === undefined ? 'none' : JSON.stringify(value)}`;
+    })
+    .join('');
 }
 
 function formatOldProp(prop: PropertySummary): string {
