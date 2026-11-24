@@ -1,5 +1,4 @@
 import type { ClassifiedPropertyCall } from '@contentful/experience-design-system-types';
-type ClassifyPropCall = ClassifiedPropertyCall;
 
 interface ExcludePropCall {
   tool: 'exclude_prop';
@@ -26,7 +25,7 @@ interface ClassifySlotCall {
   rationale?: string;
 }
 
-export type ToolCall = ClassifyPropCall | ExcludePropCall | ClassifyComponentCall | ClassifySlotCall;
+export type ToolCall = ClassifiedPropertyCall | ExcludePropCall | ClassifyComponentCall | ClassifySlotCall;
 
 export interface SelectComponentCall {
   tool: 'select_component';

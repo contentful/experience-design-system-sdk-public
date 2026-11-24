@@ -88,8 +88,8 @@ export function normalizeClassificationCalls(values: readonly unknown[]): Normal
         subject = ` property:${rec.prop}:`;
       else if (tool === 'classify_slot' && typeof rec.slot === 'string') subject = ` slot:${rec.slot}:`;
       const allowed: readonly string[] = fields[tool];
-      if (Object.keys(rec).some((key) => key !== 'tool' && !allowed.includes(key)))
-        throw new Error('Unknown decision field');
+      const unknownFields = Object.keys(rec).filter((key) => key !== 'tool' && !allowed.includes(key));
+      if (unknownFields.length) throw new Error(`Unknown decision field: ${unknownFields.join(', ')}`);
       for (const key of ['prop', 'slot', 'description', 'reason', 'token_kind', 'source_revision', 'source_node_id'])
         if (own(rec, key) && typeof rec[key] !== 'string') throw new Error(`${key} must be a string`);
       if (own(rec, 'required') && typeof rec.required !== 'boolean') throw new Error('required must be Boolean');

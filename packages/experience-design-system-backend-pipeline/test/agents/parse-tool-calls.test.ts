@@ -64,6 +64,45 @@ describe('parseToolCalls', () => {
     ]);
   });
 
+  it('names the unknown key when a decision carries a field the tool does not accept', () => {
+    const { calls, warnings } = parseToolCalls(
+      '{"tool":"classify_slot","slot":"children","allowedComponents":["Button"],"cdf_type":"string"}',
+    );
+    expect(calls).toEqual([]);
+    expect(warnings).toEqual([
+      'decision 1: slot:children: Unknown decision field: allowedComponents, cdf_type [field: allowedComponents, cdf_type]',
+    ]);
+  });
+
+  it('names the failing field for every issue of a multi-issue rejection', () => {
+    const { warnings } = parseToolCalls(
+      JSON.stringify({
+        tool: 'classify_prop',
+        prop: 'tone',
+        cdf_type: 'string',
+        cdf_category: 'design',
+        default_intent: { action: 'unknown' },
+        values: 'light',
+      }),
+    );
+    expect(warnings).toHaveLength(1);
+    const issues = warnings[0]!.split('; ');
+    expect(issues.slice(0, 2)).toEqual([
+      'decision 1: property:tone: Invalid or conflicting default intent [field: default_intent]',
+      'values must be an array [field: values ($values)]',
+    ]);
+  });
+
+  it('leaves issues without a known field unannotated', () => {
+    const { warnings } = parseToolCalls('{"tool":"classify_component","rationale":"Grounded"}');
+    expect(warnings).toEqual(['decision 1: Invalid component rationale [field: rationale]']);
+    expect(
+      parseToolCalls(
+        '{"tool":"classify_prop","prop":"a","cdf_type":"string","cdf_category":"content","source_revision":1}',
+      ).warnings,
+    ).toEqual(['decision 1: property:a: source_revision must be a string']);
+  });
+
   it('rejects trailing JSON content instead of accepting the first decision', () => {
     const parsed = parseToolCalls('{"tool":"classify_component"} {"tool":"classify_component"}');
     expect(parsed.calls).toEqual([]);
