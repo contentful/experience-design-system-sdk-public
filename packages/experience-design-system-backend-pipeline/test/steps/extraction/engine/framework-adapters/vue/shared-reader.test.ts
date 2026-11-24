@@ -275,24 +275,22 @@ describe('configured Vue source reader', () => {
     });
   });
 
-  it('retains factory invocation uncertainty without claiming the first argument is the returned input contract', async () => {
+  it('reads factory-built props from the factory input while keeping the convention uncertain', async () => {
     const root = fixture({
       'Factory.tsx': `import { defineComponent } from 'vue'; import { propsFactory } from './helper.js'; const makeProps = propsFactory({ label: { type: String, default: 'safe' } }); export const Factory = defineComponent({ props: makeProps() });`,
       'helper.ts': `export function propsFactory(value: unknown) { return () => value; }`,
     });
     const component = (await extractVueTsxComponents([join(root, 'Factory.tsx')])).components[0]!;
-    expect(component.props).toEqual([]);
-    expect(component.sourceCandidates?.some((candidate) => candidate.name === 'label')).toBe(false);
-    expect(component.sourceCandidates).toContainEqual(
-      expect.objectContaining({ facts: expect.objectContaining({ certainty: 'unknown' }) }),
-    );
-    expect(
-      component.sourceCandidates?.some((candidate) =>
-        candidate.observations.some(
-          (observation) => observation.syntax?.reader === 'vue' && observation.syntax.resolution === 'unresolved',
-        ),
-      ),
-    ).toBe(true);
+    expect(component.props).toEqual([{ name: 'label', type: 'string', required: false, defaultValue: "'safe'" }]);
+    const label = component.sourceCandidates?.find((candidate) => candidate.name === 'label');
+    expect(label?.facts).toMatchObject({ certainty: 'unknown', ambiguityReason: 'vue-runtime-helper-convention' });
+    expect(label?.observations[0]?.syntax).toMatchObject({
+      reader: 'vue',
+      resolution: 'partial',
+      resolutionReason: 'vue-runtime-helper-convention',
+      spreadPath: ['makeProps()'],
+    });
+    expect(component.sourceCandidates?.some((candidate) => candidate.name.startsWith('@source:'))).toBe(false);
   });
 
   it.each(['sfc', 'tsx'])(
