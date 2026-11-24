@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { extractVueTsxComponents } from '../../../src/steps/extraction/src/framework-adapters/vue-tsx/extractor.js';
+import type { RawComponentDefinition } from '../../../src/steps/extraction/src/types/component.js';
 
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })));
@@ -73,7 +74,7 @@ it('retains unresolved helper reshape as uncertainty without inventing returned 
   );
 });
 
-function conventionCandidates(component: { sourceCandidates?: { name: string; facts?: object }[] }) {
+function conventionCandidates(component: RawComponentDefinition) {
   return Object.fromEntries(
     (component.sourceCandidates ?? [])
       .filter((candidate) => !candidate.name.startsWith('@source:'))
