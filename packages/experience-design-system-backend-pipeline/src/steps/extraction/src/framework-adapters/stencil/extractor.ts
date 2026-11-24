@@ -1,4 +1,4 @@
-import { Project, Node, type SourceFile } from 'ts-morph';
+import { Project, Node, type SourceFile, type ClassDeclaration } from 'ts-morph';
 import type { RawComponentDefinition, ComponentExtractionResult } from '../../types/component.js';
 import { kebabToPascal } from '../shared/helpers/tsx-shared.js';
 import { createSortedExtractionResult } from '../shared/helpers/file-processing/result-normalizer.js';
@@ -7,7 +7,7 @@ import { isStencilFile, readComponentTag, hasPropertyDecorator } from './helpers
 import { extractStencilProps } from './helpers/extract-stencil-props.js';
 import { extractStencilSlots } from './helpers/extract-stencil-slots.js';
 
-function collectEventNames(classDecl: Parameters<typeof extractStencilProps>[0]): string[] {
+function collectEventNames(classDecl: ClassDeclaration): string[] {
   const eventNames: string[] = [];
   for (const property of classDecl.getProperties()) {
     if (!hasPropertyDecorator(property, 'Event')) continue;

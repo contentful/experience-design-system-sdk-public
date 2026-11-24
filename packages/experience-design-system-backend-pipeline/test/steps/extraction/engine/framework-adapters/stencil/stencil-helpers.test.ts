@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseAllowedValues } from '../../../../../../src/steps/extraction/src/framework-adapters/stencil/helpers/extract-stencil-props.js';
+import { parseAllowedValues } from '../../../../../../src/steps/extraction/src/framework-adapters/stencil/helpers/stencil-prop-helpers.js';
 import { parseStencilSlot } from '../../../../../../src/steps/extraction/src/framework-adapters/stencil/helpers/extract-stencil-slots.js';
 
 describe('parseAllowedValues', () => {

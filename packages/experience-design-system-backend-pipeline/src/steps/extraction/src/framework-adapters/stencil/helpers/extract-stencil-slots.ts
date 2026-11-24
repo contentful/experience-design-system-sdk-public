@@ -79,7 +79,7 @@ export function extractStencilSlots(
             : initializer && Node.isJsxExpression(initializer)
               ? (initializer.getExpression()?.getText() ?? '')
               : '';
-        upsertSlot({ ...parseStencilSlot(name) });
+        upsertSlot(parseStencilSlot(name));
         return;
       }
 

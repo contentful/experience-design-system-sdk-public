@@ -3,8 +3,6 @@ import type { RawPropDefinition } from '../../../types/component.js';
 import { hasPropertyDecorator } from './detect-stencil-class.js';
 import { parseAllowedValues, collectDomAttributePropNames } from './stencil-prop-helpers.js';
 
-export { parseAllowedValues } from './stencil-prop-helpers.js';
-
 export function extractStencilProps(classDecl: ClassDeclaration): RawPropDefinition[] {
   const props: RawPropDefinition[] = [];
   const propNames = new Set(
