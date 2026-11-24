@@ -182,3 +182,37 @@ it('retains zero-component configured diagnostics without output artifacts', asy
   expect(result.extractionDiagnostics!.projects[0]!.diagnostics.length).toBeGreaterThan(0);
   expect(readdirSync(directory).sort()).toEqual(before);
 });
+
+it('keeps declared web component props optional and finds slots with bound event listeners', async () => {
+  const { file } = fixture({
+    'Element.ts': `import { LitElement, html } from 'lit';
+      import { property } from 'lit/decorators.js';
+      class ExampleElement extends LitElement {
+        @property({ type: String }) variant: 'primary' | 'secondary' = 'primary';
+        @property({ type: Number }) count: number;
+        @property({ type: String }) label?: string;
+        private onSlotChange() {}
+        render() {
+          return html\`<div>
+            <slot
+              @slotchange=\${this.onSlotChange}
+              @custom=\${() => this.onSlotChange()}
+            ></slot>
+            <slot name="footer" @slotchange=\${this.onSlotChange}></slot>
+          </div>\`;
+        }
+      }
+      customElements.define('example-element', ExampleElement);`,
+  });
+  const result = await extractWebComponentDefinitions([file]);
+  const component = result.components[0]!;
+  expect(component.props.filter((prop) => ['variant', 'count', 'label'].includes(prop.name))).toEqual([
+    expect.objectContaining({ name: 'count', required: false }),
+    expect.objectContaining({ name: 'label', required: false }),
+    expect.objectContaining({ name: 'variant', required: false, defaultValue: 'primary' }),
+  ]);
+  expect(component.slots.map((slot) => slot.name)).toEqual(['default', 'footer']);
+  expect(component.sourceCandidates!.find((candidate) => candidate.name === 'count')!.facts!.declaredRequired).toBe(
+    true,
+  );
+});

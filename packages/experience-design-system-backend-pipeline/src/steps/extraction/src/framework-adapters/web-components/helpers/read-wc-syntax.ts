@@ -22,7 +22,7 @@ import type { ExtractionDiagnostics } from '../../../candidates/types.js';
 import type { ExtractorOptions } from '../../../types/options.js';
 import { mergeSourceCandidates } from '../../../candidates/source-candidates.js';
 import { resolveWcDomain, resolveWcValue, wcDeclarations, wcKey, wcLocation } from './read-wc-values.js';
-import { extractSlotsFromTemplate } from './extract-wc-slots.js';
+import { extractSlotsFromTemplate, TEMPLATE_EXPRESSION_MARKER } from './extract-wc-slots.js';
 
 export type WebComponentClass = ClassDeclaration | ClassExpression;
 const MAX_CLASS_DEPTH = 64;
@@ -370,7 +370,7 @@ export function readWebComponentSyntax(classNode: WebComponentClass, componentSo
         {
           name,
           type,
-          required: declaredRequired ?? false,
+          required: false,
           ...(defaultFact.value ? { defaultValue: defaultFact.value.value } : {}),
           ...(domain.domain.openness === 'closed' && domain.domain.observedLiterals.length
             ? { allowedValues: domain.domain.observedLiterals.map((value) => value.value) }
@@ -449,9 +449,8 @@ export function readWebComponentSyntax(classNode: WebComponentClass, componentSo
           template.getHead().getLiteralText(),
           ...template.getTemplateSpans().map((span) => span.getLiteral().getLiteralText()),
         ];
-        for (const literal of literals)
-          for (const slot of extractSlotsFromTemplate(literal))
-            addSlot(slot, template, owner, lineage, 'literal-template');
+        for (const slot of extractSlotsFromTemplate(literals.join(TEMPLATE_EXPRESSION_MARKER)))
+          addSlot(slot, template, owner, lineage, 'literal-template');
         report(template, 'wc-dynamic-template');
       }
     };

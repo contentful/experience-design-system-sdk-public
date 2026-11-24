@@ -2,6 +2,8 @@ import type { RawSlotDefinition } from '../../../types/component.js';
 
 export { extractFastTemplateSlots } from './extract-wc-template-content.js';
 
+export const TEMPLATE_EXPRESSION_MARKER = '\u0000';
+
 export function extractSlotsFromTemplate(templateContent: string): RawSlotDefinition[] {
   const slots = new Map<string, boolean>();
   const slotRegex = /<slot\b([^>]*)>/g;
@@ -10,6 +12,8 @@ export function extractSlotsFromTemplate(templateContent: string): RawSlotDefini
     const attrs = match[1] ?? '';
     const nameMatch = attrs.match(/\bname=["']([^"']+)["']/);
     const name = nameMatch?.[1] ?? 'default';
+    const boundName = attrs.includes(TEMPLATE_EXPRESSION_MARKER) && /\bname=/.test(attrs);
+    if (boundName && (!nameMatch || name.includes(TEMPLATE_EXPRESSION_MARKER))) continue;
     slots.set(name, name === 'default');
   }
 

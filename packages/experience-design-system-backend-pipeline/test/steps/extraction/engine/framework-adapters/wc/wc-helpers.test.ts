@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   extractSlotsFromTemplate,
   mergeSlotLists,
+  TEMPLATE_EXPRESSION_MARKER,
 } from '../../../../../../src/steps/extraction/src/framework-adapters/web-components/helpers/extract-wc-slots.js';
 
 describe('extractSlotsFromTemplate', () => {
@@ -26,6 +27,18 @@ describe('extractSlotsFromTemplate', () => {
 
   it('returns empty array for template with no slots', () => {
     expect(extractSlotsFromTemplate('<div>hello</div>')).toEqual([]);
+  });
+
+  it('skips slots whose name is bound to a template expression', () => {
+    const template = [
+      '<slot name=',
+      '></slot><slot name="item-',
+      '"></slot><slot name="footer" @slotchange=',
+      '></slot>',
+    ];
+    expect(extractSlotsFromTemplate(template.join(TEMPLATE_EXPRESSION_MARKER))).toEqual([
+      { name: 'footer', isDefault: false },
+    ]);
   });
 });
 
