@@ -1,3 +1,4 @@
+import { compareCodeUnits } from './compare.js';
 import type { ClosureGraph, ClosureNode } from './types.js';
 export function buildClosureGraph<Local>(
   roots: readonly string[],
@@ -16,7 +17,7 @@ export function buildClosureGraph<Local>(
     if (node.id !== id) throw new Error('Closure read returned a different identity');
     const edges = [
       ...new Map(node.edges.map((edge) => [JSON.stringify([edge.kind, edge.target]), { ...edge }])).values(),
-    ].sort((a, b) => a.target.localeCompare(b.target) || a.kind.localeCompare(b.kind));
+    ].sort((a, b) => compareCodeUnits(a.target, b.target) || compareCodeUnits(a.kind, b.kind));
     nodes.set(id, { ...node, edges, ends: node.ends.map((end) => ({ ...end })) });
     for (const edge of edges)
       if (!admitted.has(edge.target)) {
@@ -24,7 +25,7 @@ export function buildClosureGraph<Local>(
         pending.push(edge.target);
       }
   }
-  const sortedNodes = new Map([...nodes].sort(([a], [b]) => a.localeCompare(b)));
+  const sortedNodes = new Map([...nodes].sort(([a], [b]) => compareCodeUnits(a, b)));
   for (const [id, node] of sortedNodes) {
     const missing = [
       ...new Set(node.edges.filter((edge) => !nodes.has(edge.target)).map((edge) => edge.target)),

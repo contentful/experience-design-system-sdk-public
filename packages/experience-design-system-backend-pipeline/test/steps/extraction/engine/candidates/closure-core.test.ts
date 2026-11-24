@@ -235,3 +235,28 @@ it('is deterministic under shuffled roots/edges and observes proof, open depende
     expect(transfers).toBe(2);
   }
 });
+
+it('orders identities, edges and summaries by code unit rather than locale', () => {
+  const ids = ['b', 'B', 'a', 'Z', '\u00e4', '_'];
+  const graph = api.buildClosureGraph(['root'], (id) => ({
+    id,
+    data: null,
+    edges: id === 'root' ? ids.map((target) => ({ target, kind: target === 'a' ? 'Use' : 'call' })) : [],
+    ends: [],
+  }));
+  const codeUnitOrder = ['B', 'Z', '_', 'a', 'b', 'root', '\u00e4'];
+  expect([...graph.nodes.keys()]).toEqual(codeUnitOrder);
+  expect(graph.nodes.get('root')!.edges.map((edge) => edge.target)).toEqual(['B', 'Z', '_', 'a', 'b', '\u00e4']);
+  const summaries = api.computeClosureSummaries(graph, { bottom: () => ({}), transfer: () => ({}) });
+  expect([...summaries.keys()]).toEqual(codeUnitOrder);
+});
+
+it('rejects unsupported transfer results before storing them', () => {
+  const graph = api.buildClosureGraph(['leaf'], (id) => ({ id, data: null, edges: [], ends: [] }));
+  expect(() =>
+    api.computeClosureSummaries(graph, {
+      bottom: () => ({}),
+      transfer: () => ({ fact: api.deriveClosureFact(new Date()) }),
+    }),
+  ).toThrow('Unsupported');
+});

@@ -1,4 +1,5 @@
-import { closureValueEqual } from './evidence.js';
+import { compareCodeUnits } from './compare.js';
+import { assertClosureValue, closureValueEqual } from './evidence.js';
 import { orderClosureSccs } from './order.js';
 import type { ClosureAdapter, ClosureGraph, ClosureSummary } from './types.js';
 export class ClosureConvergenceError extends Error {
@@ -23,7 +24,7 @@ export function computeClosureSummaries<Local>(
   function transfer(id: string): ClosureSummary {
     options.signal?.throwIfAborted();
     const value = adapter.transfer(graph.nodes.get(id)!, get);
-    closureValueEqual(value, value);
+    assertClosureValue(value);
     return value;
   }
   for (const group of orderClosureSccs(graph)) {
@@ -48,5 +49,5 @@ export function computeClosureSummaries<Local>(
     }
     if (!converged) throw new ClosureConvergenceError(group.members, maxIterations);
   }
-  return new Map([...summaries].sort(([a], [b]) => a.localeCompare(b)));
+  return new Map([...summaries].sort(([a], [b]) => compareCodeUnits(a, b)));
 }

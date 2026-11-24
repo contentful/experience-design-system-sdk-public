@@ -1,3 +1,4 @@
+import { compareCodeUnits } from './compare.js';
 import type { ClosureFact, ClosureProofStrength } from './types.js';
 const strengthOrder: Record<ClosureProofStrength, number> = { exact: 0, inferred: 1, unknown: 2 };
 export function deriveClosureFact<Value>(
@@ -15,6 +16,9 @@ export function deriveClosureFact<Value>(
     provenance: [...new Set([...(own.provenance ?? []), ...dependencies.flatMap((fact) => fact.provenance)])].sort(),
   };
 }
+export function assertClosureValue(value: unknown): void {
+  valueKey(value, new Set());
+}
 export function closureValueEqual(left: unknown, right: unknown): boolean {
   return valueKey(left, new Set()) === valueKey(right, new Set());
 }
@@ -29,7 +33,7 @@ function valueKey(value: unknown, ancestors: Set<object>): string {
   try {
     if (Array.isArray(value)) return `array:${JSON.stringify(value.map((entry) => valueKey(entry, ancestors)))}`;
     if (value instanceof Map)
-      return `map:${JSON.stringify([...value].map(([key, entry]) => [valueKey(key, ancestors), valueKey(entry, ancestors)]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))))}`;
+      return `map:${JSON.stringify([...value].map(([key, entry]) => [valueKey(key, ancestors), valueKey(entry, ancestors)]).sort((a, b) => compareCodeUnits(JSON.stringify(a), JSON.stringify(b))))}`;
     if (value instanceof Set)
       return `set:${JSON.stringify([...value].map((entry) => valueKey(entry, ancestors)).sort())}`;
     if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)
