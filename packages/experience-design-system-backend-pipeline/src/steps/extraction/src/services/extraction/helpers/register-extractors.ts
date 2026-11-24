@@ -1,0 +1,89 @@
+import type { ComponentExtractor } from '../../../types/component-extractor.js';
+import { extractAstroComponents } from '../../../framework-adapters/astro/extract-astro-components.js';
+import { extractReactComponents } from '../../../framework-adapters/react/extract-react-components.js';
+import { extractStencilComponents } from '../../../framework-adapters/stencil/extract-stencil-components.js';
+import { extractSvelteComponents } from '../../../framework-adapters/svelte/extract-svelte-components.js';
+import { extractVueTsxComponents } from '../../../framework-adapters/vue-tsx/extract-vue-tsx-components.js';
+import { extractVueComponents } from '../../../framework-adapters/vue/extract-vue-components.js';
+import { extractWebComponentDefinitions } from '../../../framework-adapters/web-components/extract-web-components.js';
+import { extractAngularComponents } from '../../../framework-adapters/angular/extract-angular-components.js';
+import { isAngularSourceFile } from '../../../framework-adapters/angular/helpers/is-angular-source-file.js';
+
+export interface ExtractorFileGroup {
+  extractor: ComponentExtractor;
+  filePaths: string[];
+}
+
+export const extractorRegistry: readonly ComponentExtractor[] = [
+  {
+    name: 'stencil',
+    fileFilter: (filePath) => /\.[jt]sx$/.test(filePath),
+    extract: extractStencilComponents,
+  },
+  {
+    name: 'react',
+    fileFilter: (filePath) => /\.[jt]sx?$/.test(filePath) && !filePath.endsWith('.d.ts'),
+    extract: extractReactComponents,
+  },
+  {
+    name: 'vue-tsx',
+    fileFilter: (filePath) => /\.[jt]sx?$/.test(filePath) && !filePath.endsWith('.d.ts'),
+    extract: extractVueTsxComponents,
+  },
+  {
+    name: 'vue',
+    fileFilter: (filePath) => filePath.endsWith('.vue'),
+    extract: extractVueComponents,
+  },
+  {
+    name: 'astro',
+    fileFilter: (filePath) => filePath.endsWith('.astro'),
+    extract: extractAstroComponents,
+  },
+  {
+    name: 'angular',
+    fileFilter: isAngularSourceFile,
+    extract: extractAngularComponents,
+  },
+  {
+    name: 'web-components',
+    fileFilter: (filePath) => /\.[jt]s$/.test(filePath) && !/\.[jt]sx$/.test(filePath) && !filePath.endsWith('.d.ts'),
+    extract: extractWebComponentDefinitions,
+  },
+  {
+    name: 'svelte',
+    fileFilter: (filePath) => {
+      if (!filePath.endsWith('.svelte')) return false;
+      const filename = filePath.replace(/\\/g, '/').split('/').pop() ?? '';
+      if (/^\+(page|layout|error)\.svelte$/.test(filename)) return false;
+      return true;
+    },
+    extract: extractSvelteComponents,
+  },
+];
+
+export function routeFilesToExtractors(
+  filePaths: readonly string[],
+  extractors: readonly ComponentExtractor[] = extractorRegistry,
+): ExtractorFileGroup[] {
+  const filesByExtractor = new Map<ComponentExtractor, string[]>();
+
+  for (const extractor of extractors) {
+    filesByExtractor.set(extractor, []);
+  }
+
+  for (const filePath of filePaths) {
+    for (const extractor of extractors) {
+      if (extractor.fileFilter(filePath)) {
+        filesByExtractor.get(extractor)?.push(filePath);
+      }
+    }
+  }
+
+  return extractors
+    .map((extractor) => ({
+      extractor,
+      filePaths: filesByExtractor.get(extractor) ?? [],
+    }))
+    .filter(({ filePaths: groupedFilePaths }) => groupedFilePaths.length > 0);
+}

@@ -13,8 +13,8 @@ import type {
 } from '../../types/component.js';
 import { computeExtractionScore, deriveNeedsReview } from '../../helpers/quality/scoring.js';
 import { extractAllowedComponentsFromTypeText } from '../react/slot-allowed-components.js';
-import { runFileExtractionWorkers } from '../shared/file-extraction-workers.js';
-import { resolveLocalModule } from '../shared/resolve-local-module.js';
+import { runFileExtractionWorkers } from '../shared/helpers/file-processing/file-workers.js';
+import { resolveLocalModule } from '../shared/helpers/resolve-import-file-path.js';
 
 type RawSlotDefinitionInternal = RawSlotDefinition & {
   _rawTypeText?: string;
