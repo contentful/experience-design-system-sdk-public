@@ -16,7 +16,7 @@ import type { ExtractorOptions } from '../../types/options.js';
 
 export async function extractVueTsxComponents(
   filePaths: string[],
-  _onProgress?: (progress: { filesProcessed: number; componentsFound: number }) => void,
+  onProgress?: (progress: { filesProcessed: number; componentsFound: number }) => void,
   options: ExtractorOptions = {},
 ): Promise<ComponentExtractionResult> {
   const components: RawComponentDefinition[] = [];
@@ -47,7 +47,7 @@ export async function extractVueTsxComponents(
           vueDiagnostic(reader, 'vue-tsx-reader-throw');
           warnings.push(`Failed to extract from ${path}: ${String(error)}`);
         }
-        _onProgress?.({ filesProcessed: ++filesProcessed, componentsFound: components.length });
+        onProgress?.({ filesProcessed: ++filesProcessed, componentsFound: components.length });
       }
     },
   );
