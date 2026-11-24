@@ -1,93 +1,47 @@
-import { VALID_CATEGORIES, VALID_CDF_TYPES, VALID_TOOL_NAMES } from '../constants/tool-names.js';
-import type {
-  ClassifyComponentCall,
-  ClassifyPropCall,
-  ClassifySlotCall,
-  ParsedToolCalls,
-  ToolCall,
-} from '../types/tool-calls.js';
-import { readToolCallObjects } from './helpers/read-tool-call-objects.js';
+import {
+  parseClassificationToolLines,
+  type NormalizedClassificationCalls,
+} from '@contentful/experience-design-system-types';
 
-export function parseToolCalls(stdout: string, onInvalidCall?: (message: string) => void): ParsedToolCalls {
-  const calls: ToolCall[] = [];
-  const { objects, warnings } = readToolCallObjects(stdout);
-  const invalidCall = (message: string): void => {
-    warnings.push(message);
-    onInvalidCall?.(message);
-  };
+const FAILING_FIELDS: ReadonlyArray<readonly [string, string]> = [
+  ['Unknown tool', 'tool'],
+  ['Missing exact property name', 'prop'],
+  ['Missing exact slot name', 'slot'],
+  ['Exclusion requires nonblank reason', 'reason'],
+  ['Absent representation requires nonblank reason', 'reason'],
+  ['Invalid allowed components', 'allowed_components'],
+  ['Invalid component rationale', 'rationale'],
+  ['Invalid semantic category', 'cdf_category'],
+  ['Invalid representation type', 'cdf_type'],
+  ['Token kind requires token representation', 'token_kind ($token.kind)'],
+  ['Token options require a token mapping decision', 'values ($values)'],
+  ['values must be an array', 'values ($values)'],
+  ['Invalid or conflicting default intent', 'default_intent'],
+];
+const UNKNOWN_FIELD = /Unknown decision field: (.+)$/;
 
-  for (const rec of objects) {
-    if (!VALID_TOOL_NAMES.has(rec.tool as string)) {
-      invalidCall(`unknown tool: ${String(rec.tool)}`);
-      continue;
-    }
-    const tool = rec.tool as ToolCall['tool'];
+function failingField(issue: string): string | undefined {
+  const unknown = UNKNOWN_FIELD.exec(issue);
+  if (unknown) return unknown[1];
+  return FAILING_FIELDS.find(([message]) => issue.endsWith(message))?.[1];
+}
 
-    if (tool === 'classify_prop') {
-      if (typeof rec.prop !== 'string' || !rec.prop) {
-        invalidCall('classify_prop missing prop name — skipped');
-        continue;
-      }
-      if (typeof rec.cdf_type !== 'string' || !VALID_CDF_TYPES.has(rec.cdf_type)) {
-        invalidCall(`classify_prop '${rec.prop}': invalid cdf_type '${String(rec.cdf_type)}' — skipped`);
-        continue;
-      }
-      if (typeof rec.cdf_category !== 'string' || !VALID_CATEGORIES.has(rec.cdf_category)) {
-        invalidCall(`classify_prop '${rec.prop}': invalid cdf_category '${String(rec.cdf_category)}' — skipped`);
-        continue;
-      }
-      const call: ClassifyPropCall = {
-        tool: 'classify_prop',
-        prop: rec.prop,
-        cdf_type: rec.cdf_type,
-        cdf_category: rec.cdf_category as ClassifyPropCall['cdf_category'],
-      };
-      if (Array.isArray(rec.values) && rec.values.every((v) => typeof v === 'string')) {
-        call.values = rec.values as string[];
-      }
-      if (typeof rec.token_kind === 'string') call.token_kind = rec.token_kind;
-      if (typeof rec.required === 'boolean') call.required = rec.required;
-      if (typeof rec.description === 'string') call.description = rec.description;
-      if (typeof rec.default === 'string' || typeof rec.default === 'boolean') call.default = rec.default;
-      if (typeof rec.reason === 'string') call.reason = rec.reason;
-      calls.push(call);
-    } else if (tool === 'exclude_prop') {
-      if (typeof rec.prop !== 'string' || !rec.prop) {
-        invalidCall('exclude_prop missing prop name — skipped');
-        continue;
-      }
-      calls.push({
-        tool: 'exclude_prop',
-        prop: rec.prop,
-        reason: typeof rec.reason === 'string' ? rec.reason : '',
-      });
-    } else if (tool === 'classify_component') {
-      const call: ClassifyComponentCall = { tool: 'classify_component' };
-      if (typeof rec.description === 'string') call.description = rec.description;
-      if (typeof rec.rationale === 'object' && rec.rationale !== null) {
-        const r = rec.rationale as Record<string, unknown>;
-        const rationale: NonNullable<ClassifyComponentCall['rationale']> = {};
-        if (typeof r.description === 'string') rationale.description = r.description;
-        if (typeof r.props === 'string') rationale.props = r.props;
-        if (typeof r.slots === 'string') rationale.slots = r.slots;
-        if (Object.keys(rationale).length > 0) call.rationale = rationale;
-      }
-      calls.push(call);
-    } else if (tool === 'classify_slot') {
-      if (typeof rec.slot !== 'string' || !rec.slot) {
-        invalidCall('classify_slot missing slot name — skipped');
-        continue;
-      }
-      const call: ClassifySlotCall = { tool: 'classify_slot', slot: rec.slot };
-      if (typeof rec.required === 'boolean') call.required = rec.required;
-      if (Array.isArray(rec.allowed_components) && rec.allowed_components.every((v) => typeof v === 'string')) {
-        call.allowed_components = rec.allowed_components as string[];
-      }
-      if (typeof rec.description === 'string') call.description = rec.description;
-      if (typeof rec.rationale === 'string') call.rationale = rec.rationale;
-      calls.push(call);
-    }
-  }
+function nameFailingFields(warning: string): string {
+  return warning
+    .split('; ')
+    .map((issue) => {
+      const field = failingField(issue);
+      return field ? `${issue} [field: ${field}]` : issue;
+    })
+    .join('; ');
+}
 
-  return { calls, warnings };
+export function parseToolCalls(
+  stdout: string,
+  onInvalidCall?: (message: string) => void,
+): NormalizedClassificationCalls {
+  const parsed = parseClassificationToolLines(stdout);
+  const warnings = parsed.warnings.map(nameFailingFields);
+  if (onInvalidCall) for (const warning of warnings) onInvalidCall(warning);
+  return { calls: parsed.calls, warnings };
 }

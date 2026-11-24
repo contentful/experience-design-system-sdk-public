@@ -115,6 +115,7 @@ describe('generation agent preflight', () => {
     expect(invoke).toHaveBeenCalledTimes(2);
     expect(invoke.mock.calls[1]![0].prompt).toContain('Generation preflight');
     expect(invoke.mock.calls[1]![0].prompt).toContain('$token.kind');
+    expect(invoke.mock.calls[1]![0].prompt).toContain('Token kind requires token representation');
     expect(result.failed).toBe(false);
     const document = buildCDF(loadCDFComponents(db, sessionId), []);
     expect(validateCDF(document).valid).toBe(true);
@@ -133,6 +134,7 @@ describe('generation agent preflight', () => {
     expect(result.failed).toBe(true);
     expect(result.failureKind).toBe('preflight');
     expect(result.error).toContain('$token.kind');
+    expect(result.error).toContain('Token kind requires token representation');
     expect(result.reviewRequired).toBe(true);
     expect(loadCDFComponents(db, sessionId)[0]?.entry.$properties.label).toEqual({
       $type: 'string',
@@ -202,6 +204,17 @@ describe('generation agent preflight', () => {
     expect(db.prepare('SELECT * FROM generation_cache').all()).toHaveLength(1);
   });
 
+  it('regenerates when a classification leaves the representation unresolved', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    const { invoke, run } = setup([
+      output({ tool: 'classify_prop', prop: 'label', cdf_category: 'content', reason: 'Not sure yet' }),
+      output(propCall()),
+    ]);
+    expect((await run()).failed).toBe(false);
+    expect(invoke).toHaveBeenCalledTimes(2);
+    expect(invoke.mock.calls[1]![0].prompt).toContain('classification requires a cdf_type');
+  });
+
   it('regenerates when an invalid classification was skipped beside valid tool calls', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout'] });
     const { invoke, run } = setup([
@@ -210,7 +223,8 @@ describe('generation agent preflight', () => {
     ]);
     expect((await run()).failed).toBe(false);
     expect(invoke).toHaveBeenCalledTimes(2);
-    expect(invoke.mock.calls[1]![0].prompt).toContain('invalid cdf_type');
+    expect(invoke.mock.calls[1]![0].prompt).toContain('cdf_type');
+    expect(invoke.mock.calls[1]![0].prompt).toContain('Invalid representation type');
   });
 
   it.each([
