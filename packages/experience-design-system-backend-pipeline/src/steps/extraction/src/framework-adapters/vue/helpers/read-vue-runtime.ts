@@ -164,6 +164,38 @@ function vueValueDeclarations(node: Node): Node[] {
   return [];
 }
 
+function calledFunction(
+  call: import('ts-morph').CallExpression,
+):
+  | import('ts-morph').FunctionDeclaration
+  | import('ts-morph').FunctionExpression
+  | import('ts-morph').ArrowFunction
+  | undefined {
+  const declarations = vueValueDeclarations(call.getExpression());
+  if (declarations.length !== 1) return undefined;
+  let fn: Node | undefined = declarations[0];
+  if (fn && Node.isVariableDeclaration(fn)) fn = fn.getInitializer();
+  if (!fn || (!Node.isFunctionDeclaration(fn) && !Node.isFunctionExpression(fn) && !Node.isArrowFunction(fn)))
+    return undefined;
+  return fn;
+}
+
+function returnedExpression(
+  fn: import('ts-morph').FunctionDeclaration | import('ts-morph').FunctionExpression | import('ts-morph').ArrowFunction,
+): Node | undefined {
+  const body = fn.getBody();
+  if (!body) return undefined;
+  if (!Node.isBlock(body)) return body;
+  const statements = body.getStatements();
+  const returns = statements.filter(Node.isReturnStatement);
+  if (
+    returns.length !== 1 ||
+    statements.some((statement) => !Node.isReturnStatement(statement) && !Node.isVariableStatement(statement))
+  )
+    return undefined;
+  return returns[0]!.getExpression();
+}
+
 export function resolveVueRuntimeValue(
   node: Node,
   options: { retainMutableDeclarations?: boolean } = {},
@@ -202,27 +234,9 @@ export function resolveVueRuntimeValue(
       return undefined;
     }
     if (Node.isCallExpression(node) && node.getArguments().length === 0) {
-      const declarations = vueValueDeclarations(node.getExpression());
-      if (declarations.length !== 1) return undefined;
-      let fn: Node | undefined = declarations[0];
-      if (fn && Node.isVariableDeclaration(fn)) fn = fn.getInitializer();
-      if (
-        !fn ||
-        (!Node.isFunctionDeclaration(fn) && !Node.isFunctionExpression(fn) && !Node.isArrowFunction(fn)) ||
-        fn.getParameters().length
-      )
-        return undefined;
-      const body = fn.getBody();
-      if (!body) return undefined;
-      if (!Node.isBlock(body)) return resolveVueRuntimeValue(body, options, active);
-      const statements = body.getStatements();
-      const returns = statements.filter(Node.isReturnStatement);
-      if (
-        returns.length !== 1 ||
-        statements.some((statement) => !Node.isReturnStatement(statement) && !Node.isVariableStatement(statement))
-      )
-        return undefined;
-      const returned = returns[0]!.getExpression();
+      const fn = calledFunction(node);
+      if (!fn || fn.getParameters().length) return undefined;
+      const returned = returnedExpression(fn);
       return returned ? resolveVueRuntimeValue(returned, options, active) : undefined;
     }
     return undefined;
@@ -294,11 +308,16 @@ function runtimeType(
   }
 }
 
-function helperName(call: import('ts-morph').CallExpression): string | undefined {
+function conventionalHelperName(call: import('ts-morph').CallExpression): string | undefined {
   const callee = call.getExpression();
-  if (Node.isIdentifier(callee)) return callee.getText();
-  if (Node.isPropertyAccessExpression(callee)) return callee.getName();
-  return undefined;
+  const name = Node.isIdentifier(callee)
+    ? callee.getText()
+    : Node.isPropertyAccessExpression(callee)
+      ? callee.getName()
+      : undefined;
+  const fn = name ? calledFunction(call) : undefined;
+  const returned = fn ? returnedExpression(fn) : undefined;
+  return returned && resolveVueRuntimeValue(returned) ? undefined : name;
 }
 
 function pickedKeys(node: Node | undefined): Set<string> | undefined {
@@ -319,7 +338,7 @@ function propsFactoryInput(call: import('ts-morph').CallExpression): Node | unde
   const declaration = declarations.length === 1 ? declarations[0] : undefined;
   if (!declaration || !Node.isVariableDeclaration(declaration)) return undefined;
   const initializer = declaration.getInitializer();
-  if (!initializer || !Node.isCallExpression(initializer) || helperName(initializer) !== 'propsFactory')
+  if (!initializer || !Node.isCallExpression(initializer) || conventionalHelperName(initializer) !== 'propsFactory')
     return undefined;
   return initializer.getArguments()[0];
 }
@@ -544,7 +563,7 @@ export function readVueRuntimeProps(root: Node, context: VueReaderContext): VueR
           visit(returned, [...spreadPath, node.getText()], depth + 1, assumption);
           return;
         }
-        const name = helperName(node);
+        const name = conventionalHelperName(node);
         const [input, keyList] = node.getArguments();
         const keys = (name === 'pick' || name === 'omit') && input ? pickedKeys(keyList) : undefined;
         if (input && keys) {
