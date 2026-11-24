@@ -7,9 +7,10 @@ import type {
   RawSlotDefinition,
   ComponentExtractionResult,
 } from '../../types/component.js';
-import { createSortedExtractionResult, runFileExtractionWorkers } from '../shared/file-extraction-workers.js';
-import { resolveTypeProperty } from '../shared/resolve-type-property.js';
-import { getSourceLineMetadata } from '../shared/source-line-metadata.js';
+import { runFileExtractionWorkers } from '../shared/helpers/file-processing/file-workers.js';
+import { createSortedExtractionResult } from '../shared/helpers/file-processing/result-normalizer.js';
+import { resolveTypeProperty } from '../shared/helpers/resolve-type-symbol.js';
+import { getSourceLineMetadata } from '../shared/helpers/get-node-source-lines.js';
 
 function extractAllowedValues(typeText: string): string[] | undefined {
   // Check if the type is a union of string literals like 'a' | 'b' | 'c'

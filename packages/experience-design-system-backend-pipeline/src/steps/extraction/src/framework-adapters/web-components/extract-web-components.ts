@@ -6,7 +6,8 @@ import type {
   RawSlotDefinition,
   ComponentExtractionResult,
 } from '../../types/component.js';
-import { createSortedExtractionResult, extractProjectSourceFiles } from '../shared/file-extraction-workers.js';
+import { createSortedExtractionResult } from '../shared/helpers/file-processing/result-normalizer.js';
+import { extractProjectSourceFiles } from '../shared/helpers/file-processing/project-source-files.js';
 import { kebabToPascal } from '../shared/extract-tsx-components.js';
 
 function normalizeComponentName(input: string): string {

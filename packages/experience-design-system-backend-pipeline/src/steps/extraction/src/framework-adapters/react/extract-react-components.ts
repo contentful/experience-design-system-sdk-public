@@ -30,7 +30,7 @@ import {
 } from '../shared/extract-tsx-components.js';
 import { shouldBeSlot } from '../../helpers/evidence/slot-detection.js';
 import { extractAllowedComponentsFromTypeText, extractAllowedComponentsFromJsdoc } from './slot-allowed-components.js';
-import { getSourceLineMetadata } from '../shared/source-line-metadata.js';
+import { getSourceLineMetadata } from '../shared/helpers/get-node-source-lines.js';
 import {
   collectTypePredicateComponentReferences,
   collectRuntimeTypeCheckComponentReferences,
