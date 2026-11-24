@@ -1,4 +1,5 @@
 import { Node, Project } from 'ts-morph';
+import type { BindingElement } from 'ts-morph';
 
 export function createAstroFrontmatterProject(): Project {
   return new Project({
@@ -23,13 +24,13 @@ function usesAstroProps(initializer: Node | undefined): boolean {
   return found;
 }
 
-export function extractBindingPropName(element: import('ts-morph').BindingElement): string | null {
+export function extractBindingPropName(element: BindingElement): string | null {
   if (element.getText().startsWith('...')) return null;
   return element.getPropertyNameNode()?.getText() ?? element.getNameNode().getText();
 }
 
-export function collectAstroPropsBindings(frontmatter: string): import('ts-morph').BindingElement[] {
-  const elements: import('ts-morph').BindingElement[] = [];
+export function collectAstroPropsBindings(frontmatter: string): BindingElement[] {
+  const elements: BindingElement[] = [];
   const sf = createAstroFrontmatterProject().createSourceFile('__frontmatter__.ts', frontmatter);
   sf.forEachDescendant((node) => {
     if (!Node.isVariableDeclaration(node)) return;

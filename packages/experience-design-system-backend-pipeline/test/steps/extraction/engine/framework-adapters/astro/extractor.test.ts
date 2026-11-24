@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { extractAstroComponents } from '../extractor.js';
+import { extractAstroComponents } from '../../../../../../src/steps/extraction/src/framework-adapters/astro/extractor.js';
 
 let dir: string;
 
