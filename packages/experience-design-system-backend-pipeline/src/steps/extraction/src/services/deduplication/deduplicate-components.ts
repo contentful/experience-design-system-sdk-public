@@ -1,5 +1,4 @@
 import type { ComponentExtractionResult, ExtractionExclusion, RawComponentDefinition } from '../../types/component.js';
-import { mergeExtractionDiagnostics } from '../../compiler/diagnostics.js';
 import { retainDuplicateSourceCandidates } from '../../candidates/source-candidates.js';
 import {
   resolveComponentScopeInfo,
@@ -72,6 +71,5 @@ export function deduplicateComponents(results: readonly ComponentExtractionResul
     components: [...componentsByKey.values()].sort((a, b) => a.name.localeCompare(b.name)),
     warnings: allWarnings,
     exclusions,
-    extractionDiagnostics: mergeExtractionDiagnostics(results.map((result) => result.extractionDiagnostics)),
   };
 }
