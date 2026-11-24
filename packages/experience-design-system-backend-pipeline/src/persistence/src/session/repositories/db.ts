@@ -2069,10 +2069,9 @@ export function applyScopeDecisions(
   }
   if (accepted.length > 0) {
     const placeholders = accepted.map(() => '?').join(',');
-    db.prepare(`UPDATE raw_components SET status = 'generated' WHERE session_id = ? AND name IN (${placeholders})`).run(
-      sessionId,
-      ...accepted,
-    );
+    db.prepare(
+      `UPDATE raw_components SET status = 'generated', reject_reason = NULL WHERE session_id = ? AND name IN (${placeholders})`,
+    ).run(sessionId, ...accepted);
   }
   db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
 }

@@ -113,6 +113,12 @@ describe('runGeneration', () => {
       });
     });
 
+    it('generates exactly the components accepted at the scope gate', async () => {
+      const { deps } = fakes();
+      await runGeneration(input(), () => {}, deps);
+      expect(deps.runGenerate).toHaveBeenCalledWith(expect.objectContaining({ acceptedNames: ['Button', 'Card'] }));
+    });
+
     it('forwards the handed-over cache names to the orchestrator', async () => {
       const { deps } = fakes();
       await runGeneration(input({ cachedNames: Promise.resolve(['Button']) }), () => {}, deps);
@@ -195,11 +201,15 @@ describe('runGeneration', () => {
   describe('nothing accepted', () => {
     const nothing = (): GenerationInput => input({ decisions: { accepted: [], rejected: ['Button', 'Card'] } });
 
-    it('saves the decisions and stops, going straight to the push flow', async () => {
+    it('saves the decisions and stops with a message that no components were selected', async () => {
       const { deps, calls } = fakes();
       const result = await runGeneration(nothing(), () => {}, deps);
       expect(calls).toEqual(['save']);
-      expect(result).toEqual({ ok: true, generation: { route: 'push', acceptedCount: 0 } });
+      expect(result).toEqual({
+        ok: false,
+        step: 'generate components',
+        message: 'No components were selected, so nothing was generated.',
+      });
     });
 
     it('does not generate or map tokens', async () => {
@@ -208,6 +218,21 @@ describe('runGeneration', () => {
       expect(deps.runGenerate).not.toHaveBeenCalled();
       expect(deps.prepareMapTokens).not.toHaveBeenCalled();
       expect(deps.runMapTokens).not.toHaveBeenCalled();
+    });
+
+    it('stops with a message when none of the selected components are in the session', async () => {
+      const { deps } = fakes({
+        runGenerate: vi.fn(async () =>
+          generatedResponse({ results: [], emptySession: true }),
+        ) as GenerationDeps['runGenerate'],
+      });
+      const result = await runGeneration(input(), () => {}, deps);
+      expect(result).toEqual({
+        ok: false,
+        step: 'generate components',
+        message: 'None of the selected components are in this session, so nothing was generated.',
+      });
+      expect(deps.prepareMapTokens).not.toHaveBeenCalled();
     });
   });
 
