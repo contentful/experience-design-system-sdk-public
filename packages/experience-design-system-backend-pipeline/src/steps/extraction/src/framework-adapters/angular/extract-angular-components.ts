@@ -50,8 +50,8 @@ export async function extractAngularComponents(
         const meta = readComponentMetadata(cls, filePath);
         if (!meta) continue;
 
-        const propsOnly = extractProps(cls, meta);
-        const { props, slots } = await extractSlots(cls, meta, propsOnly);
+        const propsOnly = extractProps(cls, meta, warnings);
+        const { props, slots } = await extractSlots(cls, meta, propsOnly, warnings);
 
         const partial: RawComponentDefinition = {
           name: meta.className,
