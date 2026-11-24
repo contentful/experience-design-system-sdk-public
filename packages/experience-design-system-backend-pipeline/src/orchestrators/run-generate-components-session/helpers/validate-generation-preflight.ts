@@ -28,6 +28,9 @@ export function validateGenerationCalls(
   const tokenKinds = new Set<string>(DESIGN_TOKEN_TYPES);
   for (const call of calls) {
     if (call.tool === 'classify_prop') {
+      if (!call.cdf_type) {
+        errors.push(`Property "${call.prop}": classification requires a cdf_type.`);
+      }
       if (call.cdf_type === 'enum' && !call.values?.length) {
         errors.push(`Property "${call.prop}": enum classification requires a non-empty values list.`);
       }

@@ -1,31 +1,14 @@
-export interface ClassifyPropCall {
-  tool: 'classify_prop';
-  prop: string;
-  cdf_type: string;
-  cdf_category: 'content' | 'design' | 'state';
-  values?: string[];
-  token_kind?: string;
-  required?: boolean;
-  description?: string;
-  default?: string | boolean;
-  /** Internal LLM rationale; not customer-facing. Persisted to raw_props.rationale. */
-  reason?: string;
-}
+import type { ClassifiedPropertyCall } from '@contentful/experience-design-system-types';
 
-export interface ExcludePropCall {
+interface ExcludePropCall {
   tool: 'exclude_prop';
   prop: string;
   reason: string;
 }
 
-export interface ClassifyComponentCall {
+interface ClassifyComponentCall {
   tool: 'classify_component';
   description?: string;
-  /**
-   * Component-level rationale strings. Surfaced by the `I` ComponentRationalePanel.
-   * Each field is optional; missing fields leave existing DB values untouched
-   * (sparse update semantics in applyToolCalls).
-   */
   rationale?: {
     description?: string;
     props?: string;
@@ -33,32 +16,29 @@ export interface ClassifyComponentCall {
   };
 }
 
-export interface ClassifySlotCall {
+interface ClassifySlotCall {
   tool: 'classify_slot';
   slot: string;
   required?: boolean;
   allowed_components?: string[];
   description?: string;
-  /** Per-slot rationale; persisted to raw_slots.rationale. */
   rationale?: string;
 }
 
-export type ToolCall = ClassifyPropCall | ExcludePropCall | ClassifyComponentCall | ClassifySlotCall;
-
-// --- Select tool calls ---
+export type ToolCall = ClassifiedPropertyCall | ExcludePropCall | ClassifyComponentCall | ClassifySlotCall;
 
 export interface SelectComponentCall {
   tool: 'select_component';
   name: string;
   reason?: string;
-  confidence?: number; // 1–5 scale, agent's certainty this belongs in ExO
+  confidence?: number;
 }
 
 export interface RejectComponentCall {
   tool: 'reject_component';
   name: string;
   reason?: string;
-  confidence?: number; // 1–5 scale, agent's certainty this should be excluded
+  confidence?: number;
 }
 
 export type SelectToolCall = SelectComponentCall | RejectComponentCall;
@@ -70,15 +50,15 @@ export interface ParsedSelectToolCalls {
 
 export interface SetTokenCall {
   tool: 'set_token';
-  path: string; // dot-notation DTCG path, e.g. "colors.brand.primary"
-  type: string; // DTCG $type, e.g. "color"
-  value: unknown; // $value — may be string, number, array, or object
+  path: string;
+  type: string;
+  value: unknown;
   description?: string;
 }
 
 export interface SetGroupCall {
   tool: 'set_group';
-  path: string; // dot-notation group path, e.g. "colors.brand"
+  path: string;
   description?: string;
 }
 
@@ -89,16 +69,10 @@ export interface ParsedTokenToolCalls {
   warnings: string[];
 }
 
-export interface ParsedToolCalls {
-  calls: ToolCall[];
-  warnings: string[];
-}
-
 export interface MapTokenPropCall {
   tool: 'map_token_prop';
   component: string;
   prop: string;
-  /** Narrowed subset of tokens the prop may draw from. Required and non-empty. */
   token_allowed: string[];
 }
 
