@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
 import { useInput } from 'ink';
 import TextInput from 'ink-text-input';
+import { stripControlCharacters } from '../path-text.js';
 
 export function isClearKey(input: string, key: { ctrl: boolean }): boolean {
   return key.ctrl && input === 'd';
@@ -23,7 +24,7 @@ export function ClearableTextInput({ onChange, ...props }: React.ComponentProps<
     <TextInput
       {...props}
       onChange={(value) => {
-        if (!justCleared.current) onChange(value);
+        if (!justCleared.current) onChange(stripControlCharacters(value));
       }}
     />
   );

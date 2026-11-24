@@ -5,6 +5,7 @@ import { readSettings } from '@contentful/experience-design-system-types/config'
 import { readPackageVersion } from './home/version.js';
 import { readDebugModeSetting } from './settings/debug-mode/debug-mode-store.js';
 import { pruneExpiredLogs } from './debug-prune.js';
+import { usableBaseDir } from './settings/configuration/project/base-dir.js';
 
 type PendingRun = {
   flow: string;
@@ -53,8 +54,8 @@ function slugify(value: string): string {
 // created once the import knows its project.
 async function readBaseDir(): Promise<string | undefined> {
   try {
-    const dir = (await readSettings())['contentfulBaseDir'];
-    return typeof dir === 'string' && dir !== '' ? resolve(dir) : undefined;
+    const dir = usableBaseDir((await readSettings())['contentfulBaseDir']);
+    return dir ? resolve(dir) : undefined;
   } catch {
     return undefined;
   }

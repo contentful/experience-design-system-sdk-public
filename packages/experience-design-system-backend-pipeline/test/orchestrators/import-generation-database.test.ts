@@ -20,6 +20,20 @@ const raw = (name: string) => ({
   props: [],
   slots: [],
 });
+const rejectReasons = (sessionId: string): Record<string, string | null> => {
+  const db = openPipelineDb();
+  try {
+    const rows = db
+      .prepare('SELECT name, reject_reason FROM raw_components WHERE session_id = ?')
+      .all(sessionId) as Array<{
+      name: string;
+      reject_reason: string | null;
+    }>;
+    return Object.fromEntries(rows.map((row) => [row.name, row.reject_reason]));
+  } finally {
+    db.close();
+  }
+};
 const token = (path: string) => ({ path, $type: 'color' as const, $value: '#06f' });
 const designProp = { $type: 'token' as const, $category: 'design' as const, '$token.kind': 'color' as const };
 
@@ -55,6 +69,20 @@ describe('the generation stage and the pipeline database', () => {
       await saveDecisions({ sessionId, decisions: { accepted: ['Button'], rejected: ['Button'] } });
 
       expect(statuses(sessionId)).toEqual({ Button: 'generated' });
+    });
+
+    it('clears the reject reason of a component that is accepted, and keeps it on one that is rejected', async () => {
+      const sessionId = newSession();
+      const db = openPipelineDb();
+      storeRawComponents(db, sessionId, [raw('Button'), raw('Helper')]);
+      db.prepare(
+        "UPDATE raw_components SET status = 'rejected', reject_reason = 'structural wrapper' WHERE session_id = ?",
+      ).run(sessionId);
+      db.close();
+
+      await saveDecisions({ sessionId, decisions: { accepted: ['Button'], rejected: ['Helper'] } });
+
+      expect(rejectReasons(sessionId)).toEqual({ Button: null, Helper: 'structural wrapper' });
     });
 
     it('leaves another session alone', async () => {

@@ -2,7 +2,6 @@ import { summarizeForMapTokens } from '../../steps/generation/src/controller/exi
 import { resolveComponentCache } from '../../steps/generation/src/helpers/components/resolve-component-cache.js';
 import { loadRawComponents, openPipelineDb } from '../../persistence/src/session/repositories/db.js';
 import { hashContent, hashPromptForSkill } from '../../persistence/src/session/helpers/cache-keys.js';
-import { loadAcceptedNames } from '../../persistence/src/index.js';
 import type { AgentName } from '../../agents/types/agent-name.js';
 import type { ExistingContentfulEntities } from '../../steps/generation/src/types/existing-entities.js';
 import { readExistingEntities } from './helpers/read-existing-entities.js';
@@ -55,8 +54,7 @@ export async function checkGenerateComponentsCache(
 
   const db = openPipelineDb();
   try {
-    const acceptedNames = await loadAcceptedNames(request.sessionId);
-    const components = loadRawComponents(db, request.sessionId, acceptedNames ?? undefined);
+    const components = loadRawComponents(db, request.sessionId);
     if (components.length === 0) {
       return { sessionId: request.sessionId, cachedComponentNames: [], fullyCached: false, cacheDisabled: false };
     }

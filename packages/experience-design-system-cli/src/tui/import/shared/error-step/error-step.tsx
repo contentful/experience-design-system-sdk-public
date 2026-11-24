@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import { PALETTE } from '@tui/theme.js';
+import { printable } from '@tui/shared/path-text.js';
 import { supportInstruction } from '@tui/support-bundle.js';
 import { useErrorControls } from './controls.js';
 import { errorControls } from './logic.js';
@@ -34,7 +35,7 @@ export function ErrorStep({
       <Text bold color={PALETTE.error}>
         ✗ {stepName} failed
       </Text>
-      <Text color={PALETTE.error}>{message}</Text>
+      <Text color={PALETTE.error}>{printable(message)}</Text>
       {bundle && <Text color={PALETTE.muted}>{supportInstruction(bundle)}</Text>}
       <Box marginTop={1} gap={3}>
         {controls.map((control) => (

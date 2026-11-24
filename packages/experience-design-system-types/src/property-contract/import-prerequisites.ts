@@ -10,6 +10,7 @@ import { contentDigest } from './content-digest.js';
 import { validateRepresentationClosure } from '../cdf/representation-validation.js';
 import { childPath, freezeJson, cloneJson, jsonValueIssue } from './json-value.js';
 import { componentDefinitionImportIssues } from './definition-import-rules.js';
+import { componentPropertyIssues } from '../cdf/property-validation.js';
 
 export type ResourceDependencyKey =
   | { kind: 'DesignToken'; namespace: 'dtcg-path'; value: string }
@@ -82,7 +83,19 @@ export function createImportPrerequisitePlan(input: ImportPrerequisiteManifest):
       continue;
     }
     if (!CDFComponentSchema.safeParse(component.entry).success) {
-      issue('component-definition-invalid', `/components/${index}`, 'Invalid Component definition');
+      const findings = componentPropertyIssues(component.entry);
+      if (!findings.length)
+        issue(
+          'component-definition-invalid',
+          `/components/${index}`,
+          `Invalid Component definition "${component.key}"`,
+        );
+      for (const finding of findings)
+        issue(
+          'component-definition-invalid',
+          `/components/${index}${finding.path}`,
+          `Invalid Component definition "${component.key}": ${finding.message}`,
+        );
       continue;
     }
     for (const finding of componentDefinitionImportIssues(component.entry))

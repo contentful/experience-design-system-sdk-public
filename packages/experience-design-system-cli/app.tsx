@@ -49,6 +49,7 @@ import {
   writeCredentials,
   type V1Credentials,
 } from './src/tui/settings/configuration/project/project-store.js';
+import { usableBaseDir } from './src/tui/settings/configuration/project/base-dir.js';
 
 export type Screen =
   | 'start'
@@ -162,7 +163,10 @@ function App({ importOptions, inkClear }: AppProps): React.ReactElement {
     if (!result.skipped) await writeCredentials({ ...result.credentials });
     const launch: ImportLaunch = {
       // a tokens-only import has no project, so its files go where runBaseDir says
-      projectPath: runBaseDir({ ...collected, configuredBaseDir: importDefaults?.credentials.contentfulBaseDir }),
+      projectPath: runBaseDir({
+        ...collected,
+        configuredBaseDir: usableBaseDir(importDefaults?.credentials.contentfulBaseDir),
+      }),
       tokens: collected.tokensPath ?? '',
       filePaths: collected.scannedFiles ?? [],
       ...importOptions,

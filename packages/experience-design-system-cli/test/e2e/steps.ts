@@ -35,6 +35,17 @@ export async function enterCredentials(app: ImportSession, credentials: { host: 
   await app.press('enter');
 }
 
+export async function continueWithSavedCredentials(app: ImportSession): Promise<void> {
+  await app.waitForText('Credentials pre-filled');
+  await app.press('enter');
+}
+
+export async function backToStart(app: ImportSession): Promise<void> {
+  await app.press('enter');
+  await app.waitForText('Import complete');
+  await app.press('enter');
+}
+
 export async function enterProjectPath(app: ImportSession, path: string): Promise<void> {
   await app.waitForText('Project path');
   await app.type(path);
