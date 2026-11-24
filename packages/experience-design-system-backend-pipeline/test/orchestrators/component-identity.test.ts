@@ -30,10 +30,6 @@ vi.mock('../../src/persistence/src/session/helpers/cache-keys.js', async (origin
   ...(await original<object>()),
   hashPromptForSkill: async () => 'example-prompt',
 }));
-vi.mock('../../src/persistence/src/index.js', async (original) => ({
-  ...(await original<object>()),
-  loadAcceptedNames: async () => new Set(['Card', 'Panel', 'Badge']),
-}));
 vi.mock('../../src/orchestrators/run-generate-components-session/helpers/run-one-generate-component.js', () => ({
   runOneGenerateComponent: async (
     { db, sessionId }: { db: DatabaseSync; sessionId: string },
@@ -121,6 +117,7 @@ describe('one persisted component ID', () => {
       const generate = () =>
         runGenerateComponentsSession({
           sessionId,
+          acceptedNames: ['Card', 'Panel', 'Badge'],
           agent: 'codex',
           promptOverrides: [],
           noCache: true,

@@ -6,7 +6,9 @@ import { startImport, type ImportSession } from './harness.js';
 import {
   acceptEverythingInReview,
   acceptEverythingInScopeGate,
+  backToStart,
   chooseWhatToImport,
+  continueWithSavedCredentials,
   enterCredentials,
   confirmScan,
   enterProjectPath,
@@ -94,6 +96,54 @@ describe('import scenarios', () => {
     expectButtonFromFixtureWasPushed(contentful);
     await expectValidCdf(world.outDir);
   }, 90_000);
+
+  it('a second import in the same session shows the scope gate again and generates only what it accepts', async () => {
+    await chooseWhatToImport(app, 'components');
+    await enterProjectPath(app, world.projectDir);
+    await confirmScan(app);
+    await enterCredentials(app, contentful);
+    await acceptEverythingInScopeGate(app, 6);
+    await acceptEverythingInReview(app);
+    await saveAndPush(app);
+    await app.waitForText('Done!');
+    await backToStart(app);
+
+    await chooseWhatToImport(app, 'components');
+    await enterProjectPath(app, world.projectDir);
+    await confirmScan(app);
+    await continueWithSavedCredentials(app);
+
+    await app.waitForText('Undecided 6');
+    await app.type('a');
+    await app.waitForText('Accepted 1/6');
+    await app.type('f');
+    await app.waitForText('Preview: 1 new');
+    expect(app.screen()).toContain('Button');
+    expect(app.screen()).not.toContain('SiteFooter');
+
+    expect(await agent.calls()).toEqual([
+      'compose',
+      'select',
+      ...Array(6).fill('generate-components'),
+      'compose',
+      'select',
+      'generate-components',
+    ]);
+  }, 120_000);
+
+  it('accepting nothing at the scope gate generates nothing and says no components were selected', async () => {
+    await chooseWhatToImport(app, 'components');
+    await enterProjectPath(app, world.projectDir);
+    await confirmScan(app);
+    await enterCredentials(app, contentful);
+
+    await app.waitForText('Undecided 6');
+    await app.type('f');
+    await app.waitForText('No components were selected');
+
+    expect(await agent.calls()).toEqual(['compose', 'select']);
+    expect(contentful.pushed).toHaveLength(0);
+  }, 60_000);
 
   it('tokens only: tokens import end to end, and the saved CDF is valid', async () => {
     await chooseWhatToImport(app, 'tokens');

@@ -113,7 +113,6 @@ export {
   createReviewSessionSummary,
   createReviewSessionDetail,
   countValidationIssues,
-  writeScopeDecisionsSnapshot,
 } from './persistence/src/index.js';
 export type {
   LoadReviewInputOptions,
@@ -394,7 +393,7 @@ export type {
   SourceFileEntry,
   RawComponentsDb,
 } from './persistence/src/index.js';
-export { loadAcceptedNames, parsePrecomputedCachedNames } from './persistence/src/index.js';
+export { parsePrecomputedCachedNames } from './persistence/src/index.js';
 export type { CandidateFile } from './steps/shared/index.js';
 export { storeDtcgTokens as storeDTCGTokens } from './persistence/src/index.js';
 export type {
