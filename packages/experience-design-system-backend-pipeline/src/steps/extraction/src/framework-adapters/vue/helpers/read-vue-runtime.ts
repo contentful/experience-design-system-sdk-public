@@ -294,6 +294,36 @@ function runtimeType(
   }
 }
 
+function helperName(call: import('ts-morph').CallExpression): string | undefined {
+  const callee = call.getExpression();
+  if (Node.isIdentifier(callee)) return callee.getText();
+  if (Node.isPropertyAccessExpression(callee)) return callee.getName();
+  return undefined;
+}
+
+function pickedKeys(node: Node | undefined): Set<string> | undefined {
+  const keys = node ? resolveVueRuntimeValue(node) : undefined;
+  if (!keys || !Node.isArrayLiteralExpression(keys)) return undefined;
+  const values: string[] = [];
+  for (const element of keys.getElements()) {
+    if (!Node.isStringLiteral(element) && !Node.isNoSubstitutionTemplateLiteral(element)) return undefined;
+    values.push(element.getLiteralValue());
+  }
+  return new Set(values);
+}
+
+function propsFactoryInput(call: import('ts-morph').CallExpression): Node | undefined {
+  const callee = call.getExpression();
+  if (!Node.isIdentifier(callee)) return undefined;
+  const declarations = vueValueDeclarations(callee);
+  const declaration = declarations.length === 1 ? declarations[0] : undefined;
+  if (!declaration || !Node.isVariableDeclaration(declaration)) return undefined;
+  const initializer = declaration.getInitializer();
+  if (!initializer || !Node.isCallExpression(initializer) || helperName(initializer) !== 'propsFactory')
+    return undefined;
+  return initializer.getArguments()[0];
+}
+
 export interface VueRuntimeResult {
   props: RawPropDefinition[];
   observations: SourceCandidateObservation[];
@@ -330,7 +360,13 @@ export function readVueRuntimeProps(root: Node, context: VueReaderContext): VueR
     });
   }
 
-  function add(property: Node, name: string, initializer: Node | undefined, spreadPath: string[]): void {
+  function add(
+    property: Node,
+    name: string,
+    initializer: Node | undefined,
+    spreadPath: string[],
+    assumption: string | undefined,
+  ): void {
     let typeNode = initializer;
     let requiredNode: Node | undefined;
     let defaultNode: Node | undefined;
@@ -383,6 +419,11 @@ export function readVueRuntimeProps(root: Node, context: VueReaderContext): VueR
       syntax.resolution = 'partial';
       syntax.resolutionReason = 'vue-runtime-type-throw';
     }
+    const declarationPartial = syntax.resolution === 'partial';
+    if (assumption) {
+      syntax.resolution = 'partial';
+      syntax.resolutionReason ??= assumption;
+    }
     if (unknownOptions) {
       syntax.resolutionReason = 'vue-runtime-options-unresolved';
       syntax.default = {
@@ -414,7 +455,7 @@ export function readVueRuntimeProps(root: Node, context: VueReaderContext): VueR
       fact.ambiguityReason = syntax.resolutionReason ?? 'vue-runtime-declaration-partial';
     }
     observations.push({ ...observation, fact, syntax });
-    if (syntax.resolution === 'partial')
+    if (declarationPartial)
       vueDiagnostic(
         context,
         unknownOptions ? 'vue-runtime-options-unresolved' : 'vue-runtime-declaration-partial',
@@ -422,7 +463,7 @@ export function readVueRuntimeProps(root: Node, context: VueReaderContext): VueR
       );
   }
 
-  function visit(node: Node, spreadPath: string[], depth: number): void {
+  function visit(node: Node, spreadPath: string[], depth: number, assumption?: string): void {
     if (context.diagnostics.used.vueRuntimeOccurrences === undefined)
       context.diagnostics.used.vueRuntimeOccurrences = 0;
     if (visits++ >= maxOccurrences || depth >= 64) {
@@ -441,13 +482,13 @@ export function readVueRuntimeProps(root: Node, context: VueReaderContext): VueR
         Node.isTypeAssertion(node) ||
         Node.isSatisfiesExpression(node)
       ) {
-        visit(node.getExpression(), spreadPath, depth + 1);
+        visit(node.getExpression(), spreadPath, depth + 1, assumption);
         return;
       }
       if (Node.isObjectLiteralExpression(node)) {
         for (const property of node.getProperties()) {
           if (Node.isSpreadAssignment(property))
-            visit(property.getExpression(), [...spreadPath, property.getText()], depth + 1);
+            visit(property.getExpression(), [...spreadPath, property.getText()], depth + 1, assumption);
           else if (Node.isPropertyAssignment(property) || Node.isShorthandPropertyAssignment(property)) {
             const nameNode = property.getNameNode();
             const name =
@@ -463,6 +504,7 @@ export function readVueRuntimeProps(root: Node, context: VueReaderContext): VueR
               name,
               Node.isPropertyAssignment(property) ? property.getInitializer() : property.getNameNode(),
               spreadPath,
+              assumption,
             );
           } else unavailable(property, 'vue-runtime-member-unresolved', spreadPath);
         }
@@ -470,7 +512,7 @@ export function readVueRuntimeProps(root: Node, context: VueReaderContext): VueR
       }
       if (Node.isArrayLiteralExpression(node)) {
         for (const element of node.getElements()) {
-          if (Node.isStringLiteral(element)) add(element, element.getLiteralValue(), undefined, spreadPath);
+          if (Node.isStringLiteral(element)) add(element, element.getLiteralValue(), undefined, spreadPath, assumption);
           else unavailable(element, 'vue-runtime-array-member-unresolved', spreadPath);
         }
         return;
@@ -489,7 +531,7 @@ export function readVueRuntimeProps(root: Node, context: VueReaderContext): VueR
               : declaration.getInitializer();
             if (initializer) {
               resolved = true;
-              visit(initializer, spreadPath, depth + 1);
+              visit(initializer, spreadPath, depth + 1, assumption);
             }
           }
         }
@@ -498,8 +540,36 @@ export function readVueRuntimeProps(root: Node, context: VueReaderContext): VueR
       }
       if (Node.isCallExpression(node)) {
         const returned = resolveVueRuntimeValue(node, { retainMutableDeclarations: true });
-        if (returned) visit(returned, [...spreadPath, node.getText()], depth + 1);
-        else unavailable(node, 'vue-runtime-call-unresolved', spreadPath);
+        if (returned) {
+          visit(returned, [...spreadPath, node.getText()], depth + 1, assumption);
+          return;
+        }
+        const name = helperName(node);
+        const [input, keyList] = node.getArguments();
+        const keys = (name === 'pick' || name === 'omit') && input ? pickedKeys(keyList) : undefined;
+        if (input && keys) {
+          vueDiagnostic(context, 'vue-runtime-helper-convention', node);
+          const keep = (prop: string) => keys.has(prop) === (name === 'pick');
+          const before = new Map(props);
+          const start = observations.length;
+          visit(input, [...spreadPath, node.getText()], depth + 1, 'vue-runtime-helper-convention');
+          for (const [prop, definition] of [...props]) {
+            if (keep(prop) || before.get(prop) === definition) continue;
+            const previous = before.get(prop);
+            if (previous) props.set(prop, previous);
+            else props.delete(prop);
+          }
+          const read = observations.splice(start);
+          observations.push(...read.filter((item) => item.name.startsWith('@source:') || keep(item.name)));
+          return;
+        }
+        const factoryInput = propsFactoryInput(node);
+        if (factoryInput) {
+          vueDiagnostic(context, 'vue-runtime-helper-convention', node);
+          visit(factoryInput, [...spreadPath, node.getText()], depth + 1, 'vue-runtime-helper-convention');
+          return;
+        }
+        unavailable(node, 'vue-runtime-call-unresolved', spreadPath);
         return;
       }
       unavailable(node, 'vue-runtime-expression-unresolved', spreadPath);

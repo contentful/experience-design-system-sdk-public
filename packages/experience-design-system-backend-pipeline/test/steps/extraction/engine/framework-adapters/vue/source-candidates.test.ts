@@ -173,4 +173,40 @@ describe('Vue SFC source candidates', () => {
     expect(own?.find((candidate) => candidate.name === 'a.b/c')?.keyPath).toEqual(['a.b/c']);
     expect(own?.find((candidate) => candidate.name === '__proto__')?.keyPath).toEqual(['__proto__']);
   });
+
+  it('resolves picked and factory-built Options API props as uncertain convention reads', async () => {
+    const directory = realpathSync.native(mkdtempSync(join(tmpdir(), 'vue-helper-candidates-')));
+    temporaryDirectories.push(directory);
+    writeFileSync(
+      join(directory, 'props.ts'),
+      `export const propsFactory = <T extends object>(props: T) => () => props;\nexport const makeBaseProps = propsFactory({ size: { type: String, default: 'md' }, tone: String, dense: Boolean });`,
+    );
+    const componentPath = join(directory, 'Chip.vue');
+    writeFileSync(
+      componentPath,
+      `<script lang="ts">\nimport { makeBaseProps } from './props.js';\nimport { pick } from './unavailable.js';\nexport default {\n  props: { label: String, ...pick(makeBaseProps(), ['size', 'dense']) },\n};\n</script>`,
+    );
+
+    const result = await extractVueComponents([componentPath]);
+    const component = result.components.find((item) => item.name === 'Chip')!;
+
+    expect(component.props.map((prop) => prop.name).sort()).toEqual(['dense', 'label', 'size']);
+    expect(component.props.find((prop) => prop.name === 'size')).toMatchObject({
+      type: 'string',
+      defaultValue: "'md'",
+    });
+    expect(component.sourceCandidates?.find((candidate) => candidate.name === 'label')?.facts?.certainty).toBe(
+      'certain',
+    );
+    const size = component.sourceCandidates?.find((candidate) => candidate.name === 'size');
+    expect(size?.facts).toMatchObject({ certainty: 'unknown', ambiguityReason: 'vue-runtime-helper-convention' });
+    expect(size?.observations[0]?.syntax).toMatchObject({
+      resolution: 'partial',
+      resolutionReason: 'vue-runtime-helper-convention',
+    });
+    expect(component.sourceCandidates?.some((candidate) => candidate.name === 'tone')).toBe(false);
+    expect(result.extractionDiagnostics?.modules).toContainEqual(
+      expect.objectContaining({ reason: 'vue-runtime-helper-convention', outcome: 'unavailable' }),
+    );
+  });
 });
