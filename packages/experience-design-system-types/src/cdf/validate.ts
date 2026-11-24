@@ -4,7 +4,7 @@ import { DESIGN_TOKEN_TYPES } from '../dtcg/token-types.js';
 import type { CDFFile, CDFComponentEntry, CDFTokenEntry, CDFValidationError, CDFValidationResult } from './types.js';
 
 import { CDFComponentSchema } from './types.js';
-import { validateCDFProperty } from './property-validation.js';
+import { componentPropertyIssues } from './property-validation.js';
 import { validateRepresentationClosure } from './representation-validation.js';
 import { jsonValueIssue } from '../property-contract/json-value.js';
 import { componentDefinitionImportIssues } from '../property-contract/definition-import-rules.js';
@@ -146,14 +146,19 @@ export function validateCDF(input: unknown): CDFValidationResult {
   const { components, tokens } = parseCDFComponents(file as Record<string, unknown>);
   const errors: CDFValidationError[] = [];
   for (const component of components) {
+    const propertyIssues = componentPropertyIssues(component.entry).map(({ path, message }) => ({
+      path: `/${component.key}${path}`,
+      message,
+    }));
     if (!CDFComponentSchema.safeParse(component.entry).success) {
-      errors.push({ path: '/' + component.key, message: 'Invalid complete component metadata or source ownership' });
+      errors.push(
+        ...(propertyIssues.length
+          ? propertyIssues
+          : [{ path: '/' + component.key, message: 'Invalid complete component metadata or source ownership' }]),
+      );
       continue;
     }
-    for (const [key, property] of Object.entries(component.entry.$properties)) {
-      for (const issue of validateCDFProperty(property).issues)
-        errors.push({ path: `/${component.key}/$properties/${key}${issue.path}`, message: issue.message });
-    }
+    errors.push(...propertyIssues);
     errors.push(
       ...componentDefinitionImportIssues(component.entry).map(({ path, message }) => ({
         path: `/${component.key}${path}`,

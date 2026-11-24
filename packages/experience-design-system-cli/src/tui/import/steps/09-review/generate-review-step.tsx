@@ -56,6 +56,7 @@ import { computeSidebarBudget, FALLBACK_ROWS } from '../07-scope-gate/sidebar/li
 import { HelpOverlay, type HelpSection } from '../07-scope-gate/sidebar/components/HelpOverlay.js';
 import { CompactControlBar } from '../07-scope-gate/sidebar/components/CompactControlBar.js';
 import { computeAutoRejectDecision } from './helpers/auto-reject-decision.js';
+import { describeAcceptedGenerationErrors } from './helpers/finalize-generation-errors.js';
 import { formatBreakingChange } from './helpers/breaking-change-format.js';
 import { enumerateCycleBreaks, type BreakEdge } from './helpers/enumerate-cycle-breaks.js';
 import type { HistorySnapshot } from './history.js';
@@ -1240,6 +1241,11 @@ function GenerateReviewStepView({
         setFinalizeError(
           `Cannot finalize — accepted set still contains a cycle (${[...participants].sort().join(', ')}). Reject a cycle member to break it.`,
         );
+        return;
+      }
+      const generationErrors = describeAcceptedGenerationErrors(components);
+      if (generationErrors) {
+        setFinalizeError(generationErrors);
         return;
       }
       setShowFinalize(true);
