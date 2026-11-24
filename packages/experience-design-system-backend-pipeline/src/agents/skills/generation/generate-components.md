@@ -31,7 +31,7 @@ All input is embedded inline in the prompt before this file:
 - **DTCG token data** — full token tree, if provided
 - **Token-name sidecar** — raw CSS custom property name → DTCG dot-notation path, if provided
 - **Component source references** — the real file text for the component's own source, plus up to 5 sibling files (e.g. a co-located `.styles.ts` or `utils.ts`, or a file reached transitively through another sibling — such as a re-exported component's own styles module), if provided. **You have no filesystem access and no tools — `sourcePath` is a citation label only, never something to open.**
-  - A **"uses not shown"** line may accompany these files. The files are excerpts windowed around the property names, and this line names the properties with at least one use that fell outside the excerpt budget. Treat those properties' consumption as unknown: do not classify them `token` on what is shown, and do not conclude they are unread. Unknown resolves to `string` with `values` (or open `string`) per "Ambiguity resolves to `string` with `values`".
+  - A **"uses not shown"** line may accompany these files. The files are excerpts windowed around the property names, and this line names the properties with at least one use that fell outside the excerpt budget. Treat those properties' consumption as unknown: do not classify them `token` on what is shown, and do not conclude they are unread or that the alternatives shown are exhaustive. Unknown resolves to `string` with `values` (or open `string`) per "Ambiguity resolves to `string` with `values`".
 
 ```typescript
 interface RawPropDefinition {
@@ -59,12 +59,18 @@ interface RawComponentDefinition {
 }
 ```
 
-The `category` field on each prop is a pre-classification hint from static analysis heuristics.
-It is correct approximately 80% of the time for simple props. You should:
+The `category` field on each prop is an advisory hint from static analysis heuristics. Verify each classification against the declared contract and the source shown. Property names and general domain knowledge are cues for investigation, not proof of a category, value domain, requiredness, or binding behavior. Account for every prop in the input; keep uncertain props and explain unresolved evidence in `reason`. NEVER produce zero output — if you disagree with all hints, explain why in `reason`.
 
-- Trust it for obvious cases (event handlers excluded, text labels as content)
-- Override it when your domain knowledge indicates otherwise
-- NEVER produce zero output — if you disagree with all hints, explain why in descriptions
+## Source evidence and uncertainty
+
+- The declared type and contract govern the available alternatives. Copy a finite declared literal union as declared. A union that also includes `string` or `number` is open and must not be narrowed to only its literal members: emit `cdf_type: "string"` without `values` and name the known literals in `reason`.
+- A closed set of `values` requires evidence of the complete allowed set: a closed declared union, an explicit `allowedValues` list, or source that establishes an exhaustive finite set (such as a lookup map typed or keyed by every member). A default, one caller, one observed value, a prop name, a partial lookup table, or an existing space component is an example or an alignment clue; none of them alone proves the complete set.
+- Take editor `required` from the declared source contract. Typical caller presence, a default, a guess that the component renders empty without it, or overlap with an existing space component does not establish requiredness.
+- Preserve valid defaults exactly, including `false`, `0`, and the empty string (numeric defaults are written as strings, e.g. `"0"`). A default is not the only permitted value.
+- The source shown is bounded. Missing imports, callers, excerpts, or source files leave those facts unknown; they do not establish that a prop is unused, that the component does not render, or that alternatives are absent.
+- Keep uncertain props in the output when evidence is incomplete. State what is unknown in `reason` instead of dropping the prop or inventing a domain, requirement, token restriction, or source fact.
+- Forwarding establishes use, not editor authorability. Follow the source shown to the consumer and judge whether the prop supplies editable content, design, or state, or only implementation or runtime behavior, and explain that consumer behavior in `reason`. Apart from the pass-through and framework-internal exclusions in the decision tree below, names and forwarding patterns alone never justify classification or exclusion, and unresolved behavior remains uncertainty.
+- Existing space components are optional alignment context. They may identify a possible match, but the source shown controls the current component's prop names, alternatives, defaults, and requiredness.
 
 ---
 
@@ -94,7 +100,7 @@ Emit one JSON object per line. The CLI parses lines starting with `{`. Lines not
 - Every prop in the input must produce exactly one call: `classify_prop` OR `exclude_prop`.
 - Every slot must produce exactly one `classify_slot` call.
 - Emit `classify_component` once at the start (required). The `description` field is **required** — always provide a brief description of the component's purpose.
-- `values` is optional for `cdf_type: "string"` — when present it must be a non-empty string array of the variant names the prop accepts. There is no `enum` type; a fixed set of choices is `cdf_type: "string"` with `values`. **There is no legal `values` list that is guessed.** If the value set is shown to you anywhere in the material below — the type's own declaration, an `allowedValues` list on the raw prop, a variant/lookup map, a default, a sibling excerpt — copy it into `values`. If it is shown nowhere, emit `cdf_type: "string"` and leave `values` off. `string` without `values` is unrestricted: the author can still pass the real value. A guessed list silently rejects it.
+- `values` is optional for `cdf_type: "string"` — when present it must be a non-empty string array of the variant names the prop accepts. There is no `enum` type; a fixed set of choices is `cdf_type: "string"` with `values`. **There is no legal `values` list that is guessed.** If the complete value set is shown to you anywhere in the material below — the type's own declaration, an `allowedValues` list on the raw prop, a variant/lookup map that covers every member, a sibling excerpt — copy it into `values`. A default or a single observed value is one member, not the set. If the complete set is shown nowhere, emit `cdf_type: "string"` and leave `values` off. `string` without `values` is unrestricted: the author can still pass the real value. A guessed list silently rejects it.
 - **Do NOT include `values` for `cdf_type: "token"`.** The two property types carry different kinds of list. A string prop's `values` list holds _variant names_ the component accepts (`"primary"`, `"secondary"`). A `token` prop's list holds _design token paths_ (`"color.brand.primary"`), produced by the separate token-mapping step (`$token.allowed`) — never by you. Emitting `values` on a token prop makes the definition invalid.
 - `token_kind` is required for `cdf_type: "token"` — must be a DTCG `$type` string, e.g. `"color"`.
 - `required` must be a JSON boolean (`true`/`false`), not a string.
@@ -164,7 +170,7 @@ that decides. There is no fourth question.
   or a vocabulary of its own (`allowedValues`, a literal union) — any of these means
   the component needs the _name_. A presence check (`if (width)`) or arithmetic on
   the value is not a lookup.
-  **Yes → `string`, names in `values`, stop.** No → Q2.
+  **Yes → `string`, names in `values`, stop** (an open union that also accepts `string` or `number` stays `string` without `values`; see "Source evidence and uncertainty"). No → Q2.
 - **Q2 — Is the value written straight into a style or attribute?**
   `rx={radius}`, `padding: ${padding}`, `style={{ color }}`, `background: var(${bg})` —
   the value reaches the renderer without the component resolving it.
@@ -202,6 +208,12 @@ export const Divider = ({ thickness = tokens.borderWidthDefault, inset = 0 }: Di
 A lookup map from variant names to tokens is evidence **for** `string` with `values`, not against
 it — that is Q1 answering yes. The map exists precisely because the component was
 handed a name it had to resolve itself.
+
+A domain with an open alternative stays open even when its known values are also
+design token names: a `string`-typed lookup key is still `string`, without a
+narrowed `values` list. Preserve every source-supported alternative and explain
+any you cannot represent in `reason`; do not invent a narrower type to resolve
+uncertainty.
 
 **`token` is earned by Q2 and Q3 together, and only that way.** Cite both lines
 in `reason`: the interpolation and the token reference. Once both are cited, the
@@ -373,7 +385,7 @@ as string with values so the author picks "primary" and the component receives "
 
 ## Category correction rules
 
-The pre-classified `category` is wrong in predictable ways. Correct silently (document in `description`):
+The pre-classified `category` is wrong in predictable ways. The names below are cues; confirm each correction against what the source shows the prop does, and document it in `reason`:
 
 - Visual style props (`color`, `size`, `padding`, `spacing`, `variant`, `theme`, `bgColor`, `imageOnLeft`, `enableXxx`) classified as `content` or `state` → `design`
 - Interactive/behavioral state props (`disabled`, `loading`, `expanded`, `selected`, `checked`, `active`, `isOpen`, `isSearchVisible`, `showXxx`, `hideXxx`, `preview`, `componentId`, `sectionKey`, `variantIndex`) classified as `design` or `content` → `state`
@@ -392,9 +404,12 @@ For each `RawSlotDefinition`:
 
 - `name` → `slot` field
 - `description` → `description` field
+- Preserve the exact original slot name, including render-function names; do not rename a slot from observed markup or a familiar pattern.
 - `allowedComponents` → `allowed_components` (pass through)
 - `allowed_components` must contain only exact names from the hard allowlist supplied in the prompt; never invent a child from an import, JSX element, type name, icon name, or implementation helper, and omit any child that is not listed.
+- The allowlist names the components that may be referenced; it is not the slot's domain. Children observed in one caller or example do not close an open slot — restrict `allowed_components` only when the slot's declared or enforced contract restricts it.
 - `required`:
+  - Preserve declared requiredness, including `false`
   - `true` if the component does not render correctly without content in this slot (primary content area of a Card, Dialog body, etc.)
   - `false` if clearly optional (icon slot, footer slot with a default, decorative slot)
   - Default to `true` when the source gives no signal
@@ -437,7 +452,7 @@ Output:
 
 ```
 Starting Button classification — 5 props, 1 slot
-{"tool":"classify_component","description":"Primary action button with variant and state support","rationale":{"description":"Button is an atom — a single interactive control that triggers an action. It carries a label, a small set of visual variants, and a disabled flag, which is the minimal surface a marketer needs to configure a call-to-action.","props":"Kept label (content), variant (string with values, design), disabled (boolean, state), and className (string, design escape hatch). Excluded onClick because it is an event handler — framework-internal and not configurable in Contentful.","slots":"Kept the icon slot as optional because the button renders correctly without it and the icon is purely decorative."}}
+{"tool":"classify_component","description":"Primary action button with variant and state support","rationale":{"description":"Button is an atom — a single interactive control that triggers an action. It carries a label, a small set of visual variants, and a disabled flag, which is the minimal surface a marketer needs to configure a call-to-action.","props":"Kept label (content), variant (string with values, design), and disabled (boolean, state). Excluded onClick because it is an event handler — framework-internal and not configurable in Contentful — and className because it is a DOM pass-through that developers wire, not a marketer-configurable surface.","slots":"Kept the icon slot as optional because the button renders correctly without it and the icon is purely decorative."}}
 label is a required string content prop
 {"tool":"classify_prop","prop":"label","cdf_type":"string","cdf_category":"content","required":true,"description":"Button label text"}
 variant is a string union — string type with values, category design
@@ -530,11 +545,27 @@ href is a URL string — cdf_type string (not link), category content
 {"tool":"classify_prop","prop":"href","cdf_type":"string","cdf_category":"content","required":false,"description":"Navigation URL"}
 ```
 
+### Open domains and falsy defaults
+
+A declared `string` alternative alongside literal alternatives stays open, and a falsy default is preserved as declared:
+
+```
+tone has type 'info' | 'warning' | string with default ''; the string alternative keeps the domain open
+{"tool":"classify_prop","prop":"tone","cdf_type":"string","cdf_category":"design","required":false,"default":"","description":"Tone of the message","reason":"Declared as 'info' | 'warning' | string, so the domain is open; known literals are info and warning. Default '' preserved as declared."}
+```
+
+A slot that accepts arbitrary renderable values keeps its declared name and stays open even if one caller passes a single known component:
+
+```
+renderRegion accepts any ReactNode; the only caller shown passes <Badge>, which does not restrict the slot
+{"tool":"classify_slot","slot":"renderRegion","required":false,"description":"Region for custom content","rationale":"Declared as an optional ReactNode render region. One caller passes a Badge, but the declared contract accepts any renderable content, so no allowed_components restriction is applied."}
+```
+
 ---
 
 ## Edge cases
 
-- **Prop with unresolvable type** (generics, intersection, callback) → `exclude_prop` with reason `"complex type — not representable in CDF"`.
+- **Prop with unresolvable type** (an opaque generic or intersection) → keep it with a reasoned `classify_prop`, `cdf_type: "string"`, and state what is unknown in `reason`; an unknown type alone never justifies exclusion. Callbacks, refs, state setters and the other cases under "When to finally exclude" are still excluded, and an inline object type that cannot be flattened follows "Handling nested object props".
 - **Component with zero classified props after exclusions** → still emit `classify_component`. The DB entry will have an empty `$properties` object.
 - **Slot not in DB** → skipped with a warning; does not abort the run.
 - **Prop not in DB** → skipped with a warning; does not abort the run.
@@ -558,7 +589,10 @@ Before emitting any tool calls, verify:
 13. `rationale.description` follows the same "Description content rules" as `description` — no internal initiative names (`INTEG-*`, `EDSI`, `DSI`, `M1`, `M2`, wave/phase references, etc.).
 14. Every `cdf_type: "token"` prop cites a line that interpolates its value into a style **and** a token reference at that use (Q2 yes, Q3 yes), and carries no `values`. If you cannot cite both, it is `string` (with or without `values`); if you can, it is `token` — its type annotation is not a reason to emit `string`.
 15. Every prop whose values are friendly names is `string` with a non-empty `values` array, even when each name resolves to a design token internally; every prop for which Q1–Q3 could not be answered was emitted as `string` with `values` (or open `string`) with the ambiguity stated in `reason`, and no answerable prop was called ambiguous.
-16. Every `values` array is copied from evidence in the material shown — a type declaration, an `allowedValues` list on the raw prop, a variant or lookup map, a default, in the component's own file or in any sibling excerpt — and none of it was invented. Where the value set appears nowhere, the prop is `cdf_type: "string"`, with the reason recorded in `reason`. Do not drop a prop merely because you could not enumerate its values.
+16. Every `values` array is copied from evidence of the complete set in the material shown — a type declaration, an `allowedValues` list on the raw prop, a variant or lookup map that covers every member, in the component's own file or in any sibling excerpt — and none of it was invented. A default or one observed value does not close a domain. Where the complete set appears nowhere, the prop is `cdf_type: "string"`, with the reason recorded in `reason`. Do not drop a prop merely because you could not enumerate its values.
+17. No union that includes `string` or `number` was narrowed to its literal members.
+18. Every declared default is preserved exactly, including `false`, `0` and the empty string, and no `required` value was inferred from callers, defaults or an existing space component.
+19. Every prop whose evidence is incomplete is still in the output, with what is unknown stated in `reason`.
 
 After the run completes, the developer can validate the pipeline output with:
 
@@ -587,16 +621,16 @@ invent a `values` list. The uncertain answer is `cdf_type: "string"`, every time
 
 ## Existing entities in the target space
 
-The preamble may include an "Existing components in the target Contentful space" JSON block with a `likelyMatch` (a fuzzy-matched space component that likely corresponds to the codebase component you're classifying), an `otherComponents` list, and a rolled-up token summary. Use it to align your classifications with what the customer already has.
+The preamble may include an "Existing components in the target Contentful space" JSON block with a `likelyMatch` (a fuzzy-matched space component that may correspond to the codebase component), an `otherComponents` list, and a rolled-up token summary. Treat these as optional alignment context; the current component's declared contract and the source shown govern its classification.
 
-### When `likelyMatch` is present — align rename intent + categories + slot names
+### When `likelyMatch` is present — record possible alignment for review
 
-Your goal is **consistency**: the customer will see the diff between what you propose and what already exists, and every unnecessary category flip or slot-shape mismatch becomes review friction.
+Use the context to explain possible alignment during review. It does not establish the current component's names, categories, slot shape, requiredness, or value domain.
 
 1. **Prop names**: `classify_prop.prop` MUST always be the codebase prop name — that's the DB lookup key. When a codebase prop looks like it corresponds to an existing space prop (e.g. codebase `kind` ↔ space `variant`, codebase `text` ↔ space `label`), keep `prop` as the codebase name and put the alignment note in `reason`, e.g. `"looks like existing space prop 'variant' — customer may want to reconcile at review"`. Never rewrite `prop` itself; reconciliation happens downstream, not in this tool call.
-2. **Categories**: match the space's category (`design` / `content`) for equivalent props, even if you'd normally categorize differently. Note the alignment in `reason`.
-3. **Slot names**: match slot IDs / names when the shape is equivalent.
-4. **Finite values**: never invent new values to bridge a mismatch. If the codebase's value set diverges from the space's, classify against your best-effort mapping and cite the divergence in `reason` — this is a signal for human review, not a green light to rewrite the space's values.
+2. **Categories**: classify from the current source evidence. If a likely equivalent space prop uses a different category, note the difference in `reason` for review; the space category does not override the current evidence.
+3. **Slot names**: preserve names from the current component contract. Note a possible match to a space slot in `rationale` when supported.
+4. **Finite values**: preserve the current component's source-supported domain. If it differs from the space's values, cite the difference in `reason` for review; do not bridge the mismatch with guessed values.
 5. **Never realign silently.** Every classification influenced by the `likelyMatch` MUST cite it in `reason`.
 
 ### When only `otherComponents` is present (no direct match)
