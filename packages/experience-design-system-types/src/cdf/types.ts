@@ -1,7 +1,8 @@
 import { Ajv } from 'ajv';
 import { cdfJsonSchema } from './schema.js';
 import * as z from 'zod/mini';
-import { jsonValueIssue } from '../property-contract/json-value.js';
+import { childPath, jsonValueIssue, type PropertyIssue } from '../property-contract/json-value.js';
+import { schemaValidationErrors } from './schema-errors.js';
 import type { RepresentationPlan, ModelBinding } from '../property-contract/representation-plan.js';
 import { CDF_PROPERTY_TYPES, CDF_PROPERTY_CATEGORIES } from './vocabularies.js';
 import { validateCDFProperty } from './property-validation.js';
@@ -33,7 +34,33 @@ export interface CDFPropertyDefinition extends CDFFieldDefinition {
   $category: (typeof CDF_PROPERTY_CATEGORIES)[number];
   $sourceInput?: SourceInputAssociation;
 }
-export const CDFPropertySchema = z.custom<CDFPropertyDefinition>((value) => validateCDFProperty(value).valid);
+function pointerPath(value: unknown, pointer: string): PropertyKey[] {
+  if (!pointer) return [];
+  let current = value;
+  return pointer
+    .slice(1)
+    .split('/')
+    .map((segment) => {
+      const key = segment.replace(/~1/g, '/').replace(/~0/g, '~');
+      const index = Array.isArray(current) && /^(0|[1-9]\d*)$/.test(key) ? Number(key) : undefined;
+      current =
+        current && typeof current === 'object' && Object.hasOwn(current, key)
+          ? (current as Record<string, unknown>)[key]
+          : undefined;
+      return index ?? key;
+    });
+}
+
+function issueSchema<T>(issues: (value: unknown) => PropertyIssue[]) {
+  return z.custom<T>().check(
+    z.superRefine((value, ctx) => {
+      for (const issue of issues(value))
+        ctx.addIssue({ code: 'custom', input: value, path: pointerPath(value, issue.path), message: issue.message });
+    }),
+  );
+}
+
+export const CDFPropertySchema = issueSchema<CDFPropertyDefinition>((value) => validateCDFProperty(value).issues);
 
 const ModelBindingSchema = z.strictObject({
   planId: z.string(),
@@ -75,57 +102,70 @@ const admitComponent = new Ajv({ allErrors: true }).compile({
   definitions: cdfJsonSchema.definitions,
 });
 
-export const CDFComponentSchema = z.custom<CDFComponentEntry>((value) => {
-  if (jsonValueIssue(value) || !value || typeof value !== 'object' || Array.isArray(value)) return false;
-  if (!admitComponent(value)) return false;
-  const entry = value as CDFComponentEntry;
-  if (
-    entry.$type !== 'component' ||
-    !entry.$properties ||
-    typeof entry.$properties !== 'object' ||
-    Array.isArray(entry.$properties)
-  )
-    return false;
-  if (
-    Object.keys(entry).some(
-      (key) => !['$type', '$description', '$properties', '$slots', '$model', '$representationPlans'].includes(key),
+function zodIssues(path: string, issues: readonly { path: PropertyKey[]; message: string }[]): PropertyIssue[] {
+  return issues.map((issue) => ({
+    path: issue.path.reduce<string>((parent, key) => childPath(parent, String(key)), path),
+    message: issue.message,
+  }));
+}
+
+function slotIssues(slots: Record<string, unknown>): PropertyIssue[] {
+  return Object.entries(slots).flatMap(([key, slot]) => {
+    const path = childPath('/$slots', key);
+    if (!key.trim()) return [{ path, message: 'Slot id must be a non-empty string' }];
+    return zodIssues(path, CDFSlotSchema.safeParse(slot).error?.issues ?? []);
+  });
+}
+
+function representationPlanIssues(plans: Record<string, Partial<RepresentationPlan> | null>): PropertyIssue[] {
+  return Object.entries(plans).flatMap(([key, plan]) => {
+    const path = childPath('/$representationPlans', key);
+    if (
+      !plan ||
+      plan.schemaVersion !== 1 ||
+      typeof plan.id !== 'string' ||
+      !Array.isArray(plan.models) ||
+      !Array.isArray(plan.mappings)
     )
-  )
-    return false;
-  if (entry.$description !== undefined && typeof entry.$description !== 'string') return false;
-  if (Object.values(entry.$properties).some((property) => !validateCDFProperty(property).valid)) return false;
-  if (
-    entry.$slots !== undefined &&
-    (!entry.$slots ||
-      typeof entry.$slots !== 'object' ||
-      Array.isArray(entry.$slots) ||
-      Object.entries(entry.$slots).some(([key, slot]) => !key.trim() || !CDFSlotSchema.safeParse(slot).success))
-  )
-    return false;
-  if (entry.$model !== undefined && !ModelBindingSchema.safeParse(entry.$model).success) return false;
-  if (
-    entry.$representationPlans !== undefined &&
-    (!entry.$representationPlans ||
-      typeof entry.$representationPlans !== 'object' ||
-      Array.isArray(entry.$representationPlans) ||
-      Object.entries(entry.$representationPlans).some(
-        ([key, plan]) =>
-          !plan ||
-          plan.identity?.key !== key ||
-          plan.schemaVersion !== 1 ||
-          typeof plan.id !== 'string' ||
-          !Array.isArray(plan.models) ||
-          !Array.isArray(plan.mappings),
-      ))
-  )
-    return false;
+      return [{ path, message: 'Expected complete representation plan' }];
+    return plan.identity?.key === key ? [] : [{ path, message: 'Representation plan identity must match its key' }];
+  });
+}
+
+export function componentEntryIssues(value: unknown): PropertyIssue[] {
+  const unsafe = jsonValueIssue(value);
+  if (unsafe) return [unsafe];
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return [{ path: '', message: 'Expected component object' }];
+  if (!admitComponent(value))
+    return schemaValidationErrors(admitComponent.errors).map(({ path, message }) => ({
+      path: path === '/' ? '' : path,
+      message,
+    }));
+  const entry = value as CDFComponentEntry;
+  const issues = [
+    ...Object.entries(entry.$properties).flatMap(([key, property]) =>
+      validateCDFProperty(property).issues.map((issue) => ({
+        path: childPath('/$properties', key) + issue.path,
+        message: issue.message,
+      })),
+    ),
+    ...slotIssues(entry.$slots ?? {}),
+    ...(entry.$model === undefined
+      ? []
+      : zodIssues('/$model', ModelBindingSchema.safeParse(entry.$model).error?.issues ?? [])),
+    ...representationPlanIssues(entry.$representationPlans ?? {}),
+  ];
+  if (issues.length) return issues;
   try {
     validateCDFSourceOwnerContract(entry);
-    return true;
-  } catch {
-    return false;
+    return [];
+  } catch (error) {
+    return [{ path: '', message: error instanceof Error ? error.message : 'Invalid source input ownership' }];
   }
-});
+}
+
+export const CDFComponentSchema = issueSchema<CDFComponentEntry>(componentEntryIssues);
 
 export interface CDFFile {
   $schema: string;

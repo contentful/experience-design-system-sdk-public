@@ -1,9 +1,10 @@
-import { Ajv, type ErrorObject, type ValidateFunction } from 'ajv';
+import { Ajv, type ValidateFunction } from 'ajv';
 import { cdfJsonSchema, CDF_SCHEMA_URL } from './schema.js';
 import { DESIGN_TOKEN_TYPES } from '../dtcg/token-types.js';
 import type { CDFFile, CDFComponentEntry, CDFTokenEntry, CDFValidationError, CDFValidationResult } from './types.js';
 
-import { CDFComponentSchema } from './types.js';
+import { componentEntryIssues } from './types.js';
+import { schemaValidationErrors } from './schema-errors.js';
 import { validateCDFProperty } from './property-validation.js';
 import { validateRepresentationClosure } from './representation-validation.js';
 import { jsonValueIssue } from '../property-contract/json-value.js';
@@ -69,17 +70,6 @@ function entryValidator(name: 'component' | 'token'): ValidateFunction {
 const validateComponentEntry = entryValidator('component');
 const validateTokenEntry = entryValidator('token');
 
-// A failed if/then rule adds a second, vaguer error; the first one already says what is wrong.
-function toValidationErrors(errors: ErrorObject[] | null | undefined, prefix = ''): CDFValidationError[] {
-  return (errors ?? [])
-    .filter((err) => err.keyword !== 'if')
-    .map((err) => ({
-      path: `${prefix}${err.instancePath}` || '/',
-      message: err.message ?? 'Unknown validation error',
-      expected: err.params ? JSON.stringify(err.params) : undefined,
-    }));
-}
-
 /**
  * The schema's top level is a `oneOf` of component, token and group, and Ajv reports a failed `oneOf` by listing the errors
  * of every branch, which buries the real one under errors from branches that never applied. This validates each entry
@@ -109,7 +99,7 @@ function entryErrors(node: Record<string, unknown>, prefix: string): CDFValidati
       }
       errors.push(...entryErrors(value as Record<string, unknown>, path));
     } else if (!check(value)) {
-      errors.push(...toValidationErrors(check.errors, path));
+      errors.push(...schemaValidationErrors(check.errors, path));
     }
   }
   return errors;
@@ -122,7 +112,7 @@ export function validateCDF(input: unknown): CDFValidationResult {
   if (!valid) {
     const focused =
       typeof input === 'object' && input !== null ? entryErrors(input as Record<string, unknown>, '') : [];
-    const errors = focused.length > 0 ? focused : toValidationErrors(validate.errors);
+    const errors = focused.length > 0 ? focused : schemaValidationErrors(validate.errors);
     return { valid: false, errors, components: [], tokens: [] };
   }
 
@@ -146,8 +136,9 @@ export function validateCDF(input: unknown): CDFValidationResult {
   const { components, tokens } = parseCDFComponents(file as Record<string, unknown>);
   const errors: CDFValidationError[] = [];
   for (const component of components) {
-    if (!CDFComponentSchema.safeParse(component.entry).success) {
-      errors.push({ path: '/' + component.key, message: 'Invalid complete component metadata or source ownership' });
+    const entryIssues = componentEntryIssues(component.entry);
+    if (entryIssues.length) {
+      errors.push(...entryIssues.map(({ path, message }) => ({ path: `/${component.key}${path}`, message })));
       continue;
     }
     for (const [key, property] of Object.entries(component.entry.$properties)) {
