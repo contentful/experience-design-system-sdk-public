@@ -1,6 +1,7 @@
-import type { ClassDeclaration } from 'ts-morph';
+import type { ClassDeclaration, Node } from 'ts-morph';
 import type { RawPropDefinition } from '../../../../types/component.js';
 import type { AngularComponentMetadata } from '../../types/angular-metadata.js';
+import type { ExtractedInput } from '../../types/extracted-input.js';
 import { extractDecoratorInput } from './extract-decorator-input.js';
 import { extractSignalInput } from './extract-signal-input.js';
 import { parseInputsArrayEntry } from './parse-inputs-array-entry.js';
@@ -26,27 +27,29 @@ function collectClassChain(cls: ClassDeclaration): ClassDeclaration[] {
   return chain;
 }
 
-export function extractProps(cls: ClassDeclaration, meta: AngularComponentMetadata): RawPropDefinition[] {
+export function extractProps(
+  cls: ClassDeclaration,
+  meta: AngularComponentMetadata,
+  warnings: string[],
+): RawPropDefinition[] {
   const byName = new Map<string, RawPropDefinition>();
   const chain = collectClassChain(cls);
 
+  const retain = (input: ExtractedInput | null, declaration: Node): void => {
+    if (!input || byName.has(input.prop.name)) return;
+    byName.set(input.prop.name, input.prop);
+    if (input.transform !== undefined) {
+      warnings.push(
+        `${declaration.getSourceFile().getFilePath()}: input ${input.prop.name} uses unresolved transform ${input.transform}; source type retained.`,
+      );
+    }
+  };
+
   for (const klass of chain) {
-    for (const field of klass.getProperties()) {
-      const prop = extractDecoratorInput(field);
-      if (prop && !byName.has(prop.name)) byName.set(prop.name, prop);
-    }
-    for (const setter of klass.getSetAccessors()) {
-      const prop = extractDecoratorInput(setter);
-      if (prop && !byName.has(prop.name)) byName.set(prop.name, prop);
-    }
-    for (const getter of klass.getGetAccessors()) {
-      const prop = extractDecoratorInput(getter);
-      if (prop && !byName.has(prop.name)) byName.set(prop.name, prop);
-    }
-    for (const field of klass.getProperties()) {
-      const prop = extractSignalInput(field);
-      if (prop && !byName.has(prop.name)) byName.set(prop.name, prop);
-    }
+    for (const field of klass.getProperties()) retain(extractDecoratorInput(field), field);
+    for (const setter of klass.getSetAccessors()) retain(extractDecoratorInput(setter), setter);
+    for (const getter of klass.getGetAccessors()) retain(extractDecoratorInput(getter), getter);
+    for (const field of klass.getProperties()) retain(extractSignalInput(field), field);
   }
 
   for (const entry of meta.inputsArray) {

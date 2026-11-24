@@ -1,8 +1,9 @@
 import { Node, type PropertyDeclaration } from 'ts-morph';
 import type { RawPropDefinition } from '../../../../types/component.js';
+import type { ExtractedInput } from '../../types/extracted-input.js';
 import { resolvePropType } from './resolve-prop-type.js';
 
-export function extractSignalInput(field: PropertyDeclaration): RawPropDefinition | null {
+export function extractSignalInput(field: PropertyDeclaration): ExtractedInput | null {
   const init = field.getInitializer();
   if (!init || !Node.isCallExpression(init)) return null;
 
@@ -36,8 +37,7 @@ export function extractSignalInput(field: PropertyDeclaration): RawPropDefinitio
   }
 
   let alias: string | null = null;
-  let transformIsBoolean = false;
-  let transformIsNumber = false;
+  let transform: string | undefined;
   if (configArg && Node.isObjectLiteralExpression(configArg)) {
     const aliasProp = configArg.getProperty('alias');
     if (aliasProp && Node.isPropertyAssignment(aliasProp)) {
@@ -48,28 +48,25 @@ export function extractSignalInput(field: PropertyDeclaration): RawPropDefinitio
     }
     const transformProp = configArg.getProperty('transform');
     if (transformProp && Node.isPropertyAssignment(transformProp)) {
-      const transformText = transformProp.getInitializer()?.getText() ?? '';
-      if (/\bbooleanAttribute\b/.test(transformText)) transformIsBoolean = true;
-      if (/\bnumberAttribute\b/.test(transformText)) transformIsNumber = true;
+      transform = transformProp.getInitializer()?.getText();
     }
   }
 
   const typeArg = init.getTypeArguments()[0];
   const resolved = resolvePropType(typeArg);
-  const typeText = transformIsBoolean ? 'boolean' : transformIsNumber ? 'number' : resolved.text;
 
   const name = alias ?? fieldName;
 
   const prop: RawPropDefinition = {
     name,
-    type: typeText,
+    type: resolved.text,
     required,
     sourceStartLine: field.getStartLineNumber(),
     sourceEndLine: field.getEndLineNumber(),
   };
   if (defaultValue !== undefined) prop.defaultValue = defaultValue;
-  if (resolved.allowedValues && !transformIsBoolean && !transformIsNumber) {
+  if (resolved.allowedValues) {
     prop.allowedValues = resolved.allowedValues;
   }
-  return prop;
+  return transform === undefined ? { prop } : { prop, transform };
 }

@@ -4,21 +4,17 @@ export interface ResolvedPropType {
   text: string;
 
   allowedValues: string[] | null;
-
-  isTemplateRef: boolean;
 }
 
 export function resolvePropType(typeNode: TypeNode | undefined): ResolvedPropType {
   if (!typeNode) {
-    return { text: 'any', allowedValues: null, isTemplateRef: false };
+    return { text: 'any', allowedValues: null };
   }
   const text = typeNode.getText();
   const members = extractStringLiteralUnion(typeNode);
-  const isTemplateRef = containsTemplateRef(typeNode);
   return {
     text,
     allowedValues: members.length > 0 ? members : null,
-    isTemplateRef,
   };
 }
 
@@ -51,10 +47,4 @@ function isNullOrUndefinedLiteral(typeNode: TypeNode): boolean {
   }
   const t = typeNode.getText();
   return t === 'null' || t === 'undefined';
-}
-
-function containsTemplateRef(typeNode: TypeNode): boolean {
-  const text = typeNode.getText();
-
-  return /\bTemplateRef\b/.test(text);
 }
