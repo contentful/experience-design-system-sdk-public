@@ -1818,6 +1818,12 @@ export function storeCDFComponents(
   }
 }
 
+const EMPTY_SOURCE_DEFAULTS: ReadonlySet<string> = new Set(['null', 'undefined']);
+
+function isEmptySourceDefault(value: string): boolean {
+  return EMPTY_SOURCE_DEFAULTS.has(value.trim());
+}
+
 export function loadCDFComponents(
   db: DatabaseSync,
   sessionId: string,
@@ -1947,7 +1953,7 @@ export function loadCDFComponents(
         resolvedDefault !== undefined && tokenTypeByPath.get(resolvedDefault) === p.cdf_token_kind
           ? resolvedDefault
           : undefined;
-      if (p.default_value !== null) {
+      if (p.default_value !== null && !isEmptySourceDefault(p.default_value)) {
         if (p.cdf_type === 'boolean') {
           propDef.$default = p.default_value === 'true';
         } else {
@@ -2081,10 +2087,9 @@ export function applyScopeDecisions(
   }
   if (accepted.length > 0) {
     const placeholders = accepted.map(() => '?').join(',');
-    db.prepare(`UPDATE raw_components SET status = 'generated' WHERE session_id = ? AND name IN (${placeholders})`).run(
-      sessionId,
-      ...accepted,
-    );
+    db.prepare(
+      `UPDATE raw_components SET status = 'generated', reject_reason = NULL WHERE session_id = ? AND name IN (${placeholders})`,
+    ).run(sessionId, ...accepted);
   }
   db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
 }

@@ -8,6 +8,9 @@ import type { FlowState } from '../../../src/tui/import/steps/10-flow/flow/types
 describe('the flow debug log', () => {
   let home: string;
   let base: string;
+  let store: typeof import('../../../src/tui/debug-store.js');
+  let log: typeof import('../../../src/tui/import/steps/10-flow/flow/flow-log.js');
+  let EMPTY_PUSH_RESULT: (typeof import('../../../src/tui/import/steps/10-flow/flow/types.js'))['EMPTY_PUSH_RESULT'];
 
   beforeEach(async () => {
     home = await mkdtemp(join(tmpdir(), 'eds-home-'));
@@ -17,6 +20,11 @@ describe('the flow debug log', () => {
       join(home, 'config.json'),
       JSON.stringify({ debugMode: { enabled: true }, contentfulBaseDir: base }),
     );
+    vi.resetModules();
+    store = await import('../../../src/tui/debug-store.js');
+    log = await import('../../../src/tui/import/steps/10-flow/flow/flow-log.js');
+    ({ EMPTY_PUSH_RESULT } = await import('../../../src/tui/import/steps/10-flow/flow/types.js'));
+    await vi.waitFor(() => expect(store.currentDebugSessionDir()).toBeDefined());
   });
 
   afterEach(async () => {
@@ -31,12 +39,6 @@ describe('the flow debug log', () => {
   // The flow state carries the CMA token and the push and preview messages come from the API, which can echo what it was
   // sent. What must hold is that the log, whether the run finishes or is cut short, never contains the token.
   it('never writes the CMA token, not from the state and not from an API message that echoes it', async () => {
-    vi.resetModules();
-    const store = await import('../../../src/tui/debug-store.js');
-    const log = await import('../../../src/tui/import/steps/10-flow/flow/flow-log.js');
-    const { EMPTY_PUSH_RESULT } = await import('../../../src/tui/import/steps/10-flow/flow/types.js');
-    await vi.waitFor(() => expect(store.currentDebugSessionDir()).toBeDefined());
-
     const token = 'CFPAT-s3cr3t/abc+def=';
     const echoed = `401 Unauthorized for ${token} (url: /spaces?access_token=${encodeURIComponent(token)})`;
     const state = {
@@ -108,5 +110,5 @@ describe('the flow debug log', () => {
       expect(written).not.toContain(encodeURIComponent(token));
     }
     expect(JSON.stringify(progress)).toContain('interrupted at Push');
-  });
+  }, 1_000);
 });

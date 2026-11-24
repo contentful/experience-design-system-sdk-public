@@ -30,6 +30,21 @@ describe('buildCDF', () => {
     expect(Object.keys(doc ?? {})).toEqual(['$schema']);
   });
 
+  it('names the component and field of an invalid component definition', () => {
+    const button: { key: string; entry: CDFComponentEntry } = {
+      key: 'Button',
+      entry: {
+        $type: 'component',
+        $properties: {
+          type: { $type: 'string', $category: 'design', $values: ['primary', 'dashed'], $default: 'null' },
+        },
+      },
+    };
+    expect(() => buildCDF([CARD, button], [])).toThrow(
+      'Invalid CDF prerequisites: /components/1/$properties/type/$default: Invalid Component definition "Button": Value outside declared domain',
+    );
+  });
+
   it('supports components-only and tokens-only documents', () => {
     expect(buildCDF([CARD], [])?.Card).toBeDefined();
     expect((buildCDF([], [PRIMARY_COLOR])?.color as Record<string, unknown>)?.brand).toBeDefined();

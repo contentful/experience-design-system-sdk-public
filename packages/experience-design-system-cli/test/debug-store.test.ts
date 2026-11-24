@@ -76,6 +76,24 @@ describe('the debug store', () => {
     expect(existsSync(join(home, 'debug'))).toBe(false);
   });
 
+  it('starts the session in the clean folder when the saved base directory ends in a carriage return', async () => {
+    const store = await load({ contentfulBaseDir: `${base}\r` });
+    await vi.waitFor(() => expect(store.currentDebugSessionDir()).toBeDefined());
+
+    expect(store.currentDebugSessionDir()!.startsWith(join(base, '.contentful'))).toBe(true);
+    expect(existsSync(`${base}\r`)).toBe(false);
+  });
+
+  it('starts no session in a saved base directory that points to a file', async () => {
+    const file = join(base, 'theme.css');
+    await writeFile(file, 'body {}');
+    const store = await load({ contentfulBaseDir: `${file}\r` });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(store.currentDebugSessionDir()).toBeUndefined();
+    expect(existsSync(`${file}\r`)).toBe(false);
+  });
+
   it('creates nothing until the import starts when no base directory is set', async () => {
     const store = await load();
     // The first import step finishes before the project, and so the session folder, is known.

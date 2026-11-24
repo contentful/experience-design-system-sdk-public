@@ -114,4 +114,15 @@ describe('the support bundle', () => {
       /\/s\/debug[\s\S]*Contentful support/,
     );
   });
+
+  it('prints a carriage return in the zip or folder path as a visible escape, so the path is not overprinted', async () => {
+    const { bundle } = await load();
+
+    const created = bundle.supportInstruction({ status: 'created', path: '/s/theme.css\r/logs.zip', files: 1 });
+    const failed = bundle.supportInstruction({ status: 'failed', folder: '/s/theme.css\r/debug' });
+
+    expect(created).toContain('/s/theme.css\\r/logs.zip');
+    expect(failed).toContain('/s/theme.css\\r/debug');
+    expect(created + failed).not.toContain('\r');
+  });
 });

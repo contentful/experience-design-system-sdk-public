@@ -11,6 +11,7 @@ import {
   type Snapshot,
 } from '@tui/shared/debug-trail.js';
 import { FieldForm, type FormField, type FormNotice } from '@tui/shared/components/FieldForm.js';
+import { baseDirProblem, usableBaseDir } from './base-dir.js';
 import { readCredentials, writeCredentials, type V1Credentials } from './project-store.js';
 
 type Field =
@@ -73,6 +74,8 @@ export function ProjectScreen({ onDone }: { onDone: () => void }): React.ReactEl
     readCredentials()
       .then((cfg) => {
         setConfig(cfg);
+        const problem = baseDirProblem(cfg.contentfulBaseDir ?? '');
+        if (problem) setNotice({ kind: 'error', text: problem });
         visit.before = snapshotOf(cfg);
         visit.persisted = visit.before;
         startDebugRun({
@@ -145,6 +148,12 @@ export function ProjectScreen({ onDone }: { onDone: () => void }): React.ReactEl
   }
 
   const save = (): void => {
+    const problem = baseDirProblem(config.contentfulBaseDir ?? '');
+    if (problem) {
+      visit.trail.record('save refused: base directory is a file');
+      setNotice({ kind: 'error', text: problem });
+      return;
+    }
     setSaving(true);
     setNotice(null);
     writeCredentials(config)
@@ -152,7 +161,8 @@ export function ProjectScreen({ onDone }: { onDone: () => void }): React.ReactEl
         visit.persisted = snapshotOf(config);
         visit.trail.record('saved');
         // Start the session folder now rather than at the next launch.
-        if (config.contentfulBaseDir) void startDebugSessionIn(config.contentfulBaseDir, { replace: true });
+        const baseDir = usableBaseDir(config.contentfulBaseDir);
+        if (baseDir) void startDebugSessionIn(baseDir, { replace: true });
         setNotice({ kind: 'success', text: 'Project settings saved' });
       })
       .catch((err: unknown) => {

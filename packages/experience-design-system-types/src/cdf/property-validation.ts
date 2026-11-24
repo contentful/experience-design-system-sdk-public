@@ -98,6 +98,20 @@ export function normalizeCDFBooleanChoices(definition: CDFFieldDefinition): void
     delete definition.$values;
   for (const child of cdfDefinitionChildren(definition)) normalizeCDFBooleanChoices(child.definition);
 }
+export function componentPropertyIssues(entry: unknown): PropertyIssue[] {
+  const properties =
+    entry && typeof entry === 'object' && !Array.isArray(entry)
+      ? (entry as { $properties?: unknown }).$properties
+      : undefined;
+  if (!properties || typeof properties !== 'object' || Array.isArray(properties)) return [];
+  return Object.entries(properties).flatMap(([key, property]) =>
+    validateCDFProperty(property).issues.map((issue) => ({
+      path: `/$properties/${key}${issue.path}`,
+      message: issue.message,
+    })),
+  );
+}
+
 export function validateCDFProperty(
   input: unknown,
   requireCategory = true,

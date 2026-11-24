@@ -67,6 +67,8 @@ export interface GeneratedComponentResult {
 export interface RunGenerateComponentsSessionRequest {
   sessionId: string;
 
+  acceptedNames: readonly string[];
+
   agent: string;
 
   agentModel?: string;

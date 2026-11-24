@@ -47,8 +47,6 @@ export {
   createReviewSessionSummary,
   createReviewSessionDetail,
   countValidationIssues,
-  writeScopeDecisionsSnapshot,
-  loadAcceptedNames,
   parsePrecomputedCachedNames,
 } from './review-session/index.js';
 export type {

@@ -33,8 +33,8 @@ export function useScopeGateFlow(
 ): ScopeGateFlow | undefined {
   const sessionId = input?.sessionId;
   const loaded = useMemo(() => (sessionId ? deps.load(sessionId) : undefined), [sessionId]);
-  const cacheCheck = useRef<Promise<string[]> | undefined>(undefined);
-  const [confirmed, setConfirmed] = useState<ScopeDecisions>();
+  const cacheCheck = useRef<{ sessionId: string; names: Promise<string[]> } | undefined>(undefined);
+  const [confirmed, setConfirmed] = useState<{ sessionId: string; decisions: ScopeDecisions }>();
 
   // Components that cannot be read never reach the screen, so the log for that is written here.
   useEffect(() => {
@@ -46,13 +46,18 @@ export function useScopeGateFlow(
 
   // Started once per session, as soon as the gate has components to show.
   useEffect(() => {
-    if (!input || !loaded?.ok || cacheCheck.current) return;
-    cacheCheck.current = deps.checkCache(input.cache);
+    if (!input || !loaded?.ok || cacheCheck.current?.sessionId === input.sessionId) return;
+    cacheCheck.current = { sessionId: input.sessionId, names: deps.checkCache(input.cache) };
   }, [input, loaded]);
 
   if (!input || !loaded) return undefined;
   if (!loaded.ok) return { status: 'failed', message: loaded.message };
-  if (confirmed && cacheCheck.current)
-    return { status: 'confirmed', decisions: confirmed, cachedNames: cacheCheck.current };
-  return { status: 'deciding', load: loaded, confirm: setConfirmed };
+  const check = cacheCheck.current?.sessionId === input.sessionId ? cacheCheck.current : undefined;
+  if (confirmed?.sessionId === input.sessionId && check)
+    return { status: 'confirmed', decisions: confirmed.decisions, cachedNames: check.names };
+  return {
+    status: 'deciding',
+    load: loaded,
+    confirm: (decisions) => setConfirmed({ sessionId: input.sessionId, decisions }),
+  };
 }
