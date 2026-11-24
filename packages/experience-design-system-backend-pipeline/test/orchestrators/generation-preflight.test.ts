@@ -111,6 +111,16 @@ describe('generation agent preflight', () => {
     expect(validateCDF(buildCDF(loadCDFComponents(db, sessionId), [])).valid).toBe(true);
   });
 
+  it('names the field of a definition that stays invalid after retries', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    const invalid = output(choiceCall({ default: 'secondary' }));
+    const { run } = setup([invalid, invalid], [{ ...nullableChoice, defaultValue: "'primary'" }]);
+    const result = await run();
+
+    expect(result).toMatchObject({ failed: true, failureKind: 'preflight', reviewRequired: true });
+    expect(result.error).toMatch(/label.*\/\$default: Value outside declared domain/);
+  });
+
   it.each(['undefined', ' null '])('projects no default for the %j source default', async (defaultValue) => {
     const { db, sessionId, run } = setup(
       [output(propCall({ cdf_type: 'boolean', cdf_category: 'state' }))],
