@@ -3,12 +3,10 @@ import { type ClassDeclaration, type Project, type SourceFile } from 'ts-morph';
 import { kebabToPascal } from '../../shared/helpers/tsx-shared.js';
 import { getElementTagNameFromDecorator } from './resolve-wc-decorator-tag.js';
 import {
-  buildTagNameMap,
   getElementTagNameFromSiblingDefine,
   getElementTagNameFromFastDefinition,
 } from './resolve-wc-sibling-definition.js';
-
-export { buildTagNameMap };
+import type { WcRegistrations } from './resolve-wc-registrations.js';
 
 function normalizeComponentName(input: string): string {
   return input.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
@@ -57,13 +55,12 @@ function getElementTagNameFromJsDoc(classDecl: ClassDeclaration): string | null 
 
 export function resolveWcTagName(
   classDecl: ClassDeclaration,
-  tagNameMap: Map<string, string>,
+  registrations: WcRegistrations,
   project: Project,
 ): string | undefined {
-  const className = classDecl.getName();
-  if (!className) return undefined;
+  if (!classDecl.getName()) return undefined;
   return (
-    tagNameMap.get(className) ??
+    registrations.get(classDecl)?.tagName ??
     getElementTagNameFromSiblingDefine(classDecl, project) ??
     getElementTagNameFromDecorator(classDecl) ??
     getElementTagNameFromJsDoc(classDecl) ??

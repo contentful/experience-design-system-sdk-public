@@ -4,7 +4,10 @@ import { canonicalSourceFactPath } from '../../candidates/bind-source-candidates
 import type { RawComponentDefinition, ComponentExtractionResult, ExtractorProgress } from '../../types/component.js';
 import type { ExtractorOptions } from '../../types/options.js';
 import { SOURCE_FACT_SCHEMA_VERSION } from '../../candidates/types.js';
-import { buildTagNameMap, chooseComponentName, resolveWcTagName } from './helpers/resolve-wc-tag-name.js';
+import { chooseComponentName, resolveWcTagName } from './helpers/resolve-wc-tag-name.js';
+import { readDecoratorDefinitionOptions } from './helpers/resolve-wc-decorator-tag.js';
+import { collectWcRegistrations, type WcRegistrations } from './helpers/resolve-wc-registrations.js';
+import { kebabToPascal } from '../shared/helpers/tsx-shared.js';
 import { extractFastTemplateSlots, mergeSlotLists } from './helpers/extract-wc-slots.js';
 import {
   collectWebComponentClasses,
@@ -12,17 +15,39 @@ import {
   readWebComponentSyntax,
 } from './helpers/read-wc-syntax.js';
 
-function extractFromSourceFile(sourceFile: SourceFile, project: Project, result: ComponentExtractionResult): void {
-  const tagNameMap = buildTagNameMap(sourceFile);
-  for (const { declaration, name: className } of collectWebComponentClasses(sourceFile)) {
+function collectRegisteredClasses(sourceFile: SourceFile, registrations: WcRegistrations) {
+  const classes = collectWebComponentClasses(sourceFile);
+  for (const [declaration, registration] of registrations)
+    if (
+      Node.isClassExpression(declaration) &&
+      declaration.getSourceFile() === sourceFile &&
+      Node.isCallExpression(declaration.getParent())
+    )
+      classes.push({ declaration, name: declaration.getName() ?? kebabToPascal(registration.tagName) });
+  return classes;
+}
+
+function extractFromSourceFile(
+  sourceFile: SourceFile,
+  project: Project,
+  registrations: WcRegistrations,
+  result: ComponentExtractionResult,
+): void {
+  for (const { declaration, name: className } of collectRegisteredClasses(sourceFile, registrations)) {
     const tagName = Node.isClassDeclaration(declaration)
-      ? resolveWcTagName(declaration, tagNameMap, project)
-      : tagNameMap.get(className);
+      ? resolveWcTagName(declaration, registrations, project)
+      : registrations.get(declaration)?.tagName;
     if (!tagName) continue;
     const name = Node.isClassDeclaration(declaration)
       ? chooseComponentName(declaration, className, tagName)
       : className;
-    const syntax = readWebComponentSyntax(declaration, sourceFile.getFilePath());
+    const definitionTemplates = [
+      ...(Node.isClassDeclaration(declaration)
+        ? readDecoratorDefinitionOptions(declaration).flatMap((options) => options.templates)
+        : []),
+      ...(registrations.get(declaration)?.templates ?? []),
+    ];
+    const syntax = readWebComponentSyntax(declaration, sourceFile.getFilePath(), definitionTemplates);
     result.extractionDiagnostics!.modules.push(...syntax.diagnostics);
     Object.assign(result.extractionDiagnostics!.limits, syntax.limits);
     result.extractionDiagnostics!.used.wcDeclarations =
@@ -55,6 +80,9 @@ export async function extractWebComponentDefinitions(
   let filesProcessed = 0;
   const compiler = forEachWebComponentCompilerContext(filePaths, options, (context, diagnostics) => {
     result.extractionDiagnostics = diagnostics;
+    const registrations = collectWcRegistrations(
+      context.componentFiles.flatMap((filePath) => context.project.getSourceFile(filePath) ?? []),
+    );
     for (const filePath of context.componentFiles) {
       if (options.signal?.aborted) {
         result.warnings.push('Web-component extraction aborted');
@@ -67,7 +95,7 @@ export async function extractWebComponentDefinitions(
       }
       try {
         const componentStart = result.components.length;
-        extractFromSourceFile(sourceFile, context.project, result);
+        extractFromSourceFile(sourceFile, context.project, registrations, result);
         const suppliedPath = filePaths.find((path) => canonicalSourceFactPath(path) === filePath);
         if (suppliedPath)
           for (const component of result.components.slice(componentStart)) {

@@ -1,22 +1,5 @@
-import { Node, SyntaxKind, type ClassDeclaration, type Project, type SourceFile } from 'ts-morph';
+import { Node, SyntaxKind, type ClassDeclaration, type Project } from 'ts-morph';
 import { resolveStaticStringExpression, loadSourceFile } from './resolve-wc-import.js';
-
-export function buildTagNameMap(sourceFile: SourceFile): Map<string, string> {
-  const tagNameMap = new Map<string, string>();
-  sourceFile.forEachDescendant((node) => {
-    if (!Node.isCallExpression(node)) return;
-    const expr = node.getExpression();
-    if (!Node.isPropertyAccessExpression(expr) || expr.getName() !== 'define') return;
-    if (expr.getExpression().getText() !== 'customElements') return;
-    const args = node.getArguments();
-    if (args.length < 2) return;
-    const tagArg = args[0];
-    const classArg = args[1];
-    if (!Node.isStringLiteral(tagArg)) return;
-    tagNameMap.set(classArg.getText(), tagArg.getLiteralValue());
-  });
-  return tagNameMap;
-}
 
 export function getElementTagNameFromSiblingDefine(classDecl: ClassDeclaration, project: Project): string | null {
   const sourceFilePath = classDecl.getSourceFile().getFilePath();

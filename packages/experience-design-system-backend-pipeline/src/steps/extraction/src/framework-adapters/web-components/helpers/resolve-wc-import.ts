@@ -1,4 +1,4 @@
-import { Node, SyntaxKind, type Project, type SourceFile } from 'ts-morph';
+import { Node, SyntaxKind, type ClassDeclaration, type ClassExpression, type Project, type SourceFile } from 'ts-morph';
 import { loadSourceFile, resolveImportSourcePath, resolveImportSpecifierSource } from './resolve-wc-import-source.js';
 
 export { loadSourceFile, resolveImportSourcePath };
@@ -60,6 +60,11 @@ export function resolveStaticStringExpression(
     for (const definition of target.getDefinitions()) {
       const declarationNode = definition.getDeclarationNode();
       if (!declarationNode) continue;
+      if (Node.isClassDeclaration(declarationNode)) {
+        const resolved = resolveStaticClassString(declarationNode, propertyName, project);
+        if (resolved) return resolved;
+        continue;
+      }
       let variableDeclaration;
       if (Node.isVariableDeclaration(declarationNode)) {
         variableDeclaration = declarationNode;
@@ -96,6 +101,22 @@ export function resolveStaticStringExpression(
   }
 
   return null;
+}
+
+export function resolveStaticClassString(
+  classNode: ClassDeclaration | ClassExpression,
+  memberName: string,
+  project: Project,
+): string | null {
+  const member = classNode.getStaticMember(memberName);
+  let value: Node | undefined;
+  if (member && Node.isPropertyDeclaration(member)) value = member.getInitializer();
+  if (member && Node.isGetAccessorDeclaration(member)) {
+    const statements = member.getBody()?.asKind(SyntaxKind.Block)?.getStatements() ?? [];
+    const onlyStatement = statements.length === 1 ? statements[0] : undefined;
+    if (onlyStatement && Node.isReturnStatement(onlyStatement)) value = onlyStatement.getExpression();
+  }
+  return resolveStaticStringExpression(value, classNode.getSourceFile(), project);
 }
 
 function camelToKebab(input: string): string {

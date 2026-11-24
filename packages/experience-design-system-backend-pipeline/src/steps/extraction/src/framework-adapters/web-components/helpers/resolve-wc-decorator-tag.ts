@@ -1,50 +1,24 @@
-import { Node, type ClassDeclaration } from 'ts-morph';
+import { type ClassDeclaration } from 'ts-morph';
+import { readWcDefinitionOptions, type WcDefinitionOptions } from './read-wc-definition-options.js';
+import { resolveStaticStringExpression } from './resolve-wc-import.js';
 
-function camelToKebab(input: string): string {
-  return input
-    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
-    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
-    .toLowerCase();
-}
-
-function resolveDecoratorInterpolation(node: Node): string | null {
-  if (Node.isIdentifier(node)) {
-    const definitions = node.getDefinitions();
-    for (const definition of definitions) {
-      const declarationNode = definition.getDeclarationNode();
-      if (!declarationNode) continue;
-      if (Node.isVariableDeclaration(declarationNode)) {
-        const initializer = declarationNode.getInitializer();
-        if (initializer && Node.isStringLiteral(initializer)) return initializer.getLiteralValue();
-      }
-    }
-    const text = node.getText();
-    if (/Prefix$/.test(text)) return camelToKebab(text.replace(/Prefix$/, ''));
-  }
-  return null;
-}
-
-function resolveDecoratorTagArgument(node: Node): string | null {
-  if (Node.isStringLiteral(node) || Node.isNoSubstitutionTemplateLiteral(node)) return node.getLiteralValue();
-  if (!Node.isTemplateExpression(node)) return null;
-
-  let resolved = node.getHead().getLiteralText();
-  for (const span of node.getTemplateSpans()) {
-    const interpolation = resolveDecoratorInterpolation(span.getExpression());
-    if (!interpolation) return null;
-    resolved += interpolation;
-    resolved += span.getLiteral().getLiteralText();
-  }
-  return resolved;
+function customElementArguments(classDecl: ClassDeclaration) {
+  return classDecl
+    .getDecorators()
+    .filter((decorator) => decorator.getName() === 'customElement')
+    .flatMap((decorator) => decorator.getArguments().slice(0, 1));
 }
 
 export function getElementTagNameFromDecorator(classDecl: ClassDeclaration): string | null {
-  for (const decorator of classDecl.getDecorators()) {
-    if (decorator.getName() !== 'customElement') continue;
-    const firstArg = decorator.getArguments()[0];
-    if (!firstArg) continue;
-    const resolved = resolveDecoratorTagArgument(firstArg);
+  for (const argument of customElementArguments(classDecl)) {
+    const resolved =
+      readWcDefinitionOptions(argument, ['name'])?.tagName ??
+      resolveStaticStringExpression(argument, classDecl.getSourceFile(), classDecl.getProject());
     if (resolved) return resolved;
   }
   return null;
+}
+
+export function readDecoratorDefinitionOptions(classDecl: ClassDeclaration): WcDefinitionOptions[] {
+  return customElementArguments(classDecl).flatMap((argument) => readWcDefinitionOptions(argument, ['name']) ?? []);
 }

@@ -80,30 +80,75 @@ function optionsObject(node: Node | undefined): ObjectLiteralExpression | undefi
   return undefined;
 }
 
+type PropertyDialect = 'lit' | 'fast';
+const CONVERTER_TYPES: Record<PropertyDialect, Record<string, string>> = {
+  lit: { String: 'string', Number: 'number', Boolean: 'boolean', Object: 'object', Array: 'unknown[]' },
+  fast: { booleanConverter: 'boolean', nullableNumberConverter: 'number' },
+};
+const FAST_MODE_REFLECTS: Record<string, boolean> = { reflect: true, boolean: true, fromView: false };
+
+function optionField(options: Node | undefined, key: string): Node | undefined {
+  return optionsObject(options)
+    ?.getProperties()
+    .reverse()
+    .find((item) => Node.isPropertyAssignment(item) && wcKey(item.getNameNode()) === key)
+    ?.asKind(SyntaxKind.PropertyAssignment)
+    ?.getInitializer();
+}
+
+function fastMode(options: Node | undefined): string | null {
+  const mode = resolveWcValue(optionField(options, 'mode')).value;
+  return mode?.kind === 'string' ? mode.value : null;
+}
+
+function converterTypeFor(
+  dialect: PropertyDialect,
+  converter: WebComponentSyntaxObservation['converter'],
+  options: Node | undefined,
+): string | undefined {
+  if (converter.state === 'known') return CONVERTER_TYPES[dialect][converter.expression!];
+  if (dialect === 'fast' && fastMode(options) === 'boolean') return 'boolean';
+  return undefined;
+}
+
+function reflectFor(
+  dialect: PropertyDialect,
+  options: Node | undefined,
+  uncertain: boolean,
+): WebComponentSyntaxObservation['reflect'] {
+  const reflectNode = optionField(options, dialect === 'fast' ? 'mode' : 'reflect');
+  if (!reflectNode) return { state: uncertain ? 'unknown' : 'absent', value: null };
+  if (dialect === 'fast') {
+    const mode = fastMode(options);
+    return mode !== null && Object.hasOwn(FAST_MODE_REFLECTS, mode)
+      ? { state: 'explicit', value: FAST_MODE_REFLECTS[mode]! }
+      : { state: 'unknown', value: null };
+  }
+  const reflectValue = resolveWcValue(reflectNode).value;
+  return reflectValue?.kind === 'boolean'
+    ? { state: 'explicit', value: reflectValue.value === 'true' }
+    : { state: 'unknown', value: null };
+}
+
 function metadataFor(
   name: string,
   options: Node | undefined,
   present: boolean,
   unknownStatic: boolean,
   exposure: string[],
+  dialect: PropertyDialect,
 ): Pick<WebComponentSyntaxObservation, 'converter' | 'attribute' | 'reflect' | 'exposure'> {
   const object = optionsObject(options);
   const uncertain =
     (options !== undefined && !object) ||
     unknownStatic ||
     Boolean(object?.getProperties().some((item) => !Node.isPropertyAssignment(item)));
-  const field = (key: string) =>
-    object
-      ?.getProperties()
-      .reverse()
-      .find((item) => Node.isPropertyAssignment(item) && wcKey(item.getNameNode()) === key)
-      ?.asKind(SyntaxKind.PropertyAssignment)
-      ?.getInitializer();
-  const converterNode = field('type');
+  const field = (key: string) => optionField(options, key);
+  const converterNode = field(dialect === 'fast' ? 'converter' : 'type');
   const converterExpression = converterNode?.getText() ?? null;
   const converter = {
     state: converterExpression
-      ? ['String', 'Number', 'Boolean', 'Object', 'Array'].includes(converterExpression)
+      ? Object.hasOwn(CONVERTER_TYPES[dialect], converterExpression)
         ? ('known' as const)
         : ('unknown' as const)
       : uncertain
@@ -126,13 +171,7 @@ function metadataFor(
       : present
         ? { state: 'implicit', name: name.toLowerCase() }
         : { state: 'absent', name: null };
-  const reflectNode = field('reflect');
-  const reflectValue = resolveWcValue(reflectNode).value;
-  const reflect: WebComponentSyntaxObservation['reflect'] = reflectNode
-    ? reflectValue?.kind === 'boolean'
-      ? { state: 'explicit', value: reflectValue.value === 'true' }
-      : { state: 'unknown', value: null }
-    : { state: uncertain ? 'unknown' : 'absent', value: null };
+  const reflect = reflectFor(dialect, options, uncertain);
   if (uncertain)
     return {
       converter: { state: 'unknown', expression: converterExpression },
@@ -148,7 +187,11 @@ function declaredName(node: WebComponentClass): string | null {
   return node.getName() ?? (parent && Node.isVariableDeclaration(parent) ? parent.getName() : null);
 }
 
-export function readWebComponentSyntax(classNode: WebComponentClass, componentSourcePath: string) {
+export function readWebComponentSyntax(
+  classNode: WebComponentClass,
+  componentSourcePath: string,
+  definitionTemplates: readonly Node[] = [],
+) {
   const observations: SourceCandidateObservation[] = [];
   const diagnostics: CompilerModuleDiagnostic[] = [];
   const props = new Map<string, RawPropDefinition>();
@@ -287,9 +330,11 @@ export function readWebComponentSyntax(classNode: WebComponentClass, componentSo
       const decorators = member.getDecorators();
       const propertyDecorator = decorators.find((item) => ['property', 'state', 'attr'].includes(item.getName()));
       const decoratorOptions = propertyDecorator?.getArguments()[0];
+      const dialect: PropertyDialect = propertyDecorator?.getName() === 'attr' ? 'fast' : 'lit';
+      const propertyOptions = propertyDecorator ? decoratorOptions : staticOptions.get(name);
       const metadata = metadataFor(
         name,
-        propertyDecorator ? decoratorOptions : staticOptions.get(name),
+        propertyOptions,
         Boolean(propertyDecorator || staticOptions.has(name)),
         propertyDecorator ? false : unknownStatic,
         [
@@ -304,24 +349,18 @@ export function readWebComponentSyntax(classNode: WebComponentClass, componentSo
             .map((tag) => tag.getTagName()),
           ...(origin(member) === 'inherited-library' ? ['library'] : []),
         ],
+        dialect,
       );
       let typeNode;
       if (Node.isSetAccessorDeclaration(member)) typeNode = member.getParameters()[0]?.getTypeNode();
       else if (Node.isGetAccessorDeclaration(member)) typeNode = member.getReturnTypeNode();
       else typeNode = member.getTypeNode();
-      const converterType: Record<string, string> = {
-        String: 'string',
-        Number: 'number',
-        Boolean: 'boolean',
-        Object: 'object',
-        Array: 'unknown[]',
-      };
       const initializer = Node.isPropertyDeclaration(member) ? member.getInitializer() : undefined;
       const defaultFact = resolveWcValue(initializer);
       const inferredType = defaultFact.value?.kind === 'null' ? 'unknown' : defaultFact.value?.kind;
       const type =
         typeNode?.getText() ??
-        (metadata.converter.state === 'known' ? converterType[metadata.converter.expression!] : undefined) ??
+        converterTypeFor(dialect, metadata.converter, propertyOptions) ??
         inferredType ??
         'unknown';
       const domain = resolveWcDomain(typeNode, type);
@@ -383,17 +422,10 @@ export function readWebComponentSyntax(classNode: WebComponentClass, componentSo
       staticOptions.delete(name);
     }
     for (const [name, options] of staticOptions) {
-      const metadata = metadataFor(name, options, true, unknownStatic, []);
-      const converterType: Record<string, string> = {
-        String: 'string',
-        Number: 'number',
-        Boolean: 'boolean',
-        Object: 'object',
-        Array: 'unknown[]',
-      };
+      const metadata = metadataFor(name, options, true, unknownStatic, [], 'lit');
       fallback(
         name,
-        metadata.converter.state === 'known' ? (converterType[metadata.converter.expression!] ?? 'unknown') : 'unknown',
+        converterTypeFor('lit', metadata.converter, options) ?? 'unknown',
         options,
         owner,
         lineage,
@@ -493,6 +525,7 @@ export function readWebComponentSyntax(classNode: WebComponentClass, componentSo
       });
     };
     for (const member of owner.getMembers()) visitTemplates(member);
+    if (owner === classNode) for (const root of definitionTemplates) visitTemplates(root);
   };
   const walk = (
     node: Node,
