@@ -198,3 +198,47 @@ it('colors slot requiredness changes with the theme palette', () => {
   expect(lines.find((line) => line.key === 'slot-constructor-required-old')?.color).toBe(PALETTE.error);
   expect(lines.find((line) => line.key === 'slot-constructor-required-new')?.color).toBe(PALETTE.success);
 });
+
+it('shows slotBreakingChanges in the preview breaking line in place of legacy slot rows', async () => {
+  const preview: ServerPreviewResponse = {
+    components: {
+      new: [],
+      changed: [
+        {
+          current,
+          proposed: { key: 'Example' },
+          hasPendingDraftChanges: false,
+          changeClassification: {
+            classification: 'breaking',
+            breakingChanges: [
+              { propertyId: 'data', reason: 'removed' },
+              { slotId: 'constructor', reason: 'slot_allowed_components_narrowed' },
+            ],
+            slotBreakingChanges: [{ slotId: 'constructor', reason: 'slot_cardinality_narrowed' }],
+          },
+        },
+      ],
+      removed: [],
+      unchanged: [],
+    },
+    tokens: { new: [], changed: [], removed: [], unchanged: [] },
+    taxonomies: { new: [], changed: [], removed: [], unchanged: [] },
+  };
+  const ui = render(
+    <WizardPreviewStep
+      preview={preview}
+      spaceId="example"
+      environmentId="example"
+      onConfirm={vi.fn()}
+      onQuit={vi.fn()}
+    />,
+  );
+  try {
+    input.handler!('d', {} as ImmediateInputKey);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(ui.lastFrame()).toContain('BREAKING: data — removed, constructor — allowed child count narrowed');
+    expect(ui.lastFrame()).not.toContain('allowed components narrowed');
+  } finally {
+    ui.unmount();
+  }
+});

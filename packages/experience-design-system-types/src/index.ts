@@ -109,8 +109,10 @@ export {
   PROPERTY_BREAKING_REASONS,
   SLOT_BREAKING_REASONS,
   sanitizeBreakingChanges,
+  sanitizeSlotBreakingChanges,
+  displayBreakingChanges,
 } from './sources-api/preview/index.js';
-export type { SlotSummary, ProjectionDiagnostic } from './sources-api/preview/index.js';
+export type { SlotSummary, SlotBreakingChange, ProjectionDiagnostic } from './sources-api/preview/index.js';
 
 export * from './schema-export.js';
 

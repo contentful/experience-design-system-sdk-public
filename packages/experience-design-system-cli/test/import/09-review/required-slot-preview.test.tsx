@@ -104,3 +104,67 @@ it('carries required-slot reasons through the real API sanitizer and wizard deta
     vi.unstubAllGlobals();
   }
 });
+
+it('prefers slotBreakingChanges from the real API sanitizer and falls back to breakingChanges', async () => {
+  const changed = (changeClassification: Record<string, unknown>) => ({
+    current: { id: 'example', name: 'Example', contentProperties: ['title'], designProperties: [], slots: ['body'] },
+    proposed: { $type: 'component', $properties: {}, $slots: {} },
+    hasPendingDraftChanges: false,
+    changeClassification: {
+      classification: 'breaking',
+      breakingChanges: [
+        { propertyId: 'title', reason: 'removed' },
+        { slotId: 'body', reason: 'slot_allowed_components_narrowed' },
+      ],
+      ...changeClassification,
+    },
+  });
+  const response = {
+    components: {
+      new: [],
+      changed: [
+        changed({
+          slotBreakingChanges: [
+            { slotId: 'body', reason: 'slot_cardinality_narrowed' },
+            { slotId: 'body', reason: 'slot_renamed' },
+          ],
+        }),
+        changed({}),
+        changed({ slotBreakingChanges: 'invalid' }),
+      ],
+      unchanged: [],
+      removed: [],
+    },
+    tokens: { new: [], changed: [], unchanged: [], removed: [] },
+    taxonomies: { new: [], changed: [], unchanged: [], removed: [] },
+  };
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify(response), { status: 200, headers: { 'content-type': 'application/json' } }),
+    ),
+  );
+  try {
+    const client = new ApiClient({
+      host: 'https://api.example.com',
+      spaceId: 'example',
+      environmentId: 'example',
+      cmaToken: 'example',
+    });
+    const preview = await client.previewImport({ $schema: 'https://contentful.com/schemas/cdf' } as never);
+    expect(preview.components.changed.map((item) => item.changeClassification?.slotBreakingChanges)).toEqual([
+      [{ slotId: 'body', reason: 'slot_cardinality_narrowed' }],
+      undefined,
+      undefined,
+    ]);
+    const labels = deriveBreakingChanges(preview).map((b) => buildBreakingRows([b]).map((row) => row.label));
+    expect(labels).toEqual([
+      ['title — removed', 'body — allowed child count narrowed'],
+      ['title — removed', 'body — allowed components narrowed'],
+      ['title — removed', 'body — allowed components narrowed'],
+    ]);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
