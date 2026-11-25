@@ -32,6 +32,22 @@ describe('validateCDF', () => {
     expect(result.tokens[0].entry.$value).toBe('#000000');
   });
 
+  it('names the field that makes a component definition invalid', () => {
+    const result = validateCDF({
+      $schema: CDF_SCHEMA_URL,
+      Button: {
+        $type: 'component',
+        $properties: {
+          type: { $type: 'string', $category: 'design', $values: ['primary', 'dashed'], $default: 'null' },
+        },
+      },
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors).toEqual([
+      { path: '/Button/$properties/type/$default', message: 'Value outside declared domain' },
+    ]);
+  });
+
   it('accepts a document with only components', () => {
     const result = validateCDF({
       $schema: CDF_SCHEMA_URL,

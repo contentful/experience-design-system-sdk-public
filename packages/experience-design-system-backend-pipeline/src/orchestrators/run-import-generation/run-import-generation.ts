@@ -57,7 +57,8 @@ export async function runImportGeneration(
     return fail('save decisions', errorMessage(error));
   }
 
-  if (accepted.length === 0) return { ok: true, generation: { route: 'push', acceptedCount: 0 } };
+  if (accepted.length === 0)
+    return fail('generate components', 'No components were selected, so nothing was generated.');
 
   const auth = await deps.checkAgentAuth(input.agent as AgentName);
   if (auth === 'not-found' || auth === 'unauthenticated') {
@@ -74,6 +75,7 @@ export async function runImportGeneration(
   try {
     generated = await deps.runGenerate({
       sessionId: input.sessionId,
+      acceptedNames: accepted,
       agent: input.agent,
       ...(input.agentModel ? { agentModel: input.agentModel } : {}),
       promptOverrides: appendGeneratePromptOverride(input),
@@ -86,7 +88,11 @@ export async function runImportGeneration(
   } catch (error) {
     return fail('generate components', errorMessage(error));
   }
-  if (generated.emptySession) return fail('generate components', 'no raw components in session');
+  if (generated.emptySession)
+    return fail(
+      'generate components',
+      'None of the selected components are in this session, so nothing was generated.',
+    );
   if (!generated.allOk) {
     const firstFailure = generated.results.find((r) => r.failed && r.failureKind !== 'preflight');
     if (firstFailure) return fail('generate components', firstFailure.error ?? 'unknown error');

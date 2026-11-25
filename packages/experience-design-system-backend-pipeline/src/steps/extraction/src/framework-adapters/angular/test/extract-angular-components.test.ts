@@ -4,12 +4,6 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { extractAngularComponents } from '../extract-angular-components.js';
 
-/**
- * Three fixtures drawn from the real-world DS corpus (shapes mirror the
- * actual source of Angular Material card, NG-ZORRO button, Spartan hlm-card)
- * without copying licensed code verbatim.
- */
-
 let dir: string;
 
 beforeEach(() => {
@@ -73,7 +67,7 @@ describe('extractAngularComponents — classic @Input + external template', () =
 });
 
 describe('extractAngularComponents — inline template + booleanAttribute + alias', () => {
-  it('extracts NG-ZORRO-style button with string-literal union + boolean transforms', async () => {
+  it('extracts aliased inputs and reports an unresolved transform without guessing the domain', async () => {
     const tsPath = writeFile(
       'button.component.ts',
       `
@@ -98,9 +92,12 @@ describe('extractAngularComponents — inline template + booleanAttribute + alia
     expect(typeProp.allowedValues).toEqual(['primary', 'default', 'dashed']);
 
     const danger = c.props.find((p) => p.name === 'nzDanger')!;
-    expect(danger.type).toBe('boolean');
+    expect(danger.type).toBe('any');
     expect(danger.allowedValues).toBeUndefined();
     expect(danger.defaultValue).toBe('false');
+    expect(result.warnings).toEqual([
+      `${tsPath}: input nzDanger uses unresolved transform booleanAttribute; source type retained.`,
+    ]);
 
     expect(c.slots).toEqual([{ name: 'children', isDefault: true }]);
   });
@@ -133,14 +130,14 @@ describe('extractAngularComponents — signal inputs', () => {
     expect(size.defaultValue).toBe("'default'");
     expect(size.required).toBe(false);
 
-    const title = c.props.find((p) => p.name === 'cardTitle')!; // alias wins
+    const title = c.props.find((p) => p.name === 'cardTitle')!;
     expect(title.required).toBe(true);
     expect(title.defaultValue).toBeUndefined();
   });
 });
 
-describe('extractAngularComponents — TemplateRef inputs become slots', () => {
-  it('promotes pure TemplateRef inputs to slots and keeps union TemplateRef as both', async () => {
+describe('extractAngularComponents — TemplateRef inputs remain source properties', () => {
+  it('preserves pure and union TemplateRef inputs alongside explicit template slots', async () => {
     const tsPath = writeFile(
       'card-with-templates.ts',
       `
@@ -160,19 +157,18 @@ describe('extractAngularComponents — TemplateRef inputs become slots', () => {
     const result = await extractAngularComponents([tsPath]);
     const c = result.components[0]!;
     const propNames = c.props.map((p) => p.name).sort();
-    const slotNames = c.slots.map((s) => s.name).sort();
-
-    // nzTitle is pure TemplateRef → slot only, prop removed
-    expect(propNames).not.toContain('nzTitle');
-    // nzExtra is string | TemplateRef → kept as prop AND emitted as slot
-    expect(propNames).toContain('nzExtra');
-    expect(slotNames).toContain('nzTitle');
-    expect(slotNames).toContain('nzExtra');
+    expect(propNames).toEqual(['nzExtra', 'nzTitle']);
+    expect(c.props.find((prop) => prop.name === 'nzTitle')?.type).toBe('TemplateRef<void>');
+    expect(c.props.find((prop) => prop.name === 'nzExtra')).toMatchObject({
+      type: 'string | TemplateRef<void> | null',
+      defaultValue: 'null',
+    });
+    expect(c.slots).toEqual([{ name: 'children', isDefault: true }]);
   });
 });
 
 describe('extractAngularComponents — contentChild queries', () => {
-  it('emits a slot per contentChild / contentChildren with allowedComponents', async () => {
+  it('observes contentChild queries without assigning slots or restrictions', async () => {
     const tsPath = writeFile(
       'card-with-queries.ts',
       `
@@ -193,12 +189,11 @@ describe('extractAngularComponents — contentChild queries', () => {
     );
 
     const result = await extractAngularComponents([tsPath]);
-    // Three classes but only AppCard has @Component
     const c = result.components.find((comp) => comp.name === 'AppCard')!;
-    const header = c.slots.find((s) => s.name === 'header')!;
-    expect(header.allowedComponents).toEqual(['HeaderComponent']);
-    const items = c.slots.find((s) => s.name === 'items')!;
-    expect(items.allowedComponents).toEqual(['ItemComponent']);
+    expect(c.slots).toEqual([{ name: 'children', isDefault: true }]);
+    expect(result.warnings).toHaveLength(2);
+    expect(result.warnings[0]).toContain('contentChild(HeaderComponent)');
+    expect(result.warnings[1]).toContain('contentChildren(ItemComponent)');
   });
 });
 
@@ -229,9 +224,6 @@ describe('extractAngularComponents — @Input setter accessor form', () => {
 
 describe('extractAngularComponents — @Input getter accessor form', () => {
   it('extracts @Input on a getter accessor (Material-style aliased getter)', async () => {
-    // Mirrors Angular Material's MatButton pattern:
-    //   @Input('matButton') get appearance(): ButtonAppearance { return this._appearance; }
-    //   set appearance(value) { ... }
     const tsPath = writeFile(
       'button.ts',
       `
@@ -248,7 +240,6 @@ describe('extractAngularComponents — @Input getter accessor form', () => {
 
     const result = await extractAngularComponents([tsPath]);
     const c = result.components[0]!;
-    // Alias wins — prop name is 'matButton', not 'appearance'
     const appearance = c.props.find((p) => p.name === 'matButton')!;
     expect(appearance).toBeDefined();
     expect(appearance.type).toBe("'text' | 'filled' | 'outlined'");
@@ -257,8 +248,6 @@ describe('extractAngularComponents — @Input getter accessor form', () => {
   });
 
   it('dedups when both @Input get and @Input set exist for the same prop', async () => {
-    // Angular treats @Input on either accessor as declaring the same input.
-    // The extractor should emit the prop exactly once.
     const tsPath = writeFile(
       'select.ts',
       `
@@ -300,7 +289,7 @@ describe('extractAngularComponents — legacy inputs: array form', () => {
     const c = result.components[0]!;
     const propNames = c.props.map((p) => p.name).sort();
     expect(propNames).toContain('color');
-    expect(propNames).toContain('aliasedSize'); // alias wins over field name
+    expect(propNames).toContain('aliasedSize');
   });
 });
 

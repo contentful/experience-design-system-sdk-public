@@ -236,7 +236,7 @@ describe('an import, from extraction to the hand-off to the review', () => {
     });
   });
 
-  it('skips generation and the review entirely when the user accepts nothing', async () => {
+  it('generates nothing and stops with a message when the user accepts nothing', async () => {
     const extraction = await runExtraction(extractionInput(), () => {}, extractionDeps());
     if (!extraction.ok) throw new Error(`extraction failed: ${extraction.message}`);
     const deps = generationFakes(extraction.extraction.sessionId, []);
@@ -257,7 +257,11 @@ describe('an import, from extraction to the hand-off to the review', () => {
       deps,
     );
 
-    expect(generation).toEqual({ ok: true, generation: { route: 'push', acceptedCount: 0 } });
+    expect(generation).toEqual({
+      ok: false,
+      step: 'generate components',
+      message: 'No components were selected, so nothing was generated.',
+    });
     expect(deps.runGenerate).not.toHaveBeenCalled();
   });
 });

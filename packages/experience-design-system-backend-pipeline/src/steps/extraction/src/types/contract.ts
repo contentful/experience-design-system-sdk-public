@@ -1,8 +1,12 @@
 import type { ComponentExtractionResult, ExtractorOptions } from './component.js';
 
+export type ExtractionPhase = 'extract';
+
 export interface ExtractionEndpointProgress {
-  phase: 'extract';
+  activity?: string;
+  phase: ExtractionPhase;
   filesProcessed: number;
+  totalFiles: number;
   componentsFound: number;
 }
 

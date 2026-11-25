@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { Box, Text } from 'ink';
-import { readdirSync } from 'node:fs';
-import { dirname, basename, join } from 'node:path';
+import { readdirSync, statSync } from 'node:fs';
+import { basename, dirname, join, sep } from 'node:path';
 import { useImmediateInput } from '../../07-scope-gate/sidebar/hooks/useImmediateInput.js';
-import { normalizePath } from '../support/path-utils.js';
+import { resolveUserPath } from '../../../resolve-user-path.js';
 import { useBlinkingCursor } from '../support/use-blinking-cursor.js';
 import { PALETTE } from '@tui/theme.js';
 import { ControlHints } from '@tui/shared/components/ControlHints.js';
+import { isClearKey } from '@tui/shared/components/ClearableTextInput.js';
 import { StepHeader } from '@tui/shared/components/StepHeader.js';
+import { cleanPathText, stripControlCharacters } from '@tui/shared/path-text.js';
 
 export type PathPromptProps = {
   defaultPath: string;
@@ -18,27 +20,47 @@ export type PathPromptProps = {
   summary?: string;
 };
 
-function autocomplete(partial: string): string | null {
-  if (!partial) return null;
-  const normalized = normalizePath(partial);
-  const dir = dirname(normalized);
-  const base = basename(normalized);
+const PATH_PROMPT_CONTROLS = [
+  { keys: 'Enter', label: 'Confirm' },
+  { keys: 'Tab', label: 'Autocomplete' },
+  { keys: 'Ctrl+D', label: 'Clear' },
+  { keys: 'Esc', label: 'Cancel' },
+] as const;
+
+function commonPrefix(names: string[]): string {
+  return names.reduce((prefix, name) => {
+    let length = 0;
+    while (length < prefix.length && prefix[length] === name[length]) length += 1;
+    return prefix.slice(0, length);
+  });
+}
+
+function isDirectory(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function autocompletePath(partial: string): string | null {
+  const typed = cleanPathText(partial);
+  if (!typed) return null;
+  const endsAtFolder = typed.endsWith('/') || typed.endsWith(sep);
+  const resolved = resolveUserPath(typed);
+  const dir = endsAtFolder ? resolved : dirname(resolved);
+  const base = endsAtFolder ? '' : basename(resolved);
   let entries: string[];
   try {
     entries = readdirSync(dir);
   } catch {
     return null;
   }
-  const matches = entries.filter((e) => e.startsWith(base));
+  const matches = entries.filter((entry) => entry.startsWith(base));
   if (matches.length === 0) return null;
-  if (matches.length === 1) return join(dir, matches[0]!);
-  // Common prefix
-  let prefix = matches[0]!;
-  for (const m of matches) {
-    while (!m.startsWith(prefix)) prefix = prefix.slice(0, -1);
-    if (!prefix) break;
-  }
-  return prefix.length > base.length ? join(dir, prefix) : null;
+  const completed = join(dir, commonPrefix(matches));
+  if (matches.length === 1 && isDirectory(completed)) return completed + sep;
+  return completed.length > join(dir, base).length ? completed : null;
 }
 
 export function PathPrompt({
@@ -48,13 +70,12 @@ export function PathPrompt({
   label = 'Save to',
   summary,
 }: PathPromptProps): React.ReactElement {
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState(() => cleanPathText(defaultPath));
   const cursorVisible = useBlinkingCursor();
 
   useImmediateInput((rawInput, key) => {
     if (key.return) {
-      const trimmed = input.trim();
-      onSubmit(trimmed === '' ? defaultPath : normalizePath(trimmed));
+      if (cleanPathText(input) !== '') onSubmit(resolveUserPath(input));
       return;
     }
     if (key.escape) {
@@ -62,9 +83,12 @@ export function PathPrompt({
       return;
     }
     if (key.tab) {
-      const target = input.trim() || defaultPath;
-      const completed = autocomplete(target);
+      const completed = autocompletePath(input);
       if (completed) setInput(completed);
+      return;
+    }
+    if (isClearKey(rawInput, key)) {
+      setInput('');
       return;
     }
     if (key.backspace || key.delete) {
@@ -72,12 +96,10 @@ export function PathPrompt({
       return;
     }
     if (rawInput && !key.ctrl && !key.meta) {
-      setInput((v) => v + rawInput);
+      setInput((v) => v + stripControlCharacters(rawInput));
     }
   });
 
-  const shown = input || defaultPath;
-  const isPlaceholder = input === '';
   const cursor = cursorVisible ? '█' : ' ';
 
   return (
@@ -88,16 +110,10 @@ export function PathPrompt({
         <Box gap={1}>
           <Text color={PALETTE.accent}>?</Text>
           <Text bold>{label}:</Text>
-          <Text color={isPlaceholder ? PALETTE.muted : undefined}>{shown}</Text>
+          <Text>{input}</Text>
           <Text>{cursor}</Text>
         </Box>
-        <ControlHints
-          hints={[
-            { keys: 'Enter', label: 'Confirm' },
-            { keys: 'Tab', label: 'Autocomplete' },
-            { keys: 'Esc', label: 'Cancel' },
-          ]}
-        />
+        <ControlHints hints={PATH_PROMPT_CONTROLS} />
       </Box>
     </Box>
   );

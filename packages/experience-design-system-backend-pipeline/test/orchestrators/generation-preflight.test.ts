@@ -36,7 +36,12 @@ const output = (...calls: object[]) => ({
   timedOut: false,
 });
 
-function setup(outputs: ReturnType<typeof output>[]) {
+function setup(
+  outputs: ReturnType<typeof output>[],
+  props: Parameters<typeof storeRawComponents>[2][number]['props'] = [
+    { name: 'label', type: 'string', required: false },
+  ],
+) {
   const db = openPipelineDb(':memory:');
   databases.push(db);
   const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
@@ -45,7 +50,7 @@ function setup(outputs: ReturnType<typeof output>[]) {
       name: 'Card',
       source: 'src/Card.tsx',
       framework: 'react',
-      props: [{ name: 'label', type: 'string', required: false }],
+      props,
       slots: [{ name: 'children', isDefault: true }],
     },
   ]);
@@ -82,6 +87,53 @@ function setup(outputs: ReturnType<typeof output>[]) {
 }
 
 describe('generation agent preflight', () => {
+  const nullableChoice = {
+    name: 'label',
+    type: "'primary' | 'default' | 'dashed' | null",
+    required: false,
+    defaultValue: 'null',
+    allowedValues: ['primary', 'default', 'dashed'],
+  };
+  const choiceCall = (overrides = {}) =>
+    propCall({ cdf_category: 'design', required: false, values: ['primary', 'default', 'dashed'], ...overrides });
+
+  it('generates a nullable finite choice whose source default is null without a default', async () => {
+    const { db, sessionId, invoke, run } = setup([output(choiceCall())], [nullableChoice]);
+    const result = await run();
+
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(result.failed).toBe(false);
+    expect(loadCDFComponents(db, sessionId)[0]!.entry.$properties.label).toEqual({
+      $type: 'string',
+      $category: 'design',
+      $values: ['primary', 'default', 'dashed'],
+    });
+    expect(validateCDF(buildCDF(loadCDFComponents(db, sessionId), [])).valid).toBe(true);
+  });
+
+  it('names the field of a definition that stays invalid after retries', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    const invalid = output(choiceCall({ default: 'secondary' }));
+    const { run } = setup([invalid, invalid], [{ ...nullableChoice, defaultValue: "'primary'" }]);
+    const result = await run();
+
+    expect(result).toMatchObject({ failed: true, failureKind: 'preflight', reviewRequired: true });
+    expect(result.error).toMatch(/label.*\/\$default: Value outside declared domain/);
+  });
+
+  it.each(['undefined', ' null '])('projects no default for the %j source default', async (defaultValue) => {
+    const { db, sessionId, run } = setup(
+      [output(propCall({ cdf_type: 'boolean', cdf_category: 'state' }))],
+      [{ name: 'label', type: 'boolean | null', required: false, defaultValue }],
+    );
+    await run();
+
+    expect(loadCDFComponents(db, sessionId)[0]!.entry.$properties.label).toEqual({
+      $type: 'boolean',
+      $category: 'state',
+    });
+  });
+
   it('replaces a retained invalid proposal when restoring a valid cached component', async () => {
     const { db, sessionId, run } = setup([output(propCall())]);
     await run();
@@ -115,6 +167,7 @@ describe('generation agent preflight', () => {
     expect(invoke).toHaveBeenCalledTimes(2);
     expect(invoke.mock.calls[1]![0].prompt).toContain('Generation preflight');
     expect(invoke.mock.calls[1]![0].prompt).toContain('$token.kind');
+    expect(invoke.mock.calls[1]![0].prompt).toContain('Token kind requires token representation');
     expect(result.failed).toBe(false);
     const document = buildCDF(loadCDFComponents(db, sessionId), []);
     expect(validateCDF(document).valid).toBe(true);
@@ -133,6 +186,7 @@ describe('generation agent preflight', () => {
     expect(result.failed).toBe(true);
     expect(result.failureKind).toBe('preflight');
     expect(result.error).toContain('$token.kind');
+    expect(result.error).toContain('Token kind requires token representation');
     expect(result.reviewRequired).toBe(true);
     expect(loadCDFComponents(db, sessionId)[0]?.entry.$properties.label).toEqual({
       $type: 'string',
@@ -202,6 +256,17 @@ describe('generation agent preflight', () => {
     expect(db.prepare('SELECT * FROM generation_cache').all()).toHaveLength(1);
   });
 
+  it('regenerates when a classification leaves the representation unresolved', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    const { invoke, run } = setup([
+      output({ tool: 'classify_prop', prop: 'label', cdf_category: 'content', reason: 'Not sure yet' }),
+      output(propCall()),
+    ]);
+    expect((await run()).failed).toBe(false);
+    expect(invoke).toHaveBeenCalledTimes(2);
+    expect(invoke.mock.calls[1]![0].prompt).toContain('classification requires a cdf_type');
+  });
+
   it('regenerates when an invalid classification was skipped beside valid tool calls', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout'] });
     const { invoke, run } = setup([
@@ -210,7 +275,8 @@ describe('generation agent preflight', () => {
     ]);
     expect((await run()).failed).toBe(false);
     expect(invoke).toHaveBeenCalledTimes(2);
-    expect(invoke.mock.calls[1]![0].prompt).toContain('invalid cdf_type');
+    expect(invoke.mock.calls[1]![0].prompt).toContain('cdf_type');
+    expect(invoke.mock.calls[1]![0].prompt).toContain('Invalid representation type');
   });
 
   it.each([

@@ -1,3 +1,4 @@
+import { cleanPathText } from '../../../shared/path-text.js';
 import { readV1Store, writeV1Store } from '../../shared/v1-store.js';
 
 export type V1Credentials = {
@@ -11,9 +12,20 @@ export type V1Credentials = {
   [key: string]: string | undefined;
 };
 
+const PATH_SETTINGS = ['defaultComponentDir', 'defaultTokenFile', 'contentfulBaseDir'] as const;
+
+function cleanPathSettings<T extends V1Credentials>(config: T): T {
+  const cleaned: V1Credentials = { ...config };
+  for (const key of PATH_SETTINGS) {
+    const value = cleaned[key];
+    if (typeof value === 'string') cleaned[key] = cleanPathText(value);
+  }
+  return cleaned as T;
+}
+
 export async function readCredentials(): Promise<V1Credentials> {
   const store = await readV1Store();
-  return {
+  return cleanPathSettings({
     spaceId: (store.spaceId as string) || '',
     environmentId: (store.environmentId as string) || '',
     cmaToken: (store.cmaToken as string) || '',
@@ -21,14 +33,14 @@ export async function readCredentials(): Promise<V1Credentials> {
     defaultComponentDir: (store.defaultComponentDir as string) || '',
     defaultTokenFile: (store.defaultTokenFile as string) || '',
     contentfulBaseDir: (store.contentfulBaseDir as string) || '',
-  };
+  });
 }
 
 export async function writeCredentials(config: V1Credentials): Promise<void> {
   const existing = await readV1Store();
   const merged: Record<string, unknown> = {
     ...existing,
-    ...config,
+    ...cleanPathSettings(config),
   };
   Object.keys(merged).forEach((k) => {
     if (!merged[k]) delete merged[k];

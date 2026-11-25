@@ -1,4 +1,132 @@
+export type SourceEvidenceKind = 'declaration' | 'runtime-object' | 'implementation' | 'binding';
+export type SourceFactOrigin = 'own' | 'imported' | 'inherited-dom' | 'inherited-library' | 'mixed' | 'unknown';
+export type SourceFactCertainty = 'certain' | 'ambiguous' | 'unknown';
+type SourceDomainOpenness = 'closed' | 'open' | 'unknown';
 export type SourceFactBinding = 'verified' | 'changed' | 'unverified' | 'unavailable';
+export const SOURCE_FACT_SCHEMA_VERSION = 4;
+export const SUPPORTED_SOURCE_FACT_SCHEMA_VERSIONS = [3, 4] as const;
+
+export interface SourceFactLocation {
+  fileId: string | null;
+  canonicalPath: string | null;
+  textHash: string | null;
+  startLine: number | null;
+  endLine: number | null;
+  startOffset?: number | null;
+  endOffset?: number | null;
+  binding: SourceFactBinding;
+}
+
+export interface SourceDomainLiteral {
+  kind: 'string' | 'number' | 'boolean' | 'null';
+  value: string;
+}
+
+export interface SourceDomain {
+  observedLiterals: SourceDomainLiteral[];
+  openness: SourceDomainOpenness;
+}
+
+export interface SourceDefaultFact {
+  dependencies?: SourceFactLocation[];
+  expression: string;
+  location: SourceFactLocation | null;
+  state?: 'value' | 'unsupported';
+  value?: SourceJsonValue;
+  reason?: string | null;
+}
+
+export interface CompilerPropFact {
+  origin: SourceFactOrigin;
+  resolvedKind: string;
+  certainty: SourceFactCertainty;
+  ambiguityReason: string | null;
+  declarations: SourceFactLocation[];
+  sourceTypeText: string;
+  domain: SourceDomain;
+  declaredRequired: boolean | null;
+  sourceDefault: SourceDefaultFact | null;
+  advisoryShape: NativeSourceShape | null;
+  sourceGraph?: SourceTypeGraph;
+  shapeNotes: string[];
+  requiredFieldDropped: boolean | null;
+}
+
+export interface WebComponentSyntaxObservation {
+  reader: 'web-component';
+  lineage: 'own' | 'base' | 'mixin';
+  declaringClass: string | null;
+  converter: { state: 'known' | 'absent' | 'unknown'; expression: string | null };
+  attribute: { state: 'explicit' | 'implicit' | 'disabled' | 'absent' | 'unknown'; name: string | null };
+  reflect: { state: 'explicit' | 'absent' | 'unknown'; value: boolean | null };
+  exposure: string[];
+  default: {
+    expression: string | null;
+    state: 'literal' | 'resolved' | 'absent' | 'unresolved';
+    value: SourceDomainLiteral | null;
+    reason: string | null;
+    locations: SourceFactLocation[];
+  };
+  typeLocations: SourceFactLocation[];
+  slotKind: 'jsdoc' | 'literal-template' | null;
+}
+
+export interface VueSyntaxObservation {
+  reader: 'vue';
+  channel: 'prop' | 'slot-contract' | 'slot-template' | 'slot-access';
+  occurrence: number;
+  resolution: 'resolved' | 'partial' | 'unresolved';
+  resolutionReason: string | null;
+  expression: string;
+  spreadPath: string[];
+  conditions: string[];
+  loops: string[];
+  fallback: string | null;
+  default: WebComponentSyntaxObservation['default'];
+  typeLocations: SourceFactLocation[];
+}
+
+export type SourceSyntaxObservation = WebComponentSyntaxObservation | VueSyntaxObservation;
+
+export interface SourceCandidateObservation {
+  name: string;
+  keyPath: string[];
+  evidenceKind: SourceEvidenceKind;
+  type: string;
+  declaredRequired: boolean | null;
+  sourceDefault: string | null;
+  origin: SourceFactOrigin;
+  location: SourceFactLocation | null;
+  fact?: CompilerPropFact;
+  syntax?: SourceSyntaxObservation;
+}
+
+export interface SourceCandidate {
+  name: string;
+  keyPath: string[];
+  evidenceKinds: SourceEvidenceKind[];
+  type: string;
+  declaredRequired: boolean | null;
+  sourceDefault: string | null;
+  facts: CompilerPropFact | null;
+  observations: SourceCandidateObservation[];
+  projection: {
+    kind: 'prop' | 'slot' | 'excluded' | 'unknown';
+    reason: string | null;
+  };
+}
+
+export interface SourceCandidateSource {
+  componentName: string;
+  sourcePath: string;
+  factSchemaVersion: number | null;
+  candidates: SourceCandidate[] | null;
+}
+
+export interface SourceCandidateCollection {
+  candidates: SourceCandidate[];
+  omittedCount: number;
+}
 
 export type CompilerCoverage = 'complete-within-declared-bound' | 'partial' | 'unavailable';
 
@@ -43,4 +171,73 @@ export interface ExtractionDiagnostics {
   coverage: CompilerCoverage;
   limits: Record<string, number>;
   used: Record<string, number>;
+}
+
+export type SourceJsonValue = null | boolean | number | string | SourceJsonValue[] | { [key: string]: SourceJsonValue };
+export interface NativeSourceShape {
+  $type: 'string' | 'number' | 'boolean' | 'array' | 'record';
+  $required: boolean;
+  $description?: string;
+  $values?: SourceJsonValue[];
+  $items?: NativeSourceShape;
+  $fields?: Record<string, NativeSourceShape>;
+}
+export interface SourceTypeNode {
+  id: string;
+  path?: Array<{ kind: 'field' | 'item' | 'tuple' | 'union' | 'intersection' | 'index'; key: string | number }>;
+  compilerIdentity?: { typeId: string; declarationId?: string };
+  alias?: string;
+  renderContract?: { framework: 'react'; exportName: 'ReactNode' | 'ReactElement'; declaration: SourceFactLocation };
+  readonly?: boolean;
+  nullable?: boolean;
+  undefinable?: boolean;
+  tupleElements?: Array<{ nodeId: string; label: string | null; optional: boolean; rest: boolean }>;
+  discriminatorKeys?: string[];
+  discriminator?: { provenance: 'compiler' | 'unknown'; complete: boolean; keys: string[] };
+  nullabilityProvenance?: 'compiler' | 'syntax' | 'compiler-erased' | 'unknown';
+  nullability?: {
+    compilerMode: 'enabled' | 'disabled';
+    null: { state: 'present' | 'absent' | 'unknown'; source: 'compiler' | 'syntax' | 'compiler-erased' | 'unknown' };
+    undefined: {
+      state: 'present' | 'absent' | 'unknown';
+      source: 'compiler' | 'syntax' | 'compiler-erased' | 'unknown';
+    };
+  };
+  callSignatures?: string[];
+  keyPath: string[];
+  kind: string;
+  typeText: string;
+  required: boolean;
+  declarations: SourceFactLocation[];
+  domain: {
+    openness: SourceDomainOpenness;
+    declaredValues: SourceJsonValue[];
+    provenance: 'compiler' | 'unknown';
+    unrepresentedValues?: Array<{ typeText: string; reason: string }>;
+  };
+  fields?: Array<{
+    key: string;
+    nodeId: string;
+    required: boolean;
+    readonly?: boolean;
+    declarations?: SourceFactLocation[];
+    description?: string;
+    path?: NonNullable<SourceTypeNode['path']>;
+  }>;
+  items?: string[];
+  alternatives?: string[];
+  indexSignatures?: Array<{ keyType: string; valueNodeId: string }>;
+  coverage: CompilerCoverage;
+  reason: string | null;
+}
+export interface SourceTypeGraph {
+  schemaVersion: 1;
+  used?: { propertyEnumerations: number; enumeratedProperties: number; wrappedProperties: number };
+  limitations?: string[];
+  rootId: string;
+  nodes: SourceTypeNode[];
+  coverage: CompilerCoverage;
+  limits: { maxDepth: number; maxNodes: number; maxFields: number; maxEdges?: number };
+  resources?: { nodes: number; edges: number };
+  omittedCount: number;
 }

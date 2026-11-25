@@ -12,6 +12,7 @@ import type {
   DownstreamImpact,
   ServerPreviewResponse,
 } from '@contentful/experience-design-system-types';
+import { displayBreakingChanges } from '@contentful/experience-design-system-types';
 import type { GenerationIssue } from '@contentful/experience-design-system-types/handoff';
 import {
   GroupedSidebar,
@@ -56,6 +57,7 @@ import { computeSidebarBudget, FALLBACK_ROWS } from '../07-scope-gate/sidebar/li
 import { HelpOverlay, type HelpSection } from '../07-scope-gate/sidebar/components/HelpOverlay.js';
 import { CompactControlBar } from '../07-scope-gate/sidebar/components/CompactControlBar.js';
 import { computeAutoRejectDecision } from './helpers/auto-reject-decision.js';
+import { describeAcceptedGenerationErrors } from './helpers/finalize-generation-errors.js';
 import { formatBreakingChange } from './helpers/breaking-change-format.js';
 import { enumerateCycleBreaks, type BreakEdge } from './helpers/enumerate-cycle-breaks.js';
 import type { HistorySnapshot } from './history.js';
@@ -382,7 +384,7 @@ interface BreakingRow {
   focusTarget?: { kind: 'prop' | 'slot'; name: string };
 }
 
-function buildBreakingRows(breakingChanges: BreakingComponent[]): BreakingRow[] {
+export function buildBreakingRows(breakingChanges: BreakingComponent[]): BreakingRow[] {
   const out: BreakingRow[] = [];
   for (const b of breakingChanges) {
     if (b.changes.length === 0) {
@@ -409,7 +411,7 @@ function buildBreakingRows(breakingChanges: BreakingComponent[]): BreakingRow[] 
   return out;
 }
 
-function deriveBreakingChanges(response: ServerPreviewResponse): BreakingComponent[] {
+export function deriveBreakingChanges(response: ServerPreviewResponse): BreakingComponent[] {
   const out: BreakingComponent[] = [];
   for (const item of response.components.changed ?? []) {
     if (item.changeClassification?.classification !== 'breaking') continue;
@@ -417,7 +419,7 @@ function deriveBreakingChanges(response: ServerPreviewResponse): BreakingCompone
     if (typeof componentName !== 'string') continue;
     out.push({
       componentName,
-      changes: item.changeClassification.breakingChanges ?? [],
+      changes: displayBreakingChanges(item.changeClassification),
       impact: item.impact,
       current: item.current,
     });
@@ -1240,6 +1242,11 @@ function GenerateReviewStepView({
         setFinalizeError(
           `Cannot finalize — accepted set still contains a cycle (${[...participants].sort().join(', ')}). Reject a cycle member to break it.`,
         );
+        return;
+      }
+      const generationErrors = describeAcceptedGenerationErrors(components);
+      if (generationErrors) {
+        setFinalizeError(generationErrors);
         return;
       }
       setShowFinalize(true);

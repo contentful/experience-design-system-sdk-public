@@ -122,7 +122,7 @@ All locations come from `configRoot()` (`persistence/src/session/helpers/config-
 | `pipeline.db`            | SQLite session database: sessions, step state, extracted and token data, all caches (`EDS_PIPELINE_DB_PATH` overrides the path)                             | `session/repositories/db.ts`                    |
 | `config.json`            | Credentials and settings: agent and project preferences, debug mode, analytics opt-in (mode 0600)                                                           | `credentials/`, `session/helpers/config-root.ts` |
 | `state/runs.json`        | One record per import run, appended by the CLI (`appendRun`) and updated after a push (`updateRun`)                                                         | `runs/`                                         |
-| `reviews/`               | Per-session review state (`current-review-state.json`) for the scope gate and final review (`EDS_REVIEW_ARTIFACTS_DIR` overrides)                           | `review-session/`                               |
+| `reviews/`               | Per-session review state (`current-review-state.json`) for the final review (`EDS_REVIEW_ARTIFACTS_DIR` overrides)                                          | `review-session/`                               |
 | `<project>/.contentful/` | The saved `components.json` and `tokens.json`. With Debug Mode on they go in a per-session folder, next to the debug logs and, after an error, their zip     | CLI: `help/file-locations.ts`, `10-flow/flow/save.ts` |
 
 `DatabaseSync` is used throughout: synchronous writes keep the database consistent when a signal or uncaught exception arrives. Schema creation and in-place migrations are in `db.ts`.

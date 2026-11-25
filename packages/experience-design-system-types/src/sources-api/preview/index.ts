@@ -21,7 +21,7 @@ interface PropertyBreakingChange {
   reason: (typeof PROPERTY_BREAKING_REASONS)[number];
 }
 
-interface SlotBreakingChange {
+export interface SlotBreakingChange {
   slotId: string;
   reason: (typeof SLOT_BREAKING_REASONS)[number];
 }
@@ -51,9 +51,20 @@ export function sanitizeBreakingChanges(value: unknown): BreakingChange[] {
   return changes;
 }
 
+export function sanitizeSlotBreakingChanges(value: unknown): SlotBreakingChange[] {
+  return sanitizeBreakingChanges(value).filter((change): change is SlotBreakingChange => 'slotId' in change);
+}
+
+export function displayBreakingChanges(classification: ChangeClassification): BreakingChange[] {
+  const { breakingChanges, slotBreakingChanges } = classification;
+  if (!Array.isArray(slotBreakingChanges)) return breakingChanges ?? [];
+  return [...(breakingChanges ?? []).filter((change) => !('slotId' in change)), ...slotBreakingChanges];
+}
+
 export interface ChangeClassification {
   classification: 'breaking' | 'compatible';
   breakingChanges: BreakingChange[];
+  slotBreakingChanges?: SlotBreakingChange[];
 }
 
 export interface DownstreamImpact {

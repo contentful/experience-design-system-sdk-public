@@ -1,10 +1,11 @@
 import { Node, type GetAccessorDeclaration, type PropertyDeclaration, type SetAccessorDeclaration } from 'ts-morph';
 import type { RawPropDefinition } from '../../../../types/component.js';
+import type { ExtractedInput } from '../../types/extracted-input.js';
 import { resolvePropType } from './resolve-prop-type.js';
 
 export function extractDecoratorInput(
   field: PropertyDeclaration | SetAccessorDeclaration | GetAccessorDeclaration,
-): RawPropDefinition | null {
+): ExtractedInput | null {
   const decorator = field.getDecorator('Input');
   if (!decorator) return null;
 
@@ -13,8 +14,7 @@ export function extractDecoratorInput(
 
   let alias: string | null = null;
   let required = false;
-  let transformIsBoolean = false;
-  let transformIsNumber = false;
+  let transform: string | undefined;
 
   if (args.length === 1) {
     const arg = args[0]!;
@@ -35,9 +35,7 @@ export function extractDecoratorInput(
       }
       const transformProp = arg.getProperty('transform');
       if (transformProp && Node.isPropertyAssignment(transformProp)) {
-        const transformText = transformProp.getInitializer()?.getText() ?? '';
-        if (/\bbooleanAttribute\b/.test(transformText)) transformIsBoolean = true;
-        if (/\bnumberAttribute\b/.test(transformText)) transformIsNumber = true;
+        transform = transformProp.getInitializer()?.getText();
       }
     }
   }
@@ -61,20 +59,19 @@ export function extractDecoratorInput(
   }
 
   const resolved = resolvePropType(typeNode);
-  const typeText = transformIsBoolean ? 'boolean' : transformIsNumber ? 'number' : resolved.text;
 
   const name = alias ?? fieldName;
 
   const prop: RawPropDefinition = {
     name,
-    type: typeText,
+    type: resolved.text,
     required,
     sourceStartLine: field.getStartLineNumber(),
     sourceEndLine: field.getEndLineNumber(),
   };
   if (defaultValue !== undefined) prop.defaultValue = defaultValue;
-  if (resolved.allowedValues && !transformIsBoolean && !transformIsNumber) {
+  if (resolved.allowedValues) {
     prop.allowedValues = resolved.allowedValues;
   }
-  return prop;
+  return transform === undefined ? { prop } : { prop, transform };
 }

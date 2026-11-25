@@ -9,8 +9,10 @@ import type {
   ServerPreviewResponse,
   DesignTokenSummary,
 } from '@contentful/experience-design-system-types';
+import { displayBreakingChanges } from '@contentful/experience-design-system-types';
 import { hasBreakingChangesWithImpact } from '@contentful/experience-design-system-backend-pipeline';
 import { computeComponentDiffLines } from '../support/preview-diff.js';
+import { formatBreakingChange } from '../../09-review/helpers/breaking-change-format.js';
 import { StepHeader } from '@tui/shared/components/StepHeader.js';
 import { SpaceEnvironment } from '../components/SpaceEnvironment.js';
 import { usePreviewConfirmationInput } from '../support/preview-confirmation-input.js';
@@ -157,8 +159,8 @@ function appendChangedPreviewLine(
   });
   if (changeClassification?.classification !== 'breaking') return;
 
-  const reasons = changeClassification.breakingChanges
-    .map((bc) => `${'slotId' in bc ? bc.slotId : bc.propertyId}: ${bc.reason}`)
+  const reasons = displayBreakingChanges(changeClassification)
+    .map((change) => formatBreakingChange(change))
     .join(', ');
   lines.push({ key: `${keyPrefix}-b-${name}`, color: PALETTE.error, text: ` ⚠ BREAKING: ${reasons}` });
 }
@@ -168,15 +170,15 @@ function buildPreviewDiffLines(preview: ServerPreviewResponse): PreviewDiffLine[
   const { components, tokens } = preview;
 
   for (const item of components.new) {
-    const raw = item as unknown as Record<string, unknown>;
-    const name = (raw.key as string) ?? (raw.$name as string) ?? 'unknown';
+    const raw = (item.definition ?? item) as unknown as Record<string, unknown>;
+    const name = item.key ?? (raw.$name as string) ?? 'unknown';
     lines.push({ key: `comp-new-${name}`, color: PALETTE.success, text: ` + ${name}` });
     const slots = (raw.$slots ?? {}) as Record<string, Record<string, unknown>>;
     for (const slotName of Object.keys(slots).sort()) {
       lines.push({
         key: `comp-new-${name}-slot-${slotName}`,
         color: PALETTE.success,
-        text: `   slot: ${slotName}`,
+        text: `   slot: ${slotName}${slots[slotName]?.['$required'] === true ? ' (required)' : ''}`,
       });
       const allowed = slots[slotName]?.['$allowedComponents'];
       if (Array.isArray(allowed) && allowed.length > 0) {
@@ -205,7 +207,7 @@ function buildPreviewDiffLines(preview: ServerPreviewResponse): PreviewDiffLine[
       lines.push({ key: `comp-d-${item.current.name}-${d.key}`, color: d.color, text: ` ${d.text}` });
     }
     const proposedSlots =
-      ((item.proposed as unknown as Record<string, unknown>)['$slots'] as
+      (((item.proposed.definition ?? item.proposed) as unknown as Record<string, unknown>)['$slots'] as
         | Record<string, Record<string, unknown>>
         | undefined) ?? {};
     for (const slotName of Object.keys(proposedSlots).sort()) {

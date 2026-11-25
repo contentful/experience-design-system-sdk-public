@@ -25,10 +25,11 @@ const targetTypes = {
   DiscriminatedUnion: 'DiscriminatedUnion',
 } as const;
 export function cdfToTarget(d: CDFFieldDefinition): TargetDefinition {
-  const t: TargetDefinition = { type: targetTypes[d.$type] };
+  const richText = d.$type === 'richtext' && d.$category === 'content';
+  const t: TargetDefinition = { type: richText ? 'RichText' : targetTypes[d.$type] };
   if (own(d, '$required')) t.required = d.$required;
   if (own(d, '$description')) t.description = d.$description;
-  if (own(d, '$default')) t.defaultValue = d.$default;
+  if (own(d, '$default') && !richText) t.defaultValue = d.$default;
   if (d.$values) t.values = d.$values;
   if (own(d, 'value')) t.value = d.value;
   if (d.valueType) t.valueType = cdfToTarget(d.valueType);
@@ -98,6 +99,20 @@ export function normalizeCDFBooleanChoices(definition: CDFFieldDefinition): void
     delete definition.$values;
   for (const child of cdfDefinitionChildren(definition)) normalizeCDFBooleanChoices(child.definition);
 }
+export function componentPropertyIssues(entry: unknown): PropertyIssue[] {
+  const properties =
+    entry && typeof entry === 'object' && !Array.isArray(entry)
+      ? (entry as { $properties?: unknown }).$properties
+      : undefined;
+  if (!properties || typeof properties !== 'object' || Array.isArray(properties)) return [];
+  return Object.entries(properties).flatMap(([key, property]) =>
+    validateCDFProperty(property).issues.map((issue) => ({
+      path: `/$properties/${key}${issue.path}`,
+      message: issue.message,
+    })),
+  );
+}
+
 export function validateCDFProperty(
   input: unknown,
   requireCategory = true,

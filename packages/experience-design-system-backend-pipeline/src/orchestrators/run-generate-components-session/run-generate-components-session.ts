@@ -3,7 +3,6 @@ import { createLocalCliAgentInvoker } from '../../agents/invoker/create-local-cl
 import type { AgentName } from '../../agents/types/agent-name.js';
 import { loadRawComponents, openPipelineDb } from '../../persistence/src/session/repositories/db.js';
 import { hashContent, hashPromptForSkill } from '../../persistence/src/session/helpers/cache-keys.js';
-import { loadAcceptedNames } from '../../persistence/src/index.js';
 import { summarizeForMapTokens } from '../../steps/generation/src/controller/existing-entities/summarize-for-map-tokens.js';
 import { buildEmptySessionResponse } from './helpers/build-empty-session-response.js';
 import { collectDuplicateNames } from './helpers/collect-duplicate-names.js';
@@ -54,16 +53,13 @@ export async function runGenerateComponentsSession(
 
   const db = openPipelineDb();
   try {
-    const acceptedNames = await loadAcceptedNames(request.sessionId);
-    const acceptedSet = acceptedNames
-      ? new Set(
-          resolveComponentIds(
-            [...acceptedNames],
-            loadRawComponents(db, request.sessionId).map((c) => c.name),
-          ).values(),
-        )
-      : undefined;
-    let components = loadRawComponents(db, request.sessionId, acceptedSet ?? undefined);
+    const acceptedSet = new Set(
+      resolveComponentIds(
+        request.acceptedNames,
+        loadRawComponents(db, request.sessionId).map((c) => c.name),
+      ).values(),
+    );
+    let components = loadRawComponents(db, request.sessionId, acceptedSet);
     if (components.length === 0) return buildEmptySessionResponse(request.sessionId);
 
     const allowedComponentNames = new Set([
