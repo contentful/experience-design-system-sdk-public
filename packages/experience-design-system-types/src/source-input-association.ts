@@ -24,10 +24,7 @@ export function validateSourceInputOwners(
     if (!owner.name.trim() || names.has(owner.name)) throw new Error('Blank or duplicate authoring name');
     names.add(owner.name);
     if (!owner.sourceInput) continue;
-    if (
-      !SourceInputAssociationSchema.safeParse(owner.sourceInput).success ||
-      owner.sourceInput.inputPath[0] !== owner.sourceInput.inputName
-    )
+    if (!SourceInputAssociationSchema.safeParse(owner.sourceInput).success)
       throw new Error('Invalid source input association');
     const key = sourceInputOwnerKey(owner.sourceInput);
     if (inputs.has(key)) throw new Error('Source input has multiple owners');
@@ -51,7 +48,7 @@ export function validateCDFSourceOwnerContract(entry: {
   for (const [name, slot] of Object.entries(entry.$slots ?? {})) {
     if (!name.trim()) throw new Error('Blank slot name');
     const input = slot.$sourceInput;
-    if (input && entry.$properties[input.inputName] && !entry.$properties[input.inputName]!.$sourceInput)
+    if (input && Object.hasOwn(entry.$properties, input.inputName) && !entry.$properties[input.inputName]!.$sourceInput)
       throw new Error('Property and slot conflict over source input ownership');
   }
 }

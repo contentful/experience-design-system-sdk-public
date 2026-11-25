@@ -161,7 +161,7 @@ it('makes a required nullable model attachment optional and retains its source k
   expect(validateRepresentationPlan(plan, input)).toEqual([]);
 });
 
-it('projects nested null defaults as unset fields while retaining the complete source default', () => {
+function labelCountModelWithNullLabelDefault(): PropertyModel {
   const root = node('record', 'value', false);
   root.fields = [
     { key: 'label', nodeId: 'label', required: true },
@@ -169,6 +169,11 @@ it('projects nested null defaults as unset fields while retaining the complete s
   ];
   const input = model(root, [node('string', 'label'), node('number', 'count', false)]);
   input.source.default = { expression: 'sourceDefault', state: 'value', value: { label: null, count: 3 } };
+  return input;
+}
+
+it('projects nested null defaults as unset fields while retaining the complete source default', () => {
+  const input = labelCountModelWithNullLabelDefault();
   const plan = deriveEditableRepresentationPlans(input).find((entry) => entry.kind === 'native');
   expect(plan?.sdkValid).toBe(true);
   expect(plan?.nativeDefinition?.$default).toEqual({ count: 3 });
@@ -177,13 +182,7 @@ it('projects nested null defaults as unset fields while retaining the complete s
 });
 
 it('validates an explicitly projected default against its reconstructed source contract', () => {
-  const root = node('record', 'value', false);
-  root.fields = [
-    { key: 'label', nodeId: 'label', required: true },
-    { key: 'count', nodeId: 'count', required: true },
-  ];
-  const input = model(root, [node('string', 'label'), node('number', 'count', false)]);
-  input.source.default = { expression: 'sourceDefault', state: 'value', value: { label: null, count: 3 } };
+  const input = labelCountModelWithNullLabelDefault();
   input.defaultIntent = { action: 'set', value: { count: 3 } };
   const plan = deriveEditableRepresentationPlans(input).find((entry) => entry.kind === 'native');
   expect(plan?.sdkValid, JSON.stringify(plan?.issues)).toBe(true);
@@ -226,6 +225,16 @@ it('keeps source defaults reconstructable through multiple non-null union branch
   const reconstructed = reconstructAuthoringValue(input.source.graph, projected);
   expect(reconstructed).toEqual(original);
   expect(validateSourceValue(input.source.graph, reconstructed)).toEqual([]);
+});
+
+it('projects an own __proto__ default field without changing the object prototype', () => {
+  const root = node('record', 'value', false);
+  root.fields = [{ key: '__proto__', nodeId: 'child', required: true }];
+  const input = model(root, [node('record', 'child', false)]);
+  const projected = projectSourceDefault(input.source.graph, JSON.parse('{"__proto__":{"retained":true}}'));
+  if (!projected || typeof projected !== 'object') throw new Error('Expected projected record');
+  expect(Object.getPrototypeOf(projected)).toBe(Object.prototype);
+  expect(JSON.stringify(projected)).toBe('{"__proto__":{"retained":true}}');
 });
 
 it('reconstructs nullable own keys without changing the object prototype', () => {

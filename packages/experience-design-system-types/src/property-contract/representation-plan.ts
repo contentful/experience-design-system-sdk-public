@@ -13,7 +13,7 @@ import {
   type JsonValue,
   type PropertyIssue,
 } from './json-value.js';
-import { contentDigest } from './content-digest.js';
+import { contentDigest, generatedModelKey } from './content-digest.js';
 import { propertyMapperBlockers } from './mapper-readiness.js';
 import {
   prepareLogicalSourceGraph,
@@ -440,8 +440,7 @@ export function deriveEditableRepresentationPlans(
     nodeId,
     sourceNodeId: nodes.get(nodeId)!.sourceNodeId,
   });
-  const generatedKey = (node: LogicalSourceNode) =>
-    'Model_' + contentDigest({ owner: model.identity, nodeId: node.id }).slice(0, 32);
+  const generatedKey = (node: LogicalSourceNode) => generatedModelKey({ owner: model.identity, nodeId: node.id });
   const hold = (node: LogicalSourceNode, reason: string): void => {
     mappings.delete(node.id);
     bound(node, 'held', { reason });
@@ -569,7 +568,7 @@ export function deriveEditableRepresentationPlans(
         const child = nodes.get(signature.valueNodeId)!;
         const targetKey = modelFor(child.id);
         if (!targetKey) continue;
-        const itemKey = 'Model_' + contentDigest({ owner: model.identity, nodeId: node.id, index }).slice(0, 32);
+        const itemKey = generatedModelKey({ owner: model.identity, nodeId: node.id, index });
         models.set(itemKey, {
           key: itemKey,
           nodeId: id,

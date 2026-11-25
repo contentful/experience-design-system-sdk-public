@@ -1,4 +1,4 @@
-import { Ajv } from 'ajv';
+import { Ajv, type ValidateFunction } from 'ajv';
 import { cdfJsonSchema } from './schema.js';
 import * as z from 'zod/mini';
 import { childPath, jsonValueIssue, type PropertyIssue } from '../property-contract/json-value.js';
@@ -97,10 +97,14 @@ export interface CDFComponentEntry {
   $model?: ModelBinding;
   $representationPlans?: Record<string, RepresentationPlan>;
 }
-const admitComponent = new Ajv({ allErrors: true }).compile({
-  $ref: '#/definitions/component',
-  definitions: cdfJsonSchema.definitions,
-});
+let componentAdmission: ValidateFunction | undefined;
+function admitComponent(value: unknown): ValidateFunction['errors'] {
+  componentAdmission ??= new Ajv({ allErrors: true }).compile({
+    $ref: '#/definitions/component',
+    definitions: cdfJsonSchema.definitions,
+  });
+  return componentAdmission(value) ? null : componentAdmission.errors;
+}
 
 function zodIssues(path: string, issues: readonly { path: PropertyKey[]; message: string }[]): PropertyIssue[] {
   return issues.map((issue) => ({
@@ -137,8 +141,9 @@ export function componentEntryIssues(value: unknown): PropertyIssue[] {
   if (unsafe) return [unsafe];
   if (!value || typeof value !== 'object' || Array.isArray(value))
     return [{ path: '', message: 'Expected component object' }];
-  if (!admitComponent(value))
-    return schemaValidationErrors(admitComponent.errors).map(({ path, message }) => ({
+  const admissionErrors = admitComponent(value);
+  if (admissionErrors !== null)
+    return schemaValidationErrors(admissionErrors).map(({ path, message }) => ({
       path: path === '/' ? '' : path,
       message,
     }));

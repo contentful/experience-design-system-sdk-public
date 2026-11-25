@@ -5,7 +5,6 @@ import type { CDFFile, CDFComponentEntry, CDFTokenEntry, CDFValidationError, CDF
 
 import { componentEntryIssues } from './types.js';
 import { schemaValidationErrors } from './schema-errors.js';
-import { validateCDFProperty } from './property-validation.js';
 import { validateRepresentationClosure } from './representation-validation.js';
 import { jsonValueIssue } from '../property-contract/json-value.js';
 import { componentDefinitionImportIssues } from '../property-contract/definition-import-rules.js';
@@ -140,10 +139,6 @@ export function validateCDF(input: unknown): CDFValidationResult {
     if (entryIssues.length) {
       errors.push(...entryIssues.map(({ path, message }) => ({ path: `/${component.key}${path}`, message })));
       continue;
-    }
-    for (const [key, property] of Object.entries(component.entry.$properties)) {
-      for (const issue of validateCDFProperty(property).issues)
-        errors.push({ path: `/${component.key}/$properties/${key}${issue.path}`, message: issue.message });
     }
     errors.push(
       ...componentDefinitionImportIssues(component.entry).map(({ path, message }) => ({

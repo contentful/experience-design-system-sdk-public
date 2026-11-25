@@ -42,7 +42,11 @@ export function nativeSourceRegion(
   if (node.kind === 'reference' && node.alternatives?.length === 1)
     return nativeSourceRegion(node.alternatives[0]!, nodes, position, next, presence, currentRegion);
   if (node.kind === 'union') {
-    const members = (node.alternatives ?? []).map((id) => nodes.get(id)!);
+    const alternatives = node.alternatives ?? [];
+    const members = alternatives
+      .map((id) => nodes.get(id))
+      .filter((member): member is LogicalSourceNode => member !== undefined);
+    if (members.length !== alternatives.length) return;
     const values = members.filter((member) => !['null', 'undefined', 'never'].includes(member.kind));
     if (values.length === 1) return nativeSourceRegion(values[0]!.id, nodes, position, next, presence, currentRegion);
     const union = sourceDiscriminatedUnion(node, nodes);
