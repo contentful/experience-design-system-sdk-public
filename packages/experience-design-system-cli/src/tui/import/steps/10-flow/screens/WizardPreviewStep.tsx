@@ -9,6 +9,7 @@ import type {
   ServerPreviewResponse,
   DesignTokenSummary,
 } from '@contentful/experience-design-system-types';
+import { displayBreakingChanges } from '@contentful/experience-design-system-types';
 import { hasBreakingChangesWithImpact } from '@contentful/experience-design-system-backend-pipeline';
 import { computeComponentDiffLines } from '../support/preview-diff.js';
 import { formatBreakingChange } from '../../09-review/helpers/breaking-change-format.js';
@@ -158,7 +159,9 @@ function appendChangedPreviewLine(
   });
   if (changeClassification?.classification !== 'breaking') return;
 
-  const reasons = changeClassification.breakingChanges.map((change) => formatBreakingChange(change)).join(', ');
+  const reasons = displayBreakingChanges(changeClassification)
+    .map((change) => formatBreakingChange(change))
+    .join(', ');
   lines.push({ key: `${keyPrefix}-b-${name}`, color: PALETTE.error, text: ` ⚠ BREAKING: ${reasons}` });
 }
 
