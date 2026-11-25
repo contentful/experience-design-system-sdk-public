@@ -12,6 +12,7 @@ import type {
   DownstreamImpact,
   ServerPreviewResponse,
 } from '@contentful/experience-design-system-types';
+import { displayBreakingChanges } from '@contentful/experience-design-system-types';
 import type { GenerationIssue } from '@contentful/experience-design-system-types/handoff';
 import {
   GroupedSidebar,
@@ -418,7 +419,7 @@ export function deriveBreakingChanges(response: ServerPreviewResponse): Breaking
     if (typeof componentName !== 'string') continue;
     out.push({
       componentName,
-      changes: item.changeClassification.breakingChanges ?? [],
+      changes: displayBreakingChanges(item.changeClassification),
       impact: item.impact,
       current: item.current,
     });

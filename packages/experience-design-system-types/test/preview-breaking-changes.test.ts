@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sanitizeBreakingChanges } from '../src/index.js';
+import { displayBreakingChanges, sanitizeBreakingChanges, sanitizeSlotBreakingChanges } from '../src/index.js';
 
 describe('sanitizeBreakingChanges', () => {
   it('keeps known property and slot reasons', () => {
@@ -49,5 +49,47 @@ describe('sanitizeBreakingChanges', () => {
     const [out] = sanitizeBreakingChanges([row]);
     expect(out).toEqual(row);
     expect(out).not.toBe(row);
+  });
+});
+
+describe('sanitizeSlotBreakingChanges', () => {
+  it('keeps only valid slot rows', () => {
+    expect(
+      sanitizeSlotBreakingChanges([
+        { slotId: 'body', reason: 'slot_cardinality_narrowed' },
+        { propertyId: 'title', reason: 'removed' },
+        { slotId: 'body', reason: 'slot_renamed' },
+      ]),
+    ).toEqual([{ slotId: 'body', reason: 'slot_cardinality_narrowed' }]);
+  });
+});
+
+describe('displayBreakingChanges', () => {
+  const legacy = [
+    { propertyId: 'title', reason: 'removed' },
+    { slotId: 'body', reason: 'slot_allowed_components_narrowed' },
+  ] as const;
+
+  it('falls back to breakingChanges when slotBreakingChanges is absent', () => {
+    expect(displayBreakingChanges({ classification: 'breaking', breakingChanges: [...legacy] })).toEqual(legacy);
+  });
+
+  it('replaces legacy slot rows with slotBreakingChanges when present', () => {
+    expect(
+      displayBreakingChanges({
+        classification: 'breaking',
+        breakingChanges: [...legacy],
+        slotBreakingChanges: [{ slotId: 'body', reason: 'slot_became_required' }],
+      }),
+    ).toEqual([
+      { propertyId: 'title', reason: 'removed' },
+      { slotId: 'body', reason: 'slot_became_required' },
+    ]);
+  });
+
+  it('drops legacy slot rows when slotBreakingChanges is an empty list', () => {
+    expect(
+      displayBreakingChanges({ classification: 'breaking', breakingChanges: [...legacy], slotBreakingChanges: [] }),
+    ).toEqual([{ propertyId: 'title', reason: 'removed' }]);
   });
 });
