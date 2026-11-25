@@ -1,4 +1,4 @@
-export function buildComponentsPreamble(inputBlock: string): string {
+export function buildComponentsPreamble(): string {
   return `You are running as part of the experience-design-system-cli generate pipeline in AUTONOMOUS mode. The developer is not present to answer questions.
 
 Context: You are classifying a React component for **Contentful Experience Orchestration**. The result is a Component Type — a schema that tells Contentful what a marketer can configure. Properties fall into three categories:
@@ -8,7 +8,7 @@ Context: You are classifying a React component for **Contentful Experience Orche
 
 Your task: classify every prop and slot in the component below. Apply all judgment calls yourself — do not pause to ask for confirmation. Include a "description" field on each tool call to document your reasoning so the developer can review it afterward.
 
-All input data is provided inline below — do not read any additional files.${inputBlock}
+All input data is provided inline below — do not read any additional files.
 
 ## Output protocol
 
@@ -30,14 +30,14 @@ Rules:
 - Emit exactly one JSON object per line. No multi-line JSON. No markdown fences around the lines.
 - Every prop in the input must have exactly one call: either classify_prop or exclude_prop.
 - Every slot in the input must have exactly one classify_slot call.
-- Valid cdf_type values: string, richtext, media, enum, token, boolean
+- Valid cdf_type values: string, richtext, media, token, boolean
 - Valid cdf_category values: content, design, state
-- For enum type, always include \`values\` (non-empty string array of the variant names the prop accepts).
-- For token type, always include \`token_kind\` (DTCG \$type, e.g. "color"). **Never emit \`values\` for \`cdf_type: "token"\` props** — an enum prop's list holds variant names; a token prop's list holds design token paths, produced separately and never by you. Emitting \`values\` on a token prop makes the definition invalid.
+- Finite string choices use \`cdf_type: "string"\` with \`values\` (non-empty string array of the variant names the prop accepts); enum is not a supported type.
+- For token type, always include \`token_kind\` (DTCG \$type, e.g. "color"). **Never emit \`values\` for \`cdf_type: "token"\` props** — a string prop's \`values\` list holds variant names; a token prop's list holds design token paths, produced separately and never by you. Emitting \`values\` on a token prop makes the definition invalid.
 - Never emit both "values" and "token_kind" on one prop.
-- \`enum\` vs \`token\` is decided by three questions answered in order from the source shown — never from the TypeScript type. Q1: does the component look the value up, switch on it, or have a vocabulary for it (\`tokens[x]\`, \`switch (variant)\`, \`allowedValues\`)? yes → \`enum\`, stop.
+- \`string\` with \`values\` vs \`token\` is decided by three questions answered in order from the source shown — never from the TypeScript type. Q1: does the component look the value up, switch on it, or have a vocabulary for it (\`tokens[x]\`, \`switch (variant)\`, \`allowedValues\`)? yes → \`string\` with \`values\`, stop.
 - Q2: is the value written straight into a style or attribute (\`rx={radius}\`, \`padding: \${padding}\`)? no → not \`token\`, apply the type rules.
-- Q3: is there a design-token reference at that use — a \`tokens.*\` parameter default, a \`tokenReference\`, an inline \`tokens.*\` / \`var(--*)\`? yes → \`token\` (cite both lines in "reason"); no → \`string\`. "Ambiguity resolves to \`enum\`" applies only when Q1–Q3 cannot be answered from the source shown.
+- Q3: is there a design-token reference at that use — a \`tokens.*\` parameter default, a \`tokenReference\`, an inline \`tokens.*\` / \`var(--*)\`? yes → \`token\` (cite both lines in "reason"); no → \`string\`. "Ambiguity resolves to \`string\` with \`values\`" applies only when Q1–Q3 cannot be answered from the source shown.
 - CSS design props (className, style, styles, positional/geometric props: top, bottom, left, right, rotation, offset, etc.) → classify_prop, cdf_type: "string", cdf_category: "design".
 - For \`classify_slot.allowed_components\`, use only exact names from the hard allowlist provided below. Never invent a child from an import, JSX element, type name, icon name, or implementation helper; if a child is not listed, omit it.
 - On classify_component, "rationale" fields are operator-facing (read-only) but may surface in customer-facing exports. The "rationale.description" field is subject to the description content rules in the skill prompt (no internal initiative names). "rationale.props" and "rationale.slots" describe your reasoning about scope; "classify_slot.rationale" explains why each slot was kept.

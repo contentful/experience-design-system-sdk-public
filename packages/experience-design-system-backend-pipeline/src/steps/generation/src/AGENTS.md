@@ -45,7 +45,7 @@ Timeouts and non-zero exit codes become per-component `CdfGenerationFailure` ent
 
 ## External calls
 
-AI agent via `createLocalCliAgentInvoker` from this package's `src/agents/`. Timeout: 120 s per component. No HTTP calls.
+AI agent via `createLocalCliAgentInvoker` from this package's `src/agents/`. Timeout: 120 s per component. Claude and Codex prompts go over stdin by default; other agents use argv. There is no application prompt-size limit. No HTTP calls.
 
 ## DSI contribution
 

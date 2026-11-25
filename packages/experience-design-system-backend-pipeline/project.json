@@ -6,12 +6,14 @@
   "tags": [],
   "targets": {
     "build": {
+      "cache": false,
       "executor": "@nx/js:tsc",
       "outputs": ["{options.outputPath}"],
       "options": {
         "outputPath": "packages/experience-design-system-backend-pipeline/dist",
         "main": "packages/experience-design-system-backend-pipeline/src/index.ts",
         "tsConfig": "packages/experience-design-system-backend-pipeline/tsconfig.build.json",
+        "clean": false,
         "assets": []
       },
       "dependsOn": ["^build"]

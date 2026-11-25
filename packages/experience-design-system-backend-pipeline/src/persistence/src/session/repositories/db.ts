@@ -3,7 +3,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-import { configRoot } from '../helpers/config-root.js';
+import { getPipelineDbPath } from '../helpers/pipeline-db-path.js';
+export { getPipelineDbPath } from '../helpers/pipeline-db-path.js';
 import { dirname, resolve } from 'node:path';
 import { escapeForRegExp, excerptAroundNames } from '../helpers/source-excerpt.js';
 import type {
@@ -229,13 +230,6 @@ CREATE INDEX IF NOT EXISTS idx_generation_cache_entity  ON generation_cache(enti
 CREATE INDEX IF NOT EXISTS idx_generation_cache_session ON generation_cache(source_session_id);
 CREATE INDEX IF NOT EXISTS idx_scanned_files_session    ON scanned_files(session_id);
 `;
-
-export function getPipelineDbPath(): string {
-  if (process.env.EDS_PIPELINE_DB_PATH) {
-    return resolve(process.env.EDS_PIPELINE_DB_PATH);
-  }
-  return resolve(configRoot(), 'pipeline.db');
-}
 
 export function openPipelineDb(dbPath?: string): DatabaseSync {
   const path = dbPath ?? getPipelineDbPath();
@@ -1663,6 +1657,10 @@ export function storeCDFComponents(
     deleteTokenPaths.run(sessionId, componentId, propName);
     paths.forEach((path, position) => insertTokenPath.run(sessionId, componentId, propName, 'review', position, path));
   };
+  const insertStringAllowedValues = (componentId: string, propName: string, values: readonly unknown[]) =>
+    values
+      .filter((value): value is string => typeof value === 'string')
+      .forEach((value, position) => insertAllowedValue.run(sessionId, componentId, propName, value, position));
   const deleteSlots = db.prepare(`DELETE FROM raw_slots WHERE session_id = ? AND component_id = ?`);
   const deleteSlotAllowedComponents = db.prepare(
     `DELETE FROM raw_slot_allowed_components WHERE session_id = ? AND component_id = ?`,
@@ -1710,7 +1708,7 @@ export function storeCDFComponents(
           );
           if (prop.$values && prop.$values.length > 0) {
             deleteAllowedValues.run(sessionId, componentId, propName);
-            prop.$values.forEach((v, i) => insertAllowedValue.run(sessionId, componentId, propName, v, i));
+            insertStringAllowedValues(componentId, propName, prop.$values);
           }
           if (prop.$type === 'token' && prop.$category === 'design') {
             // Reconcile the persisted mapping even when the property omits
@@ -1770,9 +1768,7 @@ export function storeCDFComponents(
             prop.$category,
             prop['$token.kind'] ?? null,
           );
-          if (prop.$values && prop.$values.length > 0) {
-            prop.$values.forEach((v, i) => insertAllowedValue.run(sessionId, componentId, propName, v, i));
-          }
+          if (prop.$values && prop.$values.length > 0) insertStringAllowedValues(componentId, propName, prop.$values);
           if (prop.$type === 'token' && prop.$category === 'design') {
             writeTokenPaths(componentId, propName, prop['$token.allowed'] ?? []);
           }

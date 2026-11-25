@@ -26,5 +26,6 @@ packages/experience-design-system-cli/skills/
 
 .nx
 tmp/
+.import-profiles/
 
 .pnpm-store/

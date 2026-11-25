@@ -2,11 +2,7 @@ import React, { useEffect, useLayoutEffect, useState } from 'react';
 import figures from 'figures';
 import { PALETTE } from '@tui/theme.js';
 import { Box, measureElement, Text, type DOMElement } from 'ink';
-import {
-  CDF_PROPERTY_TYPES,
-  CDF_PROPERTY_CATEGORIES,
-  DESIGN_TOKEN_TYPES,
-} from '@contentful/experience-design-system-types';
+import { CDF_PROPERTY_CATEGORIES, DESIGN_TOKEN_TYPES } from '@contentful/experience-design-system-types';
 import type {
   CDFComponentEntry,
   CDFPropertyDefinition,
@@ -16,6 +12,16 @@ import { useImmediateInput } from '../../07-scope-gate/sidebar/hooks/useImmediat
 import { computeNextScrollOffset } from '../scroll-offset.js';
 import { findSlotCycles, type ComponentSlotInfo } from '../../07-scope-gate/graph/cycle-detection.js';
 import { FixedPanel } from '../../07-scope-gate/sidebar/components/windowed-panel.js';
+
+const EDITABLE_PROPERTY_TYPES: readonly string[] = [
+  'string',
+  'richtext',
+  'number',
+  'media',
+  'link',
+  'token',
+  'boolean',
+] satisfies CDFPropertyDefinition['$type'][];
 
 type PropMetadata = {
   rationale?: string | null;
@@ -70,6 +76,7 @@ type PropState = {
   required: boolean;
   description: string;
   values: string[];
+  preservedValues?: { type: string; values: NonNullable<CDFPropertyDefinition['$values']> };
   tokenKind: string;
   allowed: string[];
   default: string | boolean | null;
@@ -177,6 +184,9 @@ function parseToState(json: string): {
       required: p.$required === true,
       description: typeof p.$description === 'string' ? p.$description : '',
       values: Array.isArray(p.$values) ? (p.$values as string[]).filter((v) => typeof v === 'string') : [],
+      ...(type !== 'string' && Array.isArray(p.$values)
+        ? { preservedValues: { type, values: p.$values as NonNullable<CDFPropertyDefinition['$values']> } }
+        : {}),
       tokenKind: typeof p['$token.kind'] === 'string' ? p['$token.kind'] : '',
       allowed: Array.isArray(p['$token.allowed'])
         ? (p['$token.allowed'] as unknown[]).filter((v): v is string => typeof v === 'string')
@@ -224,17 +234,14 @@ function serializeState(state: EditorState, originalJson: string): string {
     };
     if (p.required) def.$required = true;
     if (p.description) def.$description = p.description;
-    if (p.type === 'enum' && p.values.length > 0) def.$values = p.values;
+    if (p.type === 'string' && p.values.length > 0) def.$values = p.values;
+    else if (p.preservedValues?.type === p.type) def.$values = p.preservedValues.values;
     if (p.type === 'token' && p.tokenKind) def['$token.kind'] = p.tokenKind;
     if (p.type === 'token' && p.allowed.length > 0) def['$token.allowed'] = p.allowed;
     if (p.default !== null) {
       if (p.type === 'boolean' && typeof p.default === 'boolean') {
         def.$default = p.default;
-      } else if (
-        (p.type === 'string' || p.type === 'token' || p.type === 'enum') &&
-        typeof p.default === 'string' &&
-        p.default !== ''
-      ) {
+      } else if ((p.type === 'string' || p.type === 'token') && typeof p.default === 'string' && p.default !== '') {
         def.$default = p.default;
       }
     }
@@ -491,17 +498,7 @@ function DefaultSubRow({
     return <DefaultValueRow display={display} active={active} focused={focused} />;
   }
 
-  if (prop.type === 'enum') {
-    if (prop.values.length === 0) {
-      return (
-        <Box gap={1} flexShrink={0}>
-          <Text color={focused ? PALETTE.warning : PALETTE.muted} bold={focused}>
-            {focused ? '› ' : '  '}default:
-          </Text>
-          <Text color={focused ? undefined : PALETTE.muted}>(no values defined)</Text>
-        </Box>
-      );
-    }
+  if (prop.type === 'string' && prop.values.length > 0) {
     const display = typeof prop.default === 'string' && prop.default !== '' ? prop.default : '(unset)';
     return <DefaultValueRow display={display} active={active} focused={focused} />;
   }
@@ -674,7 +671,7 @@ function PropRow({
         </InlinePropField>
       )}
 
-      {prop.type === 'enum' && (
+      {prop.type === 'string' && (
         <Box gap={1} flexWrap="wrap" width={width} flexShrink={0}>
           <Text color={activeField === 'values' ? PALETTE.warning : PALETTE.muted} bold={activeField === 'values'}>
             {activeField === 'values' ? '› ' : '  '}values:
@@ -723,7 +720,7 @@ function PropRow({
         </Box>
       )}
 
-      {selected && prop.type === 'enum' && activeField === 'values' && (
+      {selected && prop.type === 'string' && activeField === 'values' && (
         <Box paddingLeft={2} flexDirection="column">
           <Box>
             <Text color={PALETTE.muted}>values:</Text>
@@ -897,7 +894,7 @@ function propFields(prop: PropState): PropField[] {
   if (prop.type === 'token') {
     fields.push('tokenKind');
   }
-  if (prop.type === 'enum') fields.push('values');
+  if (prop.type === 'string') fields.push('values');
   if (prop.type !== 'richtext' && prop.type !== 'media' && prop.type !== 'link') {
     fields.push('default');
   }
@@ -1683,7 +1680,7 @@ export function FieldEditor({
       }
 
       if (activeField === 'type' && (key.leftArrow || key.rightArrow) && currentProp) {
-        const options = CDF_PROPERTY_TYPES as readonly string[];
+        const options = EDITABLE_PROPERTY_TYPES;
         const idx = options.indexOf(currentProp.type);
         const next = key.leftArrow
           ? options[(idx - 1 + options.length) % options.length]
@@ -1695,7 +1692,7 @@ export function FieldEditor({
         } else {
           updated.tokenKind = '';
         }
-        if (next !== 'enum') updated.values = [];
+        if (next !== 'string') updated.values = [];
         const nextProps = props.map((p, i) => (i === propIdx ? updated : p));
         commit({ ...editorState, props: nextProps });
         return;
@@ -1739,7 +1736,7 @@ export function FieldEditor({
           return;
         }
 
-        if (currentProp.type === 'enum' && (key.leftArrow || key.rightArrow)) {
+        if (currentProp.type === 'string' && currentProp.values.length > 0 && (key.leftArrow || key.rightArrow)) {
           const opts: (string | null)[] = [null, ...currentProp.values];
           const cur = typeof currentProp.default === 'string' ? currentProp.default : null;
           const curIdx = opts.findIndex((v) => v === cur);

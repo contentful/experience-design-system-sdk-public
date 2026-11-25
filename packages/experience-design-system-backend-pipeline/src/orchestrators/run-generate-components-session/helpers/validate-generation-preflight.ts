@@ -1,14 +1,16 @@
 import {
   buildCDF,
+  CDF_SCHEMA_URL,
   DESIGN_TOKEN_TYPES,
   validateCDF,
   type CDFComponentEntry,
+  type CDFValidationError,
 } from '@contentful/experience-design-system-types';
 import type { ToolCall } from '../../../agents/types/tool-calls.js';
 import type { RawComponentDefinition } from '../../../steps/extraction/src/types/component.js';
 
 export class GenerationPreflightError extends Error {
-  constructor(errors: string[]) {
+  constructor(readonly errors: string[]) {
     super(`Generation preflight failed:\n${errors.join('\n')}`);
     this.name = 'GenerationPreflightError';
   }
@@ -48,12 +50,37 @@ export function validateGenerationCalls(
 }
 
 export function validateGeneratedCDF(component: { key: string; entry: CDFComponentEntry }): void {
-  const validation = validateCDF(buildCDF([component], []));
-  if (!validation.valid) {
+  const isolated = {
+    key: component.key,
+    entry: {
+      ...component.entry,
+      ...(component.entry.$slots
+        ? {
+            $slots: Object.fromEntries(
+              Object.entries(component.entry.$slots).map(([name, { $allowedComponents: _references, ...slot }]) => [
+                name,
+                slot,
+              ]),
+            ),
+          }
+        : {}),
+    },
+  };
+  let document: ReturnType<typeof buildCDF>;
+  try {
+    document = buildCDF([isolated], []);
+  } catch (error) {
+    const fields = validateCDF({ $schema: CDF_SCHEMA_URL, [isolated.key]: isolated.entry });
     throw new GenerationPreflightError(
-      validation.errors.map(
-        (error) => `${error.path}: ${error.message}${error.expected ? ` (${error.expected})` : ''}`,
-      ),
+      fields.valid ? [error instanceof Error ? error.message : String(error)] : formatValidationErrors(fields.errors),
     );
   }
+  const validation = validateCDF(document);
+  if (!validation.valid) throw new GenerationPreflightError(formatValidationErrors(validation.errors));
+}
+
+function formatValidationErrors(errors: CDFValidationError[]): string[] {
+  return [
+    ...new Set(errors.map((error) => `${error.path}: ${error.message}${error.expected ? ` (${error.expected})` : ''}`)),
+  ];
 }

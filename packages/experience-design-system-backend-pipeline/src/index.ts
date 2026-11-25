@@ -1,3 +1,10 @@
+export type { PreparationStepProgress } from './profiling/preparation-progress.js';
+export {
+  startImportProfileSpan,
+  profileImportSync,
+  profileImportAsync,
+  type ImportProfileSpan,
+} from './profiling/import-profile.js';
 export {
   exportCdfDocument,
   ExportCdfDocumentFailure,

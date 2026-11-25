@@ -70,6 +70,8 @@ The CLI `build` bundles the CLI and TUI with esbuild and, in `copy-assets`, copi
 pnpm -F @contentful/experience-design-system-cli clean && pnpm build
 ```
 
+Run the full `build` before runtime validation tests. Builds keep existing runtime output instead of cleaning it, so files removed from source stay in `dist` until a clean. `clean` removes output and must be followed by a full build. When tests skip task dependencies, finish the full build first. See `docs/workspace-builds.md`.
+
 ## TypeScript
 
 - All packages are ESM (`"type": "module"`). Use `.js` extensions in import paths even when the source is `.ts`; do not change them to `.ts`.

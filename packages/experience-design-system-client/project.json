@@ -8,22 +8,35 @@
     "codegen": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "tsx bin/generate.ts",
+        "command": "node --import tsx bin/generate.ts",
         "cwd": "packages/experience-design-system-client"
       },
-      "inputs": ["{projectRoot}/openapi.json"],
-      "outputs": ["{projectRoot}/src/generated"]
+      "inputs": [
+        "{projectRoot}/openapi.json",
+        "{projectRoot}/bin/**/*",
+        "{projectRoot}/tsconfig.json",
+        "{projectRoot}/package.json",
+        "{workspaceRoot}/pnpm-lock.yaml",
+        {
+          "externalDependencies": ["@hey-api/openapi-ts", "@hey-api/client-fetch", "@tsconfig/node24", "tsx"]
+        }
+      ],
+      "outputs": ["{projectRoot}/src/generated"],
+      "dependsOn": [],
+      "cache": true
     },
     "build": {
+      "cache": false,
       "executor": "@nx/js:tsc",
       "outputs": ["{options.outputPath}"],
       "options": {
         "outputPath": "packages/experience-design-system-client/dist",
         "main": "packages/experience-design-system-client/src/index.ts",
         "tsConfig": "packages/experience-design-system-client/tsconfig.build.json",
+        "clean": false,
         "assets": []
       },
-      "dependsOn": ["codegen", "^clean"]
+      "dependsOn": ["codegen", "^build"]
     },
     "test": {
       "executor": "nx:run-commands",
