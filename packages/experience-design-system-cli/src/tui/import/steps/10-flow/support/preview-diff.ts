@@ -199,8 +199,10 @@ function arraysEqual(a: string[], b: string[]): boolean {
   return true;
 }
 
-function normalizeType(type: string): string {
+function normalizeType(type: string, category: unknown): string {
   switch (type.toLowerCase()) {
+    case 'richtext':
+      return category === 'content' ? 'richtext' : 'string';
     case 'boolean':
       return 'boolean';
     case 'number':
@@ -210,7 +212,6 @@ function normalizeType(type: string): string {
       return 'symbol';
     case 'string':
     case 'text':
-    case 'richtext':
     case 'media':
       return 'string';
     default:
@@ -225,12 +226,13 @@ function diffProperty(name: string, old: PropertySummary, newDef: Record<string,
   const newRequired = newDef['$required'] === true;
   const newDefault = newDef['$default'];
 
-  const typeChanged = old.type !== '' && newType !== '' && normalizeType(old.type) !== normalizeType(newType);
+  const typeChanged =
+    old.type !== '' && newType !== '' && normalizeType(old.type, old.category) !== normalizeType(newType, newCategory);
   const categoryChanged = old.category !== newCategory;
   const requiredChanged = old.required !== newRequired;
   const defaultChanged = !jsonEqual(old.default, newDefault);
-  const structural = (definition: CDFFieldDefinition | Record<string, unknown>) => ({
-    type: normalizeType(String(definition.$type)),
+  const structural = (definition: CDFFieldDefinition | Record<string, unknown>, category: unknown) => ({
+    type: normalizeType(String(definition.$type), category),
     items: definition.$items,
     fields: definition.$fields,
     values: definition.$values,
@@ -238,7 +240,9 @@ function diffProperty(name: string, old: PropertySummary, newDef: Record<string,
   const hasNewStructure =
     newDef['$items'] !== undefined || newDef['$fields'] !== undefined || newDef['$values'] !== undefined;
   const structureUnknown = hasNewStructure && old.definition === undefined;
-  const structureChanged = old.definition !== undefined && !jsonEqual(structural(old.definition), structural(newDef));
+  const structureChanged =
+    old.definition !== undefined &&
+    !jsonEqual(structural(old.definition, old.category), structural(newDef, newCategory));
   if (structureUnknown)
     diffs.push({
       key: `${name}-shape-unknown`,

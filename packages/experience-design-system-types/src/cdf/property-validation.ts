@@ -25,10 +25,11 @@ const targetTypes = {
   DiscriminatedUnion: 'DiscriminatedUnion',
 } as const;
 export function cdfToTarget(d: CDFFieldDefinition): TargetDefinition {
-  const t: TargetDefinition = { type: targetTypes[d.$type] };
+  const richText = d.$type === 'richtext' && d.$category === 'content';
+  const t: TargetDefinition = { type: richText ? 'RichText' : targetTypes[d.$type] };
   if (own(d, '$required')) t.required = d.$required;
   if (own(d, '$description')) t.description = d.$description;
-  if (own(d, '$default')) t.defaultValue = d.$default;
+  if (own(d, '$default') && !richText) t.defaultValue = d.$default;
   if (d.$values) t.values = d.$values;
   if (own(d, 'value')) t.value = d.value;
   if (d.valueType) t.valueType = cdfToTarget(d.valueType);
