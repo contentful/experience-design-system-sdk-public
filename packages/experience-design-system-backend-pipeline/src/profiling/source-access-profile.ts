@@ -13,8 +13,11 @@ export class SourceAccessProfile {
   scope(phase: 'source' | 'envelope' | 'capture'): () => void {
     const previous = this.phase;
     this.phase = phase;
+    let restored = false;
     return () => {
-      this.phase = previous;
+      if (restored) return;
+      restored = true;
+      if (this.phase === phase) this.phase = previous;
     };
   }
   constructor(directory: string) {

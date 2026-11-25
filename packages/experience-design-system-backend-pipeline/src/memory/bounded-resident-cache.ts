@@ -1,5 +1,6 @@
 import { performance } from 'node:perf_hooks';
 import { getHeapStatistics } from 'node:v8';
+import { HEAP_PRESSURE_FRACTION } from './evidence-memory-policy.js';
 
 export class BoundedResidentCache<T> {
   private readonly entries = new Map<string, { value: T; bytes: number; usedAt: number }>();
@@ -38,7 +39,8 @@ export class BoundedResidentCache<T> {
     if (now >= this.nextPressureCheck) {
       this.nextPressureCheck = now + 250;
       this.pressured =
-        this.options.underPressure?.() ?? process.memoryUsage().heapUsed >= getHeapStatistics().heap_size_limit * 0.8;
+        this.options.underPressure?.() ??
+        process.memoryUsage().heapUsed >= getHeapStatistics().heap_size_limit * HEAP_PRESSURE_FRACTION;
     }
     for (const [key, entry] of this.entries) {
       if (!this.pressured && now - entry.usedAt < this.options.idleMs) break;

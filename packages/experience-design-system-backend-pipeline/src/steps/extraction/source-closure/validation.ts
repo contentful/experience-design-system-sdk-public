@@ -14,10 +14,11 @@ function json(value: unknown, active = new Set<object>()): boolean {
   active.add(value);
   try {
     if (Object.getOwnPropertySymbols(value).length) return false;
+    const keys = Object.keys(value);
     if (
       Array.isArray(value) &&
-      (Object.keys(value).length !== value.length ||
-        Object.keys(value).some(
+      (keys.length !== value.length ||
+        keys.some(
           (key) =>
             !Number.isSafeInteger(Number(key)) ||
             Number(key) < 0 ||

@@ -40,6 +40,33 @@ it('counts repeated record and source-file accesses on disk without retaining th
     db.close();
   }
 });
+it('restores nested access phases once even when a release repeats', () => {
+  const root = mkdtempSync(join(tmpdir(), 'source-access-'));
+  roots.push(root);
+  vi.stubEnv('EDS_IMPORT_PROFILE_DIR', root);
+  vi.stubEnv('EDS_IMPORT_PROFILE_ACCESS', '1');
+  const access = createSourceAccessProfile()!;
+  const outer = access.scope('envelope');
+  const inner = access.scope('capture');
+  inner();
+  inner();
+  access.recordVisit('inner', 1, 1);
+  outer();
+  outer();
+  access.recordVisit('outer', 1, 1);
+  access.close();
+  const db = new DatabaseSync(join(root, readdirSync(root).find((name) => name.endsWith('.sqlite'))!), {
+    readOnly: true,
+  });
+  try {
+    expect(db.prepare("SELECT id,phase FROM accesses WHERE kind='record' ORDER BY id").all()).toEqual([
+      { id: 'inner', phase: 'envelope' },
+      { id: 'outer', phase: 'source' },
+    ]);
+  } finally {
+    db.close();
+  }
+});
 it('does no access logging when disabled and contains unwritable diagnostic storage', () => {
   const root = mkdtempSync(join(tmpdir(), 'source-access-'));
   roots.push(root);

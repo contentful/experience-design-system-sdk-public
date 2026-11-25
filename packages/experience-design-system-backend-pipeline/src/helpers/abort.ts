@@ -8,7 +8,7 @@ export function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw createAbortError(signal.reason);
 }
 
-export function abortableDelay(ms: number, signal?: AbortSignal): Promise<void> {
+export async function abortableDelay(ms: number, signal?: AbortSignal): Promise<void> {
   throwIfAborted(signal);
   if (!signal) return new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -27,6 +27,5 @@ export function abortableDelay(ms: number, signal?: AbortSignal): Promise<void> 
     }, ms);
 
     signal.addEventListener('abort', onAbort, { once: true });
-    if (signal.aborted) onAbort();
   });
 }

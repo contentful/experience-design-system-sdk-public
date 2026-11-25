@@ -1,8 +1,6 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
-
-export const isRecord = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === 'object' && !Array.isArray(value);
+import { isRecord } from '../../helpers/agent-event-values.js';
 
 export class CodexTransportError extends Error {
   constructor(

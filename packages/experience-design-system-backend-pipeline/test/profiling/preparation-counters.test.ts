@@ -59,6 +59,7 @@ describe('bounded preparation counters', () => {
       [1, 'component-encoding'],
       [2, 'inventory'],
     ]);
+    expect(events.at(-1)?.owner).toBeUndefined();
     expect(events.at(-1)).toMatchObject({
       event: 'complete',
       counters: {

@@ -12,16 +12,28 @@ const childRequest = (bytes: number): EvidenceMemoryRequest => ({
   independentRelease: true,
 });
 
+function acquireTracked(capacity: ReturnType<typeof createEvidenceWorkerCapacity>, bytes: number) {
+  const started = vi.fn();
+  const pending = capacity.acquire('validation', undefined, undefined, childRequest(bytes)).then((lease) => {
+    started();
+    return lease;
+  });
+  return { started, pending };
+}
+
+async function twoChildLeases() {
+  const capacity = createEvidenceWorkerCapacity(policy, () => 10);
+  const first = await capacity.acquire('validation', undefined, undefined, childRequest(10));
+  const second = await capacity.acquire('validation', undefined, undefined, childRequest(10));
+  return { capacity, first, second };
+}
+
 it('reserves prospective child allocations separately from already visible parent allocations before a sample', async () => {
   let parentRss = 20;
   const capacity = createEvidenceWorkerCapacity(policy, () => parentRss);
   const child = await capacity.acquire('validation', undefined, undefined, childRequest(40));
   parentRss = 60;
-  const started = vi.fn();
-  const pending = capacity.acquire('validation', undefined, undefined, childRequest(30)).then((lease) => {
-    started();
-    return lease;
-  });
+  const { started, pending } = acquireTracked(capacity, 30);
   await Promise.resolve();
   try {
     expect(started).not.toHaveBeenCalled();
@@ -36,11 +48,7 @@ it('raises aggregate admission pressure when an owned child exceeds its estimate
   const capacity = createEvidenceWorkerCapacity(policy, () => 20);
   const child = await capacity.acquire('validation', undefined, undefined, childRequest(30));
   child.observeChildProcess?.({ pid: childPid, rssBytes: 70 });
-  const started = vi.fn();
-  const pending = capacity.acquire('validation', undefined, undefined, childRequest(25)).then((lease) => {
-    started();
-    return lease;
-  });
+  const { started, pending } = acquireTracked(capacity, 25);
   await Promise.resolve();
   try {
     expect(started).not.toHaveBeenCalled();
@@ -63,11 +71,7 @@ it('reserves parent transport and hydration allowance independently of the whole
     parentReservationBytes: 10,
   });
   child.observeChildProcess?.({ pid: childPid, rssBytes: 30 });
-  const started = vi.fn();
-  const pending = capacity.acquire('validation', undefined, undefined, childRequest(20)).then((lease) => {
-    started();
-    return lease;
-  });
+  const { started, pending } = acquireTracked(capacity, 20);
   await Promise.resolve();
   try {
     expect(started).not.toHaveBeenCalled();
@@ -108,11 +112,7 @@ it('reports a sampled fall but retains peak pressure until owned cleanup release
   const capacity = createEvidenceWorkerCapacity(policy, () => 20);
   const child = await capacity.acquire('validation', undefined, undefined, childRequest(30));
   child.observeChildProcess?.({ pid: childPid, rssBytes: 70 });
-  const started = vi.fn();
-  const pending = capacity.acquire('validation', undefined, undefined, childRequest(25)).then((lease) => {
-    started();
-    return lease;
-  });
+  const { started, pending } = acquireTracked(capacity, 25);
   child.observeChildProcess?.({ pid: childPid, rssBytes: 10 });
   await Promise.resolve();
   try {
@@ -131,9 +131,7 @@ it('reports a sampled fall but retains peak pressure until owned cleanup release
 });
 
 it('counts distinct owned processes once and replaces repeated samples without retaining sample history', async () => {
-  const capacity = createEvidenceWorkerCapacity(policy, () => 10);
-  const first = await capacity.acquire('validation', undefined, undefined, childRequest(10));
-  const second = await capacity.acquire('validation', undefined, undefined, childRequest(10));
+  const { capacity, first, second } = await twoChildLeases();
   first.observeChildProcess?.({ pid: childPid, rssBytes: 20 });
   second.observeChildProcess?.({ pid: otherChildPid, rssBytes: 25 });
   for (let index = 0; index < 1000; index++) first.observeChildProcess?.({ pid: childPid, rssBytes: 22 });
@@ -149,9 +147,7 @@ it('counts distinct owned processes once and replaces repeated samples without r
 });
 
 it('refuses duplicate cross-lease process ownership without charging the same RSS twice', async () => {
-  const capacity = createEvidenceWorkerCapacity(policy, () => 10);
-  const first = await capacity.acquire('validation', undefined, undefined, childRequest(10));
-  const second = await capacity.acquire('validation', undefined, undefined, childRequest(10));
+  const { capacity, first, second } = await twoChildLeases();
   first.observeChildProcess?.({ pid: childPid, rssBytes: 20 });
   expect(() => second.observeChildProcess?.({ pid: childPid, rssBytes: 30 })).toThrow(/already owned/i);
   expect(capacity.stats()).toMatchObject({ childProcesses: 1, observedChildRssBytes: 20, accountedChildBytes: 30 });
@@ -259,9 +255,7 @@ it.each([-1, 1.5, Infinity, NaN])('rejects invalid prospective parent allowance 
 });
 
 it('refuses aggregate sample overflow before mutating another process observation', async () => {
-  const capacity = createEvidenceWorkerCapacity(policy, () => 10);
-  const first = await capacity.acquire('validation', undefined, undefined, childRequest(10));
-  const second = await capacity.acquire('validation', undefined, undefined, childRequest(10));
+  const { capacity, first, second } = await twoChildLeases();
   first.observeChildProcess?.({ pid: childPid, rssBytes: Number.MAX_SAFE_INTEGER - 100 });
   expect(() => second.observeChildProcess?.({ pid: otherChildPid, rssBytes: 150 })).toThrow(/aggregate child/i);
   expect(capacity.stats()).toMatchObject({ childProcesses: 1, observedChildRssBytes: Number.MAX_SAFE_INTEGER - 100 });
@@ -340,11 +334,7 @@ it.each(['result', 'failure', 'cancelled'] as const)(
     })();
     const outcome =
       settlement === 'result' ? expect(owned).resolves.toBeUndefined() : expect(owned).rejects.toThrow(settlement);
-    const started = vi.fn();
-    const pending = capacity.acquire('validation', undefined, undefined, childRequest(25)).then((lease) => {
-      started();
-      return lease;
-    });
+    const { started, pending } = acquireTracked(capacity, 25);
     closed();
     await Promise.resolve();
     expect(started).not.toHaveBeenCalled();

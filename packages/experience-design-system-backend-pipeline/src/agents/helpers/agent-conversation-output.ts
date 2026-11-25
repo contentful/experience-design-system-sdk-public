@@ -2,13 +2,10 @@ import type { AgentName } from '../types/agent-name.js';
 import type { AgentConversation, AgentNativeUsage, AgentRunResult } from '../types/agent-run.js';
 import { decodeCodexConversationOutput } from './codex-conversation-output.js';
 import { readNativeUsageSnapshot } from './agent-native-usage.js';
-
-const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const record = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === 'object' && !Array.isArray(value);
+import { isRecord, isUuid } from './agent-event-values.js';
 
 export function isAgentConversation(value: AgentConversation, agent: AgentName): boolean {
-  return value.agent === agent && (agent === 'opencode' ? /^ses_[a-zA-Z0-9_-]+$/.test(value.id) : uuid.test(value.id));
+  return value.agent === agent && (agent === 'opencode' ? /^ses_[a-zA-Z0-9_-]+$/.test(value.id) : isUuid(value.id));
 }
 
 export function decodeAgentConversationOutput(
@@ -47,7 +44,7 @@ export function decodeAgentConversationOutput(
       unparsed.push(line.trim());
       continue;
     }
-    if (!record(event)) {
+    if (!isRecord(event)) {
       errors.push(`Invalid ${agent} conversation event`);
       continue;
     }
@@ -65,7 +62,7 @@ export function decodeAgentConversationOutput(
     }
     if (event.type === 'step_finish' || event.type === 'result') nativeUsage = readNativeUsageSnapshot(agent, event);
     if (agent === 'opencode') {
-      if (event.type === 'text' && record(event.part) && typeof event.part.text === 'string') {
+      if (event.type === 'text' && isRecord(event.part) && typeof event.part.text === 'string') {
         if (!steps.length) steps.push('');
         steps[steps.length - 1] += event.part.text;
         completed = false;
@@ -74,17 +71,17 @@ export function decodeAgentConversationOutput(
         steps.push('');
         completed = false;
       }
-      if (event.type === 'step_finish' && record(event.part) && event.part.reason === 'stop') completed = true;
+      if (event.type === 'step_finish' && isRecord(event.part) && event.part.reason === 'stop') completed = true;
       if (event.type === 'error') {
         completed = false;
-        errors.push(record(event.error) ? JSON.stringify(event.error) : 'opencode conversation failed');
+        errors.push(isRecord(event.error) ? JSON.stringify(event.error) : 'opencode conversation failed');
       }
     } else {
-      if (event.type === 'assistant' && record(event.message) && Array.isArray(event.message.content)) {
+      if (event.type === 'assistant' && isRecord(event.message) && Array.isArray(event.message.content)) {
         const text = event.message.content
           .filter(
             (part): part is Record<string, unknown> =>
-              record(part) && part.type === 'text' && typeof part.text === 'string',
+              isRecord(part) && part.type === 'text' && typeof part.text === 'string',
           )
           .map((part) => part.text)
           .join('\n');

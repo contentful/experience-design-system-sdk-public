@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { closeSync, existsSync, fstatSync, openSync, readSync } from 'node:fs';
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
+import { dirname, relative, resolve } from 'node:path';
 import { Project } from 'ts-morph';
 import ts from 'typescript';
 import { profileImportSync } from '../../../../profiling/import-profile.js';
@@ -11,7 +11,12 @@ import type {
   ExtractionDiagnostics,
 } from '../candidates/types.js';
 import type { ExtractorOptions } from '../types/options.js';
-import { isAdmittedCompilerConfig, selectCompilerConfiguration, type ParsedConfig } from './configuration-policy.js';
+import {
+  formatDiagnostic,
+  isAdmittedCompilerConfig,
+  selectCompilerConfiguration,
+  type ParsedConfig,
+} from './configuration-policy.js';
 import { createExplicitSourceDirectoryReader } from './explicit-source-directory.js';
 import {
   createObservedCompilerFileSystem,
@@ -22,6 +27,7 @@ import { canonicalSourceFactPath } from '../candidates/bind-source-candidates.js
 import {
   DEFAULT_SOURCE_DISCOVERY_LIMITS,
   discoverSourceEvidence,
+  isWithinEvidenceRoot as isWithin,
   type SourceEvidenceInventory,
 } from '../../source-evidence/discovery.js';
 
@@ -29,6 +35,8 @@ const DEFAULT_LIMITS = {
   maxRoots: 256,
   maxConfigReads: 256,
   maxConfigFileBytes: 256 * 1024,
+  maxLoadedSourceBytes: 256 * 1024,
+  maxTotalLoadedSourceBytes: 8 * 1024 * 1024,
   maxConfigBytes: 1024 * 1024,
   maxDirectoryEntries: 2_000,
   maxReferenceDepth: 8,
@@ -81,7 +89,7 @@ export function createCompilerSourceCollector(inventory?: SourceEvidenceInventor
           inventory?.omissions.push({ path, reason: 'compiler-context-byte-conflict' });
         continue;
       }
-      if (size > 256 * 1024 || bytes + size > 8 * 1024 * 1024) {
+      if (size > DEFAULT_LIMITS.maxLoadedSourceBytes || bytes + size > DEFAULT_LIMITS.maxTotalLoadedSourceBytes) {
         inventory?.omissions.push({ path, reason: 'compiler-loaded-source-byte-budget' });
         continue;
       }
@@ -114,13 +122,6 @@ export interface VirtualCompilerSource {
   content: string;
 }
 
-function isWithin(root: string, filePath: string): boolean {
-  const relativePath = relative(root, filePath);
-  return (
-    relativePath === '' || (!relativePath.startsWith(`..${sep}`) && relativePath !== '..' && !isAbsolute(relativePath))
-  );
-}
-
 function commonDirectory(filePaths: readonly string[]): string {
   if (filePaths.length === 0) return process.cwd();
   let common = resolve(dirname(filePaths[0]!));
@@ -131,17 +132,8 @@ function commonDirectory(filePaths: readonly string[]): string {
       if (parent === common) return common;
       common = parent;
     }
-    while (!isWithin(candidate, common)) {
-      const parent = dirname(common);
-      if (parent === common) break;
-      common = parent;
-    }
   }
   return common;
-}
-
-function formatDiagnostic(diagnostic: ts.Diagnostic): string {
-  return ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n');
 }
 
 function toPlainOptions(options: ts.CompilerOptions): Record<string, string | number | boolean | null> {

@@ -13,14 +13,11 @@ export const sourceArray = (value: unknown, validate: (item: unknown) => boolean
   Array.isArray(value) && value.every(validate);
 export const sourceCount = (value: unknown): value is number =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
-export function sourceLimit(value: unknown, fallback: number): number {
+export function sourceLimit<T extends number | null>(value: unknown, fallback: T): number | T {
   const count = typeof value === 'number' ? Math.floor(value) : NaN;
   return sourceCount(count) ? count : fallback;
 }
-export function sourceFileLimit(value: unknown): number | null {
-  const count = typeof value === 'number' ? Math.floor(value) : NaN;
-  return sourceCount(count) ? count : null;
-}
+export const sourceFileLimit = (value: unknown): number | null => sourceLimit(value, null);
 export const sourceScalar = (value: unknown): value is string | number | boolean | null =>
   value === null ||
   typeof value === 'string' ||

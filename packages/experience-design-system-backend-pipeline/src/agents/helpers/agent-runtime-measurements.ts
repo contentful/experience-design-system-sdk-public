@@ -1,15 +1,14 @@
 import type { ChildProcess } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
-import { StringDecoder } from 'node:string_decoder';
 import type { AgentName } from '../types/agent-name.js';
 import type { AgentRuntimeMeasurements } from '../types/agent-run.js';
 import { isNativeTransportEvent } from './agent-native-usage.js';
+import { createUtf8LineBuffer } from './utf8-line-buffer.js';
 
 export function createAgentRuntimeRecorder(agent: AgentName, model: string | undefined, structured: boolean) {
   const started = performance.now();
-  const decoder = new StringDecoder('utf8');
+  const lines = createUtf8LineBuffer();
   let launch: number | undefined;
-  let pending = '';
   let lastStdoutAt: number | undefined;
   let detach: (() => void) | undefined;
   const measurements: AgentRuntimeMeasurements = {
@@ -32,12 +31,7 @@ export function createAgentRuntimeRecorder(agent: AgentName, model: string | und
     measurements.firstStdoutMs ??= at - launch;
     lastStdoutAt = at;
     if (!structured || measurements.firstEventMs !== undefined) return;
-    pending += typeof chunk === 'string' ? chunk : decoder.write(chunk);
-    let end: number;
-    while ((end = pending.indexOf('\n')) !== -1) {
-      observeLine(pending.slice(0, end), at);
-      pending = pending.slice(end + 1);
-    }
+    for (const line of lines.push(chunk)) observeLine(line, at);
   };
   return {
     launch() {
@@ -61,8 +55,8 @@ export function createAgentRuntimeRecorder(agent: AgentName, model: string | und
     },
     processEnded() {
       if (launch !== undefined) measurements.processElapsedMs = performance.now() - launch;
-      if (lastStdoutAt !== undefined) observeLine(pending + decoder.end(), lastStdoutAt);
-      pending = '';
+      const rest = lines.end();
+      if (lastStdoutAt !== undefined) observeLine(rest, lastStdoutAt);
       detach?.();
     },
     finish(): AgentRuntimeMeasurements {

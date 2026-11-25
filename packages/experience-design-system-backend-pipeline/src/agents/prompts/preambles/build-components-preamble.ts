@@ -1,4 +1,4 @@
-export function buildComponentsPreamble(inputBlock: string): string {
+export function buildComponentsPreamble(): string {
   return `You are running as part of the experience-design-system-cli generate pipeline in AUTONOMOUS mode. The developer is not present to answer questions.
 
 Context: You are classifying a React component for **Contentful Experience Orchestration**. The result is a Component Type — a schema that tells Contentful what a marketer can configure. Properties fall into three categories:
@@ -8,7 +8,7 @@ Context: You are classifying a React component for **Contentful Experience Orche
 
 Your task: classify every prop and slot in the component below. Apply all judgment calls yourself — do not pause to ask for confirmation. Include a "description" field on each tool call to document your reasoning so the developer can review it afterward.
 
-All input data is provided inline below — do not read any additional files.${inputBlock}
+All input data is provided inline below — do not read any additional files.
 
 ## Output protocol
 
