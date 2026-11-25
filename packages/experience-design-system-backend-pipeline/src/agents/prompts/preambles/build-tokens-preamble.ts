@@ -1,9 +1,9 @@
-export function buildTokensPreamble(inputBlock: string): string {
+export function buildTokensPreamble(): string {
   return `You are running as part of the experience-design-system-cli generate pipeline in AUTONOMOUS mode. The developer is not present to answer questions.
 
 Your task: classify every raw token from the input below into a DTCG token tree. Apply all judgment calls yourself — do not pause to ask for confirmation. Include a "description" field on each set_token call to document your reasoning.
 
-All input data is provided inline below — do not read any additional files.${inputBlock}
+All input data is provided inline below — do not read any additional files.
 
 ## Output protocol
 

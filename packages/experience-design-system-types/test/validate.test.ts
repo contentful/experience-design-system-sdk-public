@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { Ajv } from 'ajv';
 import { cdfJsonSchema } from '../src/cdf/schema.js';
 import { validateCDF, CDF_SCHEMA_URL } from '../src/cdf/index.js';
+import { containsCDFDefinitionType, normalizeCDFBooleanChoices, type CDFFieldDefinition } from '../src/index.js';
 
 function minimalCDFDocument() {
   return {
@@ -40,6 +41,22 @@ describe('validateCDF', () => {
     expect(result.valid).toBe(true);
     expect(result.components).toHaveLength(1);
     expect(result.tokens).toHaveLength(0);
+  });
+
+  it('does not treat inherited object members as properties that own a slot source input', () => {
+    const sourceInput = {
+      schemaVersion: 1,
+      componentId: 'Button',
+      componentDeclarationId: 'Button',
+      rootSymbolId: 'Button',
+      inputName: 'constructor',
+      inputPath: ['constructor'],
+    };
+    const result = validateCDF({
+      $schema: CDF_SCHEMA_URL,
+      Button: { $type: 'component', $properties: {}, $slots: { constructor: { $sourceInput: sourceInput } } },
+    });
+    expect(result.errors).toEqual([]);
   });
 
   it('accepts a document with only tokens', () => {
@@ -127,5 +144,25 @@ describe('exported CDF JSON Schema token properties', () => {
   });
   it('accepts ordinary properties without token metadata', () => {
     expect(validate(minimalCDFDocument())).toBe(true);
+  });
+});
+
+describe('recursive CDF definition helpers', () => {
+  const nested = (depth: number): CDFFieldDefinition => {
+    let definition: CDFFieldDefinition = { $type: 'boolean', $values: [true, false] };
+    for (let index = 0; index < depth; index++) definition = { $type: 'array', $items: definition };
+    return definition;
+  };
+
+  it('walk definitions within the validation depth', () => {
+    const definition = nested(10);
+    expect(containsCDFDefinitionType(definition, 'boolean')).toBe(true);
+    normalizeCDFBooleanChoices(definition);
+    expect(containsCDFDefinitionType(definition, 'record')).toBe(false);
+  });
+
+  it('refuse definitions nested beyond the validation depth instead of exhausting the stack', () => {
+    expect(() => containsCDFDefinitionType(nested(100), 'record')).toThrow('maximum nesting depth');
+    expect(() => normalizeCDFBooleanChoices(nested(100))).toThrow('maximum nesting depth');
   });
 });

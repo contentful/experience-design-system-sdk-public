@@ -285,9 +285,9 @@ describe('operation-owned Codex app-server (no provider, no automatic retries)',
       { operationId: 'broken-stdin', timeoutMs: 0, drainTimeoutMs: 100 },
       undefined,
       () => {
-        const process = spawn(globalThis.process.execPath, [fixture], { stdio: ['pipe', 'pipe', 'pipe'] });
-        child = process;
-        return process;
+        const spawned = spawn(process.execPath, [fixture], { stdio: ['pipe', 'pipe', 'pipe'] });
+        child = spawned;
+        return spawned;
       },
     );
     cleanups.push(() => runtime.close());

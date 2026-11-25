@@ -1,11 +1,9 @@
 import type { AgentName } from '../types/agent-name.js';
 import type { AgentNativeUsage } from '../types/agent-run.js';
-
-const record = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === 'object' && !Array.isArray(value);
+import { isRecord } from './agent-event-values.js';
 
 export function isNativeTransportEvent(agent: AgentName, value: unknown): boolean {
-  if (!record(value) || typeof value.type !== 'string') return false;
+  if (!isRecord(value) || typeof value.type !== 'string') return false;
   switch (agent) {
     case 'codex':
       return [
@@ -46,7 +44,7 @@ export function readNativeUsageSnapshot(
     scope = 'invocation';
     usage = event.usage;
     keys = ['input_tokens', 'output_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens'];
-  } else if (agent === 'opencode' && event.type === 'step_finish' && record(event.part)) {
+  } else if (agent === 'opencode' && event.type === 'step_finish' && isRecord(event.part)) {
     source = 'opencode.step_finish.part.tokens';
     scope = 'step';
     usage = event.part.tokens;
@@ -54,7 +52,7 @@ export function readNativeUsageSnapshot(
   } else {
     return undefined;
   }
-  if (!record(usage)) return undefined;
+  if (!isRecord(usage)) return undefined;
   const counters: Record<string, number> = {};
   for (const key of keys) {
     const value = usage[key];
@@ -67,7 +65,7 @@ export function readNativeUsageSnapshot(
     counters.cached_input_tokens > counters.input_tokens
   )
     return undefined;
-  if (agent === 'opencode' && record(usage.cache)) {
+  if (agent === 'opencode' && isRecord(usage.cache)) {
     for (const key of ['read', 'write']) {
       const value = usage.cache[key];
       if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) counters[`cache.${key}`] = value;

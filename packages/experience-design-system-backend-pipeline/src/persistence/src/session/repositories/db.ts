@@ -1657,6 +1657,10 @@ export function storeCDFComponents(
     deleteTokenPaths.run(sessionId, componentId, propName);
     paths.forEach((path, position) => insertTokenPath.run(sessionId, componentId, propName, 'review', position, path));
   };
+  const insertStringAllowedValues = (componentId: string, propName: string, values: readonly unknown[]) =>
+    values
+      .filter((value): value is string => typeof value === 'string')
+      .forEach((value, position) => insertAllowedValue.run(sessionId, componentId, propName, value, position));
   const deleteSlots = db.prepare(`DELETE FROM raw_slots WHERE session_id = ? AND component_id = ?`);
   const deleteSlotAllowedComponents = db.prepare(
     `DELETE FROM raw_slot_allowed_components WHERE session_id = ? AND component_id = ?`,
@@ -1704,9 +1708,7 @@ export function storeCDFComponents(
           );
           if (prop.$values && prop.$values.length > 0) {
             deleteAllowedValues.run(sessionId, componentId, propName);
-            prop.$values
-              .filter((v): v is string => typeof v === 'string')
-              .forEach((v, i) => insertAllowedValue.run(sessionId, componentId, propName, v, i));
+            insertStringAllowedValues(componentId, propName, prop.$values);
           }
           if (prop.$type === 'token' && prop.$category === 'design') {
             // Reconcile the persisted mapping even when the property omits
@@ -1766,11 +1768,7 @@ export function storeCDFComponents(
             prop.$category,
             prop['$token.kind'] ?? null,
           );
-          if (prop.$values && prop.$values.length > 0) {
-            prop.$values
-              .filter((v): v is string => typeof v === 'string')
-              .forEach((v, i) => insertAllowedValue.run(sessionId, componentId, propName, v, i));
-          }
+          if (prop.$values && prop.$values.length > 0) insertStringAllowedValues(componentId, propName, prop.$values);
           if (prop.$type === 'token' && prop.$category === 'design') {
             writeTokenPaths(componentId, propName, prop['$token.allowed'] ?? []);
           }

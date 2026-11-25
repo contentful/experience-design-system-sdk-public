@@ -86,17 +86,28 @@ export function cdfDefinitionChildren(definition: CDFFieldDefinition): Array<{
     ...(definition.members ?? []).map((member, index) => ({ definition: member, path: '/members/' + index })),
   ];
 }
+const MAX_CDF_DEFINITION_DEPTH = 64;
+
+function boundedDefinitionDepth(depth: number): number {
+  if (depth > MAX_CDF_DEFINITION_DEPTH) throw new Error('CDF definition exceeds the maximum nesting depth');
+  return depth + 1;
+}
+
 export function containsCDFDefinitionType(definition: CDFFieldDefinition, type: string): boolean {
-  return (
-    definition.$type === type ||
-    cdfDefinitionChildren(definition).some((child) => containsCDFDefinitionType(child.definition, type))
-  );
+  const contains = (current: CDFFieldDefinition, depth: number): boolean => {
+    const next = boundedDefinitionDepth(depth);
+    return current.$type === type || cdfDefinitionChildren(current).some((child) => contains(child.definition, next));
+  };
+  return contains(definition, 0);
 }
 
 export function normalizeCDFBooleanChoices(definition: CDFFieldDefinition): void {
-  if (definition.$type === 'boolean' && definition.$values && isFullBooleanDomain(definition.$values))
-    delete definition.$values;
-  for (const child of cdfDefinitionChildren(definition)) normalizeCDFBooleanChoices(child.definition);
+  const normalize = (current: CDFFieldDefinition, depth: number): void => {
+    const next = boundedDefinitionDepth(depth);
+    if (current.$type === 'boolean' && current.$values && isFullBooleanDomain(current.$values)) delete current.$values;
+    for (const child of cdfDefinitionChildren(current)) normalize(child.definition, next);
+  };
+  normalize(definition, 0);
 }
 export function validateCDFProperty(
   input: unknown,
@@ -106,7 +117,7 @@ export function validateCDFProperty(
   if (unsafe) return { valid: false, issues: [unsafe] };
   const issues: PropertyIssue[] = [];
   const walk = (value: unknown, path: string, root: boolean, depth: number): void => {
-    if (depth > 64 || !value || typeof value !== 'object' || Array.isArray(value)) {
+    if (depth > MAX_CDF_DEFINITION_DEPTH || !value || typeof value !== 'object' || Array.isArray(value)) {
       issues.push({ path, message: 'Expected bounded property definition' });
       return;
     }

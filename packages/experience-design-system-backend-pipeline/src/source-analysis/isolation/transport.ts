@@ -2,6 +2,7 @@ import {
   currentGenerationMemoryObservation,
   observeGenerationMemoryBound,
 } from '../../memory/generation-memory-mode.js';
+import { HEAP_PRESSURE_FRACTION } from '../../memory/evidence-memory-policy.js';
 import { SourceIsolationError } from './errors.js';
 import { types } from 'node:util';
 import { serialize, deserialize, getHeapStatistics } from 'node:v8';
@@ -187,7 +188,7 @@ export function admitParentAllocation(
   const allowance = graphBytes * 3 + limits.maxBytes * 2;
   if (
     rss * 2 + allowance > limits.parentRssLimitBytes ||
-    heap.used_heap_size * 2 + allowance > heap.heap_size_limit * 0.8
+    heap.used_heap_size * 2 + allowance > heap.heap_size_limit * HEAP_PRESSURE_FRACTION
   ) {
     if (
       observeGenerationMemoryBound({
@@ -200,7 +201,7 @@ export function admitParentAllocation(
         limitBytes:
           rss * 2 + allowance > limits.parentRssLimitBytes
             ? limits.parentRssLimitBytes
-            : Math.floor(heap.heap_size_limit * 0.8),
+            : Math.floor(heap.heap_size_limit * HEAP_PRESSURE_FRACTION),
       })
     )
       return;

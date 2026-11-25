@@ -117,4 +117,14 @@ describe('compiler contexts', () => {
     expect(result.diagnostics.coverage).toBe('partial');
     expect(result.contexts[0]?.project.getCompilerOptions().noEmit).toBe(true);
   });
+
+  it('derives the project root from the closest common directory of the supplied files', () => {
+    const root = temporaryRoot();
+    const first = write(root, 'packages/a/First.tsx', 'export const First = () => null;');
+    const second = write(root, 'packages/b/nested/Second.tsx', 'export const Second = () => null;');
+
+    const result = createCompilerContexts([first, second], /\.tsx$/);
+
+    expect(result.sourceInventory.projectRoot).toBe(join(root, 'packages'));
+  });
 });

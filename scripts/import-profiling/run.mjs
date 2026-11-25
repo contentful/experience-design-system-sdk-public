@@ -2,5 +2,5 @@ import { runProfiledImport as runBackendProfiledImport } from '../../packages/ex
 import { renderProfileReport } from './report.mjs';
 
 export function runProfiledImport(options) {
-  return runBackendProfiledImport({ ...options, renderReport: renderProfileReport });
+  return runBackendProfiledImport({ renderReport: renderProfileReport, ...options });
 }

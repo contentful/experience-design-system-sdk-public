@@ -147,15 +147,16 @@ export function prepareLogicalSourceGraph(model: Pick<PropertyModel, 'identity' 
       ? 'occurrence_' +
         contentDigest({ owner: model.identity, sourceNodeId: original.id, path: request.path }).slice(0, 32)
       : original.id;
+    const intrinsic = intrinsicReadonly(original.id);
     const node: LogicalSourceNode = {
       ...cloneJson(original),
       id,
       sourceNodeId: original.id,
       path: cloneJson(request.path),
       required: request.required,
-      readonly: request.readonly || intrinsicReadonly(original.id),
+      readonly: request.readonly || intrinsic,
       occurrenceReadonly: request.readonly,
-      intrinsicReadonly: intrinsicReadonly(original.id),
+      intrinsicReadonly: intrinsic,
       ...(request.declarations ? { declarations: cloneJson(request.declarations) } : {}),
       ...(request.branchConditions?.length ? { branchConditions: cloneJson(request.branchConditions) } : {}),
     };
@@ -210,8 +211,8 @@ export function prepareLogicalSourceGraph(model: Pick<PropertyModel, 'identity' 
     }
     if (original.items) {
       node.items = [];
-      node.tupleElements = original.tupleElements ? [] : undefined;
-      if (!original.tupleElements) delete node.tupleElements;
+      if (original.tupleElements) node.tupleElements = [];
+      else delete node.tupleElements;
       for (const [index, sourceId] of original.items.entries()) {
         const tuple = original.tupleElements?.[index];
         const nodeId = yield child(

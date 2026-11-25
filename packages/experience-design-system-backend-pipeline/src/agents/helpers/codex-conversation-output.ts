@@ -1,9 +1,6 @@
 import type { AgentConversation, AgentNativeUsage, AgentRunResult } from '../types/agent-run.js';
 import { readNativeUsageSnapshot } from './agent-native-usage.js';
-
-const sessionId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const record = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === 'object' && !Array.isArray(value);
+import { isRecord, isUuid } from './agent-event-values.js';
 
 export function decodeCodexConversationOutput(result: AgentRunResult, previous?: AgentConversation): AgentRunResult {
   let conversation = previous;
@@ -24,12 +21,12 @@ export function decodeCodexConversationOutput(result: AgentRunResult, previous?:
       unparsed.push(line.trim());
       continue;
     }
-    if (!record(event)) {
+    if (!isRecord(event)) {
       errors.push('Invalid Codex conversation event');
       continue;
     }
     if (event.type === 'thread.started') {
-      if (typeof event.thread_id !== 'string' || !sessionId.test(event.thread_id)) {
+      if (typeof event.thread_id !== 'string' || !isUuid(event.thread_id)) {
         identityValid = false;
         errors.push('Codex returned an invalid conversation identity');
       } else if (conversation && conversation.id !== event.thread_id) {
@@ -44,7 +41,7 @@ export function decodeCodexConversationOutput(result: AgentRunResult, previous?:
       completed = false;
       turnErrors.length = 0;
     }
-    if (event.type === 'item.completed' && record(event.item) && event.item.type === 'agent_message') {
+    if (event.type === 'item.completed' && isRecord(event.item) && event.item.type === 'agent_message') {
       if (typeof event.item.text === 'string') message = event.item.text;
     }
     if (event.type === 'turn.completed') {
@@ -54,7 +51,7 @@ export function decodeCodexConversationOutput(result: AgentRunResult, previous?:
     if (event.type === 'turn.failed') {
       completed = false;
       turnErrors.push(
-        record(event.error) && typeof event.error.message === 'string' ? event.error.message : 'Codex turn failed',
+        isRecord(event.error) && typeof event.error.message === 'string' ? event.error.message : 'Codex turn failed',
       );
     }
     if (event.type === 'error')

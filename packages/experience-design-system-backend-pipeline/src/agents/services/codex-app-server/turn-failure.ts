@@ -1,4 +1,4 @@
-import { isRecord } from './connection.js';
+import { isRecord } from '../../helpers/agent-event-values.js';
 
 const codes = new Set([
   'contextWindowExceeded',

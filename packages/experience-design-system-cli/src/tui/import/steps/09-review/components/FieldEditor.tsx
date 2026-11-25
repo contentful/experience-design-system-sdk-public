@@ -76,6 +76,7 @@ type PropState = {
   required: boolean;
   description: string;
   values: string[];
+  preservedValues?: { type: string; values: NonNullable<CDFPropertyDefinition['$values']> };
   tokenKind: string;
   allowed: string[];
   default: string | boolean | null;
@@ -183,6 +184,9 @@ function parseToState(json: string): {
       required: p.$required === true,
       description: typeof p.$description === 'string' ? p.$description : '',
       values: Array.isArray(p.$values) ? (p.$values as string[]).filter((v) => typeof v === 'string') : [],
+      ...(type !== 'string' && Array.isArray(p.$values)
+        ? { preservedValues: { type, values: p.$values as NonNullable<CDFPropertyDefinition['$values']> } }
+        : {}),
       tokenKind: typeof p['$token.kind'] === 'string' ? p['$token.kind'] : '',
       allowed: Array.isArray(p['$token.allowed'])
         ? (p['$token.allowed'] as unknown[]).filter((v): v is string => typeof v === 'string')
@@ -231,6 +235,7 @@ function serializeState(state: EditorState, originalJson: string): string {
     if (p.required) def.$required = true;
     if (p.description) def.$description = p.description;
     if (p.type === 'string' && p.values.length > 0) def.$values = p.values;
+    else if (p.preservedValues?.type === p.type) def.$values = p.preservedValues.values;
     if (p.type === 'token' && p.tokenKind) def['$token.kind'] = p.tokenKind;
     if (p.type === 'token' && p.allowed.length > 0) def['$token.allowed'] = p.allowed;
     if (p.default !== null) {

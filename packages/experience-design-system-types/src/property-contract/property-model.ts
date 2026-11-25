@@ -819,7 +819,7 @@ export function projectProperty(
     return { model: snapshot, profile: profileSnapshot, outcome: 'unsupported', issues, requirements: [] };
   const requirements: PropertyProjection['requirements'] = [];
   let conditional = false;
-  let unsupported = issues.length > 0;
+  let unsupported = false;
   const require = (path: string, capability: string): void => {
     const key = `${path}:${capability}`;
     const availability = own(context.capabilities, key) ? context.capabilities[key]! : 'unknown';

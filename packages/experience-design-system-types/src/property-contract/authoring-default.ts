@@ -2,8 +2,16 @@ import { cloneJson, jsonEqual, own, type JsonValue } from './json-value.js';
 import { sourceAllowsNull } from './authoring-presence.js';
 import { validateSourceValue, type PropertySourceGraph, type SourceGraphNode } from './property-model.js';
 
-function valueNode(graph: PropertySourceGraph, id: string, value: JsonValue): SourceGraphNode | undefined {
-  const nodes = new Map(graph.nodes.map((node) => [node.id, node]));
+type SourceNodeIndex = ReadonlyMap<string, SourceGraphNode>;
+const indexSourceNodes = (graph: PropertySourceGraph): SourceNodeIndex =>
+  new Map(graph.nodes.map((node) => [node.id, node]));
+
+function valueNode(
+  graph: PropertySourceGraph,
+  nodes: SourceNodeIndex,
+  id: string,
+  value: JsonValue,
+): SourceGraphNode | undefined {
   const seen = new Set<string>();
   let node = nodes.get(id);
   while (node && ['reference', 'union'].includes(node.kind)) {
@@ -22,29 +30,43 @@ export function projectSourceDefault(
   value: JsonValue,
   nodeId = graph.rootId,
 ): JsonValue | undefined {
-  const nodes = new Map(graph.nodes.map((node) => [node.id, node]));
+  return projectIndexedSourceDefault(graph, indexSourceNodes(graph), value, nodeId);
+}
+
+function projectIndexedSourceDefault(
+  graph: PropertySourceGraph,
+  nodes: SourceNodeIndex,
+  value: JsonValue,
+  nodeId: string,
+): JsonValue | undefined {
   const original = nodes.get(nodeId);
   if (value === null && original && sourceAllowsNull(original, nodes)) return undefined;
   const preserveBranch = (projected: JsonValue): JsonValue | undefined =>
     original &&
     ['union', 'reference'].includes(original.kind) &&
-    !jsonEqual(reconstructAuthoringValue(graph, projected, nodeId), value)
+    !jsonEqual(reconstructIndexedAuthoringValue(graph, nodes, projected, nodeId), value)
       ? undefined
       : projected;
-  const node = valueNode(graph, nodeId, value);
+  const node = valueNode(graph, nodes, nodeId, value);
   if (node?.kind === 'array' && node.items?.length === 1 && Array.isArray(value)) {
-    const items = value.map((item) => projectSourceDefault(graph, item, node.items![0]!));
+    const items = value.map((item) => projectIndexedSourceDefault(graph, nodes, item, node.items![0]!));
     return items.every((item) => item !== undefined) ? preserveBranch(items) : undefined;
   }
   if (node?.fields && value && typeof value === 'object' && !Array.isArray(value)) {
     const result = cloneJson(value);
     for (const field of node.fields) {
       if (!own(value, field.key)) continue;
-      const projected = projectSourceDefault(graph, value[field.key]!, field.nodeId);
+      const projected = projectIndexedSourceDefault(graph, nodes, value[field.key]!, field.nodeId);
       if (projected === undefined) {
         if (value[field.key] !== null) return undefined;
         delete result[field.key];
-      } else result[field.key] = projected;
+      } else
+        Object.defineProperty(result, field.key, {
+          value: projected,
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
     }
     return preserveBranch(result);
   }
@@ -56,7 +78,15 @@ export function reconstructAuthoringValue(
   value: JsonValue,
   nodeId = graph.rootId,
 ): JsonValue {
-  const nodes = new Map(graph.nodes.map((node) => [node.id, node]));
+  return reconstructIndexedAuthoringValue(graph, indexSourceNodes(graph), value, nodeId);
+}
+
+function reconstructIndexedAuthoringValue(
+  graph: PropertySourceGraph,
+  nodes: SourceNodeIndex,
+  value: JsonValue,
+  nodeId: string,
+): JsonValue {
   const reconstruct = (id: string, current: JsonValue, active = new Set<string>()): JsonValue => {
     const node = nodes.get(id);
     if (!node || active.has(id)) return cloneJson(current);

@@ -226,7 +226,10 @@ function selectedGraph<T extends SourceGraphNode>(
     return node;
   });
   const byId = new Map(nodes.map((node) => [node.id, node]));
-  const reachable = reachableSourceNodeIds(graph.rootId, (id) => sourceGraphChildIds(byId.get(id)!));
+  const reachable = reachableSourceNodeIds(graph.rootId, (id) => {
+    const node = byId.get(id);
+    return node ? sourceGraphChildIds(node) : [];
+  });
   const retained = nodes.filter((node) => reachable.has(node.id));
   return {
     nodes: retained,

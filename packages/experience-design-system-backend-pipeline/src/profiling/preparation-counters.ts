@@ -43,10 +43,11 @@ interface PreparationState {
   onActivity?: (activity: string) => void;
 }
 const active = new AsyncLocalStorage<PreparationState>();
+const PUBLISH_THROTTLE_MS = 5000;
 
 function publish(state: PreparationState, event: string, force = false): void {
   const now = performance.now();
-  if (!force && now - state.lastWrite < 5000) return;
+  if (!force && now - state.lastWrite < PUBLISH_THROTTLE_MS) return;
   state.lastWrite = now;
   try {
     appendFileSync(
@@ -68,7 +69,8 @@ function publish(state: PreparationState, event: string, force = false): void {
   } catch {}
   try {
     const owner = state.owner;
-    if (now - state.lastActivity < 5000 && !['start', 'complete', 'failed', 'cancelled'].includes(event)) return;
+    if (now - state.lastActivity < PUBLISH_THROTTLE_MS && !['start', 'complete', 'failed', 'cancelled'].includes(event))
+      return;
     state.lastActivity = now;
     state.onActivity?.(
       `Evidence preparation · ${owner ? `${owner.name} ${owner.ordinal}/${owner.total} · ${owner.phase} · ` : ''}${state.operation}` +
@@ -147,11 +149,16 @@ export function preparationOwnerRead<T>(
 ): T {
   const state = active.getStore();
   if (!state) return action();
+  const previous = state.owner;
   state.owner = owner;
   countPreparation('ownerReads');
-  return preparationOperation('owner-read', () => {
-    const result = action();
-    countPreparation('ownerReadCompletions');
-    return result;
-  });
+  try {
+    return preparationOperation('owner-read', () => {
+      const result = action();
+      countPreparation('ownerReadCompletions');
+      return result;
+    });
+  } finally {
+    state.owner = previous;
+  }
 }

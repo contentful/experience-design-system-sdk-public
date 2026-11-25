@@ -2,16 +2,17 @@ import { writeProfileReport as writeBackendProfileReport } from '../../packages/
 export { summarizeProfile } from '../../packages/experience-design-system-backend-pipeline/dist/src/profiling/resource-report.js';
 
 const seconds = (ms) => (ms === null ? 'unavailable' : `${(ms / 1000).toFixed(2)}s`);
-const escapeCell = (text) => String(text).replace(/[|\r\n]/g, ' ');
+const MAX_TABLE_ROWS = 30;
+const escapeCell = (text) => String(text).replace(/[\\|\r\n]/g, (character) => (character === '\\' ? '\\\\' : ' '));
 const mib = (bytes) => (typeof bytes === 'number' ? `${(bytes / 1024 / 1024).toFixed(1)} MiB` : 'unavailable');
 
 function memoryTable(spans) {
   return [
     '| Work | PID / thread | Start heap | End heap | Heap limit | End external | End array buffers |',
     '| --- | --- | ---: | ---: | ---: | ---: | ---: |',
-    ...spans.slice(0, 30).map((span) => {
+    ...spans.slice(0, MAX_TABLE_ROWS).map((span) => {
       const label = [span.name, span.attributes?.task, span.attributes?.workerRole].filter(Boolean).join(' · ');
-      return `| ${escapeCell(label)} | ${span.pid} / ${span.threadId} | ${mib(span.startMemory?.heapUsedBytes)} | ${mib(span.endMemory?.heapUsedBytes)} | ${mib(span.startMemory?.heapLimitBytes)} | ${mib(span.endMemory?.externalBytes)} | ${mib(span.endMemory?.arrayBufferBytes)} |`;
+      return `| ${escapeCell(label)} | ${escapeCell(span.pid)} / ${escapeCell(span.threadId)} | ${mib(span.startMemory?.heapUsedBytes)} | ${mib(span.endMemory?.heapUsedBytes)} | ${mib(span.startMemory?.heapLimitBytes)} | ${mib(span.endMemory?.externalBytes)} | ${mib(span.endMemory?.arrayBufferBytes)} |`;
     }),
   ].join('\n');
 }
@@ -20,7 +21,7 @@ function spanTable(spans) {
   return [
     '| Work | Status | Wall time | Thread CPU | Process CPU |',
     '| --- | --- | ---: | ---: | ---: |',
-    ...spans.slice(0, 30).map((span) => {
+    ...spans.slice(0, MAX_TABLE_ROWS).map((span) => {
       const label = [
         span.name,
         span.attributes?.task,
@@ -31,7 +32,7 @@ function spanTable(spans) {
       ]
         .filter(Boolean)
         .join(' · ');
-      return `| ${escapeCell(label)} | ${span.status} | ${seconds(span.wallMs)} | ${seconds(span.threadCpuMs)} | ${seconds(span.processCpuMs)} |`;
+      return `| ${escapeCell(label)} | ${escapeCell(span.status)} | ${seconds(span.wallMs)} | ${seconds(span.threadCpuMs)} | ${seconds(span.processCpuMs)} |`;
     }),
   ].join('\n');
 }
@@ -40,13 +41,13 @@ function peakMemoryTable(spans) {
   return [
     '| Work | PID / thread | Observed peak heap | Observed peak external | Heap boundary delta | Periodic samples / failures | Numeric counters |',
     '| --- | --- | ---: | ---: | ---: | ---: | --- |',
-    ...spans.slice(0, 30).map((span) => {
+    ...spans.slice(0, MAX_TABLE_ROWS).map((span) => {
       const counters = Object.entries(span.attributes ?? {})
         .filter(([, value]) => typeof value === 'number')
         .map(([key, value]) => `${key}=${value}`)
         .join(', ');
       const sampling = span.sampling ? `${span.sampling.periodicSamples} / ${span.sampling.failures}` : 'unavailable';
-      return `| ${escapeCell(span.name)} | ${span.pid} / ${span.threadId} | ${mib(span.peakThreadMemory?.heapUsedBytes)} | ${mib(span.peakThreadMemory?.externalBytes)} | ${mib(span.boundaryMemoryDelta?.heapUsedBytes)} | ${sampling} | ${escapeCell(counters)} |`;
+      return `| ${escapeCell(span.name)} | ${escapeCell(span.pid)} / ${escapeCell(span.threadId)} | ${mib(span.peakThreadMemory?.heapUsedBytes)} | ${mib(span.peakThreadMemory?.externalBytes)} | ${mib(span.boundaryMemoryDelta?.heapUsedBytes)} | ${escapeCell(sampling)} | ${escapeCell(counters)} |`;
     }),
   ].join('\n');
 }
@@ -57,7 +58,7 @@ export function renderProfileReport(summary) {
     '',
     `- Wall time: ${seconds(summary.wallMs)}`,
     `- Observed process-tree CPU: ${seconds(summary.resources.observedCpuMs)}`,
-    `- Sampled process-tree RSS peak: ${summary.resources.sampledPeakTreeRssBytes === null ? 'unavailable' : `${(summary.resources.sampledPeakTreeRssBytes / 1024 / 1024).toFixed(1)} MiB`}`,
+    `- Sampled process-tree RSS peak: ${mib(summary.resources.sampledPeakTreeRssBytes)}`,
     `- Sampled root-process RSS peak: ${mib(summary.resources.sampledPeakRootRssBytes)}; sampled concurrent child-process RSS peak: ${mib(summary.resources.sampledPeakChildRssBytes)}`,
     `- ${summary.resources.sampleCount} resource samples; ${summary.resources.processCount} distinct PIDs; ${summary.samplingFailures} sampling failures`,
     `- Exit code: ${summary.exitCode ?? 'unfinished'}; signal: ${summary.signal ?? 'none'}`,

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { CDFComponentEntry } from '../cdf/types.js';
 import type { LogicalSourceNode } from './logical-source-graph.js';
 import { cloneJson, jsonEqual, own, type JsonValue } from './json-value.js';
+import { isGeneratedModelKey } from './content-digest.js';
 import type { LogicalPhysicalMapping, RepresentationPlan } from './representation-plan.js';
 
 const text = z.string().trim().min(1);
@@ -48,7 +49,7 @@ export function applyModelComponentExploration(
   const report = ModelComponentExplorationSchema.parse(input);
   if (report.modelKey !== model.key || report.nodeId !== model.nodeId || report.sourceRevision !== sourceRevision)
     throw new Error('Model exploration has a stale or different source owner');
-  if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(report.name) || /^Model_[a-f0-9]{32}$/.test(report.name))
+  if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(report.name) || isGeneratedModelKey(report.name))
     throw new Error('Model exploration name must be a readable component identifier');
   const exact = (names: string[], expected: string[], subject: string): void => {
     if (new Set(names).size !== names.length || !jsonEqual([...names].sort(), [...expected].sort()))

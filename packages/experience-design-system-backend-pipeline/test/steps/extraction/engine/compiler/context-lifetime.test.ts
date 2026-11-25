@@ -15,6 +15,24 @@ import * as observedFileSystem from '../../../../../src/steps/extraction/src/com
 import { COMPILER_READ_LIMITS } from '../../../../../src/steps/extraction/src/compiler/observed-file-system.js';
 
 const roots: string[] = [];
+const SHAPE_DECLARATIONS = `export interface Shape { label: string }
+export interface Shape { count: number }
+declare global { interface GlobalValue { enabled: boolean } }`;
+const shapeAugmentation = (module: string) =>
+  `import '${module}';
+declare module '${module}' { interface Shape { mode: 'compact' | 'wide' } }`;
+
+function trackCreatedPrograms(afterCreate?: () => void): Set<Project> {
+  const programs = new Set<Project>();
+  const original = Project.prototype.getProgram;
+  vi.spyOn(Project.prototype, 'getProgram').mockImplementation(function (this: Project) {
+    programs.add(this);
+    const program = original.call(this);
+    afterCreate?.();
+    return program;
+  });
+  return programs;
+}
 function fixture(): { root: string; files: string[] } {
   const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'compiler-lifetime-')));
   roots.push(root);
@@ -50,17 +68,8 @@ describe('configured compiler lifetimes', () => {
     const { files } = fixture();
     const root = dirname(files[0]!);
     const file = files[0]!;
-    writeFileSync(
-      join(root, 'Shape.ts'),
-      `export interface Shape { label: string }
-export interface Shape { count: number }
-declare global { interface GlobalValue { enabled: boolean } }`,
-    );
-    writeFileSync(
-      join(root, 'augment.ts'),
-      `import './Shape';
-declare module './Shape' { interface Shape { mode: 'compact' | 'wide' } }`,
-    );
+    writeFileSync(join(root, 'Shape.ts'), SHAPE_DECLARATIONS);
+    writeFileSync(join(root, 'augment.ts'), shapeAugmentation('./Shape'));
     writeFileSync(
       file,
       `import type { Shape } from './Shape';
@@ -91,12 +100,7 @@ export function View(props: Shape & GlobalValue) { return props.label; }`,
     const eager = createCompilerContexts(selected, /\.tsx$/, { projectRoot: root }, virtualSources);
     const expected = eager.contexts.flatMap(consume);
     const expectedSources = compilerSourcesFromContexts(eager.contexts, eager.sourceInventory);
-    const programs = new Set<Project>();
-    const originalProgram = Project.prototype.getProgram;
-    vi.spyOn(Project.prototype, 'getProgram').mockImplementation(function (this: Project) {
-      programs.add(this);
-      return originalProgram.call(this);
-    });
+    const programs = trackCreatedPrograms();
     const originalHost = observedFileSystem.createObservedCompilerFileSystem;
     const hosts: ReturnType<typeof originalHost>[] = [];
     vi.spyOn(observedFileSystem, 'createObservedCompilerFileSystem').mockImplementation((...args) => {
@@ -145,12 +149,7 @@ export function View(props: Shape & GlobalValue) { return props.label; }`,
       join(root, 'app.json'),
       join(root, 'support.json'),
     ]);
-    const programs = new Set<Project>();
-    const original = Project.prototype.getProgram;
-    vi.spyOn(Project.prototype, 'getProgram').mockImplementation(function (this: Project) {
-      programs.add(this);
-      return original.call(this);
-    });
+    const programs = trackCreatedPrograms();
     const consumed: number[] = [];
     const sequential = forEachCompilerContext([files[0]!], /\.tsx$/, { projectRoot: root }, () =>
       consumed.push(programs.size),
@@ -166,13 +165,8 @@ export function View(props: Shape & GlobalValue) { return props.label; }`,
       const { files } = fixture();
       const root = dirname(files[0]!);
       const controller = new AbortController();
-      const programs = new Set<Project>();
-      const original = Project.prototype.getProgram;
-      vi.spyOn(Project.prototype, 'getProgram').mockImplementation(function (this: Project) {
-        programs.add(this);
-        const program = original.call(this);
+      const programs = trackCreatedPrograms(() => {
         if (phase === 'after-creation') controller.abort();
-        return program;
       });
       if (phase === 'before-creation') controller.abort();
       const consume = vi.fn();
@@ -199,12 +193,7 @@ export function View(props: Shape & GlobalValue) { return props.label; }`,
 
   it('propagates sole-program consumer failure without creating a replacement', () => {
     const { files } = fixture();
-    const programs = new Set<Project>();
-    const original = Project.prototype.getProgram;
-    vi.spyOn(Project.prototype, 'getProgram').mockImplementation(function (this: Project) {
-      programs.add(this);
-      return original.call(this);
-    });
+    const programs = trackCreatedPrograms();
     expect(() =>
       forEachCompilerContext([files[0]!], /\.tsx$/, { projectRoot: dirname(files[0]!) }, () => {
         throw new Error('capture-consumer-failed');
@@ -227,16 +216,10 @@ export function View(props: Shape & GlobalValue) { return props.label; }`,
     );
     write(
       'shared/types.ts',
-      `export interface Shape { label: string }
-export interface Shape { count: number }
-declare global { interface GlobalValue { enabled: boolean } }
+      `${SHAPE_DECLARATIONS}
 export const makeValue = () => ({ label: 'value', count: 2 });`,
     );
-    write(
-      'shared/augment.ts',
-      `import './types';
-declare module './types' { interface Shape { mode: 'compact' | 'wide' } }`,
-    );
+    write('shared/augment.ts', shapeAugmentation('./types'));
     for (const file of files)
       writeFileSync(
         file,
@@ -298,12 +281,7 @@ export function View(props: Shape & GlobalValue) { return props.label; }`,
 
   it('propagates consumer failure without reconstructing later programs', () => {
     const { root, files } = fixture();
-    const programs = new Set<Project>();
-    const original = Project.prototype.getProgram;
-    vi.spyOn(Project.prototype, 'getProgram').mockImplementation(function (this: Project) {
-      programs.add(this);
-      return original.call(this);
-    });
+    const programs = trackCreatedPrograms();
     expect(() =>
       forEachCompilerContext(files, /\.tsx$/, { projectRoot: root }, () => {
         throw new Error('capture-consumer-failed');

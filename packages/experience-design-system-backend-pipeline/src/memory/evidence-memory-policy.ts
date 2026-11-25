@@ -1,3 +1,5 @@
+export const HEAP_PRESSURE_FRACTION = 0.8;
+
 export interface EvidenceMemoryPolicy {
   budgetBytes: number;
   headroomFraction: number;

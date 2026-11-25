@@ -1,7 +1,8 @@
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, resolve, sep } from 'node:path';
 import ts from 'typescript';
 import { jsonEqual } from '@contentful/experience-design-system-types';
 import type { CompilerProjectDiagnostic, CompilerReferenceDiagnostic } from '../candidates/types.js';
+import { isWithinEvidenceRoot as isWithin } from '../../source-evidence/discovery.js';
 
 const DEFAULT_REFERENCE_LIMITS = { maxReferenceDepth: 8, maxReferences: 64 };
 
@@ -27,13 +28,6 @@ export interface ParsedConfig {
   diagnostics: string[];
 }
 
-function isWithin(root: string, filePath: string): boolean {
-  const relativePath = relative(root, filePath);
-  return (
-    relativePath === '' || (!relativePath.startsWith(`..${sep}`) && relativePath !== '..' && !isAbsolute(relativePath))
-  );
-}
-
 export function isAdmittedCompilerConfig(
   projectRoot: string,
   requestedPath: string,
@@ -45,7 +39,7 @@ export function isAdmittedCompilerConfig(
   return isWithin(projectRoot, canonicalPath) || resolve(requestedPath) === canonicalPath;
 }
 
-function formatDiagnostic(diagnostic: ts.Diagnostic): string {
+export function formatDiagnostic(diagnostic: ts.Diagnostic): string {
   return ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n');
 }
 

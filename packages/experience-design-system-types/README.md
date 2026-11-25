@@ -22,7 +22,9 @@ Types for standalone `.tokens.json` files following the [W3C DTCG format](https:
 
 Response types for the Sources API preview endpoint, which returns a diff of what will change before committing.
 
-**Exports:** `ServerPreviewResponse`, `EntityDiffGroup`, `ChangedEntity`, `BreakingChange`, `ChangeClassification`, `DownstreamImpact`, `ComponentTypeSummary`, `DesignTokenSummary`, `TaxonomySummary`, `PropertySummary`
+Proposed components are `ProposedComponentSummary` values rather than full `CDFComponentEntry` objects: the server returns a summary with an optional `key` and, when it has one, the complete `definition`. Read the full entry from `definition` instead of assigning the summary to `CDFComponentEntry`.
+
+**Exports:** `ServerPreviewResponse`, `EntityDiffGroup`, `ChangedEntity`, `BreakingChange`, `ChangeClassification`, `DownstreamImpact`, `ComponentTypeSummary`, `ProposedComponentSummary`, `DesignTokenSummary`, `TaxonomySummary`, `PropertySummary`, `SlotSummary`, `ProjectionDiagnostic`, `PROPERTY_BREAKING_REASONS`, `SLOT_BREAKING_REASONS`, `sanitizeBreakingChanges`
 
 ### Sources API — Apply
 
@@ -36,9 +38,9 @@ Response types for the Sources API apply endpoint, which runs the async import o
 - Defaults are JSON values with own presence: omission differs from `null`, `false`, `0`, `""`, `[]` and `{}`; classification decisions can explicitly set or clear them.
 - `validateCDF` and `validateCDFProperty` enforce structural placement, safe JSON values, recursive typed defaults and declared domains; the exported JSON Schemas describe structure and require runtime validation for contextual semantics.
 - Record dictionaries preserve opaque own keys, including `__proto__`, dots, slashes and Unicode; keys are never interpreted as paths.
-- The eleven target forms are a modeling vocabulary; `createPropertyProfile` snapshots revision 2 mapper capabilities, and `projectProperty` requires explicit recursive caller context.
+- The twelve target forms are a modeling vocabulary; `createPropertyProfile` snapshots revision 2 mapper capabilities, and `projectProperty` requires explicit recursive caller context.
 - The local native profile permits root Array, root Record and direct Array<Record>; deeper source graphs and representation drafts remain saved with explicit unsupported admission.
-- A projected default requires support from both its source mapper type and its mapped target; the profile default target allowlist is String, Number, Boolean, Array and Record.
+- A projected default requires support from both its source mapper type and its mapped target; the profile default target allowlist is String, Number, Boolean, Array, Record, Integer, DateTime, Literal and DiscriminatedUnion.
 - Source graphs remain separate from category, representation, default intent and projection outcomes, with bounded coverage and original expressions for defaults that cannot be decoded without execution.
 - `parseRepresentationProposalDrafts` stages typed drafts without persistence; `validateRepresentationProposal` binds source identity and graph references and obtains readiness from the caller.
 - Modeling, local serialization and schema acceptance do not establish remote mapper, rendering, resource identity or deployment readiness.

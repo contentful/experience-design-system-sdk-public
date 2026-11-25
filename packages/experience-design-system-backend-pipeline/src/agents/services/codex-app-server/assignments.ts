@@ -23,6 +23,9 @@ interface Session {
   admissionDigest?: string;
 }
 
+const MAX_ASSIGNMENT_IDENTITY_LENGTH = 256;
+const MAX_ASSIGNMENT_BYTES = 512 * 1024;
+
 export class AssignmentSessions {
   private readonly sessions = new Map<string, Session>();
   private readonly handoffs = new Map<string, RelatedBatchHandoff>();
@@ -32,7 +35,13 @@ export class AssignmentSessions {
   ) {}
 
   snapshot(input: AgentAssignment, model: string): AgentAssignment {
-    if (!input || typeof input.id !== 'string' || !input.id || input.id.length > 256 || !input.binding)
+    if (
+      !input ||
+      typeof input.id !== 'string' ||
+      !input.id ||
+      input.id.length > MAX_ASSIGNMENT_IDENTITY_LENGTH ||
+      !input.binding
+    )
       throw new Error('Invalid persistent assignment');
     const b = input.binding;
     if (
@@ -41,7 +50,7 @@ export class AssignmentSessions {
       ) ||
       b.model !== model ||
       !b.role ||
-      b.role.length > 256
+      b.role.length > MAX_ASSIGNMENT_IDENTITY_LENGTH
     )
       throw new Error('Invalid assignment binding or model');
     if (
@@ -64,7 +73,8 @@ export class AssignmentSessions {
       )
     )
       throw new Error('Invalid admitted assignment prerequisites');
-    if (Buffer.byteLength(JSON.stringify(input)) > 512 * 1024) throw new Error('Assignment capacity exceeded');
+    if (Buffer.byteLength(JSON.stringify(input)) > MAX_ASSIGNMENT_BYTES)
+      throw new Error('Assignment capacity exceeded');
     return freeze(structuredClone(input));
   }
 

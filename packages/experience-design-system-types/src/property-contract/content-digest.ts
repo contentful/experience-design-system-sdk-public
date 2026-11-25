@@ -1,5 +1,14 @@
 import { jsonValueIssue } from './json-value.js';
 
+const SHA256_PRIMES: number[] = [];
+for (let candidate = 2; SHA256_PRIMES.length < 64; candidate++)
+  if (!SHA256_PRIMES.some((prime) => prime * prime <= candidate && candidate % prime === 0))
+    SHA256_PRIMES.push(candidate);
+const SHA256_INITIAL: readonly number[] = SHA256_PRIMES.slice(0, 8).map(
+  (prime) => ((Math.sqrt(prime) % 1) * 0x100000000) >>> 0,
+);
+const SHA256_CONSTANTS: readonly number[] = SHA256_PRIMES.map((prime) => ((Math.cbrt(prime) % 1) * 0x100000000) >>> 0);
+
 export function contentDigest(value: unknown): string {
   const issue = jsonValueIssue(value);
   if (issue) throw new Error(issue.message);
@@ -23,11 +32,7 @@ export function contentDigest(value: unknown): string {
   const view = new DataView(padded.buffer);
   view.setUint32(padded.length - 8, Math.floor(bytes.length / 0x20000000));
   view.setUint32(padded.length - 4, bytes.length * 8);
-  const primes: number[] = [];
-  for (let candidate = 2; primes.length < 64; candidate++)
-    if (!primes.some((prime) => prime * prime <= candidate && candidate % prime === 0)) primes.push(candidate);
-  const initial = primes.slice(0, 8).map((prime) => ((Math.sqrt(prime) % 1) * 0x100000000) >>> 0);
-  const constants = primes.map((prime) => ((Math.cbrt(prime) % 1) * 0x100000000) >>> 0);
+  const state = [...SHA256_INITIAL];
   const rotate = (word: number, bits: number) => (word >>> bits) | (word << (32 - bits));
   for (let offset = 0; offset < padded.length; offset += 64) {
     const words = new Uint32Array(64);
@@ -42,13 +47,13 @@ export function contentDigest(value: unknown): string {
           (rotate(y, 17) ^ rotate(y, 19) ^ (y >>> 10))) >>>
         0;
     }
-    let [a, b, c, d, e, f, g, h] = initial;
+    let [a, b, c, d, e, f, g, h] = state;
     for (let i = 0; i < 64; i++) {
       const first =
         (h! +
           (rotate(e!, 6) ^ rotate(e!, 11) ^ rotate(e!, 25)) +
           ((e! & f!) ^ (~e! & g!)) +
-          constants[i]! +
+          SHA256_CONSTANTS[i]! +
           words[i]!) >>>
         0;
       const second = ((rotate(a!, 2) ^ rotate(a!, 13) ^ rotate(a!, 22)) + ((a! & b!) ^ (a! & c!) ^ (b! & c!))) >>> 0;
@@ -62,8 +67,12 @@ export function contentDigest(value: unknown): string {
       a = (first + second) >>> 0;
     }
     [a, b, c, d, e, f, g, h].forEach((word, i) => {
-      initial[i] = (initial[i]! + word!) >>> 0;
+      state[i] = (state[i]! + word!) >>> 0;
     });
   }
-  return initial.map((word) => word.toString(16).padStart(8, '0')).join('');
+  return state.map((word) => word.toString(16).padStart(8, '0')).join('');
 }
+
+export const generatedModelKey = (identity: unknown): string => 'Model_' + contentDigest(identity).slice(0, 32);
+
+export const isGeneratedModelKey = (name: string): boolean => /^Model_[a-f0-9]{32}$/.test(name);

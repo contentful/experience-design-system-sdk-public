@@ -4,6 +4,7 @@ import {
   shouldUsePromptArtifact,
   type AgentPromptArtifact,
 } from '@contentful/experience-design-system-types';
+import { isRecord, isUuid } from '../../helpers/agent-event-values.js';
 import { decodeCodexConversationOutput } from '../../helpers/codex-conversation-output.js';
 import { resolveAgentModel } from '../../helpers/resolution/resolve-agent-model.js';
 import { resolveBinary } from '../../helpers/resolution/resolve-binary.js';
@@ -18,10 +19,9 @@ import type {
   PersistentAgentUsage,
 } from '../../types/invoker.js';
 import { AssignmentSessions, digest } from './assignments.js';
-import { CodexConnection, CodexTransportError, isRecord } from './connection.js';
+import { CodexConnection, CodexTransportError } from './connection.js';
 import { readTurnFailure } from './turn-failure.js';
 
-const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 interface Turn {
   id?: string;
   output?: string;
@@ -109,7 +109,7 @@ export function createCodexAppServerRuntime(
       throw new CodexTransportError('wrong-thread');
     }
     if (method === 'model/rerouted') throw new CodexTransportError('model-rerouted');
-    if (typeof id !== 'string' || !uuid.test(id)) throw new CodexTransportError('malformed-turn-identity');
+    if (typeof id !== 'string' || !isUuid(id)) throw new CodexTransportError('malformed-turn-identity');
     if (method === 'turn/started' && !turn.id) turn.id = id;
     if (turn.id !== id) throw new CodexTransportError('wrong-turn');
     turn.firstEventMs ??= performance.now() - turn.startedAt;
@@ -313,7 +313,7 @@ export function createCodexAppServerRuntime(
           !isRecord(response) ||
           !isRecord(response.thread) ||
           typeof response.thread.id !== 'string' ||
-          !uuid.test(response.thread.id)
+          !isUuid(response.thread.id)
         )
           throw new CodexTransportError('invalid-thread-identity');
         if (session.conversation && response.thread.id !== session.conversation.id)
@@ -368,7 +368,7 @@ export function createCodexAppServerRuntime(
           !isRecord(response) ||
           !isRecord(response.turn) ||
           typeof response.turn.id !== 'string' ||
-          !uuid.test(response.turn.id)
+          !isUuid(response.turn.id)
         )
           throw new CodexTransportError('invalid-turn-identity');
         if (retired.get(threadId)?.has(response.turn.id)) throw new CodexTransportError('reused-turn-identity');

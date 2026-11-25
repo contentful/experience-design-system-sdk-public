@@ -1,9 +1,9 @@
-export function buildMapTokensPreamble(inputBlock: string): string {
+export function buildMapTokensPreamble(): string {
   return `You are running as part of the experience-design-system-cli generate pipeline in AUTONOMOUS mode. The developer is not present to answer questions.
 
 Context: The components below already have design-category, token-typed props (\`$token.kind\` set). Your task is to decide, from source evidence, whether to narrow each one to a restricted subset (\`token_allowed\`) of the tokens matching its \`$token.kind\`. Apply all judgment calls yourself — do not pause to ask for confirmation.
 
-All input data is provided inline below — do not read any additional files.${inputBlock}
+All input data is provided inline below — do not read any additional files.
 
 ## Output protocol
 
