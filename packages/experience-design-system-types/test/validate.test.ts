@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { Ajv } from 'ajv';
+import { cdfJsonSchema } from '../src/cdf/schema.js';
 import { validateCDF, CDF_SCHEMA_URL } from '../src/cdf/index.js';
 
 function minimalCDFDocument() {
@@ -66,7 +68,10 @@ describe('validateCDF', () => {
     // One error, about that property. Ajv lists the errors of every branch of the schema's oneOf when an entry is
     // invalid, which came to well over a hundred lines for this one missing field.
     expect(missing.errors).toEqual([
-      expect.objectContaining({ path: '/Button/$properties/color', message: expect.stringContaining('$token.kind') }),
+      expect.objectContaining({
+        path: '/Button/$properties/color',
+        message: expect.stringContaining('$token.kind'),
+      }),
     ]);
     expect(empty.valid).toBe(false);
     expect(named.valid).toBe(true);
@@ -95,5 +100,32 @@ describe('validateCDF', () => {
       spacing: { small: { $type: 'not-a-real-type', $value: '4px' } },
     });
     expect(result.valid).toBe(false);
+  });
+});
+
+describe('exported CDF JSON Schema token properties', () => {
+  const validate = new Ajv({ strict: false }).compile(cdfJsonSchema);
+  it.each([
+    { kind: undefined, valid: false },
+    { kind: '', valid: false },
+    { kind: 'color', valid: true },
+  ])('checks token kind $kind at the property boundary', ({ kind, valid }) => {
+    const doc = {
+      $schema: CDF_SCHEMA_URL,
+      Button: {
+        $type: 'component',
+        $properties: {
+          tone: {
+            $type: 'token',
+            $category: 'design',
+            ...(kind === undefined ? {} : { '$token.kind': kind }),
+          },
+        },
+      },
+    };
+    expect(validate(doc)).toBe(valid);
+  });
+  it('accepts ordinary properties without token metadata', () => {
+    expect(validate(minimalCDFDocument())).toBe(true);
   });
 });

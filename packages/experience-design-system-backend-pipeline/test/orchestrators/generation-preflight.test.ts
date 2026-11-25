@@ -195,7 +195,7 @@ describe('generation agent preflight', () => {
     const invalid = output(propCall({ cdf_type: 'enum', values: [] }));
     const { db, sessionId, invoke, run } = setup([invalid, invalid]);
     await run();
-    invoke.mockResolvedValueOnce(output(propCall({ cdf_type: 'enum', values: ['primary', 'secondary'] })));
+    invoke.mockResolvedValueOnce(output(propCall({ cdf_type: 'string', values: ['primary', 'secondary'] })));
     expect((await run()).failed).toBe(false);
     expect(loadCDFComponents(db, sessionId)[0]?.entry.$properties.label.$values).toEqual(['primary', 'secondary']);
     expect(db.prepare('SELECT cdf_schema FROM raw_components').get()).toEqual({ cdf_schema: null });
@@ -248,7 +248,7 @@ describe('generation agent preflight', () => {
     propCall(),
     propCall({ cdf_type: 'token', cdf_category: 'design' }),
     propCall({ cdf_type: 'token', cdf_category: 'design', token_kind: 'color' }),
-    propCall({ cdf_type: 'enum', values: ['small', 'large'] }),
+    propCall({ cdf_type: 'string', values: ['small', 'large'] }),
   ])('accepts valid output or a token kind that can be settled later: %j', async (call) => {
     const { invoke, run } = setup([output(call)]);
     expect((await run()).failed).toBe(false);

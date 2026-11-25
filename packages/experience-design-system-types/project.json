@@ -6,15 +6,17 @@
   "tags": [],
   "targets": {
     "build": {
+      "cache": false,
       "executor": "@nx/js:tsc",
       "outputs": ["{options.outputPath}"],
       "options": {
         "outputPath": "packages/experience-design-system-types/dist",
         "main": "packages/experience-design-system-types/src/index.ts",
         "tsConfig": "packages/experience-design-system-types/tsconfig.build.json",
+        "clean": false,
         "assets": []
       },
-      "dependsOn": ["^clean"]
+      "dependsOn": ["^build"]
     },
     "test": {
       "executor": "nx:run-commands",

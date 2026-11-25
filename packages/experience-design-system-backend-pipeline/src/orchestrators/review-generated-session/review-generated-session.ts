@@ -130,7 +130,7 @@ function revalidateReviewWarnings(
           prop,
           cdf_type: property.$type,
           cdf_category: property.$category as 'content' | 'design' | 'state',
-          values: property.$values,
+          values: property.$values?.filter((value): value is string => typeof value === 'string'),
           token_kind: property['$token.kind'],
         }));
       for (const [slot, definition] of Object.entries(component.entry.$slots ?? {})) {

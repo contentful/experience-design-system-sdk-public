@@ -5,7 +5,8 @@ import { setEnv } from './env.js';
 
 // The stand-in for the `claude` CLI. The pipeline already lets EDS_AGENT_BINARY_CLAUDE point at another binary, so this
 // is a real subprocess the real code spawns, parses and times out. It answers `auth status --json`, and for every other
-// call it reads the prompt, works out which skill it is for and prints the tool-call lines that skill's parser expects.
+// call it reads the prompt, works out which skill it is for and answers with the tool-call lines that skill's parser
+// expects: as plain text, or as Claude's stream-json events when the call asks for `--output-format stream-json`.
 
 export interface FakeAgent {
   /** What the pipeline was asked to run, one skill name per call, in order. */
@@ -16,13 +17,27 @@ export interface FakeAgent {
 // Plain CommonJS, because it is written to a file with no extension and run by node.
 const SCRIPT = String.raw`
 const { appendFileSync, writeFileSync } = require('node:fs');
+const { randomUUID } = require('node:crypto');
 const args = process.argv.slice(2);
 const note = (skill) => process.env.FAKE_AGENT_CALLS && appendFileSync(process.env.FAKE_AGENT_CALLS, skill + '\n');
-const say = (value) => process.stdout.write(JSON.stringify(value) + '\n');
+const lines = [];
+const say = (value) => lines.push(JSON.stringify(value));
+const flag = (name) => args.indexOf(name);
+const streamJson = flag('--output-format') !== -1 && args[flag('--output-format') + 1] === 'stream-json';
+const sessionId = flag('--resume') !== -1 ? args[flag('--resume') + 1] : randomUUID();
+const event = (value) => process.stdout.write(JSON.stringify(value) + '\n');
+function answer() {
+  const text = lines.join('\n');
+  if (!streamJson) return text && process.stdout.write(text + '\n');
+  const final = text || 'Nothing to report.';
+  event({ type: 'system', subtype: 'init', session_id: sessionId });
+  event({ type: 'assistant', session_id: sessionId, message: { content: [{ type: 'text', text: final }] } });
+  event({ type: 'result', subtype: 'success', session_id: sessionId, result: final, is_error: false });
+}
 
 process.on('uncaughtException', (error) => { note('crash ' + error.message); process.exit(1); });
 if (args[0] === 'auth') {
-  say({ loggedIn: true });
+  event({ loggedIn: true });
   process.exit(0);
 }
 
@@ -33,15 +48,24 @@ process.stdin.on('data', (chunk) => (stdin += chunk));
 process.stdin.on('end', () => {
   const prompt = stdin || args[args.length - 1] || '';
   if (process.env.FAKE_AGENT_DUMP) writeFileSync(process.env.FAKE_AGENT_DUMP + '/prompt-' + Date.now() + '-' + process.pid + '.txt', prompt);
-  if (prompt.includes('"tool":"map_edge"')) return composeComponents();
-  if (prompt.includes('select_component') && prompt.includes('reject_component')) return selectComponents(prompt);
-  if (prompt.includes('map_token_prop')) return mapTokens();
-  if (prompt.includes('classify_prop') && prompt.includes('classify_slot')) return generateComponents(prompt);
-  if (prompt.includes('set_token') && prompt.includes('set_group')) return generateTokens(prompt);
+  const skill = pickSkill(prompt);
+  if (skill) {
+    skill(prompt);
+    return answer();
+  }
   note('unknown');
   process.stderr.write('fake agent: no answer is scripted for this prompt\n');
   process.exit(1);
 });
+
+function pickSkill(prompt) {
+  if (prompt.includes('"tool":"map_edge"')) return composeComponents;
+  if (prompt.includes('select_component') && prompt.includes('reject_component')) return selectComponents;
+  if (prompt.includes('map_token_prop')) return mapTokens;
+  if (prompt.includes('classify_prop') && prompt.includes('classify_slot')) return generateComponents;
+  if (prompt.includes('set_token') && prompt.includes('set_group')) return generateTokens;
+  return undefined;
+}
 
 // Composition: only edges the files state outright may be emitted, and these components state none, so there are none.
 function composeComponents() {
@@ -62,7 +86,7 @@ function mapTokens() {
 }
 
 // Generation: one component per call, with its props and slots in the prompt. Each prop is classified from its own data:
-// a fixed set of values is an enum, colour and size props are design tokens, the rest are plain strings.
+// a fixed set of values is a string with values, colour and size props are design tokens, the rest are plain strings.
 function generateComponents(prompt) {
   note('generate-components');
   const blocks = [...prompt.matchAll(/\x60\x60\x60json\n([\s\S]*?)\n\x60\x60\x60/g)].map((match) => {
@@ -82,7 +106,7 @@ function generateComponents(prompt) {
 
 function classifyProp(prop) {
   const base = { tool: 'classify_prop', prop: prop.name, required: Boolean(prop.required), description: 'The ' + prop.name + '.', reason: 'Scripted classification.' };
-  if (Array.isArray(prop.allowedValues) && prop.allowedValues.length > 0) return { ...base, cdf_type: 'enum', cdf_category: 'design', values: prop.allowedValues };
+  if (Array.isArray(prop.allowedValues) && prop.allowedValues.length > 0) return { ...base, cdf_type: 'string', cdf_category: 'design', values: prop.allowedValues };
   if (/boolean/.test(prop.type || '')) return { ...base, cdf_type: 'boolean', cdf_category: 'state' };
   const tokenKind = /color/i.test(prop.name) ? 'color' : /spacing|radius|gap|size/i.test(prop.name) ? 'dimension' : null;
   if (tokenKind) return { ...base, cdf_type: 'token', cdf_category: 'design', token_kind: tokenKind };

@@ -197,7 +197,7 @@ describe('the review session and the pipeline database', () => {
     seed(sessionId, ['Button']);
     const draft = {
       ...entry,
-      $properties: { variant: { $type: 'enum' as const, $category: 'design' as const, $values: [] } },
+      $properties: { variant: { $type: 'string' as const, $category: 'design' as const, $values: [] } },
       $slots: { invented: { $description: 'Proposed slot' } },
     };
     const db = openPipelineDb();
@@ -207,7 +207,7 @@ describe('the review session and the pipeline database', () => {
       };
       storeGenerationReviewDraft(db, sessionId, row.component_id, {
         entry: draft,
-        error: 'Empty enum',
+        error: 'Empty finite values',
         agentOutput: 'example output',
       });
     } finally {
@@ -215,7 +215,7 @@ describe('the review session and the pipeline database', () => {
     }
     const loaded = loadReviewSessionState({ extractSessionId: sessionId });
     expect(loaded.entries[0]).toMatchObject({ entry: draft });
-    expect(loaded.entries[0]?.generationError).toContain('non-empty values list');
+    expect(loaded.entries[0]?.generationError).toContain('$properties/variant/$values');
     const repaired = {
       ...draft,
       $properties: { variant: { ...draft.$properties.variant, $values: ['primary', 'secondary'] } },
