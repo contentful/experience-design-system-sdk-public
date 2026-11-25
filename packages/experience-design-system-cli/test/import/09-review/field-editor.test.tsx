@@ -94,6 +94,38 @@ describe('FieldEditor', () => {
     expect(stripAnsi(view.lastFrame() ?? '')).toContain('› default:');
     expect(stripAnsi(view.lastFrame() ?? '')).not.toContain('Slot description');
   });
+  it('keeps finite number choices it cannot edit when another field changes', async () => {
+    const onChange = vi.fn();
+    const numeric = JSON.stringify({
+      $type: 'component',
+      $properties: { size: { $type: 'number', $category: 'design', $values: [1, 2, 3] } },
+    });
+    const view = render(
+      <FieldEditor
+        value={numeric}
+        width={80}
+        height={18}
+        fixedHeight
+        initialFocusTarget={{ kind: 'prop', name: 'size' }}
+        onChange={onChange}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    const press = async (key: string) => {
+      view.stdin.write(key);
+      await settle();
+    };
+
+    await settle();
+    await press('\r');
+    await press('\x1b[B');
+    await press('\r');
+    await press(' ');
+    const saved = JSON.parse(onChange.mock.calls.at(-1)?.[0] ?? '{}');
+    expect(saved.$properties.size).toMatchObject({ $type: 'number', $required: true, $values: [1, 2, 3] });
+  });
+
   it('shows an invalid proposed type so the user can repair it', async () => {
     const invalid = JSON.stringify({
       $type: 'component',
